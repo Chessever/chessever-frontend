@@ -1502,6 +1502,18 @@ class _AppBarState extends ConsumerState<_AppBar> {
 
   @override
   Widget build(BuildContext context) {
+    // Watch the board state to check for custom analysis
+    final params = ChessBoardProviderParams(
+      game: widget.game,
+      index: widget.currentGameIndex,
+    );
+    final boardState = ref.watch(chessBoardScreenProviderNew(params));
+    final state = boardState.valueOrNull;
+    final analysisGame = state?.analysisState.game;
+    final hasCustomVariations = _gameHasCustomVariations(analysisGame);
+    final hasComments = state?.variationComments.isNotEmpty ?? false;
+    final hasChanges = hasCustomVariations || hasComments;
+
     return AppBar(
       elevation: 0,
       leadingWidth: 44.sp,
@@ -1538,16 +1550,17 @@ class _AppBarState extends ConsumerState<_AppBar> {
             tooltip: 'Event info',
             onPressed: widget.isLoading ? null : () => _showEventInfoSheet(context, ref),
           ),
-        // Save Analysis button
-        IconButton(
-          icon: Icon(
-            Icons.save_outlined,
-            color: kWhiteColor,
-            size: 20.sp,
+        // Save Analysis button - only shown when user has made changes
+        if (hasChanges)
+          IconButton(
+            icon: Icon(
+              Icons.save_outlined,
+              color: kWhiteColor,
+              size: 20.sp,
+            ),
+            tooltip: 'Save analysis',
+            onPressed: widget.isLoading ? null : _showSaveAnalysisDialog,
           ),
-          tooltip: 'Save analysis',
-          onPressed: widget.isLoading ? null : _showSaveAnalysisDialog,
-        ),
         // 3-dot menu
         PopupMenuButton<String>(
           icon: Icon(Icons.more_vert, color: kWhiteColor, size: 22.sp),
@@ -2156,10 +2169,12 @@ class _GameDropdownContentState extends State<_GameDropdownContent> {
   int _currentIndex = 0;
   double _targetY = 0.0;
 
-  // Item height constants
-  static const double _itemHeight = 36.0;
-  static const double _verticalMargin = 2.0;
-  double get _totalItemHeight => _itemHeight + _verticalMargin;
+  // Item metrics (measured after layout)
+  double _itemHeight = 36.0;
+  double _itemStride = 38.0; // height + spacing between rows
+  double _itemBaseTop = 6.0; // accounts for list padding/margins
+  double get _totalItemHeight => _itemStride;
+  static const double _indicatorInset = 2.0;
 
   // Track if pointer started on the selector
   bool _pointerStartedOnSelector = false;
@@ -2169,12 +2184,28 @@ class _GameDropdownContentState extends State<_GameDropdownContent> {
   void initState() {
     super.initState();
     _currentIndex = widget.currentGameIndex;
-    _targetY = _currentIndex * _totalItemHeight;
+    _targetY = _itemBaseTop + _currentIndex * _totalItemHeight;
 
     // Scroll to center the current game after the widget is built
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      _measureMetrics();
       _scrollToCenter();
     });
+  }
+
+  @override
+  void didUpdateWidget(covariant _GameDropdownContent oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.games.isEmpty) return;
+    if (oldWidget.currentGameIndex != widget.currentGameIndex ||
+        oldWidget.games.length != widget.games.length) {
+      _currentIndex = widget.currentGameIndex.clamp(0, widget.games.length - 1);
+      _targetY = _itemBaseTop + _currentIndex * _totalItemHeight;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _measureMetrics();
+        _scrollToCenter();
+      });
+    }
   }
 
   /// Scrolls the list to center the current game in the visible area
@@ -2195,6 +2226,55 @@ class _GameDropdownContentState extends State<_GameDropdownContent> {
     _scrollController.jumpTo(clampedScroll);
   }
 
+  void _measureMetrics() {
+    final listBox = _listKey.currentContext?.findRenderObject() as RenderBox?;
+    if (listBox == null) return;
+
+    double? itemHeight;
+    double? firstTop;
+    double? secondTop;
+
+    if (_itemKeys.isNotEmpty) {
+      final firstCtx = _itemKeys[0].currentContext;
+      final firstBox = firstCtx?.findRenderObject() as RenderBox?;
+      if (firstBox != null && firstBox.hasSize) {
+        itemHeight = firstBox.size.height;
+        firstTop = listBox.globalToLocal(firstBox.localToGlobal(Offset.zero)).dy;
+      }
+    }
+
+    if (_itemKeys.length > 1) {
+      final secondCtx = _itemKeys[1].currentContext;
+      final secondBox = secondCtx?.findRenderObject() as RenderBox?;
+      if (secondBox != null && secondBox.hasSize && firstTop != null) {
+        secondTop = listBox.globalToLocal(secondBox.localToGlobal(Offset.zero)).dy;
+      }
+    }
+
+    final resolvedHeight = itemHeight ?? _itemHeight;
+    final resolvedBaseTop = firstTop ?? _itemBaseTop;
+    final fallbackStride = resolvedHeight + 2.h; // margin/padding allowance
+
+    double resolvedStride = _itemStride;
+    if (secondTop != null && firstTop != null) {
+      final stride = secondTop - firstTop;
+      resolvedStride = stride > 0 ? stride : fallbackStride;
+    } else {
+      resolvedStride = fallbackStride;
+    }
+
+    if (!mounted) return;
+
+    setState(() {
+      _itemHeight = resolvedHeight;
+      _itemBaseTop = resolvedBaseTop;
+      _itemStride = resolvedStride;
+      _targetY = _itemBaseTop + _currentIndex * _itemStride;
+    });
+
+    WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToCenter());
+  }
+
   @override
   void dispose() {
     _scrollController.dispose();
@@ -2210,8 +2290,11 @@ class _GameDropdownContentState extends State<_GameDropdownContent> {
     final scrollOffset = _scrollController.hasClients ? _scrollController.offset : 0.0;
 
     // Calculate selector's current visual position (accounting for scroll and padding)
-    final selectorVisualTop = _targetY - scrollOffset + 6; // 6 = top padding
-    final selectorVisualBottom = selectorVisualTop + _itemHeight;
+    final indicatorInset = _indicatorInset.h;
+    final selectorHeight =
+        (_itemHeight - indicatorInset * 2).clamp(0.0, _itemHeight);
+    final selectorVisualTop = _targetY - scrollOffset + indicatorInset;
+    final selectorVisualBottom = selectorVisualTop + selectorHeight;
 
     // Add some tolerance for easier grabbing
     const tolerance = 8.0;
@@ -2296,8 +2379,9 @@ class _GameDropdownContentState extends State<_GameDropdownContent> {
 
     final localPos = listBox.globalToLocal(globalPosition);
     final scrollOffset = _scrollController.hasClients ? _scrollController.offset : 0.0;
-    final adjustedY = localPos.dy + scrollOffset;
-    final newIndex = (adjustedY / _totalItemHeight).floor().clamp(0, widget.games.length - 1);
+    final stride = _totalItemHeight <= 0 ? (_itemHeight + 2.h) : _totalItemHeight;
+    final adjustedY = localPos.dy + scrollOffset - _itemBaseTop;
+    final newIndex = (adjustedY / stride).floor().clamp(0, widget.games.length - 1);
 
     if (newIndex != _currentIndex) {
       HapticFeedback.selectionClick();
@@ -2308,7 +2392,7 @@ class _GameDropdownContentState extends State<_GameDropdownContent> {
   void _animateToIndex(int index) {
     setState(() {
       _currentIndex = index;
-      _targetY = index * _totalItemHeight;
+      _targetY = _itemBaseTop + index * _totalItemHeight;
     });
   }
 
@@ -2368,15 +2452,18 @@ class _GameDropdownContentState extends State<_GameDropdownContent> {
                     listenable: _scrollController,
                     builder: (context, _) {
                       final scrollOffset = _scrollController.hasClients ? _scrollController.offset : 0.0;
+                      final indicatorInset = _indicatorInset.h;
+                      final indicatorHeight =
+                          (_itemHeight - indicatorInset * 2).clamp(0.0, _itemHeight);
 
                       return SingleMotionBuilder(
                         motion: _isDragging ? CupertinoMotion.snappy() : CupertinoMotion.bouncy(),
-                        value: _targetY - scrollOffset + 6.h, // Account for top padding
+                        value: _targetY - scrollOffset + indicatorInset,
                         builder: (context, animatedY, _) {
                           return CustomPaint(
                             painter: _GameSelectorPainter(
                               y: animatedY,
-                              height: _itemHeight,
+                              height: indicatorHeight,
                               isDragging: _isDragging,
                               baseColor: kPrimaryColor,
                               horizontalMargin: 6.w,
@@ -3871,11 +3958,6 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
                 ),
               ),
             ),
-          Positioned(
-            bottom: 12.sp,
-            right: 0,
-            child: _AnalysisActionButtons(params: params),
-          ),
         ],
       ),
     );
@@ -5183,165 +5265,6 @@ class _DirectCommentSheet extends ConsumerWidget {
   }
 }
 
-class _AnalysisActionButtons extends ConsumerWidget {
-  final ChessBoardProviderParams params;
-
-  const _AnalysisActionButtons({required this.params});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final state = ref.watch(chessBoardScreenProviderNew(params)).valueOrNull;
-    final isThreatsMode = state?.isThreatsMode ?? false;
-    final notifier = ref.read(chessBoardScreenProviderNew(params).notifier);
-
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        // Add comment button
-        _RibbonAnalysisButton(
-          icon: Icons.add_comment_outlined,
-          color: kWhiteColor,
-          enabled: true,
-          onPressed: () async {
-            final pointer = state?.analysisState.movePointer;
-            if (pointer == null || pointer.isEmpty) {
-              return;
-            }
-
-            HapticFeedback.selectionClick();
-
-            final pointerId = NotationPointer.encode(pointer);
-            final currentComment = state?.variationComments[pointerId] ?? '';
-            final hostContext = context;
-
-            final commentConfig = _VariationCommentSheetConfig(
-              initialValue: currentComment,
-              onSubmit: (ctx, value) async {
-                final trimmed = value.trim();
-                final normalizedInitial = currentComment.trim();
-                if (trimmed == normalizedInitial) {
-                  return;
-                }
-                final limited = trimmed.length > _variationCommentMaxChars
-                    ? trimmed.substring(0, _variationCommentMaxChars)
-                    : trimmed;
-                notifier.updateVariationComment(
-                  variationId: pointerId,
-                  comment: limited,
-                );
-              },
-            );
-
-            final route = ChessSheetRoutes.commentEditor(
-              context: context,
-              builder:
-                  (_) => _DirectCommentSheet(
-                    config: commentConfig,
-                    hostContext: hostContext,
-                  ),
-            );
-
-            await Navigator.of(context).push(route);
-          },
-        ),
-        SizedBox(height: 12.sp),
-        // Show Threats toggle button - greyish when inactive, red when active
-        _RibbonAnalysisButton(
-          icon: Icons.gps_fixed,
-          color: isThreatsMode ? Colors.red : kWhiteColor,
-          isActive: isThreatsMode,
-          enabled: true,
-          onPressed: () {
-            HapticFeedback.mediumImpact();
-            notifier.toggleThreatsMode();
-          },
-        ),
-      ],
-    );
-  }
-}
-
-class _RibbonAnalysisButton extends StatefulWidget {
-  final VoidCallback? onPressed;
-  final IconData icon;
-  final Color color;
-  final bool enabled;
-  final bool isActive;
-
-  const _RibbonAnalysisButton({
-    required this.icon,
-    required this.color,
-    this.onPressed,
-    this.enabled = true,
-    this.isActive = false,
-  });
-
-  @override
-  State<_RibbonAnalysisButton> createState() => _RibbonAnalysisButtonState();
-}
-
-class _RibbonAnalysisButtonState extends State<_RibbonAnalysisButton> {
-  bool _isPressed = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final effectiveOnTap = widget.enabled ? widget.onPressed : null;
-
-    // Simple greyish style - no gradients, minimal shadows
-    final bgAlpha = _isPressed ? 0.25 : 0.15;
-    final iconAlpha = widget.isActive ? 1.0 : (_isPressed ? 0.8 : 0.6);
-
-    return GestureDetector(
-      onTapDown:
-          effectiveOnTap != null
-              ? (_) {
-                setState(() => _isPressed = true);
-              }
-              : null,
-      onTapUp:
-          effectiveOnTap != null
-              ? (_) {
-                setState(() => _isPressed = false);
-              }
-              : null,
-      onTapCancel:
-          effectiveOnTap != null
-              ? () {
-                setState(() => _isPressed = false);
-              }
-              : null,
-      onTap: effectiveOnTap,
-      child: Opacity(
-        opacity: widget.enabled ? 1 : 0.35,
-        child: Container(
-          width: 40.sp,
-          alignment: Alignment.center,
-          padding: EdgeInsets.symmetric(horizontal: 8.sp, vertical: 9.sp),
-          decoration: BoxDecoration(
-            color: kWhiteColor.withValues(alpha: bgAlpha),
-            borderRadius: BorderRadius.only(
-              topLeft: Radius.circular(14.sp),
-              bottomLeft: Radius.circular(14.sp),
-              topRight: Radius.circular(6.sp),
-              bottomRight: Radius.circular(6.sp),
-            ),
-            border: Border.all(
-              color: kWhiteColor.withValues(alpha: 0.1),
-              width: 0.5,
-            ),
-          ),
-          child: Icon(
-            widget.icon,
-            size: 18.sp,
-            color: widget.color.withValues(alpha: iconAlpha),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 enum _NotationTokenType {
   move,
   openParen,
@@ -6475,6 +6398,7 @@ class _PrincipalVariationListState
     Color accentColor,
   ) async {
     final hostContext = context;
+    final isThreatsMode = widget.state.isThreatsMode;
     final actions = <_NotationActionItem>[
       _NotationActionItem(
         icon: Icons.visibility_rounded,
@@ -6498,45 +6422,11 @@ class _PrincipalVariationListState
         },
       ),
       _NotationActionItem(
-        icon: Icons.auto_awesome_rounded,
-        label: 'Promote to main variant',
-        color: kWhiteColor,
-        onSelected: (ctx) async {
-          final confirmed =
-              await showDialog<bool>(
-                    context: ctx,
-                    builder: (dialogContext) => AlertDialog(
-                      backgroundColor: kBlack2Color,
-                      title: const Text('Replace main line?'),
-                      content: const Text(
-                        'This will overwrite the current main line with the selected engine variation.',
-                      ),
-                      actions: [
-                        TextButton(
-                          onPressed: () => Navigator.of(dialogContext).pop(false),
-                          child: const Text('Cancel'),
-                        ),
-                        TextButton(
-                          onPressed: () => Navigator.of(dialogContext).pop(true),
-                          style: TextButton.styleFrom(
-                            foregroundColor: kPrimaryColor,
-                          ),
-                          child: const Text('Promote'),
-                        ),
-                      ],
-                    ),
-                  ) ??
-                  false;
-          if (!confirmed) {
-            return;
-          }
-          notifier.previewPrincipalVariationMoveAt(
-            line,
-            variantIndex,
-            moveIndex,
-          );
-          await Future.delayed(const Duration(milliseconds: 50));
-          notifier.promotePreviewToMainVariant();
+        icon: isThreatsMode ? Icons.gps_off : Icons.gps_fixed,
+        label: isThreatsMode ? 'Hide Threats' : 'Show Threats',
+        color: Colors.red,
+        onSelected: (_) async {
+          notifier.toggleThreatsMode();
         },
       ),
     ];
