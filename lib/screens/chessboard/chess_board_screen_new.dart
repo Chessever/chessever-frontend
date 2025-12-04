@@ -2332,30 +2332,32 @@ class _GameDropdownContentState extends State<_GameDropdownContent> {
                 },
               ),
             ),
-            // Floating water droplet selector
+            // Floating water droplet selector - clipped to stay within bounds
             Positioned.fill(
-              child: IgnorePointer(
-                child: ListenableBuilder(
-                  listenable: _scrollController,
-                  builder: (context, _) {
-                    final scrollOffset = _scrollController.hasClients ? _scrollController.offset : 0.0;
+              child: ClipRect(
+                child: IgnorePointer(
+                  child: ListenableBuilder(
+                    listenable: _scrollController,
+                    builder: (context, _) {
+                      final scrollOffset = _scrollController.hasClients ? _scrollController.offset : 0.0;
 
-                    return SingleMotionBuilder(
-                      motion: _isDragging ? CupertinoMotion.snappy() : CupertinoMotion.bouncy(),
-                      value: _targetY - scrollOffset + 6.h, // Account for top padding
-                      builder: (context, animatedY, _) {
-                        return CustomPaint(
-                          painter: _GameSelectorPainter(
-                            y: animatedY,
-                            height: _itemHeight,
-                            isDragging: _isDragging,
-                            baseColor: kPrimaryColor,
-                            horizontalMargin: 6.w,
-                          ),
-                        );
-                      },
-                    );
-                  },
+                      return SingleMotionBuilder(
+                        motion: _isDragging ? CupertinoMotion.snappy() : CupertinoMotion.bouncy(),
+                        value: _targetY - scrollOffset + 6.h, // Account for top padding
+                        builder: (context, animatedY, _) {
+                          return CustomPaint(
+                            painter: _GameSelectorPainter(
+                              y: animatedY,
+                              height: _itemHeight,
+                              isDragging: _isDragging,
+                              baseColor: kPrimaryColor,
+                              horizontalMargin: 6.w,
+                            ),
+                          );
+                        },
+                      );
+                    },
+                  ),
                 ),
               ),
             ),

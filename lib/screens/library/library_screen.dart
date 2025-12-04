@@ -14,8 +14,10 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/widgets/screen_wrapper.dart';
+import 'package:chessever2/utils/svg_asset.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 class LibraryScreen extends ConsumerStatefulWidget {
@@ -186,8 +188,8 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
           //   onTap: _onFilterPressed,
           // ),
           // SizedBox(width: 8.w),
-          _SquareIconButton(
-            icon: Icons.grid_on,
+          _SquareSvgIconButton(
+            svgAsset: SvgAsset.chase_grid,
             onTap: _navigateToEmptyBoard,
           ),
           SizedBox(width: 8.w),
@@ -547,6 +549,42 @@ class _SquareIconButton extends StatelessWidget {
           icon,
           size: 18.sp,
           color: iconColor ?? kWhiteColor,
+        ),
+      ),
+    );
+  }
+}
+
+class _SquareSvgIconButton extends StatelessWidget {
+  final String svgAsset;
+  final VoidCallback onTap;
+  final Color? backgroundColor;
+  final Color? borderColor;
+
+  const _SquareSvgIconButton({
+    required this.svgAsset,
+    required this.onTap,
+    this.backgroundColor,
+    this.borderColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: EdgeInsets.all(10.sp),
+        decoration: BoxDecoration(
+          color: backgroundColor ?? kBlack2Color,
+          borderRadius: BorderRadius.circular(10.br),
+          border: Border.all(
+            color: borderColor ?? kWhiteColor.withValues(alpha: 0.08),
+          ),
+        ),
+        child: SvgPicture.asset(
+          svgAsset,
+          width: 18.sp,
+          height: 18.sp,
         ),
       ),
     );

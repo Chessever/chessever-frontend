@@ -50,11 +50,25 @@
                <data android:scheme="com.chessever.app" />
            </intent-filter>
            <!-- Android App Links for HTTPS deep links (sharing, notifications) -->
+           <!-- Using pathPattern for explicit game URL matching -->
            <intent-filter android:autoVerify="true">
                <action android:name="android.intent.action.VIEW" />
                <category android:name="android.intent.category.DEFAULT" />
                <category android:name="android.intent.category.BROWSABLE" />
-               <data android:scheme="https" android:host="chessever.com" />
+               <data
+                   android:scheme="https"
+                   android:host="chessever.com"
+                   android:pathPattern="/games/.*" />
+           </intent-filter>
+           <!-- Fallback for root domain links -->
+           <intent-filter android:autoVerify="true">
+               <action android:name="android.intent.action.VIEW" />
+               <category android:name="android.intent.category.DEFAULT" />
+               <category android:name="android.intent.category.BROWSABLE" />
+               <data
+                   android:scheme="https"
+                   android:host="chessever.com"
+                   android:path="/" />
            </intent-filter>
        </activity>
        <!-- Don't delete the meta-data below.
