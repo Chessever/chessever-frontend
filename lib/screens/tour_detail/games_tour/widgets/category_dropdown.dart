@@ -850,9 +850,10 @@ class _CategoriesColumnState extends State<_CategoriesColumn> {
 
     _targetY = _currentIndex * _measuredTotalItemHeight;
 
-    // Measure actual item height after first frame
+    // Measure actual item height after first frame, then scroll to center
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _measureItemHeight();
+      _scrollToCenter();
     });
   }
 
@@ -876,6 +877,23 @@ class _CategoriesColumnState extends State<_CategoriesColumn> {
         }
       }
     }
+  }
+
+  /// Scrolls the list to center the current selection in the visible area
+  void _scrollToCenter() {
+    if (!_scrollController.hasClients) return;
+
+    final viewportHeight = _scrollController.position.viewportDimension;
+    final maxScroll = _scrollController.position.maxScrollExtent;
+
+    // Calculate the scroll offset to center the current item
+    final itemCenter = _targetY + (_measuredSelectorHeight / 2);
+    final targetScroll = itemCenter - (viewportHeight / 2);
+
+    // Clamp to valid scroll range
+    final clampedScroll = targetScroll.clamp(0.0, maxScroll);
+
+    _scrollController.jumpTo(clampedScroll);
   }
 
   @override
@@ -1071,35 +1089,38 @@ class _CategoriesColumnState extends State<_CategoriesColumn> {
                   ),
                 ),
                 // Floating water droplet selection indicator with Motor spring physics
+                // ClipRect ensures selector stays within bounds when scrolling
                 Positioned.fill(
-                  child: IgnorePointer(
-                    child: ListenableBuilder(
-                      listenable: _scrollController,
-                      builder: (context, _) {
-                        final scrollOffset = _scrollController.hasClients ? _scrollController.offset : 0.0;
+                  child: ClipRect(
+                    child: IgnorePointer(
+                      child: ListenableBuilder(
+                        listenable: _scrollController,
+                        builder: (context, _) {
+                          final scrollOffset = _scrollController.hasClients ? _scrollController.offset : 0.0;
 
-                        return SingleMotionBuilder(
-                          motion: _isDragging
-                              ? CupertinoMotion.snappy() // Faster when dragging
-                              : CupertinoMotion.bouncy(), // Bouncier on tap selection
-                          value: _targetY - scrollOffset,
-                          builder: (context, animatedY, _) {
-                            // Add top margin offset so selector starts at content, not at margin
-                            // Item margin is 2.sp on top, so we offset by half the total vertical margin
-                            final selectorY = animatedY + (_verticalMargin / 2);
-                            return CustomPaint(
-                              painter: _DropletSelectionPainter(
-                                y: selectorY,
-                                height: _measuredSelectorHeight,
-                                morphProgress: _isDragging ? 0.5 : 0.0,
-                                isDragging: _isDragging,
-                                baseColor: kPrimaryColor,
-                                horizontalMargin: 8.sp,
-                              ),
-                            );
-                          },
-                        );
-                      },
+                          return SingleMotionBuilder(
+                            motion: _isDragging
+                                ? CupertinoMotion.snappy() // Faster when dragging
+                                : CupertinoMotion.bouncy(), // Bouncier on tap selection
+                            value: _targetY - scrollOffset,
+                            builder: (context, animatedY, _) {
+                              // Add top margin offset so selector starts at content, not at margin
+                              // Item margin is 2.sp on top, so we offset by half the total vertical margin
+                              final selectorY = animatedY + (_verticalMargin / 2);
+                              return CustomPaint(
+                                painter: _DropletSelectionPainter(
+                                  y: selectorY,
+                                  height: _measuredSelectorHeight,
+                                  morphProgress: _isDragging ? 0.5 : 0.0,
+                                  isDragging: _isDragging,
+                                  baseColor: kPrimaryColor,
+                                  horizontalMargin: 8.sp,
+                                ),
+                              );
+                            },
+                          );
+                        },
+                      ),
                     ),
                   ),
                 ),
@@ -1261,9 +1282,10 @@ class _RoundsColumnState extends State<_RoundsColumn> {
 
     _targetY = _currentIndex * _measuredTotalItemHeight;
 
-    // Measure actual item height after first frame
+    // Measure actual item height after first frame, then scroll to center
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _measureItemHeight();
+      _scrollToCenter();
     });
   }
 
@@ -1287,6 +1309,23 @@ class _RoundsColumnState extends State<_RoundsColumn> {
         }
       }
     }
+  }
+
+  /// Scrolls the list to center the current selection in the visible area
+  void _scrollToCenter() {
+    if (!_scrollController.hasClients) return;
+
+    final viewportHeight = _scrollController.position.viewportDimension;
+    final maxScroll = _scrollController.position.maxScrollExtent;
+
+    // Calculate the scroll offset to center the current item
+    final itemCenter = _targetY + (_measuredSelectorHeight / 2);
+    final targetScroll = itemCenter - (viewportHeight / 2);
+
+    // Clamp to valid scroll range
+    final clampedScroll = targetScroll.clamp(0.0, maxScroll);
+
+    _scrollController.jumpTo(clampedScroll);
   }
 
   @override
@@ -1482,35 +1521,38 @@ class _RoundsColumnState extends State<_RoundsColumn> {
                   ),
                 ),
                 // Floating water droplet selection indicator with Motor spring physics
+                // ClipRect ensures selector stays within bounds when scrolling
                 Positioned.fill(
-                  child: IgnorePointer(
-                    child: ListenableBuilder(
-                      listenable: _scrollController,
-                      builder: (context, _) {
-                        final scrollOffset = _scrollController.hasClients ? _scrollController.offset : 0.0;
+                  child: ClipRect(
+                    child: IgnorePointer(
+                      child: ListenableBuilder(
+                        listenable: _scrollController,
+                        builder: (context, _) {
+                          final scrollOffset = _scrollController.hasClients ? _scrollController.offset : 0.0;
 
-                        return SingleMotionBuilder(
-                          motion: _isDragging
-                              ? CupertinoMotion.snappy() // Faster when dragging
-                              : CupertinoMotion.bouncy(), // Bouncier on tap selection
-                          value: _targetY - scrollOffset,
-                          builder: (context, animatedY, _) {
-                            // Add top margin offset so selector starts at content, not at margin
-                            // Item margin is 2.sp on top, so we offset by half the total vertical margin
-                            final selectorY = animatedY + (_verticalMargin / 2);
-                            return CustomPaint(
-                              painter: _DropletSelectionPainter(
-                                y: selectorY,
-                                height: _measuredSelectorHeight,
-                                morphProgress: _isDragging ? 0.5 : 0.0,
-                                isDragging: _isDragging,
-                                baseColor: kPrimaryColor,
-                                horizontalMargin: 6.sp,
-                              ),
-                            );
-                          },
-                        );
-                      },
+                          return SingleMotionBuilder(
+                            motion: _isDragging
+                                ? CupertinoMotion.snappy() // Faster when dragging
+                                : CupertinoMotion.bouncy(), // Bouncier on tap selection
+                            value: _targetY - scrollOffset,
+                            builder: (context, animatedY, _) {
+                              // Add top margin offset so selector starts at content, not at margin
+                              // Item margin is 2.sp on top, so we offset by half the total vertical margin
+                              final selectorY = animatedY + (_verticalMargin / 2);
+                              return CustomPaint(
+                                painter: _DropletSelectionPainter(
+                                  y: selectorY,
+                                  height: _measuredSelectorHeight,
+                                  morphProgress: _isDragging ? 0.5 : 0.0,
+                                  isDragging: _isDragging,
+                                  baseColor: kPrimaryColor,
+                                  horizontalMargin: 6.sp,
+                                ),
+                              );
+                            },
+                          );
+                        },
+                      ),
                     ),
                   ),
                 ),
