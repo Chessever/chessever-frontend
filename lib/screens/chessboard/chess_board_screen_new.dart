@@ -55,6 +55,8 @@ import 'package:chessever2/repository/supabase/tour/tour_repository.dart';
 import 'package:chessever2/utils/location_service_provider.dart';
 import 'package:chessever2/utils/png_asset.dart';
 import 'package:chessever2/utils/url_launcher_provider.dart';
+import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
+import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.dart';
 import 'package:motor/motor.dart';
 
 /// Spring-based curve that mimics iOS snappy motion
@@ -419,10 +421,15 @@ class ChessBoardScreenNew extends ConsumerStatefulWidget {
   /// Optional saved analysis data to restore full state (variations, comments, position)
   final SavedAnalysisData? savedAnalysisData;
 
+  /// When true, hides the event info button in the app bar.
+  /// Use this when navigating from library for position analysis where event info is not relevant.
+  final bool hideEventInfo;
+
   const ChessBoardScreenNew({
     required this.currentIndex,
     required this.games,
     this.savedAnalysisData,
+    this.hideEventInfo = false,
     super.key,
   });
 
@@ -1086,6 +1093,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
                       currentPageIndex: _currentPageIndex,
                       onGameChanged: _navigateToGame,
                       lastViewedIndex: _lastViewedIndex,
+                      hideEventInfo: widget.hideEventInfo,
                     );
                   },
                   error: (e, _) => ErrorWidget(e),
@@ -1095,6 +1103,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
                         currentGameIndex: index,
                         onGameChanged: _navigateToGame,
                         lastViewedIndex: _lastViewedIndex,
+                        hideEventInfo: widget.hideEventInfo,
                       ),
                 );
               } catch (e) {
@@ -1104,6 +1113,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
                   currentGameIndex: index,
                   onGameChanged: _navigateToGame,
                   lastViewedIndex: _lastViewedIndex,
+                  hideEventInfo: widget.hideEventInfo,
                 );
               }
             } else {
@@ -1124,6 +1134,7 @@ class _GamePage extends StatelessWidget {
   final int currentPageIndex;
   final void Function(int) onGameChanged;
   final int? lastViewedIndex;
+  final bool hideEventInfo;
 
   const _GamePage({
     required this.game,
@@ -1133,6 +1144,7 @@ class _GamePage extends StatelessWidget {
     required this.currentPageIndex,
     required this.onGameChanged,
     this.lastViewedIndex,
+    this.hideEventInfo = false,
   });
 
   @override
@@ -1150,6 +1162,7 @@ class _GamePage extends StatelessWidget {
         currentGameIndex: currentGameIndex,
         onGameChanged: onGameChanged,
         lastViewedIndex: lastViewedIndex,
+        hideEventInfo: hideEventInfo,
       ),
       body: _GameBody(
         index: currentGameIndex,
@@ -1171,12 +1184,14 @@ class _LoadingScreen extends StatelessWidget {
   final int currentGameIndex;
   final void Function(int) onGameChanged;
   final int? lastViewedIndex;
+  final bool hideEventInfo;
 
   const _LoadingScreen({
     required this.games,
     required this.currentGameIndex,
     required this.onGameChanged,
     this.lastViewedIndex,
+    this.hideEventInfo = false,
   });
 
   @override
@@ -1194,6 +1209,7 @@ class _LoadingScreen extends StatelessWidget {
         onGameChanged: onGameChanged,
         isLoading: true,
         lastViewedIndex: lastViewedIndex,
+        hideEventInfo: hideEventInfo,
       ),
       body: Skeletonizer(
         enabled: true,
@@ -1367,6 +1383,7 @@ class _AppBar extends ConsumerStatefulWidget implements PreferredSizeWidget {
   final void Function(int) onGameChanged;
   final bool isLoading;
   final int? lastViewedIndex;
+  final bool hideEventInfo;
 
   const _AppBar({
     required this.game,
@@ -1375,6 +1392,7 @@ class _AppBar extends ConsumerStatefulWidget implements PreferredSizeWidget {
     required this.onGameChanged,
     this.isLoading = false,
     this.lastViewedIndex,
+    this.hideEventInfo = false,
   });
 
   @override
@@ -1492,24 +1510,34 @@ class _AppBarState extends ConsumerState<_AppBar> {
         icon: Icon(Icons.arrow_back_ios_new, color: kWhiteColor, size: 20.sp),
         onPressed: () => Navigator.pop(context, widget.lastViewedIndex),
       ),
-      title: _GameSelectionDropdown(
-        games: widget.games,
-        currentGameIndex: widget.currentGameIndex,
-        onGameChanged: widget.onGameChanged,
-        isLoading: widget.isLoading,
-      ),
+      title: widget.hideEventInfo
+          ? Text(
+              'Analysis Board',
+              style: TextStyle(
+                color: kWhiteColor,
+                fontSize: 16.sp,
+                fontWeight: FontWeight.w600,
+              ),
+            )
+          : _GameSelectionDropdown(
+              games: widget.games,
+              currentGameIndex: widget.currentGameIndex,
+              onGameChanged: widget.onGameChanged,
+              isLoading: widget.isLoading,
+            ),
       actions: [
         SizedBox(width: 4.sp),
-        // Event info button
-        IconButton(
-          icon: Icon(
-            Icons.info_outline_rounded,
-            color: kWhiteColor,
-            size: 20.sp,
+        // Event info button (hidden when navigating from library for position analysis)
+        if (!widget.hideEventInfo)
+          IconButton(
+            icon: Icon(
+              Icons.info_outline_rounded,
+              color: kWhiteColor,
+              size: 20.sp,
+            ),
+            tooltip: 'Event info',
+            onPressed: widget.isLoading ? null : () => _showEventInfoSheet(context, ref),
           ),
-          tooltip: 'Event info',
-          onPressed: widget.isLoading ? null : () => _showEventInfoSheet(context, ref),
-        ),
         // Save Analysis button
         IconButton(
           icon: Icon(
@@ -7919,6 +7947,58 @@ class _EventInfoSheet extends ConsumerWidget {
 
   const _EventInfoSheet({required this.game});
 
+  /// Parse opening info (ECO code and Opening name) from PGN headers
+  ({String? eco, String? opening}) _parseOpeningFromPgn() {
+    final pgn = game.pgn;
+    if (pgn == null || pgn.isEmpty) {
+      return (eco: null, opening: null);
+    }
+
+    try {
+      final pgnGame = PgnGame.parsePgn(pgn);
+      final eco = pgnGame.headers['ECO'];
+      final opening = pgnGame.headers['Opening'];
+      return (eco: eco, opening: opening);
+    } catch (e) {
+      // Fallback to regex parsing if dartchess fails
+      String? eco;
+      String? opening;
+
+      final ecoMatch = RegExp(r'\[ECO\s+"([^"]+)"\]').firstMatch(pgn);
+      if (ecoMatch != null) {
+        eco = ecoMatch.group(1);
+      }
+
+      final openingMatch = RegExp(r'\[Opening\s+"([^"]+)"\]').firstMatch(pgn);
+      if (openingMatch != null) {
+        opening = openingMatch.group(1);
+      }
+
+      return (eco: eco, opening: opening);
+    }
+  }
+
+  /// Navigate to the tournament detail screen
+  void _navigateToTournament(BuildContext context, WidgetRef ref, AboutTourModel aboutModel) {
+    final groupBroadcast = GroupBroadcast(
+      id: aboutModel.id,
+      createdAt: DateTime.now(),
+      name: aboutModel.name,
+      search: [aboutModel.name],
+      timeControl: aboutModel.timeControl.isNotEmpty ? aboutModel.timeControl : null,
+      maxAvgElo: null,
+      dateStart: null,
+      dateEnd: null,
+    );
+
+    ref.read(selectedBroadcastModelProvider.notifier).state = groupBroadcast;
+
+    Navigator.pop(context); // Close the sheet
+    if (ref.read(selectedBroadcastModelProvider) != null) {
+      Navigator.pushNamed(context, '/tournament_detail_screen');
+    }
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     // First try tourDetailScreenProvider (works when navigating from tour detail)
@@ -7972,7 +8052,7 @@ class _EventInfoSheet extends ConsumerWidget {
                     )
                   : aboutModel == null
                       ? _buildFallbackContent(context, scrollController, locationService)
-                      : _buildTourContent(context, scrollController, aboutModel, locationService, urlLauncher),
+                      : _buildTourContent(context, ref, scrollController, aboutModel, locationService, urlLauncher),
             ),
           ],
         ),
@@ -8012,6 +8092,8 @@ class _EventInfoSheet extends ConsumerWidget {
           ),
           SizedBox(height: 12.h),
         ],
+        // Opening info from PGN
+        ..._buildOpeningInfoRows(),
         // Players section
         SizedBox(height: 8.h),
         Text(
@@ -8029,6 +8111,37 @@ class _EventInfoSheet extends ConsumerWidget {
         SizedBox(height: MediaQuery.of(context).viewPadding.bottom + 16.h),
       ],
     );
+  }
+
+  /// Build opening info rows if available in PGN
+  List<Widget> _buildOpeningInfoRows() {
+    final openingInfo = _parseOpeningFromPgn();
+    final List<Widget> rows = [];
+
+    if (openingInfo.eco != null || openingInfo.opening != null) {
+      // Combine ECO and Opening name
+      String openingDisplay = '';
+      if (openingInfo.eco != null && openingInfo.opening != null) {
+        openingDisplay = '${openingInfo.eco}: ${openingInfo.opening}';
+      } else if (openingInfo.opening != null) {
+        openingDisplay = openingInfo.opening!;
+      } else if (openingInfo.eco != null) {
+        openingDisplay = openingInfo.eco!;
+      }
+
+      if (openingDisplay.isNotEmpty) {
+        rows.add(
+          _EventInfoRow(
+            icon: Icons.menu_book_rounded,
+            label: 'Opening',
+            value: openingDisplay,
+          ),
+        );
+        rows.add(SizedBox(height: 12.h));
+      }
+    }
+
+    return rows;
   }
 
   Widget _buildPlayerRow(PlayerCard player, String side, LocationService locationService) {
@@ -8107,6 +8220,7 @@ class _EventInfoSheet extends ConsumerWidget {
 
   Widget _buildTourContent(
     BuildContext context,
+    WidgetRef ref,
     ScrollController scrollController,
     AboutTourModel aboutModel,
     dynamic locationService,
@@ -8151,11 +8265,25 @@ class _EventInfoSheet extends ConsumerWidget {
             ),
           ),
         SizedBox(height: 16.h),
-        // Event name
-        Text(
-          aboutModel.name,
-          style: AppTypography.textLgBold.copyWith(
-            color: kWhiteColor,
+        // Event name - clickable to navigate to tournament
+        GestureDetector(
+          onTap: () => _navigateToTournament(context, ref, aboutModel),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  aboutModel.name,
+                  style: AppTypography.textLgBold.copyWith(
+                    color: kWhiteColor,
+                  ),
+                ),
+              ),
+              Icon(
+                Icons.chevron_right_rounded,
+                color: kWhiteColor.withValues(alpha: 0.5),
+                size: 20.sp,
+              ),
+            ],
           ),
         ),
         SizedBox(height: 12.h),
@@ -8177,6 +8305,8 @@ class _EventInfoSheet extends ConsumerWidget {
           ),
           SizedBox(height: 12.h),
         ],
+        // Opening info from PGN
+        ..._buildOpeningInfoRows(),
         // Description
         if (aboutModel.description.isNotEmpty) ...[
           Text(

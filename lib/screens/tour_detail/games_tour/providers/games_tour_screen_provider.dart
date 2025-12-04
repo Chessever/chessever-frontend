@@ -89,6 +89,18 @@ class GamesTourScreenProvider
         ref.refresh(gamesPinprovider(aboutTourModel!.id));
       }
 
+      // ALWAYS recompute if we don't have any model data yet
+      // This ensures we don't miss the initial load
+      final needsInitialData = current == null || current.gamesTourModels.isEmpty;
+      if (needsInitialData && nextGames.isNotEmpty) {
+        debugPrint('🎮 GamesTourScreen: Initial data load - triggering recompute with ${nextGames.length} games');
+        _recompute();
+        await ref
+            .read(gamesPinprovider(aboutTourModel!.id).notifier)
+            .computeAutoPins();
+        return;
+      }
+
       if (previousGames.length == nextGames.length) {
         // Check if any game data actually changed (more than just clock updates)
         bool significantChange = false;
@@ -150,6 +162,14 @@ class GamesTourScreenProvider
     final games = ref.read(gamesTourProvider(aboutTourModel!.id));
 
     if (games.isLoading || games.hasError || games.value == null) {
+      // Games not ready yet - the listener will trigger _recompute when they load.
+      // But to be safe, schedule an immediate recompute attempt after a short delay
+      // in case the listener doesn't fire due to timing issues.
+      Future.delayed(const Duration(milliseconds: 100), () {
+        if (mounted && state.valueOrNull == null) {
+          _recompute();
+        }
+      });
       return;
     }
 

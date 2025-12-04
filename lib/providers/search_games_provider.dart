@@ -2,8 +2,11 @@ import 'dart:async';
 
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/repository/supabase/game/games.dart';
+import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
+import 'package:chessever2/repository/supabase/tour/tour_repository.dart';
 import 'package:chessever2/screens/group_event/providers/supabase_combined_search_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/widgets/search/search_result_model.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -20,47 +23,81 @@ final searchGamesProvider = StateNotifierProvider.autoDispose<
   return SearchGamesNotifier(ref);
 });
 
-/// Provider for grouped games (by tournament) for UI display
+/// Provider for grouped games (by event/group_broadcast) for UI display
+/// Uses tour_id to group_broadcast_id mapping to properly group multiple rounds of same event
 final groupedSearchGamesProvider =
-    Provider.autoDispose<List<GroupedSearchGames>>((ref) {
+    FutureProvider.autoDispose<List<GroupedSearchGames>>((ref) async {
   final games = ref.watch(searchGamesProvider).valueOrNull ?? [];
 
-  // Group games by tournament
+  if (games.isEmpty) return [];
+
+  // Get unique tour IDs from games
+  final uniqueTourIds = games.map((g) => g.tourId).toSet().toList();
+
+  // Fetch tour data to get group_broadcast_id mapping
+  final tourRepository = ref.read(tourRepositoryProvider);
+  final groupBroadcastRepository = ref.read(groupBroadcastRepositoryProvider);
+  final tours = await tourRepository.getToursByIds(uniqueTourIds);
+
+  // Create a mapping from tour_id to group_broadcast_id
+  final tourToGroupBroadcast = <String, String>{};
+  final uniqueGroupBroadcastIds = <String>{};
+
+  for (final tour in tours) {
+    // Use group_broadcast_id if available, otherwise fall back to tour.id
+    final groupId = tour.groupBroadcastId ?? tour.id;
+    tourToGroupBroadcast[tour.id] = groupId;
+    uniqueGroupBroadcastIds.add(groupId);
+  }
+
+  // Fetch actual group_broadcast names from the group_broadcasts table
+  // This ensures we get the parent event name, not individual tour/qualifier names
+  final groupBroadcastNames = <String, String>{};
+  for (final groupId in uniqueGroupBroadcastIds) {
+    try {
+      final groupBroadcast = await groupBroadcastRepository.getGroupBroadcastById(groupId);
+      groupBroadcastNames[groupId] = groupBroadcast.name;
+    } catch (e) {
+      // Fallback: find the shortest tour name for this group (likely the parent name)
+      final toursInGroup = tours.where((t) => (t.groupBroadcastId ?? t.id) == groupId);
+      if (toursInGroup.isNotEmpty) {
+        // Use shortest name as it's usually the base event name without qualifiers
+        final shortestName = toursInGroup
+            .map((t) => t.name)
+            .reduce((a, b) => a.length <= b.length ? a : b);
+        groupBroadcastNames[groupId] = shortestName;
+      }
+    }
+  }
+
+  // Group games by group_broadcast_id (event level, not round level)
   final grouped = <String, GroupedSearchGames>{};
   final groupOrder = <String>[];
 
   for (final game in games) {
-    final tourId = game.tourId;
-    final tourName = game.tourSlug;
+    // Look up the group_broadcast_id for this tour, fallback to tour_id if not found
+    final groupBroadcastId = tourToGroupBroadcast[game.tourId] ?? game.tourId;
+    final groupName = groupBroadcastNames[groupBroadcastId] ?? game.tourSlug;
 
-    if (!grouped.containsKey(tourId)) {
-      grouped[tourId] = GroupedSearchGames(
-        tourId: tourId,
-        tourName: tourName,
+    if (!grouped.containsKey(groupBroadcastId)) {
+      grouped[groupBroadcastId] = GroupedSearchGames(
+        tourId: groupBroadcastId, // Using group_broadcast_id as the ID for navigation
+        tourName: groupName,
         games: [],
         hasLiveGames: false,
       );
-      groupOrder.add(tourId);
+      groupOrder.add(groupBroadcastId);
     }
 
-    if (grouped[tourId]!.tourName.isEmpty) {
-      grouped[tourId] = GroupedSearchGames(
-        tourId: tourId,
-        tourName: tourName,
-        games: grouped[tourId]!.games,
-        hasLiveGames: grouped[tourId]!.hasLiveGames,
-      );
-    }
-
-    grouped[tourId]!.games.add(game);
+    grouped[groupBroadcastId]!.games.add(game);
     if (game.status == '*') {
-      grouped[tourId]!.hasLiveGames = true;
+      grouped[groupBroadcastId]!.hasLiveGames = true;
     }
   }
 
   return groupOrder
       .where((id) => grouped[id]!.games.isNotEmpty)
-      .map((tourId) => grouped[tourId]!)
+      .map((groupId) => grouped[groupId]!)
       .toList();
 });
 
@@ -135,35 +172,64 @@ class SearchGamesNotifier extends StateNotifier<AsyncValue<List<Games>>> {
         supabaseCombinedSearchProvider(query).future,
       );
 
-      // Get player results (already sorted by relevancy then ELO) and take top 4
-      final playerResults = searchResults.playerResults
-          .where((r) => r.player != null)
-          .take(_maxPlayers)
-          .toList();
+      // Deduplicate players by name and keep the one with highest rating
+      // This ensures we don't fetch games for the same player multiple times
+      final playersByName = <String, SearchResult>{};
+      for (final result in searchResults.playerResults) {
+        if (result.player == null) continue;
+        final name = result.player!.name;
+        final existingResult = playersByName[name];
+        if (existingResult == null ||
+            (result.player!.rating ?? 0) > (existingResult.player!.rating ?? 0)) {
+          playersByName[name] = result;
+        }
+      }
 
-      debugPrint('[SearchGames] Found ${playerResults.length} top players for "$query"');
+      // Sort deduplicated players by rating (highest first) and take top players
+      final uniquePlayerResults = playersByName.values.toList()
+        ..sort((a, b) {
+          final aRating = a.player?.rating ?? 0;
+          final bRating = b.player?.rating ?? 0;
+          return bRating.compareTo(aRating);
+        });
 
-      if (playerResults.isEmpty) {
+      final topPlayers = uniquePlayerResults.take(_maxPlayers).toList();
+
+      debugPrint('[SearchGames] Found ${topPlayers.length} unique top players for "$query"');
+      for (final p in topPlayers) {
+        debugPrint('[SearchGames] - ${p.player!.name} (ELO: ${p.player!.rating}, FIDE: ${p.player!.fideId})');
+      }
+
+      if (topPlayers.isEmpty) {
         state = const AsyncValue.data([]);
         _isFetching = false;
         return;
       }
 
-      // Fetch games for each player
+      // Fetch ALL games for the highest ELO player (to show all their events)
+      // No limit applied - ensures we get all tournaments where this player participated
       final allGames = <Games>[];
+      final topPlayer = topPlayers.first.player!;
 
-      for (final result in playerResults) {
-        final playerName = result.player!.name;
-        try {
-          final games = await gameRepository.getGamesByPlayerName(
-            playerName,
-            limit: 10,
+      try {
+        List<Games> games;
+        if (topPlayer.fideId != null) {
+          // Use FIDE ID if available (more reliable)
+          // No limit - fetch ALL games to ensure all events are captured
+          games = await gameRepository.getGamesByFideId(
+            topPlayer.fideId.toString(),
           );
-          allGames.addAll(games);
-          debugPrint('[SearchGames] Fetched ${games.length} games for $playerName');
-        } catch (e) {
-          debugPrint('[SearchGames] Error fetching games for $playerName: $e');
+          debugPrint('[SearchGames] Fetched ${games.length} games for ${topPlayer.name} by FIDE ID ${topPlayer.fideId}');
+        } else {
+          // Fallback to player name - no limit
+          games = await gameRepository.getGamesByPlayerName(
+            topPlayer.name,
+          );
+          debugPrint('[SearchGames] Fetched ${games.length} games for ${topPlayer.name} by name');
         }
+        allGames.addAll(games);
+      } catch (e) {
+        debugPrint('[SearchGames] Error fetching games for ${topPlayer.name}: $e');
       }
 
       // Sort all games by datetime ascending (earliest first)
