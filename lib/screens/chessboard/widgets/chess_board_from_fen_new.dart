@@ -241,6 +241,7 @@ class GridChessBoardFromFENNew extends ConsumerWidget {
                           boardSize: size,
                           playerView: PlayerView.gridView,
                           showEvalBar: showEvalBar,
+                          showCoordinates: false,
                         ),
                       ),
                       SizedBox(height: 4.h),
@@ -325,6 +326,7 @@ class GridChessBoardFromFENNew extends ConsumerWidget {
               boardSize: boardSize,
               playerView: PlayerView.gridView,
               showEvalBar: showEvalBar,
+              showCoordinates: false,
             ),
             SizedBox(height: 4.h),
             _PlayerRow(
@@ -389,6 +391,7 @@ class _ChessBoardLayout extends ConsumerWidget {
           boardSize: boardSize,
           playerView: PlayerView.listView,
           showEvalBar: showEvalBar,
+          showCoordinates: false,
         ),
         SizedBox(height: 4.h),
         _PlayerRow(
@@ -450,6 +453,7 @@ class _ChessBoardContent extends ConsumerWidget {
                   boardSize: chessBoardSize,
                   playerView: PlayerView.listView,
                   showEvalBar: showEvalBar,
+                  showCoordinates: false,
                 ),
                 SizedBox(height: 4.h),
                 _PlayerRow(
@@ -503,6 +507,7 @@ class _ChessBoardWithEvaluation extends StatelessWidget {
     required this.boardSize,
     required this.playerView,
     required this.showEvalBar,
+    this.showCoordinates = true,
   });
 
   final GamesTourModel gamesTourModel;
@@ -511,6 +516,7 @@ class _ChessBoardWithEvaluation extends StatelessWidget {
   final double boardSize;
   final PlayerView playerView;
   final bool showEvalBar;
+  final bool showCoordinates;
 
   @override
   Widget build(BuildContext context) {
@@ -519,6 +525,7 @@ class _ChessBoardWithEvaluation extends StatelessWidget {
         fen: gamesTourModel.fen ?? '',
         lastMove: lastMove,
         boardSize: boardSize,
+        showCoordinates: showCoordinates,
       );
     }
 
@@ -534,6 +541,7 @@ class _ChessBoardWithEvaluation extends StatelessWidget {
           fen: gamesTourModel.fen ?? '',
           lastMove: lastMove,
           boardSize: boardSize,
+          showCoordinates: showCoordinates,
         ),
       ],
     );
@@ -545,11 +553,13 @@ class _ChessBoardWidget extends ConsumerWidget {
     required this.fen,
     required this.lastMove,
     required this.boardSize,
+    this.showCoordinates = true,
   });
 
   final String? fen;
   final Move? lastMove;
   final double boardSize;
+  final bool showCoordinates;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -575,8 +585,8 @@ class _ChessBoardWidget extends ConsumerWidget {
         child: Chessboard.fixed(
           size: boardSize,
           settings: ChessboardSettings(
+            enableCoordinates: showCoordinates,
             colorScheme: _buildColorScheme(boardTheme),
-            
           ),
           orientation: Side.white,
           fen: fen ?? '',
