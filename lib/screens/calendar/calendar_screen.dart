@@ -1,7 +1,5 @@
 import 'dart:async';
 
-import 'package:chessever2/providers/favorite_events_provider.dart';
-import 'package:chessever2/providers/event_favorite_players_provider.dart';
 import 'package:chessever2/repository/supabase/calendar_event/calendar_event.dart';
 import 'package:chessever2/repository/supabase/calendar_event/calendar_event_repository.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
@@ -724,7 +722,6 @@ class _QuickFilterButtons extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final filterMode = ref.watch(calendarFilterModeProvider);
     final calendarData = ref.watch(calendarScreenProvider);
-    final favoriteEvents = ref.watch(favoriteEventsProvider);
     final selectedYear = ref.watch(selectedYearProvider);
     final currentYear = DateTime.now().year;
     final isUpcomingDisabled = selectedYear > currentYear;
@@ -760,8 +757,8 @@ class _QuickFilterButtons extends ConsumerWidget {
     );
 
     // Calculate favorites count: starred events + events with favorite players
-    // Watch the cache to rebuild when priming completes
-    final favoritePlayersCache = ref.watch(eventFavoritePlayersCacheProvider);
+    // Use the dedicated provider that fetches from Supabase directly
+    final favoriteEventIdsAsync = ref.watch(calendarFavoriteEventIdsProvider);
 
     final favoritesCount = calendarData.maybeWhen(
       data: (summaries) {
@@ -778,20 +775,15 @@ class _QuickFilterButtons extends ConsumerWidget {
         }
 
         // Otherwise, calculate potential favorite events from current year data
-        final favoriteEventIds = <String>{};
-        favoriteEvents.whenData((events) {
-          favoriteEventIds.addAll(events.map((e) => e.eventId));
-        });
+        final favoriteEventIds = favoriteEventIdsAsync.valueOrNull ?? <String>{};
 
-        // Count unique events that are starred OR have favorite players
+        // Count unique events in the current data that are in our favorites set
         final matchingEventIds = <String>{};
         for (final summary in summaries) {
           for (final event in summary.events) {
             if (matchingEventIds.contains(event.id)) continue;
 
-            final isStarred = favoriteEventIds.contains(event.id);
-            final hasFavoritePlayers = favoritePlayersCache[event.id]?.hasFavorites ?? false;
-            if (isStarred || hasFavoritePlayers) {
+            if (favoriteEventIds.contains(event.id)) {
               matchingEventIds.add(event.id);
             }
           }

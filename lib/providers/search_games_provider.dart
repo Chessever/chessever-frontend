@@ -70,6 +70,12 @@ final groupedSearchGamesProvider =
     }
   }
 
+  // Create a mapping from tour_id to tour createdAt for date sorting
+  final tourDates = <String, DateTime>{};
+  for (final tour in tours) {
+    tourDates[tour.id] = tour.createdAt;
+  }
+
   // Group games by group_broadcast_id (event level, not round level)
   final grouped = <String, GroupedSearchGames>{};
   final groupOrder = <String>[];
@@ -80,11 +86,22 @@ final groupedSearchGamesProvider =
     final groupName = groupBroadcastNames[groupBroadcastId] ?? game.tourSlug;
 
     if (!grouped.containsKey(groupBroadcastId)) {
+      // Find the most recent tour date for this group
+      DateTime? groupDate;
+      for (final tour in tours) {
+        if ((tour.groupBroadcastId ?? tour.id) == groupBroadcastId) {
+          if (groupDate == null || tour.createdAt.isAfter(groupDate)) {
+            groupDate = tour.createdAt;
+          }
+        }
+      }
+
       grouped[groupBroadcastId] = GroupedSearchGames(
         tourId: groupBroadcastId, // Using group_broadcast_id as the ID for navigation
         tourName: groupName,
         games: [],
         hasLiveGames: false,
+        tournamentDate: groupDate,
       );
       groupOrder.add(groupBroadcastId);
     }
@@ -95,10 +112,59 @@ final groupedSearchGamesProvider =
     }
   }
 
-  return groupOrder
+  // Build the result list and sort groups by relevance
+  final result = groupOrder
       .where((id) => grouped[id]!.games.isNotEmpty)
       .map((groupId) => grouped[groupId]!)
       .toList();
+
+  // Sort groups: live events first, then by tournament date (most recent first)
+  result.sort((a, b) {
+    // 1. Live events first
+    if (a.hasLiveGames != b.hasLiveGames) {
+      return a.hasLiveGames ? -1 : 1;
+    }
+
+    // 2. Sort by tournament date (most recent first)
+    final aDate = a.tournamentDate;
+    final bDate = b.tournamentDate;
+
+    if (aDate != null && bDate != null) {
+      return bDate.compareTo(aDate); // Descending - most recent first
+    } else if (aDate != null) {
+      return -1;
+    } else if (bDate != null) {
+      return 1;
+    }
+
+    // 3. Fallback: sort by most recent game activity in the group
+    DateTime? getMostRecentGameDate(GroupedSearchGames group) {
+      DateTime? mostRecent;
+      for (final game in group.games) {
+        if (game.lastMoveTime != null) {
+          if (mostRecent == null || game.lastMoveTime!.isAfter(mostRecent)) {
+            mostRecent = game.lastMoveTime;
+          }
+        }
+      }
+      return mostRecent;
+    }
+
+    final aGameDate = getMostRecentGameDate(a);
+    final bGameDate = getMostRecentGameDate(b);
+
+    if (aGameDate != null && bGameDate != null) {
+      return bGameDate.compareTo(aGameDate);
+    } else if (aGameDate != null) {
+      return -1;
+    } else if (bGameDate != null) {
+      return 1;
+    }
+
+    return 0;
+  });
+
+  return result;
 });
 
 /// Provider for converted games (Games to GamesTourModel)
@@ -173,32 +239,53 @@ class SearchGamesNotifier extends StateNotifier<AsyncValue<List<Games>>> {
         supabaseCombinedSearchProvider(query).future,
       );
 
-      // Deduplicate players by name and keep the one with highest rating
-      // This ensures we don't fetch games for the same player multiple times
-      final playersByName = <String, SearchResult>{};
+      // Deduplicate players by name but keep the best match for the query
+      // (exact/prefix match first, then rating + FIDE id for tie-breaks).
+      final playersByName = <String, _ScoredPlayerResult>{};
       for (final result in searchResults.playerResults) {
-        if (result.player == null) continue;
-        final name = result.player!.name;
-        final existingResult = playersByName[name];
-        if (existingResult == null ||
-            (result.player!.rating ?? 0) > (existingResult.player!.rating ?? 0)) {
-          playersByName[name] = result;
+        final player = result.player;
+        if (player == null) continue;
+
+        final score = _playerMatchScore(player.name, query);
+        final candidate = _ScoredPlayerResult(result: result, matchScore: score);
+        final key = player.name.toLowerCase();
+        final existing = playersByName[key];
+
+        if (existing == null || candidate.isBetterThan(existing)) {
+          playersByName[key] = candidate;
         }
       }
 
-      // Sort deduplicated players by rating (highest first) and take top players
+      // Sort deduplicated players by how well they match the query, then rating.
       final uniquePlayerResults = playersByName.values.toList()
         ..sort((a, b) {
-          final aRating = a.player?.rating ?? 0;
-          final bRating = b.player?.rating ?? 0;
-          return bRating.compareTo(aRating);
+          if (a.matchScore != b.matchScore) {
+            return b.matchScore.compareTo(a.matchScore);
+          }
+
+          final aRating = a.result.player?.rating ?? 0;
+          final bRating = b.result.player?.rating ?? 0;
+          if (aRating != bRating) {
+            return bRating.compareTo(aRating);
+          }
+
+          final aHasFide = a.result.player?.fideId != null;
+          final bHasFide = b.result.player?.fideId != null;
+          if (aHasFide != bHasFide) {
+            return aHasFide ? -1 : 1;
+          }
+
+          return a.result.player!.name.compareTo(b.result.player!.name);
         });
 
       final topPlayers = uniquePlayerResults.take(_maxPlayers).toList();
 
       debugPrint('[SearchGames] Found ${topPlayers.length} unique top players for "$query"');
-      for (final p in topPlayers) {
-        debugPrint('[SearchGames] - ${p.player!.name} (ELO: ${p.player!.rating}, FIDE: ${p.player!.fideId})');
+      for (final candidate in topPlayers) {
+        final player = candidate.result.player!;
+        debugPrint(
+          '[SearchGames] - ${player.name} (matchScore: ${candidate.matchScore}, ELO: ${player.rating}, FIDE: ${player.fideId})',
+        );
       }
 
       if (topPlayers.isEmpty) {
@@ -228,10 +315,10 @@ class SearchGamesNotifier extends StateNotifier<AsyncValue<List<Games>>> {
         return;
       }
 
-      // Fetch ALL games for the highest ELO player (to show all their events)
+      // Fetch ALL games for the best-matching player (preferring query match, then ELO)
       // No limit applied - ensures we get all tournaments where this player participated
       final allGames = <Games>[];
-      final topPlayer = topPlayers.first.player!;
+      final topPlayer = topPlayers.first.result.player!;
 
       try {
         List<Games> games;
@@ -305,15 +392,7 @@ class SearchGamesNotifier extends StateNotifier<AsyncValue<List<Games>>> {
   String get currentQuery => _currentQuery;
 
   void _sortAndDedupGames() {
-    _allGames.sort((a, b) {
-      final aTime = a.lastMoveTime;
-      final bTime = b.lastMoveTime;
-      if (aTime == null && bTime == null) return 0;
-      if (aTime == null) return 1;
-      if (bTime == null) return -1;
-      return aTime.compareTo(bTime);
-    });
-
+    // Deduplicate first
     final uniqueGames = <String, Games>{};
     for (final game in _allGames) {
       uniqueGames[game.id] = game;
@@ -321,6 +400,29 @@ class SearchGamesNotifier extends StateNotifier<AsyncValue<List<Games>>> {
     _allGames
       ..clear()
       ..addAll(uniqueGames.values);
+
+    // Sort games with proper relevance:
+    // 1. Live games first (status == '*')
+    // 2. Most recent activity first (lastMoveTime descending)
+    _allGames.sort((a, b) {
+      // 1. Live games first
+      final aLive = a.status == '*';
+      final bLive = b.status == '*';
+      if (aLive != bLive) return aLive ? -1 : 1;
+
+      // 2. Sort by last move time (most recent first)
+      final aTime = a.lastMoveTime;
+      final bTime = b.lastMoveTime;
+      if (aTime != null && bTime != null) {
+        return bTime.compareTo(aTime); // Descending - most recent first
+      } else if (aTime != null) {
+        return -1;
+      } else if (bTime != null) {
+        return 1;
+      }
+
+      return 0;
+    });
   }
 
   @override
@@ -341,10 +443,92 @@ class GroupedSearchGames {
     required this.tourName,
     required this.games,
     required this.hasLiveGames,
+    this.tournamentDate,
   });
 
   final String tourId;
   String tourName;
   final List<Games> games;
   bool hasLiveGames;
+  final DateTime? tournamentDate;
+}
+
+/// Internal wrapper to keep match score alongside the search result for ranking.
+class _ScoredPlayerResult {
+  const _ScoredPlayerResult({
+    required this.result,
+    required this.matchScore,
+  });
+
+  final SearchResult result;
+  final int matchScore;
+
+  bool isBetterThan(_ScoredPlayerResult other) {
+    if (matchScore != other.matchScore) {
+      return matchScore > other.matchScore;
+    }
+
+    final rating = result.player?.rating ?? 0;
+    final otherRating = other.result.player?.rating ?? 0;
+    if (rating != otherRating) {
+      return rating > otherRating;
+    }
+
+    final hasFideId = result.player?.fideId != null;
+    final otherHasFideId = other.result.player?.fideId != null;
+    if (hasFideId != otherHasFideId) {
+      return hasFideId;
+    }
+
+    return result.player!.name.compareTo(other.result.player!.name) < 0;
+  }
+}
+
+int _playerMatchScore(String playerName, String query) {
+  String normalize(String value) => value
+      .toLowerCase()
+      .replaceAll(',', ' ')
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .trim();
+
+  final normalizedQuery = normalize(query);
+  if (normalizedQuery.isEmpty) return 0;
+
+  final normalizedName = normalize(playerName);
+
+  // Perfect / near-perfect matches first
+  if (normalizedName == normalizedQuery) return 120;
+  if (normalizedName.startsWith(normalizedQuery) ||
+      normalizedQuery.startsWith(normalizedName)) {
+    return 110;
+  }
+
+  final nameWords =
+      normalizedName.split(' ').where((word) => word.isNotEmpty).toList();
+  final queryWords =
+      normalizedQuery.split(' ').where((word) => word.isNotEmpty).toList();
+
+  int prefixMatches = 0;
+  for (final qw in queryWords) {
+    if (nameWords.any((nw) => nw.startsWith(qw) || qw.startsWith(nw))) {
+      prefixMatches++;
+    }
+  }
+
+  if (prefixMatches == queryWords.length && queryWords.isNotEmpty) {
+    return 105; // All query words match (order-flexible)
+  }
+
+  if (prefixMatches > 0) {
+    final coverage = prefixMatches / queryWords.length;
+    return (80 + (coverage * 20)).round(); // 80-100 depending on coverage
+  }
+
+  // Soft fallback for partial contains to avoid dropping near-misses completely
+  final hasPartial = queryWords.any(
+    (qw) => nameWords.any((nw) => nw.contains(qw) || qw.contains(nw)),
+  );
+  if (hasPartial) return 65;
+
+  return 40; // weak match
 }

@@ -12,6 +12,9 @@ import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart'
 import 'package:chessever2/repository/local_storage/group_broadcast/group_broadcast_local_storage.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+const _countryPlayerCacheTtl = Duration(minutes: 10);
+final _countryPlayerCache = <String, _CountryPlayerCacheEntry>{};
+
 final supabaseCombinedSearchProvider =
     AutoDisposeFutureProvider.family<EnhancedSearchResult, String>(
       (ref, query) async {
@@ -24,11 +27,13 @@ final supabaseCombinedSearchProvider =
         final isCountrySearch = detectedCountryIso2 != null && detectedFideCode != null;
         final countryIso2 = detectedCountryIso2;
         final fideCountryCode = detectedFideCode;
+        final normalizedCountryKey = fideCountryCode?.toUpperCase();
 
         // Supabase RPC search can get slow on very short queries (e.g. "az").
-        // For country-style queries we skip/short-circuit the RPC to avoid timeouts.
+        // For country-style queries we skip the RPC entirely to stay snappy and lean on
+        // local cache + direct player fetch.
         List<GroupBroadcast> broadcasts = [];
-        if (!isCountrySearch || trimmedQuery.length >= 3) {
+        if (!isCountrySearch) {
           try {
             broadcasts = await ref
                 .read(groupBroadcastRepositoryProvider)
@@ -41,9 +46,9 @@ final supabaseCombinedSearchProvider =
 
         // Country-aware player fetch (directly from chess_players)
         final countryPlayerResults =
-            isCountrySearch
+            isCountrySearch && normalizedCountryKey != null
                 ? await _fetchTopCountryPlayers(
-                    fideCode: fideCountryCode!,
+                    fideCode: normalizedCountryKey,
                     countryIso2: countryIso2!,
                   )
                 : <SearchResult>[];
@@ -442,6 +447,11 @@ Future<List<SearchResult>> _fetchTopCountryPlayers({
   required String countryIso2,
   int limit = 30,
 }) async {
+  final cached = _countryPlayerCache[fideCode];
+  if (cached != null && cached.isFresh) {
+    return cached.results;
+  }
+
   try {
     final supabase = Supabase.instance.client;
     final rows = await supabase
@@ -469,7 +479,7 @@ Future<List<SearchResult>> _fetchTopCountryPlayers({
       searchTerms: const [],
     );
 
-    return (rows as List)
+    final results = (rows as List)
         .map((row) {
           final fideId = row['fideid'] as int?;
           final name = row['name'] as String?;
@@ -494,7 +504,25 @@ Future<List<SearchResult>> _fetchTopCountryPlayers({
         })
         .whereType<SearchResult>()
         .toList();
+
+    _countryPlayerCache[fideCode] = _CountryPlayerCacheEntry(
+      results: results,
+      cachedAt: DateTime.now(),
+    );
+    return results;
   } catch (_) {
     return [];
   }
+}
+
+class _CountryPlayerCacheEntry {
+  _CountryPlayerCacheEntry({
+    required this.results,
+    required this.cachedAt,
+  });
+
+  final List<SearchResult> results;
+  final DateTime cachedAt;
+
+  bool get isFresh => DateTime.now().difference(cachedAt) < _countryPlayerCacheTtl;
 }

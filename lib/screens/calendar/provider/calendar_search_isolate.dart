@@ -126,17 +126,8 @@ CalendarSearchResult filterCalendarEventsIsolate(CalendarSearchParams params) {
         continue;
       }
     } else if (params.filterMode == 'favorites') {
-      final isStarred = params.favoriteEventIds.contains(event.id);
-      final isInCache = params.favoritePlayersMap.containsKey(event.id);
-      final hasFavoritePlayers = params.favoritePlayersMap[event.id] ?? false;
-
-      // If event is not in cache yet and not starred, queue for background priming
-      if (!isInCache && !isStarred) {
-        eventsToPrime.add(event.id);
-      }
-
-      // Only include events that are starred OR have favorite players
-      if (!isStarred && !hasFavoritePlayers) {
+      // favoriteEventIds now contains both starred events AND events with favorite players
+      if (!params.favoriteEventIds.contains(event.id)) {
         continue;
       }
     }
@@ -444,17 +435,8 @@ DetailSearchResult filterDetailEventsIsolate(DetailSearchParams params) {
         continue;
       }
     } else if (params.filterMode == 'favorites') {
-      final isStarred = params.favoriteEventIds.contains(event.id);
-      final isInCache = params.favoritePlayersMap.containsKey(event.id);
-      final hasFavoritePlayers = params.favoritePlayersMap[event.id] ?? false;
-
-      // If event is not in cache yet and not starred, queue for background priming
-      if (!isInCache && !isStarred) {
-        eventsToPrime.add(event.id);
-      }
-
-      // Only include events that are starred OR have favorite players
-      if (!isStarred && !hasFavoritePlayers) {
+      // favoriteEventIds now contains both starred events AND events with favorite players
+      if (!params.favoriteEventIds.contains(event.id)) {
         continue;
       }
     }
