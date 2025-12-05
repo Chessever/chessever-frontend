@@ -280,18 +280,19 @@ class _CategoryDropdownContent extends HookConsumerWidget {
           availableHeight: availableHeight,
           animation: animation,
           categories: categories,
-          selectedCategory: selectedCategory,
-          rounds: rounds,
-          selectedRound: selectedRound,
           onCategorySelect: (category) {
             HapticFeedbackService.selection();
-            if (category.tour.id != selectedCategory.tour.id) {
-              onCategoryChanged(category);
-            }
+            onCategoryChanged(category);
             // Close immediately after selection
             animationController.reverse().then((_) {
               isOpen.value = false;
             });
+          },
+          onCategoryChange: (category) {
+            // Select category WITHOUT closing dropdown (for expand arrow)
+            HapticFeedbackService.selection();
+            onCategoryChanged(category);
+            // Don't close - let the dropdown stay open to show loaded rounds
           },
           onRoundSelect: (round) {
             print('🟢 onRoundSelect called: ${round.name} (${round.id})');
@@ -534,7 +535,7 @@ class _LiveDot extends HookWidget {
 }
 
 /// The floating dropdown overlay
-class _DropdownOverlay extends StatelessWidget {
+class _DropdownOverlay extends ConsumerWidget {
   final LayerLink layerLink;
   final Size triggerSize;
   final Offset triggerOffset;
@@ -542,10 +543,8 @@ class _DropdownOverlay extends StatelessWidget {
   final double availableHeight;
   final Animation<double> animation;
   final List<TourModel> categories;
-  final TourModel selectedCategory;
-  final List<GamesAppBarModel> rounds;
-  final GamesAppBarModel? selectedRound;
   final ValueChanged<TourModel> onCategorySelect;
+  final ValueChanged<TourModel> onCategoryChange; // Select without closing
   final ValueChanged<GamesAppBarModel> onRoundSelect;
   final VoidCallback onDismiss;
 
@@ -557,16 +556,35 @@ class _DropdownOverlay extends StatelessWidget {
     required this.availableHeight,
     required this.animation,
     required this.categories,
-    required this.selectedCategory,
-    required this.rounds,
-    required this.selectedRound,
     required this.onCategorySelect,
+    required this.onCategoryChange,
     required this.onRoundSelect,
     required this.onDismiss,
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    // Watch providers directly to get live data when category changes
+    final tourDetailAsync = ref.watch(tourDetailScreenProvider);
+    final roundsAsync = ref.watch(gamesAppBarProvider);
+
+    final tourData = tourDetailAsync.valueOrNull;
+    final selectedCategory = tourData != null
+        ? (categories.firstWhere(
+            (t) => t.tour.id == tourData.aboutTourModel.id,
+            orElse: () => categories.first,
+          ))
+        : categories.first;
+
+    final rounds = roundsAsync.valueOrNull?.gamesAppBarModels ?? [];
+    final selectedRoundId = roundsAsync.valueOrNull?.selectedId;
+    final selectedRound = rounds.isNotEmpty && selectedRoundId != null
+        ? rounds.firstWhere(
+            (r) => r.id == selectedRoundId,
+            orElse: () => rounds.first,
+          )
+        : null;
+
     final dropdownWidth = (screenWidth - 32.w).clamp(280.w, 360.w);
     final leftOffset = (screenWidth - dropdownWidth) / 2;
 
@@ -620,6 +638,7 @@ class _DropdownOverlay extends StatelessWidget {
                         rounds: rounds,
                         selectedRound: selectedRound,
                         onCategorySelect: onCategorySelect,
+                        onCategoryChange: onCategoryChange,
                         onRoundSelect: onRoundSelect,
                       ),
                     ),
@@ -642,6 +661,7 @@ class _DropdownContent extends StatefulWidget {
   final List<GamesAppBarModel> rounds;
   final GamesAppBarModel? selectedRound;
   final ValueChanged<TourModel> onCategorySelect;
+  final ValueChanged<TourModel> onCategoryChange; // Select without closing dropdown
   final ValueChanged<GamesAppBarModel> onRoundSelect;
 
   const _DropdownContent({
@@ -651,6 +671,7 @@ class _DropdownContent extends StatefulWidget {
     required this.rounds,
     required this.selectedRound,
     required this.onCategorySelect,
+    required this.onCategoryChange,
     required this.onRoundSelect,
   });
 
@@ -737,11 +758,14 @@ class _DropdownContentState extends State<_DropdownContent> {
           category: category,
         ));
 
-        // Add rounds ONLY if this category is the currently selected one AND is expanded
-        // This ensures we're showing the correct rounds for the selected tour
-        // (rounds are loaded based on the selected tour, not the expanded category)
+        // Add rounds if this category is expanded AND is the currently selected one
+        // (rounds are loaded based on the selected tour)
+        // When user expands a non-selected category, it triggers selection which
+        // causes widget to rebuild with new selectedCategory and rounds
         final isSelectedCategory = category.tour.id == widget.selectedCategory.tour.id;
-        if (_expandedCategoryId == category.tour.id && isSelectedCategory) {
+        final isExpanded = _expandedCategoryId == category.tour.id;
+
+        if (isExpanded && isSelectedCategory) {
           for (final round in widget.rounds) {
             _flatItems.add(_DropdownItem(
               type: _ItemType.round,
@@ -867,30 +891,45 @@ class _DropdownContentState extends State<_DropdownContent> {
   void _toggleExpand(String categoryId) {
     HapticFeedbackService.light();
 
-    // If expanding a different category, select it first so its rounds are loaded
-    if (_expandedCategoryId != categoryId) {
-      final category = widget.categories.firstWhereOrNull(
-        (c) => c.tour.id == categoryId,
-      );
-      if (category != null && categoryId != widget.selectedCategory.tour.id) {
-        // Select the category to load its rounds
-        widget.onCategorySelect(category);
+    final isCurrentlyExpanded = _expandedCategoryId == categoryId;
+    final isSelectedCategory = categoryId == widget.selectedCategory.tour.id;
+
+    if (isCurrentlyExpanded) {
+      // Collapsing - just collapse, no selection change
+      setState(() {
+        _expandedCategoryId = null;
+        _buildFlatItems();
+      });
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _measureItems();
+      });
+    } else {
+      // Expanding
+      if (isSelectedCategory) {
+        // Expanding the already-selected category - just expand and show rounds
+        setState(() {
+          _expandedCategoryId = categoryId;
+          _buildFlatItems();
+          _findSelectedIndex();
+        });
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _measureItems();
+          _scrollToSelected();
+        });
+      } else {
+        // Expanding a NON-selected category - select it first (loads rounds), keep dropdown open
+        setState(() {
+          _expandedCategoryId = categoryId;
+        });
+        // Find the category and trigger selection without closing
+        final category = widget.categories.firstWhere(
+          (c) => c.tour.id == categoryId,
+          orElse: () => widget.selectedCategory,
+        );
+        widget.onCategoryChange(category);
+        // The widget will rebuild with new rounds after selection
       }
     }
-
-    setState(() {
-      if (_expandedCategoryId == categoryId) {
-        _expandedCategoryId = null;
-      } else {
-        _expandedCategoryId = categoryId;
-      }
-      _buildFlatItems();
-      _findSelectedIndex();
-    });
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _measureItems();
-      _scrollToSelected();
-    });
   }
 
   double _getItemHeight(int index) {
