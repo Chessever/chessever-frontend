@@ -2416,6 +2416,18 @@ class _GameDropdownContentState extends State<_GameDropdownContent> {
     });
   }
 
+  /// Format round slug/id into a readable label
+  String _formatRoundLabel(String slug) {
+    return slug
+        .replaceAll('-', ' ')
+        .replaceAll('_', ' ')
+        .split(' ')
+        .map((word) => word.isEmpty
+            ? ''
+            : '${word[0].toUpperCase()}${word.substring(1)}')
+        .join(' ');
+  }
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -2447,6 +2459,14 @@ class _GameDropdownContentState extends State<_GameDropdownContent> {
                     _itemKeys.add(GlobalKey());
                   }
 
+                  // Determine if we should show round separator
+                  final currentRound = game.roundSlug ?? game.roundId;
+                  final previousRound = index > 0
+                      ? (widget.games[index - 1].roundSlug ?? widget.games[index - 1].roundId)
+                      : null;
+                  final showRoundSeparator = previousRound != null && currentRound != previousRound;
+                  final roundLabel = showRoundSeparator ? _formatRoundLabel(currentRound) : null;
+
                   return KeyedSubtree(
                     key: _itemKeys[index],
                     child: _GameItemSimple(
@@ -2455,6 +2475,8 @@ class _GameDropdownContentState extends State<_GameDropdownContent> {
                       game: game,
                       isSelected: isSelected,
                       isDragging: _isDragging,
+                      showRoundSeparator: showRoundSeparator,
+                      roundLabel: roundLabel,
                       onTap: () {
                         _animateToIndex(index);
                         widget.onSelect(index);
@@ -2511,6 +2533,8 @@ class _GameItemSimple extends StatelessWidget {
   final bool isSelected;
   final bool isDragging;
   final VoidCallback onTap;
+  final bool showRoundSeparator;
+  final String? roundLabel;
 
   const _GameItemSimple({
     required this.index,
@@ -2519,6 +2543,8 @@ class _GameItemSimple extends StatelessWidget {
     required this.isSelected,
     required this.isDragging,
     required this.onTap,
+    this.showRoundSeparator = false,
+    this.roundLabel,
   });
 
   String _extractLastName(String fullName) {
@@ -2577,73 +2603,108 @@ class _GameItemSimple extends StatelessWidget {
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: onTap,
-        child: Container(
-          height: 36.0,
-          margin: EdgeInsets.symmetric(horizontal: 6.w, vertical: 1.h),
-          padding: EdgeInsets.symmetric(horizontal: 10.w),
-          child: Row(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            // Live indicator
-            SizedBox(
-              width: 14.w,
-              child: isLive
-                  ? Container(
-                      width: 6.w,
-                      height: 6.h,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: kPrimaryColor,
-                      ),
-                    )
-                  : null,
-            ),
-            // White player
-            Expanded(
-              child: Text(
-                whiteName,
-                style: AppTypography.textXsMedium.copyWith(
-                  color: isSelected ? kPrimaryColor : kWhiteColor.withValues(alpha: 0.9),
-                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+            // Round separator - subtle divider between different rounds
+            if (showRoundSeparator && roundLabel != null)
+              Container(
+                padding: EdgeInsets.only(
+                  left: 14.w,
+                  right: 14.w,
+                  top: index == 0 ? 2.h : 6.h,
+                  bottom: 4.h,
                 ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-            // Result
-            Container(
-              width: 36.w,
-              alignment: Alignment.center,
-              child: resultText.isNotEmpty
-                  ? Text(
-                      resultText,
+                child: Row(
+                  children: [
+                    Text(
+                      roundLabel!,
                       style: AppTypography.textXxsMedium.copyWith(
-                        color: kWhiteColor.withValues(alpha: 0.5),
-                        fontWeight: FontWeight.w500,
-                      ),
-                    )
-                  : Text(
-                      'vs',
-                      style: AppTypography.textXxsRegular.copyWith(
                         color: kWhiteColor.withValues(alpha: 0.35),
-                        fontStyle: FontStyle.italic,
+                        letterSpacing: 0.5,
+                        fontSize: 9.sp,
                       ),
                     ),
-            ),
-            // Black player
-            Expanded(
-              child: Text(
-                blackName,
-                style: AppTypography.textXsMedium.copyWith(
-                  color: isSelected ? kPrimaryColor : kWhiteColor.withValues(alpha: 0.9),
-                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                    SizedBox(width: 8.w),
+                    Expanded(
+                      child: Container(
+                        height: 0.5,
+                        color: kWhiteColor.withValues(alpha: 0.06),
+                      ),
+                    ),
+                  ],
                 ),
-                textAlign: TextAlign.right,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+              ),
+            // Game row
+            Container(
+              height: 36.0,
+              margin: EdgeInsets.symmetric(horizontal: 6.w, vertical: 1.h),
+              padding: EdgeInsets.symmetric(horizontal: 10.w),
+              child: Row(
+                children: [
+                  // Live indicator
+                  SizedBox(
+                    width: 14.w,
+                    child: isLive
+                        ? Container(
+                            width: 6.w,
+                            height: 6.h,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: kPrimaryColor,
+                            ),
+                          )
+                        : null,
+                  ),
+                  // White player
+                  Expanded(
+                    child: Text(
+                      whiteName,
+                      style: AppTypography.textXsMedium.copyWith(
+                        color: isSelected ? kPrimaryColor : kWhiteColor.withValues(alpha: 0.9),
+                        fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  // Result
+                  Container(
+                    width: 36.w,
+                    alignment: Alignment.center,
+                    child: resultText.isNotEmpty
+                        ? Text(
+                            resultText,
+                            style: AppTypography.textXxsMedium.copyWith(
+                              color: kWhiteColor.withValues(alpha: 0.5),
+                              fontWeight: FontWeight.w500,
+                            ),
+                          )
+                        : Text(
+                            'vs',
+                            style: AppTypography.textXxsRegular.copyWith(
+                              color: kWhiteColor.withValues(alpha: 0.35),
+                              fontStyle: FontStyle.italic,
+                            ),
+                          ),
+                  ),
+                  // Black player
+                  Expanded(
+                    child: Text(
+                      blackName,
+                      style: AppTypography.textXsMedium.copyWith(
+                        color: isSelected ? kPrimaryColor : kWhiteColor.withValues(alpha: 0.9),
+                        fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                      ),
+                      textAlign: TextAlign.right,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
               ),
             ),
           ],
-          ),
         ),
       ),
     );
