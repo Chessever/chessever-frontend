@@ -713,14 +713,10 @@ class _DropdownContentState extends State<_DropdownContent> {
   @override
   void initState() {
     super.initState();
-    // Auto-expand the selected category so the current round is visible
-    // This syncs the dropdown state with the games listview scroll position
-    final hasMultipleCategories = widget.categories.length > 1;
-    if (hasMultipleCategories) {
-      _expandedCategoryId = widget.selectedCategory.tour.id;
-    } else {
-      _expandedCategoryId = null;
-    }
+    // Start with all categories collapsed
+    // When user expands a category that matches games listview selection,
+    // the indicator will move to the correct round
+    _expandedCategoryId = null;
     _buildFlatItems();
     _findSelectedIndex();
 
