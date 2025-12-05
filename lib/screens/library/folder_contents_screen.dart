@@ -93,20 +93,13 @@ class FolderContentsScreen extends ConsumerWidget {
             ),
           ),
 
-          SizedBox(width: 8.w),
+          SizedBox(width: 4.w),
 
-          // Folder icon
-          Container(
-            padding: EdgeInsets.all(10.sp),
-            decoration: BoxDecoration(
-              color: folderColor.withValues(alpha: 0.15),
-              borderRadius: BorderRadius.circular(8.br),
-            ),
-            child: Icon(
-              Icons.folder,
-              color: folderColor,
-              size: 24.sp,
-            ),
+          // Folder icon - neutral gray
+          Icon(
+            Icons.folder_outlined,
+            color: kWhiteColor.withValues(alpha: 0.6),
+            size: 28.sp,
           ),
 
           SizedBox(width: 12.w),

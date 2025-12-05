@@ -50,10 +50,6 @@ class SavedAnalysisCard extends StatelessWidget {
         decoration: BoxDecoration(
           color: kBlack2Color,
           borderRadius: BorderRadius.circular(12.br),
-          border: Border.all(
-            color: kWhiteColor.withValues(alpha: 0.1),
-            width: 1,
-          ),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -177,17 +173,13 @@ class SavedAnalysisCard extends StatelessWidget {
                       vertical: 4.h,
                     ),
                     decoration: BoxDecoration(
-                      color: kPrimaryColor.withValues(alpha: 0.15),
+                      color: kWhiteColor.withValues(alpha: 0.08),
                       borderRadius: BorderRadius.circular(4.br),
-                      border: Border.all(
-                        color: kPrimaryColor.withValues(alpha: 0.3),
-                        width: 0.5,
-                      ),
                     ),
                     child: Text(
                       tag,
                       style: AppTypography.textXxsRegular.copyWith(
-                        color: kPrimaryColor,
+                        color: kWhiteColor.withValues(alpha: 0.6),
                       ),
                     ),
                   );
