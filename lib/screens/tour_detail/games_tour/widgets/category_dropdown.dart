@@ -713,8 +713,14 @@ class _DropdownContentState extends State<_DropdownContent> {
   @override
   void initState() {
     super.initState();
-    // Start with all categories collapsed (minimized)
-    _expandedCategoryId = null;
+    // Auto-expand the selected category so the current round is visible
+    // This syncs the dropdown state with the games listview scroll position
+    final hasMultipleCategories = widget.categories.length > 1;
+    if (hasMultipleCategories) {
+      _expandedCategoryId = widget.selectedCategory.tour.id;
+    } else {
+      _expandedCategoryId = null;
+    }
     _buildFlatItems();
     _findSelectedIndex();
 
@@ -764,7 +770,25 @@ class _DropdownContentState extends State<_DropdownContent> {
     final hasMultipleCategories = widget.categories.length > 1;
 
     if (hasMultipleCategories) {
-      // Find the selected category
+      // When category is expanded, prioritize finding the selected round
+      // This syncs the indicator with the games listview scroll position
+      final isSelectedCategoryExpanded =
+          _expandedCategoryId == widget.selectedCategory.tour.id;
+
+      if (isSelectedCategoryExpanded && widget.selectedRound != null) {
+        // Try to find the selected round first
+        final roundIndex = _flatItems.indexWhere(
+          (item) => item.type == _ItemType.round &&
+              item.round?.id == widget.selectedRound?.id,
+        );
+        if (roundIndex >= 0) {
+          _selectedFlatIndex = roundIndex;
+          _updateTargetY();
+          return;
+        }
+      }
+
+      // Fall back to selecting the category
       _selectedFlatIndex = _flatItems.indexWhere(
         (item) => item.type == _ItemType.category &&
             item.category?.tour.id == widget.selectedCategory.tour.id,

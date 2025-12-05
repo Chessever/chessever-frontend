@@ -66,27 +66,16 @@ class FolderCard extends ConsumerWidget {
         decoration: BoxDecoration(
           color: kBlack2Color,
           borderRadius: BorderRadius.circular(12.br),
-          border: Border.all(
-            color: folderColor.withValues(alpha: 0.3),
-            width: 1,
-          ),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            // Folder icon with color
-            Container(
-              padding: EdgeInsets.all(10.sp),
-              decoration: BoxDecoration(
-                color: folderColor.withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(8.br),
-              ),
-              child: Icon(
-                Icons.folder,
-                color: folderColor,
-                size: 24.sp,
-              ),
+            // Folder icon - neutral gray
+            Icon(
+              Icons.folder_outlined,
+              color: kWhiteColor.withValues(alpha: 0.6),
+              size: 32.sp,
             ),
 
             // Folder name and count
@@ -146,25 +135,14 @@ class FolderCard extends ConsumerWidget {
         decoration: BoxDecoration(
           color: kBlack2Color,
           borderRadius: BorderRadius.circular(12.br),
-          border: Border.all(
-            color: folderColor.withValues(alpha: 0.3),
-            width: 1,
-          ),
         ),
         child: Row(
           children: [
-            // Folder icon with color
-            Container(
-              padding: EdgeInsets.all(12.sp),
-              decoration: BoxDecoration(
-                color: folderColor.withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(10.br),
-              ),
-              child: Icon(
-                Icons.folder,
-                color: folderColor,
-                size: 28.sp,
-              ),
+            // Folder icon - neutral gray outlined
+            Icon(
+              Icons.folder_outlined,
+              color: kWhiteColor.withValues(alpha: 0.6),
+              size: 32.sp,
             ),
 
             SizedBox(width: 16.w),
@@ -187,7 +165,7 @@ class FolderCard extends ConsumerWidget {
                     data: (count) => Text(
                       '$count ${count == 1 ? 'analysis' : 'analyses'}',
                       style: AppTypography.textSmRegular.copyWith(
-                        color: kWhiteColor.withValues(alpha: 0.6),
+                        color: kWhiteColor.withValues(alpha: 0.5),
                       ),
                     ),
                     loading: () => SizedBox(
@@ -203,7 +181,7 @@ class FolderCard extends ConsumerWidget {
                     error: (_, __) => Text(
                       '0 analyses',
                       style: AppTypography.textSmRegular.copyWith(
-                        color: kWhiteColor.withValues(alpha: 0.6),
+                        color: kWhiteColor.withValues(alpha: 0.5),
                       ),
                     ),
                   ),
@@ -211,11 +189,11 @@ class FolderCard extends ConsumerWidget {
               ),
             ),
 
-            // Arrow icon
+            // Three dot menu icon (like in reference image)
             Icon(
-              Icons.arrow_forward_ios,
-              color: kWhiteColor.withValues(alpha: 0.3),
-              size: 16.sp,
+              Icons.more_vert,
+              color: kWhiteColor.withValues(alpha: 0.4),
+              size: 20.sp,
             ),
           ],
         ),

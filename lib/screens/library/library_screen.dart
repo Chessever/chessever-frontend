@@ -197,9 +197,6 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
           _SquareIconButton(
             icon: Icons.add,
             onTap: _handleCreateFolder,
-            backgroundColor: kPrimaryColor.withValues(alpha: 0.12),
-            borderColor: kPrimaryColor.withValues(alpha: 0.5),
-            iconColor: kPrimaryColor,
           ),
         ],
       ),
