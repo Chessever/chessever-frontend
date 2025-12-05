@@ -291,9 +291,10 @@ class GamesTourContentBody extends ConsumerWidget {
       gamesTourModels: orderedGamesForChessBoard,
     );
 
-    final itemScrollController = ref.watch(gamesTourScrollProvider);
+    final scopeId = ref.watch(gamesTourScrollScopeProvider);
+    final itemScrollController = ref.watch(gamesTourScrollProvider(scopeId));
     final itemPositionsListener =
-        ref.read(gamesTourScrollProvider.notifier).itemPositionsListener;
+        ref.read(gamesTourScrollProvider(scopeId).notifier).itemPositionsListener;
 
     return GamesListView(
       key: ValueKey('games_list_${gamesListViewMode.name}_search_$isSearchMode'),

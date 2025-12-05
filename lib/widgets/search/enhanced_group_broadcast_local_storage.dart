@@ -10,16 +10,19 @@ class EnhancedSearchResult {
   final List<SearchResult> tournamentResults;
   final List<SearchResult> playerResults;
   final List<SearchPlayer> allPlayers;
+  final String? countryFedCode;
 
   const EnhancedSearchResult({
     required this.tournamentResults,
     required this.playerResults,
     this.allPlayers = const [],
+    this.countryFedCode,
   });
   factory EnhancedSearchResult.empty() => const EnhancedSearchResult(
     tournamentResults: [],
     playerResults: [],
     allPlayers: [],
+    countryFedCode: null,
   );
 
   int get totalResults => tournamentResults.length + playerResults.length;
@@ -45,6 +48,7 @@ extension GroupBroadcastLocalStorageSearch on GroupBroadcastLocalStorage {
           tournamentResults: [],
           playerResults: [],
           allPlayers: [],
+          countryFedCode: null,
         );
       }
 
@@ -254,16 +258,18 @@ extension GroupBroadcastLocalStorageSearch on GroupBroadcastLocalStorage {
         }
       }
 
-      return EnhancedSearchResult(
-        tournamentResults: tournamentResults,
-        playerResults: playerResults,
-        allPlayers: allPlayers,
-      );
+        return EnhancedSearchResult(
+          tournamentResults: tournamentResults,
+          playerResults: playerResults,
+          allPlayers: allPlayers,
+          countryFedCode: null,
+        );
     } catch (e) {
       return const EnhancedSearchResult(
         tournamentResults: [],
         playerResults: [],
         allPlayers: [],
+        countryFedCode: null,
       );
     }
   }

@@ -429,6 +429,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
   }
 
   Widget _buildEventList(List<MonthEventsSummary> summaries) {
+    final filterMode = ref.watch(calendarFilterModeProvider);
     final eventsById = <String, GroupEventCardModel>{};
 
     for (final summary in summaries) {
@@ -448,12 +449,29 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
       }
     }
 
-    final sortedEvents = ref
-        .read(tournamentSortingServiceProvider)
-        .sortCalendarEvents(
-          eventsById.values.toList(),
-          prioritizeFavorites: false,
-        );
+    final flattenedEvents = eventsById.values.toList();
+    List<GroupEventCardModel> sortedEvents;
+
+    if (filterMode == CalendarFilterMode.favorites) {
+      // Sort by start date descending (most recent first)
+      flattenedEvents.sort((a, b) {
+        final dateA = a.startDate ?? a.endDate;
+        final dateB = b.startDate ?? b.endDate;
+
+        if (dateA != null && dateB != null) {
+          return dateB.compareTo(dateA); // Newest events first
+        }
+        if (dateA != null) return 1;
+        if (dateB != null) return -1;
+        return 0;
+      });
+      sortedEvents = flattenedEvents;
+    } else {
+      sortedEvents = ref.read(tournamentSortingServiceProvider).sortCalendarEvents(
+        flattenedEvents,
+        prioritizeFavorites: false,
+      );
+    }
 
     return RefreshIndicator(
       onRefresh: () async {
@@ -741,38 +759,44 @@ class _QuickFilterButtons extends ConsumerWidget {
       orElse: () => 0,
     );
 
-    // Calculate favorites count from the filtered data, not all favorites
+    // Calculate favorites count: starred events + events with favorite players
+    // Watch the cache to rebuild when priming completes
+    final favoritePlayersCache = ref.watch(eventFavoritePlayersCacheProvider);
+
     final favoritesCount = calendarData.maybeWhen(
       data: (summaries) {
         // If we're already in favorites filter mode, show the actual filtered count
         if (filterMode == CalendarFilterMode.favorites) {
-          int count = 0;
+          // Deduplicate events across months
+          final uniqueIds = <String>{};
           for (final summary in summaries) {
-            count += summary.events.length;
+            for (final event in summary.events) {
+              uniqueIds.add(event.id);
+            }
           }
-          return count;
+          return uniqueIds.length;
         }
 
-        // Otherwise, calculate potential favorite events from current filtered data
+        // Otherwise, calculate potential favorite events from current year data
         final favoriteEventIds = <String>{};
         favoriteEvents.whenData((events) {
           favoriteEventIds.addAll(events.map((e) => e.eventId));
         });
 
-        // Also check for events with favorite players
-        final favoritePlayersCache = ref.read(eventFavoritePlayersCacheProvider);
-
-        int count = 0;
+        // Count unique events that are starred OR have favorite players
+        final matchingEventIds = <String>{};
         for (final summary in summaries) {
           for (final event in summary.events) {
+            if (matchingEventIds.contains(event.id)) continue;
+
             final isStarred = favoriteEventIds.contains(event.id);
             final hasFavoritePlayers = favoritePlayersCache[event.id]?.hasFavorites ?? false;
             if (isStarred || hasFavoritePlayers) {
-              count++;
+              matchingEventIds.add(event.id);
             }
           }
         }
-        return count;
+        return matchingEventIds.length;
       },
       orElse: () => 0,
     );

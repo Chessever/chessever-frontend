@@ -11,6 +11,7 @@ class BoardSettingsModel with BoardSettingsModelMappable {
   final bool soundEnabled;
   final bool chatEnabled;
   final int pieceStyleIndex;
+  final int gamesListViewModeIndex; // 0=gamesCard, 1=chessBoardGrid, 2=chessBoard
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -22,6 +23,7 @@ class BoardSettingsModel with BoardSettingsModelMappable {
     required this.soundEnabled,
     required this.chatEnabled,
     required this.pieceStyleIndex,
+    required this.gamesListViewModeIndex,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -37,6 +39,7 @@ class BoardSettingsModel with BoardSettingsModelMappable {
       soundEnabled: json['sound_enabled'] as bool? ?? true,
       chatEnabled: json['chat_enabled'] as bool? ?? true,
       pieceStyleIndex: json['piece_style_index'] as int? ?? 0,
+      gamesListViewModeIndex: json['games_list_view_mode_index'] as int? ?? 0,
       createdAt: DateTime.parse(json['created_at'] as String),
       updatedAt: DateTime.parse(json['updated_at'] as String),
     );
@@ -52,6 +55,7 @@ class BoardSettingsModel with BoardSettingsModelMappable {
       'sound_enabled': soundEnabled,
       'chat_enabled': chatEnabled,
       'piece_style_index': pieceStyleIndex,
+      'games_list_view_mode_index': gamesListViewModeIndex,
       'created_at': createdAt.toIso8601String(),
       'updated_at': updatedAt.toIso8601String(),
     };
@@ -66,6 +70,7 @@ class BoardSettingsModel with BoardSettingsModelMappable {
       'sound_enabled': soundEnabled,
       'chat_enabled': chatEnabled,
       'piece_style_index': pieceStyleIndex,
+      'games_list_view_mode_index': gamesListViewModeIndex,
     };
   }
 
@@ -79,6 +84,7 @@ class BoardSettingsModel with BoardSettingsModelMappable {
       soundEnabled: true,
       chatEnabled: true,
       pieceStyleIndex: 0, // Standard piece style
+      gamesListViewModeIndex: 0, // gamesCard view
       createdAt: DateTime.now(),
       updatedAt: DateTime.now(),
     );

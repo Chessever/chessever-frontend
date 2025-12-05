@@ -725,16 +725,21 @@ class ForYouGamesNotifier extends StateNotifier<AsyncValue<List<Games>>> {
     };
 
     // Helper to compute a strong freshness boost; live games get an extra layer
-    double _recencyBonus(DateTime? lastMoveTime, {required bool isLive}) {
-      if (lastMoveTime == null) return isLive ? 120.0 : 0.0;
-      final minutesAgo = DateTime.now().difference(lastMoveTime).inMinutes;
+    double _recencyBonus(
+      DateTime? lastMoveTime, {
+      required bool isLive,
+      required DateTime now,
+    }) {
+      if (lastMoveTime == null) return isLive ? 160.0 : 10.0;
+      final minutesAgo = now.difference(lastMoveTime).inMinutes;
 
-      if (minutesAgo <= 3) return isLive ? 550.0 : 420.0;
-      if (minutesAgo <= 15) return isLive ? 420.0 : 320.0;
-      if (minutesAgo <= 60) return isLive ? 260.0 : 200.0;
-      if (minutesAgo <= 240) return isLive ? 170.0 : 140.0;
-      if (minutesAgo <= 720) return isLive ? 90.0 : 70.0;
-      return isLive ? 40.0 : 20.0;
+      if (minutesAgo <= 3) return isLive ? 700.0 : 520.0;
+      if (minutesAgo <= 30) return isLive ? 560.0 : 430.0;
+      if (minutesAgo <= 120) return isLive ? 380.0 : 300.0;
+      if (minutesAgo <= 360) return isLive ? 260.0 : 210.0;
+      if (minutesAgo <= 720) return isLive ? 170.0 : 130.0;
+      if (minutesAgo <= 1440) return isLive ? 120.0 : 90.0;
+      return isLive ? 70.0 : 50.0;
     }
 
     double _eloBonus(int maxElo) {
@@ -750,6 +755,8 @@ class ForYouGamesNotifier extends StateNotifier<AsyncValue<List<Games>>> {
       for (final entry in categoryPriority.entries) entry.key: <_ScoredGame>[],
     };
     final List<_ScoredGame> liveGames = [];
+
+    final now = DateTime.now();
 
     for (final game in _allGames) {
       // Check game categories
@@ -786,7 +793,11 @@ class ForYouGamesNotifier extends StateNotifier<AsyncValue<List<Games>>> {
       final score =
           baseWeight +
           liveBonus +
-          _recencyBonus(game.lastMoveTime, isLive: isLive) +
+          _recencyBonus(
+            game.lastMoveTime,
+            isLive: isLive,
+            now: now,
+          ) +
           _eloBonus(maxElo);
 
       final scored = _ScoredGame(
@@ -883,14 +894,15 @@ class ForYouGamesNotifier extends StateNotifier<AsyncValue<List<Games>>> {
   /// Sort helper: by score, then recency
   void _sortScoredGames(List<_ScoredGame> games, {bool prioritizeElo = false}) {
     games.sort((a, b) {
+      final scoreDiff = b.score.compareTo(a.score);
+      if (scoreDiff != 0) return scoreDiff;
+      final recencyDiff = _compareByLastMoveTime(a.game, b.game);
+      if (recencyDiff != 0) return recencyDiff;
       if (prioritizeElo) {
         final eloDiff = b.maxElo.compareTo(a.maxElo);
         if (eloDiff != 0) return eloDiff;
       }
-
-      final scoreDiff = b.score.compareTo(a.score);
-      if (scoreDiff != 0) return scoreDiff;
-      return _compareByLastMoveTime(a.game, b.game);
+      return 0;
     });
   }
 

@@ -53,6 +53,12 @@ class BoardSettingsModelMapper extends ClassMapperBase<BoardSettingsModel> {
     'pieceStyleIndex',
     _$pieceStyleIndex,
   );
+  static int _$gamesListViewModeIndex(BoardSettingsModel v) =>
+      v.gamesListViewModeIndex;
+  static const Field<BoardSettingsModel, int> _f$gamesListViewModeIndex = Field(
+    'gamesListViewModeIndex',
+    _$gamesListViewModeIndex,
+  );
   static DateTime _$createdAt(BoardSettingsModel v) => v.createdAt;
   static const Field<BoardSettingsModel, DateTime> _f$createdAt = Field(
     'createdAt',
@@ -73,6 +79,7 @@ class BoardSettingsModelMapper extends ClassMapperBase<BoardSettingsModel> {
     #soundEnabled: _f$soundEnabled,
     #chatEnabled: _f$chatEnabled,
     #pieceStyleIndex: _f$pieceStyleIndex,
+    #gamesListViewModeIndex: _f$gamesListViewModeIndex,
     #createdAt: _f$createdAt,
     #updatedAt: _f$updatedAt,
   };
@@ -86,6 +93,7 @@ class BoardSettingsModelMapper extends ClassMapperBase<BoardSettingsModel> {
       soundEnabled: data.dec(_f$soundEnabled),
       chatEnabled: data.dec(_f$chatEnabled),
       pieceStyleIndex: data.dec(_f$pieceStyleIndex),
+      gamesListViewModeIndex: data.dec(_f$gamesListViewModeIndex),
       createdAt: data.dec(_f$createdAt),
       updatedAt: data.dec(_f$updatedAt),
     );
@@ -170,6 +178,7 @@ abstract class BoardSettingsModelCopyWith<
     bool? soundEnabled,
     bool? chatEnabled,
     int? pieceStyleIndex,
+    int? gamesListViewModeIndex,
     DateTime? createdAt,
     DateTime? updatedAt,
   });
@@ -195,6 +204,7 @@ class _BoardSettingsModelCopyWithImpl<$R, $Out>
     bool? soundEnabled,
     bool? chatEnabled,
     int? pieceStyleIndex,
+    int? gamesListViewModeIndex,
     DateTime? createdAt,
     DateTime? updatedAt,
   }) => $apply(
@@ -206,6 +216,8 @@ class _BoardSettingsModelCopyWithImpl<$R, $Out>
       if (soundEnabled != null) #soundEnabled: soundEnabled,
       if (chatEnabled != null) #chatEnabled: chatEnabled,
       if (pieceStyleIndex != null) #pieceStyleIndex: pieceStyleIndex,
+      if (gamesListViewModeIndex != null)
+        #gamesListViewModeIndex: gamesListViewModeIndex,
       if (createdAt != null) #createdAt: createdAt,
       if (updatedAt != null) #updatedAt: updatedAt,
     }),
@@ -222,6 +234,10 @@ class _BoardSettingsModelCopyWithImpl<$R, $Out>
     soundEnabled: data.get(#soundEnabled, or: $value.soundEnabled),
     chatEnabled: data.get(#chatEnabled, or: $value.chatEnabled),
     pieceStyleIndex: data.get(#pieceStyleIndex, or: $value.pieceStyleIndex),
+    gamesListViewModeIndex: data.get(
+      #gamesListViewModeIndex,
+      or: $value.gamesListViewModeIndex,
+    ),
     createdAt: data.get(#createdAt, or: $value.createdAt),
     updatedAt: data.get(#updatedAt, or: $value.updatedAt),
   );

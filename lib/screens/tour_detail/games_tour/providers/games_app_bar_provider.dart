@@ -213,7 +213,8 @@ class _GamesAppBarNotifier
   }
 
   Future<void> _scrollToRound(String roundId) async {
-    final scrollProvider = ref.read(gamesTourScrollProvider.notifier);
+    final scopeId = ref.read(gamesTourScrollScopeProvider);
+    final scrollProvider = ref.read(gamesTourScrollProvider(scopeId).notifier);
     final controller = scrollProvider.state;
     final itemIndex = _calculateRoundHeaderIndex(roundId);
 
@@ -944,11 +945,22 @@ class _GamesAppBarNotifier
 
     final aRoundNum = aMeta?.roundNumber ?? _extractRoundNumber(a.name);
     final bRoundNum = bMeta?.roundNumber ?? _extractRoundNumber(b.name);
+    final aStarts = aMeta?.startsAt ?? a.startsAt;
+    final bStarts = bMeta?.startsAt ?? b.startsAt;
+
+    // Upcoming rounds should be shown in chronological order (soonest first)
+    if (a.roundStatus == RoundStatus.upcoming &&
+        b.roundStatus == RoundStatus.upcoming) {
+      final upcomingStartCompare = _compareDatesAsc(aStarts, bStarts);
+      if (upcomingStartCompare != 0) return upcomingStartCompare;
+
+      final upcomingRoundCompare = _compareIntsAsc(aRoundNum, bRoundNum);
+      if (upcomingRoundCompare != 0) return upcomingRoundCompare;
+    }
+
     final roundCompare = _compareIntsDesc(aRoundNum, bRoundNum);
     if (roundCompare != 0) return roundCompare;
 
-    final aStarts = aMeta?.startsAt ?? a.startsAt;
-    final bStarts = bMeta?.startsAt ?? b.startsAt;
     final startCompare = _compareDatesDesc(aStarts, bStarts);
     if (startCompare != 0) return startCompare;
 
@@ -979,11 +991,25 @@ class _GamesAppBarNotifier
     return b.compareTo(a);
   }
 
+  int _compareIntsAsc(int? a, int? b) {
+    if (a == null && b == null) return 0;
+    if (a == null) return 1;
+    if (b == null) return -1;
+    return a.compareTo(b);
+  }
+
   int _compareDatesDesc(DateTime? a, DateTime? b) {
     if (a == null && b == null) return 0;
     if (a == null) return 1;
     if (b == null) return -1;
     return b.compareTo(a);
+  }
+
+  int _compareDatesAsc(DateTime? a, DateTime? b) {
+    if (a == null && b == null) return 0;
+    if (a == null) return 1;
+    if (b == null) return -1;
+    return a.compareTo(b);
   }
 
   int _compareStringsDesc(String? a, String? b) {
