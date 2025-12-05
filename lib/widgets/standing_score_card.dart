@@ -95,7 +95,7 @@ class StandingScoreCard extends ConsumerWidget {
                         cacheHeight: 36,
                       ),
                     ),
-                    SizedBox(width: 2.w),
+                    SizedBox(width: 6.w),
                   ] else if (validCountryCode.isNotEmpty) ...[
                     SizedBox(
                       width: 16.w,
@@ -106,7 +106,7 @@ class StandingScoreCard extends ConsumerWidget {
                         width: 16.w,
                       ),
                     ),
-                    SizedBox(width: 2.w),
+                    SizedBox(width: 6.w),
                   ],
                   Flexible(
                     child: Padding(

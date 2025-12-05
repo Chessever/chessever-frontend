@@ -1,4 +1,5 @@
 // filepath: /Users/p1/Desktop/chessever/lib/screens/favorites/widgets/favorite_card.dart
+import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
 import '../../../utils/app_typography.dart';
 import '../../../theme/app_theme.dart';
@@ -48,7 +49,7 @@ class _FavoriteCardState extends State<FavoriteCard> {
 
           // Country flag
           Container(
-            margin: const EdgeInsets.only(right: 8),
+            margin: EdgeInsets.only(right: 6.w),
             child: getCountryFlag(widget.countryCode),
           ),
 

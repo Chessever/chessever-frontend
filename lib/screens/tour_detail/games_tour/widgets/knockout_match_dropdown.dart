@@ -55,7 +55,8 @@ class _KnockoutMatchDropdownContent extends HookConsumerWidget {
   }
 
   void _scrollToMatch(WidgetRef ref, String matchKey) {
-    final scrollController = ref.read(gamesTourScrollProvider);
+    final scopeId = ref.read(gamesTourScrollScopeProvider);
+    final scrollController = ref.read(gamesTourScrollProvider(scopeId));
     final itemIndex = ref.read(knockoutMatchScrollProvider.notifier).calculateMatchHeaderIndex(matchKey);
 
     if (scrollController.isAttached) {

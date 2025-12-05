@@ -127,6 +127,7 @@ class SearchGamesNotifier extends StateNotifier<AsyncValue<List<Games>>> {
 
   /// Maximum number of top players to fetch games for
   static const int _maxPlayers = 4;
+  static const int _countryFallbackLimit = 40;
 
   /// Load games for top players matching search query
   Future<void> loadGamesForSearch(String query) async {
@@ -201,6 +202,27 @@ class SearchGamesNotifier extends StateNotifier<AsyncValue<List<Games>>> {
       }
 
       if (topPlayers.isEmpty) {
+        // Fallback: try pulling games by country if available
+        final fallbackFed = searchResults.countryFedCode;
+        if (fallbackFed != null && fallbackFed.isNotEmpty) {
+          try {
+            final countryGames =
+                await gameRepository.getGamesByCountryCodePaginated(
+                  countryCode: fallbackFed,
+                  limit: _countryFallbackLimit,
+                );
+            if (countryGames.isNotEmpty) {
+              _allGames.addAll(countryGames);
+              _sortAndDedupGames();
+              state = AsyncValue.data(List<Games>.from(_allGames));
+              _isFetching = false;
+              return;
+            }
+          } catch (e) {
+            debugPrint('[SearchGames] Country fallback failed: $e');
+          }
+        }
+
         state = const AsyncValue.data([]);
         _isFetching = false;
         return;
@@ -232,23 +254,27 @@ class SearchGamesNotifier extends StateNotifier<AsyncValue<List<Games>>> {
         debugPrint('[SearchGames] Error fetching games for ${topPlayer.name}: $e');
       }
 
-      // Sort all games by datetime ascending (earliest first)
-      allGames.sort((a, b) {
-        final aTime = a.lastMoveTime;
-        final bTime = b.lastMoveTime;
-        if (aTime == null && bTime == null) return 0;
-        if (aTime == null) return 1;
-        if (bTime == null) return -1;
-        return aTime.compareTo(bTime);
-      });
+      _allGames.addAll(allGames);
 
-      // Remove duplicates (same game might appear for multiple players)
-      final uniqueGames = <String, Games>{};
-      for (final game in allGames) {
-        uniqueGames[game.id] = game;
+      // If no games found for top player, try country fallback using player fed or search hint
+      if (_allGames.isEmpty) {
+        final fallbackFed =
+            topPlayer.fed?.toUpperCase() ?? searchResults.countryFedCode;
+        if (fallbackFed != null && fallbackFed.isNotEmpty) {
+          try {
+            final countryGames =
+                await gameRepository.getGamesByCountryCodePaginated(
+                  countryCode: fallbackFed,
+                  limit: _countryFallbackLimit,
+                );
+            _allGames.addAll(countryGames);
+          } catch (e) {
+            debugPrint('[SearchGames] Country fallback (player-fed) failed: $e');
+          }
+        }
       }
 
-      _allGames.addAll(uniqueGames.values);
+      _sortAndDedupGames();
       state = AsyncValue.data(List<Games>.from(_allGames));
     } catch (e, stack) {
       debugPrint('[SearchGames] Error loading search games: $e');
@@ -277,6 +303,25 @@ class SearchGamesNotifier extends StateNotifier<AsyncValue<List<Games>>> {
 
   bool get isFetching => _isFetching;
   String get currentQuery => _currentQuery;
+
+  void _sortAndDedupGames() {
+    _allGames.sort((a, b) {
+      final aTime = a.lastMoveTime;
+      final bTime = b.lastMoveTime;
+      if (aTime == null && bTime == null) return 0;
+      if (aTime == null) return 1;
+      if (bTime == null) return -1;
+      return aTime.compareTo(bTime);
+    });
+
+    final uniqueGames = <String, Games>{};
+    for (final game in _allGames) {
+      uniqueGames[game.id] = game;
+    }
+    _allGames
+      ..clear()
+      ..addAll(uniqueGames.values);
+  }
 
   @override
   void dispose() {

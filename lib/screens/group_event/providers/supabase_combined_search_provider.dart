@@ -1,4 +1,7 @@
 import 'package:chessever2/screens/group_event/providers/group_event_screen_provider.dart';
+import 'package:chessever2/screens/group_event/group_event_screen.dart';
+import 'package:chessever2/utils/country_utils.dart';
+import 'package:country_picker/country_picker.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.dart';
@@ -6,6 +9,7 @@ import 'package:chessever2/repository/supabase/group_broadcast/group_tour_reposi
 import 'package:chessever2/widgets/search/enhanced_group_broadcast_local_storage.dart';
 import 'package:chessever2/widgets/search/search_result_model.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
+import 'package:chessever2/repository/local_storage/group_broadcast/group_broadcast_local_storage.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 final supabaseCombinedSearchProvider =
@@ -13,20 +17,47 @@ final supabaseCombinedSearchProvider =
       (ref, query) async {
         if (query.trim().isEmpty) return EnhancedSearchResult.empty();
 
-        final broadcasts = await ref
-            .read(groupBroadcastRepositoryProvider)
-            .searchGroupBroadcastsFromSupabase(query);
+        final trimmedQuery = query.trim();
+        final detectedCountryIso2 = _detectCountryIsoCode(trimmedQuery);
+        final detectedFideCode =
+            detectedCountryIso2 != null ? CountryUtils.toFideCode(detectedCountryIso2) : null;
+        final isCountrySearch = detectedCountryIso2 != null && detectedFideCode != null;
+        final countryIso2 = detectedCountryIso2;
+        final fideCountryCode = detectedFideCode;
+
+        // Supabase RPC search can get slow on very short queries (e.g. "az").
+        // For country-style queries we skip/short-circuit the RPC to avoid timeouts.
+        List<GroupBroadcast> broadcasts = [];
+        if (!isCountrySearch || trimmedQuery.length >= 3) {
+          try {
+            broadcasts = await ref
+                .read(groupBroadcastRepositoryProvider)
+                .searchGroupBroadcastsFromSupabase(trimmedQuery)
+                .timeout(const Duration(seconds: 6), onTimeout: () => []);
+          } catch (_) {
+            broadcasts = [];
+          }
+        }
+
+        // Country-aware player fetch (directly from chess_players)
+        final countryPlayerResults =
+            isCountrySearch
+                ? await _fetchTopCountryPlayers(
+                    fideCode: fideCountryCode!,
+                    countryIso2: countryIso2!,
+                  )
+                : <SearchResult>[];
         final now = DateTime.now();
 
         int delta(GroupBroadcast b) =>
             (b.dateStart?.difference(now).abs().inSeconds ?? 999999).toInt();
 
-        String _key(String s) => s.toLowerCase().trim();
+        String key(String s) => s.toLowerCase().trim();
 
         broadcasts.sort((a, b) {
-          final keyA = _key(a.name);
-          final keyB = _key(b.name);
-          final qLower = query.trim().toLowerCase();
+          final keyA = key(a.name);
+          final keyB = key(b.name);
+          final qLower = trimmedQuery.toLowerCase();
 
           /* 1. exact */
           final aExact = keyA == qLower;
@@ -56,6 +87,11 @@ final supabaseCombinedSearchProvider =
         final playerResults = <SearchResult>[];
         final allPlayers = <SearchPlayer>[];
         final liveIds = ref.read(liveBroadcastIdsProvider);
+
+        // Fallback/local cache search to stay resilient when Supabase returns little/slow
+        final localSearch = await ref
+            .read(groupBroadcastLocalStorage(GroupEventCategory.current))
+            .searchWithScoring(trimmedQuery, liveIds);
 
         for (final gb in broadcasts) {
           final tourEventModel = GroupEventCardModel.fromGroupBroadcast(
@@ -98,11 +134,11 @@ final supabaseCombinedSearchProvider =
         };
 
         int deltaPlayer(SearchResult r) {
-          final b = broadcastById[r.tournament.id]!;
-          return (b.dateStart?.difference(now).abs().inSeconds ?? 999999);
+          final b = broadcastById[r.tournament.id];
+          return (b?.dateStart?.difference(now).abs().inSeconds ?? 999999);
         }
 
-        final qLower = query.trim().toLowerCase();
+        final qLower = trimmedQuery.toLowerCase();
 
         // Smart matching function that handles word reordering
         bool matchesFlexibly(String query, String playerName) {
@@ -138,6 +174,10 @@ final supabaseCombinedSearchProvider =
         }
 
         playerResults.retainWhere((r) {
+          final fed = r.player?.fed?.toUpperCase();
+          if (isCountrySearch && fed == fideCountryCode) {
+            return true; // Keep country matches even if name doesn't include query text
+          }
           return matchesFlexibly(qLower, r.matchedText);
         });
 
@@ -201,6 +241,66 @@ final supabaseCombinedSearchProvider =
           }
         }
 
+        // Merge in country player results (dedupe by name, prefer higher Elo)
+        if (countryPlayerResults.isNotEmpty) {
+          final byName = <String, SearchResult>{
+            for (final r in playerResults)
+              (r.player?.name.toLowerCase() ?? r.matchedText.toLowerCase()): r,
+          };
+
+          for (final countryResult in countryPlayerResults) {
+            final keyName =
+                countryResult.player?.name.toLowerCase() ??
+                countryResult.matchedText.toLowerCase();
+            final existing = byName[keyName];
+            if (existing == null) {
+              byName[keyName] = countryResult;
+            } else {
+              final existingElo = existing.player?.rating ?? 0;
+              final newElo = countryResult.player?.rating ?? 0;
+              if (newElo > existingElo) {
+                byName[keyName] = countryResult;
+              }
+            }
+          }
+          playerResults
+            ..clear()
+            ..addAll(byName.values);
+        }
+
+        // Merge resilient local-search results (helps short/typo queries)
+        if (localSearch.tournamentResults.isNotEmpty) {
+          final existingIds = {for (final r in tournamentResults) r.tournament.id};
+          for (final t in localSearch.tournamentResults) {
+            if (!existingIds.contains(t.tournament.id)) {
+              tournamentResults.add(t);
+            }
+          }
+        }
+
+        if (localSearch.playerResults.isNotEmpty) {
+          final byName = <String, SearchResult>{
+            for (final r in playerResults)
+              (r.player?.name.toLowerCase() ?? r.matchedText.toLowerCase()): r,
+          };
+          for (final r in localSearch.playerResults) {
+            final keyName = r.player?.name.toLowerCase() ?? r.matchedText.toLowerCase();
+            final existing = byName[keyName];
+            if (existing == null) {
+              byName[keyName] = r;
+            } else {
+              final existingElo = existing.player?.rating ?? 0;
+              final newElo = r.player?.rating ?? 0;
+              if (newElo > existingElo) {
+                byName[keyName] = r;
+              }
+            }
+          }
+          playerResults
+            ..clear()
+            ..addAll(byName.values);
+        }
+
         // Score how well a player name matches the query
         int matchScore(String playerName, String query) {
           String normalize(String s) => s
@@ -235,9 +335,16 @@ final supabaseCombinedSearchProvider =
         }
 
         playerResults.sort((a, b) {
+          // 0. Country match boost (when searching by country)
+          if (isCountrySearch) {
+            final aMatch = a.player?.fed?.toUpperCase() == fideCountryCode;
+            final bMatch = b.player?.fed?.toUpperCase() == fideCountryCode;
+            if (aMatch != bMatch) return bMatch ? -1 : 1;
+          }
+
           // 1. Match score (higher = better match)
-          final aScore = matchScore(a.matchedText, query);
-          final bScore = matchScore(b.matchedText, query);
+          final aScore = matchScore(a.matchedText, trimmedQuery);
+          final bScore = matchScore(b.matchedText, trimmedQuery);
           if (aScore != bScore) return bScore.compareTo(aScore);
 
           // 2. ELO (higher first)
@@ -255,10 +362,17 @@ final supabaseCombinedSearchProvider =
         if (playerResults.length > 20) {
           playerResults.removeRange(20, playerResults.length);
         }
+        // Append country-based players to allPlayers list for completeness
+        for (final result in countryPlayerResults) {
+          if (result.player != null) {
+            allPlayers.add(result.player!);
+          }
+        }
         return EnhancedSearchResult(
           tournamentResults: tournamentResults,
           playerResults: playerResults,
           allPlayers: allPlayers,
+          countryFedCode: fideCountryCode,
         );
       },
     );
@@ -276,14 +390,111 @@ bool _isPlayerName(String searchTerm, String tournamentName) {
     'festival',
     'open',
     'classic',
-  ].any((w) => t.contains(w)))
+  ].any((w) => t.contains(w))) {
     return false;
+  }
 
   final words = searchTerm.trim().split(' ');
   if (words.length == 1 || (words.length >= 2 && words.length <= 4)) {
     return words.every(
-      (w) => w.isNotEmpty && w[0] == w[0].toUpperCase() && w.length >= 1,
+      (w) => w.isNotEmpty && w[0] == w[0].toUpperCase(),
     );
   }
   return false;
+}
+
+/// Detects ISO-2 country code from a user query.
+/// Supports ISO2/ISO3/FIDE codes and country names.
+String? _detectCountryIsoCode(String query) {
+  final trimmed = query.trim();
+  if (trimmed.isEmpty) return null;
+
+  final upper = trimmed.toUpperCase();
+  final countryService = CountryService();
+
+  // Direct code match (ISO2/ISO3)
+  final byCode = countryService.findByCode(upper);
+  if (byCode != null) return byCode.countryCode;
+
+  // FIDE code -> ISO2
+  final isoFromFide = CountryUtils.toIso2Code(upper);
+  if (isoFromFide.length == 2 &&
+      countryService.findByCode(isoFromFide) != null) {
+    return isoFromFide;
+  }
+
+  // Name match
+  final byName = countryService.findByName(trimmed);
+  if (byName != null) return byName.countryCode;
+
+  // Try words split
+  for (final part in trimmed.split(RegExp(r'[ ,]+'))) {
+    final byPart = countryService.findByName(part);
+    if (byPart != null) return byPart.countryCode;
+  }
+
+  return null;
+}
+
+/// Fetches top players for a country directly from Supabase chess_players.
+Future<List<SearchResult>> _fetchTopCountryPlayers({
+  required String fideCode,
+  required String countryIso2,
+  int limit = 30,
+}) async {
+  try {
+    final supabase = Supabase.instance.client;
+    final rows = await supabase
+        .from('chess_players')
+        .select('fideid, name, title, rating, country')
+        .eq('country', fideCode)
+        .gt('rating', 0)
+        .lt('rating', 3300)
+        .order('rating', ascending: false)
+        .limit(limit);
+
+    final country =
+        CountryService().findByCode(countryIso2)?.name ?? fideCode;
+    final placeholderTournament = GroupEventCardModel(
+      id: 'country_$fideCode',
+      title: '$country players',
+      dates: '',
+      maxAvgElo: 0,
+      timeUntilStart: '',
+      tourEventCategory: TourEventCategory.completed,
+      timeControl: 'Standard',
+      endDate: null,
+      startDate: null,
+      location: country,
+      searchTerms: const [],
+    );
+
+    return (rows as List)
+        .map((row) {
+          final fideId = row['fideid'] as int?;
+          final name = row['name'] as String?;
+          if (name == null || name.isEmpty) return null;
+          final player = SearchPlayer(
+            id: 'country_${fideId ?? name.hashCode}',
+            name: name,
+            title: row['title'] as String?,
+            rating: (row['rating'] as num?)?.toInt(),
+            fideId: fideId,
+            fed: row['country'] as String?,
+            tournamentId: placeholderTournament.id,
+            tournamentName: placeholderTournament.title,
+          );
+          return SearchResult(
+            tournament: placeholderTournament,
+            score: 95.0,
+            matchedText: name,
+            type: SearchResultType.player,
+            player: player,
+          );
+        })
+        .whereType<SearchResult>()
+        .toList();
+  } catch (_) {
+    return [];
+  }
 }

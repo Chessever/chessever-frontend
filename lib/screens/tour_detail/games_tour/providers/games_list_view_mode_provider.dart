@@ -1,11 +1,15 @@
+import 'package:chessever2/providers/board_settings_provider_new.dart';
 import 'package:flutter/services.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 enum GamesListViewMode { gamesCard, chessBoardGrid, chessBoard }
 
-final gamesListViewModeProvider = StateProvider<GamesListViewMode>(
-  (ref) => GamesListViewMode.gamesCard,
-);
+/// Provider that returns the persisted games list view mode from board settings
+final gamesListViewModeProvider = Provider<GamesListViewMode>((ref) {
+  final boardSettings = ref.watch(boardSettingsProviderNew);
+  final index = boardSettings.valueOrNull?.gamesListViewModeIndex ?? 0;
+  return GamesListViewMode.values[index.clamp(0, GamesListViewMode.values.length - 1)];
+});
 
 final gamesListViewModeSwitcher = AutoDisposeProvider(
   (ref) => _GamesListViewModeController(ref),
@@ -33,6 +37,7 @@ class _GamesListViewModeController {
         break;
     }
 
-    _ref.read(gamesListViewModeProvider.notifier).state = newMode;
+    // Persist the new mode to Supabase via board settings
+    _ref.read(boardSettingsProviderNew.notifier).setGamesListViewModeIndex(newMode.index);
   }
 }

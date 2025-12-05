@@ -13,13 +13,17 @@ import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_mode
 import 'package:chessever2/screens/tour_detail/games_tour/providers/knockout_tournament_state_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
 
+/// Scope identifier to allow multiple tournament detail screens to coexist
+/// without sharing the same ScrollablePositionedList controller.
+final gamesTourScrollScopeProvider = Provider<String>((_) => 'global_scroll_scope');
+
 final gamesTourScrollProvider =
-    StateNotifierProvider<_GamesTourScrollProvider, ItemScrollController>(
-      (ref) => _GamesTourScrollProvider(ref),
+    StateNotifierProvider.autoDispose.family<_GamesTourScrollProvider, ItemScrollController, String>(
+      (ref, scopeId) => _GamesTourScrollProvider(ref, scopeId),
     );
 
 class _GamesTourScrollProvider extends StateNotifier<ItemScrollController> {
-  _GamesTourScrollProvider(this._ref) : super(ItemScrollController()) {
+  _GamesTourScrollProvider(this._ref, this._scopeId) : super(ItemScrollController()) {
     _itemPositionsListener = ItemPositionsListener.create();
     _itemPositionsListener.itemPositions.addListener(_onItemPositionsChanged);
 
@@ -31,6 +35,9 @@ class _GamesTourScrollProvider extends StateNotifier<ItemScrollController> {
   }
 
   final Ref _ref;
+  // Scope identifier to keep controllers unique per tournament detail instance
+  // ignore: unused_field
+  final String _scopeId;
   late ItemPositionsListener _itemPositionsListener;
   Timer? _debounceTimer;
   String? _lastVisibleRoundId;

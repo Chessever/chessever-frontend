@@ -57,6 +57,7 @@ import 'package:chessever2/utils/png_asset.dart';
 import 'package:chessever2/utils/url_launcher_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.dart';
+import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
 import 'package:motor/motor.dart';
 
 /// Spring-based curve that mimics iOS snappy motion
@@ -838,7 +839,10 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
         );
         break;
       case ChessboardView.tour:
-        gamesAsync = ref.watch(gamesTourScreenProvider);
+        // Use a non-listening read here to avoid triggering rebuilds of the
+        // tournament list/app bar while this board is building (which caused
+        // setState during build exceptions). We still get the latest snapshot.
+        gamesAsync = ref.read(gamesTourScreenProvider);
         break;
       case ChessboardView.countryman:
         gamesAsync = ref.watch(countrymanGamesTourScreenProvider);
@@ -1045,10 +1049,16 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
           Navigator.of(context).pop(_lastViewedIndex);
         }
       },
-      child: Scaffold(
-        resizeToAvoidBottomInset: false,
-        // REMOVED: RawGestureDetector was blocking PageView swipes
-        body: PageView.builder(
+      child: AnnotatedRegion<SystemUiOverlayStyle>(
+        value: SystemUiOverlayStyle.light.copyWith(
+          statusBarColor: Colors.black,
+          systemNavigationBarColor: Colors.black,
+        ),
+        child: Scaffold(
+          backgroundColor: Colors.black,
+          resizeToAvoidBottomInset: false,
+          // REMOVED: RawGestureDetector was blocking PageView swipes
+          body: PageView.builder(
           padEnds: true,
           allowImplicitScrolling: true,
           // PageView swiping enabled in all modes
@@ -1120,6 +1130,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
               return SizedBox.shrink();
             }
           },
+        ),
         ),
       ),
     );
@@ -1491,12 +1502,19 @@ class _AppBarState extends ConsumerState<_AppBar> {
     }
   }
 
-  void _showEventInfoSheet(BuildContext context, WidgetRef ref) {
+  void _showEventInfoSheet(
+    BuildContext context,
+    WidgetRef ref,
+    String? pgn,
+  ) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => _EventInfoSheet(game: widget.game),
+      builder: (context) => _EventInfoSheet(
+        game: widget.game,
+        pgn: pgn,
+      ),
     );
   }
 
@@ -1509,6 +1527,7 @@ class _AppBarState extends ConsumerState<_AppBar> {
     );
     final boardState = ref.watch(chessBoardScreenProviderNew(params));
     final state = boardState.valueOrNull;
+    final infoSheetPgn = state?.pgnData ?? widget.game.pgn;
     final analysisGame = state?.analysisState.game;
     final hasCustomVariations = _gameHasCustomVariations(analysisGame);
     final hasComments = state?.variationComments.isNotEmpty ?? false;
@@ -1516,6 +1535,8 @@ class _AppBarState extends ConsumerState<_AppBar> {
 
     return AppBar(
       elevation: 0,
+      backgroundColor: Colors.black,
+      surfaceTintColor: Colors.black,
       leadingWidth: 44.sp,
       titleSpacing: 4.sp,
       leading: IconButton(
@@ -1548,7 +1569,11 @@ class _AppBarState extends ConsumerState<_AppBar> {
               size: 20.sp,
             ),
             tooltip: 'Event info',
-            onPressed: widget.isLoading ? null : () => _showEventInfoSheet(context, ref),
+            onPressed: widget.isLoading ? null : () => _showEventInfoSheet(
+              context,
+              ref,
+              infoSheetPgn,
+            ),
           ),
         // Save Analysis button - only shown when user has made changes
         if (hasChanges)
@@ -2107,10 +2132,10 @@ class _GameDropdownOverlay extends StatelessWidget {
                   width: dropdownWidth,
                   constraints: BoxConstraints(maxHeight: availableHeight.clamp(180.0, 380.0)),
                   decoration: BoxDecoration(
-                    color: const Color(0xF51A1A1C),
+                    color: const Color(0xFF1A1A1A),
                     borderRadius: BorderRadius.circular(16.br),
                     border: Border.all(
-                      color: kPrimaryColor.withValues(alpha: 0.25),
+                      color: kWhiteColor.withValues(alpha: 0.08),
                       width: 1.0,
                     ),
                   ),
@@ -4058,56 +4083,128 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
 
     Widget child;
     if (token.type == _NotationTokenType.variationPlaceholder) {
-      child = Container(
-        padding: EdgeInsets.symmetric(horizontal: 6.sp, vertical: 2.sp),
-        decoration: BoxDecoration(
-          color: depthColor.withValues(alpha: 0.12),
-          borderRadius: BorderRadius.circular(4.sp),
-        ),
-        child: Text(
-          token.text,
-          style: AppTypography.textXsMedium.copyWith(
-            color: depthColor.withValues(alpha: 0.85),
-            fontStyle: FontStyle.italic,
+      // Collapsed variation placeholder - tappable to expand
+      child = GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () {
+          HapticFeedback.selectionClick();
+          _toggleVariationCollapse(token);
+        },
+        onLongPress: () {
+          _showVariationActions(token);
+        },
+        child: Container(
+          padding: EdgeInsets.symmetric(horizontal: 8.sp, vertical: 4.sp),
+          decoration: BoxDecoration(
+            color: depthColor.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(6.sp),
+            border: Border.all(
+              color: depthColor.withValues(alpha: 0.25),
+              width: 1,
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Expand icon
+              Icon(
+                Icons.unfold_more_rounded,
+                size: 12.sp,
+                color: depthColor.withValues(alpha: 0.7),
+              ),
+              SizedBox(width: 4.sp),
+              Text(
+                token.text,
+                style: AppTypography.textXsMedium.copyWith(
+                  color: depthColor.withValues(alpha: 0.85),
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
+            ],
           ),
         ),
       );
+      // Return early - already has gesture handling
+      return child;
     } else if (token.type == _NotationTokenType.openParen && token.variation != null) {
       // Opening paren with +/- toggle button
       final isCollapsed = token.isCollapsed;
-      child = Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // Minimal +/- toggle button
-          Container(
-            width: 14.sp,
-            height: 14.sp,
-            margin: EdgeInsets.only(right: 2.sp),
-            decoration: BoxDecoration(
-              color: depthColor.withValues(alpha: 0.15),
-              borderRadius: BorderRadius.circular(3.sp),
-            ),
-            child: Center(
-              child: Text(
-                isCollapsed ? '+' : '−',
-                style: TextStyle(
-                  fontSize: 11.sp,
-                  fontWeight: FontWeight.w600,
-                  color: depthColor.withValues(alpha: 0.8),
-                  height: 1,
+      child = GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () {
+          HapticFeedback.selectionClick();
+          _toggleVariationCollapse(token);
+        },
+        onLongPress: () {
+          _showVariationActions(token);
+        },
+        child: Container(
+          padding: EdgeInsets.symmetric(horizontal: 4.sp, vertical: 2.sp),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Toggle button with clear visual affordance
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 150),
+                curve: Curves.easeOutCubic,
+                width: 16.sp,
+                height: 16.sp,
+                margin: EdgeInsets.only(right: 3.sp),
+                decoration: BoxDecoration(
+                  color: isCollapsed
+                      ? depthColor.withValues(alpha: 0.2)
+                      : depthColor.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(4.sp),
+                  border: Border.all(
+                    color: depthColor.withValues(alpha: isCollapsed ? 0.4 : 0.25),
+                    width: 1,
+                  ),
+                ),
+                child: Center(
+                  child: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 150),
+                    child: Icon(
+                      isCollapsed ? Icons.add_rounded : Icons.remove_rounded,
+                      key: ValueKey(isCollapsed),
+                      size: 12.sp,
+                      color: depthColor.withValues(alpha: 0.9),
+                    ),
+                  ),
                 ),
               ),
-            ),
+              Text(
+                token.text,
+                style: AppTypography.textXsMedium.copyWith(
+                  color: depthColor.withValues(alpha: 0.85),
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
+            ],
           ),
-          Text(
+        ),
+      );
+      // Return early - already has gesture handling
+      return child;
+    } else if (token.type == _NotationTokenType.closeParen && token.variation != null) {
+      // Closing paren - tappable to collapse
+      child = GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () {
+          HapticFeedback.selectionClick();
+          _toggleVariationCollapse(token);
+        },
+        child: Padding(
+          padding: EdgeInsets.symmetric(horizontal: 2.sp, vertical: 2.sp),
+          child: Text(
             token.text,
             style: AppTypography.textXsMedium.copyWith(
               color: depthColor.withValues(alpha: 0.85),
               fontStyle: FontStyle.italic,
             ),
           ),
-        ],
+        ),
       );
+      return child;
     } else {
       child = Text(
         token.text,
@@ -4286,13 +4383,29 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
 
   void _toggleVariationCollapse(_NotationDisplayToken token) {
     final variation = token.variation;
-    if (variation == null || token.isForcedOpen) {
+    if (variation == null) {
       HapticFeedback.lightImpact();
       return;
     }
 
     final variationId = variation.id;
     final defaultCollapsed = token.defaultsToCollapsed;
+    final isCurrentlyCollapsed = token.isCollapsed;
+
+    // If we're trying to collapse a forced-open variation (user is inside it),
+    // first navigate to the parent move, then collapse
+    if (token.isForcedOpen && !isCurrentlyCollapsed) {
+      // Navigate to the parent move (the move that has this variation)
+      final parentPointer = variation.parentPointer;
+      if (parentPointer.isNotEmpty) {
+        final params = ChessBoardProviderParams(
+          game: widget.game,
+          index: widget.index,
+        );
+        ref.read(chessBoardScreenProviderNew(params).notifier)
+            .goToMovePointer(parentPointer);
+      }
+    }
 
     setState(() {
       if (defaultCollapsed) {
@@ -7834,18 +7947,19 @@ final _tourInfoByIdProvider = FutureProvider.autoDispose.family<AboutTourModel?,
 /// Event info sheet - displays tournament/event details
 class _EventInfoSheet extends ConsumerWidget {
   final GamesTourModel game;
+  final String? pgn;
 
-  const _EventInfoSheet({required this.game});
+  const _EventInfoSheet({required this.game, this.pgn});
 
   /// Parse opening info (ECO code and Opening name) from PGN headers
   ({String? eco, String? opening}) _parseOpeningFromPgn() {
-    final pgn = game.pgn;
-    if (pgn == null || pgn.isEmpty) {
+    final pgnString = pgn ?? game.pgn;
+    if (pgnString == null || pgnString.isEmpty) {
       return (eco: null, opening: null);
     }
 
     try {
-      final pgnGame = PgnGame.parsePgn(pgn);
+      final pgnGame = PgnGame.parsePgn(pgnString);
       final eco = pgnGame.headers['ECO'];
       final opening = pgnGame.headers['Opening'];
       return (eco: eco, opening: opening);
@@ -7854,12 +7968,12 @@ class _EventInfoSheet extends ConsumerWidget {
       String? eco;
       String? opening;
 
-      final ecoMatch = RegExp(r'\[ECO\s+"([^"]+)"\]').firstMatch(pgn);
+      final ecoMatch = RegExp(r'\[ECO\s+"([^"]+)"\]').firstMatch(pgnString);
       if (ecoMatch != null) {
         eco = ecoMatch.group(1);
       }
 
-      final openingMatch = RegExp(r'\[Opening\s+"([^"]+)"\]').firstMatch(pgn);
+      final openingMatch = RegExp(r'\[Opening\s+"([^"]+)"\]').firstMatch(pgnString);
       if (openingMatch != null) {
         opening = openingMatch.group(1);
       }
@@ -7869,23 +7983,49 @@ class _EventInfoSheet extends ConsumerWidget {
   }
 
   /// Navigate to the tournament detail screen
-  void _navigateToTournament(BuildContext context, WidgetRef ref, AboutTourModel aboutModel) {
-    final groupBroadcast = GroupBroadcast(
-      id: aboutModel.id,
-      createdAt: DateTime.now(),
-      name: aboutModel.name,
-      search: [aboutModel.name],
-      timeControl: aboutModel.timeControl.isNotEmpty ? aboutModel.timeControl : null,
-      maxAvgElo: null,
-      dateStart: null,
-      dateEnd: null,
-    );
+  Future<void> _navigateToTournament(
+    BuildContext context,
+    WidgetRef ref,
+    AboutTourModel aboutModel,
+  ) async {
+    final navigator = Navigator.of(context);
+
+    final targetId =
+        aboutModel.groupBroadcastId?.isNotEmpty == true
+            ? aboutModel.groupBroadcastId!
+            : (aboutModel.id.isNotEmpty ? aboutModel.id : game.tourId);
+
+    if (targetId.isEmpty) {
+      return;
+    }
+
+    GroupBroadcast groupBroadcast;
+    try {
+      groupBroadcast = await ref
+          .read(groupBroadcastRepositoryProvider)
+          .getGroupBroadcastById(targetId);
+    } catch (e) {
+      debugPrint('Failed to fetch group broadcast for $targetId: $e');
+      groupBroadcast = GroupBroadcast(
+        id: targetId,
+        createdAt: DateTime.now(),
+        name: aboutModel.name,
+        search: [aboutModel.name],
+        timeControl:
+            aboutModel.timeControl.isNotEmpty ? aboutModel.timeControl : null,
+        maxAvgElo: null,
+        dateStart: null,
+        dateEnd: null,
+      );
+    }
+
+    if (!context.mounted) return;
 
     ref.read(selectedBroadcastModelProvider.notifier).state = groupBroadcast;
 
-    Navigator.pop(context); // Close the sheet
+    navigator.pop(); // Close the sheet
     if (ref.read(selectedBroadcastModelProvider) != null) {
-      Navigator.pushNamed(context, '/tournament_detail_screen');
+      navigator.pushNamed('/tournament_detail_screen');
     }
   }
 

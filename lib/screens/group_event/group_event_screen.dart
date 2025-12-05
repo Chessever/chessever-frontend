@@ -8,7 +8,6 @@ import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_
 import 'package:chessever2/screens/group_event/widget/filter_popup/group_event_filter_provider.dart';
 import 'package:chessever2/screens/group_event/widget/for_you_games_widget.dart';
 import 'package:chessever2/screens/group_event/widget/search_results_widget.dart';
-import 'package:chessever2/screens/home/home_screen.dart';
 import 'package:chessever2/screens/home/home_screen_provider.dart';
 import 'package:chessever2/screens/group_event/providers/group_event_screen_provider.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
@@ -110,6 +109,7 @@ class GroupEventScreen extends HookConsumerWidget {
             searchController.clear();
           }
           FocusScope.of(context).unfocus();
+          // ignore: unused_result
           ref.refresh(groupEventScreenProvider);
         }
       });
@@ -189,6 +189,12 @@ class GroupEventScreen extends HookConsumerWidget {
                       ref.read(searchGamesProvider.notifier).loadGamesForSearch(value);
                       // Switch to search tab immediately when typing
                       ref.read(selectedGroupCategoryProvider.notifier).state = GroupEventCategory.search;
+                    } else {
+                      // Mirror clear icon behavior when user deletes text manually
+                      ref.read(searchGamesProvider.notifier).clearSearch();
+                      ref.read(selectedGroupCategoryProvider.notifier).state = GroupEventCategory.current;
+                      // ignore: unused_result
+                      ref.refresh(groupEventScreenProvider);
                     }
                   },
                   onTournamentSelected:
@@ -210,6 +216,7 @@ class GroupEventScreen extends HookConsumerWidget {
                   onFilterTap:
                       () => showDialog(
                         context: context,
+                        // ignore: deprecated_member_use
                         barrierColor: kBlackColor.withOpacity(0.5),
                         builder:
                             (cxt) => FilterPopup(
@@ -236,6 +243,7 @@ class GroupEventScreen extends HookConsumerWidget {
                       ),
                   onProfileTap: () => Scaffold.maybeOf(context)?.openDrawer(),
                   onClearSearchField: () {
+                    // ignore: unused_result
                     ref.refresh(groupEventScreenProvider);
                     // Clear search tab state and switch back if on search tab
                     ref.read(searchTabQueryProvider.notifier).state = '';

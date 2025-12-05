@@ -28,6 +28,7 @@ class BoardSettingsNew {
     this.soundEnabled = true,
     this.chatEnabled = true,
     this.pieceStyleIndex = 0,
+    this.gamesListViewModeIndex = 0,
   });
 
   final int boardColorIndex;
@@ -35,6 +36,8 @@ class BoardSettingsNew {
   final bool soundEnabled;
   final bool chatEnabled;
   final int pieceStyleIndex;
+  /// Games list view mode: 0=gamesCard, 1=chessBoardGrid, 2=chessBoard
+  final int gamesListViewModeIndex;
 
   BoardColor get boardColor {
     switch (boardColorIndex) {
@@ -93,6 +96,7 @@ class BoardSettingsNew {
     bool? soundEnabled,
     bool? chatEnabled,
     int? pieceStyleIndex,
+    int? gamesListViewModeIndex,
   }) {
     return BoardSettingsNew(
       boardColorIndex: boardColorIndex ?? this.boardColorIndex,
@@ -100,6 +104,7 @@ class BoardSettingsNew {
       soundEnabled: soundEnabled ?? this.soundEnabled,
       chatEnabled: chatEnabled ?? this.chatEnabled,
       pieceStyleIndex: pieceStyleIndex ?? this.pieceStyleIndex,
+      gamesListViewModeIndex: gamesListViewModeIndex ?? this.gamesListViewModeIndex,
     );
   }
 }
@@ -159,6 +164,7 @@ class BoardSettingsNotifierNew extends AsyncNotifier<BoardSettingsNew> {
         soundEnabled: model.soundEnabled,
         chatEnabled: model.chatEnabled,
         pieceStyleIndex: model.pieceStyleIndex,
+        gamesListViewModeIndex: model.gamesListViewModeIndex,
       );
 
       // Cache locally
@@ -238,6 +244,16 @@ class BoardSettingsNotifierNew extends AsyncNotifier<BoardSettingsNew> {
     await _persist(newSettings);
   }
 
+  /// Set games list view mode index (0=gamesCard, 1=chessBoardGrid, 2=chessBoard)
+  Future<void> setGamesListViewModeIndex(int index) async {
+    final clamped = index.clamp(0, 2);
+    final currentState = state.valueOrNull ?? const BoardSettingsNew();
+    final newSettings = currentState.copyWith(gamesListViewModeIndex: clamped);
+    debugPrint('📋 BoardSettings: Games list view mode changed to index=$clamped');
+    state = AsyncValue.data(newSettings);
+    await _persist(newSettings);
+  }
+
   /// Refresh settings from Supabase
   Future<void> refresh() async {
     state = const AsyncValue.loading();
@@ -292,6 +308,7 @@ class BoardSettingsNotifierNew extends AsyncNotifier<BoardSettingsNew> {
           'sound_enabled': settings.soundEnabled,
           'chat_enabled': settings.chatEnabled,
           'piece_style_index': settings.pieceStyleIndex,
+          'games_list_view_mode_index': settings.gamesListViewModeIndex,
           'updated_at': DateTime.now().toUtc().toIso8601String(),
         },
         onConflict: 'user_id', // Specify conflict column
@@ -312,6 +329,7 @@ class BoardSettingsNotifierNew extends AsyncNotifier<BoardSettingsNew> {
         'soundEnabled': settings.soundEnabled,
         'chatEnabled': settings.chatEnabled,
         'pieceStyleIndex': settings.pieceStyleIndex,
+        'gamesListViewModeIndex': settings.gamesListViewModeIndex,
       });
       await prefs.setString(_cacheKey, json);
       debugPrint('[BoardSettings] Cached settings locally');
@@ -336,6 +354,7 @@ class BoardSettingsNotifierNew extends AsyncNotifier<BoardSettingsNew> {
         soundEnabled: map['soundEnabled'] as bool? ?? true,
         chatEnabled: map['chatEnabled'] as bool? ?? true,
         pieceStyleIndex: map['pieceStyleIndex'] as int? ?? 0,
+        gamesListViewModeIndex: map['gamesListViewModeIndex'] as int? ?? 0,
       );
       debugPrint('[BoardSettings] Loaded settings from cache');
       return settings;

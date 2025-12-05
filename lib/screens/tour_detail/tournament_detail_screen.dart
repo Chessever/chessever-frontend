@@ -33,6 +33,7 @@ class TournamentDetailScreen extends ConsumerStatefulWidget {
 class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
     with RouteAware {
   late PageController pageController;
+  late final String _scrollScopeId;
 
   @override
   void didPush() {
@@ -84,6 +85,7 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
       ref.read(selectedTourModeProvider),
     );
     pageController = PageController(initialPage: initialPage);
+    _scrollScopeId = 'games_scroll_${UniqueKey()}';
     super.initState();
   }
 
@@ -97,14 +99,13 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
     try {
       ref.invalidate(selectedTourModeProvider);
       ref.invalidate(gamesTourProvider);
-      ref.invalidate(selectedBroadcastModelProvider);
       ref.invalidate(userSelectedRoundProvider);
       ref.invalidate(tourDetailScreenProvider);
       ref.invalidate(gamesAppBarProvider);
       ref.invalidate(gamesTourScreenProvider);
       ref.invalidate(playerTourScreenProvider);
       ref.invalidate(searchQueryProvider);
-      ref.invalidate(gamesTourScrollProvider);
+      // Scroll provider is scoped per screen; it will dispose with the ProviderScope below.
     } catch (e) {
       // Ignore errors during cleanup
       print('Error during provider cleanup: $e');
@@ -121,41 +122,46 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
   Widget build(BuildContext context) {
     final selectedTourMode = ref.watch(selectedTourModeProvider);
     final tourDetailAsync = ref.watch(tourDetailScreenProvider);
-    return ScreenWrapper(
-      child: Scaffold(
-        body: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            SizedBox(height: MediaQuery.of(context).viewPadding.top + 4.h),
-            tourDetailAsync.when(
-              data: (data) => _buildSuccessAppBar(data, selectedTourMode),
-              error: (error, stackTrace) => _buildErrorAppBar(error),
-              loading: () => const _LoadingAppBarWithTitle(title: "Chessever"),
-            ),
-            Expanded(
-              child: PageView.builder(
-                controller: pageController,
-                itemCount: 3,
-                onPageChanged: _handlePageChanged,
-                itemBuilder: (context, index) {
-                  if (index == 0) {
-                    return AboutTourScreen();
-                  } else if (index == 1) {
-                    return GamesTourScreen();
-                  } else if (index == 2) {
-                    return PlayerTourScreen();
-                  } else {
-                    return Center(
-                      child: Text(
-                        'Invalid page index: $index',
-                        style: TextStyle(color: kWhiteColor),
-                      ),
-                    );
-                  }
-                },
+    return ProviderScope(
+      overrides: [
+        gamesTourScrollScopeProvider.overrideWithValue(_scrollScopeId),
+      ],
+      child: ScreenWrapper(
+        child: Scaffold(
+          body: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(height: MediaQuery.of(context).viewPadding.top + 4.h),
+              tourDetailAsync.when(
+                data: (data) => _buildSuccessAppBar(data, selectedTourMode),
+                error: (error, stackTrace) => _buildErrorAppBar(error),
+                loading: () => const _LoadingAppBarWithTitle(title: "Chessever"),
               ),
-            ),
-          ],
+              Expanded(
+                child: PageView.builder(
+                  controller: pageController,
+                  itemCount: 3,
+                  onPageChanged: _handlePageChanged,
+                  itemBuilder: (context, index) {
+                    if (index == 0) {
+                      return AboutTourScreen();
+                    } else if (index == 1) {
+                      return GamesTourScreen();
+                    } else if (index == 2) {
+                      return PlayerTourScreen();
+                    } else {
+                      return Center(
+                        child: Text(
+                          'Invalid page index: $index',
+                          style: TextStyle(color: kWhiteColor),
+                        ),
+                      );
+                    }
+                  },
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
