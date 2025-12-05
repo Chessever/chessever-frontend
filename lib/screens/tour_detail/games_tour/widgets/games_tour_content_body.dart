@@ -292,7 +292,9 @@ class GamesTourContentBody extends ConsumerWidget {
     );
 
     final scopeId = ref.watch(gamesTourScrollScopeProvider);
+    print('📜 GamesTourContentBody - scopeId: $scopeId');
     final itemScrollController = ref.watch(gamesTourScrollProvider(scopeId));
+    print('📜 GamesTourContentBody - controller attached: ${itemScrollController.isAttached}');
     final itemPositionsListener =
         ref.read(gamesTourScrollProvider(scopeId).notifier).itemPositionsListener;
 
