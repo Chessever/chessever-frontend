@@ -3,6 +3,7 @@ import 'package:collection/collection.dart';
 import 'package:chessever2/repository/supabase/tour/tour.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_view_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_scroll_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
@@ -14,6 +15,63 @@ import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:motor/motor.dart';
+import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
+
+/// Scroll to a specific round from widget context (ensures correct ProviderScope)
+void _scrollToRoundFromWidget(WidgetRef ref, String roundId) {
+  final scopeId = ref.read(gamesTourScrollScopeProvider);
+  final scrollNotifier = ref.read(gamesTourScrollProvider(scopeId).notifier);
+  final controller = scrollNotifier.scrollController;
+
+  // Calculate the index using the app bar provider
+  final itemIndex = ref.read(gamesAppBarProvider.notifier).calculateRoundIndex(roundId);
+
+  print('🎯 Widget scroll - scopeId: $scopeId, roundId: $roundId, index: $itemIndex, attached: ${controller.isAttached}');
+
+  if (itemIndex < 0) {
+    print('❌ Widget scroll - round not found in visible rounds');
+    return;
+  }
+
+  // Mark that we're doing a programmatic scroll
+  scrollNotifier.startProgrammaticScroll(targetRoundId: roundId);
+
+  // Use post-frame callback to ensure the widget tree is ready
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    // Retry a few times in case controller isn't attached yet
+    _attemptScroll(controller, scrollNotifier, itemIndex, roundId, 0);
+  });
+}
+
+/// Attempt to scroll with retries
+void _attemptScroll(
+  ItemScrollController controller,
+  dynamic scrollNotifier,
+  int itemIndex,
+  String roundId,
+  int attempt,
+) {
+  const maxAttempts = 5;
+  const retryDelay = Duration(milliseconds: 100);
+
+  if (controller.isAttached) {
+    try {
+      controller.jumpTo(index: itemIndex, alignment: 0.0);
+      print('✅ Widget scroll - jumpTo completed (attempt: $attempt)');
+    } catch (e) {
+      print('❌ Widget scroll - jumpTo failed: $e');
+    }
+    scrollNotifier.endProgrammaticScroll();
+  } else if (attempt < maxAttempts) {
+    print('⏳ Widget scroll - controller not attached, retrying (attempt: ${attempt + 1})');
+    Future.delayed(retryDelay, () {
+      _attemptScroll(controller, scrollNotifier, itemIndex, roundId, attempt + 1);
+    });
+  } else {
+    print('❌ Widget scroll - gave up after $maxAttempts attempts');
+    scrollNotifier.endProgrammaticScroll();
+  }
+}
 
 /// A beautiful stadium-chip style combo dropdown with glass morphism effects.
 /// Single vertical ListView with expandable categories containing nested rounds.
@@ -67,7 +125,10 @@ class CategoryDropdown extends ConsumerWidget {
                   .updateSelection(category.tour.id);
             },
             onRoundChanged: (round) {
+              // Select the round in the provider
               ref.read(gamesAppBarProvider.notifier).select(round);
+              // Also trigger scroll directly from widget context (has correct scope)
+              _scrollToRoundFromWidget(ref, round.id);
             },
           );
         },
@@ -233,6 +294,7 @@ class _CategoryDropdownContent extends HookConsumerWidget {
             });
           },
           onRoundSelect: (round) {
+            print('🟢 onRoundSelect called: ${round.name} (${round.id})');
             HapticFeedbackService.selection();
             onRoundChanged(round);
             // Close immediately after selection
@@ -673,8 +735,11 @@ class _DropdownContentState extends State<_DropdownContent> {
           category: category,
         ));
 
-        // Add rounds if this category is expanded
-        if (_expandedCategoryId == category.tour.id) {
+        // Add rounds ONLY if this category is the currently selected one AND is expanded
+        // This ensures we're showing the correct rounds for the selected tour
+        // (rounds are loaded based on the selected tour, not the expanded category)
+        final isSelectedCategory = category.tour.id == widget.selectedCategory.tour.id;
+        if (_expandedCategoryId == category.tour.id && isSelectedCategory) {
           for (final round in widget.rounds) {
             _flatItems.add(_DropdownItem(
               type: _ItemType.round,
@@ -781,6 +846,18 @@ class _DropdownContentState extends State<_DropdownContent> {
 
   void _toggleExpand(String categoryId) {
     HapticFeedbackService.light();
+
+    // If expanding a different category, select it first so its rounds are loaded
+    if (_expandedCategoryId != categoryId) {
+      final category = widget.categories.firstWhereOrNull(
+        (c) => c.tour.id == categoryId,
+      );
+      if (category != null && categoryId != widget.selectedCategory.tour.id) {
+        // Select the category to load its rounds
+        widget.onCategorySelect(category);
+      }
+    }
+
     setState(() {
       if (_expandedCategoryId == categoryId) {
         _expandedCategoryId = null;
@@ -886,8 +963,9 @@ class _DropdownContentState extends State<_DropdownContent> {
         if (item.type == _ItemType.category && item.category != null) {
           widget.onCategorySelect(item.category!);
         } else if (item.type == _ItemType.round && item.round != null) {
-          // ALWAYS select the parent category when selecting a round
-          if (item.parentCategoryId != null) {
+          // Select the parent category ONLY if it's different from current
+          if (item.parentCategoryId != null &&
+              item.parentCategoryId != widget.selectedCategory.tour.id) {
             final parentCategory = widget.categories.firstWhere(
               (c) => c.tour.id == item.parentCategoryId,
               orElse: () => widget.selectedCategory,
@@ -1044,15 +1122,19 @@ class _DropdownContentState extends State<_DropdownContent> {
                       isNested: isNested,
                       onTap: () {
                         _animateToIndex(index);
-                        // ALWAYS select the parent category when selecting a round
-                        if (parentCategoryId != null) {
+                        // Select the parent category ONLY if it's different from current
+                        // This prevents unnecessary tour reload which loses round selection
+                        if (parentCategoryId != null &&
+                            parentCategoryId != widget.selectedCategory.tour.id) {
                           final parentCategory = widget.categories.firstWhere(
                             (c) => c.tour.id == parentCategoryId,
                             orElse: () => widget.selectedCategory,
                           );
+                          // When switching categories, we need to select both category AND round
+                          // The round selection is passed via userSelectedRoundProvider so it persists
                           widget.onCategorySelect(parentCategory);
                         }
-                        // Then select the round
+                        // Select the round (this also sets userSelectedRoundProvider for sticky selection)
                         widget.onRoundSelect(round);
                       },
                     ),

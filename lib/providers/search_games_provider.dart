@@ -18,8 +18,17 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 final searchTabQueryProvider = StateProvider<String>((ref) => '');
 
 /// Main provider for Search tab games - fetches games for top players matching search
+///
+/// NOTE: Using keepAlive to prevent data loss when scrolling/interacting.
+/// This ensures consistent search results and scroll position preservation.
 final searchGamesProvider = StateNotifierProvider.autoDispose<
     SearchGamesNotifier, AsyncValue<List<Games>>>((ref) {
+  // CRITICAL: Keep provider alive during search session to prevent:
+  // 1. Data discrepancy when scrolling/interacting
+  // 2. Re-fetching games unnecessarily
+  // 3. Search results changing unexpectedly
+  ref.keepAlive();
+
   return SearchGamesNotifier(ref);
 });
 
@@ -27,6 +36,8 @@ final searchGamesProvider = StateNotifierProvider.autoDispose<
 /// Uses tour_id to group_broadcast_id mapping to properly group multiple rounds of same event
 final groupedSearchGamesProvider =
     FutureProvider.autoDispose<List<GroupedSearchGames>>((ref) async {
+  ref.keepAlive(); // Keep alive to match main provider
+
   final games = ref.watch(searchGamesProvider).valueOrNull ?? [];
 
   if (games.isEmpty) return [];
@@ -170,6 +181,8 @@ final groupedSearchGamesProvider =
 /// Provider for converted games (Games to GamesTourModel)
 final convertedSearchGamesProvider =
     Provider.autoDispose<List<GamesTourModel>>((ref) {
+  ref.keepAlive(); // Keep alive to match main provider
+
   final games = ref.watch(searchGamesProvider).valueOrNull ?? [];
   return games.map((game) => GamesTourModel.fromGame(game)).toList();
 });
@@ -204,6 +217,13 @@ class SearchGamesNotifier extends StateNotifier<AsyncValue<List<Games>>> {
       _allGames.clear();
       searchAnimatedGameIds.clear();
       state = const AsyncValue.data([]);
+      return;
+    }
+
+    // CRITICAL: Skip if we already have valid results for this exact query
+    // This prevents unnecessary re-fetches when scrolling/interacting
+    if (trimmedQuery == _currentQuery && _allGames.isNotEmpty && !_isFetching) {
+      debugPrint('[SearchGames] Skipping duplicate search for "$trimmedQuery" - already have ${_allGames.length} games');
       return;
     }
 

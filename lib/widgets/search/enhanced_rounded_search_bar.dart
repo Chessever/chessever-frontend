@@ -169,7 +169,9 @@ class _EnhancedRoundedSearchBarState
         if (_showOverlay)
           Positioned.fill(
             child: GestureDetector(
-              onTap: _clearSearchAndHide,
+              // Just hide the overlay, don't clear the search
+              // This allows users to dismiss the dropdown while keeping search results
+              onTap: _hideOverlay,
               behavior: HitTestBehavior.opaque,
               child: Container(color: Colors.transparent),
             ),

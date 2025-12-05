@@ -46,6 +46,9 @@ class _GamesTourScrollProvider extends StateNotifier<ItemScrollController> {
   ItemPositionsListener get itemPositionsListener =>
       _itemPositionsListener; // Expose for Riverpod
 
+  /// Expose the scroll controller for external use
+  ItemScrollController get scrollController => state;
+
   String? _lastVisibleGameId;
 
   /// Compute rounds visible in the list view: hide upcoming by default,

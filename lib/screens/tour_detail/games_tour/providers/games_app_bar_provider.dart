@@ -4,6 +4,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_s
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_scroll_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/match_expansion_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/round_expansion_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/utils/knockout_match_detector.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_tour_content_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/knockout_tournament_state_provider.dart';
@@ -76,14 +77,20 @@ class _GamesAppBarNotifier
     // NOT navigate to a different tour (all stages are already in the listview)
     // This matches the behavior of regular and group events
 
+    print('🔵 select() called with round: ${model.name} (${model.id})');
+
     ref.read(userSelectedRoundProvider.notifier).state = (
       id: model.id,
       userSelected: true,
     );
 
     final current = state.valueOrNull;
-    if (current == null) return;
+    if (current == null) {
+      print('❌ select() - current state is null, returning early');
+      return;
+    }
 
+    print('🔵 select() - calling _scrollToRound');
     _scrollToRound(model.id);
 
     state = AsyncValue.data(
@@ -106,6 +113,11 @@ class _GamesAppBarNotifier
         userSelectedId: false,
       ),
     );
+  }
+
+  /// Public method to calculate round index (for use from widget context)
+  int calculateRoundIndex(String roundId) {
+    return _calculateRoundHeaderIndex(roundId);
   }
 
   /// Get list of visible round IDs using the same filtering logic as games_tour_content_body.dart
@@ -214,39 +226,57 @@ class _GamesAppBarNotifier
 
   Future<void> _scrollToRound(String roundId) async {
     final scopeId = ref.read(gamesTourScrollScopeProvider);
+    print('🔵 _scrollToRound - scopeId: $scopeId');
+
     final scrollProvider = ref.read(gamesTourScrollProvider(scopeId).notifier);
     final controller = scrollProvider.state;
     final itemIndex = _calculateRoundHeaderIndex(roundId);
 
     // Debug logging
     print('🎯 Scrolling to round: $roundId, calculated index: $itemIndex');
+    print('🎯 Controller attached: ${controller.isAttached}');
 
-    if (itemIndex >= 0 && controller.isAttached) {
-      // Prevent scroll listener from updating dropdown during programmatic scroll
-      scrollProvider.startProgrammaticScroll(targetRoundId: roundId);
+    if (itemIndex < 0) {
+      print('❌ _scrollToRound - itemIndex < 0, round not found');
+      return;
+    }
 
-      // Small delay to ensure layout is ready
-      await Future.delayed(const Duration(milliseconds: 100));
+    if (!controller.isAttached) {
+      print('❌ _scrollToRound - controller not attached');
+      return;
+    }
 
-      if (controller.isAttached) {
+    // Prevent scroll listener from updating dropdown during programmatic scroll
+    scrollProvider.startProgrammaticScroll(targetRoundId: roundId);
+
+    // Small delay to ensure layout is ready
+    await Future.delayed(const Duration(milliseconds: 100));
+
+    if (controller.isAttached) {
+      try {
+        print('🎯 Executing jumpTo(index: $itemIndex)');
+        // Use alignment 0.0 to position round header at the very top
+        controller.jumpTo(index: itemIndex, alignment: 0.0);
+        print('✅ jumpTo completed successfully');
+      } catch (e) {
+        print('⚠️ jumpTo failed: $e, trying scrollTo...');
+        // Fallback if jumpTo fails
         try {
-          // Use alignment 0.0 to position round header at the very top
-          controller.jumpTo(index: itemIndex, alignment: 0.0);
-        } catch (e) {
-          // Fallback if jumpTo fails
-          try {
-            controller.scrollTo(
-              index: itemIndex,
-              duration: const Duration(milliseconds: 300),
-              curve: Curves.easeInOut,
-              alignment: 0.0,
-            );
-          } catch (_) {}
+          controller.scrollTo(
+            index: itemIndex,
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeInOut,
+            alignment: 0.0,
+          );
+        } catch (e2) {
+          print('❌ scrollTo also failed: $e2');
         }
-
-        // Re-enable scroll listener after scroll completes
-        scrollProvider.endProgrammaticScroll();
       }
+
+      // Re-enable scroll listener after scroll completes
+      scrollProvider.endProgrammaticScroll();
+    } else {
+      print('❌ _scrollToRound - controller detached after delay');
     }
   }
 
@@ -338,6 +368,9 @@ class _GamesAppBarNotifier
     final viewMode = ref.read(gamesListViewModeProvider);
     final bool isGrid = viewMode == GamesListViewMode.chessBoardGrid;
 
+    // Read round expansion state to match games_list_view.dart behavior
+    final roundExpansionState = ref.read(roundExpansionProvider);
+
     print(
       '📊 Index calculation - Target: $roundId, Mode: ${isGroupEvent ? "Group" : "Regular"}, Grid: $isGrid',
     );
@@ -353,6 +386,16 @@ class _GamesAppBarNotifier
 
       // Count items in this round (header + content items)
       int itemCount = 1; // header
+
+      // Check if round is expanded (default is true, matching games_list_view.dart)
+      final isRoundExpanded = roundExpansionState[round.id] ?? true;
+
+      // If round is collapsed, only count the header (skip games)
+      if (!isRoundExpanded) {
+        print('   Round "${round.name}": collapsed, only header = 1 item');
+        index += itemCount;
+        continue;
+      }
 
       if (isGroupEvent) {
         // For group events, count team matchup cards
@@ -852,171 +895,39 @@ class _GamesAppBarNotifier
   }
 
   void _sortRounds(List<GamesAppBarModel> models) {
-    // Detect if this is a multi-stage knockout (stages have synthetic IDs)
-    final isMultiStageKnockout = models.any(
-      (m) => m.id.startsWith('$kKnockoutStagePrefix-'),
-    );
-
-    // For multi-stage knockouts, use pure date-based sorting (skip upcoming-first logic)
-    if (isMultiStageKnockout) {
-      models.sort(_compareRounds);
-      return;
-    }
-
-    // For regular tournaments: check if we should show next upcoming round at top
-    final hasLiveOrOngoing = models.any(
-      (m) =>
-          m.roundStatus == RoundStatus.live ||
-          m.roundStatus == RoundStatus.ongoing,
-    );
-    final hasCompleted = models.any(
-      (m) => m.roundStatus == RoundStatus.completed,
-    );
-    final showNextUpcomingFirst = !hasLiveOrOngoing && hasCompleted;
-
+    // Simple sorting: always by round number descending (7, 6, 5, 4, 3, 2, 1)
+    // No status-based grouping - just pure numeric order
     models.sort((a, b) {
-      // Special case: When showing next upcoming round with completed rounds,
-      // put upcoming first (top-most)
-      if (showNextUpcomingFirst) {
-        if (a.roundStatus == RoundStatus.upcoming &&
-            b.roundStatus != RoundStatus.upcoming) {
-          return -1; // Upcoming comes first
-        }
-        if (b.roundStatus == RoundStatus.upcoming &&
-            a.roundStatus != RoundStatus.upcoming) {
-          return 1; // Upcoming comes first
-        }
-      }
-
-      return _compareRounds(a, b);
-    });
-  }
-
-  int _compareRounds(GamesAppBarModel a, GamesAppBarModel b) {
-    final aIsStage = a.id.startsWith('$kKnockoutStagePrefix-');
-    final bIsStage = b.id.startsWith('$kKnockoutStagePrefix-');
-    final aMeta = _roundSortMeta[a.id];
-    final bMeta = _roundSortMeta[b.id];
-    final aStageRank = _stageHierarchyRank(a.name);
-    final bStageRank = _stageHierarchyRank(b.name);
-
-    // When both entries are knockout stages, favour chronological (latest first)
-    if (aIsStage && bIsStage) {
-      final aStarts = aMeta?.startsAt ?? a.startsAt;
-      final bStarts = bMeta?.startsAt ?? b.startsAt;
-      final startCompare = _compareDatesDesc(aStarts, bStarts);
-      if (startCompare != 0) return startCompare;
-
-      final aPriority = _statusPriorityMap[a.roundStatus] ?? _defaultStatusRank;
-      final bPriority = _statusPriorityMap[b.roundStatus] ?? _defaultStatusRank;
-      if (aPriority != bPriority) {
-        return aPriority.compareTo(bPriority);
-      }
-
+      final aMeta = _roundSortMeta[a.id];
+      final bMeta = _roundSortMeta[b.id];
       final aRoundNum = aMeta?.roundNumber ?? _extractRoundNumber(a.name);
       final bRoundNum = bMeta?.roundNumber ?? _extractRoundNumber(b.name);
-      final roundCompare = _compareIntsDesc(aRoundNum, bRoundNum);
-      if (roundCompare != 0) return roundCompare;
 
-      final stageRankCompare = _compareStageRanks(aStageRank, bStageRank);
-      if (stageRankCompare != 0) return stageRankCompare;
-    }
+      // Primary: round number descending (7 > 6 > 5 > ...)
+      if (aRoundNum != null && bRoundNum != null) {
+        final roundCompare = bRoundNum.compareTo(aRoundNum);
+        if (roundCompare != 0) return roundCompare;
+      } else if (aRoundNum != null) {
+        return -1;
+      } else if (bRoundNum != null) {
+        return 1;
+      }
 
-    // If only one entry is a knockout stage, prioritise the one with the more recent start date.
-    if (aIsStage != bIsStage) {
+      // Secondary: start date descending (most recent first)
       final aStarts = aMeta?.startsAt ?? a.startsAt;
       final bStarts = bMeta?.startsAt ?? b.startsAt;
-      final startCompare = _compareDatesDesc(aStarts, bStarts);
-      if (startCompare != 0) {
-        final stageRankCompare = _compareStageRanks(aStageRank, bStageRank);
-        if (stageRankCompare != 0) return stageRankCompare;
-        return startCompare;
+      if (aStarts != null && bStarts != null) {
+        final startCompare = bStarts.compareTo(aStarts);
+        if (startCompare != 0) return startCompare;
+      } else if (aStarts != null) {
+        return -1;
+      } else if (bStarts != null) {
+        return 1;
       }
-      return aIsStage ? -1 : 1;
-    }
 
-    // Regular rounds (or fallback tie-breakers for stages)
-    final aPriority = _statusPriorityMap[a.roundStatus] ?? _defaultStatusRank;
-    final bPriority = _statusPriorityMap[b.roundStatus] ?? _defaultStatusRank;
-
-    if (aPriority != bPriority) {
-      return aPriority.compareTo(bPriority);
-    }
-
-    final aRoundNum = aMeta?.roundNumber ?? _extractRoundNumber(a.name);
-    final bRoundNum = bMeta?.roundNumber ?? _extractRoundNumber(b.name);
-    final aStarts = aMeta?.startsAt ?? a.startsAt;
-    final bStarts = bMeta?.startsAt ?? b.startsAt;
-
-    // Upcoming rounds should be shown in chronological order (soonest first)
-    if (a.roundStatus == RoundStatus.upcoming &&
-        b.roundStatus == RoundStatus.upcoming) {
-      final upcomingStartCompare = _compareDatesAsc(aStarts, bStarts);
-      if (upcomingStartCompare != 0) return upcomingStartCompare;
-
-      final upcomingRoundCompare = _compareIntsAsc(aRoundNum, bRoundNum);
-      if (upcomingRoundCompare != 0) return upcomingRoundCompare;
-    }
-
-    final roundCompare = _compareIntsDesc(aRoundNum, bRoundNum);
-    if (roundCompare != 0) return roundCompare;
-
-    final startCompare = _compareDatesDesc(aStarts, bStarts);
-    if (startCompare != 0) return startCompare;
-
-    final stageRankCompare = _compareStageRanks(aStageRank, bStageRank);
-    if (stageRankCompare != 0) return stageRankCompare;
-
-    final aGameNum = aMeta?.gameNumber ?? _extractGameNumber(a.name);
-    final bGameNum = bMeta?.gameNumber ?? _extractGameNumber(b.name);
-    final gameCompare = _compareIntsDesc(aGameNum, bGameNum);
-    if (gameCompare != 0) return gameCompare;
-
-    final createdCompare = _compareDatesDesc(
-      aMeta?.createdAt,
-      bMeta?.createdAt,
-    );
-    if (createdCompare != 0) return createdCompare;
-
-    final slugCompare = _compareStringsDesc(aMeta?.slug, bMeta?.slug);
-    if (slugCompare != 0) return slugCompare;
-
-    return a.name.compareTo(b.name);
-  }
-
-  int _compareIntsDesc(int? a, int? b) {
-    if (a == null && b == null) return 0;
-    if (a == null) return 1;
-    if (b == null) return -1;
-    return b.compareTo(a);
-  }
-
-  int _compareIntsAsc(int? a, int? b) {
-    if (a == null && b == null) return 0;
-    if (a == null) return 1;
-    if (b == null) return -1;
-    return a.compareTo(b);
-  }
-
-  int _compareDatesDesc(DateTime? a, DateTime? b) {
-    if (a == null && b == null) return 0;
-    if (a == null) return 1;
-    if (b == null) return -1;
-    return b.compareTo(a);
-  }
-
-  int _compareDatesAsc(DateTime? a, DateTime? b) {
-    if (a == null && b == null) return 0;
-    if (a == null) return 1;
-    if (b == null) return -1;
-    return a.compareTo(b);
-  }
-
-  int _compareStringsDesc(String? a, String? b) {
-    if (a == null && b == null) return 0;
-    if (a == null) return 1;
-    if (b == null) return -1;
-    return b.toLowerCase().compareTo(a.toLowerCase());
+      // Tertiary: name alphabetically
+      return a.name.compareTo(b.name);
+    });
   }
 
   /// Recompute statuses on live-rounds change, update selection only if the user
@@ -1166,14 +1077,6 @@ class _GamesAppBarNotifier
     }
   }
 }
-
-const _statusPriorityMap = {
-  RoundStatus.live: 0,
-  RoundStatus.ongoing: 1,
-  RoundStatus.completed: 2,
-  RoundStatus.upcoming: 3,
-};
-const _defaultStatusRank = 99;
 
 DateTime? _resolveStageStartDate({
   required Tour tour,
