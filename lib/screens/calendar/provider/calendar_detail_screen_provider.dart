@@ -1,8 +1,6 @@
 import 'dart:async';
 
-import 'package:chessever2/providers/event_favorite_players_provider.dart';
 import 'package:chessever2/providers/favorite_events_provider.dart';
-import 'package:chessever2/repository/favorites/models/favorite_event.dart';
 import 'package:chessever2/repository/supabase/calendar_event/calendar_event.dart';
 import 'package:chessever2/repository/supabase/calendar_event/calendar_event_repository.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.dart';
@@ -38,8 +36,6 @@ class _CalendarDetailScreenController
 
   final Ref ref;
   final CalendarFilterArgs filterArgs;
-  final Set<String> _primingInProgress = {};
-  bool _initialPrimingDone = false;
 
   List<GroupBroadcast> groupBroadcast = [];
   List<CalendarEvent> calendarEvents = [];
@@ -51,25 +47,12 @@ class _CalendarDetailScreenController
   void _listenToFilters() {
     ref.listen(calendarSearchQueryProvider, (_, __) => _applyFiltersDebounced());
     ref.listen(calendarTimeControlProvider, (_, __) => _applyFiltersDebounced());
-    ref.listen(calendarFilterModeProvider, (prev, next) {
-      // When switching to favorites mode, prime all events first
-      if (next == CalendarFilterMode.favorites && !_initialPrimingDone) {
-        _primeAllEventsAndFilter();
-      } else {
-        _applyFiltersDebounced();
-      }
-    });
+    ref.listen(calendarFilterModeProvider, (_, __) => _applyFiltersDebounced());
     ref.listen(liveGroupBroadcastIdsProvider, (_, __) => _applyFiltersDebounced());
     ref.listen(favoriteEventsProvider, (_, __) => _applyFiltersDebounced());
-    ref.listen(favoritePlayersNotifierProvider, (_, __) {
-      _initialPrimingDone = false;
-      if (ref.read(calendarFilterModeProvider) == CalendarFilterMode.favorites) {
-        _primeAllEventsAndFilter();
-      } else {
-        _applyFiltersDebounced();
-      }
-    });
-    ref.listen(eventFavoritePlayersCacheProvider, (_, __) => _applyFiltersDebounced());
+    ref.listen(favoritePlayersNotifierProvider, (_, __) => _applyFiltersDebounced());
+    // Listen to the favorite event IDs provider so we re-filter when it updates
+    ref.listen(calendarFavoriteEventIdsProvider, (_, __) => _applyFiltersDebounced());
   }
 
   void _applyFiltersDebounced() {
@@ -80,48 +63,6 @@ class _CalendarDetailScreenController
         ? const Duration(milliseconds: 500)
         : const Duration(milliseconds: 150);
     _debounceTimer = Timer(debounceTime, _applyFilters);
-  }
-
-  /// Prime all events for favorite players check, then apply filters
-  Future<void> _primeAllEventsAndFilter() async {
-    if (!mounted) return;
-    state = const AsyncValue.loading();
-
-    try {
-      // Prime all events in parallel
-      final futures = <Future>[];
-      for (final data in _eventsData) {
-        if (!_primingInProgress.contains(data.id)) {
-          futures.add(_primeEventFavoritePlayers(data.id));
-        }
-      }
-
-      if (futures.isNotEmpty) {
-        await Future.wait(futures);
-      }
-
-      _initialPrimingDone = true;
-
-      // Now run the filters
-      await _applyFilters();
-    } catch (e, st) {
-      if (!mounted) return;
-      state = AsyncValue.error(e, st);
-    }
-  }
-
-  Future<void> _primeEventFavoritePlayers(String eventId) async {
-    if (_primingInProgress.contains(eventId)) return;
-    _primingInProgress.add(eventId);
-
-    try {
-      final result = await ref.read(eventFavoritePlayersProvider(eventId).future);
-      ref.read(eventFavoritePlayersCacheProvider.notifier).updateCache(eventId, result);
-    } catch (_) {
-      // Ignore errors - event just won't show as having favorites
-    } finally {
-      _primingInProgress.remove(eventId);
-    }
   }
 
   @override
@@ -213,24 +154,20 @@ class _CalendarDetailScreenController
       final timeControl = ref.read(calendarTimeControlProvider);
       final filterMode = ref.read(calendarFilterModeProvider);
 
-      // Build favorite data for isolate
-      final favoriteEventIds = <String>{};
+      // Get favorite event IDs from the dedicated provider (includes both starred and player-based)
+      Set<String> favoriteEventIds = {};
       if (filterMode == CalendarFilterMode.favorites) {
-        final favoritesAsync = ref.read(favoriteEventsProvider);
-        try {
-          final List<FavoriteEvent> favorites =
-              favoritesAsync.valueOrNull ??
-              await ref.read(favoriteEventsProvider.future);
-          favoriteEventIds.addAll(favorites.map((e) => e.eventId));
-        } catch (_) {
-          // If favorites fail to load, fall back to player-based favorites only
-        }
-      }
+        final favoriteIdsAsync = ref.read(calendarFavoriteEventIdsProvider);
+        favoriteEventIds = favoriteIdsAsync.valueOrNull ?? {};
 
-      final favoritePlayersCache = ref.read(eventFavoritePlayersCacheProvider);
-      final favoritePlayersMap = <String, bool>{};
-      for (final entry in favoritePlayersCache.entries) {
-        favoritePlayersMap[entry.key] = entry.value.hasFavorites;
+        // If still loading, wait for it
+        if (favoriteIdsAsync.isLoading) {
+          try {
+            favoriteEventIds = await ref.read(calendarFavoriteEventIdsProvider.future);
+          } catch (_) {
+            // Continue with empty set if loading fails
+          }
+        }
       }
 
       final now = DateTime.now();
@@ -246,7 +183,7 @@ class _CalendarDetailScreenController
         today: today,
         filterMode: filterMode.name,
         favoriteEventIds: favoriteEventIds,
-        favoritePlayersMap: favoritePlayersMap,
+        favoritePlayersMap: const {}, // No longer needed - we use direct IDs
       );
 
       // Run filtering in background isolate
@@ -254,11 +191,6 @@ class _CalendarDetailScreenController
 
       // Check if this result is still current (cancellation check)
       if (!mounted || _filterVersion != currentVersion) return;
-
-      // Prime favorite players for events that need it (background, non-blocking)
-      for (final eventId in result.eventsToPrime) {
-        _primeEventInBackground(eventId);
-      }
 
       // Convert back to GroupEventCardModel for UI
       final liveIds = ref.read(liveBroadcastIdsProvider);
@@ -308,21 +240,6 @@ class _CalendarDetailScreenController
         orElse: () => EventSource.lichessBroadcast,
       ),
     );
-  }
-
-  /// Background priming for events not yet in cache (non-blocking)
-  void _primeEventInBackground(String eventId) {
-    if (_primingInProgress.contains(eventId)) return;
-    _primingInProgress.add(eventId);
-
-    ref
-        .read(eventFavoritePlayersProvider(eventId).future)
-        .then(
-          (result) => ref
-              .read(eventFavoritePlayersCacheProvider.notifier)
-              .updateCache(eventId, result),
-        )
-        .whenComplete(() => _primingInProgress.remove(eventId));
   }
 
   void onSelectTournament({

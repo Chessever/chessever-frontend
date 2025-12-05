@@ -1,6 +1,7 @@
 import 'package:chessever2/screens/favorites/favorite_players_provider.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/screens/standings/score_card_screen.dart';
+import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/widgets/search/gameSearch/enhanced_game_search_widget.dart';
@@ -196,6 +197,8 @@ class _FavoriteScreenState extends ConsumerState<FavoriteScreen> {
                     isLast: index == sortedPlayers.length - 1,
                     onTap: () {
                       FocusScope.of(context).unfocus();
+                      // Clear tournament context so scorecard shows player's full game history
+                      ref.read(selectedBroadcastModelProvider.notifier).state = null;
                       ref.read(selectedPlayerProvider.notifier).state = player;
                       Navigator.pushNamed(context, '/scorecard_screen');
                     },

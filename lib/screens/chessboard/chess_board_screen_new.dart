@@ -1520,7 +1520,7 @@ class _AppBarState extends ConsumerState<_AppBar> {
 
   @override
   Widget build(BuildContext context) {
-    // Watch the board state to check for custom analysis
+    // Watch the board state for PGN data
     final params = ChessBoardProviderParams(
       game: widget.game,
       index: widget.currentGameIndex,
@@ -1528,10 +1528,6 @@ class _AppBarState extends ConsumerState<_AppBar> {
     final boardState = ref.watch(chessBoardScreenProviderNew(params));
     final state = boardState.valueOrNull;
     final infoSheetPgn = state?.pgnData ?? widget.game.pgn;
-    final analysisGame = state?.analysisState.game;
-    final hasCustomVariations = _gameHasCustomVariations(analysisGame);
-    final hasComments = state?.variationComments.isNotEmpty ?? false;
-    final hasChanges = hasCustomVariations || hasComments;
 
     return AppBar(
       elevation: 0,
@@ -1575,17 +1571,16 @@ class _AppBarState extends ConsumerState<_AppBar> {
               infoSheetPgn,
             ),
           ),
-        // Save Analysis button - only shown when user has made changes
-        if (hasChanges)
-          IconButton(
-            icon: Icon(
-              Icons.save_outlined,
-              color: kWhiteColor,
-              size: 20.sp,
-            ),
-            tooltip: 'Save analysis',
-            onPressed: widget.isLoading ? null : _showSaveAnalysisDialog,
+        // Save Analysis button
+        IconButton(
+          icon: Icon(
+            Icons.save_outlined,
+            color: kWhiteColor,
+            size: 20.sp,
           ),
+          tooltip: 'Save analysis',
+          onPressed: widget.isLoading ? null : _showSaveAnalysisDialog,
+        ),
         // 3-dot menu
         PopupMenuButton<String>(
           icon: Icon(Icons.more_vert, color: kWhiteColor, size: 22.sp),

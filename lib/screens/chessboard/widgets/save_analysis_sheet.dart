@@ -1020,7 +1020,7 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
                   ? null
                   : () {
                       HapticFeedback.lightImpact();
-                      Navigator.of(context).pop();
+                      Navigator.of(widget.config.hostContext).pop();
                     },
               child: Container(
                 padding: EdgeInsets.symmetric(vertical: 16.h),

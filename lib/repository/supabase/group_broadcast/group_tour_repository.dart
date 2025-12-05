@@ -9,6 +9,46 @@ final groupBroadcastRepositoryProvider =
     });
 
 class GroupBroadcastRepository extends BaseRepository {
+  /// Get group_broadcast IDs that contain tours with any of the given favorite player FIDE IDs
+  Future<Set<String>> getEventIdsWithFavoritePlayers(List<int> favoriteFideIds) async {
+    if (favoriteFideIds.isEmpty) return {};
+
+    return handleApiCall(() async {
+      // Query tours that have players matching any favorite FIDE ID
+      // and return their group_broadcast_id
+      final response = await supabase
+          .from('tours')
+          .select('group_broadcast_id, players')
+          .not('group_broadcast_id', 'is', null);
+
+      final matchingIds = <String>{};
+
+      for (final row in response as List) {
+        final groupBroadcastId = row['group_broadcast_id'] as String?;
+        if (groupBroadcastId == null || groupBroadcastId.isEmpty) continue;
+
+        final players = row['players'] as List?;
+        if (players == null || players.isEmpty) continue;
+
+        // Check if any player's fideId matches our favorites
+        for (final player in players) {
+          if (player is Map) {
+            final fideId = player['fideId'];
+            if (fideId != null) {
+              final fideIdInt = fideId is int ? fideId : int.tryParse(fideId.toString());
+              if (fideIdInt != null && favoriteFideIds.contains(fideIdInt)) {
+                matchingIds.add(groupBroadcastId);
+                break; // Found a match, no need to check other players
+              }
+            }
+          }
+        }
+      }
+
+      return matchingIds;
+    });
+  }
+
   /// Fetch all group broadcasts with optional pagination and sorting
   Future<List<GroupBroadcast>> getCurrentGroupBroadcasts({
     int? limit,
