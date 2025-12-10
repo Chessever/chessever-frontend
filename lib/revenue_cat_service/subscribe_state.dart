@@ -1,4 +1,5 @@
 import 'package:chessever2/revenue_cat_service/revenue_cat_service.dart';
+import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:purchases_flutter/models/package_wrapper.dart';
 
@@ -27,34 +28,79 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
         isLoading: false,
       );
     } catch (e) {
+      debugPrint('❌ Subscription initialization error: $e');
       state = state.copyWith(error: e.toString(), isLoading: false);
     }
   }
 
-  Future<void> purchaseSubscription(Package package) async {
-    state = state.copyWith(isLoading: true);
+  /// Refresh subscription status (call after auth changes)
+  Future<void> refresh() async {
+    state = state.copyWith(isLoading: true, error: null);
 
     try {
-      final success = await _revenueCat.purchaseSubscription(package);
+      final isSubscribed = await _revenueCat.isSubscribed();
+      final products = await _revenueCat.getProducts();
+
       state = state.copyWith(
-        isSubscribed: success,
+        isSubscribed: isSubscribed,
+        products: products,
         isLoading: false,
-        error: success ? null : 'Purchase failed',
       );
     } catch (e) {
+      debugPrint('❌ Subscription refresh error: $e');
       state = state.copyWith(error: e.toString(), isLoading: false);
     }
   }
 
-  Future<void> restorePurchases() async {
-    state = state.copyWith(isLoading: true);
+  /// Purchase a subscription package
+  /// Returns the result indicating success, cancellation, or error
+  Future<PurchaseAttemptResult> purchaseSubscription(Package package) async {
+    state = state.copyWith(isLoading: true, error: null);
+
+    try {
+      final result = await _revenueCat.purchaseSubscription(package);
+
+      if (result.success) {
+        state = state.copyWith(
+          isSubscribed: true,
+          isLoading: false,
+        );
+      } else if (result.wasCancelled) {
+        // User cancelled - not an error, just reset loading state
+        state = state.copyWith(isLoading: false);
+      } else {
+        // Actual error occurred
+        state = state.copyWith(
+          isLoading: false,
+          error: result.errorMessage ?? 'Purchase failed',
+        );
+      }
+
+      return result;
+    } catch (e) {
+      debugPrint('❌ Purchase exception: $e');
+      state = state.copyWith(error: e.toString(), isLoading: false);
+      return PurchaseAttemptResult.error(e.toString());
+    }
+  }
+
+  Future<bool> restorePurchases() async {
+    state = state.copyWith(isLoading: true, error: null);
 
     try {
       final success = await _revenueCat.restorePurchases();
       state = state.copyWith(isSubscribed: success, isLoading: false);
+      return success;
     } catch (e) {
+      debugPrint('❌ Restore purchases error: $e');
       state = state.copyWith(error: e.toString(), isLoading: false);
+      return false;
     }
+  }
+
+  /// Clear error state
+  void clearError() {
+    state = state.copyWith(error: null);
   }
 }
 
@@ -81,7 +127,7 @@ class SubscriptionState {
       isSubscribed: isSubscribed ?? this.isSubscribed,
       isLoading: isLoading ?? this.isLoading,
       products: products ?? this.products,
-      error: error ?? this.error,
+      error: error,
     );
   }
 }

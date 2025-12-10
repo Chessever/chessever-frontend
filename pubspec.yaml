@@ -103,7 +103,7 @@ dependencies:
   permission_handler: ^12.0.0+1
 
   flutter_native_splash: ^2.4.6
-  purchases_flutter: ^8.10.6
+  purchases_flutter: ^9.9.10
   logger: ^2.6.1
   collection: ^1.19.1
 
@@ -131,6 +131,7 @@ dependencies:
   motor: ^1.0.0-dev.0
   smooth_sheets: ^0.15.0
   app_links: ^6.3.3
+  dio: ^5.9.0
 
 dev_dependencies:
   flutter_test:
@@ -173,8 +174,8 @@ flutter:
     - assets/sfx/
     - assets/launch.jpg
     - assets/app_icon.png
-    # - .env
-    # - .env.dev
+    - .env
+    - .env.dev
     - shorebird.yaml
 
   # An image asset can refer to one or more resolution-specific "variants", see

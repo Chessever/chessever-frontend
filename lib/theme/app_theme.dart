@@ -13,6 +13,7 @@ const Color kWhiteColor70 = Color(
 ); // WHITE with 70% opacity (B3 = 70%)
 const Color kDividerColor = Color(0xFF2C2C2E);
 const Color kBlack2Color = Color(0xFF1A1A1C); // BLACK#2
+const Color kBlack3Color = Color(0xFF252527); // BLACK#3
 const Color kDarkGreyColor = Color(0xFF333333);
 const Color kGrey900 = Color.fromRGBO(33, 33, 33, 1);
 const Color kLightBlack = Color(0xFF222222);
@@ -42,6 +43,18 @@ const Color kBoardLightDefault = Color(0xFFD1E9E9);
 const Color kInactiveTabColor = Color(
   0x669D9D9D,
 ); // #9D9D9D with 40% opacity (66 = 40%)
+
+// Secondary/hint text colors with proper contrast on dark backgrounds
+const Color kSecondaryTextColor = Color(
+  0xFF8E8E93,
+); // iOS system gray - good contrast on dark
+const Color kTertiaryTextColor = Color(
+  0xFF636366,
+); // Slightly dimmer but still readable
+const Color kPlaceholderColor = Color(
+  0xFF48484A,
+); // For disabled/placeholder states
+const Color kSubtleIconColor = Color(0xFF8E8E93); // For secondary icons
 const LinearGradient kAppLinearGradient = LinearGradient(
   begin: Alignment.topLeft,
   end: Alignment.bottomRight,

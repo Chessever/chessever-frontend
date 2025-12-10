@@ -707,7 +707,106 @@ class _GamesAppBarNotifier
       }
     }
 
-    // Fallback: Single-stage knockout - aggregate all rounds into one
+    // Fallback: Single-stage knockout - try to extract stages from round_slug
+    // Round slugs follow pattern: "{stage}--{subround}" e.g., "quarterfinals--game-1", "round-1--game-2"
+    final allGames = knockoutState.allGames;
+
+    if (allGames.isNotEmpty) {
+      // Extract unique stages from round_slug values
+      final stageGamesMap = <String, List<GamesAppBarModel>>{};
+
+      for (final game in allGames) {
+        final slug = game.roundSlug ?? '';
+        String stageName;
+
+        if (slug.contains('--')) {
+          // Extract stage name from before '--'
+          final stagePart = slug.split('--').first;
+          stageName = _formatStageName(stagePart);
+        } else if (slug.isNotEmpty) {
+          // Use the slug itself if no '--' separator
+          stageName = _formatStageName(slug);
+        } else {
+          stageName = 'Round';
+        }
+
+        // Find or create the corresponding GamesAppBarModel from models list
+        // Match by the game's roundId
+        final matchingModel = models.where((m) => m.id == game.roundId).firstOrNull;
+        if (matchingModel != null) {
+          stageGamesMap.putIfAbsent(stageName, () => []).add(matchingModel);
+        }
+      }
+
+      print('📋 Extracted ${stageGamesMap.length} stages from round_slug: ${stageGamesMap.keys.toList()}');
+
+      if (stageGamesMap.length > 1) {
+        // Multiple stages found - create separate dropdown items for each
+        final stageModels = <GamesAppBarModel>[];
+
+        for (final entry in stageGamesMap.entries) {
+          final stageName = entry.key;
+          final stageRounds = entry.value.toSet().toList(); // Remove duplicates
+
+          // Determine aggregated status for this stage
+          RoundStatus stageStatus = RoundStatus.ongoing;
+          if (stageRounds.any((m) => m.roundStatus == RoundStatus.live)) {
+            stageStatus = RoundStatus.live;
+          } else if (stageRounds.any((m) => m.roundStatus == RoundStatus.ongoing)) {
+            stageStatus = RoundStatus.ongoing;
+          } else if (stageRounds.every((m) => m.roundStatus == RoundStatus.completed)) {
+            stageStatus = RoundStatus.completed;
+          } else if (stageRounds.every((m) => m.roundStatus == RoundStatus.upcoming)) {
+            stageStatus = RoundStatus.upcoming;
+          }
+
+          // Use the earliest start time from this stage's rounds
+          final stageStartsAt = stageRounds
+              .map((m) => m.startsAt)
+              .whereType<DateTime>()
+              .fold<DateTime?>(null, (earliest, date) {
+                if (earliest == null) return date;
+                return date.isBefore(earliest) ? date : earliest;
+              });
+
+          final stageCreatedAt =
+              stageRounds
+                  .map((m) => _roundSortMeta[m.id]?.createdAt)
+                  .whereType<DateTime>()
+                  .fold<DateTime?>(null, (earliest, date) {
+                    if (earliest == null) return date;
+                    return date.isBefore(earliest) ? date : earliest;
+                  }) ??
+              DateTime.now();
+
+          final stageId = '$kKnockoutStagePrefix-${tourId ?? 'stage'}-${stageName.toLowerCase().replaceAll(' ', '-')}';
+
+          // Add metadata for this stage
+          _roundSortMeta[stageId] = _RoundSortMeta(
+            slug: stageName.toLowerCase().replaceAll(' ', '-'),
+            createdAt: stageCreatedAt,
+            startsAt: stageStartsAt,
+            roundNumber: _parseRoundNumber(stageName),
+            gameNumber: null,
+          );
+
+          print('    ✅ Stage "$stageName": ${stageRounds.length} rounds, status: $stageStatus, roundNumber: ${_parseRoundNumber(stageName)}');
+
+          stageModels.add(
+            GamesAppBarModel(
+              id: stageId,
+              name: stageName,
+              startsAt: stageStartsAt,
+              roundStatus: stageStatus,
+            ),
+          );
+        }
+
+        return stageModels;
+      }
+    }
+
+    // Ultimate fallback: aggregate all rounds into one
     final roundName =
         knockoutState.stageName ??
         ref.read(tourDetailScreenProvider).value?.aboutTourModel.name ??
@@ -768,6 +867,33 @@ class _GamesAppBarNotifier
     );
 
     return [logicalRound];
+  }
+
+  /// Format stage name from slug part (e.g., "round-1" -> "Round 1", "quarterfinals" -> "Quarterfinals")
+  String _formatStageName(String stagePart) {
+    final lower = stagePart.toLowerCase().trim();
+
+    // Handle common stage patterns
+    if (lower.startsWith('round-')) {
+      final num = lower.replaceAll('round-', '');
+      return 'Round $num';
+    }
+    if (lower == 'quarterfinals' || lower == 'quarterfinal') {
+      return 'Quarterfinals';
+    }
+    if (lower == 'semifinals' || lower == 'semifinal') {
+      return 'Semifinals';
+    }
+    if (lower == 'finals' || lower == 'final') {
+      return 'Finals';
+    }
+
+    // Default: capitalize each word
+    return stagePart
+        .split(RegExp(r'[-_\s]'))
+        .where((s) => s.isNotEmpty)
+        .map((s) => s[0].toUpperCase() + s.substring(1))
+        .join(' ');
   }
 
   Map<String, int> _buildRoundGameCounts() {
@@ -1152,6 +1278,22 @@ class _RoundSortMeta {
 
 int? _parseRoundNumber(String? value) {
   if (value == null || value.isEmpty) return null;
+
+  final lower = value.toLowerCase();
+
+  // Handle special knockout stage names with high numbers for correct sorting
+  // Finals should appear first (highest), then Semifinals, then Quarterfinals
+  if (lower.contains('final') && !lower.contains('semifinal') && !lower.contains('quarterfinal')) {
+    return 300; // Finals - highest priority
+  }
+  if (lower.contains('semifinal')) {
+    return 200; // Semifinals
+  }
+  if (lower.contains('quarterfinal')) {
+    return 100; // Quarterfinals
+  }
+
+  // Handle numbered rounds (Round 1, Round 2, etc.)
   final match =
       RegExp(r'round[\s_\-:]*?(\d+)', caseSensitive: false).firstMatch(value) ??
       RegExp(r'\b(\d{1,3})\b').firstMatch(value);

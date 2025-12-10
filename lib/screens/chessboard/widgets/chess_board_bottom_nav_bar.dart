@@ -20,6 +20,8 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
   final bool canMoveBackward;
   final bool showEngineAnalysis;
   final bool showUnseenMoveBadge;
+  final VoidCallback? onGamebaseToggle;
+  final bool isGamebaseActive;
 
   const ChessBoardBottomNavBar({
     super.key,
@@ -37,11 +39,13 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
     this.onLongPressBackwardEnd,
     this.onLongPressForwardStart,
     this.onLongPressForwardEnd,
+    this.onGamebaseToggle,
+    this.isGamebaseActive = false,
   });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final width = MediaQuery.of(context).size.width / 4; // 4 buttons now
+    final width = MediaQuery.of(context).size.width / 5; // 5 buttons now
 
     // Watch the centralized engine depth status provider
     final depthSnapshot = ref.watch(engineDepthStatusProvider);
@@ -56,7 +60,8 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
     String? depthText;
     if (showDepthOverlay) {
       if (gaugeProgress != null) {
-        depthText = 'D:${gaugeProgress.depth.clamp(0, 99).toString().padLeft(2, '0')}';
+        depthText =
+            'D:${gaugeProgress.depth.clamp(0, 99).toString().padLeft(2, '0')}';
       } else {
         depthText = '...';
       }
@@ -70,16 +75,6 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
             fenFragment.length < 20 ? fenFragment.length : 20;
         final fragmentPreview = fenFragment.substring(0, fragmentLength);
         final fragmentSuffix = fenFragment.length > fragmentLength ? '...' : '';
-        // TEMPO-01-COMMENT
-        // debugPrint(
-        //   '📊 ═══ DEPTH DISPLAY UPDATE (Game $gameIndex) ═══\n'
-        //   '   Depth: ${gaugeProgress.depth}\n'
-        //   '   Nodes: ${gaugeProgress.kiloNodes}k\n'
-        //   '   Display: $depthText\n'
-        //   '   Component: ${activeComponent ?? EngineComponent.evaluationGauge}\n'
-        //   '   FEN Fragment: $fragmentPreview$fragmentSuffix\n'
-        //   '   ═══════════════════════════════════════',
-        // );
       } else {
         debugPrint(
           '⚠️  BottomNav (Game $gameIndex): Engine analysis ON but NO depth data available yet (overlay=${showDepthOverlay})',
@@ -97,6 +92,14 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              // Gamebase Explorer Toggle
+              ChessSvgBottomNavbar(
+                width: width,
+                svgPath: SvgAsset.bookIcon,
+                onPressed: onGamebaseToggle, // Needs to be added to constructor
+                isActive: isGamebaseActive, // Needs to be added to constructor
+              ),
+
               // Computer/Engine Analysis Toggle Button
               ChessSvgBottomNavbar(
                 width: width,

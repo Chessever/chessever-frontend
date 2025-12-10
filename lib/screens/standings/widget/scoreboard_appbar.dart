@@ -45,7 +45,9 @@ class _ScoreboardAppbarState extends ConsumerState<ScoreboardAppbar>
     final allowed = await requireFullAuthGuard(context);
     if (!allowed) return;
 
-    final favoritesNotifier = ref.read(favoritePlayersNotifierProvider.notifier);
+    final favoritesNotifier = ref.read(
+      favoritePlayersNotifierProvider.notifier,
+    );
     final player = ref.read(selectedPlayerProvider);
 
     if (player != null) {
@@ -78,12 +80,14 @@ class _ScoreboardAppbarState extends ConsumerState<ScoreboardAppbar>
 
     // Use old provider system
     final favoritesAsync = ref.watch(favoritePlayersNotifierProvider);
-    final isFavorite = player != null && favoritesAsync.maybeWhen(
-      data: (state) => state.players.any((p) => p.fideId == player.fideId),
-      orElse: () => false,
-      skipLoadingOnRefresh: true,
-      skipLoadingOnReload: true,
-    );
+    final isFavorite =
+        player != null &&
+        favoritesAsync.maybeWhen(
+          data: (state) => state.players.any((p) => p.fideId == player.fideId),
+          orElse: () => false,
+          skipLoadingOnRefresh: true,
+          skipLoadingOnReload: true,
+        );
 
     return Row(
       children: [
@@ -94,7 +98,11 @@ class _ScoreboardAppbarState extends ConsumerState<ScoreboardAppbar>
           onPressed: () {
             Navigator.of(context).pop();
           },
-          icon: Icon(Icons.arrow_back_ios_new_outlined, size: 24.ic),
+          icon: Icon(
+            Icons.arrow_back_ios_new_outlined,
+            size: 24.ic,
+            color: Colors.white,
+          ),
         ),
         SizedBox(width: 16.w),
         Expanded(child: const PlayerDropDown()),

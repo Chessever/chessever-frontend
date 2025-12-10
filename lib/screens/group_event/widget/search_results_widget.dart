@@ -138,7 +138,7 @@ class SearchResultsWidget extends HookConsumerWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.search_off, size: 64.sp, color: kDarkGreyColor),
+            Icon(Icons.search_off, size: 64.sp, color: kSubtleIconColor),
             SizedBox(height: 16.sp),
             Text(
               'No games found',
@@ -152,7 +152,7 @@ class SearchResultsWidget extends HookConsumerWidget {
             Text(
               'No games match "$query"',
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 14.sp, color: kDarkGreyColor),
+              style: TextStyle(fontSize: 14.sp, color: kSecondaryTextColor),
             ),
           ],
         ),
@@ -174,7 +174,7 @@ class SearchResultsWidget extends HookConsumerWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.search, size: 64.sp, color: kDarkGreyColor),
+            Icon(Icons.search, size: 64.sp, color: kSubtleIconColor),
             SizedBox(height: 16.sp),
             Text(
               'Search Results',
@@ -188,7 +188,7 @@ class SearchResultsWidget extends HookConsumerWidget {
             Text(
               'Enter a search term to find games',
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 14.sp, color: kDarkGreyColor),
+              style: TextStyle(fontSize: 14.sp, color: kSecondaryTextColor),
             ),
           ],
         ),

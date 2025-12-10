@@ -229,13 +229,13 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                                 Icon(
                                   Icons.speed_outlined,
                                   size: 16.ic,
-                                  color: kDarkGreyColor,
+                                  color: kSecondaryTextColor,
                                 ),
                                 SizedBox(width: 8.w),
                                 Text(
                                   'Time Control',
                                   style: AppTypography.textSmRegular.copyWith(
-                                    color: kDarkGreyColor,
+                                    color: kSecondaryTextColor,
                                   ),
                                 ),
                               ],
@@ -870,13 +870,13 @@ class _FilterButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final iconColor =
         isDisabled
-            ? kDarkGreyColor
+            ? kPlaceholderColor
             : isSelected
             ? kPrimaryColor
             : kWhiteColor70;
     final textColor =
         isDisabled
-            ? kDarkGreyColor
+            ? kPlaceholderColor
             : isSelected
             ? kPrimaryColor
             : kWhiteColor;
@@ -888,7 +888,7 @@ class _FilterButton extends StatelessWidget {
             : Colors.white.withValues(alpha: 0.12);
     final badgeTextColor =
         isDisabled
-            ? kDarkGreyColor
+            ? kPlaceholderColor
             : isSelected
             ? kPrimaryColor
             : kWhiteColor70;

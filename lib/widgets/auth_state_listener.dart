@@ -13,6 +13,8 @@ import 'package:chessever2/repository/local_storage/onboarding/onboarding_reposi
 import 'package:chessever2/repository/local_storage/sesions_manager/session_manager.dart';
 import 'package:chessever2/utils/favorites_migration.dart';
 import 'package:chessever2/services/analytics/analytics_service.dart';
+import 'package:chessever2/revenue_cat_service/revenue_cat_service.dart';
+import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -79,6 +81,21 @@ class AuthStateListener extends ConsumerWidget {
 
             if (shouldRunSync && currentUserId != null) {
               _lastSyncedUserId = currentUserId;
+
+              // Sync user with RevenueCat for subscription management
+              unawaited(
+                Future(() async {
+                  try {
+                    await RevenueCatService().logIn(currentUserId);
+                    // Refresh subscription status after login
+                    ref.read(subscriptionProvider.notifier).refresh();
+                  } catch (e) {
+                    if (kDebugMode) {
+                      print('⚠️ [Auth] RevenueCat login failed: $e');
+                    }
+                  }
+                }),
+              );
 
               // Clear cached favorites when switching accounts to avoid cross-user bleed
               if (userChanged) {
@@ -179,6 +196,7 @@ class AuthStateListener extends ConsumerWidget {
             // Clear the sync tracking when user logs out
             _lastSyncedUserId = null;
             unawaited(AnalyticsService.instance.clearUser());
+            unawaited(RevenueCatService().logOut());
 
             // Clear favorite caches and state so the next user starts clean
             await ref.read(favoriteEventsProvider.notifier).clearCache();

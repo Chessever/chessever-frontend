@@ -59,6 +59,7 @@ import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provide
 import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
 import 'package:motor/motor.dart';
+import 'package:chessever2/screens/gamebase/widgets/gamebase_explorer_view.dart';
 
 /// Spring-based curve that mimics iOS snappy motion
 /// Quick, precise animation with subtle natural settling
@@ -442,6 +443,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     with WidgetsBindingObserver {
   late PageController _pageController;
   bool analysisMode = false;
+  bool showGamebase = false;
   int? _lastViewedIndex;
   int _currentPageIndex = 0;
   final Set<String> _syncedLatestPositions = <String>{};
@@ -735,9 +737,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     final currentGame = _resolveGameForIndex(safeIndex);
     final params = _createParams(currentGame, safeIndex);
     try {
-      final notifier = ref.read(
-        chessBoardScreenProviderNew(params).notifier,
-      );
+      final notifier = ref.read(chessBoardScreenProviderNew(params).notifier);
       unawaited(notifier.onBecameVisible(force: true));
     } catch (e) {
       debugPrint('Error refreshing Stockfish on resume: $e');
@@ -750,9 +750,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     final currentGame = _resolveGameForIndex(safeIndex);
     final params = _createParams(currentGame, safeIndex);
     try {
-      final notifier = ref.read(
-        chessBoardScreenProviderNew(params).notifier,
-      );
+      final notifier = ref.read(chessBoardScreenProviderNew(params).notifier);
       unawaited(notifier.onBecameInvisible());
     } catch (e) {
       debugPrint('Error pausing Stockfish on lifecycle change: $e');
@@ -781,7 +779,9 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
   }
 
   void _navigateToGame(int gameIndex) {
-    debugPrint('🎯 _navigateToGame called with gameIndex: $gameIndex, current: $_currentPageIndex');
+    debugPrint(
+      '🎯 _navigateToGame called with gameIndex: $gameIndex, current: $_currentPageIndex',
+    );
     if (gameIndex == _currentPageIndex) {
       debugPrint('🎯 Same page, returning early');
       return;
@@ -789,7 +789,9 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
 
     // Validate gameIndex is within bounds
     if (gameIndex < 0 || gameIndex >= widget.games.length) {
-      debugPrint('🎯 Invalid gameIndex: $gameIndex (games.length: ${widget.games.length})');
+      debugPrint(
+        '🎯 Invalid gameIndex: $gameIndex (games.length: ${widget.games.length})',
+      );
       return;
     }
 
@@ -810,7 +812,9 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     // Use jumpToPage for jumps > 1 page to avoid animation interference
     // animateToPage can trigger multiple onPageChanged events during animation
     final distance = (gameIndex - _currentPageIndex).abs();
-    debugPrint('🎯 Navigating from $_currentPageIndex to $gameIndex (distance: $distance)');
+    debugPrint(
+      '🎯 Navigating from $_currentPageIndex to $gameIndex (distance: $distance)',
+    );
 
     if (distance > 1) {
       // For large jumps, use jumpToPage to avoid intermediate page triggers
@@ -823,6 +827,12 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
         curve: Curves.easeInOut,
       );
     }
+  }
+
+  void _toggleGamebase() {
+    setState(() {
+      showGamebase = !showGamebase;
+    });
   }
 
   @override
@@ -1059,78 +1069,80 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
           resizeToAvoidBottomInset: false,
           // REMOVED: RawGestureDetector was blocking PageView swipes
           body: PageView.builder(
-          padEnds: true,
-          allowImplicitScrolling: true,
-          // PageView swiping enabled in all modes
-          physics: const PageScrollPhysics(),
-          controller: _pageController,
-          onPageChanged: _onPageChanged,
-          itemCount: syncedGames.length,
-          itemBuilder: (context, index) {
-            // Build current page and adjacent pages
-            if (index == _currentPageIndex - 1 ||
-                index == _currentPageIndex ||
-                index == _currentPageIndex + 1) {
-              try {
-                final game = syncedGames[index];
-                final params = _createParams(game, index);
-                final stateAsync =
-                    visibleStates[index] ??
-                    ref.watch(chessBoardScreenProviderNew(params));
-                return stateAsync?.when(
-                  data: (chessBoardState) {
-                    _ensureLatestMoveSelected(
-                      ref: ref,
-                      pageIndex: index,
-                      state: chessBoardState,
-                    );
-                    if (chessBoardState.isAnalysisMode != analysisMode) {
-                      WidgetsBinding.instance.addPostFrameCallback((_) {
-                        if (_pageController.hasClients) {
-                          setState(() {
-                            analysisMode = chessBoardState.isAnalysisMode;
-                          });
-                        }
-                      });
-                    }
-                    return _GamePage(
-                      game:
-                          chessBoardState
-                              .game, // Use game from state which gets updated by streaming
-                      state: chessBoardState,
-                      games: syncedGames,
-                      currentGameIndex: index,
-                      currentPageIndex: _currentPageIndex,
-                      onGameChanged: _navigateToGame,
-                      lastViewedIndex: _lastViewedIndex,
-                      hideEventInfo: widget.hideEventInfo,
-                    );
-                  },
-                  error: (e, _) => ErrorWidget(e),
-                  loading:
-                      () => _LoadingScreen(
-                        games: liveGames,
+            padEnds: true,
+            allowImplicitScrolling: true,
+            // PageView swiping enabled in all modes
+            physics: const PageScrollPhysics(),
+            controller: _pageController,
+            onPageChanged: _onPageChanged,
+            itemCount: syncedGames.length,
+            itemBuilder: (context, index) {
+              // Build current page and adjacent pages
+              if (index == _currentPageIndex - 1 ||
+                  index == _currentPageIndex ||
+                  index == _currentPageIndex + 1) {
+                try {
+                  final game = syncedGames[index];
+                  final params = _createParams(game, index);
+                  final stateAsync =
+                      visibleStates[index] ??
+                      ref.watch(chessBoardScreenProviderNew(params));
+                  return stateAsync?.when(
+                    data: (chessBoardState) {
+                      _ensureLatestMoveSelected(
+                        ref: ref,
+                        pageIndex: index,
+                        state: chessBoardState,
+                      );
+                      if (chessBoardState.isAnalysisMode != analysisMode) {
+                        WidgetsBinding.instance.addPostFrameCallback((_) {
+                          if (_pageController.hasClients) {
+                            setState(() {
+                              analysisMode = chessBoardState.isAnalysisMode;
+                            });
+                          }
+                        });
+                      }
+                      return _GamePage(
+                        game:
+                            chessBoardState
+                                .game, // Use game from state which gets updated by streaming
+                        state: chessBoardState,
+                        games: syncedGames,
                         currentGameIndex: index,
+                        currentPageIndex: _currentPageIndex,
                         onGameChanged: _navigateToGame,
                         lastViewedIndex: _lastViewedIndex,
                         hideEventInfo: widget.hideEventInfo,
-                      ),
-                );
-              } catch (e) {
-                // Fallback for when provider isn't ready
-                return _LoadingScreen(
-                  games: liveGames,
-                  currentGameIndex: index,
-                  onGameChanged: _navigateToGame,
-                  lastViewedIndex: _lastViewedIndex,
-                  hideEventInfo: widget.hideEventInfo,
-                );
+                        onToggleGamebase: _toggleGamebase,
+                        isGamebaseActive: showGamebase,
+                      );
+                    },
+                    error: (e, _) => ErrorWidget(e),
+                    loading:
+                        () => _LoadingScreen(
+                          games: liveGames,
+                          currentGameIndex: index,
+                          onGameChanged: _navigateToGame,
+                          lastViewedIndex: _lastViewedIndex,
+                          hideEventInfo: widget.hideEventInfo,
+                        ),
+                  );
+                } catch (e) {
+                  // Fallback for when provider isn't ready
+                  return _LoadingScreen(
+                    games: liveGames,
+                    currentGameIndex: index,
+                    onGameChanged: _navigateToGame,
+                    lastViewedIndex: _lastViewedIndex,
+                    hideEventInfo: widget.hideEventInfo,
+                  );
+                }
+              } else {
+                return SizedBox.shrink();
               }
-            } else {
-              return SizedBox.shrink();
-            }
-          },
-        ),
+            },
+          ),
         ),
       ),
     );
@@ -1146,6 +1158,8 @@ class _GamePage extends StatelessWidget {
   final void Function(int) onGameChanged;
   final int? lastViewedIndex;
   final bool hideEventInfo;
+  final VoidCallback onToggleGamebase;
+  final bool isGamebaseActive;
 
   const _GamePage({
     required this.game,
@@ -1154,6 +1168,8 @@ class _GamePage extends StatelessWidget {
     required this.currentGameIndex,
     required this.currentPageIndex,
     required this.onGameChanged,
+    required this.onToggleGamebase,
+    this.isGamebaseActive = false,
     this.lastViewedIndex,
     this.hideEventInfo = false,
   });
@@ -1166,6 +1182,8 @@ class _GamePage extends StatelessWidget {
         index: currentGameIndex,
         state: state,
         game: game,
+        onGamebaseToggle: onToggleGamebase,
+        isGamebaseActive: isGamebaseActive,
       ),
       appBar: _AppBar(
         game: game,
@@ -1180,6 +1198,7 @@ class _GamePage extends StatelessWidget {
         currentPageIndex: currentPageIndex,
         game: game,
         state: state,
+        isGamebaseActive: isGamebaseActive,
       ),
     );
     return MediaQuery.removeViewInsets(
@@ -1454,7 +1473,9 @@ class _AppBarState extends ConsumerState<_AppBar> {
       pgn = exportGameToPgn(analysisGame);
     }
     pgn ??=
-        (await ref.read(gameRepositoryProvider).getGameById(widget.game.gameId)).pgn ??
+        (await ref
+            .read(gameRepositoryProvider)
+            .getGameById(widget.game.gameId)).pgn ??
         '';
     Clipboard.setData(ClipboardData(text: pgn));
   }
@@ -1502,19 +1523,12 @@ class _AppBarState extends ConsumerState<_AppBar> {
     }
   }
 
-  void _showEventInfoSheet(
-    BuildContext context,
-    WidgetRef ref,
-    String? pgn,
-  ) {
+  void _showEventInfoSheet(BuildContext context, WidgetRef ref, String? pgn) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => _EventInfoSheet(
-        game: widget.game,
-        pgn: pgn,
-      ),
+      builder: (context) => _EventInfoSheet(game: widget.game, pgn: pgn),
     );
   }
 
@@ -1539,21 +1553,22 @@ class _AppBarState extends ConsumerState<_AppBar> {
         icon: Icon(Icons.arrow_back_ios_new, color: kWhiteColor, size: 20.sp),
         onPressed: () => Navigator.pop(context, widget.lastViewedIndex),
       ),
-      title: widget.hideEventInfo
-          ? Text(
-              'Analysis Board',
-              style: TextStyle(
-                color: kWhiteColor,
-                fontSize: 16.sp,
-                fontWeight: FontWeight.w600,
+      title:
+          widget.hideEventInfo
+              ? Text(
+                'Analysis Board',
+                style: TextStyle(
+                  color: kWhiteColor,
+                  fontSize: 16.sp,
+                  fontWeight: FontWeight.w600,
+                ),
+              )
+              : _GameSelectionDropdown(
+                games: widget.games,
+                currentGameIndex: widget.currentGameIndex,
+                onGameChanged: widget.onGameChanged,
+                isLoading: widget.isLoading,
               ),
-            )
-          : _GameSelectionDropdown(
-              games: widget.games,
-              currentGameIndex: widget.currentGameIndex,
-              onGameChanged: widget.onGameChanged,
-              isLoading: widget.isLoading,
-            ),
       actions: [
         SizedBox(width: 4.sp),
         // Event info button (hidden when navigating from library for position analysis)
@@ -1565,19 +1580,14 @@ class _AppBarState extends ConsumerState<_AppBar> {
               size: 20.sp,
             ),
             tooltip: 'Event info',
-            onPressed: widget.isLoading ? null : () => _showEventInfoSheet(
-              context,
-              ref,
-              infoSheetPgn,
-            ),
+            onPressed:
+                widget.isLoading
+                    ? null
+                    : () => _showEventInfoSheet(context, ref, infoSheetPgn),
           ),
         // Save Analysis button
         IconButton(
-          icon: Icon(
-            Icons.save_outlined,
-            color: kWhiteColor,
-            size: 20.sp,
-          ),
+          icon: Icon(Icons.save_outlined, color: kWhiteColor, size: 20.sp),
           tooltip: 'Save analysis',
           onPressed: widget.isLoading ? null : _showSaveAnalysisDialog,
         ),
@@ -1586,97 +1596,103 @@ class _AppBarState extends ConsumerState<_AppBar> {
           icon: Icon(Icons.more_vert, color: kWhiteColor, size: 22.sp),
           enabled: !widget.isLoading,
           onSelected: (value) async {
-              if (value == 'share') {
-                shareGameBtnClicked();
-              } else if (value == 'board_settings') {
-                final allowed = await requireFullAuthGuard(context);
-                if (!allowed) return;
-                if (!context.mounted) return;
-                Navigator.of(context).push(ChessBoardSettingsPage.route());
-              } else if (value == 'clear_analysis') {
-                final params = ChessBoardProviderParams(
-                  game: widget.game,
-                  index: widget.currentGameIndex,
+            if (value == 'share') {
+              shareGameBtnClicked();
+            } else if (value == 'board_settings') {
+              final allowed = await requireFullAuthGuard(context);
+              if (!allowed) return;
+              if (!context.mounted) return;
+              Navigator.of(context).push(ChessBoardSettingsPage.route());
+            } else if (value == 'clear_analysis') {
+              final params = ChessBoardProviderParams(
+                game: widget.game,
+                index: widget.currentGameIndex,
+              );
+              final boardState = ref.read(chessBoardScreenProviderNew(params));
+              final analysisGame = boardState.valueOrNull?.analysisState.game;
+              final hasCustomAnalysis = _gameHasCustomVariations(analysisGame);
+
+              if (!hasCustomAnalysis) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('No custom analysis to clear'),
+                    backgroundColor: Colors.orange,
+                    behavior: SnackBarBehavior.floating,
+                  ),
                 );
-                final boardState = ref.read(chessBoardScreenProviderNew(params));
-                final analysisGame = boardState.valueOrNull?.analysisState.game;
-                final hasCustomAnalysis = _gameHasCustomVariations(analysisGame);
-
-                if (!hasCustomAnalysis) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('No custom analysis to clear'),
-                      backgroundColor: Colors.orange,
-                      behavior: SnackBarBehavior.floating,
-                    ),
-                  );
-                  return;
-                }
-
-                HapticFeedback.selectionClick();
-                final confirmed =
-                    await _showAnalysisConfirmationDialog(
-                      context: context,
-                      title: 'Clear analysis?',
-                      message:
-                          'This will remove every custom branch, including nested subvariants. This action cannot be undone.',
-                      confirmLabel: 'Clear',
-                      confirmColor: kRedColor,
-                    ) ??
-                    false;
-                if (!confirmed) return;
-                HapticFeedback.heavyImpact();
-                final notifier = ref.read(chessBoardScreenProviderNew(params).notifier);
-                await notifier.clearUserAnalysis();
+                return;
               }
-            },
-            itemBuilder: (context) => [
-              PopupMenuItem(
-                value: 'board_settings',
-                child: Row(
-                  children: [
-                    Icon(Icons.settings, color: kWhiteColor),
-                    SizedBox(width: 8.w),
-                    const Text('Board Settings'),
-                  ],
+
+              HapticFeedback.selectionClick();
+              final confirmed =
+                  await _showAnalysisConfirmationDialog(
+                    context: context,
+                    title: 'Clear analysis?',
+                    message:
+                        'This will remove every custom branch, including nested subvariants. This action cannot be undone.',
+                    confirmLabel: 'Clear',
+                    confirmColor: kRedColor,
+                  ) ??
+                  false;
+              if (!confirmed) return;
+              HapticFeedback.heavyImpact();
+              final notifier = ref.read(
+                chessBoardScreenProviderNew(params).notifier,
+              );
+              await notifier.clearUserAnalysis();
+            }
+          },
+          itemBuilder:
+              (context) => [
+                PopupMenuItem(
+                  value: 'board_settings',
+                  child: Row(
+                    children: [
+                      Icon(Icons.settings, color: kWhiteColor),
+                      SizedBox(width: 8.w),
+                      const Text('Board Settings'),
+                    ],
+                  ),
                 ),
-              ),
-              PopupMenuItem(
-                value: 'share',
-                child: Row(
-                  children: [
-                    Icon(Icons.share, color: kWhiteColor),
-                    SizedBox(width: 8.w),
-                    const Text('Share Game'),
-                  ],
+                PopupMenuItem(
+                  value: 'share',
+                  child: Row(
+                    children: [
+                      Icon(Icons.share, color: kWhiteColor),
+                      SizedBox(width: 8.w),
+                      const Text('Share Game'),
+                    ],
+                  ),
                 ),
-              ),
-              PopupMenuItem(
-                onTap: () {
-                  copyPgnBtnClicked();
-                },
-                value: 'copy_pgn',
-                child: Row(
-                  children: [
-                    Icon(Icons.copy, color: kWhiteColor),
-                    SizedBox(width: 8.w),
-                    const Text('Copy PGN'),
-                  ],
+                PopupMenuItem(
+                  onTap: () {
+                    copyPgnBtnClicked();
+                  },
+                  value: 'copy_pgn',
+                  child: Row(
+                    children: [
+                      Icon(Icons.copy, color: kWhiteColor),
+                      SizedBox(width: 8.w),
+                      const Text('Copy PGN'),
+                    ],
+                  ),
                 ),
-              ),
-              const PopupMenuDivider(),
-              PopupMenuItem(
-                value: 'clear_analysis',
-                child: Row(
-                  children: [
-                    Icon(Icons.auto_delete_outlined, color: kRedColor),
-                    SizedBox(width: 8.w),
-                    const Text('Clear Analysis', style: TextStyle(color: kRedColor)),
-                  ],
+                const PopupMenuDivider(),
+                PopupMenuItem(
+                  value: 'clear_analysis',
+                  child: Row(
+                    children: [
+                      Icon(Icons.auto_delete_outlined, color: kRedColor),
+                      SizedBox(width: 8.w),
+                      const Text(
+                        'Clear Analysis',
+                        style: TextStyle(color: kRedColor),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            ],
-          ),
+              ],
+        ),
         SizedBox(width: 4.sp),
       ],
     );
@@ -1778,8 +1794,18 @@ class _GameSelectionDropdownState extends State<_GameSelectionDropdown>
 
     // Suffixes to ignore when finding last name
     const suffixes = {
-      'jr', 'jr.', 'sr', 'sr.', 'ii', 'iii', 'iv', 'v',
-      '2nd', '3rd', '4th', '5th',
+      'jr',
+      'jr.',
+      'sr',
+      'sr.',
+      'ii',
+      'iii',
+      'iv',
+      'v',
+      '2nd',
+      '3rd',
+      '4th',
+      '5th',
     };
 
     final parts = name.split(' ').where((p) => p.isNotEmpty).toList();
@@ -1828,31 +1854,38 @@ class _GameSelectionDropdownState extends State<_GameSelectionDropdown>
     final availableHeight = screenHeight - offset.dy - size.height - 32.sp;
 
     _overlayEntry = OverlayEntry(
-      builder: (context) => _GameDropdownOverlay(
-        layerLink: _layerLink,
-        triggerSize: size,
-        triggerOffset: offset,
-        screenWidth: screenWidth,
-        availableHeight: availableHeight,
-        animation: _animation,
-        games: widget.games,
-        currentGameIndex: widget.currentGameIndex,
-        isLoading: widget.isLoading,
-        onSelect: (selectedIndex) {
-          debugPrint('🎯 Dropdown onSelect: selectedIndex=$selectedIndex, currentGameIndex=${widget.currentGameIndex}');
-          HapticFeedback.selectionClick();
-          if (selectedIndex >= 0 &&
-              selectedIndex < widget.games.length &&
-              selectedIndex != widget.currentGameIndex) {
-            debugPrint('🎯 Calling onGameChanged with index: $selectedIndex');
-            widget.onGameChanged(selectedIndex);
-          } else {
-            debugPrint('🎯 Skipping navigation - same game or invalid index');
-          }
-          _closeDropdown();
-        },
-        onDismiss: _closeDropdown,
-      ),
+      builder:
+          (context) => _GameDropdownOverlay(
+            layerLink: _layerLink,
+            triggerSize: size,
+            triggerOffset: offset,
+            screenWidth: screenWidth,
+            availableHeight: availableHeight,
+            animation: _animation,
+            games: widget.games,
+            currentGameIndex: widget.currentGameIndex,
+            isLoading: widget.isLoading,
+            onSelect: (selectedIndex) {
+              debugPrint(
+                '🎯 Dropdown onSelect: selectedIndex=$selectedIndex, currentGameIndex=${widget.currentGameIndex}',
+              );
+              HapticFeedback.selectionClick();
+              if (selectedIndex >= 0 &&
+                  selectedIndex < widget.games.length &&
+                  selectedIndex != widget.currentGameIndex) {
+                debugPrint(
+                  '🎯 Calling onGameChanged with index: $selectedIndex',
+                );
+                widget.onGameChanged(selectedIndex);
+              } else {
+                debugPrint(
+                  '🎯 Skipping navigation - same game or invalid index',
+                );
+              }
+              _closeDropdown();
+            },
+            onDismiss: _closeDropdown,
+          ),
     );
 
     overlay.insert(_overlayEntry!);
@@ -1915,13 +1948,15 @@ class _GameChipButton extends StatelessWidget {
         padding: EdgeInsets.symmetric(horizontal: 10.sp, vertical: 6.sp),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(100.br),
-          color: isOpen
-              ? kPrimaryColor.withValues(alpha: 0.15)
-              : kWhiteColor.withValues(alpha: 0.06),
+          color:
+              isOpen
+                  ? kPrimaryColor.withValues(alpha: 0.15)
+                  : kWhiteColor.withValues(alpha: 0.06),
           border: Border.all(
-            color: isOpen
-                ? kPrimaryColor.withValues(alpha: 0.4)
-                : kWhiteColor.withValues(alpha: 0.12),
+            color:
+                isOpen
+                    ? kPrimaryColor.withValues(alpha: 0.4)
+                    : kWhiteColor.withValues(alpha: 0.12),
             width: 1.0,
           ),
         ),
@@ -1953,9 +1988,10 @@ class _GameChipButton extends StatelessWidget {
                 curve: Curves.easeOutCubic,
                 child: Icon(
                   Icons.keyboard_arrow_down_rounded,
-                  color: isOpen
-                      ? kPrimaryColor
-                      : kWhiteColor.withValues(alpha: 0.7),
+                  color:
+                      isOpen
+                          ? kPrimaryColor
+                          : kWhiteColor.withValues(alpha: 0.7),
                   size: 16.ic,
                 ),
               ),
@@ -1972,10 +2008,7 @@ class _GameStatusIndicator extends StatelessWidget {
   final GameStatus status;
   final bool isLoading;
 
-  const _GameStatusIndicator({
-    required this.status,
-    this.isLoading = false,
-  });
+  const _GameStatusIndicator({required this.status, this.isLoading = false});
 
   @override
   Widget build(BuildContext context) {
@@ -2117,15 +2150,14 @@ class _GameDropdownOverlay extends StatelessWidget {
                   return Transform.scale(
                     scale: 0.92 + (progress * 0.08),
                     alignment: Alignment.topCenter,
-                    child: Opacity(
-                      opacity: progress,
-                      child: child,
-                    ),
+                    child: Opacity(opacity: progress, child: child),
                   );
                 },
                 child: Container(
                   width: dropdownWidth,
-                  constraints: BoxConstraints(maxHeight: availableHeight.clamp(180.0, 380.0)),
+                  constraints: BoxConstraints(
+                    maxHeight: availableHeight.clamp(180.0, 380.0),
+                  ),
                   decoration: BoxDecoration(
                     color: const Color(0xFF1A1A1A),
                     borderRadius: BorderRadius.circular(16.br),
@@ -2259,7 +2291,8 @@ class _GameDropdownContentState extends State<_GameDropdownContent> {
       final firstBox = firstCtx?.findRenderObject() as RenderBox?;
       if (firstBox != null && firstBox.hasSize) {
         itemHeight = firstBox.size.height;
-        firstTop = listBox.globalToLocal(firstBox.localToGlobal(Offset.zero)).dy;
+        firstTop =
+            listBox.globalToLocal(firstBox.localToGlobal(Offset.zero)).dy;
       }
     }
 
@@ -2267,7 +2300,8 @@ class _GameDropdownContentState extends State<_GameDropdownContent> {
       final secondCtx = _itemKeys[1].currentContext;
       final secondBox = secondCtx?.findRenderObject() as RenderBox?;
       if (secondBox != null && secondBox.hasSize && firstTop != null) {
-        secondTop = listBox.globalToLocal(secondBox.localToGlobal(Offset.zero)).dy;
+        secondTop =
+            listBox.globalToLocal(secondBox.localToGlobal(Offset.zero)).dy;
       }
     }
 
@@ -2307,19 +2341,22 @@ class _GameDropdownContentState extends State<_GameDropdownContent> {
     if (listBox == null) return false;
 
     final localPos = listBox.globalToLocal(globalPosition);
-    final scrollOffset = _scrollController.hasClients ? _scrollController.offset : 0.0;
+    final scrollOffset =
+        _scrollController.hasClients ? _scrollController.offset : 0.0;
 
     // Calculate selector's current visual position (accounting for scroll and padding)
     final indicatorInset = _indicatorInset.h;
-    final selectorHeight =
-        (_itemHeight - indicatorInset * 2).clamp(0.0, _itemHeight);
+    final selectorHeight = (_itemHeight - indicatorInset * 2).clamp(
+      0.0,
+      _itemHeight,
+    );
     final selectorVisualTop = _targetY - scrollOffset + indicatorInset;
     final selectorVisualBottom = selectorVisualTop + selectorHeight;
 
     // Add some tolerance for easier grabbing
     const tolerance = 8.0;
     return localPos.dy >= (selectorVisualTop - tolerance) &&
-           localPos.dy <= (selectorVisualBottom + tolerance);
+        localPos.dy <= (selectorVisualBottom + tolerance);
   }
 
   void _handlePointerDown(PointerDownEvent event) {
@@ -2362,15 +2399,22 @@ class _GameDropdownContentState extends State<_GameDropdownContent> {
       // Near top edge - scroll up
       final intensity = 1.0 - (localPos.dy / edgeThreshold);
       final scrollAmount = scrollSpeed * intensity;
-      final newScroll = (_scrollController.offset - scrollAmount).clamp(0.0, maxScroll);
+      final newScroll = (_scrollController.offset - scrollAmount).clamp(
+        0.0,
+        maxScroll,
+      );
       _scrollController.jumpTo(newScroll);
       // Update index after scroll
       _updateIndexFromPosition(globalPosition);
-    } else if (localPos.dy > listHeight - edgeThreshold && _scrollController.offset < maxScroll) {
+    } else if (localPos.dy > listHeight - edgeThreshold &&
+        _scrollController.offset < maxScroll) {
       // Near bottom edge - scroll down
       final intensity = 1.0 - ((listHeight - localPos.dy) / edgeThreshold);
       final scrollAmount = scrollSpeed * intensity;
-      final newScroll = (_scrollController.offset + scrollAmount).clamp(0.0, maxScroll);
+      final newScroll = (_scrollController.offset + scrollAmount).clamp(
+        0.0,
+        maxScroll,
+      );
       _scrollController.jumpTo(newScroll);
       // Update index after scroll
       _updateIndexFromPosition(globalPosition);
@@ -2378,7 +2422,9 @@ class _GameDropdownContentState extends State<_GameDropdownContent> {
   }
 
   void _handlePointerUp(PointerUpEvent event) {
-    if (_isDragging && _currentIndex >= 0 && _currentIndex < widget.games.length) {
+    if (_isDragging &&
+        _currentIndex >= 0 &&
+        _currentIndex < widget.games.length) {
       HapticFeedback.mediumImpact();
       widget.onSelect(_currentIndex);
     }
@@ -2398,10 +2444,15 @@ class _GameDropdownContentState extends State<_GameDropdownContent> {
     if (listBox == null) return;
 
     final localPos = listBox.globalToLocal(globalPosition);
-    final scrollOffset = _scrollController.hasClients ? _scrollController.offset : 0.0;
-    final stride = _totalItemHeight <= 0 ? (_itemHeight + 2.h) : _totalItemHeight;
+    final scrollOffset =
+        _scrollController.hasClients ? _scrollController.offset : 0.0;
+    final stride =
+        _totalItemHeight <= 0 ? (_itemHeight + 2.h) : _totalItemHeight;
     final adjustedY = localPos.dy + scrollOffset - _itemBaseTop;
-    final newIndex = (adjustedY / stride).floor().clamp(0, widget.games.length - 1);
+    final newIndex = (adjustedY / stride).floor().clamp(
+      0,
+      widget.games.length - 1,
+    );
 
     if (newIndex != _currentIndex) {
       HapticFeedback.selectionClick();
@@ -2422,9 +2473,12 @@ class _GameDropdownContentState extends State<_GameDropdownContent> {
         .replaceAll('-', ' ')
         .replaceAll('_', ' ')
         .split(' ')
-        .map((word) => word.isEmpty
-            ? ''
-            : '${word[0].toUpperCase()}${word.substring(1)}')
+        .map(
+          (word) =>
+              word.isEmpty
+                  ? ''
+                  : '${word[0].toUpperCase()}${word.substring(1)}',
+        )
         .join(' ');
   }
 
@@ -2444,11 +2498,14 @@ class _GameDropdownContentState extends State<_GameDropdownContent> {
           children: [
             // List of games - physics disabled only when dragging selector
             ScrollConfiguration(
-              behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
+              behavior: ScrollConfiguration.of(
+                context,
+              ).copyWith(scrollbars: false),
               child: ListView.builder(
                 key: _listKey,
                 controller: _scrollController,
-                physics: _isDragging ? const NeverScrollableScrollPhysics() : null,
+                physics:
+                    _isDragging ? const NeverScrollableScrollPhysics() : null,
                 padding: EdgeInsets.symmetric(vertical: 6.h),
                 itemCount: widget.games.length,
                 itemBuilder: (context, index) {
@@ -2461,11 +2518,17 @@ class _GameDropdownContentState extends State<_GameDropdownContent> {
 
                   // Determine if we should show round separator
                   final currentRound = game.roundSlug ?? game.roundId;
-                  final previousRound = index > 0
-                      ? (widget.games[index - 1].roundSlug ?? widget.games[index - 1].roundId)
-                      : null;
-                  final showRoundSeparator = previousRound != null && currentRound != previousRound;
-                  final roundLabel = showRoundSeparator ? _formatRoundLabel(currentRound) : null;
+                  final previousRound =
+                      index > 0
+                          ? (widget.games[index - 1].roundSlug ??
+                              widget.games[index - 1].roundId)
+                          : null;
+                  final showRoundSeparator =
+                      previousRound != null && currentRound != previousRound;
+                  final roundLabel =
+                      showRoundSeparator
+                          ? _formatRoundLabel(currentRound)
+                          : null;
 
                   return KeyedSubtree(
                     key: _itemKeys[index],
@@ -2493,13 +2556,19 @@ class _GameDropdownContentState extends State<_GameDropdownContent> {
                   child: ListenableBuilder(
                     listenable: _scrollController,
                     builder: (context, _) {
-                      final scrollOffset = _scrollController.hasClients ? _scrollController.offset : 0.0;
+                      final scrollOffset =
+                          _scrollController.hasClients
+                              ? _scrollController.offset
+                              : 0.0;
                       final indicatorInset = _indicatorInset.h;
-                      final indicatorHeight =
-                          (_itemHeight - indicatorInset * 2).clamp(0.0, _itemHeight);
+                      final indicatorHeight = (_itemHeight - indicatorInset * 2)
+                          .clamp(0.0, _itemHeight);
 
                       return SingleMotionBuilder(
-                        motion: _isDragging ? CupertinoMotion.snappy() : CupertinoMotion.bouncy(),
+                        motion:
+                            _isDragging
+                                ? CupertinoMotion.snappy()
+                                : CupertinoMotion.bouncy(),
                         value: _targetY - scrollOffset + indicatorInset,
                         builder: (context, animatedY, _) {
                           return CustomPaint(
@@ -2554,7 +2623,20 @@ class _GameItemSimple extends StatelessWidget {
       final lastName = name.split(',').first.trim();
       if (lastName.isNotEmpty) return lastName;
     }
-    const suffixes = {'jr', 'jr.', 'sr', 'sr.', 'ii', 'iii', 'iv', 'v', '2nd', '3rd', '4th', '5th'};
+    const suffixes = {
+      'jr',
+      'jr.',
+      'sr',
+      'sr.',
+      'ii',
+      'iii',
+      'iv',
+      'v',
+      '2nd',
+      '3rd',
+      '4th',
+      '5th',
+    };
     final parts = name.split(' ').where((p) => p.isNotEmpty).toList();
     if (parts.isEmpty) return fullName;
     if (parts.length == 1) return parts.first;
@@ -2566,11 +2648,16 @@ class _GameItemSimple extends StatelessWidget {
 
   String _getResultText() {
     switch (game.gameStatus) {
-      case GameStatus.whiteWins: return '1–0';
-      case GameStatus.blackWins: return '0–1';
-      case GameStatus.draw: return '½–½';
-      case GameStatus.ongoing: return '';
-      case GameStatus.unknown: return '';
+      case GameStatus.whiteWins:
+        return '1–0';
+      case GameStatus.blackWins:
+        return '0–1';
+      case GameStatus.draw:
+        return '½–½';
+      case GameStatus.ongoing:
+        return '';
+      case GameStatus.unknown:
+        return '';
     }
   }
 
@@ -2645,24 +2732,29 @@ class _GameItemSimple extends StatelessWidget {
                   // Live indicator
                   SizedBox(
                     width: 14.w,
-                    child: isLive
-                        ? Container(
-                            width: 6.w,
-                            height: 6.h,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: kPrimaryColor,
-                            ),
-                          )
-                        : null,
+                    child:
+                        isLive
+                            ? Container(
+                              width: 6.w,
+                              height: 6.h,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: kPrimaryColor,
+                              ),
+                            )
+                            : null,
                   ),
                   // White player
                   Expanded(
                     child: Text(
                       whiteName,
                       style: AppTypography.textXsMedium.copyWith(
-                        color: isSelected ? kPrimaryColor : kWhiteColor.withValues(alpha: 0.9),
-                        fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                        color:
+                            isSelected
+                                ? kPrimaryColor
+                                : kWhiteColor.withValues(alpha: 0.9),
+                        fontWeight:
+                            isSelected ? FontWeight.w600 : FontWeight.w500,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -2672,29 +2764,34 @@ class _GameItemSimple extends StatelessWidget {
                   Container(
                     width: 36.w,
                     alignment: Alignment.center,
-                    child: resultText.isNotEmpty
-                        ? Text(
-                            resultText,
-                            style: AppTypography.textXxsMedium.copyWith(
-                              color: kWhiteColor.withValues(alpha: 0.5),
-                              fontWeight: FontWeight.w500,
+                    child:
+                        resultText.isNotEmpty
+                            ? Text(
+                              resultText,
+                              style: AppTypography.textXxsMedium.copyWith(
+                                color: kWhiteColor.withValues(alpha: 0.5),
+                                fontWeight: FontWeight.w500,
+                              ),
+                            )
+                            : Text(
+                              'vs',
+                              style: AppTypography.textXxsRegular.copyWith(
+                                color: kWhiteColor.withValues(alpha: 0.35),
+                                fontStyle: FontStyle.italic,
+                              ),
                             ),
-                          )
-                        : Text(
-                            'vs',
-                            style: AppTypography.textXxsRegular.copyWith(
-                              color: kWhiteColor.withValues(alpha: 0.35),
-                              fontStyle: FontStyle.italic,
-                            ),
-                          ),
                   ),
                   // Black player
                   Expanded(
                     child: Text(
                       blackName,
                       style: AppTypography.textXsMedium.copyWith(
-                        color: isSelected ? kPrimaryColor : kWhiteColor.withValues(alpha: 0.9),
-                        fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                        color:
+                            isSelected
+                                ? kPrimaryColor
+                                : kWhiteColor.withValues(alpha: 0.9),
+                        fontWeight:
+                            isSelected ? FontWeight.w600 : FontWeight.w500,
                       ),
                       textAlign: TextAlign.right,
                       maxLines: 1,
@@ -2730,21 +2827,28 @@ class _GameSelectorPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final rect = RRect.fromRectAndRadius(
-      Rect.fromLTWH(horizontalMargin, y, size.width - horizontalMargin * 2, height),
+      Rect.fromLTWH(
+        horizontalMargin,
+        y,
+        size.width - horizontalMargin * 2,
+        height,
+      ),
       const Radius.circular(8),
     );
 
     // Fill
-    final fillPaint = Paint()
-      ..color = baseColor.withValues(alpha: isDragging ? 0.15 : 0.1)
-      ..style = PaintingStyle.fill;
+    final fillPaint =
+        Paint()
+          ..color = baseColor.withValues(alpha: isDragging ? 0.15 : 0.1)
+          ..style = PaintingStyle.fill;
     canvas.drawRRect(rect, fillPaint);
 
     // Border
-    final borderPaint = Paint()
-      ..color = baseColor.withValues(alpha: isDragging ? 0.4 : 0.25)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.0;
+    final borderPaint =
+        Paint()
+          ..color = baseColor.withValues(alpha: isDragging ? 0.4 : 0.25)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.0;
     canvas.drawRRect(rect, borderPaint);
   }
 
@@ -2776,9 +2880,12 @@ class _RoundSeparator extends StatelessWidget {
         .replaceAll('-', ' ')
         .replaceAll('_', ' ')
         .split(' ')
-        .map((word) => word.isEmpty
-            ? ''
-            : '${word[0].toUpperCase()}${word.substring(1)}')
+        .map(
+          (word) =>
+              word.isEmpty
+                  ? ''
+                  : '${word[0].toUpperCase()}${word.substring(1)}',
+        )
         .join(' ');
   }
 
@@ -2869,10 +2976,7 @@ class _AnimatedGameItem extends StatelessWidget {
         final clampedValue = itemAnimation.value.clamp(0.0, 1.0);
         return Transform.translate(
           offset: Offset(0, 12 * (1 - clampedValue)),
-          child: Opacity(
-            opacity: clampedValue,
-            child: child,
-          ),
+          child: Opacity(opacity: clampedValue, child: child),
         );
       },
       child: _GameItem(
@@ -2921,8 +3025,18 @@ class _GameItemState extends State<_GameItem> {
 
     // Suffixes to ignore when finding last name
     const suffixes = {
-      'jr', 'jr.', 'sr', 'sr.', 'ii', 'iii', 'iv', 'v',
-      '2nd', '3rd', '4th', '5th',
+      'jr',
+      'jr.',
+      'sr',
+      'sr.',
+      'ii',
+      'iii',
+      'iv',
+      'v',
+      '2nd',
+      '3rd',
+      '4th',
+      '5th',
     };
 
     final parts = name.split(' ').where((p) => p.isNotEmpty).toList();
@@ -2973,9 +3087,10 @@ class _GameItemState extends State<_GameItem> {
         padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 8.h),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(8.br),
-          color: widget.isSelected
-              ? kPrimaryColor.withValues(alpha: 0.1)
-              : _isPressed
+          color:
+              widget.isSelected
+                  ? kPrimaryColor.withValues(alpha: 0.1)
+                  : _isPressed
                   ? kWhiteColor.withValues(alpha: 0.03)
                   : Colors.transparent,
         ),
@@ -2984,33 +3099,36 @@ class _GameItemState extends State<_GameItem> {
             // Live indicator - fixed width
             SizedBox(
               width: 14.w,
-              child: isLive
-                  ? Container(
-                      width: 6.w,
-                      height: 6.h,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: kPrimaryColor,
-                        boxShadow: [
-                          BoxShadow(
-                            color: kPrimaryColor.withValues(alpha: 0.4),
-                            blurRadius: 4,
-                            spreadRadius: 1,
-                          ),
-                        ],
-                      ),
-                    )
-                  : null,
+              child:
+                  isLive
+                      ? Container(
+                        width: 6.w,
+                        height: 6.h,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: kPrimaryColor,
+                          boxShadow: [
+                            BoxShadow(
+                              color: kPrimaryColor.withValues(alpha: 0.4),
+                              blurRadius: 4,
+                              spreadRadius: 1,
+                            ),
+                          ],
+                        ),
+                      )
+                      : null,
             ),
             // White player
             Expanded(
               child: Text(
                 whiteName,
                 style: AppTypography.textXsMedium.copyWith(
-                  color: widget.isSelected
-                      ? kPrimaryColor
-                      : kWhiteColor.withValues(alpha: 0.9),
-                  fontWeight: widget.isSelected ? FontWeight.w600 : FontWeight.w500,
+                  color:
+                      widget.isSelected
+                          ? kPrimaryColor
+                          : kWhiteColor.withValues(alpha: 0.9),
+                  fontWeight:
+                      widget.isSelected ? FontWeight.w600 : FontWeight.w500,
                 ),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
@@ -3020,32 +3138,35 @@ class _GameItemState extends State<_GameItem> {
             Container(
               width: 36.w,
               alignment: Alignment.center,
-              child: resultText.isNotEmpty
-                  ? Text(
-                      resultText,
-                      style: AppTypography.textXxsMedium.copyWith(
-                        color: kWhiteColor.withValues(alpha: 0.5),
-                        fontWeight: FontWeight.w500,
-                        letterSpacing: -0.2,
+              child:
+                  resultText.isNotEmpty
+                      ? Text(
+                        resultText,
+                        style: AppTypography.textXxsMedium.copyWith(
+                          color: kWhiteColor.withValues(alpha: 0.5),
+                          fontWeight: FontWeight.w500,
+                          letterSpacing: -0.2,
+                        ),
+                      )
+                      : Text(
+                        'vs',
+                        style: AppTypography.textXxsRegular.copyWith(
+                          color: kWhiteColor.withValues(alpha: 0.35),
+                          fontStyle: FontStyle.italic,
+                        ),
                       ),
-                    )
-                  : Text(
-                      'vs',
-                      style: AppTypography.textXxsRegular.copyWith(
-                        color: kWhiteColor.withValues(alpha: 0.35),
-                        fontStyle: FontStyle.italic,
-                      ),
-                    ),
             ),
             // Black player
             Expanded(
               child: Text(
                 blackName,
                 style: AppTypography.textXsMedium.copyWith(
-                  color: widget.isSelected
-                      ? kPrimaryColor
-                      : kWhiteColor.withValues(alpha: 0.9),
-                  fontWeight: widget.isSelected ? FontWeight.w600 : FontWeight.w500,
+                  color:
+                      widget.isSelected
+                          ? kPrimaryColor
+                          : kWhiteColor.withValues(alpha: 0.9),
+                  fontWeight:
+                      widget.isSelected ? FontWeight.w600 : FontWeight.w500,
                 ),
                 textAlign: TextAlign.right,
                 maxLines: 1,
@@ -3055,21 +3176,22 @@ class _GameItemState extends State<_GameItem> {
             // Selection indicator
             SizedBox(
               width: 20.w,
-              child: widget.isLoading
-                  ? SizedBox(
-                      width: 12.sp,
-                      height: 12.sp,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 1.5,
-                        color: kPrimaryColor,
-                      ),
-                    )
-                  : widget.isSelected
-                      ? Icon(
-                          Icons.check_rounded,
+              child:
+                  widget.isLoading
+                      ? SizedBox(
+                        width: 12.sp,
+                        height: 12.sp,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 1.5,
                           color: kPrimaryColor,
-                          size: 14.ic,
-                        )
+                        ),
+                      )
+                      : widget.isSelected
+                      ? Icon(
+                        Icons.check_rounded,
+                        color: kPrimaryColor,
+                        size: 14.ic,
+                      )
                       : null,
             ),
           ],
@@ -3083,11 +3205,15 @@ class _BottomNavBar extends ConsumerWidget {
   final int index;
   final ChessBoardStateNew state;
   final GamesTourModel game;
+  final VoidCallback onGamebaseToggle;
+  final bool isGamebaseActive;
 
   const _BottomNavBar({
     required this.index,
     required this.state,
     required this.game,
+    required this.onGamebaseToggle,
+    required this.isGamebaseActive,
   });
 
   @override
@@ -3111,12 +3237,10 @@ class _BottomNavBar extends ConsumerWidget {
             : baseCanMoveBackward;
     final previewMoveCount = state.lockedPvLine?.moves.length ?? 0;
     final previewIndex = state.lockedPvNavigationIndex ?? -1;
-    final isPreviewActive =
-        state.isPvPreviewActive && previewMoveCount > 0;
+    final isPreviewActive = state.isPvPreviewActive && previewMoveCount > 0;
     final previewCanMoveForward =
         isPreviewActive ? previewIndex < previewMoveCount - 1 : false;
-    final previewCanMoveBackward =
-        isPreviewActive ? previewIndex > 0 : false;
+    final previewCanMoveBackward = isPreviewActive ? previewIndex > 0 : false;
     final effectiveCanMoveForward =
         isPreviewActive ? previewCanMoveForward : canMoveForward;
     final effectiveCanMoveBackward =
@@ -3163,6 +3287,8 @@ class _BottomNavBar extends ConsumerWidget {
       canMoveBackward: effectiveCanMoveBackward,
       showEngineAnalysis: state.showEngineAnalysis,
       showUnseenMoveBadge: state.hasUnseenMoves,
+      onGamebaseToggle: onGamebaseToggle,
+      isGamebaseActive: isGamebaseActive,
     );
   }
 }
@@ -3172,12 +3298,14 @@ class _GameBody extends StatelessWidget {
   final int currentPageIndex;
   final GamesTourModel game;
   final ChessBoardStateNew state;
+  final bool isGamebaseActive;
 
   const _GameBody({
     required this.index,
     required this.currentPageIndex,
     required this.game,
     required this.state,
+    this.isGamebaseActive = false,
   });
 
   @override
@@ -3188,6 +3316,7 @@ class _GameBody extends StatelessWidget {
       currentPageIndex: currentPageIndex,
       game: game,
       state: state,
+      isGamebaseActive: isGamebaseActive,
     );
   }
 }
@@ -3197,12 +3326,14 @@ class _AnalysisGameBody extends ConsumerWidget {
   final int currentPageIndex;
   final GamesTourModel game;
   final ChessBoardStateNew state;
+  final bool isGamebaseActive;
 
   const _AnalysisGameBody({
     required this.index,
     required this.currentPageIndex,
     required this.game,
     required this.state,
+    this.isGamebaseActive = false,
   });
 
   @override
@@ -3217,7 +3348,11 @@ class _AnalysisGameBody extends ConsumerWidget {
         final useCompactLayout = availableHeight < compactThreshold;
 
         final pvSection = <Widget>[];
-        if (state.isAnalysisMode && state.showEngineAnalysis && state.showPrincipalVariations) {
+        // Hide standard PV section if Gamebase is active (it has its own)
+        if (!isGamebaseActive &&
+            state.isAnalysisMode &&
+            state.showEngineAnalysis &&
+            state.showPrincipalVariations) {
           pvSection.add(SizedBox(height: 2.h));
           final pvList = _PrincipalVariationList(
             index: index,
@@ -3227,15 +3362,8 @@ class _AnalysisGameBody extends ConsumerWidget {
           if (useCompactLayout) {
             pvSection.add(pvList);
           } else {
-            pvSection.add(
-              Flexible(
-                flex: 0,
-                child: pvList,
-              ),
-            );
+            pvSection.add(Flexible(flex: 0, child: pvList));
           }
-          // DISABLED: Analysis navigation arrows hidden
-          // _AnalysisControlsRow(index: index, game: game),
         }
 
         final headerChildren = <Widget>[
@@ -3262,6 +3390,46 @@ class _AnalysisGameBody extends ConsumerWidget {
           ...pvSection,
         ];
 
+        Widget buildAnalysisView() {
+          if (isGamebaseActive) {
+            return GamebaseExplorerView(
+              state: state,
+              onMoveSelected: (uci) {
+                final params = ChessBoardProviderParams(
+                  game: game,
+                  index: index,
+                );
+                final notifier = ref.read(
+                  chessBoardScreenProviderNew(params).notifier,
+                );
+                try {
+                  if (uci.length < 4) return;
+                  final from = Square.fromName(uci.substring(0, 2));
+                  final to = Square.fromName(uci.substring(2, 4));
+                  Role? promotion;
+                  if (uci.length > 4) {
+                    promotion = Role.fromChar(uci[4]);
+                  }
+                  final move = NormalMove(
+                    from: from,
+                    to: to,
+                    promotion: promotion,
+                  );
+                  notifier.onAnalysisMove(move);
+                } catch (e) {
+                  debugPrint('Error making move from UCI: $e');
+                }
+              },
+            );
+          }
+          return _MovesDisplay(
+            index: index,
+            currentPageIndex: currentPageIndex,
+            state: state,
+            game: game,
+          );
+        }
+
         if (useCompactLayout) {
           final movesPanelHeight = math.max(220.h, availableHeight * 0.55);
           return SingleChildScrollView(
@@ -3272,32 +3440,14 @@ class _AnalysisGameBody extends ConsumerWidget {
               children: [
                 ...headerChildren,
                 SizedBox(height: 12.h),
-                SizedBox(
-                  height: movesPanelHeight,
-                  child: _MovesDisplay(
-                    index: index,
-                    currentPageIndex: currentPageIndex,
-                    state: state,
-                    game: game,
-                  ),
-                ),
+                SizedBox(height: movesPanelHeight, child: buildAnalysisView()),
               ],
             ),
           );
         }
 
         return Column(
-          children: [
-            ...headerChildren,
-            Expanded(
-              child: _MovesDisplay(
-                index: index,
-                currentPageIndex: currentPageIndex,
-                state: state,
-                game: game,
-              ),
-            ),
-          ],
+          children: [...headerChildren, Expanded(child: buildAnalysisView())],
         );
       },
     );
@@ -3521,7 +3671,7 @@ class _AnalysisBoard extends ConsumerWidget {
       size: size,
       settings: ChessboardSettings(
         enableCoordinates: true,
-        
+
         animationDuration: const Duration(milliseconds: 200),
         dragFeedbackScale: 1,
         dragTargetKind: DragTargetKind.none,
@@ -3563,7 +3713,9 @@ class _AnalysisBoard extends ConsumerWidget {
       // 2. Principal variations are enabled in board state
       // 3. PV arrows are enabled in engine settings
       shapes:
-          (chessBoardState.showEngineAnalysis && chessBoardState.showPrincipalVariations && showPvArrows)
+          (chessBoardState.showEngineAnalysis &&
+                  chessBoardState.showPrincipalVariations &&
+                  showPvArrows)
               ? chessBoardState.shapes
               : const ISet.empty(),
       game: GameData(
@@ -4182,7 +4334,8 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       );
       // Return early - already has gesture handling
       return child;
-    } else if (token.type == _NotationTokenType.openParen && token.variation != null) {
+    } else if (token.type == _NotationTokenType.openParen &&
+        token.variation != null) {
       // Opening paren with +/- toggle button
       final isCollapsed = token.isCollapsed;
       child = GestureDetector(
@@ -4207,12 +4360,15 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
                 height: 16.sp,
                 margin: EdgeInsets.only(right: 3.sp),
                 decoration: BoxDecoration(
-                  color: isCollapsed
-                      ? depthColor.withValues(alpha: 0.2)
-                      : depthColor.withValues(alpha: 0.1),
+                  color:
+                      isCollapsed
+                          ? depthColor.withValues(alpha: 0.2)
+                          : depthColor.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(4.sp),
                   border: Border.all(
-                    color: depthColor.withValues(alpha: isCollapsed ? 0.4 : 0.25),
+                    color: depthColor.withValues(
+                      alpha: isCollapsed ? 0.4 : 0.25,
+                    ),
                     width: 1,
                   ),
                 ),
@@ -4241,7 +4397,8 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       );
       // Return early - already has gesture handling
       return child;
-    } else if (token.type == _NotationTokenType.closeParen && token.variation != null) {
+    } else if (token.type == _NotationTokenType.closeParen &&
+        token.variation != null) {
       // Closing paren - tappable to collapse
       child = GestureDetector(
         behavior: HitTestBehavior.opaque,
@@ -4281,10 +4438,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       return child;
     }
 
-    final decoratedChild = ExcludeSemantics(
-      excluding: true,
-      child: child,
-    );
+    final decoratedChild = ExcludeSemantics(excluding: true, child: child);
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
@@ -4390,7 +4544,8 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     HapticFeedback.selectionClick();
 
     final notifier = ref.read(chessBoardScreenProviderNew(params).notifier);
-    final currentComment = widget.state.variationComments[pointerId] ?? fallbackText;
+    final currentComment =
+        widget.state.variationComments[pointerId] ?? fallbackText;
     final hostContext = context;
 
     final commentConfig = _VariationCommentSheetConfig(
@@ -4401,9 +4556,10 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
         if (trimmed == normalizedInitial) {
           return;
         }
-        final limited = trimmed.length > _variationCommentMaxChars
-            ? trimmed.substring(0, _variationCommentMaxChars)
-            : trimmed;
+        final limited =
+            trimmed.length > _variationCommentMaxChars
+                ? trimmed.substring(0, _variationCommentMaxChars)
+                : trimmed;
         notifier.updateVariationComment(
           variationId: pointerId,
           comment: limited,
@@ -4458,7 +4614,8 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
           game: widget.game,
           index: widget.index,
         );
-        ref.read(chessBoardScreenProviderNew(params).notifier)
+        ref
+            .read(chessBoardScreenProviderNew(params).notifier)
             .goToMovePointer(parentPointer);
       }
     }
@@ -4598,8 +4755,6 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
           ),
         );
       }
-
-
 
       for (final variation in node.variations) {
         final defaultCollapsed = _shouldCollapseByDefault(variation);
@@ -4962,10 +5117,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     return '${duration.inMinutes}:${twoDigits(duration.inSeconds.remainder(60))}';
   }
 
-  String? _buildTimeSpentLabel(
-    ChessMovePointer pointer,
-    bool isMainlineMove,
-  ) {
+  String? _buildTimeSpentLabel(ChessMovePointer pointer, bool isMainlineMove) {
     if (!isMainlineMove || pointer.isEmpty) return null;
 
     final moveIndex = pointer.first.toInt();
@@ -4987,8 +5139,9 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     if (startingClock == null) return null;
 
     final spentSeconds =
-        startingClock.inSeconds + timeControl.increment.inSeconds -
-            currentClock.inSeconds;
+        startingClock.inSeconds +
+        timeControl.increment.inSeconds -
+        currentClock.inSeconds;
     final safeSeconds = spentSeconds < 0 ? 0 : spentSeconds;
 
     return _formatDurationLabel(Duration(seconds: safeSeconds));
@@ -5010,7 +5163,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     final pointerId = NotationPointer.encode(pointer);
     final currentComment = widget.state.variationComments[pointerId] ?? '';
     final timeSpentLabel = _buildTimeSpentLabel(pointer, isMainlineMove);
-    
+
     final commentConfig = _VariationCommentSheetConfig(
       initialValue: currentComment,
       onSubmit: (ctx, value) async {
@@ -5021,9 +5174,10 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
           _showInfoSnack(hostContext, 'No changes');
           return;
         }
-        final limited = trimmed.length > _variationCommentMaxChars
-            ? trimmed.substring(0, _variationCommentMaxChars)
-            : trimmed;
+        final limited =
+            trimmed.length > _variationCommentMaxChars
+                ? trimmed.substring(0, _variationCommentMaxChars)
+                : trimmed;
         notifier.updateVariationComment(
           variationId: pointerId,
           comment: limited,
@@ -5110,7 +5264,9 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
 
     final hasExpandedOptions = actions.length > 3;
     final initialSheetFraction =
-        hasExpandedOptions ? _variantActionSheetInitialFraction : _mainlineActionSheetInitialFraction;
+        hasExpandedOptions
+            ? _variantActionSheetInitialFraction
+            : _mainlineActionSheetInitialFraction;
 
     await _showNotationActionSheet(
       context: hostContext,
@@ -5183,7 +5339,9 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
 
     final hasExpandedOptions = actions.length > 3;
     final initialSheetFraction =
-        hasExpandedOptions ? _variantActionSheetInitialFraction : _mainlineActionSheetInitialFraction;
+        hasExpandedOptions
+            ? _variantActionSheetInitialFraction
+            : _mainlineActionSheetInitialFraction;
 
     await _showNotationActionSheet(
       context: hostContext,
@@ -5294,10 +5452,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
         margin: EdgeInsets.symmetric(horizontal: 16.w, vertical: 20.h),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(12.sp),
-          side: BorderSide(
-            color: kWhiteColor.withValues(alpha: 0.1),
-            width: 1,
-          ),
+          side: BorderSide(color: kWhiteColor.withValues(alpha: 0.1), width: 1),
         ),
         content: Row(
           children: [
@@ -5307,19 +5462,13 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
                 color: kRedColor.withValues(alpha: 0.15),
                 borderRadius: BorderRadius.circular(8.sp),
               ),
-              child: Icon(
-                Icons.delete_outline,
-                color: kRedColor,
-                size: 18.ic,
-              ),
+              child: Icon(Icons.delete_outline, color: kRedColor, size: 18.ic),
             ),
             SizedBox(width: 12.w),
             Expanded(
               child: Text(
                 message,
-                style: AppTypography.textSmMedium.copyWith(
-                  color: kWhiteColor,
-                ),
+                style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
               ),
             ),
             TextButton(
@@ -5337,9 +5486,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
               ),
               child: Text(
                 'UNDO',
-                style: AppTypography.textSmBold.copyWith(
-                  color: kPrimaryColor,
-                ),
+                style: AppTypography.textSmBold.copyWith(color: kPrimaryColor),
               ),
             ),
           ],
@@ -5380,9 +5527,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
             Expanded(
               child: Text(
                 message,
-                style: AppTypography.textSmMedium.copyWith(
-                  color: kWhiteColor,
-                ),
+                style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
               ),
             ),
           ],
@@ -5396,37 +5541,35 @@ class _DirectCommentSheet extends ConsumerWidget {
   final _VariationCommentSheetConfig config;
   final BuildContext hostContext;
 
-  const _DirectCommentSheet({
-    required this.config,
-    required this.hostContext,
-  });
+  const _DirectCommentSheet({required this.config, required this.hostContext});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final navigator = Navigator(
-      onGenerateInitialRoutes: (_, __) => [
-        SpringPagedSheetRoute(
-          scrollConfiguration: const SheetScrollConfiguration(),
-          dragConfiguration: ChessSheetConfigs.commentEditor,
-          initialOffset: const SheetOffset.proportionalToViewport(0.8),
-          snapGrid: ChessSheetConfigs.commentEditorSnaps(minFlingSpeed: 650.0),
-          builder:
-              (context) => _NotationCommentPage(
-                config: config,
-                hostContext: hostContext,
+      onGenerateInitialRoutes:
+          (_, __) => [
+            SpringPagedSheetRoute(
+              scrollConfiguration: const SheetScrollConfiguration(),
+              dragConfiguration: ChessSheetConfigs.commentEditor,
+              initialOffset: const SheetOffset.proportionalToViewport(0.8),
+              snapGrid: ChessSheetConfigs.commentEditorSnaps(
+                minFlingSpeed: 650.0,
               ),
-        ),
-      ],
+              builder:
+                  (context) => _NotationCommentPage(
+                    config: config,
+                    hostContext: hostContext,
+                  ),
+            ),
+          ],
     );
 
     return SheetKeyboardDismissible(
-      dismissBehavior:
-          const DragDownSheetKeyboardDismissBehavior(isContentScrollAware: true),
+      dismissBehavior: const DragDownSheetKeyboardDismissBehavior(
+        isContentScrollAware: true,
+      ),
       child: PagedSheet(
-        decoration: ChessSheetDecoration.dark(
-          alpha: 0.97,
-          borderRadius: 28.sp,
-        ),
+        decoration: ChessSheetDecoration.dark(alpha: 0.97, borderRadius: 28.sp),
         shrinkChildToAvoidDynamicOverlap: true,
         navigator: navigator,
       ),
@@ -5855,8 +5998,11 @@ class _PrincipalVariationListState
       final startingPosition = mergedPositions[pvStartIndex];
       final startMoveNumber = startingPosition.fullmoves;
       final isWhiteToMove = startingPosition.turn == Side.white;
-      final sanMoves =
-          _formatPv(lockedLine.sanMoves, startMoveNumber, isWhiteToMove);
+      final sanMoves = _formatPv(
+        lockedLine.sanMoves,
+        startMoveNumber,
+        isWhiteToMove,
+      );
       final evalText = _formatEvalLabel(lockedLine);
 
       // Use the same color as the originating PV card
@@ -6315,7 +6461,9 @@ class _PrincipalVariationListState
                             enabled: true,
                             effect: ShimmerEffect(
                               baseColor: kWhiteColor.withValues(alpha: 0.05),
-                              highlightColor: kWhiteColor.withValues(alpha: 0.1),
+                              highlightColor: kWhiteColor.withValues(
+                                alpha: 0.1,
+                              ),
                               duration: const Duration(milliseconds: 1500),
                             ),
                             child: buildVariantCard(
@@ -6910,10 +7058,7 @@ class _TimeControlSnapshot {
   final Duration? base;
   final Duration increment;
 
-  const _TimeControlSnapshot({
-    required this.base,
-    required this.increment,
-  });
+  const _TimeControlSnapshot({required this.base, required this.increment});
 }
 
 class _NotationActionItem {
@@ -6959,7 +7104,6 @@ Future<void> _showNotationActionSheet({
   await Navigator.of(context).push(route);
 }
 
-
 class _VariationCommentSheetConfig {
   final String? initialValue;
   final FutureOr<void> Function(BuildContext context, String value) onSubmit;
@@ -6991,45 +7135,43 @@ class _NotationActionSheet extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final clampedInitial =
-        initialSheetFraction.clamp(0.25, 0.9).toDouble();
-    final snapFractions = <double>{0.35, 0.75, clampedInitial}.toList()
-      ..sort();
+    final clampedInitial = initialSheetFraction.clamp(0.25, 0.9).toDouble();
+    final snapFractions = <double>{0.35, 0.75, clampedInitial}.toList()..sort();
     final snapGrid = SheetSnapGrid(
-      snaps: snapFractions
-          .map((value) => SheetOffset.proportionalToViewport(value))
-          .toList(),
+      snaps:
+          snapFractions
+              .map((value) => SheetOffset.proportionalToViewport(value))
+              .toList(),
       minFlingSpeed: 850.0,
     );
 
     final navigator = Navigator(
-      onGenerateInitialRoutes: (_, __) => [
-        SpringPagedSheetRoute(
-          scrollConfiguration: const SheetScrollConfiguration(),
-          dragConfiguration: ChessSheetConfigs.actionMenu,
-          initialOffset: SheetOffset.proportionalToViewport(clampedInitial),
-          snapGrid: snapGrid,
-          builder:
-              (context) => _NotationActionListPage(
-                title: title,
-                subtitle: subtitle,
-                actions: actions,
-                commentConfig: commentConfig,
-                hostContext: hostContext,
-                timeSpentLabel: timeSpentLabel,
-              ),
-        ),
-      ],
+      onGenerateInitialRoutes:
+          (_, __) => [
+            SpringPagedSheetRoute(
+              scrollConfiguration: const SheetScrollConfiguration(),
+              dragConfiguration: ChessSheetConfigs.actionMenu,
+              initialOffset: SheetOffset.proportionalToViewport(clampedInitial),
+              snapGrid: snapGrid,
+              builder:
+                  (context) => _NotationActionListPage(
+                    title: title,
+                    subtitle: subtitle,
+                    actions: actions,
+                    commentConfig: commentConfig,
+                    hostContext: hostContext,
+                    timeSpentLabel: timeSpentLabel,
+                  ),
+            ),
+          ],
     );
 
     return SheetKeyboardDismissible(
-      dismissBehavior:
-          const DragDownSheetKeyboardDismissBehavior(isContentScrollAware: true),
+      dismissBehavior: const DragDownSheetKeyboardDismissBehavior(
+        isContentScrollAware: true,
+      ),
       child: PagedSheet(
-        decoration: ChessSheetDecoration.dark(
-          alpha: 0.97,
-          borderRadius: 28.sp,
-        ),
+        decoration: ChessSheetDecoration.dark(alpha: 0.97, borderRadius: 28.sp),
         shrinkChildToAvoidDynamicOverlap: true,
         navigator: navigator,
       ),
@@ -7087,17 +7229,13 @@ class _NotationActionListPage extends ConsumerWidget {
     final safeBottom = MediaQuery.viewPaddingOf(context).bottom;
 
     // When keyboard is visible, add its height to bottom padding so sheet rides with keyboard
-    final bottomPadding = viewInsets.bottom > 0
-        ? viewInsets.bottom + 12.sp
-        : math.max(20.sp, safeBottom + 8.sp);
+    final bottomPadding =
+        viewInsets.bottom > 0
+            ? viewInsets.bottom + 12.sp
+            : math.max(20.sp, safeBottom + 8.sp);
 
     return Padding(
-      padding: EdgeInsets.fromLTRB(
-        20.sp,
-        12.sp,
-        20.sp,
-        bottomPadding,
-      ),
+      padding: EdgeInsets.fromLTRB(20.sp, 12.sp, 20.sp, bottomPadding),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -7206,21 +7344,14 @@ class _NotationActionTileState extends State<_NotationActionTile>
     );
 
     // Use spring curve for natural bouncy feel
-    _scaleAnimation = Tween<double>(
-      begin: 1.0,
-      end: 0.96,
-    ).animate(CurvedAnimation(
-      parent: _controller,
-      curve: ChessSheetCurves.bouncy,
-    ));
+    _scaleAnimation = Tween<double>(begin: 1.0, end: 0.96).animate(
+      CurvedAnimation(parent: _controller, curve: ChessSheetCurves.bouncy),
+    );
 
     _glowAnimation = Tween<double>(
       begin: 0.02,
       end: 0.08,
-    ).animate(CurvedAnimation(
-      parent: _controller,
-      curve: Curves.easeOut,
-    ));
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOut));
   }
 
   @override
@@ -7259,12 +7390,17 @@ class _NotationActionTileState extends State<_NotationActionTile>
               splashColor: widget.action.color.withValues(alpha: 0.1),
               highlightColor: widget.action.color.withValues(alpha: 0.05),
               child: Container(
-                padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 14.sp),
+                padding: EdgeInsets.symmetric(
+                  horizontal: 12.sp,
+                  vertical: 14.sp,
+                ),
                 decoration: BoxDecoration(
                   color: kWhiteColor.withValues(alpha: _glowAnimation.value),
                   borderRadius: BorderRadius.circular(14.sp),
                   border: Border.all(
-                    color: kWhiteColor.withValues(alpha: 0.05 + (_controller.value * 0.05)),
+                    color: kWhiteColor.withValues(
+                      alpha: 0.05 + (_controller.value * 0.05),
+                    ),
                   ),
                 ),
                 child: Row(
@@ -7314,18 +7450,14 @@ class _NotationCommentPage extends ConsumerStatefulWidget {
   final _VariationCommentSheetConfig config;
   final BuildContext hostContext;
 
-  const _NotationCommentPage({
-    required this.config,
-    required this.hostContext,
-  });
+  const _NotationCommentPage({required this.config, required this.hostContext});
 
   @override
   ConsumerState<_NotationCommentPage> createState() =>
       _NotationCommentPageState();
 }
 
-class _NotationCommentPageState
-    extends ConsumerState<_NotationCommentPage> {
+class _NotationCommentPageState extends ConsumerState<_NotationCommentPage> {
   late final TextEditingController _controller;
   late final FocusNode _focusNode;
   bool _isSaving = false;
@@ -7334,9 +7466,8 @@ class _NotationCommentPageState
   @override
   void initState() {
     super.initState();
-    _controller = TextEditingController(
-      text: widget.config.initialValue ?? '',
-    )..addListener(_onChanged);
+    _controller = TextEditingController(text: widget.config.initialValue ?? '')
+      ..addListener(_onChanged);
 
     _focusNode = FocusNode();
 
@@ -7368,10 +7499,7 @@ class _NotationCommentPageState
     setState(() => _isSaving = true);
     try {
       await Future.sync(
-        () => widget.config.onSubmit(
-          widget.hostContext,
-          _controller.text,
-        ),
+        () => widget.config.onSubmit(widget.hostContext, _controller.text),
       );
       if (!mounted) return;
       Navigator.of(context, rootNavigator: true).pop();
@@ -7394,9 +7522,10 @@ class _NotationCommentPageState
 
     // When keyboard appears, push content up so TextField stays visible above keyboard
     // Extra padding ensures buttons are well above keyboard on all devices
-    final bottomPadding = viewInsets.bottom > 0
-        ? viewInsets.bottom + 52.sp
-        : math.max(20.sp, safeBottom + 8.sp);
+    final bottomPadding =
+        viewInsets.bottom > 0
+            ? viewInsets.bottom + 52.sp
+            : math.max(20.sp, safeBottom + 8.sp);
 
     return Padding(
       padding: EdgeInsets.fromLTRB(20.sp, 16.sp, 20.sp, bottomPadding),
@@ -7454,19 +7583,14 @@ class _NotationCommentPageState
 
           // Text field - flexible height but not taking all space
           ConstrainedBox(
-            constraints: BoxConstraints(
-              minHeight: 120.h,
-              maxHeight: 280.h,
-            ),
+            constraints: BoxConstraints(minHeight: 120.h, maxHeight: 280.h),
             child: TextField(
               controller: _controller,
               focusNode: _focusNode,
               maxLines: null,
               minLines: 4,
               maxLength: _variationCommentMaxChars,
-              style: AppTypography.textSmRegular.copyWith(
-                color: kWhiteColor,
-              ),
+              style: AppTypography.textSmRegular.copyWith(color: kWhiteColor),
               textInputAction: TextInputAction.newline,
               decoration: InputDecoration(
                 filled: true,
@@ -7558,16 +7682,17 @@ class _NotationCommentPageState
                     vertical: 10.h,
                   ),
                 ),
-                child: _isSaving
-                    ? SizedBox(
-                        height: 14.h,
-                        width: 14.h,
-                        child: const CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: kWhiteColor,
-                        ),
-                      )
-                    : const Text('Save comment'),
+                child:
+                    _isSaving
+                        ? SizedBox(
+                          height: 14.h,
+                          width: 14.h,
+                          child: const CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: kWhiteColor,
+                          ),
+                        )
+                        : const Text('Save comment'),
               ),
             ],
           ),
@@ -7986,19 +8111,22 @@ class _CommentDialogState extends ConsumerState<_CommentDialog>
 // End of deprecated _CommentDialog class
 
 /// Provider to fetch tour info by tour ID - used by the event info sheet
-final _tourInfoByIdProvider = FutureProvider.autoDispose.family<AboutTourModel?, String>((ref, tourId) async {
-  if (tourId.isEmpty) return null;
+final _tourInfoByIdProvider = FutureProvider.autoDispose
+    .family<AboutTourModel?, String>((ref, tourId) async {
+      if (tourId.isEmpty) return null;
 
-  try {
-    final tours = await ref.read(tourRepositoryProvider).getToursByIds([tourId]);
-    if (tours.isNotEmpty) {
-      return AboutTourModel.fromTour(tours.first);
-    }
-  } catch (e) {
-    debugPrint('Failed to fetch tour info for $tourId: $e');
-  }
-  return null;
-});
+      try {
+        final tours = await ref.read(tourRepositoryProvider).getToursByIds([
+          tourId,
+        ]);
+        if (tours.isNotEmpty) {
+          return AboutTourModel.fromTour(tours.first);
+        }
+      } catch (e) {
+        debugPrint('Failed to fetch tour info for $tourId: $e');
+      }
+      return null;
+    });
 
 /// Event info sheet - displays tournament/event details
 class _EventInfoSheet extends ConsumerWidget {
@@ -8029,7 +8157,9 @@ class _EventInfoSheet extends ConsumerWidget {
         eco = ecoMatch.group(1);
       }
 
-      final openingMatch = RegExp(r'\[Opening\s+"([^"]+)"\]').firstMatch(pgnString);
+      final openingMatch = RegExp(
+        r'\[Opening\s+"([^"]+)"\]',
+      ).firstMatch(pgnString);
       if (openingMatch != null) {
         opening = openingMatch.group(1);
       }
@@ -8095,13 +8225,15 @@ class _EventInfoSheet extends ConsumerWidget {
     final tourInfoAsync = ref.watch(_tourInfoByIdProvider(game.tourId));
 
     // Use tourDetailAboutModel if available, otherwise use fetched tourInfo
-    final aboutModel = tourDetailAboutModel?.id.isNotEmpty == true
-        ? tourDetailAboutModel
-        : tourInfoAsync.valueOrNull;
+    final aboutModel =
+        tourDetailAboutModel?.id.isNotEmpty == true
+            ? tourDetailAboutModel
+            : tourInfoAsync.valueOrNull;
 
     // Check if we're still loading
-    final isLoading = (tourDetailAboutModel == null || tourDetailAboutModel.id.isEmpty) &&
-                      tourInfoAsync.isLoading;
+    final isLoading =
+        (tourDetailAboutModel == null || tourDetailAboutModel.id.isEmpty) &&
+        tourInfoAsync.isLoading;
 
     final locationService = ref.read(locationServiceProvider);
     final urlLauncher = ref.read(urlLauncherProvider);
@@ -8110,44 +8242,61 @@ class _EventInfoSheet extends ConsumerWidget {
       initialChildSize: 0.55,
       minChildSize: 0.35,
       maxChildSize: 0.85,
-      builder: (context, scrollController) => Container(
-        decoration: BoxDecoration(
-          color: kBlack2Color,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(16.sp)),
-        ),
-        child: Column(
-          children: [
-            // Drag handle
-            Container(
-              width: 40.sp,
-              height: 4.sp,
-              margin: EdgeInsets.symmetric(vertical: 12.sp),
-              decoration: BoxDecoration(
-                color: kWhiteColor.withValues(alpha: 0.3),
-                borderRadius: BorderRadius.circular(2.sp),
-              ),
+      builder:
+          (context, scrollController) => Container(
+            decoration: BoxDecoration(
+              color: kBlack2Color,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(16.sp)),
             ),
-            // Content
-            Expanded(
-              child: isLoading
-                  ? Center(
-                      child: CircularProgressIndicator(
-                        color: kPrimaryColor,
-                        strokeWidth: 2,
-                      ),
-                    )
-                  : aboutModel == null
-                      ? _buildFallbackContent(context, scrollController, locationService)
-                      : _buildTourContent(context, ref, scrollController, aboutModel, locationService, urlLauncher),
+            child: Column(
+              children: [
+                // Drag handle
+                Container(
+                  width: 40.sp,
+                  height: 4.sp,
+                  margin: EdgeInsets.symmetric(vertical: 12.sp),
+                  decoration: BoxDecoration(
+                    color: kWhiteColor.withValues(alpha: 0.3),
+                    borderRadius: BorderRadius.circular(2.sp),
+                  ),
+                ),
+                // Content
+                Expanded(
+                  child:
+                      isLoading
+                          ? Center(
+                            child: CircularProgressIndicator(
+                              color: kPrimaryColor,
+                              strokeWidth: 2,
+                            ),
+                          )
+                          : aboutModel == null
+                          ? _buildFallbackContent(
+                            context,
+                            scrollController,
+                            locationService,
+                          )
+                          : _buildTourContent(
+                            context,
+                            ref,
+                            scrollController,
+                            aboutModel,
+                            locationService,
+                            urlLauncher,
+                          ),
+                ),
+              ],
             ),
-          ],
-        ),
-      ),
+          ),
     );
   }
 
   /// Fallback content when tour info is not available - shows game info from GamesTourModel
-  Widget _buildFallbackContent(BuildContext context, ScrollController scrollController, LocationService locationService) {
+  Widget _buildFallbackContent(
+    BuildContext context,
+    ScrollController scrollController,
+    LocationService locationService,
+  ) {
     return ListView(
       controller: scrollController,
       padding: EdgeInsets.symmetric(horizontal: 20.sp),
@@ -8155,18 +8304,17 @@ class _EventInfoSheet extends ConsumerWidget {
         // Game header
         Text(
           'Game Info',
-          style: AppTypography.textLgBold.copyWith(
-            color: kWhiteColor,
-          ),
+          style: AppTypography.textLgBold.copyWith(color: kWhiteColor),
         ),
         SizedBox(height: 16.h),
         // Round info
         _EventInfoRow(
           icon: Icons.format_list_numbered_rounded,
           label: 'Round',
-          value: game.roundSlug != null
-              ? StringUtils.formatRoundLabel(game.roundSlug)
-              : game.roundDisplayName,
+          value:
+              game.roundSlug != null
+                  ? StringUtils.formatRoundLabel(game.roundSlug)
+                  : game.roundDisplayName,
         ),
         SizedBox(height: 12.h),
         // Board number
@@ -8230,9 +8378,15 @@ class _EventInfoSheet extends ConsumerWidget {
     return rows;
   }
 
-  Widget _buildPlayerRow(PlayerCard player, String side, LocationService locationService) {
+  Widget _buildPlayerRow(
+    PlayerCard player,
+    String side,
+    LocationService locationService,
+  ) {
     // Use the same validation as PlayerFirstRowDetailWidget
-    final validCountryCode = locationService.getValidCountryCode(player.countryCode);
+    final validCountryCode = locationService.getValidCountryCode(
+      player.countryCode,
+    );
 
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 10.sp),
@@ -8276,9 +8430,7 @@ class _EventInfoSheet extends ConsumerWidget {
           if (player.title.isNotEmpty) ...[
             Text(
               player.title,
-              style: AppTypography.textSmMedium.copyWith(
-                color: kPrimaryColor,
-              ),
+              style: AppTypography.textSmMedium.copyWith(color: kPrimaryColor),
             ),
             SizedBox(width: 6.w),
           ],
@@ -8286,9 +8438,7 @@ class _EventInfoSheet extends ConsumerWidget {
           Expanded(
             child: Text(
               player.name,
-              style: AppTypography.textSmMedium.copyWith(
-                color: kWhiteColor,
-              ),
+              style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
               overflow: TextOverflow.ellipsis,
             ),
           ),
@@ -8327,26 +8477,28 @@ class _EventInfoSheet extends ConsumerWidget {
                 imageUrl: aboutModel.imageUrl,
                 fit: BoxFit.cover,
                 alignment: Alignment.topCenter,
-                placeholder: (_, __) => Container(
-                  color: kLightBlack,
-                  child: Center(
-                    child: Icon(
-                      Icons.image,
-                      color: kWhiteColor.withValues(alpha: 0.3),
-                      size: 40.sp,
+                placeholder:
+                    (_, __) => Container(
+                      color: kLightBlack,
+                      child: Center(
+                        child: Icon(
+                          Icons.image,
+                          color: kWhiteColor.withValues(alpha: 0.3),
+                          size: 40.sp,
+                        ),
+                      ),
                     ),
-                  ),
-                ),
-                errorWidget: (_, __, ___) => Container(
-                  color: kLightBlack,
-                  child: Center(
-                    child: Icon(
-                      Icons.image_not_supported,
-                      color: kWhiteColor.withValues(alpha: 0.3),
-                      size: 40.sp,
+                errorWidget:
+                    (_, __, ___) => Container(
+                      color: kLightBlack,
+                      child: Center(
+                        child: Icon(
+                          Icons.image_not_supported,
+                          color: kWhiteColor.withValues(alpha: 0.3),
+                          size: 40.sp,
+                        ),
+                      ),
                     ),
-                  ),
-                ),
               ),
             ),
           ),
@@ -8359,9 +8511,7 @@ class _EventInfoSheet extends ConsumerWidget {
               Expanded(
                 child: Text(
                   aboutModel.name,
-                  style: AppTypography.textLgBold.copyWith(
-                    color: kWhiteColor,
-                  ),
+                  style: AppTypography.textLgBold.copyWith(color: kWhiteColor),
                 ),
               ),
               Icon(
@@ -8377,9 +8527,10 @@ class _EventInfoSheet extends ConsumerWidget {
         _EventInfoRow(
           icon: Icons.format_list_numbered_rounded,
           label: 'Round',
-          value: game.roundSlug != null
-              ? StringUtils.formatRoundLabel(game.roundSlug)
-              : game.roundDisplayName,
+          value:
+              game.roundSlug != null
+                  ? StringUtils.formatRoundLabel(game.roundSlug)
+                  : game.roundDisplayName,
         ),
         SizedBox(height: 12.h),
         // Board number
@@ -8459,9 +8610,7 @@ class _EventInfoSheet extends ConsumerWidget {
                 .take(4)
                 .map((p) => p.displayName)
                 .join(', '),
-            style: AppTypography.textSmRegular.copyWith(
-              color: kWhiteColor,
-            ),
+            style: AppTypography.textSmRegular.copyWith(color: kWhiteColor),
           ),
         ],
         // Website button
@@ -8470,16 +8619,11 @@ class _EventInfoSheet extends ConsumerWidget {
           GestureDetector(
             onTap: () => urlLauncher.launchCustomUrl(aboutModel.websiteUrl),
             child: Container(
-              padding: EdgeInsets.symmetric(
-                horizontal: 16.sp,
-                vertical: 12.sp,
-              ),
+              padding: EdgeInsets.symmetric(horizontal: 16.sp, vertical: 12.sp),
               decoration: BoxDecoration(
                 color: kPrimaryColor.withValues(alpha: 0.15),
                 borderRadius: BorderRadius.circular(8.sp),
-                border: Border.all(
-                  color: kPrimaryColor.withValues(alpha: 0.3),
-                ),
+                border: Border.all(color: kPrimaryColor.withValues(alpha: 0.3)),
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -8508,11 +8652,7 @@ class _EventInfoSheet extends ConsumerWidget {
 
   Widget? _buildCountryFlag(String countryCode) {
     if (countryCode.isEmpty) return null;
-    return CountryFlag.fromCountryCode(
-      countryCode,
-      width: 20.w,
-      height: 14.h,
-    );
+    return CountryFlag.fromCountryCode(countryCode, width: 20.w, height: 14.h);
   }
 }
 
@@ -8534,11 +8674,7 @@ class _EventInfoRow extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Icon(
-          icon,
-          color: kWhiteColor.withValues(alpha: 0.5),
-          size: 18.sp,
-        ),
+        Icon(icon, color: kWhiteColor.withValues(alpha: 0.5), size: 18.sp),
         SizedBox(width: 10.w),
         Expanded(
           child: Column(
@@ -8553,10 +8689,7 @@ class _EventInfoRow extends StatelessWidget {
               SizedBox(height: 2.h),
               Row(
                 children: [
-                  if (trailing != null) ...[
-                    trailing!,
-                    SizedBox(width: 6.w),
-                  ],
+                  if (trailing != null) ...[trailing!, SizedBox(width: 6.w)],
                   Expanded(
                     child: Text(
                       value,

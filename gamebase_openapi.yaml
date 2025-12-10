@@ -1,0 +1,424 @@
+openapi: 3.1.0
+info:
+  title: Chess Database API
+  description: API for querying chess game positions and player data
+  version: 1.0.0
+
+servers:
+  - url: http://localhost:3232
+    description: Development server
+  - url: https://service.chessever.com
+    description: Production server
+
+security:
+  - ApiKeyAuth: []
+
+paths:
+  /api/game-position/aggregates:
+    get:
+      summary: Get move aggregates for a position
+      description: |
+        Returns aggregated statistics for all moves played from a given FEN position.
+        For each move, returns win/draw/loss counts and total games.
+        If only one game exists for a move, includes the gameId.
+      operationId: getPositionAggregates
+      tags:
+        - Game Position
+      parameters:
+        - name: fen
+          in: query
+          required: true
+          description: FEN string representing the chess position
+          schema:
+            type: string
+          example: "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
+        - name: playerId
+          in: query
+          required: false
+          description: Filter by player UUID
+          schema:
+            type: string
+            format: uuid
+        - name: timeControl
+          in: query
+          required: false
+          description: Filter by time control
+          schema:
+            type: string
+            enum:
+              - CLASSICAL
+              - RAPID
+              - BLITZ
+        - name: minRating
+          in: query
+          required: false
+          description: Minimum player rating filter
+          schema:
+            type: integer
+            minimum: 1
+        - name: maxRating
+          in: query
+          required: false
+          description: Maximum player rating filter
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        "200":
+          description: Successful response with move aggregates
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [success]
+                  data:
+                    type: object
+                    properties:
+                      moves:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/MoveAggregate"
+              example:
+                status: success
+                data:
+                  moves:
+                    - uci: "e2e4"
+                      white: 150
+                      black: 120
+                      draws: 80
+                      total: 350
+                    - uci: "d2d4"
+                      white: 140
+                      black: 130
+                      draws: 90
+                      total: 360
+                      gameId: "550e8400-e29b-41d4-a716-446655440000"
+        "400":
+          description: Invalid request (e.g., invalid FEN)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/player:
+    get:
+      summary: Search for players
+      description: Search for players by name with pagination support
+      operationId: getPlayers
+      tags:
+        - Player
+      parameters:
+        - name: name
+          in: query
+          required: false
+          description: Player name to search for (case-insensitive, partial match)
+          schema:
+            type: string
+          example: "Carlsen"
+        - name: pageNumber
+          in: query
+          required: false
+          description: Page number (0-indexed)
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - name: pageSize
+          in: query
+          required: false
+          description: Number of results per page (max 100)
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        "200":
+          description: Successful response with player list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [success]
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Player"
+                  metadata:
+                    type: object
+                    properties:
+                      pageNumber:
+                        type: integer
+                      pageSize:
+                        type: integer
+              example:
+                status: success
+                data:
+                  - id: "550e8400-e29b-41d4-a716-446655440000"
+                    fideId: "1503014"
+                    name: "Carlsen, Magnus"
+                    federation: "NOR"
+                    birthYear: 1990
+                    title: "GM"
+                metadata:
+                  pageNumber: 0
+                  pageSize: 20
+        "401":
+          description: Missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/player/{id}:
+    get:
+      summary: Get player by ID
+      description: Retrieve a player by their unique identifier
+      operationId: getPlayerById
+      tags:
+        - Player
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Player UUID
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Successful response with player data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [success]
+                  data:
+                    $ref: "#/components/schemas/Player"
+              example:
+                status: success
+                data:
+                  id: "550e8400-e29b-41d4-a716-446655440000"
+                  fideId: "1503014"
+                  name: "Carlsen, Magnus"
+                  fed: "NOR"
+                  gender: "MALE"
+                  title: "GM"
+                  ratingClassical: 2830
+                  ratingRapid: 2820
+                  ratingBlitz: 2850
+        "401":
+          description: Missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Player not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/game/{id}:
+    get:
+      summary: Get game by ID
+      description: Retrieve a chess game by its unique identifier
+      operationId: getGameById
+      tags:
+        - Game
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Game UUID
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Successful response with game data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [success]
+                  data:
+                    $ref: "#/components/schemas/Game"
+              example:
+                status: success
+                data:
+                  id: "550e8400-e29b-41d4-a716-446655440000"
+                  date: "2024-01-15T00:00:00.000Z"
+                  whitePlayerId: "123e4567-e89b-12d3-a456-426614174000"
+                  blackPlayerId: "987fcdeb-51a2-3bc4-d567-890123456789"
+                  result: "W"
+                  timeControl: "CLASSICAL"
+        "401":
+          description: Missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Game not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: API key for authentication
+
+  schemas:
+    MoveAggregate:
+      type: object
+      required:
+        - uci
+        - white
+        - black
+        - draws
+        - total
+      properties:
+        uci:
+          type: string
+          description: Move in UCI notation (e.g., "e2e4")
+        white:
+          type: integer
+          description: Number of games won by white after this move
+        black:
+          type: integer
+          description: Number of games won by black after this move
+        draws:
+          type: integer
+          description: Number of games drawn after this move
+        total:
+          type: integer
+          description: Total number of games with this move
+        gameId:
+          type: string
+          format: uuid
+          description: Game ID (only present when total = 1)
+
+    Player:
+      type: object
+      required:
+        - id
+        - fideId
+        - name
+        - gender
+        - fed
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Internal player UUID
+        fideId:
+          type: string
+          description: FIDE player ID
+        name:
+          type: string
+          description: Player name
+        gender:
+          type: string
+          enum:
+            - MALE
+            - FEMALE
+          description: Player gender
+        fed:
+          type: string
+          description: Country federation code (e.g., "NOR", "USA")
+        title:
+          type: string
+          description: Chess title (e.g., "GM", "IM", "FM")
+        ratingClassical:
+          type: integer
+          description: Classical rating
+        ratingRapid:
+          type: integer
+          description: Rapid rating
+        ratingBlitz:
+          type: integer
+          description: Blitz rating
+
+    Game:
+      type: object
+      required:
+        - id
+        - date
+        - result
+        - timeControl
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Game UUID
+        data:
+          type: object
+          description: Full game data including moves and metadata
+        whitePlayerId:
+          type: string
+          format: uuid
+          description: White player UUID
+        blackPlayerId:
+          type: string
+          format: uuid
+          description: Black player UUID
+        date:
+          type: string
+          format: date-time
+          description: Date the game was played
+        timeControl:
+          type: string
+          enum:
+            - CLASSICAL
+            - RAPID
+            - BLITZ
+          description: Time control category
+        result:
+          type: string
+          enum:
+            - W
+            - B
+            - D
+          description: Game result (W=White wins, B=Black wins, D=Draw)
+
+    ErrorResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [error]
+        error:
+          type: object
+          properties:
+            message:
+              type: string
+              description: Error message
+      example:
+        status: error
+        error:
+          message: "Missing API Key"
