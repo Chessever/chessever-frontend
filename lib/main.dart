@@ -38,6 +38,7 @@ import 'package:worker_manager/worker_manager.dart';
 import 'package:clarity_flutter/clarity_flutter.dart';
 import 'package:heroine/heroine.dart';
 import 'package:upgrader/upgrader.dart';
+import 'package:purchases_flutter/purchases_flutter.dart';
 import 'services/analytics/analytics_service.dart';
 import 'services/deep_link_service.dart';
 import 'theme/app_theme.dart';
@@ -161,6 +162,8 @@ Future<void> main() async {
         AnalyticsService.instance.initialize(
           apiKey: _resolveAmplitudeApiKey(),
         ),
+        // Initialize RevenueCat for subscriptions
+        _initializeRevenueCat(),
       ]);
 
       // Non-critical: Load audio assets in background (don't block app startup)
@@ -216,6 +219,26 @@ Future<void> _clearEvaluationCache() async {
       print('📁 Evaluation cache version $cacheVersion is up to date');
     }
   } catch (e, _) {}
+}
+
+/// Initialize RevenueCat for subscription management
+Future<void> _initializeRevenueCat() async {
+  try {
+    // Platform-specific API keys
+    final apiKey = Platform.isIOS
+        ? 'appl_hggBdZrNsqmMHEorxxxLYjyHTzz'
+        : 'goog_ZmINjxirbMFvSsVMUfviZwrpfBY';
+
+    await Purchases.configure(
+      PurchasesConfiguration(apiKey)..appUserID = null,
+    );
+    debugPrint('✅ RevenueCat initialized successfully for ${Platform.isIOS ? 'iOS' : 'Android'}');
+  } catch (e, st) {
+    debugPrint('❌ Error initializing RevenueCat: $e');
+    if (kDebugMode) {
+      debugPrintStack(stackTrace: st);
+    }
+  }
 }
 
 /// Resets favorites system to clean state for Supabase migration

@@ -3,7 +3,7 @@ PODS:
     - AmplitudeSwift (= 1.15.1)
     - Flutter
     - FlutterMacOS
-  - AmplitudeCore (1.2.4)
+  - AmplitudeCore (1.3.1)
   - AmplitudeSwift (1.15.1):
     - AmplitudeCore (< 2.0.0, >= 1.1.0)
     - AnalyticsConnector (~> 1.3.0)
@@ -69,12 +69,12 @@ PODS:
   - permission_handler_apple (9.3.0):
     - Flutter
   - PromisesObjC (2.4.0)
-  - purchases_flutter (8.11.0):
+  - purchases_flutter (9.9.10):
     - Flutter
-    - PurchasesHybridCommon (= 14.3.0)
-  - PurchasesHybridCommon (14.3.0):
-    - RevenueCat (= 5.32.0)
-  - RevenueCat (5.32.0)
+    - PurchasesHybridCommon (= 17.21.2)
+  - PurchasesHybridCommon (17.21.2):
+    - RevenueCat (= 5.49.2)
+  - RevenueCat (5.49.2)
   - Sentry/HybridSDK (8.56.2)
   - sentry_flutter (9.7.0):
     - Flutter
@@ -180,7 +180,7 @@ EXTERNAL SOURCES:
 
 SPEC CHECKSUMS:
   amplitude_flutter: 6cc0a673ea65900beab45e3c9c55f2095e6287e7
-  AmplitudeCore: 25385873104770c5245ed5780acd3eb1b3ae74b7
+  AmplitudeCore: c47c0a661bec076a197bc75a5a7b4c413da288a5
   AmplitudeSwift: 41d52966044cc377435eda13124854ab7b4ec454
   AnalyticsConnector: 3def11199b4ddcad7202c778bde982ec5da0ebb3
   app_links: 3dbc685f76b1693c66a6d9dd1e9ab6f73d97dc0a
@@ -202,9 +202,9 @@ SPEC CHECKSUMS:
   path_provider_foundation: 080d55be775b7414fd5a5ef3ac137b97b097e564
   permission_handler_apple: 4ed2196e43d0651e8ff7ca3483a069d469701f2d
   PromisesObjC: f5707f49cb48b9636751c5b2e7d227e43fba9f47
-  purchases_flutter: 3570127ba41583a75e553d68a763367007830eff
-  PurchasesHybridCommon: 7f0944cc5411bdcd1ea5d69affa6a6f9aaf87b13
-  RevenueCat: 7e1d0768fb287c9983173c9b28e39ccbeeb828a9
+  purchases_flutter: 7d0a19570a6ddedaabe9c7f1904e1f0929270106
+  PurchasesHybridCommon: 71c94158ff8985657d37d5f3be05602881227619
+  RevenueCat: d185cbff8be9425b5835042afd6889389bb756c8
   Sentry: b53951377b78e21a734f5dc8318e333dbfc682d7
   sentry_flutter: 7f88e12d1882ec6e648644a7c0ff5b1466f07f99
   share_plus: 50da8cb520a8f0f65671c6c6a99b3617ed10a58a
@@ -214,6 +214,6 @@ SPEC CHECKSUMS:
   stockfish: 67f9bf4f28fa261dee264b35be80c9ac11b391b6
   url_launcher_ios: 694010445543906933d732453a59da0a173ae33d
 
-PODFILE CHECKSUM: 0632be96ae4bcf69964f70fa6b7f2800efe623df
+PODFILE CHECKSUM: f179fcf14223536ae4e29de1097c68d7f8445563
 
 COCOAPODS: 1.16.2

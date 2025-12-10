@@ -1,0 +1,376 @@
+import 'package:chessever2/repository/gamebase/gamebase_repository.dart'
+    hide MoveAggregateMapper, MoveAggregateCopyWith;
+import 'package:chessever2/screens/gamebase/models/models.dart';
+import 'package:chess/chess.dart' hide State;
+import 'package:hooks_riverpod/hooks_riverpod.dart';
+
+import 'gamebase_explorer_state.dart';
+
+/// StateNotifier for managing Gamebase explorer state.
+class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
+  GamebaseExplorerNotifier(this.ref) : super(const GamebaseExplorerState()) {
+    // Load initial position data
+    _fetchMoveAggregates();
+  }
+
+  final Ref ref;
+
+  /// Internal chess instance for position tracking
+  Chess? _chess;
+
+  Chess get chess {
+    _chess ??= Chess();
+    return _chess!;
+  }
+
+  /// Fetch move aggregates for current position
+  Future<void> _fetchMoveAggregates() async {
+    state = state.copyWith(isLoading: true, error: null);
+
+    try {
+      final repository = ref.read(gamebaseRepositoryProvider);
+
+      // Convert time controls to string list
+      final timeControlFilters =
+          state.filters.timeControls.isNotEmpty
+              ? state.filters.timeControls.map((tc) {
+                switch (tc) {
+                  case TimeControl.classical:
+                    return 'CLASSICAL';
+                  case TimeControl.rapid:
+                    return 'RAPID';
+                  case TimeControl.blitz:
+                    return 'BLITZ';
+                }
+              }).toList()
+              : null;
+
+      final response = await repository.getMoveAggregates(
+        fen: state.currentFen,
+        timeControls: timeControlFilters,
+        minRating: state.filters.minRating,
+        maxRating: state.filters.maxRating,
+        playerIds:
+            state.filters.playerIds.isNotEmpty ? state.filters.playerIds : null,
+      );
+
+      final aggregates = List<MoveAggregate>.from(response.data.moves);
+
+      // Sort by total games descending
+      aggregates.sort((a, b) => b.total.compareTo(a.total));
+
+      state = state.copyWith(moveAggregates: aggregates, isLoading: false);
+    } catch (e) {
+      state = state.copyWith(
+        isLoading: false,
+        error: e.toString(),
+        moveAggregates: [],
+      );
+    }
+  }
+
+  /// Make a move on the board (UCI format)
+  void makeMove(String uci) {
+    try {
+      // Parse UCI move
+      final from = uci.substring(0, 2);
+      final to = uci.substring(2, 4);
+      final promotion = uci.length > 4 ? uci[4] : null;
+
+      // Reset chess to current position if needed
+      _rebuildChessPosition();
+
+      // Make the move
+      final move = chess.move({
+        'from': from,
+        'to': to,
+        if (promotion != null) 'promotion': promotion,
+      });
+
+      if (move != null) {
+        // If we're not at the end of history, truncate
+        final newHistory = state.moveHistory.sublist(
+          0,
+          state.currentMoveIndex + 1,
+        )..add(uci);
+
+        state = state.copyWith(
+          currentFen: chess.fen,
+          moveHistory: newHistory,
+          currentMoveIndex: newHistory.length - 1,
+        );
+
+        _fetchMoveAggregates();
+      }
+    } catch (e) {
+      state = state.copyWith(error: 'Invalid move: $uci');
+    }
+  }
+
+  /// Rebuild chess position from move history
+  void _rebuildChessPosition() {
+    _chess = Chess();
+    for (
+      var i = 0;
+      i <= state.currentMoveIndex && i < state.moveHistory.length;
+      i++
+    ) {
+      final uci = state.moveHistory[i];
+      final from = uci.substring(0, 2);
+      final to = uci.substring(2, 4);
+      final promotion = uci.length > 4 ? uci[4] : null;
+      chess.move({
+        'from': from,
+        'to': to,
+        if (promotion != null) 'promotion': promotion,
+      });
+    }
+  }
+
+  /// Go to previous move
+  void goBack() {
+    if (!state.canGoBack) return;
+
+    final newIndex = state.currentMoveIndex - 1;
+    _chess = Chess();
+
+    // Replay moves up to new index
+    for (var i = 0; i <= newIndex && i < state.moveHistory.length; i++) {
+      final uci = state.moveHistory[i];
+      final from = uci.substring(0, 2);
+      final to = uci.substring(2, 4);
+      final promotion = uci.length > 4 ? uci[4] : null;
+      chess.move({
+        'from': from,
+        'to': to,
+        if (promotion != null) 'promotion': promotion,
+      });
+    }
+
+    state = state.copyWith(
+      currentMoveIndex: newIndex,
+      currentFen:
+          newIndex >= 0
+              ? chess.fen
+              : 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+    );
+
+    _fetchMoveAggregates();
+  }
+
+  /// Go to next move
+  void goForward() {
+    if (!state.canGoForward) return;
+
+    final newIndex = state.currentMoveIndex + 1;
+    _rebuildChessPosition();
+
+    // Make one more move
+    final uci = state.moveHistory[newIndex];
+    final from = uci.substring(0, 2);
+    final to = uci.substring(2, 4);
+    final promotion = uci.length > 4 ? uci[4] : null;
+    chess.move({
+      'from': from,
+      'to': to,
+      if (promotion != null) 'promotion': promotion,
+    });
+
+    state = state.copyWith(currentMoveIndex: newIndex, currentFen: chess.fen);
+
+    _fetchMoveAggregates();
+  }
+
+  /// Go to first position
+  void goToStart() {
+    _chess = Chess();
+    state = state.copyWith(
+      currentMoveIndex: -1,
+      currentFen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+    );
+    _fetchMoveAggregates();
+  }
+
+  /// Go to last position
+  void goToEnd() {
+    if (state.moveHistory.isEmpty) return;
+
+    _chess = Chess();
+    for (final uci in state.moveHistory) {
+      final from = uci.substring(0, 2);
+      final to = uci.substring(2, 4);
+      final promotion = uci.length > 4 ? uci[4] : null;
+      chess.move({
+        'from': from,
+        'to': to,
+        if (promotion != null) 'promotion': promotion,
+      });
+    }
+
+    state = state.copyWith(
+      currentMoveIndex: state.moveHistory.length - 1,
+      currentFen: chess.fen,
+    );
+
+    _fetchMoveAggregates();
+  }
+
+  /// Go to specific move index
+  void goToMove(int index) {
+    if (index < -1 || index >= state.moveHistory.length) return;
+
+    _chess = Chess();
+    for (var i = 0; i <= index && i < state.moveHistory.length; i++) {
+      final uci = state.moveHistory[i];
+      final from = uci.substring(0, 2);
+      final to = uci.substring(2, 4);
+      final promotion = uci.length > 4 ? uci[4] : null;
+      chess.move({
+        'from': from,
+        'to': to,
+        if (promotion != null) 'promotion': promotion,
+      });
+    }
+
+    state = state.copyWith(
+      currentMoveIndex: index,
+      currentFen:
+          index >= 0
+              ? chess.fen
+              : 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+    );
+
+    _fetchMoveAggregates();
+  }
+
+  /// Reset to initial position
+  void reset() {
+    _chess = Chess();
+    state = const GamebaseExplorerState();
+    _fetchMoveAggregates();
+  }
+
+  /// Set position from FEN (for loading a specific position)
+  void setPosition(String fen) {
+    try {
+      _chess = Chess.fromFEN(fen);
+      state = state.copyWith(
+        currentFen: fen,
+        moveHistory: [],
+        currentMoveIndex: -1,
+      );
+      _fetchMoveAggregates();
+    } catch (e) {
+      state = state.copyWith(error: 'Invalid FEN: $fen');
+    }
+  }
+
+  /// Update filters and refetch data
+  void updateFilters(GamebaseFilters filters) {
+    state = state.copyWith(filters: filters);
+    _fetchMoveAggregates();
+  }
+
+  /// Toggle a time control filter
+  void toggleTimeControl(TimeControl timeControl) {
+    final current = List<TimeControl>.from(state.filters.timeControls);
+    if (current.contains(timeControl)) {
+      current.remove(timeControl);
+    } else {
+      current.add(timeControl);
+    }
+    updateFilters(state.filters.copyWith(timeControls: current));
+  }
+
+  /// Set rating range filter
+  void setRatingRange(int? minRating, int? maxRating) {
+    updateFilters(
+      state.filters.copyWith(minRating: minRating, maxRating: maxRating),
+    );
+  }
+
+  /// Add a player filter
+  void addPlayerFilter(GamebasePlayer player) {
+    final currentIds = List<String>.from(state.filters.playerIds);
+    final currentPlayers = List<GamebasePlayer>.from(
+      state.filters.selectedPlayers,
+    );
+
+    if (!currentIds.contains(player.id)) {
+      currentIds.add(player.id);
+      currentPlayers.add(player);
+      updateFilters(
+        state.filters.copyWith(
+          playerIds: currentIds,
+          selectedPlayers: currentPlayers,
+        ),
+      );
+    }
+  }
+
+  /// Remove a player filter
+  void removePlayerFilter(String playerId) {
+    final currentIds = List<String>.from(state.filters.playerIds);
+    final currentPlayers = List<GamebasePlayer>.from(
+      state.filters.selectedPlayers,
+    );
+
+    currentIds.remove(playerId);
+    currentPlayers.removeWhere((p) => p.id == playerId);
+    updateFilters(
+      state.filters.copyWith(
+        playerIds: currentIds,
+        selectedPlayers: currentPlayers,
+      ),
+    );
+  }
+
+  /// Clear all filters
+  void clearFilters() {
+    updateFilters(const GamebaseFilters());
+  }
+
+  /// Select a game to view
+  void selectGame(GamebaseGame game) {
+    state = state.copyWith(selectedGame: game);
+  }
+
+  /// Clear selected game
+  void clearSelectedGame() {
+    state = state.copyWith(selectedGame: null);
+  }
+
+  /// Refresh current position data
+  Future<void> refresh() async {
+    await _fetchMoveAggregates();
+  }
+}
+
+/// Main provider for Gamebase explorer state.
+final gamebaseExplorerProvider = StateNotifierProvider.autoDispose<
+  GamebaseExplorerNotifier,
+  GamebaseExplorerState
+>((ref) => GamebaseExplorerNotifier(ref));
+
+/// Provider for searching players.
+final playerSearchProvider = FutureProvider.autoDispose
+    .family<List<GamebasePlayer>, String>((ref, query) async {
+      if (query.isEmpty || query.length < 2) return [];
+
+      final repository = ref.read(gamebaseRepositoryProvider);
+      return repository.getPlayers(name: query, limit: 20);
+    });
+
+/// Provider for fetching a single player by ID.
+final playerByIdProvider = FutureProvider.autoDispose
+    .family<GamebasePlayer?, String>((ref, playerId) async {
+      final repository = ref.read(gamebaseRepositoryProvider);
+      return repository.getPlayerById(playerId);
+    });
+
+/// Provider for fetching a single game by ID.
+final gameByIdProvider = FutureProvider.autoDispose
+    .family<GamebaseGame?, String>((ref, gameId) async {
+      final repository = ref.read(gamebaseRepositoryProvider);
+      return repository.getGameById(gameId);
+    });

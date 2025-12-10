@@ -43,36 +43,48 @@ class ScoreboardCardWidget extends ConsumerWidget {
         .read(locationServiceProvider)
         .getValidCountryCode(countryCode);
 
-    final Color backgroundColor =
-        index.isOdd ? kBlack2Color : Color(0xff111111);
+    final Color backgroundColor = const Color(0xFF0F0F0F);
     BorderRadius? borderRadius;
     if (isFirst) {
       borderRadius = BorderRadius.only(
-        topLeft: Radius.circular(4.br),
-        topRight: Radius.circular(4.br),
+        topLeft: Radius.circular(8.br),
+        topRight: Radius.circular(8.br),
       );
     } else if (isLast) {
       borderRadius = BorderRadius.only(
-        bottomLeft: Radius.circular(4.br),
-        bottomRight: Radius.circular(4.br),
+        bottomLeft: Radius.circular(8.br),
+        bottomRight: Radius.circular(8.br),
       );
     }
     return GestureDetector(
       onTap: onTap,
       child: Container(
         alignment: Alignment.center,
-        height: 49.h,
-        padding: EdgeInsets.symmetric(horizontal: 8.sp, vertical: 4.sp),
+        padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 12.sp),
         decoration: BoxDecoration(
           color: backgroundColor,
           borderRadius: borderRadius,
+          border:
+              isLast
+                  ? null
+                  : Border(
+                    bottom: BorderSide(
+                      color: kWhiteColor.withValues(alpha: 0.08),
+                      width: 0.7,
+                    ),
+                  ),
         ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
+            Text(
+              '${index + 1}.',
+              style: AppTypography.textMdBold.copyWith(color: kWhiteColor),
+            ),
+            SizedBox(width: 10.w),
             if (roundLabel != null) ...[
               Padding(
-                padding: EdgeInsets.only(right: 12.w),
+                padding: EdgeInsets.only(right: 8.w),
                 child: Text(
                   roundLabel!,
                   style: AppTypography.textXsMedium.copyWith(
@@ -81,130 +93,101 @@ class ScoreboardCardWidget extends ConsumerWidget {
                 ),
               ),
             ],
-            // Player Info (flag + name)
+            if (countryCode.toUpperCase() == 'FID') ...[
+              SizedBox(
+                width: 20.w,
+                height: 14.h,
+                child: Image.asset(
+                  PngAsset.fideLogo,
+                  height: 14.h,
+                  width: 20.w,
+                  fit: BoxFit.cover,
+                  cacheWidth: 64,
+                  cacheHeight: 48,
+                ),
+              ),
+              SizedBox(width: 10.w),
+            ] else if (validCountryCode.isNotEmpty) ...[
+              SizedBox(
+                width: 20.w,
+                height: 14.h,
+                child: CountryFlag.fromCountryCode(
+                  validCountryCode,
+                  height: 14.h,
+                  width: 20.w,
+                ),
+              ),
+              SizedBox(width: 10.w),
+            ],
             Expanded(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  if (countryCode.toUpperCase() == 'FID') ...[
-                    SizedBox(
-                      width: 16.w,
-                      height: 12.h,
-                      child: Image.asset(
-                        PngAsset.fideLogo,
-                        height: 12.h,
-                        width: 16.w,
-                        fit: BoxFit.cover,
-                        cacheWidth: 48,
-                        cacheHeight: 36,
-                      ),
-                    ),
-                    SizedBox(width: 6.w),
-                  ] else if (validCountryCode.isNotEmpty) ...[
-                    SizedBox(
-                      width: 16.w,
-                      height: 12.h,
-                      child: CountryFlag.fromCountryCode(
-                        validCountryCode,
-                        height: 12.h,
-                        width: 16.w,
-                      ),
-                    ),
-                    SizedBox(width: 6.w),
-                  ],
-                  Expanded(
-                    child: Padding(
-                      padding: EdgeInsets.only(bottom: 4.sp),
-                      child: RichText(
-                        overflow: TextOverflow.ellipsis,
-                        maxLines: 1,
-                        text: TextSpan(
-                          children: [
-                            if (title != null)
-                              TextSpan(
-                                text: '$title ',
-                                style: AppTypography.textXsMedium.copyWith(
-                                  color: kWhiteColor70,
-                                ),
-                              ),
-                            TextSpan(
-                              text: name,
-                              style: AppTypography.textXsMedium.copyWith(
-                                color: kWhiteColor,
-                              ),
-                            ),
-                          ],
+              child: RichText(
+                overflow: TextOverflow.ellipsis,
+                maxLines: 1,
+                text: TextSpan(
+                  children: [
+                    if (title != null && title!.isNotEmpty)
+                      TextSpan(
+                        text: '$title ',
+                        style: AppTypography.textMdBold.copyWith(
+                          color: kLightYellowColor,
                         ),
                       ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            SizedBox(width: 8.w),
-            // ELO column (compact width)
-            SizedBox(
-              width: 70.w,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.start,
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Text(
-                    score.toString(),
-                    style: AppTypography.textXsMedium.copyWith(
-                      color: kWhiteColor,
-                    ),
-                  ),
-                  if (scoreChange != null && scoreChange != 0.0) ...[
-                    SizedBox(width: 4.w),
-                    Text(
-                      scoreChange! > 0
-                          ? '+${scoreChange!.toStringAsFixed(1)}'
-                          : scoreChange!.toStringAsFixed(1),
-                      style: AppTypography.textXsMedium.copyWith(
-                        color: scoreChange! > 0 ? kGreenColor : kRedColor,
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-            SizedBox(width: 8.w),
-            // Match Score column (compact width)
-            SizedBox(
-              width: 50.w,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.start,
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  if (isWhite != null) ...[
-                    Container(
-                      width: 8.w,
-                      height: 8.h,
-                      decoration: BoxDecoration(
-                        color: isWhite! ? Colors.white : Colors.black,
-                        shape: BoxShape.circle,
-                        border: isWhite!
-                            ? null
-                            : Border.all(
-                                color: kWhiteColor.withValues(alpha: 0.3),
-                                width: 0.5,
-                              ),
-                      ),
-                    ),
-                    SizedBox(width: 8.w),
-                  ],
-                  Expanded(
-                    child: Text(
-                      matchScore == null ? '' : matchScore!,
-                      textAlign: TextAlign.start,
-                      style: AppTypography.textXsMedium.copyWith(
+                    TextSpan(
+                      text: name,
+                      style: AppTypography.textMdBold.copyWith(
                         color: kWhiteColor,
                       ),
                     ),
+                  ],
+                ),
+              ),
+            ),
+            SizedBox(width: 12.w),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  score.toString(),
+                  style: AppTypography.textMdMedium.copyWith(
+                    color: kWhiteColor,
+                  ),
+                ),
+                if (scoreChange != null && scoreChange != 0.0) ...[
+                  SizedBox(height: 4.h),
+                  Text(
+                    scoreChange! > 0
+                        ? '+${scoreChange!.toStringAsFixed(1)}'
+                        : scoreChange!.toStringAsFixed(1),
+                    style: AppTypography.textXsMedium.copyWith(
+                      color: scoreChange! > 0 ? kGreenColor : kRedColor,
+                    ),
                   ),
                 ],
+              ],
+            ),
+            SizedBox(width: 14.w),
+            if (isWhite != null) ...[
+              Container(
+                width: 14.w,
+                height: 14.h,
+                decoration: BoxDecoration(
+                  color: isWhite! ? Colors.white : Colors.black,
+                  shape: BoxShape.circle,
+                  border:
+                      isWhite!
+                          ? null
+                          : Border.all(
+                            color: kWhiteColor.withValues(alpha: 0.35),
+                            width: 1.1,
+                          ),
+                ),
               ),
+              SizedBox(width: 8.w),
+            ],
+            Text(
+              matchScore == null ? '' : matchScore!,
+              textAlign: TextAlign.start,
+              style: AppTypography.textMdBold.copyWith(color: kWhiteColor),
             ),
           ],
         ),

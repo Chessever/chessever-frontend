@@ -1,5 +1,6 @@
 import 'package:chessever2/providers/for_you_games_provider.dart';
 import 'package:chessever2/screens/group_event/widget/for_you_tournament_card.dart';
+import 'package:chessever2/screens/group_event/widget/premium_collection_cards.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_widget.dart';
@@ -120,16 +121,15 @@ class ForYouGamesWidget extends HookConsumerWidget {
 
     return gamesAsync.when(
       data: (games) {
-        if (games.isEmpty) {
-          return _buildEmptyState(context);
-        }
-
+        // Always show the ListView with Premium Collection Cards at the top
+        // Even if no games, users can tap to explore Favorites/Countrymen
         return _ForYouListView(
           scrollController: scrollController,
           items: items,
           gamesData: gamesData,
           allGames: convertedGames,
           isLoadingMore: isLoadingMore.value,
+          isEmpty: games.isEmpty,
         );
       },
       loading: () => _buildLoadingState(),
@@ -139,42 +139,6 @@ class ForYouGamesWidget extends HookConsumerWidget {
         return const GenericErrorWidget();
       },
     );
-  }
-
-  Widget _buildEmptyState(BuildContext context) {
-    return Center(
-          child: Padding(
-            padding: EdgeInsets.all(32.sp),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.favorite_border, size: 64.sp, color: kDarkGreyColor),
-                SizedBox(height: 16.sp),
-                Text(
-                  'No games to show',
-                  style: TextStyle(
-                    fontSize: 18.sp,
-                    fontWeight: FontWeight.w600,
-                    color: kWhiteColor70,
-                  ),
-                ),
-                SizedBox(height: 8.sp),
-                Text(
-                  'Add favorite players or select your country\nto see personalized games',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 14.sp, color: kDarkGreyColor),
-                ),
-              ],
-            ),
-          ),
-        )
-        .animate()
-        .fadeIn(duration: 300.ms)
-        .scale(
-          begin: const Offset(0.95, 0.95),
-          end: const Offset(1.0, 1.0),
-          duration: 300.ms,
-        );
   }
 
   Widget _buildLoadingState() {
@@ -379,6 +343,7 @@ class _ForYouListView extends ConsumerWidget {
     required this.gamesData,
     required this.allGames,
     required this.isLoadingMore,
+    this.isEmpty = false,
   });
 
   final ScrollController scrollController;
@@ -386,6 +351,7 @@ class _ForYouListView extends ConsumerWidget {
   final GamesScreenModel gamesData;
   final List<GamesTourModel> allGames;
   final bool isLoadingMore;
+  final bool isEmpty;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -403,7 +369,10 @@ class _ForYouListView extends ConsumerWidget {
         key: const PageStorageKey<String>('for_you_games_list'),
         controller: scrollController,
         padding: EdgeInsets.symmetric(horizontal: 16.sp, vertical: 16.sp),
-        itemCount: items.length + (isLoadingMore ? 1 : 0),
+        // +1 for premium cards at top, +1 for empty state if no items
+        itemCount: isEmpty
+            ? 2 // Premium cards + empty state message
+            : items.length + 1 + (isLoadingMore ? 1 : 0),
         // CRITICAL: Keep items alive when scrolled off-screen
         addAutomaticKeepAlives: true,
         addRepaintBoundaries: true,
@@ -414,12 +383,25 @@ class _ForYouListView extends ConsumerWidget {
           parent: BouncingScrollPhysics(),
         ),
         itemBuilder: (context, index) {
+          // Premium collection cards at the very top
+          if (index == 0) {
+            return const PremiumCollectionCards();
+          }
+
+          // Empty state message below premium cards
+          if (isEmpty && index == 1) {
+            return _buildInlineEmptyState();
+          }
+
+          // Adjust index for premium cards offset
+          final adjustedIndex = index - 1;
+
           // Loading indicator at the end
-          if (index == items.length) {
+          if (adjustedIndex == items.length) {
             return _buildLoadingIndicator();
           }
 
-          final item = items[index];
+          final item = items[adjustedIndex];
 
           if (item.isHeader) {
             return ForYouTournamentCard(
@@ -428,7 +410,7 @@ class _ForYouListView extends ConsumerWidget {
               tourName: item.tourName!,
               hasLiveGames: item.hasLiveGames!,
               gameCount: item.gameCount!,
-              isFirst: index == 0,
+              isFirst: adjustedIndex == 0,
             );
           }
 
@@ -440,7 +422,7 @@ class _ForYouListView extends ConsumerWidget {
             game: gamesTourModel,
             gamesData: gamesData,
             gameIndex: item.gameIndex!,
-            listIndex: index,
+            listIndex: adjustedIndex,
             allGames: allGames, // Pass all games for navigation
           );
         },
@@ -475,6 +457,49 @@ class _ForYouListView extends ConsumerWidget {
         ),
       ),
     ).animate().fadeIn(duration: 150.ms);
+  }
+
+  /// Inline empty state shown below Premium Collection Cards
+  /// Encourages users to set preferences while keeping cards visible
+  Widget _buildInlineEmptyState() {
+    return Container(
+      margin: EdgeInsets.only(top: 20.sp, bottom: 20.sp),
+      padding: EdgeInsets.all(24.sp),
+      decoration: BoxDecoration(
+        color: kBlack2Color.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(16.br),
+        border: Border.all(
+          color: kDarkGreyColor.withValues(alpha: 0.3),
+          width: 1,
+        ),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.auto_awesome_rounded,
+            size: 40.ic,
+            color: kPrimaryColor.withValues(alpha: 0.7),
+          ),
+          SizedBox(height: 16.sp),
+          Text(
+            'Personalize Your Feed',
+            style: AppTypography.textMdMedium.copyWith(
+              color: kWhiteColor,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          SizedBox(height: 8.sp),
+          Text(
+            'Tap "Favorites" to follow your favorite players, or "Countrymen" to see games from your country.',
+            style: AppTypography.textSmRegular.copyWith(
+              color: kSecondaryTextColor,
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+    ).animate().fadeIn(duration: 300.ms).slideY(begin: 0.05, end: 0);
   }
 }
 
