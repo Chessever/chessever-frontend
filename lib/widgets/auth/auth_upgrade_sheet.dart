@@ -159,7 +159,7 @@ class _AuthUpgradePage extends HookWidget {
                       Icon(
                         Icons.warning_amber_rounded,
                         size: 14.ic,
-                        color: const Color(0xFFFFAA00).withValues(alpha: 0.7),
+                        color: kPrimaryColor.withValues(alpha: 0.7),
                       ),
                       SizedBox(width: 6.w),
                       Text(
@@ -266,7 +266,7 @@ class _FeaturesList extends StatelessWidget {
         icon: Icons.palette_rounded,
         title: 'Customization',
         subtitle: 'Board themes & pieces',
-        color: const Color(0xFFFFE66D),
+        color: const Color(0xFF7DD3FC),
       ),
       _FeatureItem(
         icon: Icons.cloud_sync_rounded,

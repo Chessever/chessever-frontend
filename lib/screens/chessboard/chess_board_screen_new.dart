@@ -426,12 +426,14 @@ class ChessBoardScreenNew extends ConsumerStatefulWidget {
   /// When true, hides the event info button in the app bar.
   /// Use this when navigating from library for position analysis where event info is not relevant.
   final bool hideEventInfo;
+  final bool showGamebaseButton;
 
   const ChessBoardScreenNew({
     required this.currentIndex,
     required this.games,
     this.savedAnalysisData,
     this.hideEventInfo = false,
+    this.showGamebaseButton = false,
     super.key,
   });
 
@@ -1116,6 +1118,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
                         hideEventInfo: widget.hideEventInfo,
                         onToggleGamebase: _toggleGamebase,
                         isGamebaseActive: showGamebase,
+                        showGamebaseButton: widget.showGamebaseButton,
                       );
                     },
                     error: (e, _) => ErrorWidget(e),
@@ -1160,6 +1163,7 @@ class _GamePage extends StatelessWidget {
   final bool hideEventInfo;
   final VoidCallback onToggleGamebase;
   final bool isGamebaseActive;
+  final bool showGamebaseButton;
 
   const _GamePage({
     required this.game,
@@ -1172,6 +1176,7 @@ class _GamePage extends StatelessWidget {
     this.isGamebaseActive = false,
     this.lastViewedIndex,
     this.hideEventInfo = false,
+    this.showGamebaseButton = false,
   });
 
   @override
@@ -1184,6 +1189,7 @@ class _GamePage extends StatelessWidget {
         game: game,
         onGamebaseToggle: onToggleGamebase,
         isGamebaseActive: isGamebaseActive,
+        showGamebaseButton: showGamebaseButton,
       ),
       appBar: _AppBar(
         game: game,
@@ -3207,6 +3213,7 @@ class _BottomNavBar extends ConsumerWidget {
   final GamesTourModel game;
   final VoidCallback onGamebaseToggle;
   final bool isGamebaseActive;
+  final bool showGamebaseButton;
 
   const _BottomNavBar({
     required this.index,
@@ -3214,6 +3221,7 @@ class _BottomNavBar extends ConsumerWidget {
     required this.game,
     required this.onGamebaseToggle,
     required this.isGamebaseActive,
+    this.showGamebaseButton = false,
   });
 
   @override
@@ -3248,6 +3256,7 @@ class _BottomNavBar extends ConsumerWidget {
 
     return ChessBoardBottomNavBar(
       gameIndex: index,
+      showGamebaseButton: showGamebaseButton,
       onFlip: () => notifier.flipBoard(),
       toggleEngineVisibility: () => notifier.toggleEngineVisibility(),
       onEngineSettingsLongPress: () {
@@ -3391,42 +3400,76 @@ class _AnalysisGameBody extends ConsumerWidget {
         ];
 
         Widget buildAnalysisView() {
-          if (isGamebaseActive) {
-            return GamebaseExplorerView(
-              state: state,
-              onMoveSelected: (uci) {
-                final params = ChessBoardProviderParams(
-                  game: game,
-                  index: index,
-                );
-                final notifier = ref.read(
-                  chessBoardScreenProviderNew(params).notifier,
-                );
-                try {
-                  if (uci.length < 4) return;
-                  final from = Square.fromName(uci.substring(0, 2));
-                  final to = Square.fromName(uci.substring(2, 4));
-                  Role? promotion;
-                  if (uci.length > 4) {
-                    promotion = Role.fromChar(uci[4]);
-                  }
-                  final move = NormalMove(
-                    from: from,
-                    to: to,
-                    promotion: promotion,
-                  );
-                  notifier.onAnalysisMove(move);
-                } catch (e) {
-                  debugPrint('Error making move from UCI: $e');
-                }
-              },
-            );
-          }
-          return _MovesDisplay(
+          final movesDisplay = _MovesDisplay(
             index: index,
             currentPageIndex: currentPageIndex,
             state: state,
             game: game,
+          );
+
+          final gamebaseDisplay = GamebaseExplorerView(
+            state: state,
+            onMoveSelected: (uci) {
+              final params = ChessBoardProviderParams(
+                game: game,
+                index: index,
+              );
+              final notifier = ref.read(
+                chessBoardScreenProviderNew(params).notifier,
+              );
+              try {
+                if (uci.length < 4) return;
+                final from = Square.fromName(uci.substring(0, 2));
+                final to = Square.fromName(uci.substring(2, 4));
+                Role? promotion;
+                if (uci.length > 4) {
+                  promotion = Role.fromChar(uci[4]);
+                }
+                final move = NormalMove(
+                  from: from,
+                  to: to,
+                  promotion: promotion,
+                );
+                notifier.onAnalysisMove(move);
+              } catch (e) {
+                debugPrint('Error making move from UCI: $e');
+              }
+            },
+          );
+
+          // Animate switching between move list and Gamebase explorer.
+          // Only build Gamebase while visible/animating to avoid background fetches.
+          return SingleMotionBuilder(
+            motion: const CupertinoMotion.smooth(),
+            value: isGamebaseActive ? 1.0 : 0.0,
+            builder: (context, t, _) {
+              final showGamebase = isGamebaseActive || t > 0.01;
+              final showMoves = !isGamebaseActive || t < 0.99;
+
+              return Stack(
+                children: [
+                  if (showMoves)
+                    IgnorePointer(
+                      ignoring: t > 0.05,
+                      child: Opacity(
+                        opacity: (1.0 - t).clamp(0.0, 1.0),
+                        child: movesDisplay,
+                      ),
+                    ),
+                  if (showGamebase)
+                    IgnorePointer(
+                      ignoring: t < 0.95,
+                      child: Opacity(
+                        opacity: t.clamp(0.0, 1.0),
+                        child: Transform.translate(
+                          offset: Offset(0, (1.0 - t) * 8.h),
+                          child: gamebaseDisplay,
+                        ),
+                      ),
+                    ),
+                ],
+              );
+            },
           );
         }
 

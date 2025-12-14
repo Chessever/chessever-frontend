@@ -179,27 +179,94 @@ class _PaywallContent extends HookConsumerWidget {
                       ),
                     ),
                   ),
-                  // Blurred background preview
-                  _BackgroundPreview()
-                      .animate()
-                      .fadeIn(duration: 500.ms, curve: Curves.easeOut)
-                      .scale(begin: const Offset(0.92, 0.92)),
+                  // Hero Icon with Glow
+                  Center(
+                    child: Container(
+                          height: 120.h,
+                          width: 120.h,
+                          decoration: BoxDecoration(
+                            color: kPrimaryColor.withValues(alpha: 0.1),
+                            shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(
+                                color: kPrimaryColor.withValues(alpha: 0.2),
+                                blurRadius: 40,
+                                spreadRadius: 0,
+                              ),
+                            ],
+                          ),
+                          child: Icon(
+                            Icons.workspace_premium_rounded,
+                            size: 64.ic,
+                            color: kPrimaryColor,
+                          ),
+                        )
+                        .animate(onPlay: (c) => c.repeat(reverse: true))
+                        .scaleXY(
+                          begin: 1.0,
+                          end: 1.1,
+                          duration: 2000.ms,
+                          curve: Curves.easeInOut,
+                        ),
+                  ),
                   SizedBox(height: 20.h),
+                  // FOMO Banner
+                  Container(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: 16.w,
+                      vertical: 8.h,
+                    ),
+                    decoration: BoxDecoration(
+                      color: kPrimaryColor.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(20.br),
+                      border: Border.all(
+                        color: kPrimaryColor.withValues(alpha: 0.3),
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.timer_outlined,
+                          color: kPrimaryColor,
+                          size: 16.sp,
+                        ),
+                        SizedBox(width: 8.w),
+                        Text(
+                          'Limited Time Offer: Get 50% OFF',
+                          style: AppTypography.textSmBold.copyWith(
+                            color: kPrimaryColor,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ).animate().fadeIn(delay: 50.ms).slideY(begin: 0.2, end: 0),
+
+                  SizedBox(height: 16.h),
                   // Title
                   Text(
-                        'Everything chess,\nunlocked.',
+                        'Unlock Your\nGrandmaster Potential',
                         textAlign: TextAlign.center,
-                        style: AppTypography.displayXsBold.copyWith(
+                        style: AppTypography.displaySmBold.copyWith(
                           color: kWhiteColor,
-                          height: 1.15,
+                          height: 1.1,
+                          letterSpacing: -0.5,
                         ),
                       )
                       .animate()
                       .fadeIn(delay: 100.ms, duration: 400.ms)
                       .slideY(begin: 0.1, end: 0),
+                  SizedBox(height: 8.h),
+                  Text(
+                    'Join thousands of players improving daily.',
+                    textAlign: TextAlign.center,
+                    style: AppTypography.textMdMedium.copyWith(
+                      color: kWhiteColor.withValues(alpha: 0.6),
+                    ),
+                  ).animate().fadeIn(delay: 150.ms).slideY(begin: 0.1, end: 0),
                   SizedBox(height: 24.h),
-                  // Features
-                  _FeaturesList()
+                  // Features Grid
+                  _FeaturesGrid()
                       .animate()
                       .fadeIn(delay: 200.ms, duration: 400.ms)
                       .slideY(begin: 0.1, end: 0),
@@ -299,102 +366,54 @@ class _PaywallContent extends HookConsumerWidget {
   }
 }
 
-class _BackgroundPreview extends StatelessWidget {
+class _FeaturesGrid extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    final features = [
+      (Icons.storage_rounded, 'Millions of\nChess Games'),
+      (Icons.auto_stories_rounded, 'Create Study\nBook Collections'),
+      (Icons.filter_alt_rounded, 'Advanced Search\n& Filters'),
+      (Icons.people_rounded, 'Countrymen &\nFavorites'),
+      (Icons.workspace_premium_rounded, 'Premium\nBadge'),
+    ];
+
+    return Wrap(
+      spacing: 12.w,
+      runSpacing: 12.h,
+      alignment: WrapAlignment.center,
+      children:
+          features
+              .map((f) => _CompactFeatureItem(icon: f.$1, text: f.$2))
+              .toList(),
+    );
+  }
+}
+
+class _CompactFeatureItem extends StatelessWidget {
+  const _CompactFeatureItem({required this.icon, required this.text});
+  final IconData icon;
+  final String text;
+
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: 120.h,
-      width: double.infinity,
+      width: 150.w, // About half width minus spacing
+      padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 12.h),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(16.br),
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            kBlack2Color.withValues(alpha: 0.8),
-            kBlack2Color.withValues(alpha: 0.4),
-          ],
-        ),
+        color: kWhiteColor.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(12.br),
+        border: Border.all(color: kWhiteColor.withValues(alpha: 0.05)),
       ),
-      child: Stack(
+      child: Row(
         children: [
-          // Blurred menu items preview
-          Positioned(
-            left: 16.w,
-            top: 16.h,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _BlurredMenuItem(
-                  icon: Icons.settings_outlined,
-                  label: 'Settings',
-                ),
-                SizedBox(height: 8.h),
-                _BlurredMenuItem(
-                  icon: Icons.people_outline_rounded,
-                  label: 'Players',
-                ),
-                SizedBox(height: 8.h),
-                _BlurredMenuItem(
-                  icon: Icons.favorite_outline_rounded,
-                  label: 'Favorites',
-                ),
-              ],
-            ),
-          ),
-          // Premium badge overlay
-          Positioned(
-            right: 16.w,
-            top: 16.h,
-            child: Container(
-              padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 4.h),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Color(0xFFFFD700), Color(0xFFFFA500)],
-                ),
-                borderRadius: BorderRadius.circular(12.br),
-                boxShadow: [
-                  BoxShadow(
-                    color: const Color(0xFFFFD700).withValues(alpha: 0.3),
-                    blurRadius: 8,
-                    spreadRadius: 0,
-                  ),
-                ],
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    Icons.workspace_premium_rounded,
-                    size: 14.ic,
-                    color: kBlackColor,
-                  ),
-                  SizedBox(width: 4.w),
-                  Text(
-                    'PRO',
-                    style: AppTypography.textXsBold.copyWith(
-                      color: kBlackColor,
-                      letterSpacing: 0.5,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          // Filter icon
-          Positioned(
-            right: 20.w,
-            bottom: 20.h,
-            child: Container(
-              padding: EdgeInsets.all(8.sp),
-              decoration: BoxDecoration(
-                color: kWhiteColor.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(8.br),
-              ),
-              child: Icon(
-                Icons.filter_list_rounded,
-                color: kWhiteColor.withValues(alpha: 0.4),
-                size: 18.ic,
+          Icon(icon, size: 20.ic, color: kPrimaryColor),
+          SizedBox(width: 10.w),
+          Expanded(
+            child: Text(
+              text,
+              style: AppTypography.textXsMedium.copyWith(
+                color: kWhiteColor.withValues(alpha: 0.9),
+                height: 1.2,
               ),
             ),
           ),
@@ -404,130 +423,7 @@ class _BackgroundPreview extends StatelessWidget {
   }
 }
 
-class _BlurredMenuItem extends StatelessWidget {
-  const _BlurredMenuItem({required this.icon, required this.label});
-
-  final IconData icon;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Icon(icon, size: 18.ic, color: kWhiteColor.withValues(alpha: 0.5)),
-        SizedBox(width: 8.w),
-        Text(
-          label,
-          style: AppTypography.textSmRegular.copyWith(
-            color: kWhiteColor.withValues(alpha: 0.5),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _FeaturesList extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    final features = [
-      _FeatureData(
-        icon: Icons.local_library_outlined,
-        title: 'Full Library Access',
-        subtitle:
-            'Explore openings, players, tournaments,\nand historical games in one place.',
-      ),
-      _FeatureData(
-        icon: Icons.grid_view_rounded,
-        title: 'Advanced Analysis Tools',
-        subtitle:
-            'Instant insights, faster evaluations, clearer\nmove understanding.',
-      ),
-      _FeatureData(
-        icon: Icons.auto_stories_outlined,
-        title: 'Book Mode',
-        subtitle:
-            'Study positions like a real chess manual—\nclean, focused, distraction-free.',
-      ),
-    ];
-
-    return Column(
-      children:
-          features.asMap().entries.map((entry) {
-            final index = entry.key;
-            final feature = entry.value;
-            return Padding(
-              padding: EdgeInsets.only(
-                bottom: index < features.length - 1 ? 16.h : 0,
-              ),
-              child: _FeatureItem(data: feature),
-            );
-          }).toList(),
-    );
-  }
-}
-
-class _FeatureData {
-  const _FeatureData({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-  });
-
-  final IconData icon;
-  final String title;
-  final String subtitle;
-}
-
-class _FeatureItem extends StatelessWidget {
-  const _FeatureItem({required this.data});
-
-  final _FeatureData data;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Container(
-          width: 40.w,
-          height: 40.h,
-          decoration: BoxDecoration(
-            color: kWhiteColor.withValues(alpha: 0.08),
-            borderRadius: BorderRadius.circular(10.br),
-          ),
-          child: Center(
-            child: Icon(
-              data.icon,
-              size: 22.ic,
-              color: kWhiteColor.withValues(alpha: 0.9),
-            ),
-          ),
-        ),
-        SizedBox(width: 14.w),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                data.title,
-                style: AppTypography.textMdMedium.copyWith(color: kWhiteColor),
-              ),
-              SizedBox(height: 2.h),
-              Text(
-                data.subtitle,
-                style: AppTypography.textSmRegular.copyWith(
-                  color: kWhiteColor.withValues(alpha: 0.5),
-                  height: 1.4,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-}
+// Old feature list removed
 
 enum PlanType { monthly, annual }
 
@@ -548,10 +444,12 @@ class _PricingSection extends HookWidget {
     double? monthlyCost;
     double? annualCost;
     int savingsPercent = 0;
-    String? fakeMonthlyFromAnnual;
+    String? monthlyEquivalentFromAnnual; // $4.99
+    String? monthlyPlanPrice; // $9.99
 
     if (monthlyPackage != null) {
       monthlyCost = monthlyPackage!.storeProduct.price;
+      monthlyPlanPrice = monthlyPackage!.storeProduct.priceString;
     }
     if (annualPackage != null) {
       annualCost = annualPackage!.storeProduct.price;
@@ -561,13 +459,25 @@ class _PricingSection extends HookWidget {
       final yearlyIfMonthly = monthlyCost * 12;
       savingsPercent =
           ((yearlyIfMonthly - annualCost) / yearlyIfMonthly * 100).round();
-      fakeMonthlyFromAnnual = '\$${(annualCost / 12).toStringAsFixed(2)}';
+
+      // Calculate monthly equivalent of annual plan
+      // Attempt to preserve currency symbol if possible
+      final priceStr = monthlyPackage!.storeProduct.priceString;
+      // Simple heuristic: take non-digit prefix as symbol
+      final currencySymbol = priceStr.replaceAll(RegExp(r'[0-9.,\s]'), '');
+
+      // Fallback if regex fails to isolate symbol cleanly, just use '$' default or empty if weird
+      final effectiveSymbol = currencySymbol.isEmpty ? '\$' : currencySymbol;
+
+      monthlyEquivalentFromAnnual =
+          '$effectiveSymbol${(annualCost / 12).toStringAsFixed(2)}';
     }
 
     // Don't render pricing cards if packages aren't loaded
     final hasPackages = monthlyPackage != null && annualPackage != null;
 
     return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // Monthly card
         Expanded(
@@ -575,7 +485,7 @@ class _PricingSection extends HookWidget {
             isSelected: selectedPlan.value == PlanType.monthly,
             title: 'Monthly',
             price: monthlyPackage?.storeProduct.priceString,
-            period: '/month',
+            period: '/mo',
             isLoading: !hasPackages,
             onTap:
                 hasPackages
@@ -588,15 +498,19 @@ class _PricingSection extends HookWidget {
         Expanded(
           child: _PricingCard(
             isSelected: selectedPlan.value == PlanType.annual,
+            isBestValue: true,
             title: 'Annual',
-            price: annualPackage?.storeProduct.priceString,
-            period: '/yr',
-            badge: savingsPercent > 0 ? 'Save $savingsPercent%' : null,
-            monthlyEquivalent: fakeMonthlyFromAnnual,
-            fakeOriginalPrice:
-                monthlyCost != null
-                    ? '\$${(monthlyCost * 12).toStringAsFixed(0)}'
+            // Show monthly equivalent as the MAIN price
+            price: monthlyEquivalentFromAnnual,
+            period: '/mo',
+            // Show the actual billing info as subtitle
+            subtitle:
+                annualPackage != null
+                    ? 'Billed ${annualPackage!.storeProduct.priceString} yearly'
                     : null,
+            badge: savingsPercent > 0 ? 'SAVE $savingsPercent%' : null,
+            // Show monthly plan price as "original" price to strike through
+            fakeOriginalPrice: monthlyPlanPrice,
             isLoading: !hasPackages,
             onTap:
                 hasPackages ? () => selectedPlan.value = PlanType.annual : null,
@@ -615,9 +529,10 @@ class _PricingCard extends HookWidget {
     this.price,
     this.onTap,
     this.badge,
-    this.monthlyEquivalent,
+    this.subtitle,
     this.fakeOriginalPrice,
     this.isLoading = false,
+    this.isBestValue = false,
   });
 
   final bool isSelected;
@@ -626,14 +541,25 @@ class _PricingCard extends HookWidget {
   final String period;
   final VoidCallback? onTap;
   final String? badge;
-  final String? monthlyEquivalent;
+  final String? subtitle;
   final String? fakeOriginalPrice;
   final bool isLoading;
+  final bool isBestValue;
 
   @override
   Widget build(BuildContext context) {
     final isPressed = useState(false);
     final showLoading = isLoading || price == null;
+
+    final borderColor =
+        isSelected
+            ? kPrimaryColor
+            : kWhiteColor.withValues(alpha: 0.1);
+
+    final backgroundColor =
+        isSelected
+            ? kPrimaryColor.withValues(alpha: 0.15)
+            : kWhiteColor.withValues(alpha: 0.05);
 
     return GestureDetector(
       onTapDown: showLoading ? null : (_) => isPressed.value = true,
@@ -648,134 +574,197 @@ class _PricingCard extends HookWidget {
       child: AnimatedScale(
         scale: isPressed.value ? 0.97 : 1.0,
         duration: const Duration(milliseconds: 100),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          curve: Curves.easeOut,
-          // Fixed height prevents layout shift when switching plans
-          constraints: BoxConstraints(minHeight: 110.h),
-          padding: EdgeInsets.all(16.sp),
-          decoration: BoxDecoration(
-            color:
-                isSelected
-                    ? kWhiteColor.withValues(alpha: 0.12)
-                    : kWhiteColor.withValues(alpha: 0.05),
-            borderRadius: BorderRadius.circular(16.br),
-            border: Border.all(
-              color:
-                  isSelected
-                      ? kWhiteColor.withValues(alpha: 0.3)
-                      : kWhiteColor.withValues(alpha: 0.08),
-              width: isSelected ? 1.5 : 1,
-            ),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              curve: Curves.easeOut,
+              // Fixed height prevents layout shift when switching plans, taller for Annual to pop
+              constraints: BoxConstraints(
+                minHeight: isBestValue ? 150.h : 130.h,
+              ),
+              padding: EdgeInsets.all(16.sp),
+              decoration: BoxDecoration(
+                color: backgroundColor,
+                borderRadius: BorderRadius.circular(20.br),
+                border: Border.all(
+                  color: borderColor,
+                  width: isSelected ? 2 : 1.5,
+                ),
+                boxShadow:
+                    isSelected
+                        ? [
+                          BoxShadow(
+                            color: kPrimaryColor.withValues(alpha: 0.15),
+                            blurRadius: 12,
+                            offset: const Offset(0, 4),
+                          ),
+                        ]
+                        : [],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(
-                    title,
-                    style: AppTypography.textSmMedium.copyWith(
-                      color: kWhiteColor.withValues(alpha: 0.7),
-                    ),
-                  ),
-                  if (badge != null)
-                    Container(
+                  // Header: Title + Checked Icon -> Actually Title + Badge
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            title,
+                            style: AppTypography.textMdBold.copyWith(
+                              color:
+                                  isSelected
+                                      ? kWhiteColor
+                                      : kWhiteColor.withValues(alpha: 0.7),
+                            ),
+                          ),
+                          if (isSelected)
+                            Icon(
+                              Icons.check_circle_rounded,
+                              color: kPrimaryColor,
+                              size: 20.ic,
+                            ),
+                        ],
+                      ),
+                      if (badge != null) ...[
+                        SizedBox(height: 6.h),
+                        Container(
                           padding: EdgeInsets.symmetric(
                             horizontal: 8.w,
-                            vertical: 3.h,
+                            vertical: 4.h,
                           ),
                           decoration: BoxDecoration(
-                            gradient: const LinearGradient(
-                              colors: [Color(0xFF4ADE80), Color(0xFF22C55E)],
-                            ),
-                            borderRadius: BorderRadius.circular(6.br),
+                            color: const Color(0xFF22C55E),
+                            borderRadius: BorderRadius.circular(20.br),
                           ),
                           child: Text(
                             badge!,
                             style: AppTypography.textXxsBold.copyWith(
-                              color: kBlackColor,
+                              color: kWhiteColor,
+                              letterSpacing: 0.5,
                             ),
                           ),
-                        )
-                        .animate(onPlay: (c) => c.repeat())
-                        .shimmer(
-                          duration: 2000.ms,
-                          color: kWhiteColor.withValues(alpha: 0.4),
-                          angle: 0.5,
-                        )
-                        .scaleXY(
-                          end: 1.05,
-                          duration: 1000.ms,
-                          curve: Curves.easeInOut,
-                        )
-                        .then()
-                        .scaleXY(
-                          end: 1.0,
-                          duration: 1000.ms,
-                          curve: Curves.easeInOut,
                         ),
-                ],
-              ),
-              SizedBox(height: 8.h),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  if (showLoading)
-                    Container(
-                      width: 60.w,
-                      height: 28.h,
-                      decoration: BoxDecoration(
-                        color: kWhiteColor.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(6.br),
-                      ),
-                    )
-                  else
-                    Text(
-                      price!,
-                      style: AppTypography.displayXsBold.copyWith(
-                        color: kWhiteColor,
-                      ),
-                    ),
-                  Padding(
-                    padding: EdgeInsets.only(bottom: 4.h),
-                    child: Text(
-                      period,
-                      style: AppTypography.textSmRegular.copyWith(
-                        color: kWhiteColor.withValues(alpha: 0.5),
-                      ),
-                    ),
+                      ],
+                    ],
+                  ),
+
+                  SizedBox(height: 12.h),
+
+                  // Pricing Block
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (showLoading)
+                        Container(
+                          width: 80.w,
+                          height: 32.h,
+                          decoration: BoxDecoration(
+                            color: kWhiteColor.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(6.br),
+                          ),
+                        )
+                      else ...[
+                        // Fake Original Price (Strikethrough) ABOVE the main price for better hierarchy
+                        if (fakeOriginalPrice != null)
+                          Text(
+                            fakeOriginalPrice!,
+                            style: AppTypography.textXsMedium.copyWith(
+                              color: kWhiteColor.withValues(alpha: 0.4),
+                              decoration: TextDecoration.lineThrough,
+                              decorationColor: kWhiteColor.withValues(
+                                alpha: 0.4,
+                              ),
+                            ),
+                          ),
+
+                        // Main Price
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.baseline,
+                          textBaseline: TextBaseline.alphabetic,
+                          children: [
+                            Text(
+                              price!,
+                              style: AppTypography.displaySmBold.copyWith(
+                                color: kWhiteColor,
+                                fontSize: 24.sp,
+                              ),
+                            ),
+                            SizedBox(width: 2.w),
+                            Text(
+                              period,
+                              style: AppTypography.textSmMedium.copyWith(
+                                color: kWhiteColor.withValues(alpha: 0.6),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+
+                      // Subtitle (Billed yearly)
+                      if (subtitle != null && !showLoading) ...[
+                        SizedBox(height: 4.h),
+                        Text(
+                          subtitle!,
+                          style: AppTypography.textXxsRegular.copyWith(
+                            color: kWhiteColor.withValues(alpha: 0.5),
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
                 ],
               ),
-              // FOMO: Show strikethrough original price for annual
-              if (fakeOriginalPrice != null && !showLoading) ...[
-                SizedBox(height: 4.h),
-                Row(
-                  children: [
-                    Text(
-                      fakeOriginalPrice!,
-                      style: AppTypography.textXsRegular.copyWith(
-                        color: kWhiteColor.withValues(alpha: 0.35),
-                        decoration: TextDecoration.lineThrough,
-                        decorationColor: kWhiteColor.withValues(alpha: 0.35),
-                      ),
-                    ),
-                    if (monthlyEquivalent != null) ...[
-                      SizedBox(width: 6.w),
-                      Text(
-                        '$monthlyEquivalent/mo',
-                        style: AppTypography.textXsMedium.copyWith(
-                          color: const Color(0xFF4ADE80),
+            ),
+
+            // "BEST VALUE" Tag floating on top
+            if (isBestValue)
+              Positioned(
+                top: -12.h,
+                left: 0,
+                right: 0,
+                child: Center(
+                  child: Container(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 12.w,
+                          vertical: 4.h,
                         ),
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [kPrimaryColor, kDarkBlue],
+                          ),
+                          borderRadius: BorderRadius.circular(12.br),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.2),
+                              blurRadius: 4,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: Text(
+                          'BEST VALUE',
+                          style: AppTypography.textXxsBold.copyWith(
+                            color: kBlack3Color,
+                            letterSpacing: 1.0,
+                          ),
+                        ),
+                      )
+                      .animate(onPlay: (c) => c.repeat(reverse: true))
+                      .scaleXY(
+                        begin: 1.0,
+                        end: 1.05,
+                        duration: 1000.ms,
+                        curve: Curves.easeInOut,
                       ),
-                    ],
-                  ],
                 ),
-              ],
-            ],
-          ),
+              ),
+          ],
         ),
       ),
     );
@@ -858,12 +847,16 @@ class _PurchaseButton extends HookWidget {
               width: double.infinity,
               height: 54.h,
               decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(14.br),
-                color: kWhiteColor,
+                borderRadius: BorderRadius.circular(16.br),
+                gradient: LinearGradient(
+                  colors: [kPrimaryColor, kDarkBlue],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
                 boxShadow: [
                   BoxShadow(
-                    color: kWhiteColor.withValues(alpha: 0.2),
-                    blurRadius: 20,
+                    color: kPrimaryColor.withValues(alpha: 0.4),
+                    blurRadius: 25,
                     offset: const Offset(0, 8),
                   ),
                 ],
@@ -872,10 +865,10 @@ class _PurchaseButton extends HookWidget {
                 child:
                     isLoading
                         ? SizedBox(
-                          width: 20.w,
-                          height: 20.h,
+                          width: 24.w,
+                          height: 24.h,
                           child: const CircularProgressIndicator(
-                            strokeWidth: 2,
+                            strokeWidth: 2.5,
                             valueColor: AlwaysStoppedAnimation<Color>(
                               kBlackColor,
                             ),
@@ -883,27 +876,28 @@ class _PurchaseButton extends HookWidget {
                         )
                         : Text(
                           buttonText,
-                          style: AppTypography.textMdMedium.copyWith(
+                          style: AppTypography.textLgBold.copyWith(
                             color: kBlackColor,
+                            letterSpacing: 0.5,
                           ),
                         ),
               ),
             )
             .animate(onPlay: (c) => c.repeat(reverse: true))
             .boxShadow(
-              borderRadius: BorderRadius.circular(14.br),
+              borderRadius: BorderRadius.circular(16.br),
               begin: BoxShadow(
-                color: kWhiteColor.withValues(alpha: 0.2),
+                color: kPrimaryColor.withValues(alpha: 0.3),
                 blurRadius: 20,
                 offset: const Offset(0, 8),
               ),
               end: BoxShadow(
-                color: kWhiteColor.withValues(alpha: 0.5),
-                blurRadius: 30,
+                color: kPrimaryColor.withValues(alpha: 0.6),
+                blurRadius: 35,
                 spreadRadius: 2,
                 offset: const Offset(0, 8),
               ),
-              duration: 1500.ms,
+              duration: 2000.ms,
             )
             .scaleXY(
               begin: 1.0,
@@ -942,12 +936,10 @@ class _AmbientGlowPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    // Golden accent glow
+    // Primary color accent glow
     final paint1 =
         Paint()
-          ..color = const Color(
-            0xFFFFD700,
-          ).withValues(alpha: 0.04 + (animation * 0.02))
+          ..color = kPrimaryColor.withValues(alpha: 0.04 + (animation * 0.02))
           ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 100);
 
     canvas.drawCircle(

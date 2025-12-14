@@ -556,6 +556,48 @@ class GameRepository extends BaseRepository {
     });
   }
 
+  /// Search games using the precomputed `search` tokens column.
+  ///
+  /// The `games.search` column contains normalized tokens (players, events,
+  /// openings, ECO codes, countries, common move strings, etc). This query
+  /// matches games that contain all provided tokens.
+  Future<List<Games>> searchGamesBySearchTermsPaginated({
+    required List<String> terms,
+    int limit = 30,
+    int offset = 0,
+    String? status,
+  }) async {
+    return handleApiCall(() async {
+      final normalizedTerms = terms
+          .map((t) => t.trim().toLowerCase())
+          .where((t) => t.isNotEmpty)
+          .toList();
+
+      if (normalizedTerms.isEmpty) return <Games>[];
+
+      // Build filter chain first (must come before transform operations)
+      var query = supabase
+          .from('games')
+          .select(_gameListSelectColumns)
+          .contains('search', normalizedTerms);
+
+      if (status != null && status.isNotEmpty) {
+        query = query.eq('status', status);
+      }
+
+      // Transform operations (order, range) come after filters
+      final response = await query
+          .order('last_move_time', ascending: false)
+          .range(offset, offset + limit - 1);
+
+      final jsonList =
+          (response as List).map((item) => json.encode(item)).toList();
+
+      final games = await compute(_decodeGamesInIsolate, jsonList);
+      return games;
+    });
+  }
+
   /// Get top live games globally, ordered by recency.
   Future<List<Games>> getTopLiveGames({int limit = 200}) async {
     return handleApiCall(() async {

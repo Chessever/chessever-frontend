@@ -1,7 +1,10 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:dart_mappable/dart_mappable.dart';
 import 'package:chessever2/screens/gamebase/models/models.dart';
+import 'package:chessever2/repository/gamebase/search/gamebase_search_models.dart';
 
 part 'gamebase_repository.mapper.dart';
 
@@ -26,32 +29,51 @@ class GamebaseData with GamebaseDataMappable {
 
 class GamebaseRepository {
   final Dio _dio;
-  final String _apiKey = '4e1b7d20-db18-41ae-8e48-5a35c127aeef';
-  final String _baseUrl = 'https://service.chessever.com';
+  final String _apiKey;
+  final String _baseUrl;
 
-  GamebaseRepository(this._dio);
+  // NOTE: The backend requires an API key. Prefer supplying it via
+  // `--dart-define=GAMEBASE_API_KEY=...` (release) or `.env` (debug).
+  // This fallback preserves current behavior but should be removed once keys
+  // are fully externalized.
+  static const String _fallbackApiKey =
+      '4e1b7d20-db18-41ae-8e48-5a35c127aeef';
+
+  GamebaseRepository(
+    this._dio, {
+    String? baseUrl,
+    String? apiKey,
+  })  : _baseUrl = baseUrl ?? 'https://service.chessever.com',
+        _apiKey = apiKey ?? _resolveApiKey();
+
+  static String _resolveApiKey() {
+    if (kDebugMode) {
+      final envKey = dotenv.env['GAMEBASE_API_KEY']?.trim();
+      if (envKey != null && envKey.isNotEmpty) return envKey;
+    } else {
+      const envKey =
+          String.fromEnvironment('GAMEBASE_API_KEY', defaultValue: '');
+      if (envKey.isNotEmpty) return envKey;
+    }
+    return _fallbackApiKey;
+  }
 
   Future<GamebaseResponse> getMoveAggregates({
     required String fen,
-    List<String>? playerIds,
-    List<String>? timeControls,
+    String? playerId,
+    TimeControl? timeControl,
     int? minRating,
     int? maxRating,
   }) async {
     try {
       final queryParams = {
         'fen': fen,
+        if (playerId != null && playerId.isNotEmpty) 'playerId': playerId,
+        if (timeControl != null)
+          'timeControl': timeControl.name.toUpperCase(),
         if (minRating != null) 'minRating': minRating,
         if (maxRating != null) 'maxRating': maxRating,
       };
-
-      if (playerIds != null && playerIds.isNotEmpty) {
-        queryParams['playerIds'] = playerIds.join(',');
-      }
-
-      if (timeControls != null && timeControls.isNotEmpty) {
-        queryParams['timeControls'] = timeControls.join(',');
-      }
 
       final response = await _dio.get(
         '$_baseUrl/api/game-position/aggregates',
@@ -68,13 +90,20 @@ class GamebaseRepository {
   }
 
   Future<List<GamebasePlayer>> getPlayers({
-    required String name,
-    int limit = 20,
+    String? name,
+    String? fideId,
+    int pageNumber = 1,
+    int pageSize = 20,
   }) async {
     try {
       final response = await _dio.get(
-        '$_baseUrl/api/players',
-        queryParameters: {'name': name, 'limit': limit},
+        '$_baseUrl/api/player',
+        queryParameters: {
+          'pageNumber': pageNumber,
+          'pageSize': pageSize,
+          if (name != null && name.isNotEmpty) 'name': name,
+          if (fideId != null && fideId.isNotEmpty) 'fideId': fideId,
+        },
         options: Options(
           headers: {'X-API-Key': _apiKey, 'Accept': 'application/json'},
         ),
@@ -90,7 +119,7 @@ class GamebaseRepository {
   Future<GamebasePlayer?> getPlayerById(String id) async {
     try {
       final response = await _dio.get(
-        '$_baseUrl/api/players/$id',
+        '$_baseUrl/api/player/$id',
         options: Options(
           headers: {'X-API-Key': _apiKey, 'Accept': 'application/json'},
         ),
@@ -105,7 +134,7 @@ class GamebaseRepository {
   Future<GamebaseGame?> getGameById(String id) async {
     try {
       final response = await _dio.get(
-        '$_baseUrl/api/games/$id',
+        '$_baseUrl/api/game/$id',
         options: Options(
           headers: {'X-API-Key': _apiKey, 'Accept': 'application/json'},
         ),
@@ -114,6 +143,56 @@ class GamebaseRepository {
       return GamebaseGame.fromJson(response.data['data']);
     } catch (e) {
       return null;
+    }
+  }
+
+  Future<GamebaseSearchMetadata> getSearchMetadata() async {
+    try {
+      final response = await _dio.get(
+        '$_baseUrl/api/search/metadata',
+        options: Options(
+          headers: {'X-API-Key': _apiKey, 'Accept': 'application/json'},
+        ),
+      );
+
+      final data = response.data;
+      if (data is! Map) {
+        throw Exception('Unexpected response format');
+      }
+
+      final map = Map<String, dynamic>.from(data);
+      final payload = map['data'];
+      if (payload is! Map) {
+        throw Exception('Unexpected response payload');
+      }
+
+      return GamebaseSearchMetadata.fromJson(Map<String, dynamic>.from(payload));
+    } catch (e) {
+      throw Exception('Failed to load search metadata: $e');
+    }
+  }
+
+  Future<GamebaseSearchQueryResponse> queryResource({
+    required Map<String, dynamic> body,
+  }) async {
+    try {
+      final response = await _dio.post(
+        '$_baseUrl/api/search/query',
+        data: body,
+        options: Options(
+          headers: {'X-API-Key': _apiKey, 'Accept': 'application/json'},
+        ),
+      );
+
+      final data = response.data;
+      if (data is! Map) {
+        throw Exception('Unexpected response format');
+      }
+      return GamebaseSearchQueryResponse.fromJson(
+        Map<String, dynamic>.from(data),
+      );
+    } catch (e) {
+      throw Exception('Failed to query resource: $e');
     }
   }
 }

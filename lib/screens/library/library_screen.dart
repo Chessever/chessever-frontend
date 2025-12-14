@@ -6,6 +6,9 @@ import 'package:chessever2/repository/library/models/saved_analysis.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
 import 'package:chessever2/screens/library/utils/create_empty_game.dart';
+import 'package:chessever2/screens/library/folder_contents_screen.dart';
+import 'package:chessever2/screens/library/gamebase_database_search_screen.dart';
+import 'package:chessever2/screens/library/providers/library_folders_provider.dart';
 import 'package:chessever2/screens/library/widgets/create_folder_dialog.dart';
 import 'package:chessever2/screens/library/widgets/folder_card.dart';
 import 'package:chessever2/screens/library/widgets/saved_analysis_card.dart';
@@ -14,10 +17,8 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/widgets/screen_wrapper.dart';
-import 'package:chessever2/utils/svg_asset.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 class LibraryScreen extends ConsumerStatefulWidget {
@@ -71,15 +72,27 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
 
   void _navigateToEmptyBoard() {
     HapticFeedback.mediumImpact();
-    ref.read(chessboardViewFromProviderNew.notifier).state = ChessboardView.tour;
+    ref.read(chessboardViewFromProviderNew.notifier).state =
+        ChessboardView.tour;
     final emptyGame = createEmptyGame();
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => ChessBoardScreenNew(
-          currentIndex: 0,
-          games: [emptyGame],
-          hideEventInfo: true,
-        ),
+        builder:
+            (_) => ChessBoardScreenNew(
+              currentIndex: 0,
+              games: [emptyGame],
+              hideEventInfo: true,
+              showGamebaseButton: true,
+            ),
+      ),
+    );
+  }
+
+  void _navigateToDatabaseSearch() {
+    HapticFeedback.mediumImpact();
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => const GamebaseDatabaseSearchScreen(),
       ),
     );
   }
@@ -87,9 +100,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   List<LibraryFolder> _filterFolders(List<LibraryFolder> folders) {
     if (_searchQuery.isEmpty) return folders;
     return folders
-        .where(
-          (folder) => folder.name.toLowerCase().contains(_searchQuery),
-        )
+        .where((folder) => folder.name.toLowerCase().contains(_searchQuery))
         .toList();
   }
 
@@ -110,7 +121,9 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
         return true;
       }
 
-      if (analysis.tags.any((tag) => tag.toLowerCase().contains(_searchQuery))) {
+      if (analysis.tags.any(
+        (tag) => tag.toLowerCase().contains(_searchQuery),
+      )) {
         return true;
       }
 
@@ -125,12 +138,12 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
 
     try {
       final repository = ref.read(libraryRepositoryProvider);
-      await repository.createFolder(name: name);
+      final newFolder = await repository.createFolder(name: name);
 
       // Force refresh folders provider to ensure immediate UI update
       // (Supabase streams may have slight delay)
-      ref.invalidate(_foldersStreamProvider);
-      await ref.read(_foldersStreamProvider.future);
+      ref.invalidate(libraryFoldersStreamProvider);
+      await ref.read(libraryFoldersStreamProvider.future);
 
       if (mounted) {
         HapticFeedback.mediumImpact();
@@ -142,6 +155,13 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
             ),
             backgroundColor: kBlack2Color.withValues(alpha: 0.95),
             behavior: SnackBarBehavior.floating,
+          ),
+        );
+
+        // Redirect to the book games list view after creation.
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => FolderContentsScreen(folder: newFolder),
           ),
         );
       }
@@ -166,10 +186,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   Widget build(BuildContext context) {
     return ScreenWrapper(
       child: Column(
-        children: [
-          _buildTopBar(),
-          Expanded(child: _buildContent()),
-        ],
+        children: [_buildTopBar(), Expanded(child: _buildContent())],
       ),
     );
   }
@@ -177,27 +194,49 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   Widget _buildTopBar() {
     final topPadding = MediaQuery.of(context).viewPadding.top;
 
-    return Padding(
-      padding: EdgeInsets.fromLTRB(16.w, topPadding + 10.h, 16.w, 8.h),
-      child: Row(
+    return Container(
+      padding: EdgeInsets.fromLTRB(16.w, topPadding + 16.h, 16.w, 16.h),
+      decoration: BoxDecoration(
+        border: Border(
+          bottom: BorderSide(
+            color: const Color(0xFF27272A), // Zinc 800
+            width: 1,
+          ),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(child: _buildSearchField()),
-          SizedBox(width: 10.w),
-          // Filter button - commented out as it's not ready yet
-          // _SquareIconButton(
-          //   icon: Icons.tune,
-          //   onTap: _onFilterPressed,
-          // ),
-          // SizedBox(width: 8.w),
-          _SquareSvgIconButton(
-            svgAsset: SvgAsset.chase_grid,
-            onTap: _navigateToEmptyBoard,
+          Row(
+            children: [
+              Text(
+                'Library',
+                style: AppTypography.textLgBold.copyWith(
+                  fontSize: 24.sp,
+                  color: const Color(0xFFFAFAFA), // Zinc 50
+                  letterSpacing: -0.5,
+                ),
+              ),
+              const Spacer(),
+              _SquareIconButton(
+                icon: Icons.grid_view,
+                onTap: _navigateToEmptyBoard,
+              ),
+              SizedBox(width: 8.w),
+              _SquareIconButton(
+                icon: Icons.manage_search_rounded,
+                onTap: _navigateToDatabaseSearch,
+              ),
+              SizedBox(width: 8.w),
+              _SquareIconButton(
+                icon: Icons.add,
+                onTap: _handleCreateFolder,
+                isPrimary: true,
+              ),
+            ],
           ),
-          SizedBox(width: 8.w),
-          _SquareIconButton(
-            icon: Icons.add,
-            onTap: _handleCreateFolder,
-          ),
+          SizedBox(height: 16.h),
+          _buildSearchField(),
         ],
       ),
     );
@@ -205,63 +244,63 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
 
   Widget _buildSearchField() {
     return Container(
-      padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 10.h),
+      height: 44.h,
       decoration: BoxDecoration(
-        color: kBlack2Color,
-        borderRadius: BorderRadius.circular(12.br),
+        color: const Color(0xFF09090B), // Zinc 950
+        borderRadius: BorderRadius.circular(8.br), // Shadcn typical radius
         border: Border.all(
-          color: kWhiteColor.withValues(alpha: 0.08),
+          color: const Color(0xFF27272A), // Zinc 800
         ),
       ),
-      child: Row(
-        children: [
-          Icon(Icons.search, color: kWhiteColor.withValues(alpha: 0.7)),
-          SizedBox(width: 10.w),
-          Expanded(
-            child: TextField(
-              controller: _searchController,
-              focusNode: _searchFocusNode,
-              style: AppTypography.textSmRegular.copyWith(color: kWhiteColor),
-              onChanged: _handleSearchInput,
-              decoration: InputDecoration(
-                isDense: true,
-                hintText: 'Search library',
-                hintStyle: AppTypography.textSmRegular.copyWith(
-                  color: kWhiteColor.withValues(alpha: 0.5),
-                ),
-                border: InputBorder.none,
-              ),
-            ),
+      child: TextField(
+        controller: _searchController,
+        focusNode: _searchFocusNode,
+        style: AppTypography.textSmRegular.copyWith(
+          color: const Color(0xFFFAFAFA), // Zinc 50
+        ),
+        onChanged: _handleSearchInput,
+        decoration: InputDecoration(
+          isDense: true,
+          contentPadding: EdgeInsets.symmetric(
+            horizontal: 12.w,
+            vertical: 12.h,
           ),
-          if (_searchController.text.isNotEmpty)
-            GestureDetector(
-              onTap: _clearSearch,
-              child: Container(
-                padding: EdgeInsets.all(6.sp),
-                decoration: BoxDecoration(
-                  color: kWhiteColor.withValues(alpha: 0.1),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(
-                  Icons.close,
-                  size: 14.sp,
-                  color: kWhiteColor.withValues(alpha: 0.7),
-                ),
-              ),
-            ),
-        ],
+          hintText: 'Search library...',
+          hintStyle: AppTypography.textSmRegular.copyWith(
+            color: const Color(0xFFA1A1AA), // Zinc 400
+          ),
+          prefixIcon: Icon(
+            Icons.search,
+            size: 18.sp,
+            color: const Color(0xFFA1A1AA), // Zinc 400
+          ),
+          suffixIcon:
+              _searchController.text.isNotEmpty
+                  ? GestureDetector(
+                    onTap: _clearSearch,
+                    child: Icon(
+                      Icons.close,
+                      size: 16.sp,
+                      color: const Color(0xFFA1A1AA),
+                    ),
+                  )
+                  : null,
+          border: InputBorder.none,
+          enabledBorder: InputBorder.none,
+          focusedBorder: InputBorder.none,
+        ),
       ),
     );
   }
 
   Widget _buildContent() {
-    final foldersAsync = ref.watch(_foldersStreamProvider);
+    final foldersAsync = ref.watch(libraryFoldersStreamProvider);
     final analysesAsync = ref.watch(_allAnalysesStreamProvider);
 
     return RefreshIndicator(
       onRefresh: () async {
         HapticFeedbackService.medium();
-        ref.invalidate(_foldersStreamProvider);
+        ref.invalidate(libraryFoldersStreamProvider);
         ref.invalidate(_allAnalysesStreamProvider);
       },
       color: kPrimaryColor,
@@ -301,10 +340,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
         delegate: SliverChildBuilderDelegate(
           (context, index) => Padding(
             padding: EdgeInsets.only(bottom: 12.h),
-            child: FolderCard(
-              folder: filteredFolders[index],
-              isExpanded: true,
-            ),
+            child: FolderCard(folder: filteredFolders[index], isExpanded: true),
           ),
           childCount: filteredFolders.length,
         ),
@@ -329,34 +365,31 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
         return SliverPadding(
           padding: EdgeInsets.fromLTRB(16.w, 8.h, 16.w, 0),
           sliver: SliverList(
-            delegate: SliverChildBuilderDelegate(
-              (context, index) {
-                if (index == 0) {
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Padding(
-                        padding: EdgeInsets.only(bottom: 12.h),
-                        child: Text(
-                          'Games',
-                          style: AppTypography.textSmMedium.copyWith(
-                            color: kWhiteColor.withValues(alpha: 0.7),
-                          ),
+            delegate: SliverChildBuilderDelegate((context, index) {
+              if (index == 0) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Padding(
+                      padding: EdgeInsets.only(bottom: 12.h),
+                      child: Text(
+                        'Games',
+                        style: AppTypography.textSmMedium.copyWith(
+                          color: kWhiteColor.withValues(alpha: 0.7),
                         ),
                       ),
-                      SavedAnalysisCard(analysis: filtered[index]),
-                      SizedBox(height: 12.h),
-                    ],
-                  );
-                }
-
-                return Padding(
-                  padding: EdgeInsets.only(bottom: 12.h),
-                  child: SavedAnalysisCard(analysis: filtered[index]),
+                    ),
+                    SavedAnalysisCard(analysis: filtered[index]),
+                    SizedBox(height: 12.h),
+                  ],
                 );
-              },
-              childCount: filtered.length,
-            ),
+              }
+
+              return Padding(
+                padding: EdgeInsets.only(bottom: 12.h),
+                child: SavedAnalysisCard(analysis: filtered[index]),
+              );
+            }, childCount: filtered.length),
           ),
         );
       },
@@ -427,9 +460,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   Widget _buildLoadingSliver() {
     return const SliverFillRemaining(
       hasScrollBody: false,
-      child: Center(
-        child: CircularProgressIndicator(color: kPrimaryColor),
-      ),
+      child: Center(child: CircularProgressIndicator(color: kPrimaryColor)),
     );
   }
 
@@ -466,9 +497,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
               Expanded(
                 child: Text(
                   error,
-                  style: AppTypography.textSmRegular.copyWith(
-                    color: kRedColor,
-                  ),
+                  style: AppTypography.textSmRegular.copyWith(color: kRedColor),
                 ),
               ),
             ],
@@ -494,7 +523,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
             Text(
               'Failed to load library',
               style: AppTypography.textLgMedium.copyWith(
-                color: kWhiteColor.withValues(alpha: 0.7),
+                color: const Color(0xFFFAFAFA), // Zinc 50
               ),
             ),
             SizedBox(height: 8.h),
@@ -503,7 +532,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
               child: Text(
                 error,
                 style: AppTypography.textSmRegular.copyWith(
-                  color: kWhiteColor.withValues(alpha: 0.5),
+                  color: const Color(0xFFA1A1AA), // Zinc 400
                 ),
                 textAlign: TextAlign.center,
               ),
@@ -518,16 +547,12 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
 class _SquareIconButton extends StatelessWidget {
   final IconData icon;
   final VoidCallback onTap;
-  final Color? backgroundColor;
-  final Color? iconColor;
-  final Color? borderColor;
+  final bool isPrimary;
 
   const _SquareIconButton({
     required this.icon,
     required this.onTap,
-    this.backgroundColor,
-    this.iconColor,
-    this.borderColor,
+    this.isPrimary = false,
   });
 
   @override
@@ -535,68 +560,30 @@ class _SquareIconButton extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: EdgeInsets.all(10.sp),
+        width: 36.w,
+        height: 36.h,
         decoration: BoxDecoration(
-          color: backgroundColor ?? kBlack2Color,
-          borderRadius: BorderRadius.circular(10.br),
-          border: Border.all(
-            color: borderColor ?? kWhiteColor.withValues(alpha: 0.08),
-          ),
+          color: isPrimary ? const Color(0xFFFAFAFA) : const Color(0xFF09090B),
+          borderRadius: BorderRadius.circular(8.br),
+          border:
+              isPrimary
+                  ? null
+                  : Border.all(
+                    color: const Color(0xFF27272A), // Zinc 800
+                  ),
         ),
         child: Icon(
           icon,
           size: 18.sp,
-          color: iconColor ?? kWhiteColor,
+          color: isPrimary ? const Color(0xFF09090B) : const Color(0xFFFAFAFA),
         ),
       ),
     );
   }
 }
-
-class _SquareSvgIconButton extends StatelessWidget {
-  final String svgAsset;
-  final VoidCallback onTap;
-  final Color? backgroundColor;
-  final Color? borderColor;
-
-  const _SquareSvgIconButton({
-    required this.svgAsset,
-    required this.onTap,
-    this.backgroundColor,
-    this.borderColor,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: EdgeInsets.all(10.sp),
-        decoration: BoxDecoration(
-          color: backgroundColor ?? kBlack2Color,
-          borderRadius: BorderRadius.circular(10.br),
-          border: Border.all(
-            color: borderColor ?? kWhiteColor.withValues(alpha: 0.08),
-          ),
-        ),
-        child: SvgPicture.asset(
-          svgAsset,
-          width: 18.sp,
-          height: 18.sp,
-        ),
-      ),
-    );
-  }
-}
-
-final _foldersStreamProvider =
-    StreamProvider.autoDispose<List<LibraryFolder>>((ref) {
-  final repository = ref.watch(libraryRepositoryProvider);
-  return repository.subscribeFolders();
-});
 
 final _allAnalysesStreamProvider =
     StreamProvider.autoDispose<List<SavedAnalysis>>((ref) {
-  final repository = ref.watch(libraryRepositoryProvider);
-  return repository.subscribeAnalyses();
-});
+      final repository = ref.watch(libraryRepositoryProvider);
+      return repository.subscribeAnalyses();
+    });

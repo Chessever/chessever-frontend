@@ -77,6 +77,7 @@ class TwicGameCard extends ConsumerWidget {
         builder: (_) => ChessBoardScreenNew(
           games: allGames,
           currentIndex: gameIndex,
+          showGamebaseButton: true,
         ),
       ),
     );

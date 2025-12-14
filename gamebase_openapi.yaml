@@ -108,11 +108,17 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: No games found for this position
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /api/player:
     get:
       summary: Search for players
-      description: Search for players by name with pagination support
+      description: Search for players by name or FIDE ID with pagination support
       operationId: getPlayers
       tags:
         - Player
@@ -124,14 +130,21 @@ paths:
           schema:
             type: string
           example: "Carlsen"
+        - name: fideId
+          in: query
+          required: false
+          description: FIDE player ID to search for (exact match)
+          schema:
+            type: string
+          example: "1503014"
         - name: pageNumber
           in: query
           required: false
-          description: Page number (0-indexed)
+          description: Page number (1-indexed)
           schema:
             type: integer
-            minimum: 0
-            default: 0
+            minimum: 1
+            default: 1
         - name: pageSize
           in: query
           required: false
@@ -169,11 +182,14 @@ paths:
                   - id: "550e8400-e29b-41d4-a716-446655440000"
                     fideId: "1503014"
                     name: "Carlsen, Magnus"
-                    federation: "NOR"
-                    birthYear: 1990
+                    gender: "MALE"
+                    fed: "NOR"
                     title: "GM"
+                    ratingClassical: 2830
+                    ratingRapid: 2823
+                    ratingBlitz: 2886
                 metadata:
-                  pageNumber: 0
+                  pageNumber: 1
                   pageSize: 20
         "401":
           description: Missing or invalid API key
@@ -285,6 +301,157 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /api/search/metadata:
+    get:
+      summary: Get searchable resources and columns
+      description: |
+        Returns metadata describing which resources (tables/models) are searchable,
+        and which columns are allowed for filtering/sorting.
+
+        Use this endpoint to build a safe "search any column" UI without hardcoding
+        column names in the client.
+      operationId: getSearchMetadata
+      tags:
+        - Search
+      responses:
+        "200":
+          description: Successful response with search metadata
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SearchMetadataResponse"
+        "401":
+          description: Missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/search:
+    get:
+      summary: Global search across Gamebase
+      description: |
+        Performs a global search across one or more Gamebase resources (tables/models).
+        Supports free-text search + pagination.
+
+        For structured "search any column" filtering/sorting, use `POST /api/search/query`.
+      operationId: globalSearch
+      tags:
+        - Search
+      parameters:
+        - name: q
+          in: query
+          required: true
+          description: Free-text search query
+          schema:
+            type: string
+            minLength: 1
+          example: "Carlsen"
+        - name: resources
+          in: query
+          required: false
+          description: Optional resource names to search (repeatable)
+          schema:
+            type: array
+            items:
+              type: string
+          style: form
+          explode: true
+          example: [player, game]
+        - name: pageNumber
+          in: query
+          required: false
+          description: Page number (1-indexed)
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: pageSize
+          in: query
+          required: false
+          description: Number of results per page (max 100)
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        "200":
+          description: Successful response with search results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GlobalSearchResponse"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/search/query:
+    post:
+      summary: Query a resource with column filters
+      description: |
+        Executes a structured query against a single resource (table/model) with:
+        - optional free-text search (`q`)
+        - column-level filters (`where`)
+        - sorting (`orderBy`)
+        - pagination
+
+        This is the primary endpoint for "search any column" experiences.
+      operationId: queryResource
+      tags:
+        - Search
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SearchQueryRequest"
+            example:
+              resource: player
+              q: carlsen
+              where:
+                and:
+                  - field: fed
+                    op: eq
+                    value: NOR
+                  - field: ratingClassical
+                    op: gte
+                    value: 2700
+              orderBy:
+                - field: ratingClassical
+                  direction: desc
+              pageNumber: 1
+              pageSize: 20
+              includeTotal: true
+      responses:
+        "200":
+          description: Successful response with query results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SearchQueryResponse"
+        "400":
+          description: Invalid query (unknown resource/column/operator)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
 components:
   securitySchemes:
     ApiKeyAuth:
@@ -294,6 +461,415 @@ components:
       description: API key for authentication
 
   schemas:
+    PaginationMetadata:
+      type: object
+      required:
+        - pageNumber
+        - pageSize
+      properties:
+        pageNumber:
+          type: integer
+          minimum: 1
+          description: Current page number (1-indexed)
+        pageSize:
+          type: integer
+          minimum: 1
+          maximum: 100
+          description: Number of results per page
+        totalCount:
+          type: integer
+          minimum: 0
+          description: Total number of matching records (present when requested)
+
+    SearchFieldType:
+      type: string
+      description: Logical field type used by the search/query API
+      enum:
+        - string
+        - integer
+        - number
+        - boolean
+        - datetime
+        - uuid
+        - json
+
+    FilterOperator:
+      type: string
+      description: Supported filter operators (availability depends on column type)
+      enum:
+        - eq
+        - ne
+        - lt
+        - lte
+        - gt
+        - gte
+        - in
+        - nin
+        - like
+        - ilike
+        - startsWith
+        - endsWith
+        - contains
+        - notContains
+        - between
+        - isNull
+        - isNotNull
+
+    FilterValue:
+      description: Primitive filter value (the backend casts based on column type)
+      oneOf:
+        - type: string
+        - type: integer
+        - type: number
+        - type: boolean
+
+    FilterCondition:
+      type: object
+      required:
+        - field
+        - op
+      properties:
+        field:
+          type: string
+          description: Column/field name (see `/api/search/metadata`)
+        op:
+          $ref: "#/components/schemas/FilterOperator"
+        value:
+          $ref: "#/components/schemas/FilterValue"
+        values:
+          type: array
+          items:
+            $ref: "#/components/schemas/FilterValue"
+          description: Multi-value input for `in` / `between` style operators
+
+    FilterExpression:
+      description: Boolean filter expression (supports nested AND/OR/NOT)
+      oneOf:
+        - $ref: "#/components/schemas/FilterCondition"
+        - $ref: "#/components/schemas/FilterGroup"
+
+    FilterGroup:
+      type: object
+      properties:
+        and:
+          type: array
+          items:
+            $ref: "#/components/schemas/FilterExpression"
+        or:
+          type: array
+          items:
+            $ref: "#/components/schemas/FilterExpression"
+        not:
+          $ref: "#/components/schemas/FilterExpression"
+
+    OrderBy:
+      type: object
+      required:
+        - field
+        - direction
+      properties:
+        field:
+          type: string
+          description: Column/field name (see `/api/search/metadata`)
+        direction:
+          type: string
+          enum: [asc, desc]
+
+    SearchColumnMetadata:
+      type: object
+      required:
+        - name
+        - type
+      properties:
+        name:
+          type: string
+          description: Column/field name
+        type:
+          $ref: "#/components/schemas/SearchFieldType"
+        nullable:
+          type: boolean
+          default: false
+        description:
+          type: string
+        searchable:
+          type: boolean
+          default: false
+        filterable:
+          type: boolean
+          default: false
+        sortable:
+          type: boolean
+          default: false
+        operators:
+          type: array
+          items:
+            $ref: "#/components/schemas/FilterOperator"
+          description: Operators allowed for this column
+        enumValues:
+          type: array
+          items:
+            type: string
+          description: Allowed values when the column is effectively an enum
+
+    SearchResourceMetadata:
+      type: object
+      required:
+        - name
+        - primaryKey
+        - columns
+      properties:
+        name:
+          type: string
+          description: Resource identifier used by `/api/search/query`
+          example: player
+        label:
+          type: string
+          description: Human-readable label
+          example: Player
+        primaryKey:
+          type: string
+          description: Primary key column name
+          example: id
+        defaultSearchColumns:
+          type: array
+          items:
+            type: string
+          description: Columns used for default free-text searches
+          example: [name, fideId]
+        columns:
+          type: array
+          items:
+            $ref: "#/components/schemas/SearchColumnMetadata"
+
+    SearchMetadataResponse:
+      type: object
+      required:
+        - status
+        - data
+      properties:
+        status:
+          type: string
+          enum: [success]
+        data:
+          type: object
+          required:
+            - resources
+          properties:
+            resources:
+              type: array
+              items:
+                $ref: "#/components/schemas/SearchResourceMetadata"
+      example:
+        status: success
+        data:
+          resources:
+            - name: player
+              label: Player
+              primaryKey: id
+              defaultSearchColumns: [name, fideId]
+              columns:
+                - name: id
+                  type: uuid
+                  searchable: false
+                  filterable: true
+                  sortable: true
+                  operators: [eq, in]
+                - name: fideId
+                  type: string
+                  searchable: true
+                  filterable: true
+                  sortable: true
+                  operators: [eq, ilike, startsWith, in]
+                - name: name
+                  type: string
+                  searchable: true
+                  filterable: true
+                  sortable: true
+                  operators: [ilike, startsWith, contains]
+                - name: fed
+                  type: string
+                  searchable: false
+                  filterable: true
+                  sortable: true
+                  operators: [eq, in]
+            - name: game
+              label: Game
+              primaryKey: id
+              defaultSearchColumns: [id]
+              columns:
+                - name: id
+                  type: uuid
+                  searchable: true
+                  filterable: true
+                  sortable: true
+                  operators: [eq, in]
+                - name: date
+                  type: datetime
+                  searchable: false
+                  filterable: true
+                  sortable: true
+                  operators: [eq, gte, lte, between]
+                - name: timeControl
+                  type: string
+                  searchable: false
+                  filterable: true
+                  sortable: true
+                  operators: [eq, in]
+                - name: result
+                  type: string
+                  searchable: false
+                  filterable: true
+                  sortable: true
+                  operators: [eq, in]
+
+    SearchResult:
+      type: object
+      required:
+        - resource
+        - id
+        - score
+        - label
+      properties:
+        resource:
+          type: string
+          description: Resource name (e.g., `player`, `game`)
+        id:
+          type: string
+          description: Record identifier (typically the primary key)
+        score:
+          type: number
+          description: Relevance score (higher is more relevant)
+        label:
+          type: string
+          description: Human-readable label for display
+        snippet:
+          type: string
+          description: Optional text snippet for display
+        preview:
+          type: object
+          additionalProperties: true
+          description: Resource-specific preview payload
+        highlights:
+          type: array
+          items:
+            type: object
+            required: [field, fragments]
+            properties:
+              field:
+                type: string
+              fragments:
+                type: array
+                items:
+                  type: string
+
+    GlobalSearchResponse:
+      type: object
+      required:
+        - status
+        - data
+      properties:
+        status:
+          type: string
+          enum: [success]
+        data:
+          type: object
+          required:
+            - results
+            - metadata
+          properties:
+            results:
+              type: array
+              items:
+                $ref: "#/components/schemas/SearchResult"
+            metadata:
+              $ref: "#/components/schemas/PaginationMetadata"
+      example:
+        status: success
+        data:
+          results:
+            - resource: player
+              id: "550e8400-e29b-41d4-a716-446655440000"
+              score: 0.98
+              label: "GM Magnus Carlsen"
+              snippet: "NOR • Classical 2830"
+              preview:
+                fideId: "1503014"
+                name: "Carlsen, Magnus"
+                fed: "NOR"
+          metadata:
+            pageNumber: 1
+            pageSize: 20
+
+    SearchQueryRequest:
+      type: object
+      required:
+        - resource
+      properties:
+        resource:
+          type: string
+          description: Resource to query (see `/api/search/metadata`)
+          example: player
+        q:
+          type: string
+          description: Optional free-text query applied to the resource's default search columns
+        where:
+          $ref: "#/components/schemas/FilterExpression"
+        orderBy:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrderBy"
+        select:
+          type: array
+          items:
+            type: string
+          description: Optional list of columns to return
+        pageNumber:
+          type: integer
+          minimum: 1
+          default: 1
+        pageSize:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 20
+        includeTotal:
+          type: boolean
+          default: false
+          description: Whether to include `totalCount` in the response metadata
+
+    SearchQueryResponse:
+      type: object
+      required:
+        - status
+        - data
+        - metadata
+      properties:
+        status:
+          type: string
+          enum: [success]
+        data:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+          description: Resource-specific rows (shape depends on `resource`)
+        metadata:
+          $ref: "#/components/schemas/PaginationMetadata"
+      example:
+        status: success
+        data:
+          - id: "550e8400-e29b-41d4-a716-446655440000"
+            fideId: "1503014"
+            name: "Carlsen, Magnus"
+            gender: "MALE"
+            fed: "NOR"
+            title: "GM"
+            ratingClassical: 2830
+        metadata:
+          pageNumber: 1
+          pageSize: 20
+          totalCount: 1
+
     MoveAggregate:
       type: object
       required:
@@ -352,16 +928,24 @@ components:
           type: string
           description: Country federation code (e.g., "NOR", "USA")
         title:
-          type: string
+          type:
+            - string
+            - "null"
           description: Chess title (e.g., "GM", "IM", "FM")
         ratingClassical:
-          type: integer
+          type:
+            - integer
+            - "null"
           description: Classical rating
         ratingRapid:
-          type: integer
+          type:
+            - integer
+            - "null"
           description: Rapid rating
         ratingBlitz:
-          type: integer
+          type:
+            - integer
+            - "null"
           description: Blitz rating
 
     Game:
@@ -377,14 +961,20 @@ components:
           format: uuid
           description: Game UUID
         data:
-          type: object
+          type:
+            - object
+            - "null"
           description: Full game data including moves and metadata
         whitePlayerId:
-          type: string
+          type:
+            - string
+            - "null"
           format: uuid
           description: White player UUID
         blackPlayerId:
-          type: string
+          type:
+            - string
+            - "null"
           format: uuid
           description: Black player UUID
         date:
@@ -405,6 +995,55 @@ components:
             - B
             - D
           description: Game result (W=White wins, B=Black wins, D=Draw)
+
+    GamePosition:
+      type: object
+      required:
+        - id
+        - gameId
+        - moveNumber
+        - fen
+        - nextMoveUci
+        - result
+        - timeControl
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Position record UUID
+        gameId:
+          type: string
+          format: uuid
+          description: Game UUID
+        moveNumber:
+          type: integer
+          minimum: 1
+          description: Move number in the game
+        fen:
+          type: string
+          description: FEN notation of the position
+        nextMoveUci:
+          type: string
+          description: Move played from this position (UCI)
+        playerId:
+          type:
+            - string
+            - "null"
+          format: uuid
+          description: Player who made the move (if known)
+        rating:
+          type:
+            - integer
+            - "null"
+          description: Player rating at the time (if known)
+        result:
+          type: string
+          enum: [W, B, D]
+          description: Game result from this player's perspective
+        timeControl:
+          type: string
+          enum: [CLASSICAL, RAPID, BLITZ]
+          description: Time control category
 
     ErrorResponse:
       type: object
