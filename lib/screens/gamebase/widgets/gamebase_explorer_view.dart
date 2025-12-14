@@ -2,6 +2,7 @@ import 'package:chessever2/screens/chessboard/view_model/chess_board_state_new.d
 import 'package:chessever2/screens/gamebase/models/models.dart';
 import 'package:chessever2/screens/gamebase/providers/gamebase_providers.dart';
 import 'package:chessever2/screens/gamebase/providers/gamebase_explorer_state.dart';
+import 'package:chessever2/screens/gamebase/widgets/gamebase_filter_panel.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -42,6 +43,9 @@ class GamebaseExplorerView extends HookConsumerWidget {
       children: [
         // Horizontal PV Lines (Engine Analysis)
         if (state.showEngineAnalysis) _HorizontalPvLines(state: state),
+
+        // Filter Panel
+        const GamebaseFilterPanel(),
 
         // Moves Table
         Expanded(child: _buildContent(gamebaseState)),
@@ -94,7 +98,7 @@ class _HorizontalPvLines extends StatelessWidget {
       decoration: BoxDecoration(
         color: kBlack2Color,
         border: Border(
-          bottom: BorderSide(color: kWhiteColor.withOpacity(0.05)),
+          bottom: BorderSide(color: kWhiteColor.withValues(alpha: 0.05)),
         ),
       ),
       child: ListView.separated(
@@ -115,7 +119,7 @@ class _HorizontalPvLines extends StatelessWidget {
                 Container(
                   padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 2.h),
                   decoration: BoxDecoration(
-                    color: kWhiteColor.withOpacity(0.1),
+                    color: kWhiteColor.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(4.br),
                   ),
                   child: Text(
@@ -129,7 +133,7 @@ class _HorizontalPvLines extends StatelessWidget {
                 Text(
                   moves,
                   style: AppTypography.textXsRegular.copyWith(
-                    color: kWhiteColor.withOpacity(0.8),
+                    color: kWhiteColor.withValues(alpha: 0.8),
                   ),
                 ),
               ],
@@ -213,10 +217,10 @@ class _GamebaseMovesTable extends StatelessWidget {
   }
 
   TextStyle get _headerStyle =>
-      AppTypography.textSmMedium.copyWith(color: kWhiteColor.withOpacity(0.5));
+      AppTypography.textSmMedium.copyWith(color: kWhiteColor.withValues(alpha: 0.5));
 }
 
-class _MoveRow extends StatelessWidget {
+class _MoveRow extends ConsumerWidget {
   const _MoveRow({
     required this.move,
     required this.maxTotal,
@@ -230,12 +234,23 @@ class _MoveRow extends StatelessWidget {
   final Position position;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     // Calculate percentages
     final total = move.total;
     final whitePct = (move.white / total * 100).round();
     final drawPct = (move.draws / total * 100).round();
-    final blackPct = (move.black / total * 100).round();
+
+    final lastPlayedAsync =
+        move.gameId != null
+            ? ref.watch(gameByIdProvider(move.gameId!))
+            : const AsyncValue<GamebaseGame?>.data(null);
+
+    final lastPlayedText = lastPlayedAsync.when(
+      data: (game) =>
+          game != null ? DateFormat('MM-yyyy').format(game.date) : '—',
+      loading: () => '…',
+      error: (_, __) => '—',
+    );
 
     // Convert UCI to SAN
     String san = move.uci;
@@ -261,7 +276,7 @@ class _MoveRow extends StatelessWidget {
         padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
         decoration: BoxDecoration(
           border: Border(
-            bottom: BorderSide(color: kWhiteColor.withOpacity(0.05)),
+            bottom: BorderSide(color: kWhiteColor.withValues(alpha: 0.05)),
           ),
         ),
         child: Row(
@@ -296,7 +311,7 @@ class _MoveRow extends StatelessWidget {
               child: Text(
                 NumberFormat.compact().format(total),
                 style: AppTypography.textSmRegular.copyWith(
-                  color: kWhiteColor.withOpacity(0.7),
+                  color: kWhiteColor.withValues(alpha: 0.7),
                 ),
                 textAlign: TextAlign.right,
               ),
@@ -312,7 +327,7 @@ class _MoveRow extends StatelessWidget {
                     Text(
                       '${whitePct + drawPct}%',
                       style: AppTypography.textXsMedium.copyWith(
-                        color: kWhiteColor.withOpacity(0.7),
+                        color: kWhiteColor.withValues(alpha: 0.7),
                       ),
                     ),
                   ],
@@ -325,9 +340,9 @@ class _MoveRow extends StatelessWidget {
             Expanded(
               flex: 3,
               child: Text(
-                '07-2025', // Placeholder as per specific request/limitations
+                lastPlayedText,
                 style: AppTypography.textSmRegular.copyWith(
-                  color: kWhiteColor.withOpacity(0.7),
+                  color: kWhiteColor.withValues(alpha: 0.7),
                 ),
                 textAlign: TextAlign.right,
               ),

@@ -1,8 +1,8 @@
-import 'package:chessever2/repository/gamebase/gamebase_repository.dart'
-    hide MoveAggregateMapper, MoveAggregateCopyWith;
+import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
 import 'package:chessever2/screens/gamebase/models/models.dart';
 import 'package:chess/chess.dart' hide State;
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'dart:async';
 
 import 'gamebase_explorer_state.dart';
 
@@ -18,41 +18,50 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
   /// Internal chess instance for position tracking
   Chess? _chess;
 
+  /// Debounce timer for network fetches
+  Timer? _debounceTimer;
+
+  /// Monotonic token to ignore stale responses
+  int _fetchToken = 0;
+
   Chess get chess {
     _chess ??= Chess();
     return _chess!;
   }
 
+  void _scheduleFetch([Duration delay = const Duration(milliseconds: 200)]) {
+    _debounceTimer?.cancel();
+    _debounceTimer = Timer(delay, _fetchMoveAggregates);
+  }
+
   /// Fetch move aggregates for current position
   Future<void> _fetchMoveAggregates() async {
+    final fetchId = ++_fetchToken;
+    final requestedFen = state.currentFen;
+
     state = state.copyWith(isLoading: true, error: null);
 
     try {
       final repository = ref.read(gamebaseRepositoryProvider);
 
-      // Convert time controls to string list
-      final timeControlFilters =
+      // Current API supports a single time control / player filter.
+      final timeControlFilter =
           state.filters.timeControls.isNotEmpty
-              ? state.filters.timeControls.map((tc) {
-                switch (tc) {
-                  case TimeControl.classical:
-                    return 'CLASSICAL';
-                  case TimeControl.rapid:
-                    return 'RAPID';
-                  case TimeControl.blitz:
-                    return 'BLITZ';
-                }
-              }).toList()
+              ? state.filters.timeControls.first
               : null;
+      final playerIdFilter =
+          state.filters.playerIds.isNotEmpty ? state.filters.playerIds.first : null;
 
       final response = await repository.getMoveAggregates(
         fen: state.currentFen,
-        timeControls: timeControlFilters,
+        timeControl: timeControlFilter,
         minRating: state.filters.minRating,
         maxRating: state.filters.maxRating,
-        playerIds:
-            state.filters.playerIds.isNotEmpty ? state.filters.playerIds : null,
+        playerId: playerIdFilter,
       );
+
+      // Ignore if a newer request started or FEN changed while awaiting.
+      if (fetchId != _fetchToken || requestedFen != state.currentFen) return;
 
       final aggregates = List<MoveAggregate>.from(response.data.moves);
 
@@ -61,6 +70,7 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
 
       state = state.copyWith(moveAggregates: aggregates, isLoading: false);
     } catch (e) {
+      if (fetchId != _fetchToken) return;
       state = state.copyWith(
         isLoading: false,
         error: e.toString(),
@@ -81,7 +91,7 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
       _rebuildChessPosition();
 
       // Make the move
-      final move = chess.move({
+      final dynamic move = chess.move({
         'from': from,
         'to': to,
         if (promotion != null) 'promotion': promotion,
@@ -100,7 +110,7 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
           currentMoveIndex: newHistory.length - 1,
         );
 
-        _fetchMoveAggregates();
+        _scheduleFetch();
       }
     } catch (e) {
       state = state.copyWith(error: 'Invalid move: $uci');
@@ -155,7 +165,7 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
               : 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
     );
 
-    _fetchMoveAggregates();
+    _scheduleFetch();
   }
 
   /// Go to next move
@@ -178,7 +188,7 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
 
     state = state.copyWith(currentMoveIndex: newIndex, currentFen: chess.fen);
 
-    _fetchMoveAggregates();
+    _scheduleFetch();
   }
 
   /// Go to first position
@@ -188,7 +198,7 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
       currentMoveIndex: -1,
       currentFen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
     );
-    _fetchMoveAggregates();
+    _scheduleFetch();
   }
 
   /// Go to last position
@@ -212,7 +222,7 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
       currentFen: chess.fen,
     );
 
-    _fetchMoveAggregates();
+    _scheduleFetch();
   }
 
   /// Go to specific move index
@@ -240,14 +250,14 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
               : 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
     );
 
-    _fetchMoveAggregates();
+    _scheduleFetch();
   }
 
   /// Reset to initial position
   void reset() {
     _chess = Chess();
     state = const GamebaseExplorerState();
-    _fetchMoveAggregates();
+    _scheduleFetch();
   }
 
   /// Set position from FEN (for loading a specific position)
@@ -259,7 +269,7 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
         moveHistory: [],
         currentMoveIndex: -1,
       );
-      _fetchMoveAggregates();
+      _scheduleFetch();
     } catch (e) {
       state = state.copyWith(error: 'Invalid FEN: $fen');
     }
@@ -268,18 +278,17 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
   /// Update filters and refetch data
   void updateFilters(GamebaseFilters filters) {
     state = state.copyWith(filters: filters);
-    _fetchMoveAggregates();
+    _scheduleFetch();
   }
 
   /// Toggle a time control filter
   void toggleTimeControl(TimeControl timeControl) {
-    final current = List<TimeControl>.from(state.filters.timeControls);
+    final current = state.filters.timeControls;
     if (current.contains(timeControl)) {
-      current.remove(timeControl);
+      updateFilters(state.filters.copyWith(timeControls: const []));
     } else {
-      current.add(timeControl);
+      updateFilters(state.filters.copyWith(timeControls: [timeControl]));
     }
-    updateFilters(state.filters.copyWith(timeControls: current));
   }
 
   /// Set rating range filter
@@ -291,21 +300,12 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
 
   /// Add a player filter
   void addPlayerFilter(GamebasePlayer player) {
-    final currentIds = List<String>.from(state.filters.playerIds);
-    final currentPlayers = List<GamebasePlayer>.from(
-      state.filters.selectedPlayers,
+    updateFilters(
+      state.filters.copyWith(
+        playerIds: [player.id],
+        selectedPlayers: [player],
+      ),
     );
-
-    if (!currentIds.contains(player.id)) {
-      currentIds.add(player.id);
-      currentPlayers.add(player);
-      updateFilters(
-        state.filters.copyWith(
-          playerIds: currentIds,
-          selectedPlayers: currentPlayers,
-        ),
-      );
-    }
   }
 
   /// Remove a player filter
@@ -344,6 +344,12 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
   Future<void> refresh() async {
     await _fetchMoveAggregates();
   }
+
+  @override
+  void dispose() {
+    _debounceTimer?.cancel();
+    super.dispose();
+  }
 }
 
 /// Main provider for Gamebase explorer state.
@@ -358,7 +364,7 @@ final playerSearchProvider = FutureProvider.autoDispose
       if (query.isEmpty || query.length < 2) return [];
 
       final repository = ref.read(gamebaseRepositoryProvider);
-      return repository.getPlayers(name: query, limit: 20);
+      return repository.getPlayers(name: query, pageSize: 20);
     });
 
 /// Provider for fetching a single player by ID.

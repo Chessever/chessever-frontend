@@ -22,6 +22,7 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
   final bool showUnseenMoveBadge;
   final VoidCallback? onGamebaseToggle;
   final bool isGamebaseActive;
+  final bool showGamebaseButton;
 
   const ChessBoardBottomNavBar({
     super.key,
@@ -41,11 +42,13 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
     this.onLongPressForwardEnd,
     this.onGamebaseToggle,
     this.isGamebaseActive = false,
+    this.showGamebaseButton = false,
   });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final width = MediaQuery.of(context).size.width / 5; // 5 buttons now
+    final buttonCount = showGamebaseButton ? 5 : 4;
+    final width = MediaQuery.of(context).size.width / buttonCount;
 
     // Watch the centralized engine depth status provider
     final depthSnapshot = ref.watch(engineDepthStatusProvider);
@@ -92,13 +95,14 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Gamebase Explorer Toggle
-              ChessSvgBottomNavbar(
-                width: width,
-                svgPath: SvgAsset.bookIcon,
-                onPressed: onGamebaseToggle, // Needs to be added to constructor
-                isActive: isGamebaseActive, // Needs to be added to constructor
-              ),
+              // Gamebase Explorer Toggle (only shown when showGamebaseButton is true)
+              if (showGamebaseButton)
+                ChessSvgBottomNavbar(
+                  width: width,
+                  svgPath: SvgAsset.bookIcon,
+                  onPressed: onGamebaseToggle,
+                  isActive: isGamebaseActive,
+                ),
 
               // Computer/Engine Analysis Toggle Button
               ChessSvgBottomNavbar(

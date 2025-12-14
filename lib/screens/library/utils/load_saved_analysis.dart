@@ -44,6 +44,7 @@ Future<void> loadSavedAnalysis(
         currentIndex: 0,
         games: [game],
         savedAnalysisData: savedAnalysisData,
+        showGamebaseButton: true,
       ),
     ),
   );
