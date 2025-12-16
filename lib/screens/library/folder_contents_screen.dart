@@ -52,8 +52,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
       body: ScreenWrapper(
         child: Column(
           children: [
-            _buildHeader(context),
-            _buildSearchBar(),
+            _buildTopArea(context),
             Expanded(child: _buildSavedGames(analysesAsync, query)),
           ],
         ),
@@ -61,34 +60,52 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
     );
   }
 
+  Widget _buildTopArea(BuildContext context) {
+    final topPadding = MediaQuery.of(context).viewPadding.top;
+
+    return Container(
+      padding: EdgeInsets.only(top: topPadding + 8.h, bottom: 6.h),
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [kBlackColor, kBackgroundColor],
+        ),
+      ),
+      child: Column(
+        children: [_buildHeader(context), _buildSearchBar()],
+      ),
+    );
+  }
+
   Widget _buildHeader(BuildContext context) {
     return Padding(
-      padding: EdgeInsets.only(
-        top: MediaQuery.of(context).viewPadding.top + 8.h,
-        left: 8.w,
-        right: 16.w,
-        bottom: 8.h,
-      ),
-      child: Row(
+      padding: EdgeInsets.fromLTRB(8.w, 0, 8.w, 8.h),
+      child: Stack(
+        alignment: Alignment.center,
         children: [
-          IconButton(
-            onPressed: () {
-              HapticFeedbackService.light();
-              Navigator.of(context).pop();
-            },
-            icon: Icon(
-              Icons.arrow_back_ios_new_rounded,
-              color: kWhiteColor,
-              size: 20.ic,
+          Align(
+            alignment: Alignment.centerLeft,
+            child: IconButton(
+              onPressed: () {
+                HapticFeedbackService.light();
+                Navigator.of(context).pop();
+              },
+              icon: Icon(
+                Icons.arrow_back_ios_new_rounded,
+                color: kWhiteColor,
+                size: 20.ic,
+              ),
             ),
           ),
-          SizedBox(width: 6.w),
-          Expanded(
+          Padding(
+            padding: EdgeInsets.symmetric(horizontal: 56.w),
             child: Text(
               widget.folder.name,
               style: AppTypography.textLgBold.copyWith(color: kWhiteColor),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
             ),
           ),
         ],
@@ -98,7 +115,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
 
   Widget _buildSearchBar() {
     return Padding(
-      padding: EdgeInsets.fromLTRB(16.w, 4.h, 16.w, 8.h),
+      padding: EdgeInsets.fromLTRB(16.w, 0, 16.w, 8.h),
       child: Container(
         decoration: BoxDecoration(
           color: const Color(0xFF09090B), // Zinc 950

@@ -17,14 +17,18 @@ class BookSavedGameCard extends StatelessWidget {
     final md = analysis.chessGame.metadata;
     final whiteName = md['White'] as String? ?? 'White';
     final blackName = md['Black'] as String? ?? 'Black';
-    final whiteElo = md['WhiteElo']?.toString();
-    final blackElo = md['BlackElo']?.toString();
-    final result = md['Result'] as String? ?? '*';
-    final eco = md['ECO'] as String? ?? '';
-    final event = md['Event'] as String? ?? md['Site'] as String? ?? '';
-    final date = _formatDate(md['Date'] as String?);
+    final whiteTitle = (md['WhiteTitle'] ?? '').toString().trim();
+    final blackTitle = (md['BlackTitle'] ?? '').toString().trim();
+    final whiteElo = (md['WhiteElo'] ?? '').toString().trim();
+    final blackElo = (md['BlackElo'] ?? '').toString().trim();
 
+    final result = (md['Result'] as String? ?? '*').trim();
     final status = _parseResult(result);
+
+    final eventRaw = md['Event'] as String? ?? md['Site'] as String? ?? '';
+    final eventName = _formatEventName(eventRaw);
+    final eco = (md['ECO'] as String? ?? '').trim();
+    final date = _formatDate(md['Date'] as String?);
     final timeControlIcon = _getTimeControlIcon(md);
 
     return GestureDetector(
@@ -33,21 +37,24 @@ class BookSavedGameCard extends StatelessWidget {
         await loadSavedAnalysis(context, analysis);
       },
       child: Container(
-        margin: EdgeInsets.only(bottom: 10.sp),
         decoration: BoxDecoration(
+          color: const Color(0xFF18181B), // Zinc 900
           borderRadius: BorderRadius.circular(12.br),
-          border: Border.all(
-            color: kWhiteColor.withValues(alpha: 0.05),
-            width: 1,
-          ),
+          border: Border.all(color: const Color(0xFF27272A)), // Zinc 800
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.25),
+              blurRadius: 18,
+              offset: const Offset(0, 10),
+            ),
+          ],
         ),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Container(
-              padding: EdgeInsets.symmetric(horizontal: 14.sp, vertical: 12.sp),
+              padding: EdgeInsets.fromLTRB(14.w, 10.h, 14.w, 10.h),
               decoration: BoxDecoration(
-                color: kWhiteColor70,
+                color: const Color(0xFFE4E4E7), // Zinc 200
                 borderRadius: BorderRadius.vertical(
                   top: Radius.circular(12.br),
                 ),
@@ -58,83 +65,85 @@ class BookSavedGameCard extends StatelessWidget {
                   Expanded(
                     child: _PlayerInfo(
                       name: whiteName,
+                      title: whiteTitle,
                       rating: whiteElo,
-                      isWinner: status == _BookResult.white,
                       alignment: CrossAxisAlignment.start,
-                      isLightCard: true,
                     ),
                   ),
                   Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 8.sp),
-                    child: _ResultBadge(status: status, isLightCard: true),
+                    padding: EdgeInsets.symmetric(horizontal: 10.w),
+                    child: _ResultBadge(status: status),
                   ),
                   Expanded(
                     child: _PlayerInfo(
                       name: blackName,
+                      title: blackTitle,
                       rating: blackElo,
-                      isWinner: status == _BookResult.black,
                       alignment: CrossAxisAlignment.end,
-                      isLightCard: true,
                     ),
                   ),
                 ],
               ),
             ),
             Container(
-              padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 8.sp),
+              padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
               decoration: BoxDecoration(
-                color: kBlack2Color,
+                color: const Color(0xFF09090B), // Zinc 950
                 borderRadius: BorderRadius.vertical(
                   bottom: Radius.circular(12.br),
                 ),
                 border: Border(
-                  top: BorderSide(color: kWhiteColor.withValues(alpha: 0.05)),
+                  top: BorderSide(color: kWhiteColor.withValues(alpha: 0.06)),
                 ),
               ),
               child: Row(
                 children: [
-                  // Time Control Icon
-                  Image.asset(timeControlIcon, width: 14.sp, height: 14.sp),
-                  SizedBox(width: 8.w),
                   Expanded(
-                    child: Text(
-                      event.isNotEmpty ? event : 'Unknown event',
-                      style: AppTypography.textXsRegular.copyWith(
-                        color: kWhiteColor.withValues(alpha: 0.6),
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                    flex: 6,
+                    child: Row(
+                      children: [
+                        Image.asset(timeControlIcon, width: 14.sp, height: 14.sp),
+                        SizedBox(width: 8.w),
+                        Expanded(
+                          child: Text(
+                            eventName,
+                            style: AppTypography.textXsRegular.copyWith(
+                              color: const Color(0xFFA1A1AA), // Zinc 400
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  if (eco.isNotEmpty) ...[
-                    SizedBox(width: 8.w),
-                    Container(
-                      padding: EdgeInsets.symmetric(
-                        horizontal: 4.w,
-                        vertical: 2.h,
-                      ),
-                      decoration: BoxDecoration(
-                        color: kWhiteColor.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(4.br),
-                      ),
+                  Expanded(
+                    flex: 2,
+                    child: Center(
                       child: Text(
                         eco,
-                        style: AppTypography.textXsBold.copyWith(
-                          color: kWhiteColor.withValues(alpha: 0.7),
-                          fontSize: 10.sp,
+                        style: AppTypography.textXsMedium.copyWith(
+                          color: const Color(0xFFA1A1AA), // Zinc 400
                         ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
-                  ],
-                  if (date.isNotEmpty) ...[
-                    SizedBox(width: 10.w),
-                    Text(
-                      date,
-                      style: AppTypography.textXsRegular.copyWith(
-                        color: kWhiteColor.withValues(alpha: 0.5),
+                  ),
+                  Expanded(
+                    flex: 3,
+                    child: Align(
+                      alignment: Alignment.centerRight,
+                      child: Text(
+                        date,
+                        style: AppTypography.textXsRegular.copyWith(
+                          color: const Color(0xFF71717A), // Zinc 500
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
-                  ],
+                  ),
                 ],
               ),
             ),
@@ -191,6 +200,12 @@ class BookSavedGameCard extends StatelessWidget {
         return _BookResult.unknown;
     }
   }
+
+  String _formatEventName(String raw) {
+    final cleaned = raw.replaceAll('-', ' ').replaceAll('_', ' ').trim();
+    if (cleaned.isEmpty) return 'Unknown event';
+    return cleaned;
+  }
 }
 
 enum _BookResult { white, black, draw, unknown }
@@ -198,44 +213,52 @@ enum _BookResult { white, black, draw, unknown }
 class _PlayerInfo extends StatelessWidget {
   const _PlayerInfo({
     required this.name,
+    required this.title,
     required this.rating,
-    required this.isWinner,
     required this.alignment,
-    this.isLightCard = false,
   });
 
   final String name;
-  final String? rating;
-  final bool isWinner;
+  final String title;
+  final String rating;
   final CrossAxisAlignment alignment;
-  final bool isLightCard;
 
   @override
   Widget build(BuildContext context) {
+    final rank = [
+      if (title.isNotEmpty) title,
+      if (rating.isNotEmpty) rating,
+    ].join(' ');
+
     return Column(
       crossAxisAlignment: alignment,
       children: [
         Text(
           name,
           style: AppTypography.textSmMedium.copyWith(
-            color: isLightCard ? kBlackColor : kWhiteColor,
-            fontWeight: isWinner ? FontWeight.w700 : FontWeight.w500,
+            color: kBlackColor,
+            fontWeight: FontWeight.w600,
           ),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
+          textAlign:
+              alignment == CrossAxisAlignment.end
+                  ? TextAlign.right
+                  : TextAlign.left,
         ),
         SizedBox(height: 2.sp),
         Text(
-          rating != null && rating!.isNotEmpty ? rating! : '',
+          rank,
           style: AppTypography.textXsRegular.copyWith(
-            color:
-                isLightCard
-                    ? kBlack2Color.withValues(alpha: 0.7)
-                    : kWhiteColor.withValues(alpha: 0.5),
+            color: kBlack2Color.withValues(alpha: 0.7),
             fontSize: 12.sp,
           ),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
+          textAlign:
+              alignment == CrossAxisAlignment.end
+                  ? TextAlign.right
+                  : TextAlign.left,
         ),
       ],
     );
@@ -243,63 +266,40 @@ class _PlayerInfo extends StatelessWidget {
 }
 
 class _ResultBadge extends StatelessWidget {
-  const _ResultBadge({required this.status, this.isLightCard = false});
+  const _ResultBadge({required this.status});
 
   final _BookResult status;
-  final bool isLightCard;
 
   @override
   Widget build(BuildContext context) {
-    Color backgroundColor;
-    Color textColor;
     String text;
 
     switch (status) {
       case _BookResult.white:
-        backgroundColor = kBlackColor.withValues(alpha: 0.06);
-        textColor = isLightCard ? kBlackColor : kWhiteColor;
-        text = '1-0';
+        text = '1 - 0';
         break;
       case _BookResult.black:
-        backgroundColor = kBlackColor.withValues(alpha: 0.06);
-        textColor = isLightCard ? kBlackColor : kWhiteColor;
-        text = '0-1';
+        text = '0 - 1';
         break;
       case _BookResult.draw:
-        backgroundColor = kBlackColor.withValues(alpha: 0.04);
-        textColor =
-            isLightCard
-                ? kBlackColor.withValues(alpha: 0.85)
-                : kWhiteColor.withValues(alpha: 0.7);
-        text = '½-½';
+        text = '½ - ½';
         break;
       case _BookResult.unknown:
-        backgroundColor = kBlackColor.withValues(alpha: 0.04);
-        textColor =
-            isLightCard
-                ? kBlackColor.withValues(alpha: 0.55)
-                : kWhiteColor.withValues(alpha: 0.5);
-        text = '-';
+        text = '*';
         break;
     }
 
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 10.sp, vertical: 4.sp),
       decoration: BoxDecoration(
-        color: backgroundColor,
+        color: kBlackColor.withValues(alpha: 0.06),
         borderRadius: BorderRadius.circular(6.br),
-        border: Border.all(
-          color:
-              isLightCard
-                  ? kBlackColor.withValues(alpha: 0.06)
-                  : kWhiteColor.withValues(alpha: 0.05),
-          width: 1,
-        ),
+        border: Border.all(color: kBlackColor.withValues(alpha: 0.06)),
       ),
       child: Text(
         text,
         style: AppTypography.textSmMedium.copyWith(
-          color: textColor,
+          color: kBlackColor,
           fontWeight: FontWeight.w700,
           fontSize: 12.sp,
         ),
