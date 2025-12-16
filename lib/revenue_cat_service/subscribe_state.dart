@@ -12,6 +12,15 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
   final _revenueCat = RevenueCatService();
 
   SubscriptionNotifier() : super(SubscriptionState()) {
+    _revenueCat.setCustomerInfoListener((customerInfo) {
+      final hasPremiumEntitlement = customerInfo.entitlements.active
+          .containsKey(RevenueCatService.premiumEntitlement);
+      final hasAnyEntitlement = customerInfo.entitlements.active.isNotEmpty;
+
+      state = state.copyWith(
+        isSubscribed: hasPremiumEntitlement || hasAnyEntitlement,
+      );
+    });
     _initialize();
   }
 
@@ -61,10 +70,7 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
       final result = await _revenueCat.purchaseSubscription(package);
 
       if (result.success) {
-        state = state.copyWith(
-          isSubscribed: true,
-          isLoading: false,
-        );
+        state = state.copyWith(isSubscribed: true, isLoading: false);
       } else if (result.wasCancelled) {
         // User cancelled - not an error, just reset loading state
         state = state.copyWith(isLoading: false);
