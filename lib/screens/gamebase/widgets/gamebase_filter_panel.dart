@@ -78,13 +78,13 @@ class _FilterHeader extends StatelessWidget {
             Icon(
               Icons.filter_list_rounded,
               size: 20.sp,
-              color: hasActiveFilters ? kPrimaryColor : kSecondaryTextColor,
+              color: hasActiveFilters ? kWhiteColor : kSecondaryTextColor,
             ),
             SizedBox(width: 8.w),
             Text(
               'Filters',
               style: AppTypography.textSmMedium.copyWith(
-                color: hasActiveFilters ? kPrimaryColor : kWhiteColor,
+                color: kWhiteColor,
               ),
             ),
             if (hasActiveFilters) ...[
@@ -92,13 +92,13 @@ class _FilterHeader extends StatelessWidget {
               Container(
                 padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 2.h),
                 decoration: BoxDecoration(
-                  color: kPrimaryColor.withOpacity(0.2),
+                  color: kWhiteColor.withOpacity(0.12),
                   borderRadius: BorderRadius.circular(10.br),
                 ),
                 child: Text(
                   'Active',
                   style: AppTypography.textXsMedium.copyWith(
-                    color: kPrimaryColor,
+                    color: kWhiteColor,
                   ),
                 ),
               ),
@@ -268,10 +268,10 @@ class _FilterChip extends StatelessWidget {
         duration: const Duration(milliseconds: 150),
         padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
         decoration: BoxDecoration(
-          color: isSelected ? kPrimaryColor.withOpacity(0.15) : kBlack3Color,
+          color: isSelected ? kWhiteColor.withOpacity(0.12) : kBlack3Color,
           borderRadius: BorderRadius.circular(8.br),
           border: Border.all(
-            color: isSelected ? kPrimaryColor : Colors.transparent,
+            color: isSelected ? kWhiteColor.withOpacity(0.25) : Colors.transparent,
             width: 1,
           ),
         ),
@@ -281,13 +281,13 @@ class _FilterChip extends StatelessWidget {
             Icon(
               icon,
               size: 16.sp,
-              color: isSelected ? kPrimaryColor : kSecondaryTextColor,
+              color: isSelected ? kWhiteColor : kSecondaryTextColor,
             ),
             SizedBox(width: 6.w),
             Text(
               label,
               style: AppTypography.textSmMedium.copyWith(
-                color: isSelected ? kPrimaryColor : kWhiteColor,
+                color: kWhiteColor,
               ),
             ),
           ],
@@ -401,7 +401,7 @@ class _RatingTextField extends StatelessWidget {
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8.br),
-          borderSide: BorderSide(color: kPrimaryColor, width: 1),
+          borderSide: BorderSide(color: kWhiteColor.withOpacity(0.25), width: 1),
         ),
       ),
       onSubmitted: onSubmitted,
@@ -469,7 +469,7 @@ class _PlayerSearchField extends HookConsumerWidget {
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8.br),
-                borderSide: BorderSide(color: kPrimaryColor, width: 1),
+                borderSide: BorderSide(color: kWhiteColor.withOpacity(0.25), width: 1),
               ),
             ),
             onChanged: (value) => searchQuery.value = value,
@@ -529,7 +529,7 @@ class _PlayerSearchField extends HookConsumerWidget {
                     height: 20.sp,
                     child: CircularProgressIndicator(
                       strokeWidth: 2,
-                      color: kPrimaryColor,
+                      color: kWhiteColor,
                     ),
                   ),
                 ),
@@ -613,7 +613,7 @@ class _PlayerSearchResult extends StatelessWidget {
             Icon(
               Icons.add_rounded,
               size: 20.sp,
-              color: kPrimaryColor,
+              color: kWhiteColor,
             ),
           ],
         ),
@@ -637,9 +637,9 @@ class _SelectedPlayerChips extends ConsumerWidget {
         return Container(
           padding: EdgeInsets.only(left: 12.w, right: 4.w, top: 6.h, bottom: 6.h),
           decoration: BoxDecoration(
-            color: kPrimaryColor.withOpacity(0.15),
+            color: kWhiteColor.withOpacity(0.12),
             borderRadius: BorderRadius.circular(20.br),
-            border: Border.all(color: kPrimaryColor.withOpacity(0.3)),
+            border: Border.all(color: kWhiteColor.withOpacity(0.2)),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
@@ -647,7 +647,7 @@ class _SelectedPlayerChips extends ConsumerWidget {
               Text(
                 player.titleAndName,
                 style: AppTypography.textSmMedium.copyWith(
-                  color: kPrimaryColor,
+                  color: kWhiteColor,
                 ),
               ),
               SizedBox(width: 4.w),
@@ -662,7 +662,7 @@ class _SelectedPlayerChips extends ConsumerWidget {
                   child: Icon(
                     Icons.close_rounded,
                     size: 16.sp,
-                    color: kPrimaryColor,
+                    color: kWhiteColor.withOpacity(0.85),
                   ),
                 ),
               ),

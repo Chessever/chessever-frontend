@@ -311,8 +311,8 @@ class _GamebaseDatabaseSearchScreenState
     GamebaseDatabaseSearchState state,
     Map<String, dynamic> row,
   ) async {
-    final id = row[state.resource.primaryKey]?.toString().trim();
-    if (id == null || id.isEmpty) {
+    final id = (row[state.resource.primaryKey]?.toString() ?? '').trim();
+    if (id.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(

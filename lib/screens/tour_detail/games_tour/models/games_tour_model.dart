@@ -531,6 +531,7 @@ enum GameStatus {
     }
 
     final normalizedStatus = status.trim();
+    final upper = normalizedStatus.toUpperCase();
 
     switch (normalizedStatus) {
       case '1-0':
@@ -544,8 +545,18 @@ enum GameStatus {
       case '*':
         return GameStatus.ongoing;
       default:
-        // Unknown status - return unknown
-        return GameStatus.unknown;
+        // Support Gamebase API result codes (W/B/D)
+        switch (upper) {
+          case 'W':
+            return GameStatus.whiteWins;
+          case 'B':
+            return GameStatus.blackWins;
+          case 'D':
+          case 'DRAW':
+            return GameStatus.draw;
+          default:
+            return GameStatus.unknown;
+        }
     }
   }
 

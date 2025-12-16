@@ -9,30 +9,66 @@ import 'package:flutter/services.dart';
 Future<String?> showCreateFolderDialog(BuildContext context) async {
   return showDialog<String>(
     context: context,
-    builder: (context) => const _CreateFolderDialog(),
+    builder:
+        (context) => const _FolderNameDialog(
+          title: 'Create Book',
+          description: 'Enter a name for your new book',
+          confirmLabel: 'Create',
+        ),
   );
 }
 
-class _CreateFolderDialog extends StatefulWidget {
-  const _CreateFolderDialog();
-
-  @override
-  State<_CreateFolderDialog> createState() => _CreateFolderDialogState();
+/// Shows a dialog to rename a book.
+/// Returns the new name if saved, null if cancelled.
+Future<String?> showRenameFolderDialog(
+  BuildContext context, {
+  required String currentName,
+}) async {
+  return showDialog<String>(
+    context: context,
+    builder:
+        (context) => _FolderNameDialog(
+          title: 'Rename Book',
+          description: 'Enter a new name',
+          confirmLabel: 'Save',
+          initialValue: currentName,
+        ),
+  );
 }
 
-class _CreateFolderDialogState extends State<_CreateFolderDialog> {
+class _FolderNameDialog extends StatefulWidget {
+  const _FolderNameDialog({
+    required this.title,
+    required this.description,
+    required this.confirmLabel,
+    this.initialValue,
+  });
+
+  final String title;
+  final String description;
+  final String confirmLabel;
+  final String? initialValue;
+
+  @override
+  State<_FolderNameDialog> createState() => _FolderNameDialogState();
+}
+
+class _FolderNameDialogState extends State<_FolderNameDialog> {
   late TextEditingController _controller;
   late FocusNode _focusNode;
 
   @override
   void initState() {
     super.initState();
-    _controller = TextEditingController();
+    _controller = TextEditingController(text: widget.initialValue ?? '');
     _focusNode = FocusNode();
 
     // Auto-focus the text field
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _focusNode.requestFocus();
+      _controller.selection = TextSelection.fromPosition(
+        TextPosition(offset: _controller.text.length),
+      );
     });
   }
 
@@ -68,14 +104,14 @@ class _CreateFolderDialogState extends State<_CreateFolderDialog> {
           children: [
             // Title
             Text(
-              'Create Folder',
+              widget.title,
               style: AppTypography.textLgBold.copyWith(
                 color: kWhiteColor,
               ),
             ),
             SizedBox(height: 8.h),
             Text(
-              'Enter a name for your new folder',
+              widget.description,
               style: AppTypography.textSmRegular.copyWith(
                 color: kWhiteColor.withValues(alpha: 0.6),
               ),
@@ -92,7 +128,7 @@ class _CreateFolderDialogState extends State<_CreateFolderDialog> {
                 color: kWhiteColor,
               ),
               decoration: InputDecoration(
-                hintText: 'Folder name',
+                hintText: 'Book name',
                 hintStyle: AppTypography.textMdRegular.copyWith(
                   color: kWhiteColor.withValues(alpha: 0.4),
                 ),
@@ -105,7 +141,7 @@ class _CreateFolderDialogState extends State<_CreateFolderDialog> {
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8.br),
                   borderSide: BorderSide(
-                    color: kPrimaryColor,
+                    color: const Color(0xFF52525B), // Zinc 600
                     width: 1.5,
                   ),
                 ),
@@ -165,8 +201,8 @@ class _CreateFolderDialogState extends State<_CreateFolderDialog> {
                 ElevatedButton(
                   onPressed: _handleCreate,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: kPrimaryColor,
-                    foregroundColor: kWhiteColor,
+                    backgroundColor: kWhiteColor,
+                    foregroundColor: kBlackColor,
                     padding: EdgeInsets.symmetric(
                       horizontal: 24.w,
                       vertical: 10.h,
@@ -177,7 +213,7 @@ class _CreateFolderDialogState extends State<_CreateFolderDialog> {
                     elevation: 0,
                   ),
                   child: Text(
-                    'Create',
+                    widget.confirmLabel,
                     style: AppTypography.textSmBold,
                   ),
                 ),

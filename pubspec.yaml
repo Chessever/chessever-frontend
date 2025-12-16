@@ -169,7 +169,6 @@ flutter:
     - assets/fonts/Inter-Medium.otf
     - assets/fonts/Inter-Regular.otf
     - assets/svgs/
-
     - assets/pngs/
     - assets/sfx/
     - assets/launch.jpg

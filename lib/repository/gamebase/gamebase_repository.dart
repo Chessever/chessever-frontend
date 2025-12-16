@@ -5,6 +5,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:dart_mappable/dart_mappable.dart';
 import 'package:chessever2/screens/gamebase/models/models.dart';
 import 'package:chessever2/repository/gamebase/search/gamebase_search_models.dart';
+import 'package:chessever2/repository/gamebase/search/gamebase_search_models_extra.dart';
 
 part 'gamebase_repository.mapper.dart';
 
@@ -36,23 +37,21 @@ class GamebaseRepository {
   // `--dart-define=GAMEBASE_API_KEY=...` (release) or `.env` (debug).
   // This fallback preserves current behavior but should be removed once keys
   // are fully externalized.
-  static const String _fallbackApiKey =
-      '4e1b7d20-db18-41ae-8e48-5a35c127aeef';
+  static const String _fallbackApiKey = '4e1b7d20-db18-41ae-8e48-5a35c127aeef';
 
-  GamebaseRepository(
-    this._dio, {
-    String? baseUrl,
-    String? apiKey,
-  })  : _baseUrl = baseUrl ?? 'https://service.chessever.com',
-        _apiKey = apiKey ?? _resolveApiKey();
+  GamebaseRepository(this._dio, {String? baseUrl, String? apiKey})
+    : _baseUrl = baseUrl ?? 'https://service.chessever.com',
+      _apiKey = apiKey ?? _resolveApiKey();
 
   static String _resolveApiKey() {
     if (kDebugMode) {
       final envKey = dotenv.env['GAMEBASE_API_KEY']?.trim();
       if (envKey != null && envKey.isNotEmpty) return envKey;
     } else {
-      const envKey =
-          String.fromEnvironment('GAMEBASE_API_KEY', defaultValue: '');
+      const envKey = String.fromEnvironment(
+        'GAMEBASE_API_KEY',
+        defaultValue: '',
+      );
       if (envKey.isNotEmpty) return envKey;
     }
     return _fallbackApiKey;
@@ -69,8 +68,7 @@ class GamebaseRepository {
       final queryParams = {
         'fen': fen,
         if (playerId != null && playerId.isNotEmpty) 'playerId': playerId,
-        if (timeControl != null)
-          'timeControl': timeControl.name.toUpperCase(),
+        if (timeControl != null) 'timeControl': timeControl.name.toUpperCase(),
         if (minRating != null) 'minRating': minRating,
         if (maxRating != null) 'maxRating': maxRating,
       };
@@ -161,12 +159,16 @@ class GamebaseRepository {
       }
 
       final map = Map<String, dynamic>.from(data);
+      // The backend returns { status: "success", data: { resources: [...] } }
+      // So we need to dig into 'data' first.
       final payload = map['data'];
       if (payload is! Map) {
         throw Exception('Unexpected response payload');
       }
 
-      return GamebaseSearchMetadata.fromJson(Map<String, dynamic>.from(payload));
+      return GamebaseSearchMetadata.fromJson(
+        Map<String, dynamic>.from(payload),
+      );
     } catch (e) {
       throw Exception('Failed to load search metadata: $e');
     }
@@ -193,6 +195,38 @@ class GamebaseRepository {
       );
     } catch (e) {
       throw Exception('Failed to query resource: $e');
+    }
+  }
+
+  Future<GamebaseGlobalSearchResponse> globalSearch({
+    required String query,
+    List<String>? resources,
+    int pageNumber = 1,
+    int pageSize = 20,
+  }) async {
+    try {
+      final response = await _dio.get(
+        '$_baseUrl/api/search',
+        queryParameters: {
+          'q': query,
+          'pageNumber': pageNumber,
+          'pageSize': pageSize,
+          if (resources != null) 'resources': resources,
+        },
+        options: Options(
+          headers: {'X-API-Key': _apiKey, 'Accept': 'application/json'},
+        ),
+      );
+
+      final data = response.data;
+      if (data is! Map) {
+        throw Exception('Unexpected response format');
+      }
+      return GamebaseGlobalSearchResponse.fromJson(
+        Map<String, dynamic>.from(data),
+      );
+    } catch (e) {
+      throw Exception('Failed to perform global search: $e');
     }
   }
 }

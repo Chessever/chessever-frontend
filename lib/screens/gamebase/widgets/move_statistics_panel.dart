@@ -18,7 +18,7 @@ class MoveStatisticsPanel extends ConsumerWidget {
 
     if (state.isLoading) {
       return const Center(
-        child: CircularProgressIndicator(color: kPrimaryColor, strokeWidth: 2),
+        child: CircularProgressIndicator(color: kWhiteColor, strokeWidth: 2),
       );
     }
 
