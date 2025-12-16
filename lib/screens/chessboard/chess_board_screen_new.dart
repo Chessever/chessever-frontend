@@ -571,6 +571,9 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     final safeIndex = widget.currentIndex.clamp(0, widget.games.length - 1);
     _pageController = PageController(initialPage: safeIndex);
     _currentPageIndex = safeIndex;
+    // When opening from the Library flow (hideEventInfo), start with the
+    // book-toggle view enabled by default.
+    showGamebase = widget.hideEventInfo && widget.showGamebaseButton;
     _keepBoardProviderAlive(_currentPageIndex);
 
     // Note: We'll enable streaming in didChangeDependencies when ref is available

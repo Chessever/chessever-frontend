@@ -35,7 +35,6 @@ class BookSavedGameCard extends StatelessWidget {
       child: Container(
         margin: EdgeInsets.only(bottom: 10.sp),
         decoration: BoxDecoration(
-          color: const Color(0xFF252525), // Dark grey background
           borderRadius: BorderRadius.circular(12.br),
           border: Border.all(
             color: kWhiteColor.withValues(alpha: 0.05),
@@ -45,8 +44,14 @@ class BookSavedGameCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Padding(
+            Container(
               padding: EdgeInsets.symmetric(horizontal: 14.sp, vertical: 12.sp),
+              decoration: BoxDecoration(
+                color: kWhiteColor70,
+                borderRadius: BorderRadius.vertical(
+                  top: Radius.circular(12.br),
+                ),
+              ),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
@@ -56,11 +61,12 @@ class BookSavedGameCard extends StatelessWidget {
                       rating: whiteElo,
                       isWinner: status == _BookResult.white,
                       alignment: CrossAxisAlignment.start,
+                      isLightCard: true,
                     ),
                   ),
                   Padding(
                     padding: EdgeInsets.symmetric(horizontal: 8.sp),
-                    child: _ResultBadge(status: status),
+                    child: _ResultBadge(status: status, isLightCard: true),
                   ),
                   Expanded(
                     child: _PlayerInfo(
@@ -68,6 +74,7 @@ class BookSavedGameCard extends StatelessWidget {
                       rating: blackElo,
                       isWinner: status == _BookResult.black,
                       alignment: CrossAxisAlignment.end,
+                      isLightCard: true,
                     ),
                   ),
                 ],
@@ -76,7 +83,7 @@ class BookSavedGameCard extends StatelessWidget {
             Container(
               padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 8.sp),
               decoration: BoxDecoration(
-                color: kBlackColor.withValues(alpha: 0.3),
+                color: kBlack2Color,
                 borderRadius: BorderRadius.vertical(
                   bottom: Radius.circular(12.br),
                 ),
@@ -165,13 +172,20 @@ class BookSavedGameCard extends StatelessWidget {
   }
 
   _BookResult _parseResult(String result) {
-    switch (result.trim()) {
+    final trimmed = result.trim();
+    switch (trimmed) {
       case '1-0':
         return _BookResult.white;
       case '0-1':
         return _BookResult.black;
       case '1/2-1/2':
       case '½-½':
+        return _BookResult.draw;
+      case 'W':
+        return _BookResult.white;
+      case 'B':
+        return _BookResult.black;
+      case 'D':
         return _BookResult.draw;
       default:
         return _BookResult.unknown;
@@ -187,12 +201,14 @@ class _PlayerInfo extends StatelessWidget {
     required this.rating,
     required this.isWinner,
     required this.alignment,
+    this.isLightCard = false,
   });
 
   final String name;
   final String? rating;
   final bool isWinner;
   final CrossAxisAlignment alignment;
+  final bool isLightCard;
 
   @override
   Widget build(BuildContext context) {
@@ -202,7 +218,7 @@ class _PlayerInfo extends StatelessWidget {
         Text(
           name,
           style: AppTypography.textSmMedium.copyWith(
-            color: kWhiteColor,
+            color: isLightCard ? kBlackColor : kWhiteColor,
             fontWeight: isWinner ? FontWeight.w700 : FontWeight.w500,
           ),
           maxLines: 1,
@@ -212,7 +228,10 @@ class _PlayerInfo extends StatelessWidget {
         Text(
           rating != null && rating!.isNotEmpty ? rating! : '',
           style: AppTypography.textXsRegular.copyWith(
-            color: kWhiteColor.withValues(alpha: 0.5),
+            color:
+                isLightCard
+                    ? kBlack2Color.withValues(alpha: 0.7)
+                    : kWhiteColor.withValues(alpha: 0.5),
             fontSize: 12.sp,
           ),
           maxLines: 1,
@@ -224,9 +243,10 @@ class _PlayerInfo extends StatelessWidget {
 }
 
 class _ResultBadge extends StatelessWidget {
-  const _ResultBadge({required this.status});
+  const _ResultBadge({required this.status, this.isLightCard = false});
 
   final _BookResult status;
+  final bool isLightCard;
 
   @override
   Widget build(BuildContext context) {
@@ -236,23 +256,29 @@ class _ResultBadge extends StatelessWidget {
 
     switch (status) {
       case _BookResult.white:
-        backgroundColor = kWhiteColor.withValues(alpha: 0.1);
-        textColor = kWhiteColor;
+        backgroundColor = kBlackColor.withValues(alpha: 0.06);
+        textColor = isLightCard ? kBlackColor : kWhiteColor;
         text = '1-0';
         break;
       case _BookResult.black:
-        backgroundColor = kWhiteColor.withValues(alpha: 0.1);
-        textColor = kWhiteColor;
+        backgroundColor = kBlackColor.withValues(alpha: 0.06);
+        textColor = isLightCard ? kBlackColor : kWhiteColor;
         text = '0-1';
         break;
       case _BookResult.draw:
-        backgroundColor = kWhiteColor.withValues(alpha: 0.05);
-        textColor = kWhiteColor.withValues(alpha: 0.7);
+        backgroundColor = kBlackColor.withValues(alpha: 0.04);
+        textColor =
+            isLightCard
+                ? kBlackColor.withValues(alpha: 0.85)
+                : kWhiteColor.withValues(alpha: 0.7);
         text = '½-½';
         break;
       case _BookResult.unknown:
-        backgroundColor = kWhiteColor.withValues(alpha: 0.05);
-        textColor = kWhiteColor.withValues(alpha: 0.5);
+        backgroundColor = kBlackColor.withValues(alpha: 0.04);
+        textColor =
+            isLightCard
+                ? kBlackColor.withValues(alpha: 0.55)
+                : kWhiteColor.withValues(alpha: 0.5);
         text = '-';
         break;
     }
@@ -263,7 +289,10 @@ class _ResultBadge extends StatelessWidget {
         color: backgroundColor,
         borderRadius: BorderRadius.circular(6.br),
         border: Border.all(
-          color: kWhiteColor.withValues(alpha: 0.05),
+          color:
+              isLightCard
+                  ? kBlackColor.withValues(alpha: 0.06)
+                  : kWhiteColor.withValues(alpha: 0.05),
           width: 1,
         ),
       ),

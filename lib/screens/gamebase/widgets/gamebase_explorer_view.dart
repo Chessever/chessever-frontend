@@ -24,9 +24,12 @@ class GamebaseExplorerView extends HookConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final currentFen =
-        state.position?.fen ??
-        'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+    // Use the same position source as the board (analysis uses analysisState).
+    final currentPosition =
+        state.isAnalysisMode
+            ? state.analysisState.position
+            : (state.position ?? Chess.initial);
+    final currentFen = currentPosition.fen;
 
     // Sync Gamebase provider with current board FEN
     useEffect(() {
@@ -48,16 +51,17 @@ class GamebaseExplorerView extends HookConsumerWidget {
         const GamebaseFilterPanel(),
 
         // Moves Table
-        Expanded(child: _buildContent(gamebaseState)),
+        Expanded(child: _buildContent(gamebaseState, currentPosition)),
       ],
     );
   }
 
-  Widget _buildContent(GamebaseExplorerState gamebaseState) {
+  Widget _buildContent(
+    GamebaseExplorerState gamebaseState,
+    Position currentPosition,
+  ) {
     if (gamebaseState.isLoading) {
-      return const Center(
-        child: CircularProgressIndicator(color: kPrimaryColor),
-      );
+      return const Center(child: CircularProgressIndicator(color: kWhiteColor));
     }
 
     if (gamebaseState.error != null) {
@@ -78,7 +82,7 @@ class GamebaseExplorerView extends HookConsumerWidget {
         (sum, move) => sum + move.total,
       ),
       onMoveSelected: onMoveSelected,
-      currentPosition: state.analysisState.position,
+      currentPosition: currentPosition,
     );
   }
 }
@@ -125,7 +129,7 @@ class _HorizontalPvLines extends StatelessWidget {
                   child: Text(
                     eval,
                     style: AppTypography.textXsBold.copyWith(
-                      color: kPrimaryColor,
+                      color: kWhiteColor,
                     ),
                   ),
                 ),
@@ -216,8 +220,9 @@ class _GamebaseMovesTable extends StatelessWidget {
     );
   }
 
-  TextStyle get _headerStyle =>
-      AppTypography.textSmMedium.copyWith(color: kWhiteColor.withValues(alpha: 0.5));
+  TextStyle get _headerStyle => AppTypography.textSmMedium.copyWith(
+    color: kWhiteColor.withValues(alpha: 0.5),
+  );
 }
 
 class _MoveRow extends ConsumerWidget {
@@ -246,8 +251,9 @@ class _MoveRow extends ConsumerWidget {
             : const AsyncValue<GamebaseGame?>.data(null);
 
     final lastPlayedText = lastPlayedAsync.when(
-      data: (game) =>
-          game != null ? DateFormat('MM-yyyy').format(game.date) : '—',
+      data:
+          (game) =>
+              game != null ? DateFormat('MM-yyyy').format(game.date) : '—',
       loading: () => '…',
       error: (_, __) => '—',
     );
@@ -298,7 +304,7 @@ class _MoveRow extends ConsumerWidget {
                       child: Icon(
                         Icons.person,
                         size: 12.sp,
-                        color: kPrimaryColor,
+                        color: const Color(0xFFA1A1AA), // Zinc 400
                       ),
                     ),
                 ],
