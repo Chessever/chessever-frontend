@@ -25,6 +25,7 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
   final bool isWhitePlayer;
   final ChessBoardStateNew? chessBoardState;
   final bool isPinned;
+  final bool showClock;
 
   const PlayerFirstRowDetailWidget({
     super.key,
@@ -34,6 +35,7 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
     this.isCurrentPlayer = false,
     this.chessBoardState,
     this.isPinned = false,
+    this.showClock = true,
   });
 
   @override
@@ -422,26 +424,27 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
             SizedBox(width: playerView == PlayerView.gridView ? 3.w : 4.w),
           ],
           // Always show clock/time on the right - simplified structure to prevent overflow
-          Container(
-            padding: EdgeInsets.symmetric(
-              horizontal: clockPadding,
-              vertical: playerView == PlayerView.gridView ? 1.sp : 0,
+          if (showClock)
+            Container(
+              padding: EdgeInsets.symmetric(
+                horizontal: clockPadding,
+                vertical: playerView == PlayerView.gridView ? 1.sp : 0,
+              ),
+              decoration: BoxDecoration(
+                color: isCurrentPlayer ? kDarkBlue : Colors.transparent,
+                borderRadius: playerView == PlayerView.gridView
+                    ? BorderRadius.circular(2)
+                    : null,
+              ),
+              child: _PlayerClock(
+                isWhitePlayer: isWhitePlayer,
+                gamesTourModel: gamesTourModel,
+                chessBoardState: chessBoardState,
+                isCurrentPlayer: isCurrentPlayer,
+                timeStyle: timeStyle,
+                moveTime: moveTime,
+              ),
             ),
-            decoration: BoxDecoration(
-              color: isCurrentPlayer ? kDarkBlue : Colors.transparent,
-              borderRadius: playerView == PlayerView.gridView
-                  ? BorderRadius.circular(2)
-                  : null,
-            ),
-            child: _PlayerClock(
-              isWhitePlayer: isWhitePlayer,
-              gamesTourModel: gamesTourModel,
-              chessBoardState: chessBoardState,
-              isCurrentPlayer: isCurrentPlayer,
-              timeStyle: timeStyle,
-              moveTime: moveTime,
-            ),
-          ),
           SizedBox(width: endPadding),
         ],
         ),

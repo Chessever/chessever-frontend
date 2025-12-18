@@ -86,13 +86,11 @@ class GamebaseRepository {
   /// Get a list of players matching the search criteria.
   ///
   /// [name] - Optional name to search for
-  /// [fideId] - Optional FIDE ID to search for
-  /// [pageNumber] - Page number for pagination (default: 1)
+  /// [pageNumber] - Page number for pagination (0-indexed per API spec)
   /// [pageSize] - Results per page (default: 20)
   Future<List<GamebasePlayer>> getPlayers({
     String? name,
-    String? fideId,
-    int pageNumber = 1,
+    int pageNumber = 0,
     int pageSize = 20,
   }) async {
     try {
@@ -103,10 +101,6 @@ class GamebaseRepository {
 
       if (name != null && name.isNotEmpty) {
         queryParams['name'] = name;
-      }
-
-      if (fideId != null && fideId.isNotEmpty) {
-        queryParams['fideId'] = fideId;
       }
 
       final uri = Uri.parse('$_baseUrl/api/player')

@@ -1,12 +1,34 @@
 import 'package:chessever2/screens/gamebase/models/models.dart';
 import 'package:chessever2/screens/library/utils/gamebase_pgn_builder.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/utils/chess_title_utils.dart';
 
 GamesTourModel mapGamebaseGameToGamesTourModel(GamebaseGame game) {
   final data = game.data ?? const <String, dynamic>{};
   final mdRaw = data['md'] ?? data['metadata'];
   final md =
-      mdRaw is Map ? Map<String, dynamic>.from(mdRaw) : const <String, dynamic>{};
+      mdRaw is Map
+          ? Map<String, dynamic>.from(mdRaw)
+          : const <String, dynamic>{};
+
+  String countryCodeFromMetadata({required bool isWhite}) {
+    final prefix = isWhite ? 'White' : 'Black';
+
+    final candidates = <Object?>[
+      md['${prefix}Fed'],
+      md['${prefix}Federation'],
+      md['${prefix}Country'],
+      md['${prefix}FideFederation'],
+      md['${prefix}Nationality'],
+    ];
+
+    for (final value in candidates) {
+      final s = value?.toString().trim() ?? '';
+      if (s.isNotEmpty) return s;
+    }
+
+    return '';
+  }
 
   String pickName(String key, String fallback) {
     final raw = md[key];
@@ -31,9 +53,9 @@ GamesTourModel mapGamebaseGameToGamesTourModel(GamebaseGame game) {
   final whitePlayer = PlayerCard(
     name: whiteName,
     federation: '',
-    title: (md['WhiteTitle']?.toString() ?? '').trim(),
+    title: ChessTitleUtils.normalize((md['WhiteTitle']?.toString() ?? '').trim()),
     rating: parseRating(md['WhiteElo']),
-    countryCode: '',
+    countryCode: countryCodeFromMetadata(isWhite: true),
     team: null,
     fideId: null,
   );
@@ -41,9 +63,9 @@ GamesTourModel mapGamebaseGameToGamesTourModel(GamebaseGame game) {
   final blackPlayer = PlayerCard(
     name: blackName,
     federation: '',
-    title: (md['BlackTitle']?.toString() ?? '').trim(),
+    title: ChessTitleUtils.normalize((md['BlackTitle']?.toString() ?? '').trim()),
     rating: parseRating(md['BlackElo']),
-    countryCode: '',
+    countryCode: countryCodeFromMetadata(isWhite: false),
     team: null,
     fideId: null,
   );
@@ -94,13 +116,14 @@ String _buildFallbackPgn({
           ? result
           : '*';
 
-  final sb = StringBuffer()
-    ..writeln('[Event "$event"]')
-    ..writeln('[White "$whiteName"]')
-    ..writeln('[Black "$blackName"]')
-    ..writeln('[Result "$safeResult"]')
-    ..writeln()
-    ..write(safeResult);
+  final sb =
+      StringBuffer()
+        ..writeln('[Event "$event"]')
+        ..writeln('[White "$whiteName"]')
+        ..writeln('[Black "$blackName"]')
+        ..writeln('[Result "$safeResult"]')
+        ..writeln()
+        ..write(safeResult);
 
   return sb.toString();
 }

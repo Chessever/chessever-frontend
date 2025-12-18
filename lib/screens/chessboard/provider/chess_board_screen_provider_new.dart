@@ -4,6 +4,7 @@ import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/repository/lichess/cloud_eval/cloud_eval.dart';
 import 'package:chessever2/repository/local_storage/local_eval/local_eval_cache.dart';
 import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
+import 'package:chessever2/repository/api_utils/api_exceptions.dart';
 import 'package:chessever2/repository/supabase/evals/persist_cloud_eval.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
@@ -584,7 +585,20 @@ class ChessBoardScreenNotifierNew
       }
 
       if (pgn == null || pgn.isEmpty) {
-        pgn = await ref.read(gameRepositoryProvider).getGamePgn(game.gameId);
+        try {
+          pgn = await ref.read(gameRepositoryProvider).getGamePgn(game.gameId);
+        } on ApiException catch (e) {
+          // Game IDs coming from sources outside Supabase (e.g. Gamebase/library
+          // previews) won't exist in our `game` table. Treat that as a normal
+          // fallback case instead of crashing the board with "No rows found".
+          _releaseLog('⚠️ PGN lookup skipped for ${game.gameId}: $e');
+          pgn = null;
+        } catch (e) {
+          // Any other failure (network/transient) should fall back to the best
+          // available PGN instead of erroring the whole screen.
+          _releaseLog('⚠️ PGN lookup failed for ${game.gameId}: $e');
+          pgn = null;
+        }
 
         if (!mounted) return;
 

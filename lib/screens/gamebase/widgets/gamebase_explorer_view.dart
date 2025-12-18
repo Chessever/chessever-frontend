@@ -17,18 +17,19 @@ class GamebaseExplorerView extends HookConsumerWidget {
     super.key,
     required this.state,
     required this.onMoveSelected,
+    this.onGameSelected,
   });
 
   final ChessBoardStateNew state;
   final Function(String uci) onMoveSelected;
+  final void Function(String gameId)? onGameSelected;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // Use the same position source as the board (analysis uses analysisState).
-    final currentPosition =
-        state.isAnalysisMode
-            ? state.analysisState.position
-            : (state.position ?? Chess.initial);
+    // Always use analysisState.position - it's non-nullable and tracks the
+    // actual displayed position on the board regardless of mode (analysis,
+    // library game, live game, etc.).
+    final currentPosition = state.analysisState.position;
     final currentFen = currentPosition.fen;
 
     // Sync Gamebase provider with current board FEN
@@ -45,7 +46,8 @@ class GamebaseExplorerView extends HookConsumerWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         // Horizontal PV Lines (Engine Analysis)
-        if (state.showEngineAnalysis) _HorizontalPvLines(state: state),
+        if (state.showEngineAnalysis)
+          _HorizontalPvLines(state: state, onMoveSelected: onMoveSelected),
 
         // Filter Panel
         const GamebaseFilterPanel(),
@@ -82,15 +84,20 @@ class GamebaseExplorerView extends HookConsumerWidget {
         (sum, move) => sum + move.total,
       ),
       onMoveSelected: onMoveSelected,
+      onGameSelected: onGameSelected,
       currentPosition: currentPosition,
     );
   }
 }
 
 class _HorizontalPvLines extends StatelessWidget {
-  const _HorizontalPvLines({required this.state});
+  const _HorizontalPvLines({
+    required this.state,
+    required this.onMoveSelected,
+  });
 
   final ChessBoardStateNew state;
+  final Function(String uci) onMoveSelected;
 
   @override
   Widget build(BuildContext context) {
@@ -116,31 +123,46 @@ class _HorizontalPvLines extends StatelessWidget {
           final eval = line.displayEval.isNotEmpty ? line.displayEval : '...';
           final moves = line.sanMoves.join(' ');
 
-          return SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: [
-                Container(
-                  padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 2.h),
-                  decoration: BoxDecoration(
-                    color: kWhiteColor.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(4.br),
-                  ),
-                  child: Text(
-                    eval,
-                    style: AppTypography.textXsBold.copyWith(
-                      color: kWhiteColor,
+          final firstUci =
+              line.moves.isNotEmpty ? line.moves.first.uci : null;
+
+          return InkWell(
+            onTap:
+                firstUci == null
+                    ? null
+                    : () => onMoveSelected(firstUci),
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Padding(
+                padding: EdgeInsets.symmetric(vertical: 2.h),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 6.w,
+                        vertical: 2.h,
+                      ),
+                      decoration: BoxDecoration(
+                        color: kWhiteColor.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(4.br),
+                      ),
+                      child: Text(
+                        eval,
+                        style: AppTypography.textXsBold.copyWith(
+                          color: kWhiteColor,
+                        ),
+                      ),
                     ),
-                  ),
+                    SizedBox(width: 8.w),
+                    Text(
+                      moves,
+                      style: AppTypography.textXsRegular.copyWith(
+                        color: kWhiteColor.withValues(alpha: 0.8),
+                      ),
+                    ),
+                  ],
                 ),
-                SizedBox(width: 8.w),
-                Text(
-                  moves,
-                  style: AppTypography.textXsRegular.copyWith(
-                    color: kWhiteColor.withValues(alpha: 0.8),
-                  ),
-                ),
-              ],
+              ),
             ),
           );
         },
@@ -154,12 +176,14 @@ class _GamebaseMovesTable extends StatelessWidget {
     required this.moves,
     required this.totalGames,
     required this.onMoveSelected,
+    required this.onGameSelected,
     required this.currentPosition,
   });
 
   final List<MoveAggregate> moves;
   final int totalGames;
   final Function(String uci) onMoveSelected;
+  final void Function(String gameId)? onGameSelected;
   final Position currentPosition;
 
   @override
@@ -211,6 +235,10 @@ class _GamebaseMovesTable extends StatelessWidget {
                 move: move,
                 maxTotal: moves.first.total, // For progress bar relative to max
                 onPressed: () => onMoveSelected(move.uci),
+                onOpenGame:
+                    (move.gameId != null && onGameSelected != null)
+                        ? () => onGameSelected!(move.gameId!)
+                        : null,
                 position: currentPosition,
               );
             },
@@ -230,12 +258,14 @@ class _MoveRow extends ConsumerWidget {
     required this.move,
     required this.maxTotal,
     required this.onPressed,
+    required this.onOpenGame,
     required this.position,
   });
 
   final MoveAggregate move;
   final int maxTotal;
   final VoidCallback onPressed;
+  final VoidCallback? onOpenGame;
   final Position position;
 
   @override
@@ -247,13 +277,15 @@ class _MoveRow extends ConsumerWidget {
 
     final lastPlayedAsync =
         move.gameId != null
-            ? ref.watch(gameByIdProvider(move.gameId!))
-            : const AsyncValue<GamebaseGame?>.data(null);
+            ? ref.watch(gamePreviewByIdProvider(move.gameId!))
+            : const AsyncValue<Map<String, dynamic>?>.data(null);
 
     final lastPlayedText = lastPlayedAsync.when(
-      data:
-          (game) =>
-              game != null ? DateFormat('MM-yyyy').format(game.date) : '—',
+      data: (row) {
+        final raw = row?['date']?.toString();
+        final date = raw != null ? DateTime.tryParse(raw) : null;
+        return date != null ? DateFormat('MM-yyyy').format(date) : '—';
+      },
       loading: () => '…',
       error: (_, __) => '—',
     );
@@ -298,15 +330,6 @@ class _MoveRow extends ConsumerWidget {
                       color: kWhiteColor,
                     ),
                   ),
-                  if (move.gameId != null) // Indicator for single game
-                    Padding(
-                      padding: EdgeInsets.only(left: 4.w),
-                      child: Icon(
-                        Icons.person,
-                        size: 12.sp,
-                        color: const Color(0xFFA1A1AA), // Zinc 400
-                      ),
-                    ),
                 ],
               ),
             ),
@@ -353,6 +376,28 @@ class _MoveRow extends ConsumerWidget {
                 textAlign: TextAlign.right,
               ),
             ),
+            if (onOpenGame != null) ...[
+              SizedBox(width: 10.w),
+              GestureDetector(
+                onTap: onOpenGame,
+                behavior: HitTestBehavior.opaque,
+                child: Container(
+                  padding: EdgeInsets.all(6.sp),
+                  decoration: BoxDecoration(
+                    color: kWhiteColor.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(8.br),
+                    border: Border.all(
+                      color: kWhiteColor.withValues(alpha: 0.10),
+                    ),
+                  ),
+                  child: Icon(
+                    Icons.open_in_new_rounded,
+                    size: 16.sp,
+                    color: kWhiteColor.withValues(alpha: 0.8),
+                  ),
+                ),
+              ),
+            ],
           ],
         ),
       ),

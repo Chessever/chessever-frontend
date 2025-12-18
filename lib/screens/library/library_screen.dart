@@ -10,6 +10,7 @@ import 'package:chessever2/screens/library/providers/library_combined_search_pro
 import 'package:chessever2/screens/library/providers/library_folders_provider.dart';
 import 'package:chessever2/screens/library/utils/create_empty_game.dart';
 import 'package:chessever2/screens/library/utils/gamebase_game_to_games_tour_model.dart';
+import 'package:chessever2/screens/library/utils/gamebase_pgn_builder.dart';
 import 'package:chessever2/screens/library/utils/load_saved_analysis.dart';
 import 'package:chessever2/screens/library/widgets/library_gamebase_filters_sheet.dart';
 import 'package:chessever2/screens/library/widgets/create_folder_dialog.dart';
@@ -168,14 +169,15 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
         ),
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Expanded(child: _buildSearchField(filtersActive: filtersActive)),
-          SizedBox(width: 12.w),
+          SizedBox(width: 10.w),
           _SquareIconButton(
             iconWidget: SvgWidget(
               SvgAsset.chase_grid,
-              height: 18.sp,
-              width: 18.sp,
+              height: 20.sp,
+              width: 20.sp,
             ),
             onTap: _navigateToEmptyBoard,
           ),
@@ -261,6 +263,11 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
         row['white']?.toString() ?? row['whiteName']?.toString() ?? 'White';
     final blackName =
         row['black']?.toString() ?? row['blackName']?.toString() ?? 'Black';
+    final event =
+        row['event']?.toString() ?? row['Event']?.toString() ?? 'Gamebase';
+    final site = row['site']?.toString() ?? row['Site']?.toString();
+    final date =
+        row['date'] != null ? DateTime.tryParse(row['date'].toString()) : null;
 
     final whitePlayer = PlayerCard(
       name: whiteName,
@@ -292,7 +299,19 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       blackClockCentiseconds: 0,
       gameStatus: GameStatus.fromString(result),
       roundId: 'gamebase_search',
-      tourId: 'Gamebase',
+      tourId: event,
+      pgn: buildHeaderOnlyPgn(
+        whiteName: whiteName,
+        blackName: blackName,
+        result: result,
+        event: event,
+        site: site,
+        date: date,
+        eco: row['eco']?.toString() ?? row['ECO']?.toString(),
+        opening: row['opening']?.toString() ?? row['Opening']?.toString(),
+        variation: row['variation']?.toString() ?? row['Variation']?.toString(),
+      ),
+      lastMoveTime: date,
     );
   }
 
@@ -345,6 +364,13 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
               },
               onAnalysisTap: (analysis) => loadSavedAnalysis(context, analysis),
               onPlayerTap: (player) {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => GamebasePlayerGamesScreen(player: player),
+                  ),
+                );
+              },
+              onPlayerFilter: (player) {
                 Navigator.of(context).push(
                   MaterialPageRoute(
                     builder: (_) => GamebasePlayerGamesScreen(player: player),
@@ -538,24 +564,27 @@ class _SquareIconButton extends StatelessWidget {
   final Widget? iconWidget;
   final VoidCallback onTap;
   final bool isPrimary;
+  final double size;
 
   const _SquareIconButton({
     required this.onTap,
     this.icon,
     this.iconWidget,
     this.isPrimary = false,
+    this.size = 44,
   });
 
   @override
   Widget build(BuildContext context) {
+    final dimension = size.h;
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        width: 36.w,
-        height: 36.h,
+        width: dimension,
+        height: dimension,
         decoration: BoxDecoration(
           color: isPrimary ? const Color(0xFFFAFAFA) : const Color(0xFF09090B),
-          borderRadius: BorderRadius.circular(8.br),
+          borderRadius: BorderRadius.circular(10.br),
           border:
               isPrimary
                   ? null
@@ -568,7 +597,7 @@ class _SquareIconButton extends StatelessWidget {
               iconWidget ??
               Icon(
                 icon,
-                size: 18.sp,
+                size: 20.sp,
                 color:
                     isPrimary
                         ? const Color(0xFF09090B)

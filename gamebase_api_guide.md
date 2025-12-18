@@ -7,10 +7,18 @@ This document provides a comprehensive guide to the **Gamebase API**, a powerful
 - **Development**: `http://localhost:3232`
 
 ## Authentication
-All API requests must include the `X-API-Key` header.
+All `/api/*` requests must include the `X-API-Key` header. Requests without a valid key return `401`.
 
 ```http
 X-API-Key: <your-api-key>
+```
+
+### Verify production response format (optional)
+
+This repo includes a script that calls the deployed API and prints the response shapes (including PGN presence/length) without logging your key:
+
+```bash
+API_BASE_URL=https://service.chessever.com API_KEY=... npm run script:verify-api
 ```
 
 ---
@@ -25,16 +33,90 @@ Use this for a "Google-like" search bar experience. It searches across multiple 
 
 **Parameters:**
 - `q` (required): The search string (e.g., "Carlsen", "Kasparov", a generic UUID).
+- `resources` (optional): Repeatable query param to limit result types: `player`, `game` (e.g. `resources=game&resources=player`).
+- `result` (optional): Game result filter (`1-0`, `0-1`, `1/2-1/2` or `W/B/D`).
+- `color` (optional): `all` | `white` | `black` (used for rating filters / side-based filtering UIs).
+- `timeControl` (optional): `CLASSICAL` | `RAPID` | `BLITZ`.
+- `yearFrom` / `yearTo` (optional): Inclusive year range.
+- `ratingFrom` / `ratingTo` (optional): Inclusive Elo range (applies to both sides unless `color` is specified).
 - `pageNumber`: Page number (default: 1).
 - `pageSize`: Results per page (default: 20).
+
+**What it matches:**
+- **Players**: `name`, `fideId`, `fed` (country name)
+- **Games**:
+  - UUID search on `id`
+  - PGN header metadata extracted from `game.data.md`, plus full-text search over those fields: `ECO`, `Opening`, `Variation`, `Event`, `Site`, `White`, `Black`, `WhiteElo`, `BlackElo`, `WhiteFideId`, `BlackFideId`
+
+**Fielded tokens inside `q` (optional):**
+You can embed structured tokens in the text query to guide game matching:
+- `eco:C45`
+- `opening:"Sicilian Defense"`
+- `variation:"Najdorf"`
+- `event:"Wijk aan Zee"`
+- `site:"London"`
+- `player:Carlsen` (matches either side; use `color=white|black` to constrain)
+- `white:"Kasparov, Garry"`
+- `black:Karpov`
+- `country:"Norway"` (filters games where a player's federation matches)
 
 **Example Request:**
 ```http
 GET /api/search?q=Carlsen
 ```
 
-**Response:**
-Returns a mixed list of results with a `resource` type ("player" or "game"), a match `score`, and a preview snippet.
+```http
+GET /api/search?q=Sicilian
+```
+
+```http
+GET /api/search?q=C45
+```
+
+```http
+GET /api/search?q=Carlsen&color=white&timeControl=RAPID&yearFrom=2018&yearTo=2025&ratingFrom=2600&ratingTo=2900
+```
+
+```http
+GET /api/search?q=player:\"Carlsen, Magnus\" opening:\"Sicilian Defense\"&color=black&result=0-1
+```
+
+**Response Example:**
+```json
+{
+  "status": "success",
+  "data": {
+    "results": [
+      {
+        "resource": "player",
+        "id": "uuid",
+        "score": 1.0,
+        "label": "Carlsen, Magnus",
+        "snippet": "Norway • GM",
+        "preview": { "id": "...", "name": "...", "fideId": "...", "fed": "...", "ratingClassical": 2830 }
+      },
+      {
+        "resource": "game",
+        "id": "uuid",
+        "score": 0.42,
+        "label": "Carlsen vs Nepomniachtchi",
+        "snippet": "C45 • Scotch Game — Wijk aan Zee",
+        "preview": {
+          "id": "uuid",
+          "date": "2024-01-15T00:00:00.000Z",
+          "result": "W",
+          "timeControl": "CLASSICAL",
+          "eco": "C45",
+          "opening": "Scotch Game",
+          "white": "Carlsen, Magnus",
+          "black": "Nepomniachtchi, Ian"
+        }
+      }
+    ],
+    "metadata": { "pageNumber": 1, "pageSize": 20, "totalCount": 2 }
+  }
+}
+```
 
 ---
 
@@ -76,15 +158,15 @@ This is the most powerful endpoint. It supports recursive boolean logic (`AND`, 
 #### **Use Case Examples:**
 
 **A. Find High-Rated Norwegian Players**
-*Find players from Norway ("NOR") with a Classical rating above 2700.*
+*Find players from Norway with a Classical rating of 2700 or higher.*
 
 ```json
 {
   "resource": "player",
   "where": {
     "and": [
-      { "field": "fed", "op": "eq", "value": "NOR" },
-      { "field": "ratingClassical", "op": "gt", "value": 2700 }
+      { "field": "fed", "op": "eq", "value": "Norway" },
+      { "field": "ratingClassical", "op": "gte", "value": 2700 }
     ]
   },
   "orderBy": [
@@ -137,7 +219,10 @@ Retrieve full details for a single player by their UUID, including all rating ca
 ### **Get Game Details**
 **Endpoint:** `GET /api/game/{id}`
 
-Retrieve the full record of a game, including the move list (PGN/JSON data), players, result, and date.
+Retrieve the full record of a game (JSON data), players, result, and date.
+
+**Optional query param:**
+- `includePgn=true`: includes the raw PGN from `pgn_game.raw_pgn` (if available) as `pgn` in the response.
 
 ### **Position Analytics (Opening Explorer)**
 **Endpoint:** `GET /api/game-position/aggregates`
@@ -255,8 +340,8 @@ Future<List<Player>> searchHighRatedPlayers() async {
     "resource": "player",
     "where": {
       "and": [
-        {"field": "fed", "op": "eq", "value": "NOR"},
-        {"field": "ratingClassical", "op": "gt", "value": 2700}
+        {"field": "fed", "op": "eq", "value": "Norway"},
+        {"field": "ratingClassical", "op": "gte", "value": 2700}
       ]
     },
     "orderBy": [

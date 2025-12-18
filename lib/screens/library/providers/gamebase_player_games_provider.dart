@@ -1,6 +1,7 @@
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
 import 'package:chessever2/screens/gamebase/models/models.dart';
-import 'package:chessever2/screens/library/utils/gamebase_game_to_games_tour_model.dart';
+import 'package:chessever2/screens/library/utils/gamebase_pgn_builder.dart';
+import 'package:chessever2/utils/chess_title_utils.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -8,14 +9,14 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 // --- State ---
 
 class GamebasePlayerGamesState {
-  final List<TournamentGamesGroup> groupedGames;
+  final List<GamesTourModel> games;
   final bool isLoading;
   final bool hasMore;
   final int currentPage;
   final String? error;
 
   const GamebasePlayerGamesState({
-    this.groupedGames = const [],
+    this.games = const [],
     this.isLoading = false,
     this.hasMore = true,
     this.currentPage = 1,
@@ -23,51 +24,38 @@ class GamebasePlayerGamesState {
   });
 
   GamebasePlayerGamesState copyWith({
-    List<TournamentGamesGroup>? groupedGames,
+    List<GamesTourModel>? games,
     bool? isLoading,
     bool? hasMore,
     int? currentPage,
     String? error,
   }) {
     return GamebasePlayerGamesState(
-      groupedGames: groupedGames ?? this.groupedGames,
+      games: games ?? this.games,
       isLoading: isLoading ?? this.isLoading,
       hasMore: hasMore ?? this.hasMore,
       currentPage: currentPage ?? this.currentPage,
       error: error,
     );
   }
-
-  List<GamesTourModel> get allGames =>
-      groupedGames.expand((g) => g.games).toList();
-}
-
-class TournamentGamesGroup {
-  final String tourId;
-  final String tourName;
-  final List<GamesTourModel> games;
-
-  const TournamentGamesGroup({
-    required this.tourId,
-    required this.tourName,
-    required this.games,
-  });
 }
 
 // --- Provider ---
 
-final gamebasePlayerGamesProvider = StateNotifierProvider.autoDispose
-    .family<GamebasePlayerGamesNotifier, GamebasePlayerGamesState, GamebasePlayer>(
-  (ref, player) => GamebasePlayerGamesNotifier(ref, player),
-);
+final gamebasePlayerGamesProvider = StateNotifierProvider.autoDispose.family<
+  GamebasePlayerGamesNotifier,
+  GamebasePlayerGamesState,
+  GamebasePlayer
+>((ref, player) => GamebasePlayerGamesNotifier(ref, player));
 
-class GamebasePlayerGamesNotifier extends StateNotifier<GamebasePlayerGamesState> {
+class GamebasePlayerGamesNotifier
+    extends StateNotifier<GamebasePlayerGamesState> {
   final Ref _ref;
   final GamebasePlayer _player;
   static const int _pageSize = 30;
 
   GamebasePlayerGamesNotifier(this._ref, this._player)
-      : super(const GamebasePlayerGamesState(isLoading: true)) {
+    : super(const GamebasePlayerGamesState(isLoading: true)) {
     _loadInitialGames();
   }
 
@@ -76,9 +64,8 @@ class GamebasePlayerGamesNotifier extends StateNotifier<GamebasePlayerGamesState
       final games = await _fetchGames(page: 1);
       if (!mounted) return;
 
-      final grouped = _groupGamesByEvent(games);
       state = state.copyWith(
-        groupedGames: grouped,
+        games: games,
         isLoading: false,
         hasMore: games.length >= _pageSize,
         currentPage: 1,
@@ -87,10 +74,7 @@ class GamebasePlayerGamesNotifier extends StateNotifier<GamebasePlayerGamesState
     } catch (e) {
       debugPrint('[GamebasePlayerGames] Initial load error: $e');
       if (!mounted) return;
-      state = state.copyWith(
-        isLoading: false,
-        error: e.toString(),
-      );
+      state = state.copyWith(isLoading: false, error: e.toString());
     }
   }
 
@@ -104,11 +88,10 @@ class GamebasePlayerGamesNotifier extends StateNotifier<GamebasePlayerGamesState
       final newGames = await _fetchGames(page: nextPage);
       if (!mounted) return;
 
-      final allGames = [...state.allGames, ...newGames];
-      final grouped = _groupGamesByEvent(allGames);
+      final allGames = [...state.games, ...newGames];
 
       state = state.copyWith(
-        groupedGames: grouped,
+        games: allGames,
         isLoading: false,
         hasMore: newGames.length >= _pageSize,
         currentPage: nextPage,
@@ -126,9 +109,8 @@ class GamebasePlayerGamesNotifier extends StateNotifier<GamebasePlayerGamesState
       final games = await _fetchGames(page: 1);
       if (!mounted) return;
 
-      final grouped = _groupGamesByEvent(games);
       state = GamebasePlayerGamesState(
-        groupedGames: grouped,
+        games: games,
         isLoading: false,
         hasMore: games.length >= _pageSize,
         currentPage: 1,
@@ -136,111 +118,159 @@ class GamebasePlayerGamesNotifier extends StateNotifier<GamebasePlayerGamesState
     } catch (e) {
       debugPrint('[GamebasePlayerGames] Refresh error: $e');
       if (!mounted) return;
-      state = state.copyWith(
-        isLoading: false,
-        error: e.toString(),
-      );
+      state = state.copyWith(isLoading: false, error: e.toString());
     }
   }
 
   Future<List<GamesTourModel>> _fetchGames({required int page}) async {
     final repo = _ref.read(gamebaseRepositoryProvider);
 
-    // Query games where this player is white OR black.
-    // The search/query endpoint returns IDs; we fetch full game details per row
-    // to render player names/event/eco.
-    final body = {
-      'resource': 'game',
-      'where': {
-        'or': [
-          {'field': 'whitePlayerId', 'op': 'eq', 'value': _player.id},
-          {'field': 'blackPlayerId', 'op': 'eq', 'value': _player.id},
-        ],
-      },
-      'orderBy': [
-        {'field': 'date', 'direction': 'desc'},
-      ],
-      'pageNumber': page,
-      'pageSize': _pageSize,
-    };
+    // `/api/search/query` for games is currently unreliable in production.
+    // Use global search and narrow down to games that reference this player's
+    // UUID in the preview payload.
+    final query = (_player.fideId.trim().isNotEmpty)
+        ? _player.fideId.trim()
+        : _player.name.trim();
 
-    debugPrint('[GamebasePlayerGames] Fetching games for player ${_player.id} (${_player.name}), page $page');
-
-    final response = await repo.queryResource(body: body);
-    debugPrint('[GamebasePlayerGames] Got ${response.data.length} game rows');
-
-    final rows = response.data;
-    final ids =
-        rows
-            .map((row) => (row['id']?.toString() ?? '').trim())
-            .whereType<String>()
-            .where((id) => id.isNotEmpty)
-            .toList();
-
-    final details = await Future.wait(
-      ids.map(repo.getGameById),
-      eagerError: false,
+    debugPrint(
+      '[GamebasePlayerGames] Searching games for player ${_player.id} (${_player.name}), page $page',
     );
 
-    final byId = <String, GamebaseGame?>{
-      for (var i = 0; i < ids.length; i++) ids[i]: details[i],
-    };
+    final response = await repo.globalSearch(
+      query: query,
+      pageNumber: page,
+      // Fetch extra to account for mixed results.
+      pageSize: (_pageSize * 3).clamp(20, 120),
+    );
+
+    final rows = response.results
+        .where((r) => r.resource == 'game')
+        .map((r) {
+          final preview = r.preview ?? const <String, dynamic>{};
+          final id = preview['id']?.toString() ?? r.id;
+          return <String, dynamic>{'id': id, ...preview};
+        })
+        .where((row) {
+          final w = row['whitePlayerId']?.toString();
+          final b = row['blackPlayerId']?.toString();
+          return w == _player.id || b == _player.id;
+        })
+        .take(_pageSize)
+        .toList(growable: false);
+
+    // Enrich players (titles/ratings/federations).
+    final playerIds = <String>{};
+    for (final row in rows) {
+      final w = row['whitePlayerId']?.toString().trim();
+      final b = row['blackPlayerId']?.toString().trim();
+      if (w != null && w.isNotEmpty) playerIds.add(w);
+      if (b != null && b.isNotEmpty) playerIds.add(b);
+    }
+
+    final byId = <String, GamebasePlayer>{};
+    if (playerIds.isNotEmpty) {
+      final fetched = await Future.wait(playerIds.map(repo.getPlayerById), eagerError: false);
+      for (final p in fetched.whereType<GamebasePlayer>()) {
+        byId[p.id] = GamebasePlayer(
+          id: p.id,
+          fideId: p.fideId,
+          name: p.name,
+          gender: p.gender,
+          fed: p.fed,
+          title: ChessTitleUtils.normalize(p.title),
+          ratingClassical: p.ratingClassical,
+          ratingRapid: p.ratingRapid,
+          ratingBlitz: p.ratingBlitz,
+        );
+      }
+    }
+
+    int ratingFor(GamebasePlayer? p, String? timeControl) {
+      if (p == null) return 0;
+      final tc = (timeControl ?? '').toUpperCase();
+      switch (tc) {
+        case 'RAPID':
+          return p.ratingRapid ?? p.highestRating ?? 0;
+        case 'BLITZ':
+          return p.ratingBlitz ?? p.highestRating ?? 0;
+        case 'CLASSICAL':
+        default:
+          return p.ratingClassical ?? p.highestRating ?? 0;
+      }
+    }
+
+    DateTime? parseDate(Object? raw) {
+      if (raw == null) return null;
+      return DateTime.tryParse(raw.toString());
+    }
 
     return rows.map((row) {
       final id = row['id']?.toString() ?? 'unknown';
-      return _mapToGameModel(row: row, game: byId[id]);
-    }).toList();
+      final result = row['result']?.toString() ?? '*';
+      final timeControl = row['timeControl']?.toString();
+      final date = parseDate(row['date']);
+
+      final whiteName = (row['white']?.toString() ?? row['whiteName']?.toString() ?? 'White').trim();
+      final blackName = (row['black']?.toString() ?? row['blackName']?.toString() ?? 'Black').trim();
+      final event = (row['event']?.toString() ?? 'Gamebase').trim();
+      final site = row['site']?.toString();
+      final eco = row['eco']?.toString();
+      final opening = row['opening']?.toString();
+      final variation = row['variation']?.toString();
+
+      final w = byId[row['whitePlayerId']?.toString() ?? ''];
+      final b = byId[row['blackPlayerId']?.toString() ?? ''];
+
+      final pgn = buildHeaderOnlyPgn(
+        whiteName: whiteName,
+        blackName: blackName,
+        result: result,
+        event: event,
+        site: site,
+        date: date,
+        eco: eco,
+        opening: opening,
+        variation: variation,
+      );
+
+      final whiteCard = PlayerCard(
+        name: whiteName,
+        federation: '',
+        title: ChessTitleUtils.normalize(w?.title),
+        rating: ratingFor(w, timeControl),
+        countryCode: w?.fed ?? '',
+        team: null,
+        fideId: int.tryParse(w?.fideId ?? ''),
+      );
+      final blackCard = PlayerCard(
+        name: blackName,
+        federation: '',
+        title: ChessTitleUtils.normalize(b?.title),
+        rating: ratingFor(b, timeControl),
+        countryCode: b?.fed ?? '',
+        team: null,
+        fideId: int.tryParse(b?.fideId ?? ''),
+      );
+
+      final formatCode = (eco != null && eco.trim().isNotEmpty) ? eco.trim() : (timeControl ?? '');
+
+      return GamesTourModel(
+        gameId: id,
+        whitePlayer: whiteCard,
+        blackPlayer: blackCard,
+        whiteTimeDisplay: '--:--',
+        blackTimeDisplay: '--:--',
+        whiteClockCentiseconds: 0,
+        blackClockCentiseconds: 0,
+        gameStatus: GameStatus.fromString(result),
+        roundId: 'gamebase_player',
+        roundSlug: formatCode.isNotEmpty ? formatCode : null,
+        tourId: event.isNotEmpty ? event : 'Gamebase',
+        pgn: pgn,
+        lastMoveTime: date,
+      );
+    }).toList(growable: false);
   }
 
-  GamesTourModel _mapToGameModel({
-    required Map<String, dynamic> row,
-    required GamebaseGame? game,
-  }) {
-    if (game != null) {
-      return mapGamebaseGameToGamesTourModel(game);
-    }
-
-    final id = row['id']?.toString() ?? 'unknown';
-    final result = row['result']?.toString() ?? '*';
-
-    final unknownPlayer = PlayerCard(
-      name: 'Unknown',
-      federation: '',
-      title: '',
-      rating: 0,
-      countryCode: '',
-      team: null,
-      fideId: null,
-    );
-
-    return GamesTourModel(
-      gameId: id,
-      whitePlayer: unknownPlayer,
-      blackPlayer: unknownPlayer,
-      whiteTimeDisplay: '--:--',
-      blackTimeDisplay: '--:--',
-      whiteClockCentiseconds: 0,
-      blackClockCentiseconds: 0,
-      gameStatus: GameStatus.fromString(result),
-      roundId: 'gamebase',
-      tourId: 'Gamebase',
-    );
-  }
-
-  List<TournamentGamesGroup> _groupGamesByEvent(List<GamesTourModel> games) {
-    final Map<String, List<GamesTourModel>> grouped = {};
-
-    for (final game in games) {
-      final eventName = game.tourId;
-      grouped.putIfAbsent(eventName, () => []).add(game);
-    }
-
-    return grouped.entries
-        .map((e) => TournamentGamesGroup(
-              tourId: e.key,
-              tourName: e.key,
-              games: e.value,
-            ))
-        .toList();
-  }
+  // NOTE: No longer uses `/api/search/query` + `/api/game/{id}`.
 }

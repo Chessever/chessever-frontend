@@ -469,18 +469,146 @@ class GamebaseDatabaseSearchNotifier
 
     try {
       final repository = _ref.read(gamebaseRepositoryProvider);
-      final response = await repository.queryResource(
-        body: current.buildRequestBody(),
+      // NOTE: `/api/search/query` for `resource=game` is currently unreliable in
+      // production (500 "Unknown Error"). We fall back to global search and
+      // apply the sheet's filters client-side so Library search stays usable.
+      final query = current.query.trim();
+      if (query.isEmpty) {
+        if (!mounted || token != _token) return;
+        state = AsyncValue.data(
+          current.copyWith(
+            rows: const [],
+            pagination: const GamebasePaginationMetadata(pageNumber: 1, pageSize: 20),
+            pageNumber: 1,
+            pageSize: current.pageSize,
+            isQueryLoading: false,
+            lastQueryError: null,
+          ),
+        );
+        return;
+      }
+
+      final response = await repository.globalSearch(
+        query: query,
+        pageNumber: current.pageNumber,
+        // Fetch extra to account for mixed player/game results.
+        pageSize: (current.pageSize * 3).clamp(20, 120),
       );
 
       if (!mounted || token != _token) return;
 
+      bool matchesRule(Map<String, dynamic> row, GamebaseFilterRule rule) {
+        Object? value = row[rule.field];
+        // Back-compat aliases for mixed payloads.
+        if (value == null) {
+          if (rule.field == 'whiteName') value = row['white'] ?? row['whiteName'];
+          if (rule.field == 'blackName') value = row['black'] ?? row['blackName'];
+        }
+
+        final op = rule.op.trim();
+        if (op.isEmpty) return true;
+
+        bool isNull(Object? v) => v == null || (v is String && v.trim().isEmpty);
+
+        if (op == 'isNull') return isNull(value);
+        if (op == 'isNotNull') return !isNull(value);
+
+        // Numeric comparisons
+        num? asNum(Object? v) {
+          if (v is num) return v;
+          return num.tryParse(v?.toString() ?? '');
+        }
+
+        // String comparisons (case-insensitive)
+        String asStr(Object? v) => (v?.toString() ?? '').trim();
+
+        if (op == 'eq') {
+          if (value is num || num.tryParse(value?.toString() ?? '') != null) {
+            final left = asNum(value);
+            final right = asNum(rule.value);
+            return left != null && right != null && left == right;
+          }
+          return asStr(value).toLowerCase() == asStr(rule.value).toLowerCase();
+        }
+        if (op == 'neq') {
+          return !matchesRule(row, rule.copyWith(op: 'eq'));
+        }
+        if (op == 'contains') {
+          final hay = asStr(value).toLowerCase();
+          final needle = asStr(rule.value).toLowerCase();
+          return needle.isNotEmpty && hay.contains(needle);
+        }
+        if (op == 'in' || op == 'nin') {
+          final values = rule.values ?? const [];
+          final needle = asStr(value).toLowerCase();
+          final hit = values.any((v) => v.toLowerCase() == needle);
+          return op == 'in' ? hit : !hit;
+        }
+        if (op == 'gt' || op == 'gte' || op == 'lt' || op == 'lte') {
+          final left = asNum(value);
+          final right = asNum(rule.value);
+          if (left == null || right == null) return false;
+          switch (op) {
+            case 'gt':
+              return left > right;
+            case 'gte':
+              return left >= right;
+            case 'lt':
+              return left < right;
+            case 'lte':
+              return left <= right;
+          }
+        }
+        if (op == 'between') {
+          final values = rule.values ?? const [];
+          if (values.length < 2) return true;
+          final left = asNum(value);
+          final lo = asNum(values[0]);
+          final hi = asNum(values[1]);
+          if (left == null || lo == null || hi == null) return false;
+          final min = lo < hi ? lo : hi;
+          final max = lo < hi ? hi : lo;
+          return left >= min && left <= max;
+        }
+
+        return true;
+      }
+
+      bool matchesAllFilters(Map<String, dynamic> row) {
+        if (current.filters.isEmpty) return true;
+        final checks =
+            current.filters.map((rule) {
+              final base = matchesRule(row, rule);
+              return rule.negated ? !base : base;
+            }).toList(growable: false);
+
+        return current.filterMode == GamebaseFilterGroupMode.and
+            ? checks.every((ok) => ok)
+            : checks.any((ok) => ok);
+      }
+
+      final gameRows =
+          response.results
+              .where((r) => r.resource == 'game')
+              .map((r) {
+                final preview = r.preview ?? const <String, dynamic>{};
+                final id = preview['id']?.toString() ?? r.id;
+                return <String, dynamic>{
+                  'id': id,
+                  'label': r.label,
+                  'snippet': r.snippet,
+                  ...preview,
+                };
+              })
+              .where(matchesAllFilters)
+              .toList(growable: false);
+
       state = AsyncValue.data(
         current.copyWith(
-          rows: response.data,
+          rows: gameRows,
           pagination: response.metadata,
           pageNumber: response.metadata.pageNumber,
-          pageSize: response.metadata.pageSize,
+          pageSize: current.pageSize,
           isQueryLoading: false,
           lastQueryError: null,
         ),

@@ -2,7 +2,6 @@ import 'package:chessever2/repository/library/models/library_folder.dart';
 import 'package:chessever2/repository/library/models/saved_analysis.dart';
 import 'package:chessever2/screens/gamebase/models/models.dart';
 import 'package:chessever2/screens/library/widgets/library_search_overlay.dart';
-import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 
@@ -198,67 +197,73 @@ class _LibrarySearchBarState extends ConsumerState<LibrarySearchBar> {
   }
 
   Widget _buildInputRow() {
-    return Row(
-      children: [
-        SizedBox(width: 12.w),
-        Icon(
-          Icons.search,
-          size: 20.sp,
-          color: const Color(0xFFA1A1AA), // Zinc 400
-        ),
-        SizedBox(width: 8.w),
-        Expanded(
-          child: TextField(
-            controller: widget.controller,
-            focusNode: _focusNode,
-            style: AppTypography.textSmRegular.copyWith(
-              color: const Color(0xFFFAFAFA), // Zinc 50
-            ),
-            decoration: InputDecoration(
-              isDense: true,
-              hintText: widget.hintText,
-              hintStyle: AppTypography.textSmRegular.copyWith(
-                color: const Color(0xFFA1A1AA), // Zinc 400
+    return SizedBox(
+      height: 44.h,
+      child: Row(
+        children: [
+          SizedBox(width: 12.w),
+          Icon(
+            Icons.search,
+            size: 20.sp,
+            color: const Color(0xFFA1A1AA), // Zinc 400
+          ),
+          SizedBox(width: 8.w),
+          Expanded(
+            child: TextField(
+              controller: widget.controller,
+              focusNode: _focusNode,
+              style: AppTypography.textSmRegular.copyWith(
+                color: const Color(0xFFFAFAFA), // Zinc 50
               ),
-              border: InputBorder.none,
-              contentPadding: EdgeInsets.symmetric(vertical: 14.h),
+              decoration: InputDecoration(
+                isDense: true,
+                hintText: widget.hintText,
+                hintStyle: AppTypography.textSmRegular.copyWith(
+                  color: const Color(0xFFA1A1AA), // Zinc 400
+                ),
+                border: InputBorder.none,
+                contentPadding: EdgeInsets.zero,
+              ),
             ),
           ),
-        ),
-        if (widget.controller.text.isNotEmpty)
+          if (widget.controller.text.isNotEmpty)
+            GestureDetector(
+              onTap: _clearSearch,
+              child: Icon(
+                Icons.close,
+                size: 20.sp,
+                color: const Color(0xFFA1A1AA),
+              ),
+            ),
+          SizedBox(width: 8.w),
+          // Filter Button
           GestureDetector(
-            onTap: _clearSearch,
-            child: Icon(
-              Icons.close,
-              size: 20.sp,
-              color: const Color(0xFFA1A1AA),
-            ),
-          ),
-        SizedBox(width: 8.w),
-        // Filter Button
-        GestureDetector(
-          onTap: widget.onFilterTap,
-          child: Container(
-            padding: EdgeInsets.all(8.sp),
-            decoration: BoxDecoration(
-              color: const Color(0xFF18181B), // Zinc 900
-              borderRadius: BorderRadius.circular(8.br),
-              border: Border.all(
-                color:
-                    widget.isFilterActive
-                        ? const Color(0xFF52525B) // Zinc 600
-                        : const Color(0xFF27272A),
+            onTap: widget.onFilterTap,
+            child: Container(
+              width: 32.h,
+              height: 32.h,
+              decoration: BoxDecoration(
+                color: const Color(0xFF18181B), // Zinc 900
+                borderRadius: BorderRadius.circular(8.br),
+                border: Border.all(
+                  color:
+                      widget.isFilterActive
+                          ? const Color(0xFF52525B) // Zinc 600
+                          : const Color(0xFF27272A),
+                ),
+              ),
+              child: Center(
+                child: Icon(
+                  Icons.tune_rounded,
+                  size: 16.sp,
+                  color: const Color(0xFFFAFAFA),
+                ),
               ),
             ),
-            child: Icon(
-              Icons.tune_rounded,
-              size: 16.sp,
-              color: const Color(0xFFFAFAFA),
-            ),
           ),
-        ),
-        SizedBox(width: 8.w),
-      ],
+          SizedBox(width: 6.w),
+        ],
+      ),
     );
   }
 }
