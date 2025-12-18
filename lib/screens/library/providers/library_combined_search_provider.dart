@@ -6,6 +6,7 @@ import 'package:chessever2/repository/library/models/library_folder.dart';
 import 'package:chessever2/repository/library/models/saved_analysis.dart';
 import 'package:chessever2/screens/gamebase/models/models.dart';
 import 'package:chessever2/screens/library/providers/library_folders_provider.dart';
+import 'package:chessever2/utils/chess_title_utils.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -139,23 +140,104 @@ class LibraryCombinedSearchNotifier
             final preview = result.preview ?? {};
             final genderStr = (preview['gender'] as String?)?.toUpperCase();
             final gender = genderStr == 'FEMALE' ? PlayerGender.female : PlayerGender.male;
+            final normalizedTitle = ChessTitleUtils.normalize(preview['title'] as String?);
             players.add(GamebasePlayer(
               id: result.id,
               name: result.label,
               fideId: (preview['fideId'] as String?) ?? '',
               gender: gender,
               fed: (preview['fed'] as String?) ?? '',
-              title: preview['title'] as String?,
+              title: normalizedTitle,
             ));
           } else if (result.resource == 'game') {
             // Add game data from preview to games list
+            // IMPORTANT: Use preview's 'id' (actual game UUID) not result.id (search result ID)
+            final preview = result.preview ?? <String, dynamic>{};
+            final gameUuid = preview['id']?.toString() ?? result.id;
             final gameData = <String, dynamic>{
-              'id': result.id,
               'label': result.label,
               'snippet': result.snippet,
-              ...?result.preview,
+              ...preview,
+              'id': gameUuid, // Ensure correct game UUID is used for API calls
             };
             games.add(gameData);
+          }
+        }
+
+        // Enrich game preview rows with player details (titles/ratings/federations).
+        // This keeps the UI informative even when full game PGN isn't available.
+        final idsToFetch = <String>{};
+        for (final row in games) {
+          final w = row['whitePlayerId']?.toString().trim();
+          final b = row['blackPlayerId']?.toString().trim();
+          if (w != null && w.isNotEmpty) idsToFetch.add(w);
+          if (b != null && b.isNotEmpty) idsToFetch.add(b);
+        }
+
+        int ratingFor(GamebasePlayer p, String? timeControl) {
+          final tc = (timeControl ?? '').toUpperCase();
+          switch (tc) {
+            case 'RAPID':
+              return p.ratingRapid ?? p.highestRating ?? 0;
+            case 'BLITZ':
+              return p.ratingBlitz ?? p.highestRating ?? 0;
+            case 'CLASSICAL':
+            default:
+              return p.ratingClassical ?? p.highestRating ?? 0;
+          }
+        }
+
+        if (idsToFetch.isNotEmpty) {
+          final fetched = await Future.wait(
+            idsToFetch.map(gamebaseRepo.getPlayerById),
+            eagerError: false,
+          );
+          final byId = <String, GamebasePlayer>{
+            for (final p in fetched.whereType<GamebasePlayer>())
+              p.id: GamebasePlayer(
+                id: p.id,
+                fideId: p.fideId,
+                name: p.name,
+                gender: p.gender,
+                fed: p.fed,
+                title: ChessTitleUtils.normalize(p.title),
+                ratingClassical: p.ratingClassical,
+                ratingRapid: p.ratingRapid,
+                ratingBlitz: p.ratingBlitz,
+              ),
+          };
+
+          for (final row in games) {
+            final tc = row['timeControl']?.toString();
+            final wId = row['whitePlayerId']?.toString().trim();
+            final bId = row['blackPlayerId']?.toString().trim();
+
+            final w = (wId != null) ? byId[wId] : null;
+            final b = (bId != null) ? byId[bId] : null;
+
+            if (w != null) {
+              row['white_player'] = {
+                'id': w.id,
+                'name': w.displayName,
+                'fed': w.fed,
+                'title': w.title,
+              };
+              row['whiteTitle'] = w.title ?? '';
+              row['whiteRating'] = ratingFor(w, tc);
+              row['whiteFed'] = w.fed;
+            }
+
+            if (b != null) {
+              row['black_player'] = {
+                'id': b.id,
+                'name': b.displayName,
+                'fed': b.fed,
+                'title': b.title,
+              };
+              row['blackTitle'] = b.title ?? '';
+              row['blackRating'] = ratingFor(b, tc);
+              row['blackFed'] = b.fed;
+            }
           }
         }
 

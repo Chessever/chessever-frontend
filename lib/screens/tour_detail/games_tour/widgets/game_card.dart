@@ -155,6 +155,25 @@ class _GameCardContent extends ConsumerWidget {
   }
 }
 
+/// Public wrapper for GameCardContent to be used in other screens
+class GamesTourGameCardBody extends ConsumerWidget {
+  const GamesTourGameCardBody({
+    required this.matchComparison,
+    this.eventName,
+    this.showClock = true,
+    super.key,
+  });
+
+  final MatchWithComparison matchComparison;
+  final String? eventName;
+  final bool showClock;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return _GameCardContent(matchComparison: matchComparison);
+  }
+}
+
 class _TopSection extends ConsumerWidget {
   const _TopSection({required this.matchComparison});
 

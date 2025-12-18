@@ -7,9 +7,11 @@ import 'package:chessever2/screens/library/widgets/add_to_folder_sheet.dart';
 import 'package:chessever2/screens/library/widgets/book_saved_game_card.dart';
 import 'package:chessever2/screens/library/widgets/folder_card.dart';
 import 'package:chessever2/screens/library/widgets/gamebase_search_game_card.dart';
+import 'package:chessever2/screens/library/widgets/gamebase_search_player_card.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
+import 'package:chessever2/utils/chess_title_utils.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -18,7 +20,8 @@ class LibrarySearchResultsView extends ConsumerWidget {
   final LibrarySearchResult results;
   final AsyncValue<List<GamesTourModel>>? databaseGamesAsync;
   final Function(LibraryFolder) onFolderTap;
-  final Function(GamebasePlayer) onPlayerTap; // Maybe open profile
+  final Function(GamebasePlayer) onPlayerTap;
+  final Function(GamebasePlayer) onPlayerFilter;
   final Function(SavedAnalysis) onAnalysisTap;
   final Function(GamesTourModel) onGameTap;
 
@@ -28,17 +31,13 @@ class LibrarySearchResultsView extends ConsumerWidget {
     this.databaseGamesAsync,
     required this.onFolderTap,
     required this.onPlayerTap,
+    required this.onPlayerFilter,
     required this.onAnalysisTap,
     required this.onGameTap,
   });
 
   void _showAddToFolderSheet(BuildContext context, GamesTourModel game) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => AddToFolderSheet(game: game),
-    );
+    showAddToFolderSheet(context: context, game: game);
   }
 
   GamesTourModel _mapToGameModel(Map<String, dynamic> row) {
@@ -72,8 +71,11 @@ class LibrarySearchResultsView extends ConsumerWidget {
             ? md['Result'].toString()
             : (row['result']?.toString() ?? '*');
 
-    final builtPgn = data is Map ? buildPgnFromGamebaseData(Map<String, dynamic>.from(data)) : null;
-    final pgn = row['pgn']?.toString() ?? builtPgn;
+    final builtPgn =
+        data is Map
+            ? buildPgnFromGamebaseData(Map<String, dynamic>.from(data))
+            : null;
+    var pgn = row['pgn']?.toString() ?? builtPgn;
     final tourId =
         (md['Event'] as String?)?.trim().isNotEmpty == true
             ? md['Event'].toString()
@@ -109,30 +111,61 @@ class LibrarySearchResultsView extends ConsumerWidget {
       return int.tryParse(value?.toString() ?? '') ?? 0;
     }
 
+    final whiteTitleRaw =
+        (md['WhiteTitle'] as String?) ??
+        row['whiteTitle']?.toString() ??
+        row['white_player']?['title']?.toString() ??
+        '';
+    final blackTitleRaw =
+        (md['BlackTitle'] as String?) ??
+        row['blackTitle']?.toString() ??
+        row['black_player']?['title']?.toString() ??
+        '';
+
     final whitePlayer = PlayerCard(
       name: whiteName,
       federation: '',
-      title: (md['WhiteTitle'] as String?)?.trim() ?? '',
+      title: ChessTitleUtils.normalize(whiteTitleRaw),
       rating:
           md['WhiteElo'] != null
               ? parseRating(md['WhiteElo'])
               : parseRating(row['whiteRating']),
-      countryCode: '',
+      countryCode:
+          row['whiteFed']?.toString().trim() ??
+          row['white_player']?['fed']?.toString().trim() ??
+          '',
       team: null,
       fideId: null,
     );
     final blackPlayer = PlayerCard(
       name: blackName,
       federation: '',
-      title: (md['BlackTitle'] as String?)?.trim() ?? '',
+      title: ChessTitleUtils.normalize(blackTitleRaw),
       rating:
           md['BlackElo'] != null
               ? parseRating(md['BlackElo'])
               : parseRating(row['blackRating']),
-      countryCode: '',
+      countryCode:
+          row['blackFed']?.toString().trim() ??
+          row['black_player']?['fed']?.toString().trim() ??
+          '',
       team: null,
       fideId: null,
     );
+
+    if (pgn == null || pgn.trim().isEmpty) {
+      pgn = buildHeaderOnlyPgn(
+        whiteName: whiteName,
+        blackName: blackName,
+        result: result,
+        event: tourId,
+        site: row['site']?.toString() ?? md['Site']?.toString(),
+        date: date ?? dateFromMd,
+        eco: eco,
+        opening: row['opening']?.toString() ?? md['Opening']?.toString(),
+        variation: row['variation']?.toString() ?? md['Variation']?.toString(),
+      );
+    }
 
     return GamesTourModel(
       gameId: id,
@@ -207,71 +240,20 @@ class LibrarySearchResultsView extends ConsumerWidget {
         // Players Section
         if (results.players.isNotEmpty) ...[
           _SectionHeader(title: 'Players'),
-          SizedBox(
-            height: 88.h,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              itemCount: results.players.length,
-              separatorBuilder: (_, __) => SizedBox(width: 10.w),
-              itemBuilder: (context, index) {
-                final p = results.players[index];
-                final title = p.title;
-                final hasTitle = title != null && title.isNotEmpty;
-                return GestureDetector(
-                  onTap: () => onPlayerTap(p),
-                  child: Container(
-                    width: 140.w,
-                    padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 10.h),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF18181B), // Zinc 900
-                      borderRadius: BorderRadius.circular(10.br),
-                      border: Border.all(color: const Color(0xFF27272A)), // Zinc 800
-                    ),
-                    child: Row(
-                      children: [
-                        CircleAvatar(
-                          radius: 20.sp,
-                          backgroundColor: const Color(0xFF27272A), // Zinc 800
-                          child: Text(
-                            p.name.isNotEmpty ? p.name[0].toUpperCase() : '?',
-                            style: AppTypography.textSmBold.copyWith(
-                              color: const Color(0xFFFAFAFA), // Zinc 50
-                            ),
-                          ),
-                        ),
-                        SizedBox(width: 10.w),
-                        Expanded(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                p.name,
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                style: AppTypography.textXsMedium.copyWith(
-                                  color: const Color(0xFFFAFAFA), // Zinc 50
-                                  height: 1.2,
-                                ),
-                              ),
-                              if (hasTitle) ...[
-                                SizedBox(height: 2.h),
-                                Text(
-                                  title,
-                                  style: AppTypography.textXsRegular.copyWith(
-                                    color: const Color(0xFFA1A1AA), // Zinc 400
-                                  ),
-                                ),
-                              ],
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                );
-              },
-            ),
+          ListView.separated(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: results.players.length,
+            separatorBuilder: (_, __) => const SizedBox.shrink(),
+            itemBuilder: (context, index) {
+              final player = results.players[index];
+              return GamebaseSearchPlayerCard(
+                player: player,
+                onTap: () => onPlayerTap(player),
+                onAdd: () => onPlayerFilter(player),
+                animationIndex: index,
+              );
+            },
           ),
           SizedBox(height: 24.h),
         ],

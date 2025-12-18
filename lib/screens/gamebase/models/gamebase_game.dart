@@ -99,3 +99,61 @@ class GamebaseGame with GamebaseGameMappable {
     }
   }
 }
+
+/// Extended Game model that includes the raw PGN.
+/// Returned by `/api/game/{id}?includePgn=true`.
+@MappableClass()
+class GamebaseGameWithPgn with GamebaseGameWithPgnMappable {
+  const GamebaseGameWithPgn({
+    required this.id,
+    required this.date,
+    required this.result,
+    required this.timeControl,
+    this.whitePlayerId,
+    this.blackPlayerId,
+    this.data,
+    this.pgn,
+    this.eco,
+    this.opening,
+    this.variation,
+    this.event,
+    this.site,
+    this.whiteName,
+    this.blackName,
+    this.whiteElo,
+    this.blackElo,
+  });
+
+  final String id;
+  final DateTime date;
+  final GameResult result;
+  final TimeControl timeControl;
+  final String? whitePlayerId;
+  final String? blackPlayerId;
+  final Map<String, dynamic>? data;
+  final String? pgn;
+  final String? eco;
+  final String? opening;
+  final String? variation;
+  final String? event;
+  final String? site;
+  final String? whiteName;
+  final String? blackName;
+  final int? whiteElo;
+  final int? blackElo;
+
+  factory GamebaseGameWithPgn.fromJson(Map<String, dynamic> json) =>
+      GamebaseGameWithPgnMapper.fromMap(json);
+
+  /// Get result as display string
+  String get resultDisplay {
+    switch (result) {
+      case GameResult.whiteWins:
+        return '1-0';
+      case GameResult.blackWins:
+        return '0-1';
+      case GameResult.draw:
+        return '½-½';
+    }
+  }
+}

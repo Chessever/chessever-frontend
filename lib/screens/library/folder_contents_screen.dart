@@ -2,6 +2,7 @@ import 'package:chessever2/repository/library/library_repository.dart';
 import 'package:chessever2/repository/library/models/library_folder.dart';
 import 'package:chessever2/repository/library/models/saved_analysis.dart';
 import 'package:chessever2/screens/library/widgets/book_saved_game_card.dart';
+import 'package:chessever2/screens/library/widgets/swipe_action_card.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
@@ -40,6 +41,54 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
     _searchController.clear();
     _searchFocusNode.unfocus();
     setState(() {});
+  }
+
+  Future<void> _removeFromBook(SavedAnalysis analysis) async {
+    HapticFeedbackService.medium();
+
+    final repository = ref.read(libraryRepositoryProvider);
+    try {
+      await repository.moveAnalysisToFolder(analysis.id, null);
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Removed from "${widget.folder.name}"',
+            style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+          ),
+          backgroundColor: kBlack2Color.withValues(alpha: 0.95),
+          behavior: SnackBarBehavior.floating,
+          action: SnackBarAction(
+            label: 'Undo',
+            textColor: kPrimaryColor,
+            onPressed: () async {
+              try {
+                await repository.moveAnalysisToFolder(
+                  analysis.id,
+                  widget.folder.id,
+                );
+              } catch (_) {
+                // Best-effort undo; show nothing if it fails.
+              }
+            },
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      HapticFeedbackService.light();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Failed to remove: $e',
+            style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+          ),
+          backgroundColor: kRedColor,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
   }
 
   @override
@@ -206,7 +255,15 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
             itemCount: filtered.length,
             separatorBuilder: (_, __) => SizedBox(height: 12.h),
             itemBuilder: (context, index) {
-              return BookSavedGameCard(analysis: filtered[index]);
+              final analysis = filtered[index];
+              return SwipeActionCard(
+                dismissKey: ValueKey('book_${widget.folder.id}_${analysis.id}'),
+                icon: Icons.delete_outline_rounded,
+                label: 'Remove',
+                backgroundColor: kRedColor,
+                onAction: () => _removeFromBook(analysis),
+                child: BookSavedGameCard(analysis: analysis),
+              );
             },
           );
         },

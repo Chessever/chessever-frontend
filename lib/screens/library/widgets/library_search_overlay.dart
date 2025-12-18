@@ -4,9 +4,11 @@ import 'package:chessever2/repository/library/models/library_folder.dart';
 import 'package:chessever2/repository/library/models/saved_analysis.dart';
 import 'package:chessever2/screens/gamebase/models/models.dart';
 import 'package:chessever2/screens/library/providers/library_combined_search_provider.dart';
+import 'package:chessever2/utils/chess_title_utils.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/federation_flag.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -97,8 +99,9 @@ class LibrarySearchOverlay extends ConsumerWidget {
             SizedBox(height: 8.h),
           ],
           if (result.games.isNotEmpty) ...[
-            _buildSectionHeader('Database Games'),
-            ...result.games.map((g) => _buildGameTile(g)),
+            _buildSectionHeader('Games'),
+            ...result.games.take(6).map((g) => _buildGameTile(g)),
+            SizedBox(height: 8.h),
           ],
         ],
       ),
@@ -140,37 +143,98 @@ class LibrarySearchOverlay extends ConsumerWidget {
   }
 
   Widget _buildPlayerTile(GamebasePlayer player) {
-    return _BaseResultTile(
+    final title = ChessTitleUtils.normalize(player.title);
+    final subtitleParts = <String>[
+      if (player.fed.trim().isNotEmpty) player.fed.trim(),
+      if (player.highestRating != null && player.highestRating! > 0)
+        'Elo ${player.highestRating}',
+    ];
+
+    return _PlayerResultTile(
       onTap: () => onPlayerTap(player),
-      icon: Icons.person_outline_rounded,
-      title: player.name,
-      subtitle: '${player.title ?? ''} • ${player.fed}',
-      isRoundedIcon: true,
+      title: player.displayName,
+      subtitle: subtitleParts.join(' • '),
+      titlePrefix: title,
+      federation: player.fed,
     );
   }
 
-  Widget _buildGameTile(Map<String, dynamic> game) {
+  Widget _buildGameTile(Map<String, dynamic> row) {
     final white =
-        game['white']?.toString() ?? game['whiteName']?.toString() ?? '?';
+        row['white']?.toString() ??
+        row['whiteName']?.toString() ??
+        row['White']?.toString() ??
+        'White';
     final black =
-        game['black']?.toString() ?? game['blackName']?.toString() ?? '?';
-    final result = game['result']?.toString() ?? '*';
-    final date = game['date']?.toString().split('T').first ?? '';
+        row['black']?.toString() ??
+        row['blackName']?.toString() ??
+        row['Black']?.toString() ??
+        'Black';
 
-    return _BaseResultTile(
-      onTap: () => onGameTap(game),
-      icon: Icons.emoji_events_outlined,
-      title: '$white vs $black',
-      subtitle: '$result • $date',
+    final whiteFed =
+        row['whiteFed']?.toString() ??
+        row['white_player']?['fed']?.toString() ??
+        '';
+    final blackFed =
+        row['blackFed']?.toString() ??
+        row['black_player']?['fed']?.toString() ??
+        '';
+
+    final whiteTitle = ChessTitleUtils.normalize(
+      row['whiteTitle']?.toString() ?? row['white_player']?['title']?.toString(),
+    );
+    final blackTitle = ChessTitleUtils.normalize(
+      row['blackTitle']?.toString() ?? row['black_player']?['title']?.toString(),
+    );
+
+    int parseRating(Object? value) {
+      if (value is int) return value;
+      if (value is num) return value.toInt();
+      return int.tryParse(value?.toString() ?? '') ?? 0;
+    }
+
+    final whiteRating = parseRating(row['whiteRating']);
+    final blackRating = parseRating(row['blackRating']);
+
+    final eco = row['eco']?.toString() ?? row['ECO']?.toString() ?? '';
+    final event =
+        row['event']?.toString() ??
+        row['Event']?.toString() ??
+        row['tourId']?.toString() ??
+        '';
+
+    DateTime? date;
+    final rawDate = row['date']?.toString();
+    if (rawDate != null && rawDate.isNotEmpty) {
+      date = DateTime.tryParse(rawDate);
+    }
+
+    final subtitleParts = <String>[
+      if (eco.trim().isNotEmpty) eco.trim(),
+      if (event.trim().isNotEmpty) event.trim(),
+      if (date != null)
+        '${date.year.toString().padLeft(4, '0')}.${date.month.toString().padLeft(2, '0')}.${date.day.toString().padLeft(2, '0')}',
+    ];
+
+    return _GameResultTile(
+      onTap: () => onGameTap(row),
+      whiteName: white,
+      blackName: black,
+      whiteFederation: whiteFed,
+      blackFederation: blackFed,
+      whiteTitle: whiteTitle,
+      blackTitle: blackTitle,
+      whiteRating: whiteRating,
+      blackRating: blackRating,
+      subtitle:
+          subtitleParts.isNotEmpty ? subtitleParts.join(' • ') : 'Gamebase',
     );
   }
 
   Widget _buildLoadingState(double h) {
     return SizedBox(
       height: math.min(h, 160.h),
-      child: const Center(
-        child: CircularProgressIndicator(color: kWhiteColor),
-      ),
+      child: const Center(child: CircularProgressIndicator(color: kWhiteColor)),
     );
   }
 
@@ -223,6 +287,103 @@ class _BaseResultTile extends StatefulWidget {
   State<_BaseResultTile> createState() => _BaseResultTileState();
 }
 
+class _PlayerResultTile extends StatefulWidget {
+  const _PlayerResultTile({
+    required this.onTap,
+    required this.title,
+    required this.subtitle,
+    required this.federation,
+    this.titlePrefix,
+  });
+
+  final VoidCallback onTap;
+  final String title;
+  final String subtitle;
+  final String federation;
+  final String? titlePrefix;
+
+  @override
+  State<_PlayerResultTile> createState() => _PlayerResultTileState();
+}
+
+class _PlayerResultTileState extends State<_PlayerResultTile> {
+  bool _isHovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTapDown: (_) => setState(() => _isHovered = true),
+      onTapUp: (_) => setState(() => _isHovered = false),
+      onTapCancel: () => setState(() => _isHovered = false),
+      onTap: widget.onTap,
+      child: Container(
+        padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 10.h),
+        color: _isHovered ? const Color(0xFF27272A) : Colors.transparent,
+        child: Row(
+          children: [
+            Container(
+              width: 32.sp,
+              height: 32.sp,
+              decoration: BoxDecoration(
+                color: const Color(0xFF18181B),
+                borderRadius: BorderRadius.circular(8.br),
+                border: Border.all(color: const Color(0xFF27272A)),
+              ),
+              alignment: Alignment.center,
+              child: FederationFlag(
+                federation: widget.federation,
+                width: 18.sp,
+                height: 13.sp,
+                borderRadius: BorderRadius.circular(2.br),
+              ),
+            ),
+            SizedBox(width: 12.w),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      if ((widget.titlePrefix ?? '').trim().isNotEmpty) ...[
+                        Text(
+                          widget.titlePrefix!.trim(),
+                          style: AppTypography.textSmBold.copyWith(
+                            color: const Color(0xFFFAFAFA),
+                          ),
+                        ),
+                        SizedBox(width: 6.w),
+                      ],
+                      Expanded(
+                        child: Text(
+                          widget.title,
+                          style: AppTypography.textSmMedium.copyWith(
+                            color: const Color(0xFFFAFAFA),
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: 2.h),
+                  Text(
+                    widget.subtitle,
+                    style: AppTypography.textXsRegular.copyWith(
+                      color: const Color(0xFFA1A1AA),
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _BaseResultTileState extends State<_BaseResultTile> {
   bool _isHovered = false;
 
@@ -271,6 +432,125 @@ class _BaseResultTileState extends State<_BaseResultTile> {
                   SizedBox(height: 2.h),
                   Text(
                     widget.subtitle,
+                    style: AppTypography.textXsRegular.copyWith(
+                      color: const Color(0xFFA1A1AA),
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _GameResultTile extends StatefulWidget {
+  const _GameResultTile({
+    required this.onTap,
+    required this.whiteName,
+    required this.blackName,
+    required this.whiteFederation,
+    required this.blackFederation,
+    required this.whiteTitle,
+    required this.blackTitle,
+    required this.whiteRating,
+    required this.blackRating,
+    required this.subtitle,
+  });
+
+  final VoidCallback onTap;
+  final String whiteName;
+  final String blackName;
+  final String whiteFederation;
+  final String blackFederation;
+  final String whiteTitle;
+  final String blackTitle;
+  final int whiteRating;
+  final int blackRating;
+  final String subtitle;
+
+  @override
+  State<_GameResultTile> createState() => _GameResultTileState();
+}
+
+class _GameResultTileState extends State<_GameResultTile> {
+  bool _isHovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final leftMeta = [
+      if (widget.whiteTitle.trim().isNotEmpty) widget.whiteTitle.trim(),
+      if (widget.whiteRating > 0) widget.whiteRating.toString(),
+    ].join(' ');
+
+    final rightMeta = [
+      if (widget.blackTitle.trim().isNotEmpty) widget.blackTitle.trim(),
+      if (widget.blackRating > 0) widget.blackRating.toString(),
+    ].join(' ');
+
+    final metaLine = [
+      if (leftMeta.isNotEmpty) leftMeta,
+      if (rightMeta.isNotEmpty) rightMeta,
+    ].join(' • ');
+
+    return GestureDetector(
+      onTapDown: (_) => setState(() => _isHovered = true),
+      onTapUp: (_) => setState(() => _isHovered = false),
+      onTapCancel: () => setState(() => _isHovered = false),
+      onTap: widget.onTap,
+      child: Container(
+        padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 10.h),
+        color: _isHovered ? const Color(0xFF27272A) : Colors.transparent,
+        child: Row(
+          children: [
+            Container(
+              width: 32.sp,
+              height: 32.sp,
+              decoration: BoxDecoration(
+                color: const Color(0xFF18181B),
+                borderRadius: BorderRadius.circular(8.br),
+                border: Border.all(color: const Color(0xFF27272A)),
+              ),
+              alignment: Alignment.center,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  FederationFlag(
+                    federation: widget.whiteFederation,
+                    width: 18.sp,
+                    height: 11.sp,
+                    borderRadius: BorderRadius.circular(2.br),
+                  ),
+                  SizedBox(height: 2.h),
+                  FederationFlag(
+                    federation: widget.blackFederation,
+                    width: 18.sp,
+                    height: 11.sp,
+                    borderRadius: BorderRadius.circular(2.br),
+                  ),
+                ],
+              ),
+            ),
+            SizedBox(width: 12.w),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '${widget.whiteName} vs ${widget.blackName}',
+                    style: AppTypography.textSmMedium.copyWith(
+                      color: const Color(0xFFFAFAFA),
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  SizedBox(height: 2.h),
+                  Text(
+                    metaLine.isNotEmpty ? metaLine : widget.subtitle,
                     style: AppTypography.textXsRegular.copyWith(
                       color: const Color(0xFFA1A1AA),
                     ),

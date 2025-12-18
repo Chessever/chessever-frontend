@@ -6,6 +6,16 @@ import 'dart:async';
 
 import 'gamebase_explorer_state.dart';
 
+/// Normalize a FEN string for Gamebase lookups.
+///
+/// The opening explorer backend treats positions independently from the
+/// halfmove/fullmove counters, so we canonicalize those to avoid cache misses.
+String normalizeFenForGamebase(String fen) {
+  final parts = fen.trim().split(RegExp(r'\s+'));
+  if (parts.length < 4) return fen.trim();
+  return '${parts.take(4).join(' ')} 0 1';
+}
+
 /// StateNotifier for managing Gamebase explorer state.
 class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
   GamebaseExplorerNotifier(this.ref) : super(const GamebaseExplorerState()) {
@@ -105,7 +115,7 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
         )..add(uci);
 
         state = state.copyWith(
-          currentFen: chess.fen,
+          currentFen: normalizeFenForGamebase(chess.fen),
           moveHistory: newHistory,
           currentMoveIndex: newHistory.length - 1,
         );
@@ -161,7 +171,7 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
       currentMoveIndex: newIndex,
       currentFen:
           newIndex >= 0
-              ? chess.fen
+              ? normalizeFenForGamebase(chess.fen)
               : 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
     );
 
@@ -186,7 +196,10 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
       if (promotion != null) 'promotion': promotion,
     });
 
-    state = state.copyWith(currentMoveIndex: newIndex, currentFen: chess.fen);
+    state = state.copyWith(
+      currentMoveIndex: newIndex,
+      currentFen: normalizeFenForGamebase(chess.fen),
+    );
 
     _scheduleFetch();
   }
@@ -219,7 +232,7 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
 
     state = state.copyWith(
       currentMoveIndex: state.moveHistory.length - 1,
-      currentFen: chess.fen,
+      currentFen: normalizeFenForGamebase(chess.fen),
     );
 
     _scheduleFetch();
@@ -246,7 +259,7 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
       currentMoveIndex: index,
       currentFen:
           index >= 0
-              ? chess.fen
+              ? normalizeFenForGamebase(chess.fen)
               : 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
     );
 
@@ -263,9 +276,10 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
   /// Set position from FEN (for loading a specific position)
   void setPosition(String fen) {
     try {
-      _chess = Chess.fromFEN(fen);
+      final normalized = normalizeFenForGamebase(fen);
+      _chess = Chess.fromFEN(normalized);
       state = state.copyWith(
-        currentFen: fen,
+        currentFen: normalized,
         moveHistory: [],
         currentMoveIndex: -1,
       );
@@ -379,4 +393,41 @@ final gameByIdProvider = FutureProvider.autoDispose
     .family<GamebaseGame?, String>((ref, gameId) async {
       final repository = ref.read(gamebaseRepositoryProvider);
       return repository.getGameById(gameId);
+    });
+
+/// Fetches a lightweight game "preview" by game UUID via global search.
+///
+/// Gamebase `/api/game/{id}` can fail in production; global search can still
+/// return stable metadata (date/players/opening) for a specific UUID.
+final gamePreviewByIdProvider = FutureProvider.autoDispose
+    .family<Map<String, dynamic>?, String>((ref, gameId) async {
+      if (gameId.trim().isEmpty) return null;
+
+      final repository = ref.read(gamebaseRepositoryProvider);
+      final response = await repository.globalSearch(
+        query: gameId.trim(),
+        pageNumber: 1,
+        pageSize: 5,
+      );
+
+      for (final r in response.results) {
+        if (r.resource != 'game') continue;
+        final preview = r.preview ?? const <String, dynamic>{};
+        final id = preview['id']?.toString() ?? r.id;
+        if (id == gameId) {
+          return <String, dynamic>{'id': id, ...preview};
+        }
+      }
+
+      return null;
+    });
+
+/// Fetches a full game with PGN by game UUID.
+/// Returns null if the game cannot be fetched (e.g., API error).
+final gameWithPgnByIdProvider = FutureProvider.autoDispose
+    .family<GamebaseGameWithPgn?, String>((ref, gameId) async {
+      if (gameId.trim().isEmpty) return null;
+
+      final repository = ref.read(gamebaseRepositoryProvider);
+      return repository.getGameWithPgn(gameId.trim());
     });

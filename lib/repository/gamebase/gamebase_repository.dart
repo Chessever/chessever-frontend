@@ -65,8 +65,9 @@ class GamebaseRepository {
     int? maxRating,
   }) async {
     try {
+      final normalizedFen = _normalizeFenForLookup(fen);
       final queryParams = {
-        'fen': fen,
+        'fen': normalizedFen,
         if (playerId != null && playerId.isNotEmpty) 'playerId': playerId,
         if (timeControl != null) 'timeControl': timeControl.name.toUpperCase(),
         if (minRating != null) 'minRating': minRating,
@@ -87,21 +88,36 @@ class GamebaseRepository {
     }
   }
 
+  /// Canonicalize FEN for Gamebase lookups by clamping the halfmove/fullmove
+  /// counters to stable values. The database is indexed by position, not by
+  /// move counters.
+  static String _normalizeFenForLookup(String fen) {
+    final parts = fen.trim().split(RegExp(r'\s+'));
+    if (parts.length < 4) return fen.trim();
+    return '${parts.take(4).join(' ')} 0 1';
+  }
+
+  /// Search players by name.
+  /// Note: pageNumber is 0-indexed per the API spec.
   Future<List<GamebasePlayer>> getPlayers({
     String? name,
-    String? fideId,
-    int pageNumber = 1,
+    int pageNumber = 0,
     int pageSize = 20,
   }) async {
     try {
+      final queryParams = {
+        'pageNumber': pageNumber,
+        'pageSize': pageSize,
+        if (name != null && name.isNotEmpty) 'name': name,
+      };
+
+      if (kDebugMode) {
+        debugPrint('[GamebaseRepository] getPlayers: name="$name" page=$pageNumber');
+      }
+
       final response = await _dio.get(
         '$_baseUrl/api/player',
-        queryParameters: {
-          'pageNumber': pageNumber,
-          'pageSize': pageSize,
-          if (name != null && name.isNotEmpty) 'name': name,
-          if (fideId != null && fideId.isNotEmpty) 'fideId': fideId,
-        },
+        queryParameters: queryParams,
         options: Options(
           headers: {'X-API-Key': _apiKey, 'Accept': 'application/json'},
         ),
@@ -109,6 +125,14 @@ class GamebaseRepository {
 
       final List data = response.data['data'] ?? [];
       return data.map((e) => GamebasePlayer.fromJson(e)).toList();
+    } on DioException catch (e) {
+      if (kDebugMode) {
+        debugPrint('[GamebaseRepository] getPlayers DioException:');
+        debugPrint('  Status: ${e.response?.statusCode}');
+        debugPrint('  Message: ${e.message}');
+        debugPrint('  Response: ${e.response?.data}');
+      }
+      throw Exception('Failed to search players: ${e.response?.statusCode ?? 'network error'} - ${e.message}');
     } catch (e) {
       throw Exception('Failed to search players: $e');
     }
@@ -140,6 +164,37 @@ class GamebaseRepository {
 
       return GamebaseGame.fromJson(response.data['data']);
     } catch (e) {
+      return null;
+    }
+  }
+
+  /// Fetch a game by ID with full PGN included.
+  /// Returns a [GamebaseGameWithPgn] containing the game data and raw PGN.
+  Future<GamebaseGameWithPgn?> getGameWithPgn(String id) async {
+    try {
+      final response = await _dio.get(
+        '$_baseUrl/api/game/$id',
+        queryParameters: {'includePgn': true},
+        options: Options(
+          headers: {'X-API-Key': _apiKey, 'Accept': 'application/json'},
+        ),
+      );
+
+      final data = response.data['data'];
+      if (data == null) return null;
+
+      return GamebaseGameWithPgn.fromJson(Map<String, dynamic>.from(data));
+    } on DioException catch (e) {
+      if (kDebugMode) {
+        debugPrint('[GamebaseRepository] getGameWithPgn DioException:');
+        debugPrint('  Status: ${e.response?.statusCode}');
+        debugPrint('  Message: ${e.message}');
+      }
+      return null;
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[GamebaseRepository] getGameWithPgn error: $e');
+      }
       return null;
     }
   }
@@ -205,14 +260,20 @@ class GamebaseRepository {
     int pageSize = 20,
   }) async {
     try {
+      final queryParams = {
+        'q': query,
+        'pageNumber': pageNumber,
+        'pageSize': pageSize,
+        if (resources != null) 'resources': resources,
+      };
+
+      if (kDebugMode) {
+        debugPrint('[GamebaseRepository] globalSearch: q="$query" page=$pageNumber');
+      }
+
       final response = await _dio.get(
         '$_baseUrl/api/search',
-        queryParameters: {
-          'q': query,
-          'pageNumber': pageNumber,
-          'pageSize': pageSize,
-          if (resources != null) 'resources': resources,
-        },
+        queryParameters: queryParams,
         options: Options(
           headers: {'X-API-Key': _apiKey, 'Accept': 'application/json'},
         ),
@@ -225,6 +286,14 @@ class GamebaseRepository {
       return GamebaseGlobalSearchResponse.fromJson(
         Map<String, dynamic>.from(data),
       );
+    } on DioException catch (e) {
+      if (kDebugMode) {
+        debugPrint('[GamebaseRepository] globalSearch DioException:');
+        debugPrint('  Status: ${e.response?.statusCode}');
+        debugPrint('  Message: ${e.message}');
+        debugPrint('  Response: ${e.response?.data}');
+      }
+      throw Exception('Failed to perform global search: ${e.response?.statusCode ?? 'network error'} - ${e.message}');
     } catch (e) {
       throw Exception('Failed to perform global search: $e');
     }
