@@ -1,6 +1,7 @@
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
 import 'package:chessever2/screens/gamebase/models/models.dart';
 import 'package:chess/chess.dart' hide State;
+import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'dart:async';
 
@@ -8,20 +9,26 @@ import 'gamebase_explorer_state.dart';
 
 /// Normalize a FEN string for Gamebase lookups.
 ///
-/// The opening explorer backend treats positions independently from the
-/// halfmove/fullmove counters, so we canonicalize those to avoid cache misses.
+/// Ensure the FEN is well-formed and whitespace-normalized for API lookups.
+///
+/// Some callers/libraries may emit 4-field FENs (without halfmove/fullmove).
+/// The Gamebase API expects a standard 6-field FEN, so we append counters when
+/// missing while preserving existing counters for progressed positions.
 String normalizeFenForGamebase(String fen) {
   final parts = fen.trim().split(RegExp(r'\s+'));
   if (parts.length < 4) return fen.trim();
-  return '${parts.take(4).join(' ')} 0 1';
+  if (parts.length == 4) return '${parts.join(' ')} 0 1';
+  return parts.take(6).join(' ');
 }
 
 /// StateNotifier for managing Gamebase explorer state.
 class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
-  GamebaseExplorerNotifier(this.ref) : super(const GamebaseExplorerState()) {
-    // Load initial position data
-    _fetchMoveAggregates();
-  }
+  GamebaseExplorerNotifier(this.ref) : super(const GamebaseExplorerState());
+  // NOTE: We intentionally do NOT fetch in the constructor.
+  // The view calls setPosition() with the actual board FEN, which triggers
+  // the fetch. Fetching here with the default starting FEN causes a race
+  // condition where the starting position response can overwrite the real
+  // position's data.
 
   final Ref ref;
 
@@ -277,6 +284,14 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
   void setPosition(String fen) {
     try {
       final normalized = normalizeFenForGamebase(fen);
+
+      // Skip if FEN hasn't changed to avoid unnecessary API calls
+      if (state.currentFen == normalized) {
+        debugPrint('[GamebaseExplorer] setPosition: FEN unchanged, skipping');
+        return;
+      }
+
+      debugPrint('[GamebaseExplorer] setPosition: ${normalized.split(' ').take(2).join(' ')}...');
       _chess = Chess.fromFEN(normalized);
       state = state.copyWith(
         currentFen: normalized,
@@ -285,6 +300,7 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
       );
       _scheduleFetch();
     } catch (e) {
+      debugPrint('[GamebaseExplorer] setPosition error: $e');
       state = state.copyWith(error: 'Invalid FEN: $fen');
     }
   }

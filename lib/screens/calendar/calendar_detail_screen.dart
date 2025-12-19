@@ -120,7 +120,7 @@ class _CalendarDetailsScreenState extends ConsumerState<CalendarDetailsScreen> {
                                   ),
                                   child: SimpleSearchBar(
                                     controller: searchController,
-                                    hintText: 'Search events',
+                                    hintText: 'Search',
                                     focusNode: focusNode,
                                     onCloseTap: () {
                                       searchController.clear();

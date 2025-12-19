@@ -18,7 +18,7 @@ class EnhancedGamesSearchBar extends ConsumerStatefulWidget {
     required this.controller,
     this.onChanged,
     this.onGameSelected,
-    this.hintText = 'Search players or games...',
+    this.hintText = 'Search',
     this.autofocus = false,
     this.onClose,
   });

@@ -74,6 +74,12 @@ class GamebaseRepository {
         if (maxRating != null) 'maxRating': maxRating,
       };
 
+      if (kDebugMode) {
+        debugPrint('[GamebaseRepository] getMoveAggregates:');
+        debugPrint('  URL: $_baseUrl/api/game-position/aggregates');
+        debugPrint('  Params: $queryParams');
+      }
+
       final response = await _dio.get(
         '$_baseUrl/api/game-position/aggregates',
         queryParameters: queryParams,
@@ -82,19 +88,41 @@ class GamebaseRepository {
         ),
       );
 
+      if (kDebugMode) {
+        final moves = response.data['data']?['moves'] as List?;
+        debugPrint('  Response: ${moves?.length ?? 0} moves returned');
+      }
+
       return GamebaseResponseMapper.fromMap(response.data);
+    } on DioException catch (e) {
+      // Treat "no data for this position" as an empty result, not an error.
+      // This is common for uncommon/midgame positions.
+      if (e.response?.statusCode == 404) {
+        return const GamebaseResponse(
+          status: 'success',
+          data: GamebaseData(moves: []),
+        );
+      }
+      throw Exception('Failed to load gamebase stats: $e');
     } catch (e) {
       throw Exception('Failed to load gamebase stats: $e');
     }
   }
 
-  /// Canonicalize FEN for Gamebase lookups by clamping the halfmove/fullmove
-  /// counters to stable values. The database is indexed by position, not by
-  /// move counters.
+  /// Canonicalize FEN for Gamebase lookups.
+  ///
+  /// The API expects a standard 6-field FEN. Some callers may provide only the
+  /// first 4 fields (piece placement, side to move, castling rights, en
+  /// passant). In that case, append halfmove/fullmove counters.
+  ///
+  /// When counters are present, preserve them. Some backends index/look up
+  /// positions using the full FEN string; clamping counters can cause misses
+  /// for progressed positions.
   static String _normalizeFenForLookup(String fen) {
     final parts = fen.trim().split(RegExp(r'\s+'));
     if (parts.length < 4) return fen.trim();
-    return '${parts.take(4).join(' ')} 0 1';
+    if (parts.length == 4) return '${parts.join(' ')} 0 1';
+    return parts.take(6).join(' ');
   }
 
   /// Search players by name.
@@ -171,6 +199,9 @@ class GamebaseRepository {
   /// Fetch a game by ID with full PGN included.
   /// Returns a [GamebaseGameWithPgn] containing the game data and raw PGN.
   Future<GamebaseGameWithPgn?> getGameWithPgn(String id) async {
+    if (kDebugMode) {
+      debugPrint('[GamebaseRepository] getGameWithPgn called with id: $id');
+    }
     try {
       final response = await _dio.get(
         '$_baseUrl/api/game/$id',
@@ -181,7 +212,25 @@ class GamebaseRepository {
       );
 
       final data = response.data['data'];
-      if (data == null) return null;
+      if (data == null) {
+        if (kDebugMode) {
+          debugPrint('[GamebaseRepository] API returned null data for id: $id');
+        }
+        return null;
+      }
+
+      if (kDebugMode) {
+        final dataMap = Map<String, dynamic>.from(data);
+        debugPrint('[GamebaseRepository] API response keys: ${dataMap.keys.toList()}');
+        debugPrint('[GamebaseRepository] pgn present: ${dataMap['pgn'] != null}, length: ${(dataMap['pgn'] as String?)?.length ?? 0}');
+        debugPrint('[GamebaseRepository] data field present: ${dataMap['data'] != null}');
+        if (dataMap['data'] != null) {
+          final innerData = dataMap['data'];
+          if (innerData is Map) {
+            debugPrint('[GamebaseRepository] inner data keys: ${innerData.keys.toList()}');
+          }
+        }
+      }
 
       return GamebaseGameWithPgn.fromJson(Map<String, dynamic>.from(data));
     } on DioException catch (e) {
@@ -189,6 +238,7 @@ class GamebaseRepository {
         debugPrint('[GamebaseRepository] getGameWithPgn DioException:');
         debugPrint('  Status: ${e.response?.statusCode}');
         debugPrint('  Message: ${e.message}');
+        debugPrint('  URL: $_baseUrl/api/game/$id');
       }
       return null;
     } catch (e) {
@@ -258,6 +308,13 @@ class GamebaseRepository {
     List<String>? resources,
     int pageNumber = 1,
     int pageSize = 20,
+    String? result,
+    String? color,
+    String? timeControl,
+    int? yearFrom,
+    int? yearTo,
+    int? ratingFrom,
+    int? ratingTo,
   }) async {
     try {
       final queryParams = {
@@ -265,6 +322,13 @@ class GamebaseRepository {
         'pageNumber': pageNumber,
         'pageSize': pageSize,
         if (resources != null) 'resources': resources,
+        if (result != null) 'result': result,
+        if (color != null) 'color': color,
+        if (timeControl != null) 'timeControl': timeControl,
+        if (yearFrom != null) 'yearFrom': yearFrom,
+        if (yearTo != null) 'yearTo': yearTo,
+        if (ratingFrom != null) 'ratingFrom': ratingFrom,
+        if (ratingTo != null) 'ratingTo': ratingTo,
       };
 
       if (kDebugMode) {

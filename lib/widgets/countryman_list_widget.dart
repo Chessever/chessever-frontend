@@ -69,7 +69,7 @@ class _CountrymanListWidgetState extends State<CountrymanListWidget> {
                 child: RoundedSearchBar(
                   controller: _searchController,
                   onChanged: _filterCountrymen,
-                  hintText: 'Search players',
+                  hintText: 'Search',
                   showProfile: false,
                   showFilter: false,
                   onFilterTap: () {

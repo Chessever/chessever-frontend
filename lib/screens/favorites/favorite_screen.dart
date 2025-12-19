@@ -64,7 +64,7 @@ class _FavoriteScreenState extends ConsumerState<FavoriteScreen> {
                       SizedBox(width: 12.w),
                       Expanded(
                         child: SearchBarWidget(
-                          hintText: 'Search Favorite Player',
+                          hintText: 'Search',
                           margin: 0.sp,
                           autoFocus: false,
                           controller: searchController,

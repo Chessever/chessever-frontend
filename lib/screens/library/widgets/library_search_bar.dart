@@ -1,6 +1,7 @@
 import 'package:chessever2/repository/library/models/library_folder.dart';
 import 'package:chessever2/repository/library/models/saved_analysis.dart';
 import 'package:chessever2/screens/gamebase/models/models.dart';
+import 'package:chessever2/screens/library/widgets/animated_search_hint.dart';
 import 'package:chessever2/screens/library/widgets/library_search_overlay.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -197,6 +198,8 @@ class _LibrarySearchBarState extends ConsumerState<LibrarySearchBar> {
   }
 
   Widget _buildInputRow() {
+    final isEmpty = widget.controller.text.isEmpty;
+
     return SizedBox(
       height: 44.h,
       child: Row(
@@ -209,21 +212,33 @@ class _LibrarySearchBarState extends ConsumerState<LibrarySearchBar> {
           ),
           SizedBox(width: 8.w),
           Expanded(
-            child: TextField(
-              controller: widget.controller,
-              focusNode: _focusNode,
-              style: AppTypography.textSmRegular.copyWith(
-                color: const Color(0xFFFAFAFA), // Zinc 50
-              ),
-              decoration: InputDecoration(
-                isDense: true,
-                hintText: widget.hintText,
-                hintStyle: AppTypography.textSmRegular.copyWith(
-                  color: const Color(0xFFA1A1AA), // Zinc 400
+            child: Stack(
+              alignment: Alignment.centerLeft,
+              children: [
+                // Animated hint text (shown when empty and not focused)
+                if (isEmpty && !_focusNode.hasFocus)
+                  const AnimatedSearchHint(
+                    textColor: Color(0xFFA1A1AA), // Zinc 400
+                  ),
+                // TextField (always present but transparent hint when animated)
+                TextField(
+                  controller: widget.controller,
+                  focusNode: _focusNode,
+                  style: AppTypography.textSmRegular.copyWith(
+                    color: const Color(0xFFFAFAFA), // Zinc 50
+                  ),
+                  decoration: InputDecoration(
+                    isDense: true,
+                    // Show static hint only when focused and empty
+                    hintText: _focusNode.hasFocus ? widget.hintText : null,
+                    hintStyle: AppTypography.textSmRegular.copyWith(
+                      color: const Color(0xFFA1A1AA), // Zinc 400
+                    ),
+                    border: InputBorder.none,
+                    contentPadding: EdgeInsets.zero,
+                  ),
                 ),
-                border: InputBorder.none,
-                contentPadding: EdgeInsets.zero,
-              ),
+              ],
             ),
           ),
           if (widget.controller.text.isNotEmpty)

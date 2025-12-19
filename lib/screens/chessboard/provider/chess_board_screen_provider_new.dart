@@ -5,6 +5,7 @@ import 'package:chessever2/repository/lichess/cloud_eval/cloud_eval.dart';
 import 'package:chessever2/repository/local_storage/local_eval/local_eval_cache.dart';
 import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
 import 'package:chessever2/repository/api_utils/api_exceptions.dart';
+import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
 import 'package:chessever2/repository/supabase/evals/persist_cloud_eval.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
@@ -15,6 +16,7 @@ import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.
 import 'package:chessever2/screens/chessboard/provider/stockfish_singleton.dart';
 import 'package:chessever2/screens/chessboard/view_model/chess_board_state_new.dart';
 import 'package:chessever2/screens/chessboard/notation/notation_tree.dart';
+import 'package:chessever2/screens/library/utils/gamebase_pgn_builder.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/audio_player_service.dart';
@@ -162,9 +164,12 @@ class ChessBoardScreenNotifierNew
         isEvaluating: false,
         isAnalysisMode: true,
         showEngineAnalysis: showEngineAnalysis, // Load from settings
-        showPrincipalVariations: showEngineAnalysis, // Keep PV visibility in sync with engine toggle
+        showPrincipalVariations:
+            showEngineAnalysis, // Keep PV visibility in sync with engine toggle
         isBoardFlipped: isBoardFlipped, // Restore from saved analysis
-        variationComments: Map<String, String>.from(variationComments), // Restore comments
+        variationComments: Map<String, String>.from(
+          variationComments,
+        ), // Restore comments
       ),
     );
     parseMoves();
@@ -174,7 +179,11 @@ class ChessBoardScreenNotifierNew
       previous,
       next,
     ) {
-      final prevValue = previous?.value;
+      // Skip the initial fire during provider initialization to avoid
+      // "Providers are not allowed to modify other providers during their initialization"
+      if (previous == null) return;
+
+      final prevValue = previous.value;
       final nextValue = next.value;
 
       if (prevValue != nextValue && nextValue != null) {
@@ -337,9 +346,10 @@ class ChessBoardScreenNotifierNew
         _activeEvalRequestId != null && _activeEvalKey == targetKey;
 
     // Check how long the evaluation has been running
-    final evalDuration = _activeEvalStartTime != null
-        ? DateTime.now().difference(_activeEvalStartTime!)
-        : Duration.zero;
+    final evalDuration =
+        _activeEvalStartTime != null
+            ? DateTime.now().difference(_activeEvalStartTime!)
+            : Duration.zero;
 
     final stateSnapshot = state.value;
     final hasTargetPvProgress =
@@ -544,8 +554,7 @@ class ChessBoardScreenNotifierNew
         pgn =
             '$headers\n[FEN "${savedGame.startingFen}"]\n[SetUp "1"]\n\n$body';
       } else {
-        pgn =
-            '[FEN "${savedGame.startingFen}"]\n[SetUp "1"]\n\n${pgn.trim()}';
+        pgn = '[FEN "${savedGame.startingFen}"]\n[SetUp "1"]\n\n${pgn.trim()}';
       }
     }
 
@@ -579,30 +588,86 @@ class ChessBoardScreenNotifierNew
     try {
       String? pgn = pgnOverride ?? game.pgn;
 
+      Future<String?> fetchRemotePgn({required bool requireMoves}) async {
+        final expected = requireMoves ? 'moves' : 'PGN';
+        String? fallback;
+
+        // 1) Supabase: live/tournament games.
+        try {
+          final supabasePgn = await ref
+              .read(gameRepositoryProvider)
+              .getGamePgn(game.gameId);
+          if (supabasePgn != null && supabasePgn.trim().isNotEmpty) {
+            if (!requireMoves) {
+              _releaseLog(
+                '✅ PGN fetch: Supabase provided $expected for ${game.gameId}',
+              );
+              return supabasePgn;
+            }
+
+            fallback ??= supabasePgn;
+            if (pgnHasMoves(supabasePgn)) {
+              _releaseLog(
+                '✅ PGN fetch: Supabase provided $expected for ${game.gameId}',
+              );
+              return supabasePgn;
+            }
+          }
+        } on ApiException catch (e) {
+          _releaseLog('⚠️ PGN lookup skipped for ${game.gameId}: $e');
+        } catch (e) {
+          _releaseLog('⚠️ PGN lookup failed for ${game.gameId}: $e');
+        }
+
+        // 2) Gamebase: library / global search games.
+        try {
+          final gamebaseRepo = ref.read(gamebaseRepositoryProvider);
+          final gameWithPgn = await gamebaseRepo.getGameWithPgn(game.gameId);
+          if (gameWithPgn == null) return fallback;
+
+          // Prefer a PGN built from the structured `data` payload if available.
+          // This yields consistent formatting and reliable movetext.
+          final built = buildPgnFromGamebaseData(gameWithPgn.data);
+          final raw = gameWithPgn.pgn;
+
+          for (final candidate in [built, raw]) {
+            final trimmed = candidate?.trim();
+            if (trimmed == null || trimmed.isEmpty) continue;
+
+            if (!requireMoves) {
+              _releaseLog(
+                '✅ PGN fetch: Gamebase provided $expected for ${game.gameId}',
+              );
+              return trimmed;
+            }
+
+            fallback ??= trimmed;
+            if (pgnHasMoves(trimmed)) {
+              _releaseLog(
+                '✅ PGN fetch: Gamebase provided $expected for ${game.gameId}',
+              );
+              return trimmed;
+            }
+          }
+        } catch (e) {
+          _releaseLog('⚠️ Gamebase PGN lookup failed for ${game.gameId}: $e');
+        }
+
+        return fallback;
+      }
+
       // Prefer locally saved analysis data to avoid remote lookups for archived games
       if ((pgn == null || pgn.isEmpty) && savedAnalysisData != null) {
         pgn = _buildPgnFromSavedAnalysis();
       }
 
-      if (pgn == null || pgn.isEmpty) {
-        try {
-          pgn = await ref.read(gameRepositoryProvider).getGamePgn(game.gameId);
-        } on ApiException catch (e) {
-          // Game IDs coming from sources outside Supabase (e.g. Gamebase/library
-          // previews) won't exist in our `game` table. Treat that as a normal
-          // fallback case instead of crashing the board with "No rows found".
-          _releaseLog('⚠️ PGN lookup skipped for ${game.gameId}: $e');
-          pgn = null;
-        } catch (e) {
-          // Any other failure (network/transient) should fall back to the best
-          // available PGN instead of erroring the whole screen.
-          _releaseLog('⚠️ PGN lookup failed for ${game.gameId}: $e');
-          pgn = null;
-        }
-
+      // If we have no PGN, fetch the best available one (even if it has no
+      // moves) to avoid falling back to placeholder/sample PGNs.
+      if (pgn == null || pgn.trim().isEmpty) {
+        final fetched = await fetchRemotePgn(requireMoves: false);
         if (!mounted) return;
-
-        if (pgn != null) {
+        if (fetched != null) {
+          pgn = fetched;
           game = game.copyWith(pgn: pgn);
         }
       }
@@ -617,40 +682,71 @@ class ChessBoardScreenNotifierNew
         pgn = _getSamplePgnData();
       }
 
+      var resolvedPgn = pgn;
+
       // Avoid expensive re-parse when nothing changed (e.g. clock-only updates)
-      if (currentState != null && currentState.pgnData == pgn) {
+      if (currentState != null && currentState.pgnData == resolvedPgn) {
         state = AsyncValue.data(
           currentState.copyWith(game: game, isLoadingMoves: false),
         );
         return;
       }
 
-      game = game.copyWith(pgn: pgn);
+      game = game.copyWith(pgn: resolvedPgn);
+      var hasAttemptedUpgrade = false;
+      late PgnGame gameData;
+      late Position startingPos;
+      late List<Move> allMoves;
+      late List<String> moveSans;
+      Move? lastMove;
+      late Position finalPos;
 
-      final gameData = PgnGame.parsePgn(pgn);
-      final startingPos = PgnGame.startingPosition(gameData.headers);
+      while (true) {
+        gameData = PgnGame.parsePgn(resolvedPgn);
+        startingPos = PgnGame.startingPosition(gameData.headers);
 
-      Position tempPos = startingPos;
-      List<Move> allMoves = [];
-      List<String> moveSans = [];
+        Position tempPos = startingPos;
+        allMoves = [];
+        moveSans = [];
 
-      for (final node in gameData.moves.mainline()) {
-        final move = tempPos.parseSan(node.san);
-        if (move == null) break;
-        allMoves.add(move);
-        moveSans.add(node.san);
-        tempPos = tempPos.play(move);
+        for (final node in gameData.moves.mainline()) {
+          final move = tempPos.parseSan(node.san);
+          if (move == null) break;
+          allMoves.add(move);
+          moveSans.add(node.san);
+          tempPos = tempPos.play(move);
+        }
+
+        final lastMoveIndex = allMoves.length - 1;
+        lastMove = null;
+        finalPos = startingPos;
+        for (int i = 0; i <= lastMoveIndex; i++) {
+          lastMove = allMoves[i];
+          finalPos = finalPos.play(allMoves[i]);
+        }
+
+        // Header-only PGNs (Gamebase previews) parse successfully but contain no
+        // movetext. If that happens, try upgrading to a full PGN with moves and
+        // re-parse once.
+        if (allMoves.isNotEmpty || hasAttemptedUpgrade) {
+          break;
+        }
+
+        hasAttemptedUpgrade = true;
+        final upgraded = await fetchRemotePgn(requireMoves: true);
+        if (!mounted) return;
+        if (upgraded == null ||
+            upgraded.trim().isEmpty ||
+            upgraded == resolvedPgn) {
+          break;
+        }
+
+        resolvedPgn = upgraded;
+        game = game.copyWith(pgn: resolvedPgn);
       }
 
       final lastMoveIndex = allMoves.length - 1;
-      Move? lastMove;
-      Position finalPos = startingPos;
-      for (int i = 0; i <= lastMoveIndex; i++) {
-        lastMove = allMoves[i];
-        finalPos = finalPos.play(allMoves[i]);
-      }
-
-      final moveTimes = _parseMoveTimesFromPgn(pgn);
+      final moveTimes = _parseMoveTimesFromPgn(resolvedPgn);
 
       // Only update state if still mounted
       if (!mounted) return;
@@ -712,7 +808,7 @@ class ChessBoardScreenNotifierNew
                 allMoves: allMoves,
                 moveSans: moveSans,
                 currentMoveIndex: newMoveIndex, // Respects viewing position
-                pgnData: pgn,
+                pgnData: resolvedPgn,
                 isLoadingMoves: false,
                 evaluation: null, // Reset evaluation to trigger new calculation
                 isEvaluating: true, // Show loading indicator while evaluating
@@ -739,7 +835,7 @@ class ChessBoardScreenNotifierNew
                 allMoves: allMoves,
                 moveSans: moveSans,
                 currentMoveIndex: newMoveIndex,
-                pgnData: pgn,
+                pgnData: resolvedPgn,
                 isLoadingMoves: false,
                 evaluation: null,
                 isEvaluating: true,
@@ -789,7 +885,7 @@ class ChessBoardScreenNotifierNew
       if (_analysisGame == null) {
         await _initializeAnalysisBoard();
       } else if (_analysisNavigator != null) {
-        final liveAnalysisGame = _createChessGameFromPgn(pgn);
+        final liveAnalysisGame = _createChessGameFromPgn(resolvedPgn);
         _analysisNavigator!.updateWithLatestGame(liveAnalysisGame);
         unawaited(_persistAnalysisState());
       }
@@ -1418,7 +1514,7 @@ class ChessBoardScreenNotifierNew
       pgnHistory = currentState.lockedPvMergedMoves!;
       baseMoveObjects =
           currentState.lockedPvMergedMoveObjects ??
-              List<Move?>.of(baseAnalysis.combinedMoves);
+          List<Move?>.of(baseAnalysis.combinedMoves);
       basePositions =
           currentState.lockedPvMergedPositions != null
               ? List<Position>.of(currentState.lockedPvMergedPositions!)
@@ -1789,8 +1885,7 @@ class ChessBoardScreenNotifierNew
         resultPosition = cursor;
       }
 
-      final san =
-          i < lockedSans.length ? lockedSans[i] : move?.uci ?? '--';
+      final san = i < lockedSans.length ? lockedSans[i] : move?.uci ?? '--';
       final chessMove = ChessMove(
         num: resultPosition.fullmoves,
         fen: resultPosition.fen,
@@ -2211,8 +2306,8 @@ class ChessBoardScreenNotifierNew
       // This makes PV moves part of the permanent analysis history
       if (_analysisNavigator != null) {
         _releaseLog('🎯 PLAY VARIANT FORWARD: Committing move to navigator');
-        final (positionAfterMove, san) =
-            currentState.analysisState.position.makeSan(nextMove);
+        final (positionAfterMove, san) = currentState.analysisState.position
+            .makeSan(nextMove);
 
         final rebasedState = _rebaseVariantAfterCommittedMove(
           currentState: currentState,
@@ -2227,9 +2322,10 @@ class ChessBoardScreenNotifierNew
         _analysisNavigator!.makeOrGoToMove(nextMove.uci);
         _playSoundForSan(san);
 
-        final navigatorSnapshot = _analysisGame == null
-            ? null
-            : ref.read(chessGameNavigatorProvider(_analysisGame!));
+        final navigatorSnapshot =
+            _analysisGame == null
+                ? null
+                : ref.read(chessGameNavigatorProvider(_analysisGame!));
         if (navigatorSnapshot != null) {
           final latestState = state.value;
           if (latestState != null && latestState.selectedVariantIndex != null) {
@@ -2590,13 +2686,16 @@ class ChessBoardScreenNotifierNew
     // Determine the initial move position
     // Priority: savedAnalysisData.movePointer > savedAnalysisData.lastViewedPosition > currentState.currentMoveIndex
     List<int> movePointer;
-    if (savedAnalysisData != null && savedAnalysisData!.movePointer != null && savedAnalysisData!.movePointer!.isNotEmpty) {
+    if (savedAnalysisData != null &&
+        savedAnalysisData!.movePointer != null &&
+        savedAnalysisData!.movePointer!.isNotEmpty) {
       // Use saved move pointer to restore exact position in variation tree
       movePointer = savedAnalysisData!.movePointer!;
       debugPrint(
         '🎯 ChessBoard[$index]: Restoring saved movePointer: $movePointer',
       );
-    } else if (savedAnalysisData != null && savedAnalysisData!.lastViewedPosition >= 0) {
+    } else if (savedAnalysisData != null &&
+        savedAnalysisData!.lastViewedPosition >= 0) {
       // Use saved last viewed position
       movePointer = [savedAnalysisData!.lastViewedPosition];
       debugPrint(
@@ -3990,8 +4089,7 @@ class ChessBoardScreenNotifierNew
     bool isThreatsMode = false,
   }) {
     try {
-      final effectiveBaseFen =
-          isThreatsMode ? _getThreatFen(baseFen) : baseFen;
+      final effectiveBaseFen = isThreatsMode ? _getThreatFen(baseFen) : baseFen;
       final effectiveCurrentFen =
           isThreatsMode ? _getThreatFen(currentFen) : currentFen;
 
@@ -4088,9 +4186,11 @@ class ChessBoardScreenNotifierNew
           isThreatsMode
               ? Position.setupPosition(Rule.chess, Setup.parseFen(fenToAnalyze))
               : currentPosition!;
-      
+
       if (isThreatsMode) {
-        _releaseLog('🎯 THREATS MODE: Analyzing opponent threats for position: $fen');
+        _releaseLog(
+          '🎯 THREATS MODE: Analyzing opponent threats for position: $fen',
+        );
         _releaseLog('   Threat FEN: $fenToAnalyze');
       }
 
@@ -4250,11 +4350,7 @@ class ChessBoardScreenNotifierNew
         );
       }
       if (keepPvs) {
-        state = AsyncValue.data(
-          baselineState.copyWith(
-            isEvaluating: true,
-          ),
-        );
+        state = AsyncValue.data(baselineState.copyWith(isEvaluating: true));
       } else {
         state = AsyncValue.data(
           baselineState.copyWith(
@@ -4405,7 +4501,10 @@ class ChessBoardScreenNotifierNew
               pvLines = mergedCascade;
               final updatedCascade = snapshot.copyWith(
                 evaluation: evaluation,
-                mate: _getConsistentMate(cascadeEval.pvs.first.mate, fenToAnalyze),
+                mate: _getConsistentMate(
+                  cascadeEval.pvs.first.mate,
+                  fenToAnalyze,
+                ),
                 isEvaluating: true,
                 principalVariations: mergedCascade,
                 principalVariationsBaseFen: fen,
@@ -4693,9 +4792,7 @@ class ChessBoardScreenNotifierNew
           final latestFen = latestPosition?.fen;
           if (latestFen != null &&
               _normalizeFen(latestFen) == _normalizeFen(fen)) {
-            _releaseLog(
-              '🎯 EVAL: Retrying evaluation after Stockfish failure',
-            );
+            _releaseLog('🎯 EVAL: Retrying evaluation after Stockfish failure');
             _evaluatePosition(force: true);
           }
         });
@@ -4748,7 +4845,10 @@ class ChessBoardScreenNotifierNew
           state = AsyncValue.data(
             currentSnapshot.copyWith(
               evaluation: evaluation,
-              mate: _getConsistentMate(primaryEval!.pvs.first.mate, fenToAnalyze),
+              mate: _getConsistentMate(
+                primaryEval!.pvs.first.mate,
+                fenToAnalyze,
+              ),
               isEvaluating: true, // Keep loading state until PVs arrive
               principalVariations: const [],
               principalVariationsBaseFen: null,
@@ -5188,13 +5288,16 @@ class ChessBoardScreenNotifierNew
         try {
           // Use different colors/opacity for primary, secondary, tertiary moves
           final isThreatsMode = state.value?.isThreatsMode ?? false;
-          final arrowColor = isThreatsMode
-              ? const Color(0xFFFF0000).withValues(alpha: i == 0 ? 1.0 : 0.7)
-              : switch (i) {
-                  0 => const Color.fromARGB(255, 152, 179, 154),
-                  1 => const Color.fromARGB(200, 152, 179, 154),
-                  _ => const Color.fromARGB(150, 152, 179, 154),
-                };
+          final arrowColor =
+              isThreatsMode
+                  ? const Color(
+                    0xFFFF0000,
+                  ).withValues(alpha: i == 0 ? 1.0 : 0.7)
+                  : switch (i) {
+                    0 => const Color.fromARGB(255, 152, 179, 154),
+                    1 => const Color.fromARGB(200, 152, 179, 154),
+                    _ => const Color.fromARGB(150, 152, 179, 154),
+                  };
 
           if (bestMove.contains('@')) {
             // Drop move (e.g., "p@e4")
@@ -5284,9 +5387,10 @@ class ChessBoardScreenNotifierNew
     }
     try {
       final arrow = Arrow(
-        color: isThreatsMode
-            ? const Color(0xFFFF0000).withValues(alpha: 0.8)
-            : kPrimaryColor.withValues(alpha: 0.8),
+        color:
+            isThreatsMode
+                ? const Color(0xFFFF0000).withValues(alpha: 0.8)
+                : kPrimaryColor.withValues(alpha: 0.8),
         orig: move.from,
         dest: move.to,
       );
@@ -5340,9 +5444,7 @@ class ChessBoardScreenNotifierNew
       try {
         final arrowColor =
             isThreatsMode
-                ? const Color(0xFFFF0000).withValues(
-                    alpha: i == 0 ? 0.95 : 0.7,
-                  )
+                ? const Color(0xFFFF0000).withValues(alpha: i == 0 ? 0.95 : 0.7)
                 : getVariantColor(i, i == selectedIndex);
 
         arrows.add(Arrow(color: arrowColor, orig: move.from, dest: move.to));
@@ -5410,10 +5512,8 @@ class ChessBoardScreenNotifierNew
 
     final currentState = state.value;
     final previewActive = currentState?.isPvPreviewActive == true;
-    final effectivePreservePvs =
-        previewActive ? true : preserveCurrentPvs;
-    final effectivePreserveDepth =
-        previewActive ? true : preserveDepthProgress;
+    final effectivePreservePvs = previewActive ? true : preserveCurrentPvs;
+    final effectivePreserveDepth = previewActive ? true : preserveDepthProgress;
     final skipPvUpdates = previewActive;
 
     // CRITICAL: Clear stale PVs immediately when position changes
@@ -5732,4 +5832,5 @@ List<Map<String, dynamic>> _analysisLinesWorker(Map<String, dynamic> payload) {
     return const [];
   }
 }
+
 const int kVariationCommentMaxChars = 280;

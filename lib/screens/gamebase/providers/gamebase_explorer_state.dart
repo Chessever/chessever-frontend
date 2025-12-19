@@ -34,8 +34,7 @@ class GamebaseFilters with GamebaseFiltersMappable {
 @MappableClass()
 class GamebaseExplorerState with GamebaseExplorerStateMappable {
   const GamebaseExplorerState({
-    this.currentFen =
-        'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+    this.currentFen = '', // Empty by default; setPosition() sets the real FEN
     this.moveHistory = const [],
     this.currentMoveIndex = -1,
     this.moveAggregates = const [],

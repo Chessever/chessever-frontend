@@ -140,16 +140,20 @@ class GameCard extends ConsumerWidget {
 }
 
 class _GameCardContent extends ConsumerWidget {
-  const _GameCardContent({required this.matchComparison});
+  const _GameCardContent({
+    required this.matchComparison,
+    this.showClock = true,
+  });
 
   final MatchWithComparison matchComparison;
+  final bool showClock;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return Column(
       children: [
         _TopSection(matchComparison: matchComparison),
-        _BottomSection(matchComparison: matchComparison),
+        _BottomSection(matchComparison: matchComparison, showClock: showClock),
       ],
     );
   }
@@ -170,7 +174,49 @@ class GamesTourGameCardBody extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return _GameCardContent(matchComparison: matchComparison);
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // Event name header (only shown when eventName is provided)
+        if (eventName != null && eventName!.isNotEmpty)
+          Container(
+            width: double.infinity,
+            padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 6.h),
+            decoration: BoxDecoration(
+              color: kBlack3Color,
+              borderRadius: BorderRadius.only(
+                topLeft: Radius.circular(12.br),
+                topRight: Radius.circular(12.br),
+              ),
+            ),
+            child: Text(
+              eventName!,
+              style: AppTypography.textXsMedium.copyWith(
+                color: kWhiteColor.withValues(alpha: 0.7),
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        // Main card content with adjusted corners
+        ClipRRect(
+          borderRadius: BorderRadius.only(
+            topLeft: Radius.circular(
+              eventName != null && eventName!.isNotEmpty ? 0 : 12.br,
+            ),
+            topRight: Radius.circular(
+              eventName != null && eventName!.isNotEmpty ? 0 : 12.br,
+            ),
+            bottomLeft: Radius.circular(12.br),
+            bottomRight: Radius.circular(12.br),
+          ),
+          child: _GameCardContent(
+            matchComparison: matchComparison,
+            showClock: showClock,
+          ),
+        ),
+      ],
+    );
   }
 }
 
@@ -266,12 +312,39 @@ class _CenterContent extends ConsumerWidget {
 }
 
 class _BottomSection extends ConsumerWidget {
-  const _BottomSection({required this.matchComparison});
+  const _BottomSection({
+    required this.matchComparison,
+    this.showClock = true,
+  });
 
   final MatchWithComparison matchComparison;
+  final bool showClock;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final lastMoveWidget = Expanded(
+      child: _LastMoveNotation(
+        lastMove: matchComparison.game.lastMove,
+        fen: matchComparison.game.fen,
+      ),
+    );
+
+    // When clocks are hidden, just show the last move centered
+    if (!showClock) {
+      return Container(
+        height: 24.h,
+        padding: EdgeInsets.symmetric(horizontal: 16.sp),
+        decoration: BoxDecoration(
+          color: kBlack2Color,
+          borderRadius: BorderRadius.only(
+            bottomLeft: Radius.circular(12.br),
+            bottomRight: Radius.circular(12.br),
+          ),
+        ),
+        child: Row(children: [lastMoveWidget]),
+      );
+    }
+
     return Container(
       height: 24.h,
       padding: EdgeInsets.symmetric(horizontal: 16.sp),
@@ -295,12 +368,7 @@ class _BottomSection extends ConsumerWidget {
                       isWhitePlayer: true,
                     ),
                   ),
-                  Expanded(
-                    child: _LastMoveNotation(
-                      lastMove: matchComparison.game.lastMove,
-                      fen: matchComparison.game.fen,
-                    ),
-                  ),
+                  lastMoveWidget,
                   SizedBox(
                     width: 50.w, // Fixed width for clock
                     child: _TimerWidget(
@@ -321,12 +389,7 @@ class _BottomSection extends ConsumerWidget {
                       isWhitePlayer: false,
                     ),
                   ),
-                  Expanded(
-                    child: _LastMoveNotation(
-                      lastMove: matchComparison.game.lastMove,
-                      fen: matchComparison.game.fen,
-                    ),
-                  ),
+                  lastMoveWidget,
                   SizedBox(
                     width: 50.w, // Fixed width for clock
                     child: _TimerWidget(

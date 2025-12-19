@@ -6,6 +6,7 @@ import 'package:chessever2/providers/favorite_players_provider.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/utils/country_utils.dart';
 import 'package:country_picker/country_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -522,8 +523,10 @@ class ForYouGamesNotifier extends StateNotifier<AsyncValue<List<Games>>> {
     if (selectedCountry != null && selectedCountry.countryCode.isNotEmpty) {
       try {
         final countryLimit = _pageSize;
+        // Convert ISO 2-letter code (TR) to FIDE 3-letter code (TUR)
+        final fideCode = CountryUtils.toFideCode(selectedCountry.countryCode);
         final countryGames = await repository.getCountrymanGamesWithMinElo(
-          countryCode: selectedCountry.countryCode,
+          countryCode: fideCode,
           minElo: 2300, // Only show countryman games with ELO > 2300
           limit: countryLimit, // Increased from _pageSize ~/ 2
           offset: _countryOffset,

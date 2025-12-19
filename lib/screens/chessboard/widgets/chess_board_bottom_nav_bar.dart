@@ -98,6 +98,7 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
               // Gamebase Explorer Toggle (only shown when showGamebaseButton is true)
               if (showGamebaseButton)
                 ChessSvgBottomNavbar(
+                  key: ValueKey('gamebase_toggle_$isGamebaseActive'),
                   width: width,
                   svgPath: SvgAsset.bookIcon,
                   onPressed: onGamebaseToggle,

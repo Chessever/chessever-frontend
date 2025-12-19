@@ -24,7 +24,7 @@ class RoundedSearchBar extends ConsumerStatefulWidget {
     required this.controller,
     required this.onFilterTap,
     this.onChanged,
-    this.hintText = 'Search tournaments or players',
+    this.hintText = 'Search',
     this.autofocus = false,
     this.onProfileTap,
     this.showProfile = true,

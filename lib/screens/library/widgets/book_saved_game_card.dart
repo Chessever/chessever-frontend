@@ -1,8 +1,7 @@
 import 'package:chessever2/repository/library/models/saved_analysis.dart';
 import 'package:chessever2/screens/library/utils/load_saved_analysis.dart';
-import 'package:chessever2/screens/library/widgets/library_games_tour_card.dart';
+import 'package:chessever2/screens/library/widgets/library_game_card.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
-import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_tour_content_provider.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
 import 'package:flutter/material.dart';
 
@@ -16,13 +15,9 @@ class BookSavedGameCard extends StatelessWidget {
     final game = _bookAnalysisToGamesTourModel(analysis);
     final eventName = _eventNameFromMetadata(analysis.chessGame.metadata);
 
-    return LibraryGamesTourCard(
-      matchComparison: MatchWithComparison(
-        game: game,
-        comparison: MatchComparison.sameOrder,
-      ),
+    return LibraryGameCard(
+      game: game,
       eventName: eventName,
-      showClock: false,
       onTap: () => loadSavedAnalysis(context, analysis),
     );
   }

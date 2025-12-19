@@ -89,7 +89,7 @@ class _PlayerScreenState extends ConsumerState<PlayerListScreen> {
                 child: RoundedSearchBar(
                   showProfile: false,
                   controller: _searchController,
-                  hintText: 'Search players',
+                  hintText: 'Search',
                   onFilterTap: () {},
                   onProfileTap: () {},
                 ),

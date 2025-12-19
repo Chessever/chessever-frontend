@@ -18,6 +18,7 @@ const String _gameListSelectColumns = '''
           tour_slug,
           name,
           fen,
+          pgn,
           players,
           last_move,
           think_time,
@@ -408,43 +409,75 @@ class GameRepository extends BaseRepository {
     });
   }
 
-  /// Get countryman games with minimum ELO filter
-  /// Only shows games where at least one player from the country has rating > minElo
-  Future<List<Games>> getCountrymanGamesWithMinElo({
+  /// Get countryman games with minimum ELO filter.
+  /// Shows games where at least one player from the country has rating >= minElo.
+  ///
+  /// The caller is responsible for pagination. This method fetches exactly
+  /// `limit` games starting at `offset` (after ELO filtering is applied in-memory).
+  ///
+  /// To handle ELO filtering, we fetch extra records and filter in Dart.
+  /// Returns: (filteredGames, rawGamesFetched) so caller can track raw offset.
+  Future<({List<Games> games, int rawFetched})> getCountrymanGamesWithMinEloAndRawCount({
     required String countryCode,
     int minElo = 2300,
-    int limit = 50,
-    int offset = 0,
+    int limit = 20,
+    int rawOffset = 0,
   }) async {
     return handleApiCall(() async {
-      debugPrint('===== GameRepository: Fetching countryman games (ELO > $minElo) for $countryCode =====');
+      debugPrint('===== GameRepository: Fetching countryman games (ELO >= $minElo) for countryCode="$countryCode", limit=$limit, rawOffset=$rawOffset =====');
 
-      // First fetch all country games, then filter by ELO in Dart
-      // (JSONB filtering by nested rating is complex in Supabase)
+      // Fetch more than needed since we filter by ELO in Dart
+      // Fetch limit * 10 to have enough buffer for ELO filtering
+      final fetchLimit = limit * 10;
+
+      final containsFilter = '[{"fed": "$countryCode"}]';
+      debugPrint('===== GameRepository: Using contains filter: $containsFilter, fetching up to $fetchLimit raw games =====');
+
       final response = await supabase
           .from('games')
           .select(_gameListSelectColumns)
-          .contains('players', '[{"fed": "$countryCode"}]')
-          .order('last_move_time', ascending: false)
-          .range(offset, offset + limit * 2 - 1); // Fetch extra to compensate for ELO filter
+          .contains('players', containsFilter)
+          .order('last_move_time', ascending: false, nullsFirst: false)
+          .range(rawOffset, rawOffset + fetchLimit - 1);
+
+      final rawCount = (response as List).length;
+      debugPrint('===== GameRepository: Raw response count: $rawCount =====');
 
       final jsonList =
           (response as List).map((item) => json.encode(item)).toList();
 
       var games = await compute(_decodeGamesInIsolate, jsonList);
 
-      // Filter games where at least one player from the country has rating > minElo
-      games = games.where((game) {
+      debugPrint('===== GameRepository: Decoded ${games.length} games, now filtering by ELO >= $minElo =====');
+
+      // Filter games where at least one player has rating >= minElo
+      // (shows countrymen games against strong opponents too)
+      final filtered = games.where((game) {
         if (game.players == null) return false;
-        return game.players!.any((player) =>
-            player.fed.toUpperCase() == countryCode.toUpperCase() &&
-            player.rating >= minElo);
+        return game.players!.any((player) => player.rating >= minElo);
       }).take(limit).toList();
 
-      debugPrint('===== GameRepository: Fetched ${games.length} countryman games (ELO > $minElo) =====');
+      debugPrint('===== GameRepository: After ELO filter: ${filtered.length} countryman games (from $rawCount raw) =====');
 
-      return games;
+      return (games: filtered, rawFetched: rawCount);
     });
+  }
+
+  /// Get countryman games with minimum ELO filter (simple version).
+  /// For backwards compatibility - just returns filtered games.
+  Future<List<Games>> getCountrymanGamesWithMinElo({
+    required String countryCode,
+    int minElo = 2300,
+    int limit = 50,
+    int offset = 0,
+  }) async {
+    final result = await getCountrymanGamesWithMinEloAndRawCount(
+      countryCode: countryCode,
+      minElo: minElo,
+      limit: limit,
+      rawOffset: offset,
+    );
+    return result.games;
   }
 
   /// Get live games for specific players (favorited players who are currently playing)
@@ -595,6 +628,146 @@ class GameRepository extends BaseRepository {
 
       final games = await compute(_decodeGamesInIsolate, jsonList);
       return games;
+    });
+  }
+
+  /// Search games using flexible text matching on the `name` column.
+  /// The `name` column contains "WhitePlayer - BlackPlayer" format.
+  /// This uses ILIKE for partial matching (e.g., "carlsen" matches "Carlsen, Magnus").
+  ///
+  /// Optionally filter by country using the `players` JSONB column.
+  Future<List<Games>> searchGamesFlexible({
+    required String query,
+    String? countryCode,
+    int limit = 30,
+    int offset = 0,
+  }) async {
+    return handleApiCall(() async {
+      final trimmedQuery = query.trim();
+      if (trimmedQuery.isEmpty && countryCode == null) return <Games>[];
+
+      debugPrint('[GameRepository] searchGamesFlexible: query="$trimmedQuery", countryCode=$countryCode, limit=$limit, offset=$offset');
+
+      // Build the query with ILIKE on the name column
+      var dbQuery = supabase.from('games').select(_gameListSelectColumns);
+
+      // If we have a text query, use ILIKE on the name column
+      if (trimmedQuery.isNotEmpty) {
+        dbQuery = dbQuery.ilike('name', '%$trimmedQuery%');
+      }
+
+      // If we have a country filter, add it
+      if (countryCode != null && countryCode.isNotEmpty) {
+        dbQuery = dbQuery.contains('players', '[{"fed": "$countryCode"}]');
+      }
+
+      final response = await dbQuery
+          .order('last_move_time', ascending: false, nullsFirst: false)
+          .range(offset, offset + limit - 1);
+
+      final rawCount = (response as List).length;
+      debugPrint('[GameRepository] searchGamesFlexible: got $rawCount results');
+
+      final jsonList = response.map((item) => json.encode(item)).toList();
+      final games = await compute(_decodeGamesInIsolate, jsonList);
+      return games;
+    });
+  }
+
+  /// Search games for a specific country with optional text query.
+  /// Returns games where at least one player is from the country AND
+  /// optionally matches the search query.
+  Future<List<Games>> searchCountrymenGames({
+    required String countryCode,
+    String? query,
+    int minElo = 2000,
+    int limit = 30,
+    int offset = 0,
+  }) async {
+    return handleApiCall(() async {
+      debugPrint('[GameRepository] searchCountrymenGames: country=$countryCode, query=$query, minElo=$minElo');
+
+      // Fetch more for ELO filtering
+      final fetchLimit = limit * 5;
+
+      var dbQuery = supabase
+          .from('games')
+          .select(_gameListSelectColumns)
+          .contains('players', '[{"fed": "$countryCode"}]');
+
+      // Add text search if query provided
+      if (query != null && query.trim().isNotEmpty) {
+        dbQuery = dbQuery.ilike('name', '%${query.trim()}%');
+      }
+
+      final response = await dbQuery
+          .order('last_move_time', ascending: false, nullsFirst: false)
+          .range(offset, offset + fetchLimit - 1);
+
+      debugPrint('[GameRepository] searchCountrymenGames: raw results = ${(response as List).length}');
+
+      final jsonList = response.map((item) => json.encode(item)).toList();
+      var games = await compute(_decodeGamesInIsolate, jsonList);
+
+      // Filter by minimum ELO
+      final filtered = games.where((game) {
+        if (game.players == null) return false;
+        return game.players!.any((p) => p.rating >= minElo);
+      }).take(limit).toList();
+
+      debugPrint('[GameRepository] searchCountrymenGames: after ELO filter = ${filtered.length}');
+      return filtered;
+    });
+  }
+
+  /// Search games for favorite players with optional text query.
+  Future<List<Games>> searchFavoritesGames({
+    required List<String> fideIds,
+    required List<String> playerNames,
+    String? query,
+    int limit = 30,
+    int offset = 0,
+  }) async {
+    return handleApiCall(() async {
+      debugPrint('[GameRepository] searchFavoritesGames: fideIds=${fideIds.length}, names=${playerNames.length}, query=$query');
+
+      if (fideIds.isEmpty && playerNames.isEmpty) return <Games>[];
+
+      var dbQuery = supabase.from('games').select(_gameListSelectColumns);
+
+      // Add text search if query provided
+      if (query != null && query.trim().isNotEmpty) {
+        dbQuery = dbQuery.ilike('name', '%${query.trim()}%');
+      }
+
+      final response = await dbQuery
+          .order('last_move_time', ascending: false, nullsFirst: false)
+          .range(offset, offset + limit * 3 - 1);
+
+      debugPrint('[GameRepository] searchFavoritesGames: raw results = ${(response as List).length}');
+
+      final jsonList = (response as List).map((item) => json.encode(item)).toList();
+      var games = await compute(_decodeGamesInIsolate, jsonList);
+
+      // Filter to only include games with favorited players
+      final fideIdSet = fideIds.toSet();
+      final nameSet = playerNames.map((n) => n.toLowerCase()).toSet();
+
+      final filtered = games.where((game) {
+        if (game.players == null) return false;
+        for (final player in game.players!) {
+          if (fideIdSet.contains(player.fideId.toString())) return true;
+          final playerNameLower = player.name.toLowerCase();
+          if (nameSet.any((name) =>
+              playerNameLower.contains(name) || name.contains(playerNameLower))) {
+            return true;
+          }
+        }
+        return false;
+      }).take(limit).toList();
+
+      debugPrint('[GameRepository] searchFavoritesGames: after filter = ${filtered.length}');
+      return filtered;
     });
   }
 

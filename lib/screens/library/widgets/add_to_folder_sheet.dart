@@ -7,6 +7,7 @@ import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
 import 'package:chessever2/screens/chessboard/widgets/smooth_sheet_config.dart';
 import 'package:chessever2/screens/library/providers/library_folders_provider.dart';
 import 'package:chessever2/screens/library/utils/gamebase_game_to_games_tour_model.dart';
+import 'package:chessever2/screens/library/utils/gamebase_pgn_builder.dart';
 import 'package:chessever2/screens/library/widgets/create_folder_dialog.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/theme/app_theme.dart';
@@ -90,19 +91,36 @@ class _AddToFolderPageState extends ConsumerState<_AddToFolderPage> {
     final gamebaseRepository = ref.read(gamebaseRepositoryProvider);
 
     String? pgn = widget.game.pgn;
-    if (pgn == null || pgn.trim().isEmpty) {
+
+    // Check if we already have a PGN with actual moves
+    final hasMoves = pgn != null && pgnHasMoves(pgn);
+
+    if (!hasMoves) {
+      // Try Supabase game repository first (for live tournament games)
       try {
-        pgn = await gameRepository.getGamePgn(widget.game.gameId);
+        final supabasePgn = await gameRepository.getGamePgn(widget.game.gameId);
+        if (supabasePgn != null && pgnHasMoves(supabasePgn)) {
+          pgn = supabasePgn;
+        }
       } catch (_) {
         // Ignore and fall back to Gamebase fetch below.
       }
 
-      if (pgn == null || pgn.trim().isEmpty) {
-        final fullGame = await gamebaseRepository.getGameById(widget.game.gameId);
-        pgn =
-            fullGame != null
-                ? mapGamebaseGameToGamesTourModel(fullGame).pgn
-                : null;
+      // If still no moves, try Gamebase API with includePgn=true
+      if (pgn == null || !pgnHasMoves(pgn)) {
+        final fullGame = await gamebaseRepository.getGameWithPgn(widget.game.gameId);
+        if (fullGame != null) {
+          // Try raw PGN first
+          if (fullGame.pgn != null && pgnHasMoves(fullGame.pgn!)) {
+            pgn = fullGame.pgn;
+          } else if (fullGame.data != null) {
+            // Build PGN from game data (contains moves)
+            final builtPgn = buildPgnFromGamebaseData(fullGame.data);
+            if (builtPgn != null && pgnHasMoves(builtPgn)) {
+              pgn = builtPgn;
+            }
+          }
+        }
       }
     }
 
@@ -112,8 +130,42 @@ class _AddToFolderPageState extends ConsumerState<_AddToFolderPage> {
 
     final chessGame = ChessGame.fromPgn(widget.game.gameId, pgn);
     final meta = Map<String, dynamic>.from(chessGame.metadata);
-    meta.putIfAbsent('White', () => widget.game.whitePlayer.name);
-    meta.putIfAbsent('Black', () => widget.game.blackPlayer.name);
+
+    // Always set player names from the game model (more reliable)
+    meta['White'] = widget.game.whitePlayer.name;
+    meta['Black'] = widget.game.blackPlayer.name;
+
+    // Always set player federations/country codes for flag display
+    final whiteFed = widget.game.whitePlayer.countryCode.isNotEmpty
+        ? widget.game.whitePlayer.countryCode
+        : widget.game.whitePlayer.federation;
+    final blackFed = widget.game.blackPlayer.countryCode.isNotEmpty
+        ? widget.game.blackPlayer.countryCode
+        : widget.game.blackPlayer.federation;
+    if (whiteFed.isNotEmpty) meta['WhiteFed'] = whiteFed;
+    if (blackFed.isNotEmpty) meta['BlackFed'] = blackFed;
+
+    // Always set player titles (overwrite even if PGN had them)
+    if (widget.game.whitePlayer.title.isNotEmpty) {
+      meta['WhiteTitle'] = widget.game.whitePlayer.title;
+    }
+    if (widget.game.blackPlayer.title.isNotEmpty) {
+      meta['BlackTitle'] = widget.game.blackPlayer.title;
+    }
+
+    // Always set player ratings
+    if (widget.game.whitePlayer.rating > 0) {
+      meta['WhiteElo'] = widget.game.whitePlayer.rating.toString();
+    }
+    if (widget.game.blackPlayer.rating > 0) {
+      meta['BlackElo'] = widget.game.blackPlayer.rating.toString();
+    }
+
+    // Set event/tournament name
+    if (widget.game.tourId.isNotEmpty && widget.game.tourId != 'library') {
+      meta['Event'] = widget.game.tourId;
+    }
+
     return chessGame.copyWith(metadata: meta);
   }
 
@@ -225,7 +277,8 @@ class _AddToFolderPageState extends ConsumerState<_AddToFolderPage> {
 
       if (!mounted) return;
       final messenger = ScaffoldMessenger.of(context);
-      Navigator.of(context).pop();
+      // Pop the outer route (the sheet), not the inner PagedSheet navigator
+      Navigator.of(context, rootNavigator: true).pop();
       messenger.showSnackBar(
         SnackBar(
           content: Text(

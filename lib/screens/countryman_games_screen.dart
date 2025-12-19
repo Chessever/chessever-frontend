@@ -245,7 +245,7 @@ class _GamesAppBarWidgetState extends ConsumerState<CountrymanGamesAppBar> {
                                 focusNode: _focusNode,
                                 style: const TextStyle(color: kWhiteColor70),
                                 decoration: const InputDecoration(
-                                  hintText: "Search...",
+                                  hintText: 'Search',
 
                                   hintStyle: TextStyle(color: kWhiteColor70),
                                   border: InputBorder.none,

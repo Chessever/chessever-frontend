@@ -180,7 +180,7 @@ class _SearchBar extends StatelessWidget {
                 onChanged: onChanged,
                 decoration: InputDecoration(
                   isDense: true,
-                  hintText: 'Search…',
+                  hintText: 'Search',
                   hintStyle: AppTypography.textSmRegular.copyWith(
                     color: kWhiteColor.withValues(alpha: 0.5),
                   ),
