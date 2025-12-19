@@ -156,13 +156,13 @@ class _PremiumCollectionCard extends ConsumerWidget {
       if (type == PremiumGamesType.favorites) {
         Navigator.of(context).push(
           MaterialPageRoute(
-            builder: (_) => const FavoritesCombinedGamesScreen(),
+            builder: (_) => FavoritesCombinedGamesScreen(),
           ),
         );
       } else {
         Navigator.of(context).push(
           MaterialPageRoute(
-            builder: (_) => const CountrymenCombinedGamesScreen(),
+            builder: (_) => CountrymenCombinedGamesScreen(),
           ),
         );
       }
