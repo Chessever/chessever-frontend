@@ -296,7 +296,7 @@ class _GamesAppBarWidgetState extends ConsumerState<GamesAppBarWidget>
                         Expanded(
                           child: EnhancedGamesSearchBar(
                             controller: _searchController,
-                            hintText: "Search players or games...",
+                            hintText: 'Search',
                             onChanged: _handleSearchInput,
                             onGameSelected: _handleGameSelection,
                             onClose: _closeSearch,

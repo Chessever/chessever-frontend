@@ -21,6 +21,9 @@ paths:
         Returns aggregated statistics for all moves played from a given FEN position.
         For each move, returns win/draw/loss counts and total games.
         If only one game exists for a move, includes the gameId.
+
+        **Coverage:** Position data is indexed for the first 21 plies (~10-11 full moves) of each game.
+        Queries for positions beyond this depth will return an empty moves array.
       operationId: getPositionAggregates
       tags:
         - Game Position
@@ -28,7 +31,9 @@ paths:
         - name: fen
           in: query
           required: true
-          description: FEN string representing the chess position
+          description: |
+            FEN string representing the chess position.
+            The halfmove clock and fullmove number (last two FEN fields) are ignored for matching.
           schema:
             type: string
           example: "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
@@ -115,12 +120,32 @@ paths:
       description: |
         Search across players and games.
 
-        Supports fielded tokens in `q` for game search, for example:
-        - `eco:C45`
-        - `opening:"Sicilian Defense"`
-        - `player:Carlsen`
-        - `white:"Kasparov, Garry" black:Karpov`
-        - `country:"Norway"` (matches player federation)
+        Supports fielded tokens in `q` for game search. **All tokens are combined with AND logic.**
+
+        **Available tokens:**
+        - `eco:C45` - ECO opening code
+        - `opening:"Sicilian Defense"` - Opening name
+        - `variation:"Najdorf"` - Opening variation
+        - `event:"Wijk aan Zee"` - Tournament/event name
+        - `site:"London"` - Venue/location
+        - `player:Carlsen` - Player on either side (**repeatable for AND logic**)
+        - `white:"Kasparov, Garry"` - White player only
+        - `black:Karpov` - Black player only
+        - `country:"Turkiye"` - Player federation (uses FIDE country names)
+
+        **Multi-player search (AND logic):**
+        - `player:Carlsen player:Caruana` - Games where both players appear (head-to-head)
+        - `player:Nakamura player:Carlsen` - Games between Nakamura and Carlsen
+
+        **Combined queries:**
+        - `event:London player:Eljanov` - Eljanov's games at London events
+        - `opening:Sicilian country:Russia` - Sicilian games by Russian players
+        - `mustafa country:Turkiye` - Turkish players named "Mustafa"
+
+        **Country name notes:**
+        Use FIDE country names, not ISO codes. Examples:
+        - `Turkiye` (not `Turkey` or `TUR`)
+        - `United States of America` or `United` (not `USA`)
       operationId: globalSearch
       tags:
         - Search
@@ -526,6 +551,8 @@ components:
         black: { type: string, nullable: true }
         whiteElo: { type: integer, nullable: true }
         blackElo: { type: integer, nullable: true }
+        whiteFed: { type: string, nullable: true, description: "White player's country/federation" }
+        blackFed: { type: string, nullable: true, description: "Black player's country/federation" }
 
     SearchResult:
       oneOf:
@@ -748,6 +775,14 @@ components:
           type: integer
           nullable: true
           description: Black Elo extracted from PGN headers (if present)
+        whiteFed:
+          type: string
+          nullable: true
+          description: White player's federation/country (e.g., "Norway", "Turkiye")
+        blackFed:
+          type: string
+          nullable: true
+          description: Black player's federation/country (e.g., "Russia", "United States of America")
         whitePlayerId:
           type: string
           format: uuid

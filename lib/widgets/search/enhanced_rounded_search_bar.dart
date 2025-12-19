@@ -30,7 +30,7 @@ class EnhancedRoundedSearchBar extends ConsumerStatefulWidget {
     this.onPlayerSelected,
     this.onChanged,
     this.onTournamentSelected,
-    this.hintText = 'Search tournaments or players',
+    this.hintText = 'Search',
     this.autofocus = false,
     this.onFilterTap,
     this.onProfileTap,
@@ -263,7 +263,7 @@ class _EnhancedRoundedSearchBarState
               borderRadius: BorderRadius.circular(12.br),
             ),
             child: SimpleSearchBar(
-              hintText: 'Search Events or Players',
+              hintText: 'Search',
               controller: widget.controller,
               focusNode: _effectiveNode,
               onCloseTap: _clearSearchAndHide,

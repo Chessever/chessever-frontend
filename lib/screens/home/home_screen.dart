@@ -1,11 +1,10 @@
 import 'package:chessever2/repository/authentication/auth_repository.dart';
-import 'package:chessever2/screens/authentication/auth_screen.dart';
 import 'package:chessever2/screens/authentication/auth_screen_provider.dart';
 import 'package:chessever2/screens/calendar/calendar_screen.dart';
+import 'package:chessever2/screens/countrymen/countrymen_combined_games_screen.dart';
+import 'package:chessever2/screens/favorites/player_games/favorites_combined_games_screen.dart';
 import 'package:chessever2/screens/library/library_screen.dart';
-import 'package:chessever2/screens/premium/premium_screen.dart'; // Import premium screen
-import 'package:chessever2/screens/premium/provider/premium_screen_provider.dart';
-import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
+import 'package:chessever2/screens/premium/premium_screen.dart';
 import 'package:chessever2/widgets/hamburger_menu/hamburger_menu.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -34,28 +33,22 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             Navigator.pushNamed(context, '/player_list_screen');
           },
           onFavoritesPressed: () {
-            // Navigate to favorites screen
-            Navigator.pushNamed(context, '/favorites_screen');
+            // Navigate to favorites combined games screen
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => const FavoritesCombinedGamesScreen(),
+              ),
+            );
           },
           onCountrymanPressed: () {
-            final status = ref.read(statusProvider);
-
-            if (status) {
-              showModalBottomSheet(
-                context: context,
-                backgroundColor: Colors.transparent,
-                isScrollControlled: true,
-                builder: (_) => const PremiumScreen(),
-              );
-            } else {
-              showAlertModal(
-                context: context,
-                barrierDismissible: false,
-                horizontalPadding: 0,
-                verticalPadding: 0,
-                child: CountryPickerWidget(isHamburgerMode: true),
-              );
-            }
+            // Navigate to countrymen combined games screen
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => const CountrymenCombinedGamesScreen(),
+              ),
+            );
           },
           onAnalysisBoardPressed: () {},
           onSupportPressed: () {

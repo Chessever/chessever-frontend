@@ -223,6 +223,7 @@ class LibrarySearchResultsView extends ConsumerWidget {
           ListView.separated(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
+            padding: EdgeInsets.zero,
             itemCount: results.folders.length,
             separatorBuilder: (_, __) => SizedBox(height: 12.h),
             itemBuilder: (context, index) {
@@ -243,8 +244,9 @@ class LibrarySearchResultsView extends ConsumerWidget {
           ListView.separated(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
+            padding: EdgeInsets.zero,
             itemCount: results.players.length,
-            separatorBuilder: (_, __) => const SizedBox.shrink(),
+            separatorBuilder: (_, __) => SizedBox(height: 8.h),
             itemBuilder: (context, index) {
               final player = results.players[index];
               return GamebaseSearchPlayerCard(
@@ -264,6 +266,7 @@ class LibrarySearchResultsView extends ConsumerWidget {
           ListView.separated(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
+            padding: EdgeInsets.zero,
             itemCount: results.analyses.length,
             separatorBuilder: (_, __) => SizedBox(height: 12.h),
             itemBuilder: (context, index) {
@@ -296,6 +299,7 @@ class LibrarySearchResultsView extends ConsumerWidget {
         ListView.separated(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
+          padding: EdgeInsets.zero,
           itemCount: fallbackGames.length,
           separatorBuilder: (_, __) => SizedBox(height: 12.h),
           itemBuilder: (context, index) {
@@ -369,12 +373,9 @@ class _SectionHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.only(bottom: 12.h),
-      child: Text(
-        title,
-        style: AppTypography.textSmBold.copyWith(color: kWhiteColor),
-      ),
+    return Text(
+      title,
+      style: AppTypography.textSmBold.copyWith(color: kWhiteColor),
     );
   }
 }

@@ -46,6 +46,7 @@ Future<void> loadSavedAnalysis(
             games: [game],
             savedAnalysisData: savedAnalysisData,
             showGamebaseButton: true,
+            disableGamebaseOverlayByDefault: true,
             showClock: false,
           ),
     ),

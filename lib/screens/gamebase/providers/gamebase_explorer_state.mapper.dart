@@ -239,7 +239,7 @@ class GamebaseExplorerStateMapper
     'currentFen',
     _$currentFen,
     opt: true,
-    def: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+    def: '',
   );
   static List<String> _$moveHistory(GamebaseExplorerState v) => v.moveHistory;
   static const Field<GamebaseExplorerState, List<String>> _f$moveHistory =

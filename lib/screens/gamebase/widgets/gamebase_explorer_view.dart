@@ -34,6 +34,7 @@ class GamebaseExplorerView extends HookConsumerWidget {
 
     // Sync Gamebase provider with current board FEN
     useEffect(() {
+      debugPrint('[GamebaseExplorerView] FEN changed: ${currentFen.split(' ').take(2).join(' ')}...');
       Future.microtask(() {
         ref.read(gamebaseExplorerProvider.notifier).setPosition(currentFen);
       });
@@ -42,23 +43,38 @@ class GamebaseExplorerView extends HookConsumerWidget {
 
     final gamebaseState = ref.watch(gamebaseExplorerProvider);
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        // Horizontal PV Lines (Engine Analysis)
-        if (state.showEngineAnalysis)
-          _HorizontalPvLines(state: state, onMoveSelected: onMoveSelected),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Horizontal PV Lines (Engine Analysis)
+            if (state.showEngineAnalysis)
+              _HorizontalPvLines(state: state, onMoveSelected: onMoveSelected),
 
-        // Filter Panel
-        const GamebaseFilterPanel(),
+            // Filter Panel - scrollable when expanded to prevent overflow
+            Flexible(
+              flex: 0,
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxHeight: constraints.maxHeight * 0.6,
+                ),
+                child: const SingleChildScrollView(
+                  child: GamebaseFilterPanel(),
+                ),
+              ),
+            ),
 
-        // Moves Table
-        Expanded(child: _buildContent(gamebaseState, currentPosition)),
-      ],
+            // Moves Table
+            Expanded(child: _buildContent(ref, gamebaseState, currentPosition)),
+          ],
+        );
+      },
     );
   }
 
   Widget _buildContent(
+    WidgetRef ref,
     GamebaseExplorerState gamebaseState,
     Position currentPosition,
   ) {
@@ -66,13 +82,60 @@ class GamebaseExplorerView extends HookConsumerWidget {
       return const Center(child: CircularProgressIndicator(color: kWhiteColor));
     }
 
+    // While the overlay is mounting, there is a brief moment where the provider
+    // has no FEN set yet. Avoid showing a "blank table" flash.
+    if (gamebaseState.currentFen.trim().isEmpty) {
+      return const _GamebaseEmptyState(
+        icon: Icons.menu_book_rounded,
+        title: 'Loading position…',
+        subtitle: 'Fetching database moves for this position.',
+      );
+    }
+
     if (gamebaseState.error != null) {
       return Center(
-        child: Text(
-          'Could not load database stats',
-          style: AppTypography.textSmRegular.copyWith(
-            color: kWhiteColor.withValues(alpha: 0.5),
+        child: _GamebaseEmptyState(
+          icon: Icons.wifi_off_rounded,
+          title: 'Could not load database moves',
+          subtitle: 'Check your connection and try again.',
+          primaryAction: _GamebaseEmptyStateAction(
+            label: 'Retry',
+            icon: Icons.refresh_rounded,
+            onPressed: () => ref.read(gamebaseExplorerProvider.notifier).refresh(),
           ),
+        ),
+      );
+    }
+
+    if (gamebaseState.moveAggregates.isEmpty) {
+      return Center(
+        child: _GamebaseEmptyState(
+          icon: Icons.travel_explore_rounded,
+          title: 'No database games for this position',
+          subtitle:
+              gamebaseState.hasActiveFilters
+                  ? 'Try clearing filters or go back a move.'
+                  : 'Try going back a move or explore a different line.',
+          primaryAction:
+              gamebaseState.hasActiveFilters
+                  ? _GamebaseEmptyStateAction(
+                    label: 'Clear filters',
+                    icon: Icons.filter_alt_off_rounded,
+                    onPressed:
+                        () =>
+                            ref
+                                .read(gamebaseExplorerProvider.notifier)
+                                .clearFilters(),
+                  )
+                  : _GamebaseEmptyStateAction(
+                    label: 'Refresh',
+                    icon: Icons.refresh_rounded,
+                    onPressed:
+                        () =>
+                            ref
+                                .read(gamebaseExplorerProvider.notifier)
+                                .refresh(),
+                  ),
         ),
       );
     }
@@ -253,6 +316,96 @@ class _GamebaseMovesTable extends StatelessWidget {
   );
 }
 
+class _GamebaseEmptyStateAction {
+  const _GamebaseEmptyStateAction({
+    required this.label,
+    required this.icon,
+    required this.onPressed,
+  });
+
+  final String label;
+  final IconData icon;
+  final VoidCallback onPressed;
+}
+
+class _GamebaseEmptyState extends StatelessWidget {
+  const _GamebaseEmptyState({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    this.primaryAction,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final _GamebaseEmptyStateAction? primaryAction;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: 20.w),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            padding: EdgeInsets.all(14.sp),
+            decoration: BoxDecoration(
+              color: kWhiteColor.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(14.br),
+              border: Border.all(color: kWhiteColor.withValues(alpha: 0.10)),
+            ),
+            child: Icon(
+              icon,
+              size: 22.sp,
+              color: kWhiteColor.withValues(alpha: 0.85),
+            ),
+          ),
+          SizedBox(height: 12.h),
+          Text(
+            title,
+            textAlign: TextAlign.center,
+            style: AppTypography.textSmBold.copyWith(color: kWhiteColor),
+          ),
+          SizedBox(height: 6.h),
+          Text(
+            subtitle,
+            textAlign: TextAlign.center,
+            style: AppTypography.textSmRegular.copyWith(
+              color: kWhiteColor.withValues(alpha: 0.6),
+            ),
+          ),
+          if (primaryAction != null) ...[
+            SizedBox(height: 14.h),
+            TextButton.icon(
+              onPressed: primaryAction!.onPressed,
+              icon: Icon(
+                primaryAction!.icon,
+                size: 18.sp,
+                color: kWhiteColor,
+              ),
+              label: Text(
+                primaryAction!.label,
+                style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+              ),
+              style: TextButton.styleFrom(
+                backgroundColor: kWhiteColor.withValues(alpha: 0.08),
+                padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 10.h),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12.br),
+                  side: BorderSide(
+                    color: kWhiteColor.withValues(alpha: 0.12),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
 class _MoveRow extends ConsumerWidget {
   const _MoveRow({
     required this.move,
@@ -352,6 +505,7 @@ class _MoveRow extends ConsumerWidget {
               child: Padding(
                 padding: EdgeInsets.symmetric(horizontal: 8.w),
                 child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Text(
                       '${whitePct + drawPct}%',
@@ -360,7 +514,6 @@ class _MoveRow extends ConsumerWidget {
                       ),
                     ),
                   ],
-                  mainAxisAlignment: MainAxisAlignment.center,
                 ),
               ),
             ),

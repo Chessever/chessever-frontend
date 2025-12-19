@@ -177,7 +177,7 @@ class GroupEventScreen extends HookConsumerWidget {
                 child: EnhancedRoundedSearchBar(
                   focusNode: focusNode,
                   controller: searchController,
-                  hintText: 'Search Events or Players',
+                  hintText: 'Search',
                   showProfile: !isSearching.value,
                   onChanged: (value) {
                     ref.read(groupEventScreenProvider.notifier)

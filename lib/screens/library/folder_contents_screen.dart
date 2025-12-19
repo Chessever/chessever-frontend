@@ -10,6 +10,7 @@ import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/screen_wrapper.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 /// Book (folder) screen.
@@ -28,6 +29,7 @@ class FolderContentsScreen extends ConsumerStatefulWidget {
 class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
+  final Set<String> _removingIds = {};
 
   @override
   void dispose() {
@@ -43,8 +45,11 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
     setState(() {});
   }
 
-  Future<void> _removeFromBook(SavedAnalysis analysis) async {
+  Future<void> _removeFromBookSimple(SavedAnalysis analysis) async {
+    if (_removingIds.contains(analysis.id)) return;
+
     HapticFeedbackService.medium();
+    _removingIds.add(analysis.id);
 
     final repository = ref.read(libraryRepositoryProvider);
     try {
@@ -88,6 +93,8 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
           behavior: SnackBarBehavior.floating,
         ),
       );
+    } finally {
+      _removingIds.remove(analysis.id);
     }
   }
 
@@ -235,12 +242,9 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
                 if (query.isEmpty) return true;
                 final md = analysis.chessGame.metadata;
                 final title = analysis.title.toLowerCase();
-                final white =
-                    (md['White'] ?? '').toString().toLowerCase();
-                final black =
-                    (md['Black'] ?? '').toString().toLowerCase();
-                final event =
-                    (md['Event'] ?? '').toString().toLowerCase();
+                final white = (md['White'] ?? '').toString().toLowerCase();
+                final black = (md['Black'] ?? '').toString().toLowerCase();
+                final event = (md['Event'] ?? '').toString().toLowerCase();
                 return title.contains(query) ||
                     white.contains(query) ||
                     black.contains(query) ||
@@ -250,19 +254,33 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
           if (analyses.isEmpty) return _buildEmptySavedState();
           if (filtered.isEmpty) return _buildEmptySearchState();
 
-          return ListView.separated(
+          // Use a regular ListView instead of AnimatedList to avoid sync issues
+          // AnimatedList requires manual insertItem/removeItem calls which
+          // conflict with stream-based data updates
+          return ListView.builder(
             padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
             itemCount: filtered.length,
-            separatorBuilder: (_, __) => SizedBox(height: 12.h),
             itemBuilder: (context, index) {
               final analysis = filtered[index];
-              return SwipeActionCard(
-                dismissKey: ValueKey('book_${widget.folder.id}_${analysis.id}'),
-                icon: Icons.delete_outline_rounded,
-                label: 'Remove',
-                backgroundColor: kRedColor,
-                onAction: () => _removeFromBook(analysis),
-                child: BookSavedGameCard(analysis: analysis),
+              return Padding(
+                padding: EdgeInsets.only(bottom: 12.h),
+                child: SwipeActionCard(
+                  dismissKey: ValueKey('book_${widget.folder.id}_${analysis.id}'),
+                  icon: Icons.delete_outline_rounded,
+                  label: 'Remove',
+                  backgroundColor: kRedColor,
+                  behavior: SwipeActionBehavior.dismiss,
+                  onAction: () => _removeFromBookSimple(analysis),
+                  child: BookSavedGameCard(analysis: analysis)
+                      .animate()
+                      .fadeIn(duration: 200.ms, delay: Duration(milliseconds: (index % 10) * 30))
+                      .slideY(
+                        begin: 0.05,
+                        end: 0,
+                        duration: 200.ms,
+                        curve: Curves.easeOut,
+                      ),
+                ),
               );
             },
           );

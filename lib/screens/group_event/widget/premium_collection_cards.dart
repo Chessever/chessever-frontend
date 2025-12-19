@@ -4,30 +4,27 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:chessever2/providers/country_dropdown_provider.dart';
 import 'package:chessever2/providers/favorite_players_provider.dart';
 import 'package:chessever2/repository/favorites/models/favorite_player.dart';
-import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
+import 'package:chessever2/screens/countrymen/countrymen_combined_games_screen.dart';
+import 'package:chessever2/screens/favorites/player_games/favorites_combined_games_screen.dart';
 import 'package:chessever2/screens/premium_games/premium_games_screen.dart';
 import 'package:chessever2/services/fide_photo_service.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
-import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:country_flags/country_flags.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-/// Premium collection cards displayed at the top of For You tab.
-/// Shows "Favorites" and "Countrymen" cards that navigate to premium game lists.
-class PremiumCollectionCards extends ConsumerWidget {
+/// Collection cards displayed at the top of For You tab.
+/// Shows "Favorites" and "Countrymen" cards that navigate to combined game lists.
+class PremiumCollectionCards extends StatelessWidget {
   const PremiumCollectionCards({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final subscriptionState = ref.watch(subscriptionProvider);
-    final isPremium = subscriptionState.isSubscribed;
-
+  Widget build(BuildContext context) {
     return Padding(
       padding: EdgeInsets.only(bottom: 20.sp),
       child: Row(
@@ -36,7 +33,6 @@ class PremiumCollectionCards extends ConsumerWidget {
             child: _PremiumCollectionCard(
               type: PremiumGamesType.favorites,
               title: 'Favorites',
-              isPremium: isPremium,
             ),
           ),
           SizedBox(width: 12.sp),
@@ -44,7 +40,6 @@ class PremiumCollectionCards extends ConsumerWidget {
             child: _PremiumCollectionCard(
               type: PremiumGamesType.countrymen,
               title: 'Countrymen',
-              isPremium: isPremium,
             ),
           ),
         ],
@@ -57,19 +52,13 @@ class _PremiumCollectionCard extends ConsumerWidget {
   const _PremiumCollectionCard({
     required this.type,
     required this.title,
-    required this.isPremium,
   });
 
   final PremiumGamesType type;
   final String title;
-  final bool isPremium;
 
-  // Distinct accent colors for each card type
-  Color get _accentColor {
-    return type == PremiumGamesType.favorites
-        ? const Color(0xFFE53935) // Red for favorites (heart)
-        : const Color(0xFF4CAF50); // Green for countrymen
-  }
+  // Neutral accent color for all card types
+  Color get _accentColor => kWhiteColor;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -162,21 +151,21 @@ class _PremiumCollectionCard extends ConsumerWidget {
   Future<void> _handleTap(BuildContext context, WidgetRef ref) async {
     HapticFeedbackService.cardTap();
 
-    final isPremium = ref.read(subscriptionProvider).isSubscribed;
-
-    if (!isPremium) {
-      // Show paywall
-      final subscribed = await showPremiumPaywallSheet(context: context);
-      if (!subscribed) return;
-    }
-
-    // Navigate to premium games screen
+    // Navigate directly to combined games screens (no paywall)
     if (context.mounted) {
-      Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => PremiumGamesScreen(type: type),
-        ),
-      );
+      if (type == PremiumGamesType.favorites) {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => const FavoritesCombinedGamesScreen(),
+          ),
+        );
+      } else {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => const CountrymenCombinedGamesScreen(),
+          ),
+        );
+      }
     }
   }
 }
@@ -283,8 +272,6 @@ class _IrregularPlayerGrid extends StatelessWidget {
   final double cardWidth;
   final double cardHeight;
 
-  static const _accentColor = Color(0xFFE53935);
-
   @override
   Widget build(BuildContext context) {
     // Calculate cell sizes with slight variation for irregular look
@@ -316,7 +303,7 @@ class _IrregularPlayerGrid extends StatelessWidget {
         CustomPaint(
           size: Size(cardWidth, cardHeight),
           painter: _GridPatternPainter(
-            accentColor: _accentColor,
+            accentColor: kWhiteColor,
             rows: gridConfig.rows,
             cellSize: actualCellSize,
             spacing: cellSpacing,
@@ -433,8 +420,6 @@ class _PlayerPhotoCell extends HookWidget {
   final FavoritePlayer player;
   final double size;
 
-  static const _accentColor = Color(0xFFE53935);
-
   @override
   Widget build(BuildContext context) {
     final photoUrlFuture = useMemoized(
@@ -449,7 +434,7 @@ class _PlayerPhotoCell extends HookWidget {
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         border: Border.all(
-          color: _accentColor.withValues(alpha: 0.4),
+          color: kWhiteColor.withValues(alpha: 0.3),
           width: 1.5,
         ),
         boxShadow: [
@@ -482,8 +467,8 @@ class _PlayerPhotoCell extends HookWidget {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            _accentColor.withValues(alpha: 0.2),
-            _accentColor.withValues(alpha: 0.1),
+            kWhiteColor.withValues(alpha: 0.15),
+            kWhiteColor.withValues(alpha: 0.08),
           ],
         ),
       ),
@@ -491,7 +476,7 @@ class _PlayerPhotoCell extends HookWidget {
         child: Icon(
           Icons.person_rounded,
           size: size * 0.5,
-          color: _accentColor.withValues(alpha: 0.5),
+          color: kWhiteColor.withValues(alpha: 0.4),
         ),
       ),
     );
@@ -521,8 +506,8 @@ class _PlayerPhotoCell extends HookWidget {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            _accentColor.withValues(alpha: 0.25),
-            _accentColor.withValues(alpha: 0.15),
+            kWhiteColor.withValues(alpha: 0.2),
+            kWhiteColor.withValues(alpha: 0.1),
           ],
         ),
       ),
@@ -545,8 +530,6 @@ class _PlayerPhotoCell extends HookWidget {
 class _EmptyFavoritesPlaceholder extends StatelessWidget {
   const _EmptyFavoritesPlaceholder();
 
-  static const _accentColor = Color(0xFFE53935);
-
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -555,14 +538,14 @@ class _EmptyFavoritesPlaceholder extends StatelessWidget {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            _accentColor.withValues(alpha: 0.12),
-            _accentColor.withValues(alpha: 0.06),
-            _accentColor.withValues(alpha: 0.08),
+            kWhiteColor.withValues(alpha: 0.1),
+            kWhiteColor.withValues(alpha: 0.05),
+            kWhiteColor.withValues(alpha: 0.07),
           ],
         ),
       ),
       child: CustomPaint(
-        painter: _FloatingHeartsPainter(accentColor: _accentColor),
+        painter: _FloatingHeartsPainter(accentColor: kWhiteColor),
         size: Size.infinite,
       ),
     );
@@ -662,8 +645,8 @@ class _FlagPlaceholder extends StatelessWidget {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            const Color(0xFF4CAF50).withValues(alpha: 0.1),
-            const Color(0xFF4CAF50).withValues(alpha: 0.05),
+            kWhiteColor.withValues(alpha: 0.1),
+            kWhiteColor.withValues(alpha: 0.05),
           ],
         ),
       ),
@@ -671,7 +654,7 @@ class _FlagPlaceholder extends StatelessWidget {
         child: Icon(
           Icons.public_rounded,
           size: 48.sp,
-          color: const Color(0xFF4CAF50).withValues(alpha: 0.15),
+          color: kWhiteColor.withValues(alpha: 0.15),
         ),
       ),
     );

@@ -78,6 +78,7 @@ class TwicGameCard extends ConsumerWidget {
           games: allGames,
           currentIndex: gameIndex,
           showGamebaseButton: true,
+          disableGamebaseOverlayByDefault: true,
         ),
       ),
     );

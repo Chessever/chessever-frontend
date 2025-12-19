@@ -446,7 +446,7 @@ class _PlayerSearchField extends HookConsumerWidget {
             focusNode: focusNode,
             style: AppTypography.textSmRegular.copyWith(color: kWhiteColor),
             decoration: InputDecoration(
-              hintText: 'Search by player name...',
+              hintText: 'Search',
               hintStyle: AppTypography.textSmRegular.copyWith(
                 color: kSecondaryTextColor.withOpacity(0.5),
               ),

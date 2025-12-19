@@ -434,6 +434,10 @@ class ChessBoardScreenNew extends ConsumerStatefulWidget {
   /// Use this when navigating from library for position analysis where event info is not relevant.
   final bool hideEventInfo;
   final bool showGamebaseButton;
+
+  /// When true, the gamebase overlay will be disabled by default on screen init.
+  /// Use this for library routes where games are typically past move 10.
+  final bool disableGamebaseOverlayByDefault;
   final bool showClock;
 
   const ChessBoardScreenNew({
@@ -442,6 +446,7 @@ class ChessBoardScreenNew extends ConsumerStatefulWidget {
     this.savedAnalysisData,
     this.hideEventInfo = false,
     this.showGamebaseButton = false,
+    this.disableGamebaseOverlayByDefault = false,
     this.showClock = true,
     super.key,
   });
@@ -598,6 +603,11 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
       if (mounted) {
         ref.read(currentlyVisiblePageIndexProvider.notifier).state =
             _currentPageIndex;
+
+        // Disable gamebase overlay by default for library routes (games past move 10)
+        if (widget.disableGamebaseOverlayByDefault) {
+          ref.read(gamebaseOverlayEnabledProvider.notifier).setEnabled(false);
+        }
 
         // Analysis mode is already enabled by default in the provider initialization
         // No need to toggle it here
@@ -845,10 +855,6 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
 
   @override
   Widget build(BuildContext context) {
-    final gamebaseEnabled =
-        ref.watch(gamebaseOverlayEnabledProvider).valueOrNull ?? true;
-    final isGamebaseActive =
-        widget.showGamebaseButton ? gamebaseEnabled : false;
     final view = ref.watch(chessboardViewFromProviderNew);
     AsyncValue<GamesScreenModel> gamesAsync;
 
@@ -1127,7 +1133,6 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
                         lastViewedIndex: _lastViewedIndex,
                         hideEventInfo: widget.hideEventInfo,
                         onToggleGamebase: _toggleGamebase,
-                        isGamebaseActive: isGamebaseActive,
                         showGamebaseButton: widget.showGamebaseButton,
                         showClock: widget.showClock,
                       );
@@ -1173,7 +1178,6 @@ class _GamePage extends StatelessWidget {
   final int? lastViewedIndex;
   final bool hideEventInfo;
   final VoidCallback onToggleGamebase;
-  final bool isGamebaseActive;
   final bool showGamebaseButton;
   final bool showClock;
 
@@ -1185,7 +1189,6 @@ class _GamePage extends StatelessWidget {
     required this.currentPageIndex,
     required this.onGameChanged,
     required this.onToggleGamebase,
-    this.isGamebaseActive = false,
     this.lastViewedIndex,
     this.hideEventInfo = false,
     this.showGamebaseButton = false,
@@ -1201,7 +1204,6 @@ class _GamePage extends StatelessWidget {
         state: state,
         game: game,
         onGamebaseToggle: onToggleGamebase,
-        isGamebaseActive: isGamebaseActive,
         showGamebaseButton: showGamebaseButton,
       ),
       appBar: _AppBar(
@@ -1217,7 +1219,7 @@ class _GamePage extends StatelessWidget {
         currentPageIndex: currentPageIndex,
         game: game,
         state: state,
-        isGamebaseActive: isGamebaseActive,
+        showGamebaseButton: showGamebaseButton,
         showClock: showClock,
       ),
     );
@@ -3226,7 +3228,6 @@ class _BottomNavBar extends ConsumerWidget {
   final ChessBoardStateNew state;
   final GamesTourModel game;
   final VoidCallback onGamebaseToggle;
-  final bool isGamebaseActive;
   final bool showGamebaseButton;
 
   const _BottomNavBar({
@@ -3234,12 +3235,16 @@ class _BottomNavBar extends ConsumerWidget {
     required this.state,
     required this.game,
     required this.onGamebaseToggle,
-    required this.isGamebaseActive,
     this.showGamebaseButton = false,
   });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // Watch the provider directly to ensure rebuilds when gamebase toggle changes
+    final gamebaseEnabled =
+        ref.watch(gamebaseOverlayEnabledProvider).valueOrNull ?? true;
+    final isGamebaseActive = showGamebaseButton ? gamebaseEnabled : false;
+
     final params = ChessBoardProviderParams(game: game, index: index);
     final notifier = ref.read(chessBoardScreenProviderNew(params).notifier);
     ChessGameNavigatorState? navigatorState;
@@ -3269,6 +3274,7 @@ class _BottomNavBar extends ConsumerWidget {
         isPreviewActive ? previewCanMoveBackward : canMoveBackward;
 
     return ChessBoardBottomNavBar(
+      key: ValueKey('bottom_nav_gamebase_$isGamebaseActive'),
       gameIndex: index,
       showGamebaseButton: showGamebaseButton,
       onFlip: () => notifier.flipBoard(),
@@ -3321,7 +3327,7 @@ class _GameBody extends StatelessWidget {
   final int currentPageIndex;
   final GamesTourModel game;
   final ChessBoardStateNew state;
-  final bool isGamebaseActive;
+  final bool showGamebaseButton;
   final bool showClock;
 
   const _GameBody({
@@ -3329,7 +3335,7 @@ class _GameBody extends StatelessWidget {
     required this.currentPageIndex,
     required this.game,
     required this.state,
-    this.isGamebaseActive = false,
+    this.showGamebaseButton = false,
     this.showClock = true,
   });
 
@@ -3341,7 +3347,7 @@ class _GameBody extends StatelessWidget {
       currentPageIndex: currentPageIndex,
       game: game,
       state: state,
-      isGamebaseActive: isGamebaseActive,
+      showGamebaseButton: showGamebaseButton,
       showClock: showClock,
     );
   }
@@ -3352,7 +3358,7 @@ class _AnalysisGameBody extends ConsumerWidget {
   final int currentPageIndex;
   final GamesTourModel game;
   final ChessBoardStateNew state;
-  final bool isGamebaseActive;
+  final bool showGamebaseButton;
   final bool showClock;
 
   const _AnalysisGameBody({
@@ -3360,12 +3366,17 @@ class _AnalysisGameBody extends ConsumerWidget {
     required this.currentPageIndex,
     required this.game,
     required this.state,
-    this.isGamebaseActive = false,
+    this.showGamebaseButton = false,
     this.showClock = true,
   });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // Watch the provider directly to ensure rebuilds when gamebase toggle changes
+    final gamebaseEnabled =
+        ref.watch(gamebaseOverlayEnabledProvider).valueOrNull ?? true;
+    final isGamebaseActive = showGamebaseButton ? gamebaseEnabled : false;
+
     return LayoutBuilder(
       builder: (context, constraints) {
         final isVisiblePage = index == currentPageIndex;
@@ -3669,6 +3680,7 @@ class _AnalysisGameBody extends ConsumerWidget {
                             currentIndex: 0,
                             hideEventInfo: true,
                             showGamebaseButton: true,
+                            disableGamebaseOverlayByDefault: true,
                             showClock: false,
                           ),
                     ),
@@ -8128,7 +8140,7 @@ class _CommentDialogState extends ConsumerState<_CommentDialog>
                 final screenSize = MediaQuery.sizeOf(context);
                 final effectiveKeyboardHeight =
                     keyboardHeight.clamp(0.0, keyboardTotalHeight);
-                
+
                 // Calculate lift to center in available space
                 // Available space center is (screenHeight - keyboardHeight) / 2
                 // Current center is screenHeight / 2

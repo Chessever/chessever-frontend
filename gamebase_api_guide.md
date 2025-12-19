@@ -49,16 +49,68 @@ Use this for a "Google-like" search bar experience. It searches across multiple 
   - PGN header metadata extracted from `game.data.md`, plus full-text search over those fields: `ECO`, `Opening`, `Variation`, `Event`, `Site`, `White`, `Black`, `WhiteElo`, `BlackElo`, `WhiteFideId`, `BlackFideId`
 
 **Fielded tokens inside `q` (optional):**
-You can embed structured tokens in the text query to guide game matching:
-- `eco:C45`
-- `opening:"Sicilian Defense"`
-- `variation:"Najdorf"`
-- `event:"Wijk aan Zee"`
-- `site:"London"`
-- `player:Carlsen` (matches either side; use `color=white|black` to constrain)
-- `white:"Kasparov, Garry"`
-- `black:Karpov`
-- `country:"Norway"` (filters games where a player's federation matches)
+You can embed structured tokens in the text query to guide game matching. **All tokens are combined with AND logic.**
+
+| Token | Description | Example |
+|-------|-------------|---------|
+| `eco:CODE` | ECO opening code | `eco:C45` |
+| `opening:NAME` | Opening name | `opening:"Sicilian Defense"` |
+| `variation:NAME` | Opening variation | `variation:"Najdorf"` |
+| `event:NAME` | Tournament/event | `event:"Wijk aan Zee"` |
+| `site:LOCATION` | Venue/location | `site:"London"` |
+| `player:NAME` | Player (either side) - **repeatable** | `player:Carlsen player:Caruana` |
+| `white:NAME` | White player only | `white:"Kasparov, Garry"` |
+| `black:NAME` | Black player only | `black:Karpov` |
+| `country:COUNTRY` | Player federation (either side) | `country:"Norway"` |
+
+### **Multi-Player Search (AND Logic)**
+
+You can use multiple `player:` tokens to find games between specific players:
+
+```http
+# Find games where Carlsen plays Caruana
+GET /api/search?q=player:Carlsen player:Caruana&resources[]=game
+
+# Find games where Nakamura plays Carlsen
+GET /api/search?q=player:Nakamura player:Carlsen&resources[]=game
+```
+
+### **Combined Token Queries**
+
+All tokens can be combined for precise filtering:
+
+```http
+# Eljanov's games at London events
+GET /api/search?q=event:London player:Eljanov&resources[]=game
+
+# Sicilian games by Russian players
+GET /api/search?q=opening:Sicilian country:Russia&resources[]=game
+
+# Turkish players named "Mustafa"
+GET /api/search?q=mustafa country:Turkiye&resources[]=game
+
+# Carlsen's Scotch Game (C45) games
+GET /api/search?q=eco:C45 player:Carlsen&resources[]=game
+```
+
+### **Country Search (Fast)**
+
+Country search uses denormalized `white_fed` and `black_fed` columns on the game table, making it very fast without requiring expensive player table JOINs.
+
+```http
+GET /api/search?q=country:Turkiye
+GET /api/search?q=country:Norway
+GET /api/search?q=country:France&timeControl=CLASSICAL
+GET /api/search?q=opening:Sicilian country:Russia
+```
+
+**Important:** Use FIDE country names, not ISO codes:
+- `country:Turkiye` (not `Turkey` or `TUR`)
+- `country:Norway` (or `Nor` - partial match works)
+- `country:United` (matches "United States of America")
+- `country:USA` does NOT work (not in the country name)
+
+See [COUNTRY_SEARCH.md](./COUNTRY_SEARCH.md) for the full country name reference.
 
 **Example Request:**
 ```http
@@ -109,7 +161,11 @@ GET /api/search?q=player:\"Carlsen, Magnus\" opening:\"Sicilian Defense\"&color=
           "eco": "C45",
           "opening": "Scotch Game",
           "white": "Carlsen, Magnus",
-          "black": "Nepomniachtchi, Ian"
+          "black": "Nepomniachtchi, Ian",
+          "whiteElo": 2830,
+          "blackElo": 2795,
+          "whiteFed": "Norway",
+          "blackFed": "Russia"
         }
       }
     ],
@@ -229,8 +285,10 @@ Retrieve the full record of a game (JSON data), players, result, and date.
 
 This endpoint powers "Opening Explorer" features. It tells you what moves have been played from a specific board position and their win rates.
 
+**Coverage:** Position data is indexed for the **first 21 plies (~10-11 full moves)** of each game. Queries for positions beyond this depth will return an empty `moves` array. This covers the opening phase where aggregate statistics are most meaningful.
+
 **Parameters:**
-- `fen` (required): The board position in FEN notation.
+- `fen` (required): The board position in FEN notation. The halfmove clock and fullmove number (last two FEN fields) are ignored for matching purposes.
 - `playerId`: (Optional) Limit stats to a specific player's games.
 - `timeControl`: (Optional) Filter by `CLASSICAL`, `RAPID`, or `BLITZ`.
 - `minRating` / `maxRating`: (Optional) Filter games by player rating range.

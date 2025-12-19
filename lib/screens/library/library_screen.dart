@@ -76,6 +76,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
               games: [emptyGame],
               hideEventInfo: true,
               showGamebaseButton: true,
+              disableGamebaseOverlayByDefault: true,
             ),
       ),
     );
@@ -196,7 +197,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     return LibrarySearchBar(
       controller: _searchController,
       enableOverlay: true,
-      hintText: 'Search library',
+      hintText: 'Search',
       isFilterActive: filtersActive,
       onChanged: (query) {
         final trimmed = query.trim();
@@ -249,6 +250,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
               games: [gameModel],
               hideEventInfo: true,
               showGamebaseButton: true,
+              disableGamebaseOverlayByDefault: true,
             ),
       ),
     );
@@ -386,6 +388,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                           games: [game],
                           hideEventInfo: true,
                           showGamebaseButton: true,
+                          disableGamebaseOverlayByDefault: true,
                         ),
                   ),
                 );
@@ -459,33 +462,13 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   Widget _buildLibraryEmptyState() {
     return SliverFillRemaining(
       hasScrollBody: false,
-      child: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.menu_book_outlined,
-              size: 80.sp,
-              color: kWhiteColor.withValues(alpha: 0.35),
-            ),
-            SizedBox(height: 18.h),
-            Text(
-              'Nothing saved yet',
-              style: AppTypography.textLgBold.copyWith(color: kWhiteColor),
-            ),
-            SizedBox(height: 8.h),
-            Padding(
-              padding: EdgeInsets.symmetric(horizontal: 36.w),
-              child: Text(
-                'Save a board position or create your first book to get started.',
-                style: AppTypography.textSmRegular.copyWith(
-                  color: kWhiteColor.withValues(alpha: 0.6),
-                ),
-                textAlign: TextAlign.center,
-              ),
-            ),
-          ],
-        ),
+      child: _LibraryEmptyStateContent(
+        onSearchTap: () {
+          _searchController.clear();
+          FocusScope.of(context).requestFocus(FocusNode());
+          // Trigger search field focus by tapping on search bar area
+          setState(() => _searchQuery = '');
+        },
       ),
     );
   }
@@ -564,18 +547,17 @@ class _SquareIconButton extends StatelessWidget {
   final Widget? iconWidget;
   final VoidCallback onTap;
   final bool isPrimary;
-  final double size;
 
   const _SquareIconButton({
     required this.onTap,
     this.icon,
     this.iconWidget,
     this.isPrimary = false,
-    this.size = 44,
   });
 
   @override
   Widget build(BuildContext context) {
+    const double size = 44;
     final dimension = size.h;
     return GestureDetector(
       onTap: onTap,
@@ -605,6 +587,172 @@ class _SquareIconButton extends StatelessWidget {
               ),
         ),
       ),
+    );
+  }
+}
+
+/// A visually striking empty state that highlights access to millions of chess games
+class _LibraryEmptyStateContent extends StatelessWidget {
+  final VoidCallback onSearchTap;
+
+  const _LibraryEmptyStateContent({required this.onSearchTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: 24.w),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          // Decorative chess pattern grid
+          _buildChessPatternVisual(),
+          SizedBox(height: 32.h),
+
+          // Main headline
+          Text(
+            'Millions of games',
+            style: AppTypography.displayXsMedium.copyWith(
+              color: kWhiteColor,
+              letterSpacing: -0.5,
+            ),
+          ),
+          SizedBox(height: 4.h),
+          Text(
+            'at your fingertips',
+            style: AppTypography.displayXsMedium.copyWith(
+              color: kWhiteColor.withValues(alpha: 0.5),
+              letterSpacing: -0.5,
+            ),
+          ),
+
+          SizedBox(height: 20.h),
+
+          // Description
+          Padding(
+            padding: EdgeInsets.symmetric(horizontal: 20.w),
+            child: Text(
+              'Search any player, opening, or tournament. Save games to your personal books for study.',
+              style: AppTypography.textSmRegular.copyWith(
+                color: kWhiteColor.withValues(alpha: 0.55),
+                height: 1.5,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ),
+
+          SizedBox(height: 32.h),
+
+          // Subtle hint about the search bar
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.search_rounded,
+                size: 16.sp,
+                color: kPrimaryColor.withValues(alpha: 0.8),
+              ),
+              SizedBox(width: 8.w),
+              Text(
+                'Use the search bar above to explore',
+                style: AppTypography.textXsMedium.copyWith(
+                  color: kPrimaryColor.withValues(alpha: 0.8),
+                ),
+              ),
+            ],
+          ),
+
+          SizedBox(height: 80.h), // Bottom breathing room
+        ],
+      ),
+    );
+  }
+
+  Widget _buildChessPatternVisual() {
+    // A stylized 4x4 chess pattern with fading opacity to create depth
+    const gridSize = 4;
+    final squareSize = 28.w;
+    final totalSize = squareSize * gridSize;
+
+    return SizedBox(
+      width: totalSize,
+      height: totalSize,
+      child: Stack(
+        children: [
+          // Chess grid
+          for (int row = 0; row < gridSize; row++)
+            for (int col = 0; col < gridSize; col++)
+              Positioned(
+                left: col * squareSize,
+                top: row * squareSize,
+                child: _buildSquare(
+                  row: row,
+                  col: col,
+                  size: squareSize,
+                  gridSize: gridSize,
+                ),
+              ),
+          // Overlay gradient for depth effect
+          Positioned.fill(
+            child: Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(8.br),
+                gradient: RadialGradient(
+                  colors: [
+                    Colors.transparent,
+                    kBackgroundColor.withValues(alpha: 0.3),
+                    kBackgroundColor.withValues(alpha: 0.7),
+                  ],
+                  stops: const [0.0, 0.6, 1.0],
+                  radius: 0.9,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSquare({
+    required int row,
+    required int col,
+    required double size,
+    required int gridSize,
+  }) {
+    final isLight = (row + col) % 2 == 0;
+
+    // Calculate distance from center for opacity falloff
+    final centerRow = (gridSize - 1) / 2;
+    final centerCol = (gridSize - 1) / 2;
+    final distance =
+        ((row - centerRow).abs() + (col - centerCol).abs()) / gridSize;
+    final opacity = (1.0 - distance * 0.4).clamp(0.3, 1.0);
+
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color:
+            isLight
+                ? const Color(0xFF3F3F46).withValues(alpha: opacity * 0.6)
+                : const Color(0xFF27272A).withValues(alpha: opacity * 0.8),
+        borderRadius:
+            _getCornerRadius(row, col, gridSize, 6.br),
+      ),
+    );
+  }
+
+  BorderRadius _getCornerRadius(int row, int col, int gridSize, double radius) {
+    final isTopLeft = row == 0 && col == 0;
+    final isTopRight = row == 0 && col == gridSize - 1;
+    final isBottomLeft = row == gridSize - 1 && col == 0;
+    final isBottomRight = row == gridSize - 1 && col == gridSize - 1;
+
+    return BorderRadius.only(
+      topLeft: isTopLeft ? Radius.circular(radius) : Radius.zero,
+      topRight: isTopRight ? Radius.circular(radius) : Radius.zero,
+      bottomLeft: isBottomLeft ? Radius.circular(radius) : Radius.zero,
+      bottomRight: isBottomRight ? Radius.circular(radius) : Radius.zero,
     );
   }
 }

@@ -1,4 +1,5 @@
 import 'package:dartchess/dartchess.dart';
+import 'package:flutter/foundation.dart';
 
 const _defaultStartingFen =
     'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
@@ -10,18 +11,49 @@ const _defaultStartingFen =
 /// - `md`: metadata (PGN headers)
 /// - `m`: list of moves (usually UCI under `u`)
 ///
+/// Also supports alternative formats:
+/// - `moves`: array of move objects or strings
+/// - `metadata`: PGN headers map
+/// - Direct UCI strings in array
+///
 /// Returns `null` if the payload doesn't include enough information.
 String? buildPgnFromGamebaseData(Map<String, dynamic>? data) {
-  if (data == null || data.isEmpty) return null;
+  if (data == null || data.isEmpty) {
+    if (kDebugMode) {
+      debugPrint('[GamebasePgnBuilder] data is null or empty');
+    }
+    return null;
+  }
 
-  final mdRaw = data['md'] ?? data['metadata'];
-  if (mdRaw is! Map) return null;
-  final md = Map<String, dynamic>.from(mdRaw);
+  if (kDebugMode) {
+    debugPrint('[GamebasePgnBuilder] data keys: ${data.keys.toList()}');
+  }
 
-  final movesRaw = data['m'] ?? data['moves'];
-  if (movesRaw is! List || movesRaw.isEmpty) return null;
+  // Try to extract metadata from various possible locations
+  final mdRaw = data['md'] ?? data['metadata'] ?? data['headers'];
+  Map<String, dynamic> md = {};
+  if (mdRaw is Map) {
+    md = Map<String, dynamic>.from(mdRaw);
+  }
 
-  final startingFen = (data['sf'] as String?)?.trim();
+  // Try to extract moves from various possible locations
+  final movesRaw = data['m'] ?? data['moves'] ?? data['moveList'];
+
+  if (kDebugMode) {
+    debugPrint('[GamebasePgnBuilder] movesRaw type: ${movesRaw?.runtimeType}, isEmpty: ${movesRaw is List ? movesRaw.isEmpty : 'N/A'}');
+    if (movesRaw is List && movesRaw.isNotEmpty) {
+      debugPrint('[GamebasePgnBuilder] first move sample: ${movesRaw.first}');
+    }
+  }
+
+  if (movesRaw is! List || movesRaw.isEmpty) {
+    if (kDebugMode) {
+      debugPrint('[GamebasePgnBuilder] No moves found in data');
+    }
+    return null;
+  }
+
+  final startingFen = (data['sf'] ?? data['fen'] ?? data['startFen'] as String?)?.trim();
   final effectiveFen =
       (startingFen != null && startingFen.isNotEmpty)
           ? startingFen
@@ -49,11 +81,39 @@ String? buildPgnFromGamebaseData(Map<String, dynamic>? data) {
     Position position = Chess.fromSetup(setup);
 
     for (final item in movesRaw) {
-      final uci =
-          item is Map
-              ? (item['u'] ?? item['uci'])?.toString()
-              : item?.toString();
-      if (uci == null) continue;
+      // Support multiple move formats:
+      // 1. Map with 'u' or 'uci' key: {u: "e2e4"} or {uci: "e2e4"}
+      // 2. Map with 'san' key: {san: "e4"}
+      // 3. Plain string UCI: "e2e4"
+      // 4. Plain string SAN: "e4"
+      String? uci;
+      String? san;
+
+      if (item is Map) {
+        uci = (item['u'] ?? item['uci'])?.toString();
+        san = item['san']?.toString();
+      } else if (item is String) {
+        // Could be UCI or SAN - UCI is 4+ chars with square names
+        final trimmed = item.trim();
+        if (trimmed.length >= 4 && _looksLikeUci(trimmed)) {
+          uci = trimmed;
+        } else {
+          san = trimmed;
+        }
+      }
+
+      // If we have SAN directly, use it
+      if (san != null && san.isNotEmpty) {
+        final move = position.parseSan(san);
+        if (move != null) {
+          position = position.play(move);
+          sans.add(san);
+          continue;
+        }
+      }
+
+      // Otherwise parse UCI
+      if (uci == null || uci.isEmpty) continue;
       final trimmed = uci.trim();
       if (trimmed.length < 4) continue;
 
@@ -69,11 +129,23 @@ String? buildPgnFromGamebaseData(Map<String, dynamic>? data) {
       position = result.$1;
       sans.add(result.$2);
     }
-  } catch (_) {
+  } catch (e) {
+    if (kDebugMode) {
+      debugPrint('[GamebasePgnBuilder] Error parsing moves: $e');
+    }
     return null;
   }
 
-  if (sans.isEmpty) return null;
+  if (sans.isEmpty) {
+    if (kDebugMode) {
+      debugPrint('[GamebasePgnBuilder] No valid moves parsed');
+    }
+    return null;
+  }
+
+  if (kDebugMode) {
+    debugPrint('[GamebasePgnBuilder] Successfully parsed ${sans.length} moves');
+  }
 
   final sb = StringBuffer();
   for (final entry in headers.entries) {
@@ -92,6 +164,24 @@ String? buildPgnFromGamebaseData(Map<String, dynamic>? data) {
   sb.write(headers['Result'] ?? '*');
 
   return sb.toString().trim();
+}
+
+/// Checks if a string looks like a UCI move (e.g., "e2e4", "e7e8q")
+bool _looksLikeUci(String s) {
+  if (s.length < 4) return false;
+  // Check if first two chars are a valid square (a-h + 1-8)
+  final file1 = s[0].toLowerCase();
+  final rank1 = s[1];
+  final file2 = s[2].toLowerCase();
+  final rank2 = s[3];
+  return file1.compareTo('a') >= 0 &&
+      file1.compareTo('h') <= 0 &&
+      rank1.compareTo('1') >= 0 &&
+      rank1.compareTo('8') <= 0 &&
+      file2.compareTo('a') >= 0 &&
+      file2.compareTo('h') <= 0 &&
+      rank2.compareTo('1') >= 0 &&
+      rank2.compareTo('8') <= 0;
 }
 
 /// Builds a minimal PGN (headers + result only) for cases where we don't have

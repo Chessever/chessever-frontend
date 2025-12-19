@@ -1,6 +1,64 @@
 import 'package:country_picker/country_picker.dart';
 
 class CountryUtils {
+  /// Maps country_picker names to gamebase API-compatible country names.
+  /// The gamebase API uses country names as shown on FIDE profiles.
+  /// Note: The API uses ILIKE partial matching, so partial names work.
+  static String toGamebaseCountryName(String countryPickerName) {
+    // Map country_picker names to FIDE database names
+    // Note: Database stores 'Turkiye' (no umlaut), not 'Türkiye'
+    const nameMapping = {
+      'Turkey': 'Turkiye', // Database uses 'Turkiye' without umlaut
+      'United States': 'United States of America',
+      'Russia': 'Russia',
+      'United Kingdom': 'England', // FIDE uses England, Scotland, Wales separately
+      'South Korea': 'Korea',
+      'North Korea': 'Korea',
+      'Czech Republic': 'Czech Republic', // Database uses 'Czech Republic'
+      'Czechia': 'Czech Republic',
+      'Iran, Islamic Republic Of': 'Iran',
+      'Venezuela (Bolivarian Republic of)': 'Venezuela',
+      'Bolivia (Plurinational State of)': 'Bolivia',
+      'Moldova (Republic of)': 'Moldova',
+      'Macedonia (the former Yugoslav Republic of)': 'North Macedonia',
+      'North Macedonia': 'North Macedonia',
+      'Taiwan': 'Chinese Taipei',
+      'Vietnam': 'Vietnam',
+      'Viet Nam': 'Vietnam',
+      'Ivory Coast': 'Cote d\'Ivoire',
+      "Côte d'Ivoire": 'Cote d\'Ivoire',
+    };
+
+    return nameMapping[countryPickerName] ?? countryPickerName;
+  }
+
+  /// Returns alternative country name variations for gamebase API search.
+  /// The API uses ILIKE partial matching, so we only need one good variation.
+  /// The primary variation from toGamebaseCountryName() should work in most cases.
+  static List<String> getGamebaseCountryVariations(String countryName) {
+    final primary = toGamebaseCountryName(countryName);
+
+    // Only add variations if the primary might not match
+    // Note: API uses ILIKE '%value%' so partial names work
+    // e.g., 'Turk' matches 'Turkiye', 'United' matches 'United States of America'
+    const variations = {
+      'United States of America': ['United'], // 'United' partial matches
+      'United Kingdom': ['England'], // UK games are under England
+      'Turkey': ['Turkiye'], // Ensure we try the database value
+      'Turkiye': ['Turk'], // Partial match fallback
+    };
+
+    final result = <String>[primary];
+    if (variations.containsKey(countryName)) {
+      result.addAll(variations[countryName]!);
+    }
+    if (variations.containsKey(primary) && primary != countryName) {
+      result.addAll(variations[primary]!);
+    }
+
+    return result.toSet().toList(); // Remove duplicates
+  }
+
   /// Converts ISO 2-letter country code to FIDE 3-letter federation code.
   /// FIDE uses specific codes that differ from ISO 3166-1 alpha-3.
   static String toFideCode(String iso2Code) {
@@ -88,6 +146,111 @@ class CountryUtils {
 
     final upper = iso2Code.toUpperCase();
     return iso2ToFide[upper] ?? upper;
+  }
+
+  /// Converts FIDE country name (e.g., "Norway", "Turkiye") to ISO 2-letter code.
+  /// Used for displaying flags when we have the full country name from Gamebase API.
+  static String countryNameToIso2(String countryName) {
+    const nameToIso2 = {
+      'norway': 'NO',
+      'turkiye': 'TR',
+      'turkey': 'TR',
+      'russia': 'RU',
+      'united states of america': 'US',
+      'united states': 'US',
+      'england': 'GB',
+      'scotland': 'GB',
+      'wales': 'GB',
+      'germany': 'DE',
+      'france': 'FR',
+      'spain': 'ES',
+      'italy': 'IT',
+      'netherlands': 'NL',
+      'poland': 'PL',
+      'czech republic': 'CZ',
+      'czechia': 'CZ',
+      'hungary': 'HU',
+      'romania': 'RO',
+      'ukraine': 'UA',
+      'azerbaijan': 'AZ',
+      'armenia': 'AM',
+      'georgia': 'GE',
+      'israel': 'IL',
+      'argentina': 'AR',
+      'brazil': 'BR',
+      'peru': 'PE',
+      'cuba': 'CU',
+      'vietnam': 'VN',
+      'philippines': 'PH',
+      'indonesia': 'ID',
+      'iran': 'IR',
+      'sweden': 'SE',
+      'denmark': 'DK',
+      'finland': 'FI',
+      'austria': 'AT',
+      'switzerland': 'CH',
+      'belgium': 'BE',
+      'portugal': 'PT',
+      'greece': 'GR',
+      'serbia': 'RS',
+      'croatia': 'HR',
+      'slovenia': 'SI',
+      'slovakia': 'SK',
+      'bulgaria': 'BG',
+      'north macedonia': 'MK',
+      'bosnia and herzegovina': 'BA',
+      'estonia': 'EE',
+      'latvia': 'LV',
+      'lithuania': 'LT',
+      'australia': 'AU',
+      'new zealand': 'NZ',
+      'south africa': 'ZA',
+      'egypt': 'EG',
+      'nigeria': 'NG',
+      'kenya': 'KE',
+      'uzbekistan': 'UZ',
+      'kazakhstan': 'KZ',
+      'mongolia': 'MN',
+      'korea': 'KR',
+      'japan': 'JP',
+      'singapore': 'SG',
+      'malaysia': 'MY',
+      'thailand': 'TH',
+      'pakistan': 'PK',
+      'bangladesh': 'BD',
+      'sri lanka': 'LK',
+      'nepal': 'NP',
+      'saudi arabia': 'SA',
+      'united arab emirates': 'AE',
+      'qatar': 'QA',
+      'canada': 'CA',
+      'mexico': 'MX',
+      'colombia': 'CO',
+      'chile': 'CL',
+      'venezuela': 'VE',
+      'ecuador': 'EC',
+      'uruguay': 'UY',
+      'paraguay': 'PY',
+      'bolivia': 'BO',
+      'ireland': 'IE',
+      'iceland': 'IS',
+      'india': 'IN',
+      'china': 'CN',
+      'chinese taipei': 'TW',
+      'belarus': 'BY',
+      'moldova': 'MD',
+      'albania': 'AL',
+      'montenegro': 'ME',
+      'cyprus': 'CY',
+      'malta': 'MT',
+      'luxembourg': 'LU',
+      'andorra': 'AD',
+      'monaco': 'MC',
+      'liechtenstein': 'LI',
+    };
+
+    final lower = countryName.toLowerCase().trim();
+    return nameToIso2[lower] ?? '';
   }
 
   /// Converts FIDE 3-letter federation code to ISO 2-letter country code.

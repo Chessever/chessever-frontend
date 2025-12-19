@@ -16,7 +16,7 @@ class LibrarySearchBar extends ConsumerStatefulWidget {
     super.key,
     required this.controller,
     this.onChanged,
-    this.hintText = 'Search analyses...',
+    this.hintText = 'Search',
     this.autofocus = false,
     this.onClose,
   });
