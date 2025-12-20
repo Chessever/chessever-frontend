@@ -1,8 +1,8 @@
 import 'package:chessever2/repository/authentication/auth_repository.dart';
 import 'package:chessever2/screens/authentication/auth_screen_provider.dart';
 import 'package:chessever2/screens/calendar/calendar_screen.dart';
-import 'package:chessever2/screens/countrymen/countrymen_combined_games_screen.dart';
-import 'package:chessever2/screens/favorites/player_games/favorites_combined_games_screen.dart';
+import 'package:chessever2/screens/countrymen/countrymen_tab_screen.dart';
+import 'package:chessever2/screens/favorites/favorites_tab_screen.dart';
 import 'package:chessever2/screens/library/library_screen.dart';
 import 'package:chessever2/screens/premium/premium_screen.dart';
 import 'package:chessever2/widgets/hamburger_menu/hamburger_menu.dart';
@@ -37,16 +37,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             Navigator.push(
               context,
               MaterialPageRoute(
-                builder: (_) => const FavoritesCombinedGamesScreen(),
+                builder: (_) => const FavoritesTabScreen(),
               ),
             );
           },
           onCountrymanPressed: () {
-            // Navigate to countrymen combined games screen
+            // Navigate to countrymen tab screen
             Navigator.push(
               context,
               MaterialPageRoute(
-                builder: (_) => const CountrymenCombinedGamesScreen(),
+                builder: (_) => const CountrymenTabScreen(),
               ),
             );
           },

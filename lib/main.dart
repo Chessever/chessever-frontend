@@ -3,7 +3,7 @@ import 'dart:io';
 import 'package:chessever2/localization/locale_provider.dart';
 import 'package:chessever2/screens/authentication/auth_screen.dart';
 import 'package:chessever2/screens/calendar/calendar_detail_screen.dart';
-import 'package:chessever2/screens/favorites/favorite_screen.dart';
+import 'package:chessever2/screens/favorites/favorites_tab_screen.dart';
 import 'package:chessever2/screens/home/home_screen.dart';
 import 'package:chessever2/screens/chessboard/provider/stockfish_singleton.dart';
 import 'package:chessever2/screens/countryman_games_screen.dart';
@@ -392,7 +392,7 @@ class MyApp extends HookConsumerWidget {
               (context) => const TournamentDetailScreen(),
           '/calendar_screen': (context) => const CalendarScreen(),
           '/library_screen': (context) => const LibraryScreen(),
-          '/favorites_screen': (context) => const FavoriteScreen(),
+          '/favorites_screen': (context) => const FavoritesTabScreen(),
           '/scorecard_screen': (context) => const ScoreCardScreen(),
           '/player_list_screen': (context) => const PlayerListScreen(),
           '/countryman_games_screen':

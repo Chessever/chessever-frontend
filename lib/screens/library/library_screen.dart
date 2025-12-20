@@ -410,27 +410,40 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
 
     final foldersAsync = ref.watch(libraryFoldersStreamProvider);
 
-    return RefreshIndicator(
-      onRefresh: () async {
-        HapticFeedbackService.medium();
-        ref.invalidate(libraryFoldersStreamProvider);
-      },
-      color: kWhiteColor,
-      backgroundColor: kBlack2Color,
-      child: CustomScrollView(
-        physics: const AlwaysScrollableScrollPhysics(
-          parent: BouncingScrollPhysics(),
-        ),
-        slivers: [
-          SliverToBoxAdapter(child: SizedBox(height: 4.h)),
-          foldersAsync.when(
-            data: (folders) => _buildFoldersSliver(folders),
-            loading: () => _buildLoadingSliver(),
-            error: (error, _) => _buildErrorSliver(error.toString()),
+    // Check if we have folders to show background decoration
+    final hasFolders = foldersAsync.valueOrNull?.isNotEmpty ?? false;
+
+    return Stack(
+      children: [
+        // Subtle background decoration - only when folders exist
+        if (hasFolders)
+          const Positioned.fill(
+            child: _LibraryBackgroundDecoration(),
           ),
-          SliverToBoxAdapter(child: SizedBox(height: 24.h)),
-        ],
-      ),
+        // Main content
+        RefreshIndicator(
+          onRefresh: () async {
+            HapticFeedbackService.medium();
+            ref.invalidate(libraryFoldersStreamProvider);
+          },
+          color: kWhiteColor,
+          backgroundColor: kBlack2Color,
+          child: CustomScrollView(
+            physics: const AlwaysScrollableScrollPhysics(
+              parent: BouncingScrollPhysics(),
+            ),
+            slivers: [
+              SliverToBoxAdapter(child: SizedBox(height: 4.h)),
+              foldersAsync.when(
+                data: (folders) => _buildFoldersSliver(folders),
+                loading: () => _buildLoadingSliver(),
+                error: (error, _) => _buildErrorSliver(error.toString()),
+              ),
+              SliverToBoxAdapter(child: SizedBox(height: 24.h)),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
@@ -738,6 +751,125 @@ class _LibraryEmptyStateContent extends StatelessWidget {
                 : const Color(0xFF27272A).withValues(alpha: opacity * 0.8),
         borderRadius:
             _getCornerRadius(row, col, gridSize, 6.br),
+      ),
+    );
+  }
+
+  BorderRadius _getCornerRadius(int row, int col, int gridSize, double radius) {
+    final isTopLeft = row == 0 && col == 0;
+    final isTopRight = row == 0 && col == gridSize - 1;
+    final isBottomLeft = row == gridSize - 1 && col == 0;
+    final isBottomRight = row == gridSize - 1 && col == gridSize - 1;
+
+    return BorderRadius.only(
+      topLeft: isTopLeft ? Radius.circular(radius) : Radius.zero,
+      topRight: isTopRight ? Radius.circular(radius) : Radius.zero,
+      bottomLeft: isBottomLeft ? Radius.circular(radius) : Radius.zero,
+      bottomRight: isBottomRight ? Radius.circular(radius) : Radius.zero,
+    );
+  }
+}
+
+/// Subtle background decoration shown behind folder cards
+/// Displays a ghosted version of the empty state messaging
+class _LibraryBackgroundDecoration extends StatelessWidget {
+  const _LibraryBackgroundDecoration();
+
+  @override
+  Widget build(BuildContext context) {
+    return IgnorePointer(
+      child: Opacity(
+        opacity: 0.06,
+        child: Center(
+          child: Padding(
+            padding: EdgeInsets.symmetric(horizontal: 24.w),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                // Decorative chess pattern - larger for background presence
+                _buildChessPatternVisual(),
+                SizedBox(height: 32.h),
+
+                // Main headline
+                Text(
+                  'Millions of games',
+                  style: AppTypography.displayXsMedium.copyWith(
+                    color: kWhiteColor,
+                    letterSpacing: -0.5,
+                  ),
+                ),
+                SizedBox(height: 4.h),
+                Text(
+                  'at your fingertips',
+                  style: AppTypography.displayXsMedium.copyWith(
+                    color: kWhiteColor,
+                    letterSpacing: -0.5,
+                  ),
+                ),
+
+                SizedBox(height: 20.h),
+
+                // Description
+                Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 20.w),
+                  child: Text(
+                    'Search any player, opening, or tournament. Save games to your personal books for study.',
+                    style: AppTypography.textSmRegular.copyWith(
+                      color: kWhiteColor,
+                      height: 1.5,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildChessPatternVisual() {
+    const gridSize = 4;
+    final squareSize = 28.w;
+    final totalSize = squareSize * gridSize;
+
+    return SizedBox(
+      width: totalSize,
+      height: totalSize,
+      child: Stack(
+        children: [
+          for (int row = 0; row < gridSize; row++)
+            for (int col = 0; col < gridSize; col++)
+              Positioned(
+                left: col * squareSize,
+                top: row * squareSize,
+                child: _buildSquare(
+                  row: row,
+                  col: col,
+                  size: squareSize,
+                  gridSize: gridSize,
+                ),
+              ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSquare({
+    required int row,
+    required int col,
+    required double size,
+    required int gridSize,
+  }) {
+    final isLight = (row + col) % 2 == 0;
+
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: isLight ? const Color(0xFF3F3F46) : const Color(0xFF27272A),
+        borderRadius: _getCornerRadius(row, col, gridSize, 6.br),
       ),
     );
   }

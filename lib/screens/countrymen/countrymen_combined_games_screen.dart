@@ -548,9 +548,14 @@ class _SliverSearchBarDelegate extends SliverPersistentHeaderDelegate {
     double shrinkOffset,
     bool overlapsContent,
   ) {
-    return Container(
-      color: kBackgroundColor,
-      child: child,
+    // Use SizedBox to ensure the child respects the exact height
+    // This prevents layoutExtent from exceeding paintExtent
+    return SizedBox(
+      height: maxExtent,
+      child: Container(
+        color: kBackgroundColor,
+        child: child,
+      ),
     );
   }
 

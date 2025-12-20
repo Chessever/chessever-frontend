@@ -1,5 +1,6 @@
 import 'package:chessever2/repository/supabase/base_repository.dart';
 import 'package:chessever2/repository/supabase/tour/tour.dart';
+import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 final tourRepositoryProvider = AutoDisposeProvider<TourRepository>((ref) {
@@ -32,6 +33,85 @@ class TourRepository extends BaseRepository {
           .from('tours')
           .select()
           .inFilter('id', tourIds);
+
+      return (response as List).map((json) => Tour.fromJson(json)).toList();
+    });
+  }
+
+  /// Fetch tours by country location.
+  /// Searches the info->location field which contains "City, Country" format.
+  Future<List<Tour>> getToursByCountryLocation({
+    required String countryName,
+    String? searchQuery,
+    int limit = 30,
+    int offset = 0,
+  }) async {
+    return handleApiCall(() async {
+      debugPrint('[TourRepository] getToursByCountryLocation: countryName=$countryName, searchQuery=$searchQuery');
+
+      var query = supabase
+          .from('tours')
+          .select()
+          .ilike('info->>location', '%$countryName%');
+
+      // Add search filter if provided
+      if (searchQuery != null && searchQuery.trim().isNotEmpty) {
+        query = query.ilike('name', '%${searchQuery.trim()}%');
+      }
+
+      final response = await query
+          .order('dates->0', ascending: false) // Most recent first
+          .range(offset, offset + limit - 1);
+
+      final tours = (response as List).map((json) => Tour.fromJson(json)).toList();
+
+      debugPrint('[TourRepository] getToursByCountryLocation: found ${tours.length} tours');
+      return tours;
+    });
+  }
+
+  /// Search tours by name with optional country filter.
+  Future<List<Tour>> searchTours({
+    required String query,
+    String? countryName,
+    int limit = 30,
+    int offset = 0,
+  }) async {
+    return handleApiCall(() async {
+      debugPrint('[TourRepository] searchTours: query=$query, countryName=$countryName');
+
+      var dbQuery = supabase.from('tours').select();
+
+      if (query.trim().isNotEmpty) {
+        dbQuery = dbQuery.ilike('name', '%${query.trim()}%');
+      }
+
+      if (countryName != null && countryName.isNotEmpty) {
+        dbQuery = dbQuery.ilike('info->>location', '%$countryName%');
+      }
+
+      final response = await dbQuery
+          .order('dates->0', ascending: false)
+          .range(offset, offset + limit - 1);
+
+      final tours = (response as List).map((json) => Tour.fromJson(json)).toList();
+
+      debugPrint('[TourRepository] searchTours: found ${tours.length} tours');
+      return tours;
+    });
+  }
+
+  /// Get recent tours (for featured/home screen).
+  Future<List<Tour>> getRecentTours({
+    int limit = 30,
+    int offset = 0,
+  }) async {
+    return handleApiCall(() async {
+      final response = await supabase
+          .from('tours')
+          .select()
+          .order('created_at', ascending: false)
+          .range(offset, offset + limit - 1);
 
       return (response as List).map((json) => Tour.fromJson(json)).toList();
     });

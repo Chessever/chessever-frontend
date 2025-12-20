@@ -1,10 +1,7 @@
 import 'dart:async';
 import 'package:chessever2/providers/favorite_players_provider.dart';
-import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
-import 'package:chessever2/screens/library/utils/gamebase_pgn_builder.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
-import 'package:chessever2/utils/country_utils.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -15,7 +12,6 @@ class FavoritesCombinedGamesState {
   final bool isLoading;
   final bool hasMore;
   final int supabaseOffset;
-  final int gamebasePageNumber;
   final String? error;
   final Set<String> seenGameIds;
   final String searchQuery; // Current search query
@@ -25,7 +21,6 @@ class FavoritesCombinedGamesState {
     this.isLoading = false,
     this.hasMore = true,
     this.supabaseOffset = 0,
-    this.gamebasePageNumber = 1,
     this.error,
     this.seenGameIds = const {},
     this.searchQuery = '',
@@ -38,7 +33,6 @@ class FavoritesCombinedGamesState {
     bool? isLoading,
     bool? hasMore,
     int? supabaseOffset,
-    int? gamebasePageNumber,
     String? error,
     Set<String>? seenGameIds,
     String? searchQuery,
@@ -48,7 +42,6 @@ class FavoritesCombinedGamesState {
       isLoading: isLoading ?? this.isLoading,
       hasMore: hasMore ?? this.hasMore,
       supabaseOffset: supabaseOffset ?? this.supabaseOffset,
-      gamebasePageNumber: gamebasePageNumber ?? this.gamebasePageNumber,
       error: error,
       seenGameIds: seenGameIds ?? this.seenGameIds,
       searchQuery: searchQuery ?? this.searchQuery,
@@ -68,9 +61,8 @@ class FavoritesCombinedGamesNotifier
   final Ref _ref;
   static const int _pageSize = 15; // Small page size for fast first render
 
-  // Track if each source has more data
+  // Track if Supabase has more data
   bool _supabaseHasMore = true;
-  bool _gamebaseHasMore = true;
 
   FavoritesCombinedGamesNotifier(this._ref)
       : super(const FavoritesCombinedGamesState(isLoading: true)) {
@@ -80,7 +72,6 @@ class FavoritesCombinedGamesNotifier
   Future<void> _loadInitialGames() async {
     try {
       _supabaseHasMore = true;
-      _gamebaseHasMore = true;
       await _fetchNextBatch(isInitial: true);
     } catch (e) {
       debugPrint('[FavoritesGames] Initial load error: $e');
@@ -96,7 +87,6 @@ class FavoritesCombinedGamesNotifier
 
   Future<void> refreshGames() async {
     _supabaseHasMore = true;
-    _gamebaseHasMore = true;
     _currentSearchQuery = '';
 
     state = const FavoritesCombinedGamesState(isLoading: true);
@@ -106,7 +96,7 @@ class FavoritesCombinedGamesNotifier
   // Current search query for fresh queries
   String _currentSearchQuery = '';
 
-  /// Search games with a query - queries fresh from Supabase and Gamebase
+  /// Search games with a query - queries fresh from Supabase
   Future<void> searchGames(String query) async {
     final trimmedQuery = query.trim();
 
@@ -125,14 +115,12 @@ class FavoritesCombinedGamesNotifier
 
     // Reset pagination for new search
     _supabaseHasMore = true;
-    _gamebaseHasMore = true;
 
     state = state.copyWith(
       isLoading: true,
       games: [],
       seenGameIds: {},
       supabaseOffset: 0,
-      gamebasePageNumber: 1,
       hasMore: true,
       searchQuery: trimmedQuery,
       error: null,
@@ -147,14 +135,12 @@ class FavoritesCombinedGamesNotifier
 
     _currentSearchQuery = '';
     _supabaseHasMore = true;
-    _gamebaseHasMore = true;
 
     state = state.copyWith(
       isLoading: true,
       games: [],
       seenGameIds: {},
       supabaseOffset: 0,
-      gamebasePageNumber: 1,
       hasMore: true,
       searchQuery: '',
       error: null,
@@ -163,7 +149,7 @@ class FavoritesCombinedGamesNotifier
     await _fetchNextBatch(isInitial: true);
   }
 
-  /// Fetch search results from both sources
+  /// Fetch search results from Supabase
   Future<void> _fetchSearchResults({required bool isInitial}) async {
     if (!mounted) return;
 
@@ -180,24 +166,10 @@ class FavoritesCombinedGamesNotifier
       final newGames = <GamesTourModel>[];
       final seenKeys = Set<String>.from(isInitial ? {} : state.seenGameIds);
       int supabaseOffset = isInitial ? 0 : state.supabaseOffset;
-      int gamebasePageNumber = isInitial ? 1 : state.gamebasePageNumber;
-
-      // Fetch from both sources in PARALLEL
-      Future<List<GamesTourModel>>? supabaseFuture;
-      Future<List<GamesTourModel>>? gamebaseFuture;
 
       if (_supabaseHasMore) {
-        supabaseFuture = _searchSupabase(favorites, query, supabaseOffset);
-      }
-      if (_gamebaseHasMore) {
-        gamebaseFuture = _searchGamebase(favorites, query, gamebasePageNumber);
-      }
+        final supabaseGames = await _searchSupabase(favorites, query, supabaseOffset);
 
-      final supabaseGames = supabaseFuture != null ? await supabaseFuture : <GamesTourModel>[];
-      final gamebaseGames = gamebaseFuture != null ? await gamebaseFuture : <GamesTourModel>[];
-
-      // Process Supabase results
-      if (supabaseFuture != null) {
         debugPrint('[FavoritesSearch] Supabase returned ${supabaseGames.length} games');
         if (supabaseGames.length < _pageSize) {
           _supabaseHasMore = false;
@@ -212,22 +184,6 @@ class FavoritesCombinedGamesNotifier
         supabaseOffset += supabaseGames.length;
       }
 
-      // Process Gamebase results
-      if (gamebaseFuture != null) {
-        debugPrint('[FavoritesSearch] Gamebase returned ${gamebaseGames.length} games');
-        if (gamebaseGames.length < _pageSize) {
-          _gamebaseHasMore = false;
-        }
-        for (final game in gamebaseGames) {
-          final key = _generateDedupeKey(game);
-          if (!seenKeys.contains(key)) {
-            seenKeys.add(key);
-            newGames.add(game);
-          }
-        }
-        gamebasePageNumber++;
-      }
-
       // Sort by date
       newGames.sort((a, b) {
         final aDate = a.lastMoveTime ?? DateTime(1900);
@@ -236,16 +192,14 @@ class FavoritesCombinedGamesNotifier
       });
 
       final allGames = isInitial ? newGames : [...state.games, ...newGames];
-      final hasMore = _supabaseHasMore || _gamebaseHasMore;
 
       if (!mounted) return;
 
       state = state.copyWith(
         games: allGames,
         isLoading: false,
-        hasMore: hasMore,
+        hasMore: _supabaseHasMore,
         supabaseOffset: supabaseOffset,
-        gamebasePageNumber: gamebasePageNumber,
         seenGameIds: seenKeys,
       );
     } catch (e) {
@@ -295,65 +249,6 @@ class FavoritesCombinedGamesNotifier
     }
   }
 
-  /// Search Gamebase for favorites games matching the query
-  /// Uses player: tokens to search within favorite players' games
-  Future<List<GamesTourModel>> _searchGamebase(
-    List favorites,
-    String query,
-    int page,
-  ) async {
-    try {
-      final gamebaseRepo = _ref.read(gamebaseRepositoryProvider);
-      final games = <GamesTourModel>[];
-
-      // Get top favorites to search (limit to avoid too many API calls)
-      final topFavorites = favorites.take(5).toList();
-
-      for (final favorite in topFavorites) {
-        if (games.length >= _pageSize) break;
-
-        try {
-          final playerName = favorite.playerName as String;
-
-          // Combine user query with player: token
-          // e.g., "sicilian player:Carlsen" finds Carlsen's Sicilian games
-          final fullQuery = '$query player:"$playerName"';
-
-          debugPrint('[FavoritesSearch] Gamebase query: $fullQuery, page=$page');
-
-          final response = await gamebaseRepo.globalSearch(
-            query: fullQuery,
-            resources: ['game'],
-            pageNumber: page,
-            pageSize: (_pageSize ~/ topFavorites.length).clamp(5, 15),
-          );
-
-          final gameResults = response.results.where((r) => r.resource == 'game');
-
-          for (final result in gameResults) {
-            if (games.length >= _pageSize) break;
-
-            final preview = result.preview ?? const <String, dynamic>{};
-            final gameUuid = preview['id']?.toString() ?? result.id;
-            final game = _convertGamebaseResultToModel(gameUuid, preview);
-            if (game != null) {
-              games.add(game);
-            }
-          }
-
-          debugPrint('[FavoritesSearch] Query for "$playerName" + "$query" returned ${gameResults.length} results');
-        } catch (e) {
-          debugPrint('[FavoritesSearch] Gamebase error for ${favorite.playerName}: $e');
-        }
-      }
-
-      return games;
-    } catch (e) {
-      debugPrint('[FavoritesSearch] Gamebase error: $e');
-      return [];
-    }
-  }
-
   /// Load more search results (for pagination)
   Future<void> loadMoreSearchResults() async {
     if (state.isLoading || !state.hasMore || !state.isSearching) return;
@@ -383,25 +278,10 @@ class FavoritesCombinedGamesNotifier
       final seenKeys = Set<String>.from(isInitial ? {} : state.seenGameIds);
 
       int supabaseOffset = isInitial ? 0 : state.supabaseOffset;
-      int gamebasePageNumber = isInitial ? 1 : state.gamebasePageNumber;
 
-      // Fetch from both sources in PARALLEL for faster loading
-      final futures = <Future<List<GamesTourModel>>>[];
-
+      // Fetch from Supabase
       if (_supabaseHasMore) {
-        futures.add(_fetchFromSupabase(favorites, supabaseOffset));
-      }
-      if (_gamebaseHasMore) {
-        futures.add(_fetchFromGamebase(favorites, gamebasePageNumber));
-      }
-
-      final results = await Future.wait(futures);
-
-      int resultIndex = 0;
-
-      // Process Supabase results
-      if (_supabaseHasMore && resultIndex < results.length) {
-        final supabaseGames = results[resultIndex++];
+        final supabaseGames = await _fetchFromSupabase(favorites, supabaseOffset);
 
         debugPrint('[FavoritesGames] Supabase returned ${supabaseGames.length} games (offset: $supabaseOffset)');
 
@@ -420,27 +300,6 @@ class FavoritesCombinedGamesNotifier
         supabaseOffset += supabaseGames.length;
       }
 
-      // Process Gamebase results
-      if (_gamebaseHasMore && resultIndex < results.length) {
-        final gamebaseGames = results[resultIndex++];
-
-        debugPrint('[FavoritesGames] Gamebase returned ${gamebaseGames.length} games (page: $gamebasePageNumber)');
-
-        if (gamebaseGames.length < _pageSize) {
-          _gamebaseHasMore = false;
-        }
-
-        for (final game in gamebaseGames) {
-          final key = _generateDedupeKey(game);
-          if (!seenKeys.contains(key)) {
-            seenKeys.add(key);
-            newGames.add(game);
-          }
-        }
-
-        gamebasePageNumber++;
-      }
-
       // Sort new games by date
       newGames.sort((a, b) {
         final aDate = a.lastMoveTime ?? DateTime(1900);
@@ -451,18 +310,15 @@ class FavoritesCombinedGamesNotifier
       // Combine with existing games
       final allGames = isInitial ? newGames : [...state.games, ...newGames];
 
-      final hasMore = _supabaseHasMore || _gamebaseHasMore;
-
-      debugPrint('[FavoritesGames] Total games now: ${allGames.length}, hasMore: $hasMore');
+      debugPrint('[FavoritesGames] Total games now: ${allGames.length}, hasMore: $_supabaseHasMore');
 
       if (!mounted) return;
 
       state = state.copyWith(
         games: allGames,
         isLoading: false,
-        hasMore: hasMore,
+        hasMore: _supabaseHasMore,
         supabaseOffset: supabaseOffset,
-        gamebasePageNumber: gamebasePageNumber,
         seenGameIds: seenKeys,
       );
     } catch (e) {
@@ -473,7 +329,6 @@ class FavoritesCombinedGamesNotifier
   }
 
   /// Generate a dedupe key based on game content, not IDs.
-  /// This ensures the same game from Supabase and Gamebase is detected as duplicate.
   /// Uses: sorted player names + date + result
   String _generateDedupeKey(GamesTourModel game) {
     // Normalize player names: lowercase, trim, remove extra spaces
@@ -570,129 +425,4 @@ class FavoritesCombinedGamesNotifier
     }
   }
 
-  Future<List<GamesTourModel>> _fetchFromGamebase(
-    List favorites,
-    int page,
-  ) async {
-    try {
-      final gamebaseRepo = _ref.read(gamebaseRepositoryProvider);
-      final games = <GamesTourModel>[];
-
-      // Limit to top 5 favorites for API efficiency
-      final limitedFavorites = favorites.take(5).toList();
-      if (limitedFavorites.isEmpty) return games;
-
-      // Cycle through favorites across pages to ensure proper pagination
-      // Page 1 → favorite 0, Page 2 → favorite 1, etc.
-      // This ensures we don't fetch the same page for all players
-      final favoriteIndex = (page - 1) % limitedFavorites.length;
-      final favorite = limitedFavorites[favoriteIndex];
-      final pageForThisFavorite = ((page - 1) ~/ limitedFavorites.length) + 1;
-
-      try {
-        final playerName = favorite.playerName as String;
-        final query = 'player:"$playerName"';
-
-        debugPrint('[FavoritesGames] Gamebase query: $query, page=$pageForThisFavorite (favorite #$favoriteIndex)');
-
-        final response = await gamebaseRepo.globalSearch(
-          query: query,
-          resources: ['game'],
-          pageNumber: pageForThisFavorite,
-          pageSize: _pageSize,
-        );
-
-        final gameResults = response.results.where((r) => r.resource == 'game');
-
-        for (final result in gameResults) {
-          final preview = result.preview ?? const <String, dynamic>{};
-          final gameUuid = preview['id']?.toString() ?? result.id;
-          final game = _convertGamebaseResultToModel(gameUuid, preview);
-          if (game != null) {
-            games.add(game);
-          }
-        }
-
-        debugPrint('[FavoritesGames] Query for $playerName returned ${games.length} games');
-      } catch (e) {
-        debugPrint('[FavoritesGames] Gamebase error for ${favorite.playerName}: $e');
-      }
-
-      return games;
-    } catch (e) {
-      debugPrint('[FavoritesGames] Gamebase fetch error: $e');
-      return [];
-    }
-  }
-
-  GamesTourModel? _convertGamebaseResultToModel(
-    String id,
-    Map<String, dynamic> preview,
-  ) {
-    try {
-      final whiteName = (preview['white']?.toString() ?? 'White').trim();
-      final blackName = (preview['black']?.toString() ?? 'Black').trim();
-      final result = preview['result']?.toString() ?? '*';
-      final event = (preview['event']?.toString() ?? 'Gamebase').trim();
-      final eco = preview['eco']?.toString();
-      final timeControl = preview['timeControl']?.toString();
-
-      // Get federation info from Gamebase preview
-      final whiteFed = preview['whiteFed']?.toString() ?? '';
-      final blackFed = preview['blackFed']?.toString() ?? '';
-
-      DateTime? date;
-      if (preview['date'] != null) {
-        date = DateTime.tryParse(preview['date'].toString());
-      }
-
-      final pgn = buildHeaderOnlyPgn(
-        whiteName: whiteName,
-        blackName: blackName,
-        result: result,
-        event: event,
-        eco: eco,
-        date: date,
-      );
-
-      final whiteCard = PlayerCard(
-        name: whiteName,
-        federation: whiteFed,
-        title: '',
-        rating: int.tryParse(preview['whiteElo']?.toString() ?? '') ?? 0,
-        countryCode: whiteFed.isNotEmpty ? CountryUtils.countryNameToIso2(whiteFed) : '',
-        team: null,
-        fideId: null,
-      );
-
-      final blackCard = PlayerCard(
-        name: blackName,
-        federation: blackFed,
-        title: '',
-        rating: int.tryParse(preview['blackElo']?.toString() ?? '') ?? 0,
-        countryCode: blackFed.isNotEmpty ? CountryUtils.countryNameToIso2(blackFed) : '',
-        team: null,
-        fideId: null,
-      );
-
-      return GamesTourModel(
-        gameId: id,
-        whitePlayer: whiteCard,
-        blackPlayer: blackCard,
-        whiteTimeDisplay: '--:--',
-        blackTimeDisplay: '--:--',
-        whiteClockCentiseconds: 0,
-        blackClockCentiseconds: 0,
-        gameStatus: GameStatus.fromString(result),
-        roundId: 'favorites_combined',
-        roundSlug: eco ?? timeControl,
-        tourId: event,
-        pgn: pgn,
-        lastMoveTime: date,
-      );
-    } catch (e) {
-      debugPrint('[FavoritesGames] Error converting result: $e');
-      return null;
-    }
-  }
 }
