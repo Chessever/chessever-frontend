@@ -33,14 +33,8 @@ final _mappedName = {
   GroupEventCategory.search: 'Search',
 };
 
-/// Indicates whether there is at least one live game in the For You feed.
-final hasLiveForYouProvider = Provider.autoDispose<bool>((ref) {
-  final games = ref.watch(forYouGamesProvider).valueOrNull ?? [];
-  return games.any((g) => g.status == '*');
-});
-
 final selectedGroupCategoryProvider = StateProvider<GroupEventCategory>(
-  (ref) => GroupEventCategory.current,
+  (ref) => GroupEventCategory.forYou,
 );
 
 class GroupEventScreen extends HookConsumerWidget {
@@ -55,8 +49,8 @@ class GroupEventScreen extends HookConsumerWidget {
 
     // Determine which categories to show (search tab only appears when searching)
     final visibleCategories = hasActiveSearch
-        ? [GroupEventCategory.past, GroupEventCategory.current, GroupEventCategory.forYou, GroupEventCategory.search]
-        : [GroupEventCategory.past, GroupEventCategory.current, GroupEventCategory.forYou];
+        ? [GroupEventCategory.forYou, GroupEventCategory.current, GroupEventCategory.past, GroupEventCategory.search]
+        : [GroupEventCategory.forYou, GroupEventCategory.current, GroupEventCategory.past];
 
     final pageController = usePageController(
       initialPage: visibleCategories.indexOf(selectedTourEvent).clamp(0, visibleCategories.length - 1),
@@ -512,7 +506,6 @@ class _SegmentedSwitcher extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     ref.watch(searchQueryProvider);  // Watch to trigger rebuilds
     final searchTabQuery = ref.watch(searchTabQueryProvider);
-    final hasLiveForYou = ref.watch(hasLiveForYouProvider);
 
     final options = visibleCategories.map((category) {
       if (category == GroupEventCategory.search && searchTabQuery.isNotEmpty) {
@@ -528,23 +521,7 @@ class _SegmentedSwitcher extends ConsumerWidget {
       } else {
         baseLabel = _mappedName[category]!;
       }
-
-      final showLiveDot = category == GroupEventCategory.forYou &&
-          hasLiveForYou &&
-          selectedTourEvent != GroupEventCategory.forYou;
-      if (!showLiveDot) {
-        return Text(baseLabel);
-      }
-
-      return Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(baseLabel),
-          SizedBox(width: 6.w),
-          const _LiveTabDot(),
-        ],
-      );
+      return Text(baseLabel);
     }).toList();
 
     return Padding(
@@ -556,29 +533,6 @@ class _SegmentedSwitcher extends ConsumerWidget {
         optionLabels: optionLabels,
         currentSelection: visibleCategories.indexOf(selectedTourEvent).clamp(0, visibleCategories.length - 1),
         onSelectionChanged: onSelectedChanged,
-      ),
-    );
-  }
-}
-
-class _LiveTabDot extends StatelessWidget {
-  const _LiveTabDot();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 8.w,
-      height: 8.h,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: kPrimaryColor,
-        boxShadow: [
-          BoxShadow(
-            color: kPrimaryColor.withValues(alpha: 0.4),
-            blurRadius: 4,
-            spreadRadius: 1,
-          ),
-        ],
       ),
     );
   }

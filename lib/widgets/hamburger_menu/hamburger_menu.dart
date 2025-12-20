@@ -1,17 +1,22 @@
+import 'package:app_settings/app_settings.dart';
 import 'package:chessever2/providers/app_version_provider.dart';
 import 'package:chessever2/providers/country_dropdown_provider.dart';
+import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/hamburger_menu/hamburger_menu_dialogs.dart';
+import 'package:chessever2/widgets/paywall/premium_celebration_overlay.dart';
+import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 import 'package:country_flags/country_flags.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 
@@ -54,7 +59,10 @@ class HamburgerMenu extends StatelessWidget {
                 child: ListView(
                   padding: EdgeInsets.zero,
                   children: [
-                    SizedBox(height: 24.h),
+                    SizedBox(height: 16.h),
+                    // Subscription tier header
+                    const _SubscriptionTierHeader(),
+                    SizedBox(height: 16.h),
                     _MenuItem(
                       icon: Icons.settings,
                       customIcon: SvgWidget(
@@ -165,6 +173,239 @@ class HamburgerMenu extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+/// Subscription tier header - shows for both Basic and Premium users
+/// Vertical layout with tap functionality
+class _SubscriptionTierHeader extends ConsumerWidget {
+  const _SubscriptionTierHeader();
+
+  String _formatExpirationDate(DateTime? date) {
+    if (date == null) return '';
+    return DateFormat('MMM d, yyyy').format(date);
+  }
+
+  Future<void> _handleTap(BuildContext context, WidgetRef ref, bool isPremium) async {
+    HapticFeedbackService.buttonPress();
+
+    if (isPremium) {
+      // Show celebration animation for premium users
+      await showPremiumCelebration(context);
+    } else {
+      // Show paywall for basic users
+      await requirePremiumGuard(context, ref);
+    }
+  }
+
+  Future<void> _openSubscriptionSettings(BuildContext context, WidgetRef ref) async {
+    HapticFeedbackService.buttonPress();
+
+    final managementUrl = ref.read(subscriptionProvider).managementUrl;
+
+    if (managementUrl != null && managementUrl.isNotEmpty) {
+      // Try to open the management URL directly
+      final uri = Uri.tryParse(managementUrl);
+      if (uri != null && await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+        return;
+      }
+    }
+
+    // Fallback to app settings subscription page
+    await AppSettings.openAppSettings(type: AppSettingsType.subscriptions);
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final subscriptionState = ref.watch(subscriptionProvider);
+    final isPremium = subscriptionState.isSubscribed;
+    final expirationDate = subscriptionState.expirationDate;
+
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: 12.sp),
+      child: GestureDetector(
+        onTap: () => _handleTap(context, ref, isPremium),
+        child: Container(
+          width: double.infinity,
+          padding: EdgeInsets.all(14.sp),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: isPremium
+                  ? [
+                      kPrimaryColor.withValues(alpha: 0.15),
+                      kPrimaryColor.withValues(alpha: 0.08),
+                    ]
+                  : [
+                      kWhiteColor.withValues(alpha: 0.05),
+                      kWhiteColor.withValues(alpha: 0.02),
+                    ],
+            ),
+            borderRadius: BorderRadius.circular(12.br),
+            border: Border.all(
+              color: isPremium
+                  ? kPrimaryColor.withValues(alpha: 0.3)
+                  : kWhiteColor.withValues(alpha: 0.1),
+              width: 1,
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Top row: Icon + Tier name
+              Row(
+                children: [
+                  // Icon container
+                  Container(
+                    width: 36.w,
+                    height: 36.h,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: isPremium
+                          ? LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: [
+                                kPrimaryColor,
+                                kPrimaryColor.withValues(alpha: 0.7),
+                              ],
+                            )
+                          : null,
+                      color: isPremium ? null : kWhiteColor.withValues(alpha: 0.1),
+                    ),
+                    child: Icon(
+                      isPremium
+                          ? Icons.workspace_premium_rounded
+                          : Icons.person_outline_rounded,
+                      size: 20.ic,
+                      color: isPremium ? kWhiteColor : kWhiteColor.withValues(alpha: 0.6),
+                    ),
+                  ),
+                  SizedBox(width: 12.w),
+                  // Tier name
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          isPremium ? 'Premium' : 'Basic',
+                          style: AppTypography.textMdBold.copyWith(
+                            color: isPremium ? kPrimaryColor : kWhiteColor,
+                          ),
+                        ),
+                        Text(
+                          'ChessEver',
+                          style: AppTypography.textXsRegular.copyWith(
+                            color: kWhiteColor.withValues(alpha: 0.5),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  // Arrow indicator
+                  Icon(
+                    Icons.chevron_right_rounded,
+                    size: 20.ic,
+                    color: kWhiteColor.withValues(alpha: 0.4),
+                  ),
+                ],
+              ),
+
+              // Expiration date or upgrade prompt
+              SizedBox(height: 12.h),
+              Container(
+                width: double.infinity,
+                padding: EdgeInsets.symmetric(horizontal: 10.sp, vertical: 8.sp),
+                decoration: BoxDecoration(
+                  color: kWhiteColor.withValues(alpha: 0.05),
+                  borderRadius: BorderRadius.circular(8.br),
+                ),
+                child: isPremium
+                    ? Row(
+                        children: [
+                          Icon(
+                            Icons.calendar_today_rounded,
+                            size: 14.ic,
+                            color: kWhiteColor.withValues(alpha: 0.5),
+                          ),
+                          SizedBox(width: 8.w),
+                          Expanded(
+                            child: Text(
+                              expirationDate != null
+                                  ? 'Renews ${_formatExpirationDate(expirationDate)}'
+                                  : 'Active subscription',
+                              style: AppTypography.textXsRegular.copyWith(
+                                color: kWhiteColor.withValues(alpha: 0.6),
+                              ),
+                            ),
+                          ),
+                        ],
+                      )
+                    : Row(
+                        children: [
+                          Icon(
+                            Icons.star_rounded,
+                            size: 14.ic,
+                            color: kPrimaryColor.withValues(alpha: 0.8),
+                          ),
+                          SizedBox(width: 8.w),
+                          Expanded(
+                            child: Text(
+                              'Tap to unlock all features',
+                              style: AppTypography.textXsRegular.copyWith(
+                                color: kWhiteColor.withValues(alpha: 0.6),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+              ),
+
+              // Manage subscription button (only for premium)
+              if (isPremium) ...[
+                SizedBox(height: 10.h),
+                GestureDetector(
+                  onTap: () => _openSubscriptionSettings(context, ref),
+                  child: Container(
+                    width: double.infinity,
+                    padding: EdgeInsets.symmetric(vertical: 10.sp),
+                    decoration: BoxDecoration(
+                      border: Border.all(
+                        color: kWhiteColor.withValues(alpha: 0.15),
+                        width: 1,
+                      ),
+                      borderRadius: BorderRadius.circular(8.br),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.settings_rounded,
+                          size: 16.ic,
+                          color: kWhiteColor.withValues(alpha: 0.6),
+                        ),
+                        SizedBox(width: 8.w),
+                        Text(
+                          'Manage Subscription',
+                          style: AppTypography.textSmMedium.copyWith(
+                            color: kWhiteColor.withValues(alpha: 0.7),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    )
+        .animate()
+        .fadeIn(duration: 300.ms)
+        .slideX(begin: -0.1, end: 0);
   }
 }
 
@@ -427,6 +668,50 @@ class _VersionFooter extends ConsumerWidget {
                 .fadeIn(delay: 300.ms, duration: 400.ms)
                 .slideX(begin: -0.2, end: 0),
 
+            // Restore Purchases Button
+            InkWell(
+              onTap: () async {
+                HapticFeedbackService.buttonPress();
+                final success = await ref.read(subscriptionProvider.notifier).restorePurchases();
+
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        success
+                          ? 'Purchases restored successfully!'
+                          : 'No purchases found to restore',
+                      ),
+                      backgroundColor: success ? kGreenColor : kDarkGreyColor,
+                    ),
+                  );
+                }
+              },
+              child: Container(
+                padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 8.sp),
+                height: 40.h,
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.restore_rounded,
+                      size: 18.ic,
+                      color: kWhiteColor.withValues(alpha: 0.7),
+                    ),
+                    SizedBox(width: 8.w),
+                    Text(
+                      'Restore Purchases',
+                      style: AppTypography.textSmRegular.copyWith(
+                        color: kWhiteColor.withValues(alpha: 0.7),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            )
+                .animate()
+                .fadeIn(delay: 350.ms, duration: 400.ms)
+                .slideX(begin: -0.2, end: 0),
+
             // Delete Account Button
             InkWell(
               onTap: () {
@@ -455,7 +740,7 @@ class _VersionFooter extends ConsumerWidget {
               ),
             )
                 .animate()
-                .fadeIn(delay: 400.ms, duration: 400.ms)
+                .fadeIn(delay: 450.ms, duration: 400.ms)
                 .slideX(begin: -0.2, end: 0),
 
             SizedBox(height: 8.h),

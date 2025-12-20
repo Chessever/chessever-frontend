@@ -241,25 +241,27 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
       onTap: () {
         final standingsAsync = ref.read(playerTourScreenProvider);
 
-        standingsAsync.whenData((standings) {
-          final playerStanding = standings.firstWhere(
+        // Create fallback player model from game data - always has fideId if available
+        final fallbackPlayer = PlayerStandingModel(
+          countryCode: playerCard.countryCode,
+          title: playerCard.title.isNotEmpty ? playerCard.title : null,
+          name: playerCard.name,
+          score: playerCard.rating,
+          scoreChange: 0,
+          matchScore: null,
+          fideId: playerCard.fideId,
+        );
+
+        // Try to find player in tournament standings, otherwise use fallback
+        final playerStanding = standingsAsync.whenOrNull(
+          data: (standings) => standings.firstWhere(
             (player) => player.name == playerCard.name,
-            orElse:
-                () => PlayerStandingModel(
-                  countryCode: playerCard.countryCode,
-                  title: playerCard.title.isNotEmpty ? playerCard.title : null,
-                  name: playerCard.name,
-                  score: 0,
-                  // Fallback if not found in standings
-                  scoreChange: 0,
-                  matchScore: null,
-                ),
-          );
+            orElse: () => fallbackPlayer,
+          ),
+        ) ?? fallbackPlayer;
 
-          ref.read(selectedPlayerProvider.notifier).state = playerStanding;
-
-          Navigator.pushNamed(context, '/scorecard_screen');
-        });
+        ref.read(selectedPlayerProvider.notifier).state = playerStanding;
+        Navigator.pushNamed(context, '/scorecard_screen');
       },
       child: SizedBox(
         height: playerView == PlayerView.gridView ? 20.h : null,

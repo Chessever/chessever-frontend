@@ -98,6 +98,8 @@ class AuthStateListener extends ConsumerWidget {
                   }
 
                   await RevenueCatService().logIn(currentUserId);
+                  // Sync purchases after login (ensures up-to-date status)
+                  unawaited(RevenueCatService().syncPurchases());
                   // Refresh subscription status after login
                   await ref.read(subscriptionProvider.notifier).refresh();
                 } catch (e) {

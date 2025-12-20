@@ -1,7 +1,10 @@
+import 'dart:async';
+import 'package:chessever2/revenue_cat_service/revenue_cat_service.dart';
 import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/paywall/premium_celebration_overlay.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -10,6 +13,9 @@ import 'package:purchases_flutter/purchases_flutter.dart';
 /// Show the premium paywall sheet.
 /// Returns `true` if the user successfully subscribed.
 Future<bool> showPremiumPaywallSheet({required BuildContext context}) async {
+  // Sync purchases when paywall opens (user might have subscribed externally)
+  unawaited(RevenueCatService().syncPurchases());
+
   final result = await showModalBottomSheet<bool>(
     context: context,
     isScrollControlled: true,
@@ -94,6 +100,8 @@ class _PaywallContent extends HookConsumerWidget {
       if (newState.isSubscribed) {
         if (hostContext.mounted) {
           Navigator.of(hostContext).pop(true);
+          // Show celebration animation
+          await showPremiumCelebration(hostContext);
         }
       }
     }

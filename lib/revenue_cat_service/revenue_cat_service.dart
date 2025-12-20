@@ -161,6 +161,18 @@ class RevenueCatService {
     }
   }
 
+  /// Sync purchases with RevenueCat servers.
+  /// Call this at critical points: app foreground, app startup, after auth changes.
+  /// This ensures subscription status is always up-to-date.
+  Future<void> syncPurchases() async {
+    try {
+      await Purchases.syncPurchases();
+      debugPrint('✅ RevenueCat purchases synced');
+    } catch (e) {
+      debugPrint('❌ RevenueCat sync error: $e');
+    }
+  }
+
   /// Set up listener for customer info changes
   void setCustomerInfoListener(void Function(CustomerInfo) listener) {
     Purchases.addCustomerInfoUpdateListener(listener);
