@@ -8,6 +8,7 @@ import 'package:chessever2/screens/library/widgets/swipe_action_card.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
+import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -52,6 +53,10 @@ class GamebaseSearchGameCard extends ConsumerWidget {
       label: 'Add',
       backgroundColor: kGreenColor,
       onAction: () async {
+        // Premium guard - show paywall if not subscribed
+        final hasPremium = await requirePremiumGuard(context, ref);
+        if (!hasPremium) return;
+
         HapticFeedbackService.medium();
         onAdd();
       },
@@ -76,6 +81,10 @@ class GamebaseSearchGameCard extends ConsumerWidget {
     List<GamesTourModel> allGames,
     int gameIndex,
   ) async {
+    // Premium guard - show paywall if not subscribed
+    final hasPremium = await requirePremiumGuard(context, ref);
+    if (!hasPremium) return;
+
     ref.read(chessboardViewFromProviderNew.notifier).state =
         ChessboardView.tour;
 

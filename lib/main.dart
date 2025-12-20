@@ -39,6 +39,7 @@ import 'package:clarity_flutter/clarity_flutter.dart';
 import 'package:heroine/heroine.dart';
 import 'package:upgrader/upgrader.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
+import 'revenue_cat_service/revenue_cat_service.dart';
 import 'services/analytics/analytics_service.dart';
 import 'services/deep_link_service.dart';
 import 'theme/app_theme.dart';
@@ -137,6 +138,10 @@ Future<void> main() async {
           onAppExit: () async {
             StockfishSingleton().dispose();
           },
+          onAppResume: () async {
+            // Sync purchases when app comes to foreground
+            unawaited(RevenueCatService().syncPurchases());
+          },
         ),
       );
 
@@ -233,6 +238,9 @@ Future<void> _initializeRevenueCat() async {
       PurchasesConfiguration(apiKey)..appUserID = null,
     );
     debugPrint('✅ RevenueCat initialized successfully for ${Platform.isIOS ? 'iOS' : 'Android'}');
+
+    // Sync purchases at app startup (non-blocking)
+    unawaited(RevenueCatService().syncPurchases());
   } catch (e, st) {
     debugPrint('❌ Error initializing RevenueCat: $e');
     if (kDebugMode) {

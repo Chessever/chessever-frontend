@@ -1012,6 +1012,10 @@ class ChessBoardScreenNotifierNew
       } else {
         _analysisNavigator?.goToMovePointerUnchecked([moveIndex]);
       }
+
+      // Sync state after navigation
+      final updatedState = ref.read(chessGameNavigatorProvider(_analysisGame!));
+      _syncAnalysisFromNavigator(updatedState);
       return;
     }
 
@@ -1153,8 +1157,11 @@ class ChessBoardScreenNotifierNew
       }
     }
     _analysisNavigator?.goToMovePointerUnchecked(pointer);
-    // The navigator listener will fire and call _syncAnalysisFromNavigator
-    // which will update analysisState.movePointer to match the navigator
+
+    // Manually sync state after navigation to ensure board updates immediately.
+    // The ref.listen callback may not fire synchronously.
+    final updatedState = ref.read(chessGameNavigatorProvider(_analysisGame!));
+    _syncAnalysisFromNavigator(updatedState);
   }
 
   ChessGameNavigatorState? navigatorStateSnapshot() {
@@ -2858,6 +2865,11 @@ class ChessBoardScreenNotifierNew
         final (_, san) = boardPosition.makeSan(move);
 
         _analysisNavigator?.makeOrGoToMove(move.uci);
+
+        // Sync state after navigation
+        final updatedState = ref.read(chessGameNavigatorProvider(_analysisGame!));
+        _syncAnalysisFromNavigator(updatedState);
+
         HapticFeedback.lightImpact();
         _playSoundForSan(san);
         return;
@@ -2914,6 +2926,11 @@ class ChessBoardScreenNotifierNew
         _analysisNavigator?.goToMovePointerUnchecked(boardPointer);
       }
       _analysisNavigator?.makeOrGoToMove(move.uci);
+
+      // Sync state after navigation
+      final updatedState = ref.read(chessGameNavigatorProvider(_analysisGame!));
+      _syncAnalysisFromNavigator(updatedState);
+
       HapticFeedback.lightImpact();
       return;
     } catch (e) {
@@ -3004,6 +3021,11 @@ class ChessBoardScreenNotifierNew
               );
             }
             _analysisNavigator?.makeOrGoToMove(move.uci);
+
+            // Sync state after navigation
+            final updatedState = ref.read(chessGameNavigatorProvider(_analysisGame!));
+            _syncAnalysisFromNavigator(updatedState);
+
             HapticFeedback.mediumImpact();
           } else {
             _releaseLog(
@@ -3102,6 +3124,12 @@ class ChessBoardScreenNotifierNew
     );
     _releaseLog('🎯 ANALYSIS STEP FORWARD: Calling goToNextMove on navigator');
     _analysisNavigator?.goToNextMove();
+
+    // CRITICAL: Manually sync state after navigation to ensure board updates immediately.
+    // The ref.listen callback may not fire synchronously, causing the notation to update
+    // (it watches navigator directly) while the board state lags behind.
+    final updatedState = ref.read(chessGameNavigatorProvider(_analysisGame!));
+    _syncAnalysisFromNavigator(updatedState);
   }
 
   /// Navigate backward in analysis mode (through main line when no variant selected)
@@ -3160,6 +3188,12 @@ class ChessBoardScreenNotifierNew
       '🎯 ANALYSIS STEP BACKWARD: Calling goToPreviousMove on navigator',
     );
     _analysisNavigator?.goToPreviousMove();
+
+    // CRITICAL: Manually sync state after navigation to ensure board updates immediately.
+    // The ref.listen callback may not fire synchronously, causing the notation to update
+    // (it watches navigator directly) while the board state lags behind.
+    final updatedState = ref.read(chessGameNavigatorProvider(_analysisGame!));
+    _syncAnalysisFromNavigator(updatedState);
   }
 
   void jumpToStart() {
@@ -3187,6 +3221,12 @@ class ChessBoardScreenNotifierNew
       } else {
         _releaseLog('🎯 JUMP TO START: No variant, jumping to game start');
         _analysisNavigator?.goToHead();
+      }
+
+      // Sync state after navigation
+      if (_analysisGame != null) {
+        final updatedState = ref.read(chessGameNavigatorProvider(_analysisGame!));
+        _syncAnalysisFromNavigator(updatedState);
       }
     } else {
       goToMove(-1);
@@ -3232,6 +3272,12 @@ class ChessBoardScreenNotifierNew
         _releaseLog('🎯 JUMP TO END: No variant, jumping to game end');
         _analysisNavigator?.goToTail();
       }
+
+      // Sync state after navigation
+      if (_analysisGame != null) {
+        final updatedState = ref.read(chessGameNavigatorProvider(_analysisGame!));
+        _syncAnalysisFromNavigator(updatedState);
+      }
     } else {
       goToMove(currentState.allMoves.length - 1);
     }
@@ -3241,6 +3287,12 @@ class ChessBoardScreenNotifierNew
     _exitPvPreviewIfActive();
     if (state.value?.isAnalysisMode == true) {
       _analysisNavigator?.goToHead();
+
+      // Sync state after navigation
+      if (_analysisGame != null) {
+        final updatedState = ref.read(chessGameNavigatorProvider(_analysisGame!));
+        _syncAnalysisFromNavigator(updatedState);
+      }
     } else {
       jumpToStart();
     }

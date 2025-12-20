@@ -30,11 +30,30 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
     try {
       final isSubscribed = await _revenueCat.isSubscribed();
       final products = await _revenueCat.getProducts();
+      final customerInfo = await _revenueCat.getCustomerInfo();
+
+      DateTime? expirationDate;
+      String? managementUrl;
+
+      if (customerInfo != null) {
+        // Get expiration date from active entitlements
+        final activeEntitlements = customerInfo.entitlements.active;
+        if (activeEntitlements.isNotEmpty) {
+          final entitlement = activeEntitlements.values.first;
+          if (entitlement.expirationDate != null) {
+            expirationDate = DateTime.tryParse(entitlement.expirationDate!);
+          }
+        }
+        // Get management URL
+        managementUrl = customerInfo.managementURL;
+      }
 
       state = state.copyWith(
         isSubscribed: isSubscribed,
         products: products,
         isLoading: false,
+        expirationDate: expirationDate,
+        managementUrl: managementUrl,
       );
     } catch (e) {
       debugPrint('❌ Subscription initialization error: $e');
@@ -49,11 +68,28 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
     try {
       final isSubscribed = await _revenueCat.isSubscribed();
       final products = await _revenueCat.getProducts();
+      final customerInfo = await _revenueCat.getCustomerInfo();
+
+      DateTime? expirationDate;
+      String? managementUrl;
+
+      if (customerInfo != null) {
+        final activeEntitlements = customerInfo.entitlements.active;
+        if (activeEntitlements.isNotEmpty) {
+          final entitlement = activeEntitlements.values.first;
+          if (entitlement.expirationDate != null) {
+            expirationDate = DateTime.tryParse(entitlement.expirationDate!);
+          }
+        }
+        managementUrl = customerInfo.managementURL;
+      }
 
       state = state.copyWith(
         isSubscribed: isSubscribed,
         products: products,
         isLoading: false,
+        expirationDate: expirationDate,
+        managementUrl: managementUrl,
       );
     } catch (e) {
       debugPrint('❌ Subscription refresh error: $e');
@@ -115,12 +151,16 @@ class SubscriptionState {
   final bool isLoading;
   final List<Package> products;
   final String? error;
+  final DateTime? expirationDate;
+  final String? managementUrl;
 
   SubscriptionState({
     this.isSubscribed = false,
     this.isLoading = false,
     this.products = const [],
     this.error,
+    this.expirationDate,
+    this.managementUrl,
   });
 
   SubscriptionState copyWith({
@@ -128,12 +168,16 @@ class SubscriptionState {
     bool? isLoading,
     List<Package>? products,
     String? error,
+    DateTime? expirationDate,
+    String? managementUrl,
   }) {
     return SubscriptionState(
       isSubscribed: isSubscribed ?? this.isSubscribed,
       isLoading: isLoading ?? this.isLoading,
       products: products ?? this.products,
       error: error,
+      expirationDate: expirationDate ?? this.expirationDate,
+      managementUrl: managementUrl ?? this.managementUrl,
     );
   }
 }
