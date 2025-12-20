@@ -334,12 +334,27 @@ class _RoundDropdown extends HookConsumerWidget {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Expanded(
-                child: Text(
-                  selected.name,
-                  style: AppTypography.textXsMedium.copyWith(
-                    color: kWhiteColor,
-                  ),
-                  overflow: TextOverflow.ellipsis,
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      selected.name,
+                      style: AppTypography.textXsMedium.copyWith(
+                        color: kWhiteColor,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    if (selected.startsAt != null)
+                      Text(
+                        selected.formattedStartDate,
+                        style: AppTypography.textXxsRegular.copyWith(
+                          color: kWhiteColor.withOpacity(0.5),
+                          fontSize: 9.sp,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                  ],
                 ),
               ),
               if (rounds.length > 1)
