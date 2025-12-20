@@ -9,7 +9,7 @@ enum FavoritesScreenMode {
 
 final selectedFavoritesModeProvider =
     AutoDisposeStateProvider<FavoritesScreenMode>(
-  (ref) => FavoritesScreenMode.favorites,
+  (ref) => FavoritesScreenMode.games,
 );
 
 const favoritesModeNames = {

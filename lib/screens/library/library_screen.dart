@@ -779,7 +779,7 @@ class _LibraryBackgroundDecoration extends StatelessWidget {
   Widget build(BuildContext context) {
     return IgnorePointer(
       child: Opacity(
-        opacity: 0.06,
+        opacity: 0.12,
         child: Center(
           child: Padding(
             padding: EdgeInsets.symmetric(horizontal: 24.w),

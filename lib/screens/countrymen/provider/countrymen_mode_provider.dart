@@ -9,7 +9,7 @@ enum CountrymenScreenMode {
 
 final selectedCountrymenModeProvider =
     AutoDisposeStateProvider<CountrymenScreenMode>(
-  (ref) => CountrymenScreenMode.events,
+  (ref) => CountrymenScreenMode.games,
 );
 
 const countrymenModeNames = {

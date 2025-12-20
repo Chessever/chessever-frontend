@@ -13,6 +13,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:chessever2/widgets/scroll_to_top_button.dart';
 import 'package:intl/intl.dart';
 
 class CountrymenGamesTab extends ConsumerStatefulWidget {
@@ -121,34 +122,44 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
 
     final state = ref.watch(countrymenCombinedGamesProvider);
 
-    return RefreshIndicator(
-      onRefresh: () async {
-        HapticFeedbackService.medium();
-        await ref.read(countrymenCombinedGamesProvider.notifier).refreshGames();
-      },
-      color: kWhiteColor,
-      backgroundColor: kBlack2Color,
-      child: CustomScrollView(
-        controller: _scrollController,
-        physics: const AlwaysScrollableScrollPhysics(
-          parent: BouncingScrollPhysics(),
-        ),
-        slivers: [
-          // Search bar
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: EdgeInsets.fromLTRB(16.w, 12.h, 16.w, 8.h),
-              child: _buildSearchBar(state),
+    return Stack(
+      children: [
+        RefreshIndicator(
+          onRefresh: () async {
+            HapticFeedbackService.medium();
+            await ref.read(countrymenCombinedGamesProvider.notifier).refreshGames();
+          },
+          color: kWhiteColor,
+          backgroundColor: kBlack2Color,
+          child: CustomScrollView(
+            controller: _scrollController,
+            physics: const AlwaysScrollableScrollPhysics(
+              parent: BouncingScrollPhysics(),
             ),
+            slivers: [
+              // Search bar
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: EdgeInsets.fromLTRB(16.w, 12.h, 16.w, 8.h),
+                  child: _buildSearchBar(state),
+                ),
+              ),
+
+              // Content
+              _buildContentSliver(state),
+
+              // Bottom padding
+              SliverToBoxAdapter(child: SizedBox(height: 24.h)),
+            ],
           ),
-
-          // Content
-          _buildContentSliver(state),
-
-          // Bottom padding
-          SliverToBoxAdapter(child: SizedBox(height: 24.h)),
-        ],
-      ),
+        ),
+        // Scroll to top button
+        Positioned(
+          bottom: 0,
+          right: 0,
+          child: ScrollToTopButton(scrollController: _scrollController),
+        ),
+      ],
     );
   }
 

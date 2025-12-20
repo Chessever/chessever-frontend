@@ -7,6 +7,7 @@ import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/scroll_to_top_button.dart';
 import 'package:chessever2/widgets/search/gameSearch/enhanced_game_search_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -66,8 +67,8 @@ class CountrymenEventsNotifier extends StateNotifier<CountrymenEventsState> {
       : super(const CountrymenEventsState(isLoading: true)) {
     _loadInitial();
 
-    // Listen to country changes
-    _ref.listen(countryDropdownProvider, (previous, next) {
+    // Listen to effective country changes (includes temporary selections)
+    _ref.listen(effectiveCountryProvider, (previous, next) {
       next.whenData((country) {
         if (previous?.valueOrNull?.countryCode != country.countryCode) {
           refresh();
@@ -83,7 +84,7 @@ class CountrymenEventsNotifier extends StateNotifier<CountrymenEventsState> {
   Future<void> _fetchEvents({required bool isInitial}) async {
     if (!mounted) return;
 
-    final countryAsync = _ref.read(countryDropdownProvider);
+    final countryAsync = _ref.read(effectiveCountryProvider);
     final country = countryAsync.valueOrNull;
 
     if (country == null) {
@@ -233,114 +234,140 @@ class _CountrymenEventsTabState extends ConsumerState<CountrymenEventsTab>
 
     final state = ref.watch(countrymenEventsProvider);
 
-    return Column(
+    return Stack(
       children: [
-        SizedBox(height: 12.h),
-        // Search bar
-        Padding(
-          padding: EdgeInsets.symmetric(horizontal: 16.w),
-          child: SearchBarWidget(
-            hintText: 'Search events',
-            margin: 0.sp,
-            autoFocus: false,
-            controller: _searchController,
-            focusNode: _searchFocusNode,
-            onChanged: _onSearchChanged,
-            onClose: _clearSearch,
+        RefreshIndicator(
+          onRefresh: () async {
+            HapticFeedbackService.medium();
+            await ref.read(countrymenEventsProvider.notifier).refresh();
+          },
+          color: kWhiteColor,
+          backgroundColor: kBlack2Color,
+          child: CustomScrollView(
+            controller: _scrollController,
+            physics: const AlwaysScrollableScrollPhysics(
+              parent: BouncingScrollPhysics(),
+            ),
+            slivers: [
+              // Search bar (scrolls with content)
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: EdgeInsets.fromLTRB(16.w, 12.h, 16.w, 8.h),
+                  child: SearchBarWidget(
+                    hintText: 'Search events',
+                    margin: 0.sp,
+                    autoFocus: false,
+                    controller: _searchController,
+                    focusNode: _searchFocusNode,
+                    onChanged: _onSearchChanged,
+                    onClose: _clearSearch,
+                  ),
+                ),
+              ),
+              // Content
+              _buildContentSliver(state),
+              // Bottom padding
+              SliverToBoxAdapter(child: SizedBox(height: 24.h)),
+            ],
           ),
         ),
-        SizedBox(height: 8.h),
-        // Events list
-        Expanded(
-          child: RefreshIndicator(
-            onRefresh: () async {
-              HapticFeedbackService.medium();
-              await ref.read(countrymenEventsProvider.notifier).refresh();
-            },
-            color: kWhiteColor,
-            backgroundColor: kBlack2Color,
-            child: _buildContent(state),
-          ),
+        // Scroll to top button
+        Positioned(
+          bottom: 0,
+          right: 0,
+          child: ScrollToTopButton(scrollController: _scrollController),
         ),
       ],
     );
   }
 
-  Widget _buildContent(CountrymenEventsState state) {
+  Widget _buildContentSliver(CountrymenEventsState state) {
     if (state.isLoading && state.events.isEmpty) {
-      return _buildLoadingState();
+      return SliverFillRemaining(
+        hasScrollBody: false,
+        child: _buildLoadingState(),
+      );
     }
 
     if (state.error != null && state.events.isEmpty) {
-      return _buildErrorState(state.error!);
+      return SliverFillRemaining(
+        hasScrollBody: false,
+        child: _buildErrorState(state.error!),
+      );
     }
 
     if (state.events.isEmpty) {
       if (state.isSearching) {
-        return _buildNoSearchResultsState();
+        return SliverFillRemaining(
+          hasScrollBody: false,
+          child: _buildNoSearchResultsState(),
+        );
       }
-      return _buildEmptyState();
+      return SliverFillRemaining(
+        hasScrollBody: false,
+        child: _buildEmptyState(),
+      );
     }
 
-    return _buildEventsList(state);
+    return _buildEventsSliver(state);
   }
 
-  Widget _buildEventsList(CountrymenEventsState state) {
+  Widget _buildEventsSliver(CountrymenEventsState state) {
     final events = state.events;
     final showLoadingIndicator =
         (state.hasMore || state.isLoading) && events.isNotEmpty;
 
-    return ListView.builder(
-      controller: _scrollController,
-      physics: const AlwaysScrollableScrollPhysics(
-        parent: BouncingScrollPhysics(),
-      ),
+    return SliverPadding(
       padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
-      itemCount: events.length + (showLoadingIndicator ? 1 : 0),
-      itemBuilder: (context, index) {
-        if (index >= events.length) {
-          return Padding(
-            padding: EdgeInsets.symmetric(vertical: 24.h),
-            child: Center(
-              child: state.isLoading
-                  ? Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        SizedBox(
-                          width: 24.w,
-                          height: 24.h,
-                          child: const CircularProgressIndicator(
-                            color: kWhiteColor,
-                            strokeWidth: 2,
-                          ),
-                        ),
-                        SizedBox(height: 8.h),
-                        Text(
-                          'Loading more events...',
-                          style: AppTypography.textXsRegular.copyWith(
-                            color: const Color(0xFF71717A),
-                          ),
-                        ),
-                      ],
-                    )
-                  : state.hasMore
-                      ? const SizedBox.shrink()
-                      : Text(
-                          'No more events',
-                          style: AppTypography.textXsRegular.copyWith(
-                            color: const Color(0xFF52525B),
-                          ),
-                        ),
-            ),
-          );
-        }
+      sliver: SliverList(
+        delegate: SliverChildBuilderDelegate(
+          (context, index) {
+            if (index >= events.length) {
+              return Padding(
+                padding: EdgeInsets.symmetric(vertical: 24.h),
+                child: Center(
+                  child: state.isLoading
+                      ? Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            SizedBox(
+                              width: 24.w,
+                              height: 24.h,
+                              child: const CircularProgressIndicator(
+                                color: kWhiteColor,
+                                strokeWidth: 2,
+                              ),
+                            ),
+                            SizedBox(height: 8.h),
+                            Text(
+                              'Loading more events...',
+                              style: AppTypography.textXsRegular.copyWith(
+                                color: const Color(0xFF71717A),
+                              ),
+                            ),
+                          ],
+                        )
+                      : state.hasMore
+                          ? const SizedBox.shrink()
+                          : Text(
+                              'No more events',
+                              style: AppTypography.textXsRegular.copyWith(
+                                color: const Color(0xFF52525B),
+                              ),
+                            ),
+                ),
+              );
+            }
 
-        final event = events[index];
-        return Padding(
-          padding: EdgeInsets.only(bottom: 12.h),
-          child: _EventCard(event: event),
-        );
-      },
+            final event = events[index];
+            return Padding(
+              padding: EdgeInsets.only(bottom: 12.h),
+              child: _EventCard(event: event),
+            );
+          },
+          childCount: events.length + (showLoadingIndicator ? 1 : 0),
+        ),
+      ),
     );
   }
 
@@ -425,7 +452,7 @@ class _CountrymenEventsTabState extends ConsumerState<CountrymenEventsTab>
   }
 
   Widget _buildEmptyState() {
-    final countryAsync = ref.watch(countryDropdownProvider);
+    final countryAsync = ref.watch(effectiveCountryProvider);
     final countryName = countryAsync.valueOrNull?.name ?? 'your country';
 
     return Center(

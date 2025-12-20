@@ -15,6 +15,7 @@ class FavoritesCombinedGamesState {
   final String? error;
   final Set<String> seenGameIds;
   final String searchQuery; // Current search query
+  final Set<String> selectedFideIds; // Filter chips - selected player FIDE IDs
 
   const FavoritesCombinedGamesState({
     this.games = const [],
@@ -24,9 +25,11 @@ class FavoritesCombinedGamesState {
     this.error,
     this.seenGameIds = const {},
     this.searchQuery = '',
+    this.selectedFideIds = const {},
   });
 
   bool get isSearching => searchQuery.isNotEmpty;
+  bool get isFiltering => selectedFideIds.isNotEmpty;
 
   FavoritesCombinedGamesState copyWith({
     List<GamesTourModel>? games,
@@ -36,6 +39,7 @@ class FavoritesCombinedGamesState {
     String? error,
     Set<String>? seenGameIds,
     String? searchQuery,
+    Set<String>? selectedFideIds,
   }) {
     return FavoritesCombinedGamesState(
       games: games ?? this.games,
@@ -45,6 +49,7 @@ class FavoritesCombinedGamesState {
       error: error,
       seenGameIds: seenGameIds ?? this.seenGameIds,
       searchQuery: searchQuery ?? this.searchQuery,
+      selectedFideIds: selectedFideIds ?? this.selectedFideIds,
     );
   }
 }
@@ -89,7 +94,61 @@ class FavoritesCombinedGamesNotifier
     _supabaseHasMore = true;
     _currentSearchQuery = '';
 
-    state = const FavoritesCombinedGamesState(isLoading: true);
+    // Preserve selected filters during refresh
+    final currentFilters = state.selectedFideIds;
+    state = FavoritesCombinedGamesState(
+      isLoading: true,
+      selectedFideIds: currentFilters,
+    );
+    await _fetchNextBatch(isInitial: true);
+  }
+
+  /// Toggle a player filter by FIDE ID - triggers fresh Supabase query
+  Future<void> togglePlayerFilter(String fideId) async {
+    final currentFilters = Set<String>.from(state.selectedFideIds);
+
+    if (currentFilters.contains(fideId)) {
+      currentFilters.remove(fideId);
+    } else {
+      currentFilters.add(fideId);
+    }
+
+    // Reset pagination and re-query
+    _supabaseHasMore = true;
+    _currentSearchQuery = '';
+
+    state = state.copyWith(
+      isLoading: true,
+      games: [],
+      seenGameIds: {},
+      supabaseOffset: 0,
+      hasMore: true,
+      searchQuery: '',
+      selectedFideIds: currentFilters,
+      error: null,
+    );
+
+    await _fetchNextBatch(isInitial: true);
+  }
+
+  /// Clear all player filters - triggers fresh Supabase query for all favorites
+  Future<void> clearPlayerFilters() async {
+    if (state.selectedFideIds.isEmpty) return;
+
+    _supabaseHasMore = true;
+    _currentSearchQuery = '';
+
+    state = state.copyWith(
+      isLoading: true,
+      games: [],
+      seenGameIds: {},
+      supabaseOffset: 0,
+      hasMore: true,
+      searchQuery: '',
+      selectedFideIds: {},
+      error: null,
+    );
+
     await _fetchNextBatch(isInitial: true);
   }
 
@@ -379,10 +438,17 @@ class FavoritesCombinedGamesNotifier
       final games = <GamesTourModel>[];
 
       // Get FIDE IDs from favorites
-      final fideIds = favorites
+      var fideIds = favorites
           .where((f) => f.fideId != null && f.fideId!.isNotEmpty)
           .map((f) => f.fideId! as String)
           .toList();
+
+      // If filter chips are selected, only query those specific players
+      final selectedFilters = state.selectedFideIds;
+      if (selectedFilters.isNotEmpty) {
+        fideIds = fideIds.where((id) => selectedFilters.contains(id)).toList();
+        debugPrint('[FavoritesGames] Filtering by ${fideIds.length} selected players');
+      }
 
       if (fideIds.isNotEmpty) {
         final supabaseGames = await gameRepo.getGamesByMultipleFideIds(
@@ -396,24 +462,26 @@ class FavoritesCombinedGamesNotifier
         }
       }
 
-      // Also fetch by player names for those without FIDE IDs
-      final playerNames = favorites
-          .where((f) => f.fideId == null || f.fideId!.isEmpty)
-          .map((f) => f.playerName as String)
-          .toList();
+      // Also fetch by player names for those without FIDE IDs (only if no filter active)
+      if (selectedFilters.isEmpty) {
+        final playerNames = favorites
+            .where((f) => f.fideId == null || f.fideId!.isEmpty)
+            .map((f) => f.playerName as String)
+            .toList();
 
-      for (final name in playerNames.take(3)) {
-        try {
-          final nameGames = await gameRepo.getGamesByPlayerName(
-            name,
-            limit: (_pageSize ~/ 3).clamp(5, 10),
-            offset: offset,
-          );
-          for (final game in nameGames) {
-            games.add(GamesTourModel.fromGame(game));
+        for (final name in playerNames.take(3)) {
+          try {
+            final nameGames = await gameRepo.getGamesByPlayerName(
+              name,
+              limit: (_pageSize ~/ 3).clamp(5, 10),
+              offset: offset,
+            );
+            for (final game in nameGames) {
+              games.add(GamesTourModel.fromGame(game));
+            }
+          } catch (e) {
+            debugPrint('[FavoritesGames] Error fetching for $name: $e');
           }
-        } catch (e) {
-          debugPrint('[FavoritesGames] Error fetching for $name: $e');
         }
       }
 

@@ -21,6 +21,7 @@ class GamebaseSearchGameCard extends ConsumerWidget {
     required this.onAdd,
     this.animationIndex = 0,
     this.showRound = true,
+    this.showSwipeHint = false,
   });
 
   final GamesTourModel game;
@@ -29,6 +30,9 @@ class GamebaseSearchGameCard extends ConsumerWidget {
   final VoidCallback onAdd;
   final int animationIndex;
   final bool showRound;
+
+  /// If true, shows a one-time swipe hint animation for this card.
+  final bool showSwipeHint;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -51,6 +55,9 @@ class GamebaseSearchGameCard extends ConsumerWidget {
         HapticFeedbackService.medium();
         onAdd();
       },
+      // Show swipe hint for the first card only
+      showSwipeHint: showSwipeHint,
+      swipeHintKey: 'library_add',
       child: card,
     );
 

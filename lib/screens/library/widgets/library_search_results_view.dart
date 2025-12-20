@@ -309,6 +309,7 @@ class LibrarySearchResultsView extends ConsumerWidget {
               gameIndex: index,
               animationIndex: index,
               onAdd: () => _showAddToFolderSheet(context, fallbackGames[index]),
+              showSwipeHint: index == 0,
             );
           },
         ),
@@ -343,6 +344,7 @@ class LibrarySearchResultsView extends ConsumerWidget {
                 gameIndex: index,
                 animationIndex: index,
                 onAdd: () => _showAddToFolderSheet(context, games[index]),
+                showSwipeHint: index == 0,
               );
             },
           );

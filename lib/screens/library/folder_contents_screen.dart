@@ -271,6 +271,9 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
                   backgroundColor: kRedColor,
                   behavior: SwipeActionBehavior.dismiss,
                   onAction: () => _removeFromBookSimple(analysis),
+                  // Show swipe hint only for the first card
+                  showSwipeHint: index == 0,
+                  swipeHintKey: 'book_remove',
                   child: BookSavedGameCard(analysis: analysis)
                       .animate()
                       .fadeIn(duration: 200.ms, delay: Duration(milliseconds: (index % 10) * 30))
