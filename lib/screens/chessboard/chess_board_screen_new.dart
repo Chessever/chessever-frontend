@@ -8529,16 +8529,15 @@ class _EventInfoSheet extends ConsumerWidget {
     // If tourDetailScreenProvider doesn't have data, fetch independently by tourId
     final tourInfoAsync = ref.watch(_tourInfoByIdProvider(game.tourId));
 
-    // Use tourDetailAboutModel if available, otherwise use fetched tourInfo
+    // Use tourDetailAboutModel only if it matches the current game's tourId
+    final matchesCachedTour =
+        tourDetailAboutModel?.id.isNotEmpty == true &&
+        tourDetailAboutModel?.id == game.tourId;
     final aboutModel =
-        tourDetailAboutModel?.id.isNotEmpty == true
-            ? tourDetailAboutModel
-            : tourInfoAsync.valueOrNull;
+        matchesCachedTour ? tourDetailAboutModel : tourInfoAsync.valueOrNull;
 
     // Check if we're still loading
-    final isLoading =
-        (tourDetailAboutModel == null || tourDetailAboutModel.id.isEmpty) &&
-        tourInfoAsync.isLoading;
+    final isLoading = !matchesCachedTour && tourInfoAsync.isLoading;
 
     final locationService = ref.read(locationServiceProvider);
     final urlLauncher = ref.read(urlLauncherProvider);
