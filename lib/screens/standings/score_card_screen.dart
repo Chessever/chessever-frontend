@@ -508,7 +508,7 @@ class ScoreCardScreen extends ConsumerWidget {
       if (match != null && match.groupCount >= 1) {
         final number = match.group(1);
         if (number != null && number.isNotEmpty) {
-          return 'R$number:';
+          return '$number.';
         }
       }
     }

@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:chessever2/providers/country_dropdown_provider.dart';
-import 'package:chessever2/providers/favorite_players_provider.dart';
 import 'package:chessever2/repository/supabase/chess_player/chess_player_repository.dart';
 import 'package:chessever2/screens/favorites/favorite_players_provider.dart';
 import 'package:chessever2/screens/favorites/tabs/favorites_players_tab.dart';
@@ -15,6 +14,7 @@ import 'package:chessever2/utils/country_utils.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
+import 'package:chessever2/widgets/scroll_to_top_button.dart';
 import 'package:chessever2/widgets/search/gameSearch/enhanced_game_search_widget.dart';
 import 'package:country_flags/country_flags.dart';
 import 'package:flutter/material.dart';
@@ -76,8 +76,8 @@ class CountrymenPlayersNotifier extends StateNotifier<CountrymenPlayersState> {
       : super(const CountrymenPlayersState(isLoading: true)) {
     _loadInitial();
 
-    // Listen to country changes
-    _ref.listen(countryDropdownProvider, (previous, next) {
+    // Listen to effective country changes (includes temporary selections)
+    _ref.listen(effectiveCountryProvider, (previous, next) {
       next.whenData((country) {
         if (previous?.valueOrNull?.countryCode != country.countryCode) {
           refresh();
@@ -87,7 +87,7 @@ class CountrymenPlayersNotifier extends StateNotifier<CountrymenPlayersState> {
   }
 
   String? _getCountryCode() {
-    final countryAsync = _ref.read(countryDropdownProvider);
+    final countryAsync = _ref.read(effectiveCountryProvider);
     final country = countryAsync.valueOrNull;
     if (country == null) return null;
     // Convert to FIDE federation code
@@ -261,70 +261,97 @@ class _CountrymenPlayersTabState extends ConsumerState<CountrymenPlayersTab>
     super.build(context);
 
     final state = ref.watch(countrymenPlayersProvider);
-    final favoritesAsync = ref.watch(favoritePlayersProviderNew);
-    final favoriteIds = favoritesAsync.valueOrNull
-            ?.map((f) => int.tryParse(f.fideId ?? ''))
+    // Watch favoritePlayersNotifierProvider for optimistic updates
+    final favoritesAsync = ref.watch(favoritePlayersNotifierProvider);
+    final favoriteIds = favoritesAsync.valueOrNull?.players
+            .map((p) => p.fideId)
             .where((id) => id != null)
             .cast<int>()
             .toSet() ??
         <int>{};
 
-    return Column(
+    return Stack(
       children: [
-        SizedBox(height: 12.h),
-        // Search bar
-        Padding(
-          padding: EdgeInsets.symmetric(horizontal: 16.w),
-          child: SearchBarWidget(
-            hintText: 'Search players',
-            margin: 0.sp,
-            autoFocus: false,
-            controller: _searchController,
-            focusNode: _searchFocusNode,
-            onChanged: _onSearchChanged,
-            onClose: _clearSearch,
+        RefreshIndicator(
+          onRefresh: () async {
+            HapticFeedbackService.medium();
+            await ref.read(countrymenPlayersProvider.notifier).refresh();
+          },
+          color: kWhiteColor,
+          backgroundColor: kBlack2Color,
+          child: CustomScrollView(
+            controller: _scrollController,
+            physics: const AlwaysScrollableScrollPhysics(
+              parent: BouncingScrollPhysics(),
+            ),
+            slivers: [
+              // Search bar (scrolls with content)
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: EdgeInsets.fromLTRB(16.w, 12.h, 16.w, 8.h),
+                  child: SearchBarWidget(
+                    hintText: 'Search players',
+                    margin: 0.sp,
+                    autoFocus: false,
+                    controller: _searchController,
+                    focusNode: _searchFocusNode,
+                    onChanged: _onSearchChanged,
+                    onClose: _clearSearch,
+                  ),
+                ),
+              ),
+              // Content
+              _buildContentSliver(state, favoriteIds),
+              // Bottom padding
+              SliverToBoxAdapter(child: SizedBox(height: 24.h)),
+            ],
           ),
         ),
-        SizedBox(height: 8.h),
-        // Players list
-        Expanded(
-          child: RefreshIndicator(
-            onRefresh: () async {
-              HapticFeedbackService.medium();
-              await ref.read(countrymenPlayersProvider.notifier).refresh();
-            },
-            color: kWhiteColor,
-            backgroundColor: kBlack2Color,
-            child: _buildContent(state, favoriteIds),
-          ),
+        // Scroll to top button
+        Positioned(
+          bottom: 0,
+          right: 0,
+          child: ScrollToTopButton(scrollController: _scrollController),
         ),
       ],
     );
   }
 
-  Widget _buildContent(
+  Widget _buildContentSliver(
     CountrymenPlayersState state,
     Set<int> favoriteIds,
   ) {
     if (state.isLoading && state.players.isEmpty) {
-      return _buildLoadingState();
+      return SliverFillRemaining(
+        hasScrollBody: false,
+        child: _buildLoadingState(),
+      );
     }
 
     if (state.error != null && state.players.isEmpty) {
-      return _buildErrorState(state.error!);
+      return SliverFillRemaining(
+        hasScrollBody: false,
+        child: _buildErrorState(state.error!),
+      );
     }
 
     if (state.players.isEmpty) {
       if (state.isSearching) {
-        return _buildNoSearchResultsState();
+        return SliverFillRemaining(
+          hasScrollBody: false,
+          child: _buildNoSearchResultsState(),
+        );
       }
-      return _buildEmptyState();
+      return SliverFillRemaining(
+        hasScrollBody: false,
+        child: _buildEmptyState(),
+      );
     }
 
-    return _buildPlayersList(state, favoriteIds);
+    return _buildPlayersSliver(state, favoriteIds);
   }
 
-  Widget _buildPlayersList(
+  Widget _buildPlayersSliver(
     CountrymenPlayersState state,
     Set<int> favoriteIds,
   ) {
@@ -332,61 +359,61 @@ class _CountrymenPlayersTabState extends ConsumerState<CountrymenPlayersTab>
     final showLoadingIndicator =
         (state.hasMore || state.isLoading) && players.isNotEmpty;
 
-    return ListView.builder(
-      controller: _scrollController,
-      physics: const AlwaysScrollableScrollPhysics(
-        parent: BouncingScrollPhysics(),
-      ),
+    return SliverPadding(
       padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
-      itemCount: players.length + (showLoadingIndicator ? 1 : 0),
-      itemBuilder: (context, index) {
-        if (index >= players.length) {
-          return Padding(
-            padding: EdgeInsets.symmetric(vertical: 24.h),
-            child: Center(
-              child: state.isLoading
-                  ? Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        SizedBox(
-                          width: 24.w,
-                          height: 24.h,
-                          child: const CircularProgressIndicator(
-                            color: kWhiteColor,
-                            strokeWidth: 2,
-                          ),
-                        ),
-                        SizedBox(height: 8.h),
-                        Text(
-                          'Loading more players...',
-                          style: AppTypography.textXsRegular.copyWith(
-                            color: const Color(0xFF71717A),
-                          ),
-                        ),
-                      ],
-                    )
-                  : state.hasMore
-                      ? const SizedBox.shrink()
-                      : Text(
-                          'No more players',
-                          style: AppTypography.textXsRegular.copyWith(
-                            color: const Color(0xFF52525B),
-                          ),
-                        ),
-            ),
-          );
-        }
+      sliver: SliverList(
+        delegate: SliverChildBuilderDelegate(
+          (context, index) {
+            if (index >= players.length) {
+              return Padding(
+                padding: EdgeInsets.symmetric(vertical: 24.h),
+                child: Center(
+                  child: state.isLoading
+                      ? Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            SizedBox(
+                              width: 24.w,
+                              height: 24.h,
+                              child: const CircularProgressIndicator(
+                                color: kWhiteColor,
+                                strokeWidth: 2,
+                              ),
+                            ),
+                            SizedBox(height: 8.h),
+                            Text(
+                              'Loading more players...',
+                              style: AppTypography.textXsRegular.copyWith(
+                                color: const Color(0xFF71717A),
+                              ),
+                            ),
+                          ],
+                        )
+                      : state.hasMore
+                          ? const SizedBox.shrink()
+                          : Text(
+                              'No more players',
+                              style: AppTypography.textXsRegular.copyWith(
+                                color: const Color(0xFF52525B),
+                              ),
+                            ),
+                ),
+              );
+            }
 
-        final player = players[index];
-        final isFavorite = favoriteIds.contains(player.fideId);
+            final player = players[index];
+            final isFavorite = favoriteIds.contains(player.fideId);
 
-        return _PlayerCard(
-          player: player,
-          isFavorite: isFavorite,
-          onTap: () => _navigateToPlayerDetail(player),
-          onToggleFavorite: () => _toggleFavorite(player, isFavorite),
-        );
-      },
+            return _PlayerCard(
+              player: player,
+              isFavorite: isFavorite,
+              onTap: () => _navigateToPlayerDetail(player),
+              onToggleFavorite: () => _toggleFavorite(player, isFavorite),
+            );
+          },
+          childCount: players.length + (showLoadingIndicator ? 1 : 0),
+        ),
+      ),
     );
   }
 
@@ -396,24 +423,31 @@ class _CountrymenPlayersTabState extends ConsumerState<CountrymenPlayersTab>
     Navigator.pushNamed(context, '/scorecard_screen');
   }
 
-  Future<void> _toggleFavorite(
+  void _toggleFavorite(
     PlayerStandingModel player,
     bool currentlyFavorite,
-  ) async {
-    final allowed = await requireFullAuthGuard(context);
-    if (!allowed) return;
+  ) {
+    // Check auth first, then toggle without blocking
+    requireFullAuthGuard(context).then((allowed) {
+      if (!allowed) return;
 
-    HapticFeedback.mediumImpact();
+      HapticFeedback.mediumImpact();
 
-    if (currentlyFavorite) {
-      await ref
-          .read(favoritePlayersNotifierProvider.notifier)
-          .removeFavorite(player);
-    } else {
-      await ref
-          .read(favoritePlayersNotifierProvider.notifier)
-          .addFavorite(player);
-    }
+      // Fire and forget - provider handles optimistic updates internally
+      if (currentlyFavorite) {
+        unawaited(
+          ref
+              .read(favoritePlayersNotifierProvider.notifier)
+              .removeFavorite(player),
+        );
+      } else {
+        unawaited(
+          ref
+              .read(favoritePlayersNotifierProvider.notifier)
+              .addFavorite(player),
+        );
+      }
+    });
   }
 
   Widget _buildLoadingState() {
@@ -497,7 +531,7 @@ class _CountrymenPlayersTabState extends ConsumerState<CountrymenPlayersTab>
   }
 
   Widget _buildEmptyState() {
-    final countryAsync = ref.watch(countryDropdownProvider);
+    final countryAsync = ref.watch(effectiveCountryProvider);
     final countryName = countryAsync.valueOrNull?.name ?? 'your country';
 
     return Center(
@@ -618,12 +652,6 @@ class _PlayerCard extends ConsumerWidget {
           decoration: BoxDecoration(
             color: kBlack2Color,
             borderRadius: BorderRadius.circular(12.br),
-            border: Border.all(
-              color: isFavorite
-                  ? const Color(0xFFEF4444).withValues(alpha: 0.3)
-                  : const Color(0xFF27272A),
-              width: 1,
-            ),
           ),
           child: Row(
             children: [

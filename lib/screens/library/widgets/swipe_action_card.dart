@@ -4,6 +4,7 @@ import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:motor/motor.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// Behavior after swipe action is triggered.
 enum SwipeActionBehavior {
@@ -32,6 +33,8 @@ class SwipeActionCard extends StatefulWidget {
     this.dismissThreshold = 0.28,
     this.borderRadius = 12,
     this.behavior = SwipeActionBehavior.bounceBack,
+    this.showSwipeHint = false,
+    this.swipeHintKey,
   });
 
   final Key dismissKey;
@@ -48,6 +51,14 @@ class SwipeActionCard extends StatefulWidget {
   final double borderRadius;
   final SwipeActionBehavior behavior;
 
+  /// If true, shows a one-time swipe hint animation on first render.
+  /// Use [swipeHintKey] to track if the hint was already shown.
+  final bool showSwipeHint;
+
+  /// Unique key for storing hint shown state in SharedPreferences.
+  /// Required when [showSwipeHint] is true.
+  final String? swipeHintKey;
+
   @override
   State<SwipeActionCard> createState() => _SwipeActionCardState();
 }
@@ -58,9 +69,55 @@ class _SwipeActionCardState extends State<SwipeActionCard>
   bool _isDismissing = false;
   bool _isVisible = true;
   bool _showSuccessFlash = false;
+  bool _isShowingHint = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.showSwipeHint && widget.swipeHintKey != null) {
+      _maybeShowSwipeHint();
+    }
+  }
+
+  Future<void> _maybeShowSwipeHint() async {
+    final prefs = await SharedPreferences.getInstance();
+    final key = 'swipe_hint_shown_${widget.swipeHintKey}';
+    final alreadyShown = prefs.getBool(key) ?? false;
+
+    if (alreadyShown || !mounted) return;
+
+    // Mark as shown immediately to prevent showing on other cards
+    await prefs.setBool(key, true);
+
+    // Small delay before starting the hint animation
+    await Future.delayed(const Duration(milliseconds: 600));
+    if (!mounted) return;
+
+    // Animate the hint
+    setState(() => _isShowingHint = true);
+
+    final screenWidth = MediaQuery.of(context).size.width;
+    final hintDistance = screenWidth * 0.25; // Slide 25% to reveal action
+
+    // Slide out
+    setState(() {
+      _dragExtent = widget.dismissDirection == DismissDirection.endToStart
+          ? -hintDistance
+          : hintDistance;
+    });
+
+    await Future.delayed(const Duration(milliseconds: 600));
+    if (!mounted) return;
+
+    // Slide back
+    setState(() {
+      _dragExtent = 0;
+      _isShowingHint = false;
+    });
+  }
 
   void _handleDragUpdate(DragUpdateDetails details) {
-    if (_isDismissing || !widget.enabled) return;
+    if (_isDismissing || !widget.enabled || _isShowingHint) return;
 
     setState(() {
       if (widget.dismissDirection == DismissDirection.endToStart) {
@@ -74,7 +131,7 @@ class _SwipeActionCardState extends State<SwipeActionCard>
   }
 
   void _handleDragEnd(DragEndDetails details) {
-    if (_isDismissing || !widget.enabled) return;
+    if (_isDismissing || !widget.enabled || _isShowingHint) return;
 
     final screenWidth = MediaQuery.of(context).size.width;
     final threshold = screenWidth * widget.dismissThreshold;

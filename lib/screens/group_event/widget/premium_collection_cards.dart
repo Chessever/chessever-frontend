@@ -256,7 +256,7 @@ class _GridConfig {
   final int maxVisibleCells;
 }
 
-/// Renders the irregular scrolling grid of player photos
+/// Renders the irregular scrolling grid of player photos with heterogeneous distribution
 class _IrregularPlayerGrid extends StatelessWidget {
   const _IrregularPlayerGrid({
     required this.favorites,
@@ -274,143 +274,179 @@ class _IrregularPlayerGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Calculate cell sizes with slight variation for irregular look
-    final cellSize = gridConfig.baseCellSize;
-    final cellSpacing = 4.0;
-    final rowHeight = (cardHeight - (gridConfig.rows - 1) * cellSpacing) / gridConfig.rows;
-    final actualCellSize = math.min(cellSize, rowHeight - 2);
-    final verticalPadding = (rowHeight - actualCellSize) / 2;
+    // Generate organic cell placements
+    final cells = _generateHeterogeneousCells();
 
-    // Calculate total strip width needed for seamless looping
-    // We need enough cells to fill the card width + buffer for smooth scrolling
-    final cellWithSpacing = actualCellSize + cellSpacing;
-    final visibleCellsPerRow = (cardWidth / cellWithSpacing).ceil() + 2;
-
-    // Total cells needed: enough to show all favorites at least twice for seamless loop
-    final totalCellsNeeded = math.max(
-      visibleCellsPerRow * 2,
-      favorites.length * 3,
-    );
-    final stripWidth = totalCellsNeeded * cellWithSpacing;
+    // Calculate strip width for seamless looping
+    final maxX = cells.fold<double>(0, (max, c) => math.max(max, c.x + c.size));
+    final stripWidth = maxX + 50; // Add buffer
 
     // Calculate scroll offset
-    final scrollOffset = scrollProgress * stripWidth * 0.5;
+    final scrollOffset = scrollProgress * stripWidth;
 
     return Stack(
       clipBehavior: Clip.hardEdge,
       children: [
-        // Background subtle pattern
-        CustomPaint(
-          size: Size(cardWidth, cardHeight),
-          painter: _GridPatternPainter(
-            accentColor: kWhiteColor,
-            rows: gridConfig.rows,
-            cellSize: actualCellSize,
-            spacing: cellSpacing,
-          ),
-        ),
-        // Scrolling player photos
-        for (int row = 0; row < gridConfig.rows; row++)
-          ...List.generate(totalCellsNeeded, (index) {
-            final playerIndex = index % favorites.length;
-            final player = favorites[playerIndex];
+        // Scrolling player photos with organic placement
+        ...cells.map((cell) {
+          // Apply scroll offset with wrapping
+          var x = cell.x - scrollOffset;
 
-            // Stagger odd rows for irregular hexagonal-like pattern
-            final rowStagger = row.isOdd ? cellWithSpacing * 0.5 : 0.0;
+          // Wrap around for seamless infinite scroll
+          while (x < -cell.size - 10) {
+            x += stripWidth;
+          }
+          while (x > stripWidth) {
+            x -= stripWidth;
+          }
 
-            // Base position
-            final baseX = index * cellWithSpacing + rowStagger;
+          // Skip cells outside visible range
+          if (x < -cell.size - 20 || x > cardWidth + 20) {
+            return const SizedBox.shrink();
+          }
 
-            // Apply scroll offset (wrapping for seamless loop)
-            var x = baseX - scrollOffset;
+          final player = favorites[cell.playerIndex % favorites.length];
 
-            // Wrap around for seamless infinite scroll
-            while (x < -cellWithSpacing) {
-              x += stripWidth;
-            }
-            while (x > stripWidth) {
-              x -= stripWidth;
-            }
-
-            // Skip cells outside visible range (with buffer)
-            if (x < -cellWithSpacing * 2 || x > cardWidth + cellWithSpacing) {
-              return const SizedBox.shrink();
-            }
-
-            final y = row * (actualCellSize + cellSpacing) + verticalPadding;
-
-            // Add slight size variation for visual interest
-            final sizeVariation = _getSizeVariation(playerIndex, row);
-            final finalCellSize = actualCellSize * sizeVariation;
-            final sizeOffset = (actualCellSize - finalCellSize) / 2;
-
-            return Positioned(
-              left: x + sizeOffset,
-              top: y + sizeOffset,
-              child: _PlayerPhotoCell(
-                key: ValueKey('${player.fideId ?? player.playerName}_${row}_$index'),
-                player: player,
-                size: finalCellSize,
-              ),
-            );
-          }),
+          return Positioned(
+            left: x,
+            top: cell.y,
+            child: _PlayerPhotoCell(
+              key: ValueKey('${player.fideId ?? player.playerName}_${cell.id}'),
+              player: player,
+              size: cell.size,
+            ),
+          );
+        }),
       ],
     );
   }
 
-  /// Creates slight size variation based on position for organic feel
-  double _getSizeVariation(int playerIndex, int row) {
-    // Use a deterministic pseudo-random based on position
-    final seed = (playerIndex * 7 + row * 13) % 10;
-    // Variation between 0.85 and 1.0 for subtle effect
-    return 0.88 + (seed / 10) * 0.12;
+  /// Generate heterogeneous cell placements with varied sizes and organic positioning
+  List<_CellPlacement> _generateHeterogeneousCells() {
+    final cells = <_CellPlacement>[];
+    final random = _SeededRandom(favorites.length * 31 + 17);
+
+    // Base sizes with more dramatic variation
+    final minSize = gridConfig.baseCellSize * 0.7;
+    final maxSize = gridConfig.baseCellSize * 1.35;
+
+    // Vertical padding from edges
+    final topPadding = 4.0;
+    final bottomPadding = 8.0;
+    final usableHeight = cardHeight - topPadding - bottomPadding;
+
+    // Generate enough cells to fill ~3x the card width for smooth looping
+    final targetWidth = cardWidth * 3.5;
+    var currentX = 0.0;
+    var cellId = 0;
+
+    // Track recent Y positions to avoid clustering
+    final recentYs = <double>[];
+    const maxRecentYs = 4;
+
+    while (currentX < targetWidth) {
+      // Vary horizontal spacing between cells
+      final horizontalGap = 6.0 + random.nextDouble() * 14.0;
+
+      // Determine size with bias toward medium sizes but occasional large/small
+      final sizeRoll = random.nextDouble();
+      double size;
+      if (sizeRoll < 0.15) {
+        // 15% chance: small
+        size = minSize + random.nextDouble() * (maxSize - minSize) * 0.25;
+      } else if (sizeRoll > 0.85) {
+        // 15% chance: large
+        size = minSize + (maxSize - minSize) * (0.75 + random.nextDouble() * 0.25);
+      } else {
+        // 70% chance: medium with variation
+        size = minSize + (maxSize - minSize) * (0.3 + random.nextDouble() * 0.4);
+      }
+
+      // Calculate Y position with heterogeneous distribution
+      // Avoid placing too close to recent positions
+      double y;
+      var attempts = 0;
+      do {
+        // Add vertical wobble - not aligned to rows
+        final baseY = random.nextDouble() * (usableHeight - size);
+        y = topPadding + baseY;
+        attempts++;
+      } while (_isTooCloseToRecent(y, size, recentYs) && attempts < 5);
+
+      // Update recent Y tracking
+      recentYs.add(y);
+      if (recentYs.length > maxRecentYs) {
+        recentYs.removeAt(0);
+      }
+
+      cells.add(_CellPlacement(
+        id: cellId,
+        x: currentX,
+        y: y,
+        size: size,
+        playerIndex: cellId % favorites.length,
+      ));
+
+      currentX += size + horizontalGap;
+      cellId++;
+    }
+
+    return cells;
   }
-}
 
-/// Paints subtle background pattern for the grid
-class _GridPatternPainter extends CustomPainter {
-  _GridPatternPainter({
-    required this.accentColor,
-    required this.rows,
-    required this.cellSize,
-    required this.spacing,
-  });
+  /// Check if Y position is too close to recent placements (would cause vertical clustering)
+  bool _isTooCloseToRecent(double y, double size, List<double> recentYs) {
+    if (recentYs.isEmpty) return false;
 
-  final Color accentColor;
-  final int rows;
-  final double cellSize;
-  final double spacing;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = accentColor.withValues(alpha: 0.06)
-      ..style = PaintingStyle.fill;
-
-    final cellWithSpacing = cellSize + spacing;
-    final rowHeight = size.height / rows;
-
-    // Draw subtle circles as background pattern
-    for (int row = 0; row < rows; row++) {
-      final rowStagger = row.isOdd ? cellWithSpacing * 0.5 : 0.0;
-      final y = row * rowHeight + rowHeight / 2;
-
-      for (double x = rowStagger; x < size.width + cellWithSpacing; x += cellWithSpacing) {
-        canvas.drawCircle(
-          Offset(x + cellSize / 2, y),
-          cellSize / 2 - 1,
-          paint,
-        );
+    final minDistance = size * 0.6; // Minimum vertical gap
+    for (final recentY in recentYs.take(2)) {
+      if ((y - recentY).abs() < minDistance) {
+        return true;
       }
     }
+    return false;
   }
-
-  @override
-  bool shouldRepaint(covariant _GridPatternPainter oldDelegate) => false;
 }
 
+/// Simple seeded pseudo-random for deterministic but varied distribution
+class _SeededRandom {
+  _SeededRandom(this._seed);
+
+  int _seed;
+
+  double nextDouble() {
+    _seed = (_seed * 1103515245 + 12345) & 0x7fffffff;
+    return (_seed / 0x7fffffff);
+  }
+}
+
+/// Represents a single cell placement in the heterogeneous grid
+class _CellPlacement {
+  const _CellPlacement({
+    required this.id,
+    required this.x,
+    required this.y,
+    required this.size,
+    required this.playerIndex,
+  });
+
+  final int id;
+  final double x;
+  final double y;
+  final double size;
+  final int playerIndex;
+}
+
+
+
+/// Provider to cache player photo URLs - prevents re-fetching on every animation frame
+final _playerPhotoUrlProvider = FutureProvider.family.autoDispose<String?, String?>((ref, fideId) async {
+  if (fideId == null || fideId.isEmpty) return null;
+  return FidePhotoService.getPhotoUrlOrNull(fideId);
+});
+
 /// Individual player photo cell with loading and error states
-class _PlayerPhotoCell extends HookWidget {
+class _PlayerPhotoCell extends ConsumerWidget {
   const _PlayerPhotoCell({
     super.key,
     required this.player,
@@ -421,12 +457,9 @@ class _PlayerPhotoCell extends HookWidget {
   final double size;
 
   @override
-  Widget build(BuildContext context) {
-    final photoUrlFuture = useMemoized(
-      () => FidePhotoService.getPhotoUrlOrNull(player.fideId),
-      [player.fideId],
-    );
-    final photoUrlSnapshot = useFuture(photoUrlFuture);
+  Widget build(BuildContext context, WidgetRef ref) {
+    // Use cached provider instead of useFuture to prevent flashing
+    final photoUrlAsync = ref.watch(_playerPhotoUrlProvider(player.fideId));
 
     return Container(
       width: size,
@@ -446,16 +479,18 @@ class _PlayerPhotoCell extends HookWidget {
         ],
       ),
       child: ClipOval(
-        child: photoUrlSnapshot.connectionState == ConnectionState.waiting
-            ? _buildPlaceholder()
-            : photoUrlSnapshot.data != null
-                ? CachedNetworkImage(
-                    imageUrl: photoUrlSnapshot.data!,
-                    fit: BoxFit.cover,
-                    placeholder: (_, __) => _buildPlaceholder(),
-                    errorWidget: (_, __, ___) => _buildInitials(),
-                  )
-                : _buildInitials(),
+        child: photoUrlAsync.when(
+          data: (photoUrl) => photoUrl != null
+              ? CachedNetworkImage(
+                  imageUrl: photoUrl,
+                  fit: BoxFit.cover,
+                  placeholder: (_, __) => _buildPlaceholder(),
+                  errorWidget: (_, __, ___) => _buildInitials(),
+                )
+              : _buildInitials(),
+          loading: () => _buildPlaceholder(),
+          error: (_, __) => _buildInitials(),
+        ),
       ),
     );
   }

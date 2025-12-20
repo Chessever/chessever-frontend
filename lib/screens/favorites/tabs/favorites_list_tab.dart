@@ -6,6 +6,7 @@ import 'package:chessever2/screens/standings/score_card_screen.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
+import 'package:chessever2/widgets/scroll_to_top_button.dart';
 import 'package:chessever2/widgets/search/gameSearch/enhanced_game_search_widget.dart';
 import 'package:chessever2/widgets/standing_score_card.dart';
 import 'package:flutter/material.dart';
@@ -24,6 +25,7 @@ class FavoritesListTab extends ConsumerStatefulWidget {
 
 class _FavoritesListTabState extends ConsumerState<FavoritesListTab>
     with AutomaticKeepAliveClientMixin {
+  final ScrollController _scrollController = ScrollController();
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _focusNode = FocusNode();
 
@@ -32,6 +34,7 @@ class _FavoritesListTabState extends ConsumerState<FavoritesListTab>
 
   @override
   void dispose() {
+    _scrollController.dispose();
     _searchController.dispose();
     _focusNode.dispose();
     super.dispose();
@@ -47,154 +50,180 @@ class _FavoritesListTabState extends ConsumerState<FavoritesListTab>
   Widget build(BuildContext context) {
     super.build(context);
 
-    return Column(
+    return Stack(
       children: [
-        SizedBox(height: 12.h),
-        // Search bar
-        Padding(
-          padding: EdgeInsets.symmetric(horizontal: 16.w),
-          child: AnimatedBuilder(
-            animation: _searchController,
-            builder: (context, _) {
-              return SearchBarWidget(
-                hintText: 'Search favorites',
-                margin: 0.sp,
-                autoFocus: false,
-                controller: _searchController,
-                focusNode: _focusNode,
-                onChanged: (_) => setState(() {}),
-                onClose: _clearSearch,
-              );
-            },
+        ref.watch(favoritePlayersNotifierProvider).when(
+          data: (_) {
+            final filteredPlayers = ref.read(
+              filteredFavoritePlayersProvider(_searchController.text),
+            );
+            return _buildContent(filteredPlayers);
+          },
+          loading: () => const Center(
+            child: CircularProgressIndicator(color: kWhiteColor),
           ),
+          error: (error, stack) => _buildErrorState(error.toString()),
         ),
-        SizedBox(height: 8.h),
-        Expanded(
-          child: ref.watch(favoritePlayersNotifierProvider).when(
-            data: (_) {
-              final filteredPlayers = ref.read(
-                filteredFavoritePlayersProvider(_searchController.text),
-              );
-              return _buildPlayersList(filteredPlayers);
-            },
-            loading: () => const Center(
-              child: CircularProgressIndicator(color: kWhiteColor),
-            ),
-            error: (error, stack) => _buildErrorState(error.toString()),
-          ),
+        // Scroll to top button
+        Positioned(
+          bottom: 0,
+          right: 0,
+          child: ScrollToTopButton(scrollController: _scrollController),
         ),
       ],
     );
   }
 
-  Widget _buildPlayersList(List<PlayerStandingModel> players) {
+  Widget _buildContent(List<PlayerStandingModel> filteredPlayers) {
+    return RefreshIndicator(
+      onRefresh: () async {
+        HapticFeedbackService.medium();
+        await ref
+            .read(favoritePlayersNotifierProvider.notifier)
+            .refreshFavorites();
+      },
+      color: kWhiteColor,
+      backgroundColor: kBlack2Color,
+      child: CustomScrollView(
+        controller: _scrollController,
+        physics: const AlwaysScrollableScrollPhysics(
+          parent: BouncingScrollPhysics(),
+        ),
+        slivers: [
+          // Search bar
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(16.w, 12.h, 16.w, 8.h),
+              child: AnimatedBuilder(
+                animation: _searchController,
+                builder: (context, _) {
+                  return SearchBarWidget(
+                    hintText: 'Search favorites',
+                    margin: 0.sp,
+                    autoFocus: false,
+                    controller: _searchController,
+                    focusNode: _focusNode,
+                    onChanged: (_) => setState(() {}),
+                    onClose: _clearSearch,
+                  );
+                },
+              ),
+            ),
+          ),
+
+          // Content
+          _buildPlayersSliver(filteredPlayers),
+
+          // Bottom padding
+          SliverToBoxAdapter(child: SizedBox(height: 24.h)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPlayersSliver(List<PlayerStandingModel> players) {
     if (players.isEmpty) {
       if (_searchController.text.isNotEmpty) {
-        return _buildEmptyState(
-          'No players found',
-          'No favorites match "${_searchController.text}"',
+        return SliverFillRemaining(
+          hasScrollBody: false,
+          child: _buildEmptyState(
+            'No players found',
+            'No favorites match "${_searchController.text}"',
+          ),
         );
       }
-      return _buildEmptyState(
-        'No favorite players yet',
-        'Tap the heart icon on players to add them to favorites',
+      return SliverFillRemaining(
+        hasScrollBody: false,
+        child: _buildEmptyState(
+          'No favorite players yet',
+          'Tap the heart icon on players to add them to favorites',
+        ),
       );
     }
 
     final sortedPlayers = [...players]
       ..sort((a, b) => b.score.compareTo(a.score));
 
-    return Padding(
+    return SliverPadding(
       padding: EdgeInsets.symmetric(horizontal: 20.sp),
-      child: RefreshIndicator(
-        onRefresh: () async {
-          HapticFeedbackService.medium();
-          await ref
-              .read(favoritePlayersNotifierProvider.notifier)
-              .refreshFavorites();
-        },
-        color: kWhiteColor,
-        backgroundColor: kBlack2Color,
-        child: Column(
-          children: [
-            // Column headers
-            Padding(
-              padding: EdgeInsets.symmetric(horizontal: 8.sp),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Expanded(
-                    child: Row(
-                      children: [
-                        SizedBox(width: 20.w),
-                        Flexible(
-                          child: Text(
-                            'Player',
-                            style: AppTypography.textSmMedium.copyWith(
-                              color: kWhiteColor,
+      sliver: SliverList(
+        delegate: SliverChildBuilderDelegate(
+          (context, index) {
+            // First item is the column header
+            if (index == 0) {
+              return Padding(
+                padding: EdgeInsets.only(bottom: 4.h),
+                child: Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 8.sp),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Expanded(
+                        child: Row(
+                          children: [
+                            SizedBox(width: 20.w),
+                            Flexible(
+                              child: Text(
+                                'Player',
+                                style: AppTypography.textSmMedium.copyWith(
+                                  color: kWhiteColor,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
                             ),
-                            overflow: TextOverflow.ellipsis,
-                          ),
+                          ],
                         ),
-                      ],
-                    ),
-                  ),
-                  SizedBox(
-                    width: 100.w,
-                    child: Text(
-                      'Elo',
-                      style: AppTypography.textSmMedium.copyWith(
-                        color: kWhiteColor,
                       ),
-                      textAlign: TextAlign.center,
-                    ),
+                      SizedBox(
+                        width: 100.w,
+                        child: Text(
+                          'Elo',
+                          style: AppTypography.textSmMedium.copyWith(
+                            color: kWhiteColor,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                      SizedBox(width: 60.w),
+                    ],
                   ),
-                  SizedBox(width: 60.w),
-                ],
-              ),
-            ),
-            SizedBox(height: 4.h),
-            // Player list
-            Expanded(
-              child: ListView.builder(
-                padding: EdgeInsets.only(
-                  bottom: MediaQuery.of(context).viewInsets.bottom + 16.sp,
                 ),
-                itemCount: sortedPlayers.length,
-                itemBuilder: (context, index) {
-                  final player = sortedPlayers[index];
-                  return StandingScoreCard(
-                    countryCode: player.countryCode,
-                    title: player.title,
-                    name: player.name,
-                    score: player.score,
-                    scoreChange: player.scoreChange,
-                    matchScore: player.matchScore,
-                    index: index,
-                    isFirst: index == 0,
-                    isLast: index == sortedPlayers.length - 1,
-                    onTap: () {
-                      FocusScope.of(context).unfocus();
-                      ref.read(selectedBroadcastModelProvider.notifier).state =
-                          null;
-                      ref.read(selectedPlayerProvider.notifier).state = player;
-                      Navigator.pushNamed(context, '/scorecard_screen');
-                    },
-                    onToggleFavorite: () => _removeFavoritePlayer(player),
-                    onLongPress: (details) {
-                      _showContextMenu(
-                        context,
-                        details.globalPosition,
-                        player,
-                      );
-                    },
-                    isFav: true,
-                    hideScore: true,
-                  );
-                },
-              ),
-            ),
-          ],
+              );
+            }
+
+            // Adjust index for player items (subtract 1 for header)
+            final playerIndex = index - 1;
+            final player = sortedPlayers[playerIndex];
+            return StandingScoreCard(
+              countryCode: player.countryCode,
+              title: player.title,
+              name: player.name,
+              score: player.score,
+              scoreChange: player.scoreChange,
+              matchScore: player.matchScore,
+              index: playerIndex,
+              isFirst: playerIndex == 0,
+              isLast: playerIndex == sortedPlayers.length - 1,
+              onTap: () {
+                FocusScope.of(context).unfocus();
+                ref.read(selectedBroadcastModelProvider.notifier).state = null;
+                ref.read(selectedPlayerProvider.notifier).state = player;
+                Navigator.pushNamed(context, '/scorecard_screen');
+              },
+              onToggleFavorite: () => _removeFavoritePlayer(player),
+              onLongPress: (details) {
+                _showContextMenu(
+                  context,
+                  details.globalPosition,
+                  player,
+                );
+              },
+              isFav: true,
+              hideScore: true,
+            );
+          },
+          // +1 for header row
+          childCount: sortedPlayers.length + 1,
         ),
       ),
     );

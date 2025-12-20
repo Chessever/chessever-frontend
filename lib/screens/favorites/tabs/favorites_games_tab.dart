@@ -15,6 +15,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:chessever2/widgets/scroll_to_top_button.dart';
 import 'package:intl/intl.dart';
 
 class FavoritesGamesTab extends ConsumerStatefulWidget {
@@ -33,9 +34,6 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
 
   /// Track expanded state for date sections
   final Set<String> _collapsedDates = {};
-
-  /// Selected player IDs for filtering - empty means show all
-  final Set<String> _selectedPlayerIds = {};
 
   @override
   bool get wantKeepAlive => true;
@@ -120,88 +118,16 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
     });
   }
 
-  List<GamesTourModel> _filterGames(
-    List<GamesTourModel> games,
-    List<FavoritePlayer> favorites,
-  ) {
-    var filtered = games;
-
-    if (_selectedPlayerIds.isNotEmpty) {
-      // Get selected favorites
-      final selectedFavorites = favorites
-          .where((f) => _selectedPlayerIds.contains(f.id))
-          .toList();
-
-      // Build FIDE ID set for fast lookup (most reliable matching)
-      final selectedFideIds = selectedFavorites
-          .where((f) => f.fideId != null && f.fideId!.isNotEmpty)
-          .map((f) => f.fideId!)
-          .toSet();
-
-      // Build normalized last names for fallback matching
-      final selectedLastNames = selectedFavorites
-          .map((f) => _extractLastName(f.playerName))
-          .where((name) => name.isNotEmpty)
-          .toSet();
-
-      filtered = filtered.where((game) {
-        final whiteFideId = game.whitePlayer.fideId ?? '';
-        final blackFideId = game.blackPlayer.fideId ?? '';
-
-        // First try FIDE ID matching (most reliable)
-        if (selectedFideIds.contains(whiteFideId) ||
-            selectedFideIds.contains(blackFideId)) {
-          return true;
-        }
-
-        // Fallback to last name matching
-        final whiteLastName = _extractLastName(game.whitePlayer.name);
-        final blackLastName = _extractLastName(game.blackPlayer.name);
-
-        return selectedLastNames.contains(whiteLastName) ||
-            selectedLastNames.contains(blackLastName);
-      }).toList();
-    }
-
-    return filtered;
-  }
-
-  /// Extract and normalize last name from various name formats
-  /// Handles: "Carlsen, Magnus", "Magnus Carlsen", "Carlsen, M."
-  String _extractLastName(String fullName) {
-    final normalized = fullName.toLowerCase().trim();
-
-    // Handle "Last, First" format
-    if (normalized.contains(',')) {
-      final parts = normalized.split(',');
-      return parts[0].trim();
-    }
-
-    // Handle "First Last" format - take last word
-    final parts = normalized.split(' ').where((p) => p.isNotEmpty).toList();
-    if (parts.isNotEmpty) {
-      return parts.last;
-    }
-
-    return normalized;
-  }
-
-  void _togglePlayerFilter(String playerId) {
+  void _togglePlayerFilter(String fideId) {
     HapticFeedback.lightImpact();
-    setState(() {
-      if (_selectedPlayerIds.contains(playerId)) {
-        _selectedPlayerIds.remove(playerId);
-      } else {
-        _selectedPlayerIds.add(playerId);
-      }
-    });
+    // Trigger Supabase re-query with the selected player filter
+    ref.read(favoritesCombinedGamesProvider.notifier).togglePlayerFilter(fideId);
   }
 
   void _clearAllFilters() {
     HapticFeedback.mediumImpact();
-    setState(() {
-      _selectedPlayerIds.clear();
-    });
+    // Clear filters and re-query all favorites from Supabase
+    ref.read(favoritesCombinedGamesProvider.notifier).clearPlayerFilters();
   }
 
   String? _extractFederation(FavoritePlayer player) {
@@ -266,40 +192,50 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
       }
     });
 
-    return RefreshIndicator(
-      onRefresh: () async {
-        HapticFeedbackService.medium();
-        await ref.read(favoritesCombinedGamesProvider.notifier).refreshGames();
-      },
-      color: kWhiteColor,
-      backgroundColor: kBlack2Color,
-      child: CustomScrollView(
-        controller: _scrollController,
-        physics: const AlwaysScrollableScrollPhysics(
-          parent: BouncingScrollPhysics(),
-        ),
-        slivers: [
-          // Search bar
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: EdgeInsets.fromLTRB(16.w, 12.h, 16.w, 8.h),
-              child: _buildSearchBar(state),
+    return Stack(
+      children: [
+        RefreshIndicator(
+          onRefresh: () async {
+            HapticFeedbackService.medium();
+            await ref.read(favoritesCombinedGamesProvider.notifier).refreshGames();
+          },
+          color: kWhiteColor,
+          backgroundColor: kBlack2Color,
+          child: CustomScrollView(
+            controller: _scrollController,
+            physics: const AlwaysScrollableScrollPhysics(
+              parent: BouncingScrollPhysics(),
             ),
+            slivers: [
+              // Search bar
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: EdgeInsets.fromLTRB(16.w, 12.h, 16.w, 8.h),
+                  child: _buildSearchBar(state),
+                ),
+              ),
+
+              // Filter chips (only show when not searching)
+              if (favorites.length > 1 && !state.isSearching)
+                SliverToBoxAdapter(
+                  child: _buildFilterChips(state, favorites),
+                ),
+
+              // Content
+              _buildContentSliver(state, favorites),
+
+              // Bottom padding
+              SliverToBoxAdapter(child: SizedBox(height: 24.h)),
+            ],
           ),
-
-          // Filter chips (only show when not searching)
-          if (favorites.length > 1 && !state.isSearching)
-            SliverToBoxAdapter(
-              child: _buildFilterChips(favorites),
-            ),
-
-          // Content
-          _buildContentSliver(state, favorites),
-
-          // Bottom padding
-          SliverToBoxAdapter(child: SizedBox(height: 24.h)),
-        ],
-      ),
+        ),
+        // Scroll to top button
+        Positioned(
+          bottom: 0,
+          right: 0,
+          child: ScrollToTopButton(scrollController: _scrollController),
+        ),
+      ],
     );
   }
 
@@ -355,8 +291,8 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
     );
   }
 
-  Widget _buildFilterChips(List<FavoritePlayer> favorites) {
-    final hasSelection = _selectedPlayerIds.isNotEmpty;
+  Widget _buildFilterChips(FavoritesCombinedGamesState state, List<FavoritePlayer> favorites) {
+    final hasSelection = state.selectedFideIds.isNotEmpty;
 
     return SizedBox(
       height: 48.h,
@@ -421,14 +357,20 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
             }
 
             final player = favorites[index];
-            final isSelected = _selectedPlayerIds.contains(player.id);
+            final fideId = player.fideId ?? '';
+            final isSelected = state.selectedFideIds.contains(fideId);
             final federation = _extractFederation(player);
             final displayName = _getDisplayName(player.playerName);
+
+            // Skip players without FIDE ID (can't filter by them)
+            if (fideId.isEmpty) {
+              return const SizedBox.shrink();
+            }
 
             return Padding(
               padding: EdgeInsets.only(right: 8.w),
               child: GestureDetector(
-                onTap: () => _togglePlayerFilter(player.id),
+                onTap: () => _togglePlayerFilter(fideId),
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 150),
                   padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 8.h),
@@ -504,19 +446,11 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
       );
     }
 
-    final filteredGames = state.isSearching
-        ? state.games
-        : _filterGames(state.games, favorites);
-
-    if (filteredGames.isEmpty && _selectedPlayerIds.isNotEmpty) {
-      return SliverFillRemaining(
-        hasScrollBody: false,
-        child: _buildNoSearchResultsState(),
-      );
-    }
+    // Games are already filtered by the provider via Supabase queries
+    final games = state.games;
 
     // Group games by date
-    final gamesByDate = _groupGamesByDate(filteredGames);
+    final gamesByDate = _groupGamesByDate(games);
 
     // Build list items: date headers + games
     final items = <Widget>[];
@@ -549,8 +483,8 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
               padding: EdgeInsets.only(bottom: isLast ? 16.h : 12.h),
               child: GamebaseSearchGameCard(
                 game: game,
-                allGames: filteredGames,
-                gameIndex: filteredGames.indexOf(game),
+                allGames: games,
+                gameIndex: games.indexOf(game),
                 animationIndex: items.length,
                 showRound: false,
                 onAdd: () => _showAddToFolderSheet(context, game),
