@@ -89,14 +89,24 @@ class _FavoritesCombinedGamesScreenState
           .where((f) => _selectedPlayerIds.contains(f.id))
           .toList();
 
+      debugPrint('[FilterChips] Selected ${selectedFavorites.length} favorites: ${selectedFavorites.map((f) => '${f.playerName} (fideId: ${f.fideId})').join(', ')}');
+      debugPrint('[FilterChips] Total games to filter: ${games.length}');
+
+      // Log first 3 games to see their FIDE IDs
+      for (var i = 0; i < games.length && i < 3; i++) {
+        final g = games[i];
+        debugPrint('[FilterChips] Sample game $i: ${g.whitePlayer.name} (fideId: ${g.whitePlayer.fideId}) vs ${g.blackPlayer.name} (fideId: ${g.blackPlayer.fideId})');
+      }
+
       filtered = filtered.where((game) {
         for (final favorite in selectedFavorites) {
           // 1. Try FIDE ID match first (most reliable)
           if (favorite.fideId != null && favorite.fideId!.isNotEmpty) {
             final favFideId = int.tryParse(favorite.fideId!);
             if (favFideId != null) {
-              if (game.whitePlayer.fideId == favFideId ||
-                  game.blackPlayer.fideId == favFideId) {
+              final whiteId = game.whitePlayer.fideId;
+              final blackId = game.blackPlayer.fideId;
+              if (whiteId == favFideId || blackId == favFideId) {
                 return true;
               }
             }
@@ -113,16 +123,20 @@ class _FavoritesCombinedGamesScreenState
         }
         return false;
       }).toList();
+
+      debugPrint('[FilterChips] After filter: ${filtered.length} games');
     }
 
     return filtered;
   }
 
-  /// Normalize name for matching: lowercase, handle "Last, First" format
+  /// Normalize name for matching: lowercase, remove titles, handle "Last, First" format
   String _normalizeNameForMatch(String name) {
     var normalized = name.toLowerCase().trim();
     // Remove extra whitespace
     normalized = normalized.replaceAll(RegExp(r'\s+'), ' ');
+    // Remove common chess title prefixes (GM, IM, FM, WGM, WIM, WFM, CM, WCM, NM)
+    normalized = normalized.replaceFirst(RegExp(r'^(gm|im|fm|wgm|wim|wfm|cm|wcm|nm)\s+'), '');
     return normalized;
   }
 

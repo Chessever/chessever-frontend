@@ -10,6 +10,21 @@ final countryDropdownProvider =
       (ref) => SelectedCountryNotifier(ref),
     );
 
+/// Temporary country selection for countrymen screen exploration.
+/// This is NOT persisted - it's session-only.
+/// When null, uses the persisted country from countryDropdownProvider.
+final temporaryCountryProvider = StateProvider<Country?>((ref) => null);
+
+/// Effective country for countrymen screen: temporary takes precedence over persisted.
+/// Use this provider in countrymen-related screens and providers.
+final effectiveCountryProvider = Provider<AsyncValue<Country>>((ref) {
+  final tempCountry = ref.watch(temporaryCountryProvider);
+  if (tempCountry != null) {
+    return AsyncValue.data(tempCountry);
+  }
+  return ref.watch(countryDropdownProvider);
+});
+
 class SelectedCountryNotifier extends StateNotifier<AsyncValue<Country>> {
   SelectedCountryNotifier(this.ref) : super(AsyncValue.loading()) {
     _loadSavedCountry();
