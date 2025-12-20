@@ -788,6 +788,191 @@ class GameRepository extends BaseRepository {
       return games;
     });
   }
+
+  /// Get distinct game dates for favorited players.
+  /// Returns dates in descending order (most recent first).
+  Future<List<DateTime>> getDistinctDatesForFavorites({
+    required List<String> fideIds,
+    int limit = 30,
+    int offset = 0,
+  }) async {
+    return handleApiCall(() async {
+      if (fideIds.isEmpty) return <DateTime>[];
+
+      debugPrint('[GameRepository] getDistinctDatesForFavorites: fideIds=${fideIds.length}');
+
+      // Build OR query for multiple FIDE IDs
+      final orConditions = fideIds.map((fideId) {
+        return 'players.cs.[{"fideId":${int.parse(fideId)}}]';
+      }).join(',');
+
+      // Use raw query to get distinct dates
+      final response = await supabase
+          .from('games')
+          .select('date_start')
+          .or(orConditions)
+          .not('date_start', 'is', null)
+          .order('date_start', ascending: false);
+
+      // Extract unique dates from response
+      final seenDates = <String>{};
+      final dates = <DateTime>[];
+
+      for (final row in (response as List)) {
+        final dateStr = row['date_start'] as String?;
+        if (dateStr != null && !seenDates.contains(dateStr)) {
+          seenDates.add(dateStr);
+          try {
+            dates.add(DateTime.parse(dateStr));
+          } catch (e) {
+            debugPrint('[GameRepository] Error parsing date: $dateStr');
+          }
+        }
+      }
+
+      // Apply pagination
+      final start = offset.clamp(0, dates.length);
+      final end = (offset + limit).clamp(0, dates.length);
+      final paginatedDates = dates.sublist(start, end);
+
+      debugPrint('[GameRepository] getDistinctDatesForFavorites: found ${paginatedDates.length} dates');
+      return paginatedDates;
+    });
+  }
+
+  /// Get games by FIDE IDs for a specific date.
+  Future<List<Games>> getGamesByFideIdsAndDate({
+    required List<String> fideIds,
+    required DateTime date,
+    int limit = 50,
+    int offset = 0,
+  }) async {
+    return handleApiCall(() async {
+      if (fideIds.isEmpty) return <Games>[];
+
+      final dateStr = '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+      debugPrint('[GameRepository] getGamesByFideIdsAndDate: fideIds=${fideIds.length}, date=$dateStr');
+
+      // Build OR query for multiple FIDE IDs
+      final orConditions = fideIds.map((fideId) {
+        return 'players.cs.[{"fideId":${int.parse(fideId)}}]';
+      }).join(',');
+
+      final response = await supabase
+          .from('games')
+          .select(_gameListSelectColumns)
+          .or(orConditions)
+          .eq('date_start', dateStr)
+          .order('last_move_time', ascending: false)
+          .range(offset, offset + limit - 1);
+
+      final jsonList =
+          (response as List).map((item) => json.encode(item)).toList();
+
+      final games = await compute(_decodeGamesInIsolate, jsonList);
+
+      debugPrint('[GameRepository] getGamesByFideIdsAndDate: found ${games.length} games');
+      return games;
+    });
+  }
+
+  /// Get distinct game dates for a country.
+  /// Returns dates in descending order (most recent first).
+  Future<List<DateTime>> getDistinctDatesForCountry({
+    required String countryCode,
+    int minElo = 2000,
+    int limit = 30,
+    int offset = 0,
+  }) async {
+    return handleApiCall(() async {
+      debugPrint('[GameRepository] getDistinctDatesForCountry: countryCode=$countryCode');
+
+      final containsFilter = '[{"fed": "$countryCode"}]';
+
+      // Get dates from games with country filter
+      final response = await supabase
+          .from('games')
+          .select('date_start, players')
+          .contains('players', containsFilter)
+          .not('date_start', 'is', null)
+          .order('date_start', ascending: false);
+
+      // Extract unique dates with ELO filtering
+      final seenDates = <String>{};
+      final dates = <DateTime>[];
+
+      for (final row in (response as List)) {
+        final dateStr = row['date_start'] as String?;
+        if (dateStr == null || seenDates.contains(dateStr)) continue;
+
+        // Check if at least one player has rating >= minElo
+        final players = row['players'] as List?;
+        if (players != null) {
+          final hasHighElo = players.any((p) {
+            final rating = p['rating'] as int?;
+            return rating != null && rating >= minElo;
+          });
+          if (!hasHighElo) continue;
+        }
+
+        seenDates.add(dateStr);
+        try {
+          dates.add(DateTime.parse(dateStr));
+        } catch (e) {
+          debugPrint('[GameRepository] Error parsing date: $dateStr');
+        }
+      }
+
+      // Apply pagination
+      final start = offset.clamp(0, dates.length);
+      final end = (offset + limit).clamp(0, dates.length);
+      final paginatedDates = dates.sublist(start, end);
+
+      debugPrint('[GameRepository] getDistinctDatesForCountry: found ${paginatedDates.length} dates');
+      return paginatedDates;
+    });
+  }
+
+  /// Get games by country for a specific date.
+  Future<List<Games>> getGamesByCountryAndDate({
+    required String countryCode,
+    required DateTime date,
+    int minElo = 2000,
+    int limit = 50,
+    int offset = 0,
+  }) async {
+    return handleApiCall(() async {
+      final dateStr = '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+      debugPrint('[GameRepository] getGamesByCountryAndDate: countryCode=$countryCode, date=$dateStr');
+
+      final containsFilter = '[{"fed": "$countryCode"}]';
+
+      // Fetch more for ELO filtering
+      final fetchLimit = limit * 5;
+
+      final response = await supabase
+          .from('games')
+          .select(_gameListSelectColumns)
+          .contains('players', containsFilter)
+          .eq('date_start', dateStr)
+          .order('last_move_time', ascending: false)
+          .range(offset, offset + fetchLimit - 1);
+
+      final jsonList =
+          (response as List).map((item) => json.encode(item)).toList();
+
+      var games = await compute(_decodeGamesInIsolate, jsonList);
+
+      // Filter by minimum ELO
+      final filtered = games.where((game) {
+        if (game.players == null) return false;
+        return game.players!.any((p) => p.rating >= minElo);
+      }).take(limit).toList();
+
+      debugPrint('[GameRepository] getGamesByCountryAndDate: found ${filtered.length} games');
+      return filtered;
+    });
+  }
 }
 
 List<Games> _decodeGamesInIsolate(List<String> gameJsonList) {

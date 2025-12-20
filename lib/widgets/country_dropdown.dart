@@ -15,6 +15,7 @@ class CountryDropdown extends ConsumerStatefulWidget {
   final String? hintText;
   final bool isLoading;
   final bool requireAuthToChange;
+  final bool compact;
 
   const CountryDropdown({
     super.key,
@@ -23,6 +24,7 @@ class CountryDropdown extends ConsumerStatefulWidget {
     this.hintText,
     this.isLoading = false,
     this.requireAuthToChange = true,
+    this.compact = false,
   });
 
   @override
@@ -32,11 +34,18 @@ class CountryDropdown extends ConsumerStatefulWidget {
 class _CountryDropdownState extends ConsumerState<CountryDropdown> {
   var isDropDownOpen = false;
   var selectedCountryCode = 'US';
+  final TextEditingController _searchController = TextEditingController();
 
   @override
   void initState() {
     selectedCountryCode = widget.selectedCountryCode;
     super.initState();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
   @override
@@ -50,6 +59,11 @@ class _CountryDropdownState extends ConsumerState<CountryDropdown> {
 
   @override
   Widget build(BuildContext context) {
+    final isCompact = widget.compact;
+    final buttonHeight = isCompact ? 36.h : 40.h;
+    final horizontalPadding = isCompact ? 12.sp : 20.sp;
+    final verticalPadding = isCompact ? 0.sp : 7.sp;
+
     final borderRadius =
         isDropDownOpen
             ? BorderRadius.circular(
@@ -68,27 +82,34 @@ class _CountryDropdownState extends ConsumerState<CountryDropdown> {
     return ClipRRect(
       borderRadius: borderRadius,
       child: AnimatedContainer(
-        padding: EdgeInsets.symmetric(vertical: 7.sp),
+        padding: EdgeInsets.symmetric(vertical: verticalPadding),
         duration: const Duration(milliseconds: 200),
-        // height: 4.h, // Set fixed height to 40px
         decoration: BoxDecoration(
-          color: kBackgroundColor,
+          color: isCompact ? kBlack2Color : kBackgroundColor,
           borderRadius: borderRadius,
           border:
               isDropDownOpen
                   ? null
-                  : Border.all(color: kDarkGreyColor, width: 1.w),
+                  : isCompact
+                      ? null
+                      : Border.all(color: kDarkGreyColor, width: 1.w),
         ),
         child: DropdownButtonHideUnderline(
           child: DropdownButton2<String>(
             isExpanded: true,
             customButton: Container(
-              height: 40.h, // Match container height
-              padding: EdgeInsets.symmetric(
-                horizontal: 20.sp,
-              ), // Proper padding
+              height: buttonHeight,
+              padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
               child: Row(
                 children: [
+                  if (!widget.isLoading &&
+                      selectedCountryCode.isNotEmpty)
+                    CountryFlag.fromCountryCode(
+                      selectedCountryCode,
+                      width: isCompact ? 20.w : 16.w,
+                      height: isCompact ? 14.h : 12.h,
+                    ),
+                  SizedBox(width: isCompact ? 8.w : 12.w),
                   Expanded(
                     child:
                         widget.isLoading
@@ -102,30 +123,20 @@ class _CountryDropdownState extends ConsumerState<CountryDropdown> {
                             : Text(
                               ref
                                   .read(countryDropdownProvider.notifier)
-                                  .getCountryName(selectedCountryCode ?? ''),
-                              style: AppTypography.textSmMedium.copyWith(
-                                color: kWhiteColor70,
+                                  .getCountryName(selectedCountryCode),
+                              style: (isCompact ? AppTypography.textXsMedium : AppTypography.textSmMedium).copyWith(
+                                color: kWhiteColor,
                               ),
                               overflow: TextOverflow.ellipsis,
                             ),
                   ),
-                  SizedBox(width: 12.w), // 12px gap
-
-                  if (!widget.isLoading &&
-                      selectedCountryCode.isNotEmpty &&
-                      selectedCountryCode.isNotEmpty)
-                    CountryFlag.fromCountryCode(
-                      selectedCountryCode,
-                      width: 16.w,
-                      height: 12.h,
-                    ),
-                  SizedBox(width: 2.w),
+                  SizedBox(width: 4.w),
                   Icon(
                     isDropDownOpen
                         ? Icons.keyboard_arrow_up
                         : Icons.keyboard_arrow_down,
-                    color: kWhiteColor,
-                    size: 20.ic,
+                    color: kWhiteColor70,
+                    size: isCompact ? 18.ic : 20.ic,
                   ),
                 ],
               ),
@@ -138,7 +149,67 @@ class _CountryDropdownState extends ConsumerState<CountryDropdown> {
                 borderRadius: dropDownBorderRadius,
                 border: Border.all(color: kDarkGreyColor),
               ),
-              maxHeight: 240.h,
+              maxHeight: 300.h,
+            ),
+            dropdownSearchData: DropdownSearchData(
+              searchController: _searchController,
+              searchInnerWidgetHeight: 56.h,
+              searchInnerWidget: Container(
+                height: 56.h,
+                padding: EdgeInsets.only(
+                  top: 8.h,
+                  bottom: 4.h,
+                  left: 12.w,
+                  right: 12.w,
+                ),
+                child: TextFormField(
+                  expands: true,
+                  maxLines: null,
+                  controller: _searchController,
+                  style: AppTypography.textSmRegular.copyWith(
+                    color: kWhiteColor,
+                  ),
+                  decoration: InputDecoration(
+                    isDense: true,
+                    contentPadding: EdgeInsets.symmetric(
+                      horizontal: 12.w,
+                      vertical: 10.h,
+                    ),
+                    hintText: 'Search country...',
+                    hintStyle: AppTypography.textSmRegular.copyWith(
+                      color: kWhiteColor.withValues(alpha: 0.5),
+                    ),
+                    prefixIcon: Icon(
+                      Icons.search,
+                      size: 20.ic,
+                      color: kWhiteColor.withValues(alpha: 0.5),
+                    ),
+                    filled: true,
+                    fillColor: kBackgroundColor,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8.br),
+                      borderSide: BorderSide(color: kDarkGreyColor, width: 1),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8.br),
+                      borderSide: BorderSide(color: kDarkGreyColor, width: 1),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8.br),
+                      borderSide: BorderSide(color: kWhiteColor.withValues(alpha: 0.3), width: 1),
+                    ),
+                  ),
+                ),
+              ),
+              searchMatchFn: (item, searchValue) {
+                final countryCode = item.value;
+                if (countryCode == null) return false;
+                final country = allCountries.firstWhere(
+                  (c) => c.countryCode == countryCode,
+                  orElse: () => allCountries.first,
+                );
+                return country.name.toLowerCase().contains(searchValue.toLowerCase());
+              },
             ),
             buttonStyleData: ButtonStyleData(
               height: 40.h,
@@ -168,6 +239,9 @@ class _CountryDropdownState extends ConsumerState<CountryDropdown> {
 
             onMenuStateChange: (isOpen) {
               isDropDownOpen = isOpen;
+              if (!isOpen) {
+                _searchController.clear();
+              }
               setState(() {});
             },
             // Show empty items list when loading, else full list

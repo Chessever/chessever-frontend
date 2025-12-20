@@ -4,8 +4,8 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:chessever2/providers/country_dropdown_provider.dart';
 import 'package:chessever2/providers/favorite_players_provider.dart';
 import 'package:chessever2/repository/favorites/models/favorite_player.dart';
-import 'package:chessever2/screens/countrymen/countrymen_combined_games_screen.dart';
-import 'package:chessever2/screens/favorites/player_games/favorites_combined_games_screen.dart';
+import 'package:chessever2/screens/countrymen/countrymen_tab_screen.dart';
+import 'package:chessever2/screens/favorites/favorites_tab_screen.dart';
 import 'package:chessever2/screens/premium_games/premium_games_screen.dart';
 import 'package:chessever2/services/fide_photo_service.dart';
 import 'package:chessever2/theme/app_theme.dart';
@@ -156,13 +156,13 @@ class _PremiumCollectionCard extends ConsumerWidget {
       if (type == PremiumGamesType.favorites) {
         Navigator.of(context).push(
           MaterialPageRoute(
-            builder: (_) => FavoritesCombinedGamesScreen(),
+            builder: (_) => const FavoritesTabScreen(),
           ),
         );
       } else {
         Navigator.of(context).push(
           MaterialPageRoute(
-            builder: (_) => CountrymenCombinedGamesScreen(),
+            builder: (_) => const CountrymenTabScreen(),
           ),
         );
       }
