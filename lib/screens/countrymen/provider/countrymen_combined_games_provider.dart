@@ -2,6 +2,7 @@ import 'package:chessever2/providers/country_dropdown_provider.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/utils/country_utils.dart';
+import 'package:country_picker/country_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -76,11 +77,21 @@ class CountrymenCombinedGamesNotifier
   CountrymenCombinedGamesNotifier(this._ref)
       : super(const CountrymenCombinedGamesState(isLoading: true)) {
     _loadInitialGames();
+
+    // Listen for country changes (temporary or persisted)
+    _ref.listen<AsyncValue<Country>>(effectiveCountryProvider, (previous, next) {
+      final prevCode = previous?.valueOrNull?.countryCode;
+      final nextCode = next.valueOrNull?.countryCode;
+      if (prevCode != null && nextCode != null && prevCode != nextCode) {
+        debugPrint('[CountrymenGames] Country changed: $prevCode -> $nextCode');
+        refreshGames();
+      }
+    });
   }
 
   Future<void> _loadInitialGames() async {
     try {
-      final countryState = _ref.read(countryDropdownProvider);
+      final countryState = _ref.read(effectiveCountryProvider);
       final country = countryState.valueOrNull;
 
       if (country == null) {
@@ -131,7 +142,7 @@ class CountrymenCombinedGamesNotifier
     );
 
     // Re-read country in case it changed
-    final countryState = _ref.read(countryDropdownProvider);
+    final countryState = _ref.read(effectiveCountryProvider);
     final country = countryState.valueOrNull;
 
     if (country != null) {

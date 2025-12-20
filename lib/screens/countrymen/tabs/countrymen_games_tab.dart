@@ -439,7 +439,7 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
   }
 
   Widget _buildEmptyState() {
-    final countryAsync = ref.watch(countryDropdownProvider);
+    final countryAsync = ref.watch(effectiveCountryProvider);
     final countryName = countryAsync.valueOrNull?.name ?? 'your country';
 
     return Center(

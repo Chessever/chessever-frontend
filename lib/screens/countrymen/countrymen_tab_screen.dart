@@ -39,6 +39,12 @@ class _CountrymenTabScreenState extends ConsumerState<CountrymenTabScreen> {
     super.dispose();
   }
 
+  void _handleBackPressed() {
+    // Clear temporary country selection when leaving the screen
+    ref.read(temporaryCountryProvider.notifier).state = null;
+    Navigator.of(context).pop();
+  }
+
   void _handleTabSelection(int index) {
     try {
       ref
@@ -69,14 +75,21 @@ class _CountrymenTabScreenState extends ConsumerState<CountrymenTabScreen> {
     }
   }
 
-  void _setAsDefault() {
-    final countryAsync = ref.read(countryDropdownProvider);
-    countryAsync.whenData((country) {
+  void _pinCurrentCountry() {
+    // Get the current displayed country (temporary or persisted)
+    final tempCountry = ref.read(temporaryCountryProvider);
+    final persistedCountry = ref.read(countryDropdownProvider).valueOrNull;
+    final currentCountry = tempCountry ?? persistedCountry;
+
+    if (currentCountry != null) {
       HapticFeedbackService.medium();
-      ref.read(countryDropdownProvider.notifier).selectCountry(country.countryCode);
+      // Persist this country as the default
+      ref.read(countryDropdownProvider.notifier).selectCountry(currentCountry.countryCode);
+      // Clear temporary selection since it's now the default
+      ref.read(temporaryCountryProvider.notifier).state = null;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('${country.name} set as default country'),
+          content: Text('${currentCountry.name} pinned as default'),
           backgroundColor: kBlack2Color,
           behavior: SnackBarBehavior.floating,
           shape: RoundedRectangleBorder(
@@ -85,20 +98,32 @@ class _CountrymenTabScreenState extends ConsumerState<CountrymenTabScreen> {
           duration: const Duration(seconds: 2),
         ),
       );
-    });
+    }
+  }
+
+  /// Check if the current displayed country is different from the pinned one
+  bool _isTemporarySelection() {
+    final tempCountry = ref.watch(temporaryCountryProvider);
+    return tempCountry != null;
   }
 
   @override
   Widget build(BuildContext context) {
     final selectedMode = ref.watch(selectedCountrymenModeProvider);
-    final countryAsync = ref.watch(countryDropdownProvider);
+    final persistedCountryAsync = ref.watch(countryDropdownProvider);
+    final tempCountry = ref.watch(temporaryCountryProvider);
+
+    // Effective country: temporary selection takes precedence
+    final effectiveCountryAsync = tempCountry != null
+        ? AsyncValue.data(tempCountry)
+        : persistedCountryAsync;
 
     return Scaffold(
       backgroundColor: kBackgroundColor,
       body: Column(
         children: [
           SizedBox(height: MediaQuery.of(context).viewPadding.top + 4.h),
-          _buildAppBar(context, countryAsync),
+          _buildAppBar(context, effectiveCountryAsync),
           SizedBox(height: 8.h),
           _buildSegmentedSwitcher(selectedMode),
           Expanded(
@@ -131,13 +156,15 @@ class _CountrymenTabScreenState extends ConsumerState<CountrymenTabScreen> {
   }
 
   Widget _buildAppBar(BuildContext context, AsyncValue<Country> countryAsync) {
+    final isTemporary = _isTemporarySelection();
+
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: 12.w),
       child: Row(
         children: [
           // Back button
           GestureDetector(
-            onTap: () => Navigator.of(context).pop(),
+            onTap: _handleBackPressed,
             child: Container(
               width: 36.w,
               height: 36.h,
@@ -192,37 +219,43 @@ class _CountrymenTabScreenState extends ConsumerState<CountrymenTabScreen> {
             ),
           ),
           SizedBox(width: 10.w),
-          // Set as Default button
+          // Pin button - only show when there's a temporary selection
           countryAsync.maybeWhen(
-            data: (_) => GestureDetector(
-              onTap: _setAsDefault,
-              child: Container(
-                height: 36.h,
-                padding: EdgeInsets.symmetric(horizontal: 10.w),
-                decoration: BoxDecoration(
-                  color: kBlack2Color,
-                  borderRadius: BorderRadius.circular(8.br),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      Icons.push_pin_outlined,
-                      size: 14.ic,
-                      color: const Color(0xFFA1A1AA),
-                    ),
-                    SizedBox(width: 4.w),
-                    Text(
-                      'Pin',
-                      style: AppTypography.textXsMedium.copyWith(
-                        color: const Color(0xFFA1A1AA),
+            data: (_) => isTemporary
+              ? GestureDetector(
+                  onTap: _pinCurrentCountry,
+                  child: Container(
+                    height: 36.h,
+                    padding: EdgeInsets.symmetric(horizontal: 10.w),
+                    decoration: BoxDecoration(
+                      color: kPrimaryColor.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(8.br),
+                      border: Border.all(
+                        color: kPrimaryColor.withValues(alpha: 0.3),
+                        width: 1,
                       ),
                     ),
-                  ],
-                ),
-              ),
-            ),
-            orElse: () => SizedBox(width: 36.w),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.push_pin_rounded,
+                          size: 14.ic,
+                          color: kPrimaryColor,
+                        ),
+                        SizedBox(width: 4.w),
+                        Text(
+                          'Pin',
+                          style: AppTypography.textXsMedium.copyWith(
+                            color: kPrimaryColor,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              : const SizedBox.shrink(), // Hide when already pinned
+            orElse: () => const SizedBox.shrink(),
           ),
         ],
       ),
@@ -233,9 +266,9 @@ class _CountrymenTabScreenState extends ConsumerState<CountrymenTabScreen> {
     return CountryDropdown(
       selectedCountryCode: country.countryCode,
       onChanged: (newCountry) {
-        ref.read(countryDropdownProvider.notifier).selectCountry(
-          newCountry.countryCode,
-        );
+        // Set as temporary selection (not persisted)
+        // User must tap "Pin" to make it permanent
+        ref.read(temporaryCountryProvider.notifier).state = newCountry;
       },
       requireAuthToChange: false,
       compact: true,
