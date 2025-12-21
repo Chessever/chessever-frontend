@@ -1,4 +1,3 @@
-import 'package:app_settings/app_settings.dart';
 import 'package:chessever2/providers/app_version_provider.dart';
 import 'package:chessever2/providers/country_dropdown_provider.dart';
 import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
@@ -176,8 +175,7 @@ class HamburgerMenu extends StatelessWidget {
   }
 }
 
-/// Subscription tier header - shows for both Basic and Premium users
-/// Vertical layout with tap functionality
+/// Subscription tier header - premium feel with subtle styling
 class _SubscriptionTierHeader extends ConsumerWidget {
   const _SubscriptionTierHeader();
 
@@ -190,30 +188,11 @@ class _SubscriptionTierHeader extends ConsumerWidget {
     HapticFeedbackService.buttonPress();
 
     if (isPremium) {
-      // Show celebration animation for premium users
-      await showPremiumCelebration(context);
+      final managementUrl = ref.read(subscriptionProvider).managementUrl;
+      await showPremiumCelebration(context, managementUrl: managementUrl);
     } else {
-      // Show paywall for basic users
       await requirePremiumGuard(context, ref);
     }
-  }
-
-  Future<void> _openSubscriptionSettings(BuildContext context, WidgetRef ref) async {
-    HapticFeedbackService.buttonPress();
-
-    final managementUrl = ref.read(subscriptionProvider).managementUrl;
-
-    if (managementUrl != null && managementUrl.isNotEmpty) {
-      // Try to open the management URL directly
-      final uri = Uri.tryParse(managementUrl);
-      if (uri != null && await canLaunchUrl(uri)) {
-        await launchUrl(uri, mode: LaunchMode.externalApplication);
-        return;
-      }
-    }
-
-    // Fallback to app settings subscription page
-    await AppSettings.openAppSettings(type: AppSettingsType.subscriptions);
   }
 
   @override
@@ -224,79 +203,62 @@ class _SubscriptionTierHeader extends ConsumerWidget {
 
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: 12.sp),
-      child: GestureDetector(
-        onTap: () => _handleTap(context, ref, isPremium),
-        child: Container(
-          width: double.infinity,
-          padding: EdgeInsets.all(14.sp),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: isPremium
-                  ? [
-                      kPrimaryColor.withValues(alpha: 0.15),
-                      kPrimaryColor.withValues(alpha: 0.08),
-                    ]
-                  : [
-                      kWhiteColor.withValues(alpha: 0.05),
-                      kWhiteColor.withValues(alpha: 0.02),
-                    ],
-            ),
-            borderRadius: BorderRadius.circular(12.br),
-            border: Border.all(
-              color: isPremium
-                  ? kPrimaryColor.withValues(alpha: 0.3)
-                  : kWhiteColor.withValues(alpha: 0.1),
-              width: 1,
-            ),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Top row: Icon + Tier name
-              Row(
+      child: Column(
+        children: [
+          InkWell(
+            onTap: () => _handleTap(context, ref, isPremium),
+            borderRadius: BorderRadius.circular(10.br),
+            child: Container(
+              padding: EdgeInsets.all(12.sp),
+              decoration: BoxDecoration(
+                color: kWhiteColor.withValues(alpha: 0.04),
+                borderRadius: BorderRadius.circular(10.br),
+                border: Border.all(
+                  color: isPremium
+                      ? kPrimaryColor.withValues(alpha: 0.25)
+                      : kWhiteColor.withValues(alpha: 0.08),
+                  width: 1,
+                ),
+              ),
+              child: Row(
                 children: [
-                  // Icon container
+                  // Icon
                   Container(
                     width: 36.w,
                     height: 36.h,
                     decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      gradient: isPremium
-                          ? LinearGradient(
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                              colors: [
-                                kPrimaryColor,
-                                kPrimaryColor.withValues(alpha: 0.7),
-                              ],
-                            )
-                          : null,
-                      color: isPremium ? null : kWhiteColor.withValues(alpha: 0.1),
+                      color: isPremium
+                          ? kPrimaryColor.withValues(alpha: 0.15)
+                          : kWhiteColor.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(8.br),
                     ),
                     child: Icon(
                       isPremium
                           ? Icons.workspace_premium_rounded
-                          : Icons.person_outline_rounded,
+                          : Icons.diamond_outlined,
+                      color: isPremium ? kPrimaryColor : kWhiteColor,
                       size: 20.ic,
-                      color: isPremium ? kWhiteColor : kWhiteColor.withValues(alpha: 0.6),
                     ),
                   ),
                   SizedBox(width: 12.w),
-                  // Tier name
+                  // Text content
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          isPremium ? 'Premium' : 'Basic',
-                          style: AppTypography.textMdBold.copyWith(
+                          isPremium ? 'Premium' : 'Get Premium',
+                          style: AppTypography.textMdMedium.copyWith(
                             color: isPremium ? kPrimaryColor : kWhiteColor,
                           ),
                         ),
+                        SizedBox(height: 2.h),
                         Text(
-                          'ChessEver',
+                          isPremium
+                              ? (expirationDate != null
+                                  ? 'Renews ${_formatExpirationDate(expirationDate)}'
+                                  : 'Active subscription')
+                              : 'Unlock all features',
                           style: AppTypography.textXsRegular.copyWith(
                             color: kWhiteColor.withValues(alpha: 0.5),
                           ),
@@ -304,103 +266,25 @@ class _SubscriptionTierHeader extends ConsumerWidget {
                       ],
                     ),
                   ),
-                  // Arrow indicator
-                  Icon(
-                    Icons.chevron_right_rounded,
-                    size: 20.ic,
-                    color: kWhiteColor.withValues(alpha: 0.4),
-                  ),
+                  // Action indicator
+                  if (!isPremium)
+                    Icon(
+                      Icons.arrow_forward_ios_rounded,
+                      color: kPrimaryColor,
+                      size: 16.ic,
+                    )
+                  else
+                    Icon(
+                      Icons.chevron_right_rounded,
+                      color: kWhiteColor.withValues(alpha: 0.4),
+                      size: 20.ic,
+                    ),
                 ],
               ),
-
-              // Expiration date or upgrade prompt
-              SizedBox(height: 12.h),
-              Container(
-                width: double.infinity,
-                padding: EdgeInsets.symmetric(horizontal: 10.sp, vertical: 8.sp),
-                decoration: BoxDecoration(
-                  color: kWhiteColor.withValues(alpha: 0.05),
-                  borderRadius: BorderRadius.circular(8.br),
-                ),
-                child: isPremium
-                    ? Row(
-                        children: [
-                          Icon(
-                            Icons.calendar_today_rounded,
-                            size: 14.ic,
-                            color: kWhiteColor.withValues(alpha: 0.5),
-                          ),
-                          SizedBox(width: 8.w),
-                          Expanded(
-                            child: Text(
-                              expirationDate != null
-                                  ? 'Renews ${_formatExpirationDate(expirationDate)}'
-                                  : 'Active subscription',
-                              style: AppTypography.textXsRegular.copyWith(
-                                color: kWhiteColor.withValues(alpha: 0.6),
-                              ),
-                            ),
-                          ),
-                        ],
-                      )
-                    : Row(
-                        children: [
-                          Icon(
-                            Icons.star_rounded,
-                            size: 14.ic,
-                            color: kPrimaryColor.withValues(alpha: 0.8),
-                          ),
-                          SizedBox(width: 8.w),
-                          Expanded(
-                            child: Text(
-                              'Tap to unlock all features',
-                              style: AppTypography.textXsRegular.copyWith(
-                                color: kWhiteColor.withValues(alpha: 0.6),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-              ),
-
-              // Manage subscription button (only for premium)
-              if (isPremium) ...[
-                SizedBox(height: 10.h),
-                GestureDetector(
-                  onTap: () => _openSubscriptionSettings(context, ref),
-                  child: Container(
-                    width: double.infinity,
-                    padding: EdgeInsets.symmetric(vertical: 10.sp),
-                    decoration: BoxDecoration(
-                      border: Border.all(
-                        color: kWhiteColor.withValues(alpha: 0.15),
-                        width: 1,
-                      ),
-                      borderRadius: BorderRadius.circular(8.br),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.settings_rounded,
-                          size: 16.ic,
-                          color: kWhiteColor.withValues(alpha: 0.6),
-                        ),
-                        SizedBox(width: 8.w),
-                        Text(
-                          'Manage Subscription',
-                          style: AppTypography.textSmMedium.copyWith(
-                            color: kWhiteColor.withValues(alpha: 0.7),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ],
+            ),
           ),
-        ),
+          SizedBox(height: 12.h),
+        ],
       ),
     )
         .animate()

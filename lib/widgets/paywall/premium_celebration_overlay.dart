@@ -1,20 +1,24 @@
 import 'dart:math' as math;
+import 'package:app_settings/app_settings.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
+import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 /// Shows a beautiful celebration overlay when user subscribes to premium.
 /// Call this after a successful subscription purchase.
-Future<void> showPremiumCelebration(BuildContext context) async {
+/// Pass [managementUrl] to show a "Manage subscription" button.
+Future<void> showPremiumCelebration(BuildContext context, {String? managementUrl}) async {
   await showGeneralDialog(
     context: context,
     barrierDismissible: false,
     barrierColor: Colors.black.withValues(alpha: 0.85),
     transitionDuration: const Duration(milliseconds: 400),
     pageBuilder: (context, animation, secondaryAnimation) {
-      return const _PremiumCelebrationOverlay();
+      return _PremiumCelebrationOverlay(managementUrl: managementUrl);
     },
     transitionBuilder: (context, animation, secondaryAnimation, child) {
       return FadeTransition(
@@ -26,7 +30,9 @@ Future<void> showPremiumCelebration(BuildContext context) async {
 }
 
 class _PremiumCelebrationOverlay extends StatefulWidget {
-  const _PremiumCelebrationOverlay();
+  const _PremiumCelebrationOverlay({this.managementUrl});
+
+  final String? managementUrl;
 
   @override
   State<_PremiumCelebrationOverlay> createState() =>
@@ -212,7 +218,57 @@ class _PremiumCelebrationOverlayState
                       .fadeIn(delay: 500.ms, duration: 400.ms)
                       .slideY(begin: 0.3, end: 0),
 
-                  SizedBox(height: 40.h),
+                  SizedBox(height: 32.h),
+
+                  // Manage subscription button
+                  GestureDetector(
+                    onTap: () async {
+                      HapticFeedbackService.buttonPress();
+
+                      final url = widget.managementUrl;
+                      if (url != null && url.isNotEmpty) {
+                        final uri = Uri.tryParse(url);
+                        if (uri != null && await canLaunchUrl(uri)) {
+                          await launchUrl(uri, mode: LaunchMode.externalApplication);
+                          return;
+                        }
+                      }
+                      await AppSettings.openAppSettings(type: AppSettingsType.subscriptions);
+                    },
+                    child: Container(
+                      padding: EdgeInsets.symmetric(horizontal: 20.sp, vertical: 12.sp),
+                      decoration: BoxDecoration(
+                        color: kWhiteColor.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(8.br),
+                        border: Border.all(
+                          color: kWhiteColor.withValues(alpha: 0.2),
+                          width: 1,
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.settings_outlined,
+                            color: kWhiteColor.withValues(alpha: 0.8),
+                            size: 18.ic,
+                          ),
+                          SizedBox(width: 8.w),
+                          Text(
+                            'Manage subscription',
+                            style: AppTypography.textSmMedium.copyWith(
+                              color: kWhiteColor.withValues(alpha: 0.8),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  )
+                      .animate()
+                      .fadeIn(delay: 700.ms, duration: 400.ms)
+                      .slideY(begin: 0.3, end: 0),
+
+                  SizedBox(height: 32.h),
 
                   // Tap to continue hint
                   Text(

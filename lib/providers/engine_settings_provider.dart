@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:chessever2/repository/engine_settings/models/engine_settings_model.dart';
+import 'package:chessever2/screens/chessboard/provider/stockfish_singleton.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -172,13 +173,18 @@ class EngineSettings {
     this.showEngineAnalysis = true,
     this.searchTimeIndex = 5,
     int principalVariationIndex = 4, // Default to 5 lines (index 4)
+    int maxArrowsOnBoard = 2, // Default to 3 arrows (index 2)
   }) : principalVariationIndex =
            principalVariationIndex < 0
                ? 0
                : (principalVariationIndex >
                        4 // Max index is 4 (we have 5 labels: 0-4)
                    ? 4
-                   : principalVariationIndex);
+                   : principalVariationIndex),
+       maxArrowsOnBoard =
+           maxArrowsOnBoard < 0
+               ? 0
+               : (maxArrowsOnBoard > 4 ? 4 : maxArrowsOnBoard);
 
   final bool showEngineGauge;
   final bool showDepthOverlay;
@@ -186,6 +192,7 @@ class EngineSettings {
   final bool showEngineAnalysis; // Controls visibility of PV cards & arrows (computer icon)
   final int searchTimeIndex;
   final int principalVariationIndex;
+  final int maxArrowsOnBoard; // Index for max arrows on board (0-4 = 1-5 arrows)
 
   // Principal variation options: 1, 2, 3, 4, 5 (max 5)
   static const List<int?> _principalVariationOptions = <int?>[1, 2, 3, 4, 5];
@@ -214,6 +221,17 @@ class EngineSettings {
     '30s',
     '60s',
     '∞',
+  ];
+
+  // Max arrows on board options: 1, 2, 3, 4, 5
+  static const List<int> _maxArrowsOptions = <int>[1, 2, 3, 4, 5];
+
+  static const List<String> maxArrowsLabels = <String>[
+    '1',
+    '2',
+    '3',
+    '4',
+    '5',
   ];
 
   /// Get the multiPV count for Lichess API requests
@@ -254,6 +272,18 @@ class EngineSettings {
     return principalVariationLabels[safeIndex];
   }
 
+  /// Get the max number of arrows to show on the board
+  int getMaxArrowsOnBoard() {
+    final safeIndex = maxArrowsOnBoard.clamp(0, _maxArrowsOptions.length - 1);
+    return _maxArrowsOptions[safeIndex];
+  }
+
+  /// Get display label for current max arrows setting
+  String maxArrowsLabel() {
+    final safeIndex = maxArrowsOnBoard.clamp(0, maxArrowsLabels.length - 1);
+    return maxArrowsLabels[safeIndex];
+  }
+
   static const Map<EngineComponent, double> _componentTimeMultipliers = {
     EngineComponent.evaluationGauge: 1.0,
     EngineComponent.principalVariation: 1.0,
@@ -288,6 +318,7 @@ class EngineSettings {
     bool? showEngineAnalysis,
     int? searchTimeIndex,
     int? principalVariationIndex,
+    int? maxArrowsOnBoard,
   }) {
     return EngineSettings(
       showEngineGauge: showEngineGauge ?? this.showEngineGauge,
@@ -298,6 +329,8 @@ class EngineSettings {
       principalVariationIndex: (principalVariationIndex ??
               this.principalVariationIndex)
           .clamp(0, principalVariationLabels.length - 1),
+      maxArrowsOnBoard: (maxArrowsOnBoard ?? this.maxArrowsOnBoard)
+          .clamp(0, maxArrowsLabels.length - 1),
     );
   }
 
@@ -393,6 +426,7 @@ class EngineSettingsNotifierNew extends AsyncNotifier<EngineSettings> {
         showEngineAnalysis: model.showEngineAnalysis,
         searchTimeIndex: model.searchTimeIndex,
         principalVariationIndex: model.principalVariationIndex,
+        maxArrowsOnBoard: model.maxArrowsOnBoard,
       );
 
       // Cache locally
@@ -434,6 +468,7 @@ class EngineSettingsNotifierNew extends AsyncNotifier<EngineSettings> {
   }
 
   /// Toggle engine analysis visibility (PV cards & arrows from computer icon)
+  /// When turned off, also stops the Stockfish engine to save resources
   Future<void> toggleEngineAnalysis(bool value) async {
     // Optimistic local update so UI reacts instantly
     final optimistic =
@@ -441,6 +476,16 @@ class EngineSettingsNotifierNew extends AsyncNotifier<EngineSettings> {
             .copyWith(showEngineAnalysis: value);
     debugPrint('🎯 EngineSettings: Engine analysis visibility set to $value');
     state = AsyncValue.data(optimistic);
+
+    // When turning off, stop the Stockfish engine to save resources
+    if (!value) {
+      debugPrint('🛑 EngineSettings: Stopping Stockfish engine (analysis disabled)');
+      await StockfishSingleton().cancelAllEvaluations();
+      // Clear depth tracker since engine is stopped
+      ref.read(engineDepthTrackerProvider.notifier).clearAll(
+        reason: 'engine analysis disabled',
+      );
+    }
 
     // Fire-and-forget persistence to avoid blocking UI or navigation
     unawaited(() async {
@@ -495,6 +540,20 @@ class EngineSettingsNotifierNew extends AsyncNotifier<EngineSettings> {
         .clearAll(reason: 'PV setting changed');
   }
 
+  /// Set max arrows on board index
+  Future<void> setMaxArrowsOnBoard(int index) async {
+    final clamped = index.clamp(
+      0,
+      EngineSettings.maxArrowsLabels.length - 1,
+    );
+    final currentState = state.valueOrNull ?? const EngineSettings();
+    final newSettings = currentState.copyWith(maxArrowsOnBoard: clamped);
+    final label = newSettings.maxArrowsLabel();
+    debugPrint('🔧 EngineSettings: Max arrows on board changed to $label');
+    state = AsyncValue.data(newSettings);
+    await _persist(newSettings);
+  }
+
   /// Refresh settings from Supabase
   Future<void> refresh() async {
     state = const AsyncValue.loading();
@@ -547,6 +606,7 @@ class EngineSettingsNotifierNew extends AsyncNotifier<EngineSettings> {
           'show_engine_analysis': settings.showEngineAnalysis,
           'search_time_index': settings.searchTimeIndex,
           'principal_variation_index': settings.principalVariationIndex,
+          'max_arrows_on_board': settings.maxArrowsOnBoard,
           'updated_at': DateTime.now().toUtc().toIso8601String(),
         },
         onConflict: 'user_id', // Specify conflict column
@@ -568,6 +628,7 @@ class EngineSettingsNotifierNew extends AsyncNotifier<EngineSettings> {
         'showEngineAnalysis': settings.showEngineAnalysis,
         'searchTimeIndex': settings.searchTimeIndex,
         'principalVariationIndex': settings.principalVariationIndex,
+        'maxArrowsOnBoard': settings.maxArrowsOnBoard,
       });
       await prefs.setString(_cacheKey, json);
       debugPrint('[EngineSettings] Cached settings locally');
@@ -586,6 +647,15 @@ class EngineSettingsNotifierNew extends AsyncNotifier<EngineSettings> {
       }
 
       final map = jsonDecode(json) as Map<String, dynamic>;
+
+      // Check if cache has all required fields - if not, it's stale
+      // and we should return defaults (which triggers fresh Supabase fetch)
+      if (!map.containsKey('maxArrowsOnBoard')) {
+        debugPrint('[EngineSettings] Cache is stale (missing fields), clearing and using defaults');
+        await prefs.remove(_cacheKey);
+        return const EngineSettings();
+      }
+
       final settings = EngineSettings(
         showEngineGauge: map['showEngineGauge'] as bool? ?? true,
         showDepthOverlay: map['showDepthOverlay'] as bool? ?? true,
@@ -593,6 +663,7 @@ class EngineSettingsNotifierNew extends AsyncNotifier<EngineSettings> {
         showEngineAnalysis: map['showEngineAnalysis'] as bool? ?? true,
         searchTimeIndex: map['searchTimeIndex'] as int? ?? 2,
         principalVariationIndex: map['principalVariationIndex'] as int? ?? 2,
+        maxArrowsOnBoard: map['maxArrowsOnBoard'] as int? ?? 2,
       );
       debugPrint('[EngineSettings] Loaded settings from cache');
       return settings;

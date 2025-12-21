@@ -5338,8 +5338,10 @@ class ChessBoardScreenNotifierNew
         return const ISet.empty();
       }
 
-      // Use all PVs from the cloud eval (already limited by multiPv parameter in request)
-      final pvsToShow = cloudEval.pvs;
+      // Use maxArrowsOnBoard setting to limit number of arrows (independent of PV lines)
+      final engineSettings = ref.read(engineSettingsProviderNew).valueOrNull;
+      final maxArrows = engineSettings?.getMaxArrowsOnBoard() ?? 3;
+      final pvsToShow = cloudEval.pvs.take(maxArrows).toList();
 
       for (int i = 0; i < pvsToShow.length; i++) {
         final pv = pvsToShow[i];
@@ -5500,7 +5502,11 @@ class ChessBoardScreenNotifierNew
   }) {
     final arrows = <Arrow>[];
 
-    for (int i = 0; i < variants.length && i < 5; i++) {
+    // Use maxArrowsOnBoard setting to limit number of arrows
+    final engineSettings = ref.read(engineSettingsProviderNew).valueOrNull;
+    final maxArrows = engineSettings?.getMaxArrowsOnBoard() ?? 3;
+
+    for (int i = 0; i < variants.length && i < maxArrows; i++) {
       final variant = variants[i];
       if (variant.moves.isEmpty) continue;
 

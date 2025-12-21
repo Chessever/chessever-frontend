@@ -32,6 +32,10 @@ class RevenueCatService {
   /// The entitlement identifier for ChessEver premium
   static const String premiumEntitlement = 'Chessever Subscription';
 
+  /// Callback to be invoked on app resume to sync subscription state.
+  /// Set by SubscriptionNotifier to ensure state is updated after sync.
+  Future<void> Function()? onAppResumeCallback;
+
   /// Login user to RevenueCat with their app user ID
   /// Call this when user logs in to your auth system (Supabase)
   Future<void> logIn(String userId) async {
@@ -164,12 +168,17 @@ class RevenueCatService {
   /// Sync purchases with RevenueCat servers.
   /// Call this at critical points: app foreground, app startup, after auth changes.
   /// This ensures subscription status is always up-to-date.
-  Future<void> syncPurchases() async {
+  /// Returns the latest CustomerInfo after sync.
+  Future<CustomerInfo?> syncPurchases() async {
     try {
       await Purchases.syncPurchases();
       debugPrint('✅ RevenueCat purchases synced');
+      // Always fetch fresh customer info after sync to ensure state is up-to-date
+      // This handles edge cases where the listener doesn't fire (e.g., expired subscriptions)
+      return await Purchases.getCustomerInfo();
     } catch (e) {
       debugPrint('❌ RevenueCat sync error: $e');
+      return null;
     }
   }
 

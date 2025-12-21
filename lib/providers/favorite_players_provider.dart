@@ -78,13 +78,28 @@ class FavoritePlayersNotifierNew extends AsyncNotifier<List<FavoritePlayer>> {
         throw Exception('User must be logged in to favorite players');
       }
 
+      // Check if already exists by fide_id to prevent duplicates
+      if (fideId != null && fideId.isNotEmpty) {
+        final existing = await _supabase
+            .from('user_favorite_players')
+            .select('id')
+            .eq('user_id', userId)
+            .eq('fide_id', fideId)
+            .maybeSingle();
+
+        if (existing != null) {
+          debugPrint('[FavoritePlayers] Player $playerName already favorited (fide_id: $fideId)');
+          return;
+        }
+      }
+
       final metadata = <String, dynamic>{
         if (countryCode != null) 'countryCode': countryCode,
         if (rating != null) 'rating': rating,
         if (title != null) 'title': title,
       };
 
-      // Insert to Supabase (upsert prevents duplicates)
+      // Insert to Supabase (upsert prevents duplicates by player_name as fallback)
       await _supabase.from('user_favorite_players').upsert(
         {
           'user_id': userId,

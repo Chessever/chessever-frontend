@@ -58,6 +58,11 @@ class EngineSettingsModelMapper extends ClassMapperBase<EngineSettingsModel> {
       v.principalVariationIndex;
   static const Field<EngineSettingsModel, int> _f$principalVariationIndex =
       Field('principalVariationIndex', _$principalVariationIndex);
+  static int _$maxArrowsOnBoard(EngineSettingsModel v) => v.maxArrowsOnBoard;
+  static const Field<EngineSettingsModel, int> _f$maxArrowsOnBoard = Field(
+    'maxArrowsOnBoard',
+    _$maxArrowsOnBoard,
+  );
   static DateTime _$createdAt(EngineSettingsModel v) => v.createdAt;
   static const Field<EngineSettingsModel, DateTime> _f$createdAt = Field(
     'createdAt',
@@ -79,6 +84,7 @@ class EngineSettingsModelMapper extends ClassMapperBase<EngineSettingsModel> {
     #showEngineAnalysis: _f$showEngineAnalysis,
     #searchTimeIndex: _f$searchTimeIndex,
     #principalVariationIndex: _f$principalVariationIndex,
+    #maxArrowsOnBoard: _f$maxArrowsOnBoard,
     #createdAt: _f$createdAt,
     #updatedAt: _f$updatedAt,
   };
@@ -93,6 +99,7 @@ class EngineSettingsModelMapper extends ClassMapperBase<EngineSettingsModel> {
       showEngineAnalysis: data.dec(_f$showEngineAnalysis),
       searchTimeIndex: data.dec(_f$searchTimeIndex),
       principalVariationIndex: data.dec(_f$principalVariationIndex),
+      maxArrowsOnBoard: data.dec(_f$maxArrowsOnBoard),
       createdAt: data.dec(_f$createdAt),
       updatedAt: data.dec(_f$updatedAt),
     );
@@ -177,6 +184,7 @@ abstract class EngineSettingsModelCopyWith<
     bool? showEngineAnalysis,
     int? searchTimeIndex,
     int? principalVariationIndex,
+    int? maxArrowsOnBoard,
     DateTime? createdAt,
     DateTime? updatedAt,
   });
@@ -203,6 +211,7 @@ class _EngineSettingsModelCopyWithImpl<$R, $Out>
     bool? showEngineAnalysis,
     int? searchTimeIndex,
     int? principalVariationIndex,
+    int? maxArrowsOnBoard,
     DateTime? createdAt,
     DateTime? updatedAt,
   }) => $apply(
@@ -216,6 +225,7 @@ class _EngineSettingsModelCopyWithImpl<$R, $Out>
       if (searchTimeIndex != null) #searchTimeIndex: searchTimeIndex,
       if (principalVariationIndex != null)
         #principalVariationIndex: principalVariationIndex,
+      if (maxArrowsOnBoard != null) #maxArrowsOnBoard: maxArrowsOnBoard,
       if (createdAt != null) #createdAt: createdAt,
       if (updatedAt != null) #updatedAt: updatedAt,
     }),
@@ -236,6 +246,7 @@ class _EngineSettingsModelCopyWithImpl<$R, $Out>
       #principalVariationIndex,
       or: $value.principalVariationIndex,
     ),
+    maxArrowsOnBoard: data.get(#maxArrowsOnBoard, or: $value.maxArrowsOnBoard),
     createdAt: data.get(#createdAt, or: $value.createdAt),
     updatedAt: data.get(#updatedAt, or: $value.updatedAt),
   );

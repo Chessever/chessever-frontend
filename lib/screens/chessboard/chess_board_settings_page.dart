@@ -359,6 +359,49 @@ class _ChessBoardSettingsPageState extends ConsumerState<ChessBoardSettingsPage>
             ],
           ),
         ),
+        SizedBox(height: 18.h),
+        _SettingCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Number of Arrows on Board',
+                style: AppTypography.textMdMedium.copyWith(
+                  color: kWhiteColor,
+                  fontSize: 13.f,
+                ),
+              ),
+              SizedBox(height: 4.h),
+              Text(
+                'Choose how many PV arrows to display on the board.',
+                style: AppTypography.textSmRegular.copyWith(
+                  color: kWhiteColor70,
+                  fontSize: 11.f,
+                ),
+              ),
+              SizedBox(height: 14.h),
+              _DiscreteSlider(
+                value: settings.maxArrowsOnBoard.toDouble(),
+                divisions: EngineSettings.maxArrowsLabels.length - 1,
+                labels: EngineSettings.maxArrowsLabels,
+                onChanged: (value) {
+                  final index = value.toInt();
+                  final label = EngineSettings.maxArrowsLabels[index];
+                  debugPrint('🎛️  Settings UI: Max arrows changed to index=$index ($label)');
+                  _trackPersist(notifier.setMaxArrowsOnBoard(index));
+                },
+              ),
+              SizedBox(height: 6.h),
+              Text(
+                'Current: ${settings.maxArrowsLabel()}',
+                style: AppTypography.textSmMedium.copyWith(
+                  color: kWhiteColor70,
+                  fontSize: 11.f,
+                ),
+              ),
+            ],
+          ),
+        ),
 
         // Board Settings Section
         SizedBox(height: 24.h),
@@ -604,7 +647,7 @@ class _DiscreteSlider extends StatelessWidget {
   Widget build(BuildContext context) {
     final clampedValue = value.clamp(0.0, divisions.toDouble()).toDouble();
     final labelIndex = clampedValue.round().clamp(0, labels.length - 1);
-    
+
     return SliderTheme(
       data: SliderTheme.of(context).copyWith(
         activeTrackColor: kPrimaryColor,

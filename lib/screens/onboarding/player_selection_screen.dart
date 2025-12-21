@@ -760,7 +760,8 @@ void _performToggle(
     'Onboarding Player Toggled',
     properties: {
       'fide_id': fideId,
-      'player_name': '${player['title'] ?? ''} ${player['name']}'.trim(),
+      'player_name': (player['name'] ?? '').toString().trim(),
+      'player_title': player['title']?.toString(),
       'country_code': player['fed']?.toString(),
       'rating': player['rating'],
       'is_selected': isSelected,
@@ -771,10 +772,11 @@ void _performToggle(
   unawaited(ref.read(onboardingPlayerProvider.notifier).toggleFavorite(fideId));
 
   // Store in pending favorites provider (sync operation)
+  // Note: playerName should NOT include title - title is stored separately in metadata
   ref.read(pendingFavoriteSelectionsProvider.notifier).setSelection(
     PendingFavoritePlayer(
       fideId: fideId,
-      playerName: '${player['title'] ?? ''} ${player['name']}'.trim(),
+      playerName: (player['name'] ?? '').toString().trim(),
       countryCode: player['fed']?.toString(),
       rating: player['rating'] as int?,
       title: player['title']?.toString(),
@@ -800,8 +802,9 @@ void _performToggle(
     if (isFullyAuthenticated) {
       unawaited(Future(() async {
         try {
+          // Note: name should NOT include title - title is stored separately
           final playerModel = PlayerStandingModel(
-            name: '${player['title'] ?? ''} ${player['name']}'.trim(),
+            name: (player['name'] ?? '').toString().trim(),
             countryCode: player['fed']?.toString() ?? '',
             score: player['rating'] ?? 0,
             scoreChange: 0,

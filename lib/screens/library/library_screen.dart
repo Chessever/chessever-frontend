@@ -633,7 +633,7 @@ class _LibraryEmptyStateContent extends StatelessWidget {
           Text(
             'at your fingertips',
             style: AppTypography.displayXsMedium.copyWith(
-              color: kWhiteColor.withValues(alpha: 0.5),
+              color: kWhiteColor.withValues(alpha: 0.75),
               letterSpacing: -0.5,
             ),
           ),
@@ -779,7 +779,7 @@ class _LibraryBackgroundDecoration extends StatelessWidget {
   Widget build(BuildContext context) {
     return IgnorePointer(
       child: Opacity(
-        opacity: 0.12,
+        opacity: 0.25,
         child: Center(
           child: Padding(
             padding: EdgeInsets.symmetric(horizontal: 24.w),

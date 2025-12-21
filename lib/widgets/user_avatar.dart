@@ -165,7 +165,7 @@ class UserAvatar extends HookConsumerWidget {
 }
 
 /// Custom painter for the animated premium gradient border.
-/// Creates a rotating golden/rainbow gradient effect.
+/// Creates a smooth rotating gradient using app brand colors.
 class _PremiumBorderPainter extends CustomPainter {
   final double progress;
   final double borderWidth;
@@ -180,20 +180,24 @@ class _PremiumBorderPainter extends CustomPainter {
     final center = Offset(size.width / 2, size.height / 2);
     final radius = (size.width / 2) - borderWidth / 2;
 
-    // Create rotating gradient
-    final sweepGradient = SweepGradient(
-      startAngle: progress * 2 * math.pi,
-      endAngle: (progress * 2 * math.pi) + (2 * math.pi),
-      colors: const [
-        Color(0xFFFFD700), // Gold
-        Color(0xFFFFA500), // Orange
-        Color(0xFFFF6B6B), // Coral
-        Color(0xFF9370DB), // Purple
-        Color(0xFF00CED1), // Cyan
-        Color(0xFF00FF7F), // Spring Green
-        Color(0xFFFFD700), // Gold (loop back)
+    // Save canvas state and rotate around center for smooth continuous animation
+    canvas.save();
+    canvas.translate(center.dx, center.dy);
+    canvas.rotate(progress * 2 * math.pi);
+    canvas.translate(-center.dx, -center.dy);
+
+    // Create gradient with app brand colors (cyan/teal tones)
+    // Using fixed angles so rotation is handled by canvas transform
+    const sweepGradient = SweepGradient(
+      colors: [
+        Color(0xFF0FB4E5), // Primary cyan
+        Color(0xFF17AAD6), // Dark blue
+        Color(0xFF08647F), // Deep teal
+        Color(0xFF0FB4E5), // Primary cyan
+        Color(0xFF68D3FF), // Light cyan (calendar active color)
+        Color(0xFF0FB4E5), // Primary cyan (loop back seamlessly)
       ],
-      stops: const [0.0, 0.17, 0.33, 0.5, 0.67, 0.83, 1.0],
+      stops: [0.0, 0.2, 0.4, 0.6, 0.8, 1.0],
     );
 
     final paint = Paint()
@@ -217,6 +221,9 @@ class _PremiumBorderPainter extends CustomPainter {
       ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3);
 
     canvas.drawCircle(center, radius, glowPaint);
+
+    // Restore canvas state
+    canvas.restore();
   }
 
   @override
