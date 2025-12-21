@@ -164,21 +164,13 @@ class _PaywallContent extends HookConsumerWidget {
           SizedBox(height: 16.h),
           // Title
           Text(
-            'Unlock Your\nGrandmaster Potential',
+            'Follow Chess\nLike a Pro',
             textAlign: TextAlign.center,
             style: AppTypography.displaySmBold.copyWith(
               color: kWhiteColor,
               height: 1.1,
               letterSpacing: -0.5,
               fontSize: 28.f,
-            ),
-          ),
-          SizedBox(height: 8.h),
-          Text(
-            'Join thousands of players improving daily.',
-            textAlign: TextAlign.center,
-            style: AppTypography.textMdMedium.copyWith(
-              color: kWhiteColor.withOpacity(0.6),
             ),
           ),
           SizedBox(height: 24.h),
@@ -225,10 +217,10 @@ class _FeaturesList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final features = [
-      (Icons.storage_rounded, 'Millions of Chess Games'),
-      (Icons.auto_stories_rounded, 'Create Study Book Collections'),
-      (Icons.filter_alt_rounded, 'Advanced Search & Filters'),
       (Icons.people_rounded, 'Countrymen & Favorites'),
+      (Icons.sports_esports_rounded, 'Opponent Prep Tools'),
+      (Icons.auto_stories_rounded, 'Create Unlimited Studies'),
+      (Icons.filter_alt_rounded, 'Advanced Search & Filters'),
     ];
 
     return Column(

@@ -24,6 +24,14 @@ final currentTourIdsProvider = FutureProvider.autoDispose<Set<String>>((ref) asy
   return repository.getCurrentTourIds();
 });
 
+/// Provider for tour_id → group_broadcast_id mapping
+/// Used to group games by their parent event (group_broadcast) instead of individual tours
+/// This ensures events with categories (U17, U19, etc.) are grouped together
+final tourToGroupBroadcastMappingProvider = StateProvider<Map<String, String>>((ref) {
+  ref.keepAlive();
+  return {};
+});
+
 // ============================================================================
 // PROVIDER DEFINITIONS
 // ============================================================================
@@ -45,13 +53,16 @@ final forYouGamesProvider = StateNotifierProvider.autoDispose<
   return ForYouGamesNotifier(ref);
 });
 
-/// Provider for grouped games (by tournament) for UI display
+/// Provider for grouped games (by event/group_broadcast) for UI display
+/// Games are grouped by their parent event (group_broadcast_id) to ensure
+/// events with categories (U17, U19, etc.) appear under one event card
 final groupedForYouGamesProvider = Provider.autoDispose<
   List<GroupedTournamentGames>
 >((ref) {
   ref.keepAlive(); // Keep alive to match main provider
   final games = ref.watch(forYouGamesProvider).valueOrNull ?? [];
   final initialGameIds = ref.read(forYouGamesProvider.notifier).initialGameIds;
+  final tourToGroupMapping = ref.watch(tourToGroupBroadcastMappingProvider);
 
   // CRITICAL: Separate initial games from pagination games to prevent scroll jumping
   // Initial games are grouped normally, pagination games are appended at the end
@@ -67,32 +78,35 @@ final groupedForYouGamesProvider = Provider.autoDispose<
   }
 
   // Group only initial games (maintains scroll position stability)
+  // Group by group_broadcast_id (event level) instead of tour_id
   final grouped = <String, GroupedTournamentGames>{};
   final groupOrder = <String>[]; // Track insertion order
 
   for (final game in initialGames) {
     final tourId = game.tourId;
     final tourName = game.tourSlug;
+    // Use group_broadcast_id if available, fallback to tour_id
+    final groupKey = tourToGroupMapping[tourId] ?? tourId;
 
-    if (!grouped.containsKey(tourId)) {
-      grouped[tourId] = GroupedTournamentGames(
-        groupKey: tourId,
-        tourId: tourId,
+    if (!grouped.containsKey(groupKey)) {
+      grouped[groupKey] = GroupedTournamentGames(
+        groupKey: groupKey,
+        tourId: groupKey, // Use group_broadcast_id for navigation
         tourName: tourName,
         games: [],
         hasLiveGames: false,
       );
-      groupOrder.add(tourId); // Remember order of first appearance
+      groupOrder.add(groupKey); // Remember order of first appearance
     }
 
-    grouped[tourId]!.games.add(game);
+    grouped[groupKey]!.games.add(game);
     if (game.status == '*') {
-      grouped[tourId]!.hasLiveGames = true;
+      grouped[groupKey]!.hasLiveGames = true;
     }
   }
 
   // Convert to list in order of first appearance
-  final result = groupOrder.map((tourId) => grouped[tourId]!).toList();
+  final result = groupOrder.map((key) => grouped[key]!).toList();
 
   // Group pagination games separately and append at the end
   // This ensures new items are always added at the END, never in the middle
@@ -103,29 +117,31 @@ final groupedForYouGamesProvider = Provider.autoDispose<
     for (final game in paginationGames) {
       final tourId = game.tourId;
       final tourName = game.tourSlug;
+      // Use group_broadcast_id if available, fallback to tour_id
+      final groupKey = tourToGroupMapping[tourId] ?? tourId;
 
       // Use a unique key for pagination groups to avoid key conflicts
-      final paginationTourKey = '${tourId}_more';
+      final paginationGroupKey = '${groupKey}_more';
 
-      if (!paginationGrouped.containsKey(paginationTourKey)) {
-        paginationGrouped[paginationTourKey] = GroupedTournamentGames(
-          groupKey: paginationTourKey, // Unique grouping key
-          tourId: tourId, // Keep original tour ID for data fetch
+      if (!paginationGrouped.containsKey(paginationGroupKey)) {
+        paginationGrouped[paginationGroupKey] = GroupedTournamentGames(
+          groupKey: paginationGroupKey, // Unique grouping key
+          tourId: groupKey, // Use group_broadcast_id for navigation
           tourName: tourName,
           games: [],
           hasLiveGames: false,
         );
-        paginationOrder.add(paginationTourKey);
+        paginationOrder.add(paginationGroupKey);
       }
 
-      paginationGrouped[paginationTourKey]!.games.add(game);
+      paginationGrouped[paginationGroupKey]!.games.add(game);
       if (game.status == '*') {
-        paginationGrouped[paginationTourKey]!.hasLiveGames = true;
+        paginationGrouped[paginationGroupKey]!.hasLiveGames = true;
       }
     }
 
     // Append pagination groups at the end
-    result.addAll(paginationOrder.map((tourId) => paginationGrouped[tourId]!));
+    result.addAll(paginationOrder.map((key) => paginationGrouped[key]!));
   }
 
   return result;
@@ -303,6 +319,10 @@ class ForYouGamesNotifier extends StateNotifier<AsyncValue<List<Games>>> {
       // Fill up tournaments with fewer than 4 games using top board games
       await _enforceGamesPerTournamentStandard();
 
+      // Fetch tour → group_broadcast mapping for proper event grouping
+      // This ensures events with categories (U17, U19, etc.) are grouped together
+      await _fetchTourToGroupBroadcastMapping();
+
       state = AsyncValue.data(List<Games>.from(_allGames));
     } catch (e, stack) {
       debugPrint('[ForYouGames] Error loading games: $e');
@@ -319,6 +339,9 @@ class ForYouGamesNotifier extends StateNotifier<AsyncValue<List<Games>>> {
     try {
       _isFetchingMore = true;
       await _fetchGames(isInitialLoad: false);
+
+      // Update mapping for any new tour IDs
+      await _fetchTourToGroupBroadcastMapping();
 
       state = AsyncValue.data(List<Games>.from(_allGames));
     } catch (e) {
@@ -1036,6 +1059,30 @@ class ForYouGamesNotifier extends StateNotifier<AsyncValue<List<Games>>> {
 
     // Future game = no moves/logged time, not live, and no result
     return !_isLiveGame(game) && !status.isFinished && !hasMoves;
+  }
+
+  /// Fetch tour_id → group_broadcast_id mapping for proper event grouping
+  /// This ensures events with categories (U17, U19, etc.) appear under one event card
+  Future<void> _fetchTourToGroupBroadcastMapping() async {
+    if (_allGames.isEmpty) return;
+
+    try {
+      // Collect unique tour IDs from all games
+      final tourIds = _allGames.map((g) => g.tourId).toSet().toList();
+
+      debugPrint('[ForYouGames] Fetching tour → group_broadcast mapping for ${tourIds.length} tours');
+
+      final repository = _ref.read(groupBroadcastRepositoryProvider);
+      final mapping = await repository.getTourToGroupBroadcastMapping(tourIds);
+
+      debugPrint('[ForYouGames] Got mapping for ${mapping.length} tours');
+
+      // Update the mapping provider
+      _ref.read(tourToGroupBroadcastMappingProvider.notifier).state = mapping;
+    } catch (e) {
+      debugPrint('[ForYouGames] Error fetching tour → group_broadcast mapping: $e');
+      // Continue without mapping - games will be grouped by tour_id as fallback
+    }
   }
 
   @override

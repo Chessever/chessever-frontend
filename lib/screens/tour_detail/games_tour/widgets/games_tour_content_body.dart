@@ -68,6 +68,8 @@ class GamesTourContentBody extends ConsumerWidget {
 
     // Group games by round while preserving the original sorting within each round
     final gamesByRound = <String, List<GamesTourModel>>{};
+    // Track seen game IDs per round to prevent duplicates
+    final seenGameIdsPerRound = <String, Set<String>>{};
     final roundLookup = <String, GamesAppBarModel>{
       for (final round in rounds) round.id: round,
     };
@@ -77,6 +79,17 @@ class GamesTourContentBody extends ConsumerWidget {
 
     void ensureRoundEntry(String roundId) {
       gamesByRound.putIfAbsent(roundId, () => <GamesTourModel>[]);
+      seenGameIdsPerRound.putIfAbsent(roundId, () => <String>{});
+    }
+
+    /// Adds a game to round only if not already present (prevents duplicates)
+    bool addGameToRound(String roundId, GamesTourModel game) {
+      ensureRoundEntry(roundId);
+      if (seenGameIdsPerRound[roundId]!.add(game.gameId)) {
+        gamesByRound[roundId]!.add(game);
+        return true;
+      }
+      return false; // Duplicate, not added
     }
 
     // Initialize empty lists for each known round
@@ -179,8 +192,7 @@ class GamesTourContentBody extends ConsumerWidget {
             final matchesSearch =
                 searchGameIds == null || searchGameIds.contains(game.gameId);
             if (matchesSearch) {
-              gamesByRound.putIfAbsent(round.id, () => <GamesTourModel>[]);
-              gamesByRound[round.id]!.add(game);
+              addGameToRound(round.id, game);
             }
             break;
           }
@@ -209,8 +221,7 @@ class GamesTourContentBody extends ConsumerWidget {
       for (final game in allGames) {
         // Only apply displayMode filter for non-knockout tournaments
         if (!isKnockoutTournament && !_shouldIncludeGame(displayMode, game)) continue;
-        ensureRoundEntry(game.roundId);
-        gamesByRound[game.roundId]!.add(game);
+        addGameToRound(game.roundId, game);
 
         if (isSearchMode && !roundLookup.containsKey(game.roundId)) {
           final slug = game.roundSlug;

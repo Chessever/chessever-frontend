@@ -323,6 +323,49 @@ class GroupBroadcastRepository extends BaseRepository {
         .maybeSingle();
   }
 
+  /// Get mapping from tour_id to group_broadcast_id for given tour IDs
+  /// This is used to group games by their parent event (group_broadcast) in For You tab
+  Future<Map<String, String>> getTourToGroupBroadcastMapping(List<String> tourIds) async {
+    if (tourIds.isEmpty) return {};
+
+    return handleApiCall(() async {
+      final response = await supabase
+          .from('tours')
+          .select('id, group_broadcast_id')
+          .inFilter('id', tourIds);
+
+      final mapping = <String, String>{};
+      for (final row in response as List) {
+        final tourId = row['id'] as String?;
+        final groupBroadcastId = row['group_broadcast_id'] as String?;
+        if (tourId != null && groupBroadcastId != null && groupBroadcastId.isNotEmpty) {
+          mapping[tourId] = groupBroadcastId;
+        }
+      }
+      return mapping;
+    });
+  }
+
+  /// Get GroupBroadcast details with average ELO for given group_broadcast IDs
+  /// Returns a map of group_broadcast_id → GroupBroadcast (with maxAvgElo populated)
+  Future<Map<String, GroupBroadcast>> getGroupBroadcastsWithElo(List<String> groupBroadcastIds) async {
+    if (groupBroadcastIds.isEmpty) return {};
+
+    return handleApiCall(() async {
+      final response = await supabase
+          .from('group_broadcasts')
+          .select('id, name, max_avg_elo, date_start, date_end, time_control, created_at, search')
+          .inFilter('id', groupBroadcastIds);
+
+      final result = <String, GroupBroadcast>{};
+      for (final row in response as List) {
+        final broadcast = GroupBroadcast.fromJson(row);
+        result[broadcast.id] = broadcast;
+      }
+      return result;
+    });
+  }
+
   GroupBroadcast _mapTourRowToGroupBroadcast(
     Map<String, dynamic> tourRow, {
     String? overrideGroupBroadcastId,

@@ -178,137 +178,131 @@ class _AuthStep extends HookWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: EdgeInsets.fromLTRB(24.w, topPadding + 60.h, 24.w, 16.h),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          return SingleChildScrollView(
-            physics: const BouncingScrollPhysics(),
-            child: ConstrainedBox(
-              constraints: BoxConstraints(minHeight: constraints.maxHeight),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  // Top content
-                  Column(
-                    children: [
-                      SizedBox(height: 24.h),
+      padding: EdgeInsets.fromLTRB(24.w, topPadding + 50.h, 24.w, bottomPadding + 8.h),
+      child: Column(
+        children: [
+          // Top content - scrollable if needed but designed to fit
+          Expanded(
+            child: Column(
+              children: [
+                SizedBox(height: 8.h),
 
-                      // Lock icon with glow
-                      _UnlockVisual()
-                          .animate()
-                          .fadeIn(duration: 600.ms, curve: _gentleSpring)
-                          .scale(
-                            begin: const Offset(0.8, 0.8),
-                            end: const Offset(1, 1),
-                            duration: 700.ms,
-                            curve: _smoothSpring,
-                          ),
+                // Lock icon with glow - smaller size
+                _UnlockVisual()
+                    .animate()
+                    .fadeIn(duration: 600.ms, curve: _gentleSpring)
+                    .scale(
+                      begin: const Offset(0.8, 0.8),
+                      end: const Offset(1, 1),
+                      duration: 700.ms,
+                      curve: _smoothSpring,
+                    ),
 
-                      SizedBox(height: 24.h),
+                SizedBox(height: 16.h),
 
-                      // Title
-                      Text(
-                        'Unlock the full\nexperience',
-                        textAlign: TextAlign.center,
-                        style: AppTypography.displayXsBold.copyWith(
-                          color: kWhiteColor,
-                          height: 1.2,
-                        ),
-                      )
-                          .animate(delay: 200.ms)
-                          .fadeIn(duration: 500.ms, curve: _smoothSpring)
-                          .move(begin: const Offset(0, 16), curve: _smoothSpring),
-
-                      SizedBox(height: 8.h),
-
-                      Text(
-                        'Create an account to access all features',
-                        textAlign: TextAlign.center,
-                        style: AppTypography.textSmRegular.copyWith(
-                          color: kWhiteColor.withValues(alpha: 0.6),
-                        ),
-                      )
-                          .animate(delay: 300.ms)
-                          .fadeIn(duration: 500.ms, curve: _smoothSpring),
-
-                      SizedBox(height: 24.h),
-
-                      // FOMO feature list
-                      _FeaturesList()
-                          .animate(delay: 400.ms)
-                          .fadeIn(duration: 500.ms, curve: _smoothSpring)
-                          .move(begin: const Offset(0, 20), curve: _smoothSpring),
-                    ],
+                // Title
+                Text(
+                  'Unlock the full\nexperience',
+                  textAlign: TextAlign.center,
+                  style: AppTypography.displayXsBold.copyWith(
+                    color: kWhiteColor,
+                    height: 1.2,
                   ),
+                )
+                    .animate(delay: 200.ms)
+                    .fadeIn(duration: 500.ms, curve: _smoothSpring)
+                    .move(begin: const Offset(0, 16), curve: _smoothSpring),
 
-                  // Bottom buttons
-                  Column(
-                    children: [
-                      SizedBox(height: 24.h),
+                SizedBox(height: 6.h),
 
-                      // Sign in button (primary)
-                      _PrimaryButton(
-                        label: 'Create free account',
-                        onTap: onSignIn,
-                      )
-                          .animate(delay: 600.ms)
-                          .fadeIn(duration: 400.ms, curve: _smoothSpring)
-                          .move(begin: const Offset(0, 30), curve: _smoothSpring),
+                Text(
+                  'Create an account to access all features',
+                  textAlign: TextAlign.center,
+                  style: AppTypography.textSmRegular.copyWith(
+                    color: kWhiteColor.withValues(alpha: 0.6),
+                  ),
+                )
+                    .animate(delay: 300.ms)
+                    .fadeIn(duration: 500.ms, curve: _smoothSpring),
 
-                      SizedBox(height: 12.h),
+                SizedBox(height: 16.h),
 
-                      // Continue as guest (secondary)
-                      _SecondaryButton(
-                        label: 'Continue without account',
-                        onTap: onContinueAsGuest,
-                      )
-                          .animate(delay: 700.ms)
-                          .fadeIn(duration: 400.ms, curve: _smoothSpring),
+                // FOMO feature list
+                Expanded(
+                  child: _FeaturesList()
+                      .animate(delay: 400.ms)
+                      .fadeIn(duration: 500.ms, curve: _smoothSpring)
+                      .move(begin: const Offset(0, 20), curve: _smoothSpring),
+                ),
+              ],
+            ),
+          ),
 
-                      SizedBox(height: 12.h),
+          // Bottom buttons - fixed at bottom
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(height: 12.h),
 
-                      // Warning note
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            Icons.warning_amber_rounded,
-                            size: 14.ic,
-                            color: const Color(0xFFFFAA00).withValues(alpha: 0.7),
-                          ),
-                          SizedBox(width: 6.w),
-                          Text(
-                            'Guest data can\'t be recovered if lost',
-                            style: AppTypography.textXsRegular.copyWith(
-                              color: kWhiteColor.withValues(alpha: 0.5),
-                            ),
-                          ),
-                        ],
-                      )
-                          .animate(delay: 800.ms)
-                          .fadeIn(duration: 400.ms, curve: _smoothSpring),
+              // Sign in button (primary)
+              _PrimaryButton(
+                label: 'Create free account',
+                onTap: onSignIn,
+              )
+                  .animate(delay: 600.ms)
+                  .fadeIn(duration: 400.ms, curve: _smoothSpring)
+                  .move(begin: const Offset(0, 30), curve: _smoothSpring),
 
-                      SizedBox(height: 20.h),
+              SizedBox(height: 10.h),
 
-                      // "I have an account" link
-                      GestureDetector(
-                        onTap: onSignIn,
-                        child: Text(
-                          'I already have an account',
-                          style: AppTypography.textSmMedium.copyWith(
-                            color: kPrimaryColor,
-                          ),
-                        ),
-                      )
-                          .animate(delay: 900.ms)
-                          .fadeIn(duration: 400.ms, curve: _smoothSpring),
-                    ],
+              // Continue as guest (secondary)
+              _SecondaryButton(
+                label: 'Continue without account',
+                onTap: onContinueAsGuest,
+              )
+                  .animate(delay: 700.ms)
+                  .fadeIn(duration: 400.ms, curve: _smoothSpring),
+
+              SizedBox(height: 10.h),
+
+              // Warning note
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.warning_amber_rounded,
+                    size: 14.ic,
+                    color: const Color(0xFFFFAA00).withValues(alpha: 0.7),
+                  ),
+                  SizedBox(width: 6.w),
+                  Text(
+                    'Guest data can\'t be recovered if lost',
+                    style: AppTypography.textXsRegular.copyWith(
+                      color: kWhiteColor.withValues(alpha: 0.5),
+                    ),
                   ),
                 ],
-              ),
-            ),
-          );
-        },
+              )
+                  .animate(delay: 800.ms)
+                  .fadeIn(duration: 400.ms, curve: _smoothSpring),
+
+              SizedBox(height: 12.h),
+
+              // "I have an account" link
+              GestureDetector(
+                onTap: onSignIn,
+                child: Text(
+                  'I already have an account',
+                  style: AppTypography.textSmMedium.copyWith(
+                    color: kPrimaryColor,
+                  ),
+                ),
+              )
+                  .animate(delay: 900.ms)
+                  .fadeIn(duration: 400.ms, curve: _smoothSpring),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -326,8 +320,8 @@ class _UnlockVisual extends HookWidget {
     );
 
     return SizedBox(
-      height: 140.h,
-      width: 140.w,
+      height: 100.h,
+      width: 100.w,
       child: Stack(
         alignment: Alignment.center,
         children: [
@@ -335,8 +329,8 @@ class _UnlockVisual extends HookWidget {
           Transform.scale(
             scale: 1.0 + pulseAnimation * 0.08,
             child: Container(
-              width: 130.w,
-              height: 130.h,
+              width: 95.w,
+              height: 95.h,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 gradient: RadialGradient(
@@ -351,8 +345,8 @@ class _UnlockVisual extends HookWidget {
 
           // Inner circle with lock
           Container(
-            width: 100.w,
-            height: 100.h,
+            width: 72.w,
+            height: 72.h,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               color: kBlack2Color.withValues(alpha: 0.9),
@@ -363,15 +357,15 @@ class _UnlockVisual extends HookWidget {
               boxShadow: [
                 BoxShadow(
                   color: kPrimaryColor.withValues(alpha: 0.2),
-                  blurRadius: 30,
-                  spreadRadius: 5,
+                  blurRadius: 20,
+                  spreadRadius: 3,
                 ),
               ],
             ),
             child: Center(
               child: Icon(
                 Icons.lock_open_rounded,
-                size: 40.ic,
+                size: 32.ic,
                 color: kPrimaryColor,
               ),
             ),
@@ -413,15 +407,16 @@ class _FeaturesList extends StatelessWidget {
     ];
 
     return Container(
-      padding: EdgeInsets.all(16.sp),
+      padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 12.h),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(20.br),
+        borderRadius: BorderRadius.circular(16.br),
         color: kBlack2Color.withValues(alpha: 0.5),
         border: Border.all(
           color: kWhiteColor.withValues(alpha: 0.06),
         ),
       ),
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
           Text(
             'What you\'ll miss as a guest:',
@@ -430,12 +425,12 @@ class _FeaturesList extends StatelessWidget {
               letterSpacing: 0.5,
             ),
           ),
-          SizedBox(height: 16.h),
+          SizedBox(height: 10.h),
           ...features.asMap().entries.map((entry) {
             final index = entry.key;
             final feature = entry.value;
             return Padding(
-              padding: EdgeInsets.only(bottom: index < features.length - 1 ? 12.h : 0),
+              padding: EdgeInsets.only(bottom: index < features.length - 1 ? 8.h : 0),
               child: feature,
             );
           }),
@@ -464,25 +459,26 @@ class _FeatureItem extends StatelessWidget {
       children: [
         // Icon container
         Container(
-          width: 40.w,
-          height: 40.h,
+          width: 34.w,
+          height: 34.h,
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(10.br),
+            borderRadius: BorderRadius.circular(8.br),
             color: color.withValues(alpha: 0.15),
           ),
           child: Center(
             child: Icon(
               icon,
-              size: 20.ic,
+              size: 18.ic,
               color: color,
             ),
           ),
         ),
-        SizedBox(width: 12.w),
+        SizedBox(width: 10.w),
         // Text
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
             children: [
               Text(
                 title,
@@ -502,7 +498,7 @@ class _FeatureItem extends StatelessWidget {
         // Lock indicator
         Icon(
           Icons.lock_outline_rounded,
-          size: 16.ic,
+          size: 14.ic,
           color: kWhiteColor.withValues(alpha: 0.25),
         ),
       ],
@@ -537,7 +533,7 @@ class _SecondaryButton extends HookWidget {
         curve: _snappySpring,
         child: Container(
           width: double.infinity,
-          height: 52.h,
+          height: 48.h,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(14.br),
             border: Border.all(
@@ -1663,16 +1659,16 @@ class _PrimaryButton extends HookWidget {
         curve: _snappySpring,
         child: Container(
           width: double.infinity,
-          height: 56.h,
+          height: 52.h,
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16.br),
+            borderRadius: BorderRadius.circular(14.br),
             color: onTap != null ? kWhiteColor : kWhiteColor.withValues(alpha: 0.2),
             boxShadow: onTap != null
                 ? [
                     BoxShadow(
                       color: kWhiteColor.withValues(alpha: 0.15),
-                      blurRadius: 20,
-                      offset: const Offset(0, 8),
+                      blurRadius: 16,
+                      offset: const Offset(0, 6),
                     ),
                   ]
                 : null,
