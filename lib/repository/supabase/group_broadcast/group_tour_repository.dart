@@ -9,6 +9,36 @@ final groupBroadcastRepositoryProvider =
     });
 
 class GroupBroadcastRepository extends BaseRepository {
+  /// Get tour IDs that belong to current (non-past) events
+  /// These are tours whose parent group_broadcast is ongoing or upcoming (not completed)
+  /// Returns tour IDs that can be matched against games.tour_id
+  Future<Set<String>> getCurrentTourIds() async {
+    return handleApiCall(() async {
+      // First get current group_broadcast IDs
+      final currentGroupsResponse = await supabase
+          .from('group_broadcasts_current')
+          .select('id');
+
+      final currentGroupIds = (currentGroupsResponse as List)
+          .map((row) => row['id'] as String)
+          .toSet();
+
+      if (currentGroupIds.isEmpty) {
+        return <String>{};
+      }
+
+      // Then get tour IDs that belong to these group_broadcasts
+      final toursResponse = await supabase
+          .from('tours')
+          .select('id, group_broadcast_id')
+          .inFilter('group_broadcast_id', currentGroupIds.toList());
+
+      return (toursResponse as List)
+          .map((row) => row['id'] as String)
+          .toSet();
+    });
+  }
+
   /// Get group_broadcast IDs that contain tours with any of the given favorite player FIDE IDs
   Future<Set<String>> getEventIdsWithFavoritePlayers(List<int> favoriteFideIds) async {
     if (favoriteFideIds.isEmpty) return {};

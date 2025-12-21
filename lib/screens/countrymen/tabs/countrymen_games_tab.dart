@@ -37,12 +37,34 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
   bool get wantKeepAlive => true;
 
   @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(_onScroll);
+  }
+
+  @override
   void dispose() {
+    _scrollController.removeListener(_onScroll);
     _debounceTimer?.cancel();
     _scrollController.dispose();
     _searchController.dispose();
     _searchFocusNode.dispose();
     super.dispose();
+  }
+
+  void _onScroll() {
+    if (!_scrollController.hasClients) return;
+
+    final maxScroll = _scrollController.position.maxScrollExtent;
+    final currentScroll = _scrollController.position.pixels;
+    final threshold = 200.0; // Load more when 200px from bottom
+
+    if (maxScroll - currentScroll <= threshold) {
+      final state = ref.read(countrymenCombinedGamesProvider);
+      if (state.hasMore && !state.isLoading) {
+        _loadMoreDays();
+      }
+    }
   }
 
   void _loadMoreDays() {
@@ -281,6 +303,7 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
                 gameIndex: state.games.indexOf(game),
                 animationIndex: items.length,
                 showRound: false,
+                showGamebaseButton: false, // Hide book icon for Countrymen context
                 onAdd: () => _showAddToFolderSheet(context, game),
               ),
             ),
@@ -289,44 +312,8 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
       }
     }
 
-    // Load More button or end message
-    if (state.hasMore && !state.isLoading) {
-      items.add(
-        Padding(
-          padding: EdgeInsets.symmetric(vertical: 16.h),
-          child: Center(
-            child: GestureDetector(
-              onTap: _loadMoreDays,
-              child: Container(
-                padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 14.h),
-                decoration: BoxDecoration(
-                  color: kDarkGreyColor,
-                  borderRadius: BorderRadius.circular(12.br),
-                  border: Border.all(color: kWhiteColor.withValues(alpha: 0.15)),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      Icons.add_rounded,
-                      color: kWhiteColor,
-                      size: 22.sp,
-                    ),
-                    SizedBox(width: 8.w),
-                    Text(
-                      'Load More Days',
-                      style: AppTypography.textSmMedium.copyWith(
-                        color: kWhiteColor,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-      );
-    } else if (state.isLoading && state.games.isNotEmpty) {
+    // Loading indicator for auto-scroll loading
+    if (state.isLoading && state.games.isNotEmpty) {
       items.add(
         Padding(
           padding: EdgeInsets.symmetric(vertical: 24.h),
@@ -342,6 +329,9 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
           ),
         ),
       );
+    } else if (state.hasMore && state.games.isNotEmpty) {
+      // Spacer to ensure scroll triggers auto-load
+      items.add(SizedBox(height: 60.h));
     } else if (!state.hasMore && state.games.isNotEmpty) {
       items.add(
         Padding(

@@ -287,6 +287,21 @@ class _AuthStep extends HookWidget {
                       )
                           .animate(delay: 800.ms)
                           .fadeIn(duration: 400.ms, curve: _smoothSpring),
+
+                      SizedBox(height: 20.h),
+
+                      // "I have an account" link
+                      GestureDetector(
+                        onTap: onSignIn,
+                        child: Text(
+                          'I already have an account',
+                          style: AppTypography.textSmMedium.copyWith(
+                            color: kPrimaryColor,
+                          ),
+                        ),
+                      )
+                          .animate(delay: 900.ms)
+                          .fadeIn(duration: 400.ms, curve: _smoothSpring),
                     ],
                   ),
                 ],

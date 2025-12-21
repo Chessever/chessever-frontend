@@ -5,11 +5,24 @@ import 'package:chessever2/providers/favorite_events_provider.dart';
 import 'package:chessever2/providers/favorite_players_provider.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/repository/supabase/game/games.dart';
+import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/utils/country_utils.dart';
 import 'package:country_picker/country_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+
+// ============================================================================
+// CURRENT TOUR IDS PROVIDER
+// ============================================================================
+
+/// Provider for tour IDs that belong to current (non-past) events
+/// Used to filter out games from past events in the For You feed
+final currentTourIdsProvider = FutureProvider.autoDispose<Set<String>>((ref) async {
+  ref.keepAlive(); // Cache during session
+  final repository = ref.read(groupBroadcastRepositoryProvider);
+  return repository.getCurrentTourIds();
+});
 
 // ============================================================================
 // PROVIDER DEFINITIONS
@@ -322,8 +335,20 @@ class ForYouGamesNotifier extends StateNotifier<AsyncValue<List<Games>>> {
   /// 2. Favorited events' games
   /// 3. Countryman games (with ELO filter)
   /// 4. High ELO games as fallback
+  ///
+  /// Games from past events are filtered out to avoid showing stale content.
   Future<void> _fetchGames({required bool isInitialLoad}) async {
     final repository = _ref.read(gameRepositoryProvider);
+
+    // Get current (non-past) tour IDs to filter out games from past events
+    Set<String> currentTourIds = {};
+    try {
+      currentTourIds = await _ref.read(currentTourIdsProvider.future);
+      debugPrint('[ForYouGames] Loaded ${currentTourIds.length} current tour IDs');
+    } catch (e) {
+      debugPrint('[ForYouGames] Error loading current tour IDs: $e');
+      // Continue without filtering if we can't load tour IDs
+    }
 
     // Get user preferences
     final favoritesAsync = _ref.read(favoritePlayersProviderNew);
@@ -354,12 +379,14 @@ class ForYouGamesNotifier extends StateNotifier<AsyncValue<List<Games>>> {
     final seenGameIds = _allGames.map((g) => g.id).toSet();
 
     // Helper to filter live games on loadMore, drop future (not-started) games,
-    // and deduplicate within this fetch.
+    // filter out games from past events, and deduplicate within this fetch.
     void addUniqueGames(List<Games> games) {
       final filteredGames = (isInitialLoad
               ? games
               : games.where((g) => g.status != '*'))
-          .where((g) => !_isFutureGame(g));
+          .where((g) => !_isFutureGame(g))
+          // Filter out games from past events (only if we have current tour IDs)
+          .where((g) => currentTourIds.isEmpty || currentTourIds.contains(g.tourId));
 
       for (final game in filteredGames) {
         if (seenGameIds.add(game.id)) {

@@ -7,6 +7,7 @@ import 'package:chessever2/screens/standings/providers/player_utils_provider.dar
 import 'package:chessever2/screens/standings/widget/scoreboard_appbar.dart';
 import 'package:chessever2/screens/standings/widget/scoreboard_card_widget.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
+import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen_provider.dart';
 import 'package:chessever2/screens/player_profile/widgets/performance_stats_row.dart';
 import 'package:chessever2/services/fide_photo_service.dart';
 import 'package:chessever2/utils/app_typography.dart';
@@ -522,12 +523,14 @@ class _PlayerHeaderRow extends StatelessWidget {
   final String rawCountryCode;
   final String? title;
   final String name;
+  final bool hasTournamentContext;
 
   const _PlayerHeaderRow({
     required this.countryCode,
     required this.rawCountryCode,
     required this.title,
     required this.name,
+    required this.hasTournamentContext,
   });
 
   @override
@@ -559,7 +562,8 @@ class _PlayerHeaderRow extends StatelessWidget {
             overflow: TextOverflow.ellipsis,
           ),
         ),
-        Icon(Icons.keyboard_arrow_down, color: kWhiteColor70, size: 22.ic),
+        if (hasTournamentContext)
+          Icon(Icons.keyboard_arrow_down, color: kWhiteColor70, size: 22.ic),
       ],
     );
   }
@@ -704,10 +708,31 @@ class _SliverScoreboardAppBarState extends ConsumerState<_SliverScoreboardAppBar
     }
   }
 
+  void _showPlayerSelectionSheet(BuildContext context) {
+    final playerTourAsync = ref.read(playerTourScreenProvider);
+    final players = playerTourAsync.valueOrNull ?? [];
+
+    if (players.isEmpty) return;
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: kBlack2Color,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16.br)),
+      ),
+      isScrollControlled: true,
+      constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.6),
+      builder: (context) => _PlayerSelectionSheet(players: players),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final player = ref.watch(selectedPlayerProvider);
     if (player == null) return const SliverAppBar();
+
+    final selectedBroadcast = ref.watch(selectedBroadcastModelProvider);
+    final hasTournamentContext = selectedBroadcast != null;
 
     final validCountryCode = ref
         .read(locationServiceProvider)
@@ -722,6 +747,14 @@ class _SliverScoreboardAppBarState extends ConsumerState<_SliverScoreboardAppBar
           skipLoadingOnReload: true,
         );
 
+    final headerRow = _PlayerHeaderRow(
+      countryCode: validCountryCode,
+      rawCountryCode: player.countryCode,
+      title: player.title,
+      name: player.name,
+      hasTournamentContext: hasTournamentContext,
+    );
+
     return SliverAppBar(
       pinned: true,
       backgroundColor: kBackgroundColor,
@@ -735,12 +768,13 @@ class _SliverScoreboardAppBarState extends ConsumerState<_SliverScoreboardAppBar
         ),
         onPressed: () => Navigator.of(context).pop(),
       ),
-      title: _PlayerHeaderRow(
-        countryCode: validCountryCode,
-        rawCountryCode: player.countryCode,
-        title: player.title,
-        name: player.name,
-      ),
+      title: hasTournamentContext
+          ? GestureDetector(
+              onTap: () => _showPlayerSelectionSheet(context),
+              behavior: HitTestBehavior.opaque,
+              child: headerRow,
+            )
+          : headerRow,
       actions: [
         InkWell(
           onTap: _toggleFavorite,
@@ -936,6 +970,126 @@ class _FallbackRatingDisplay extends ConsumerWidget {
             '-',
             style: AppTypography.textLgBold.copyWith(color: kWhiteColor),
           ),
+    );
+  }
+}
+
+/// Bottom sheet for selecting a player from the tournament
+class _PlayerSelectionSheet extends ConsumerWidget {
+  final List<PlayerStandingModel> players;
+
+  const _PlayerSelectionSheet({required this.players});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final selectedPlayer = ref.watch(selectedPlayerProvider);
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // Handle bar
+        Container(
+          margin: EdgeInsets.only(top: 12.h, bottom: 8.h),
+          width: 40.w,
+          height: 4.h,
+          decoration: BoxDecoration(
+            color: kWhiteColor.withValues(alpha: 0.3),
+            borderRadius: BorderRadius.circular(2.br),
+          ),
+        ),
+        // Title
+        Padding(
+          padding: EdgeInsets.symmetric(horizontal: 20.sp, vertical: 12.h),
+          child: Row(
+            children: [
+              Text(
+                'Select Player',
+                style: AppTypography.textLgBold.copyWith(color: kWhiteColor),
+              ),
+              const Spacer(),
+              GestureDetector(
+                onTap: () => Navigator.pop(context),
+                child: Icon(Icons.close, color: kWhiteColor70, size: 24.ic),
+              ),
+            ],
+          ),
+        ),
+        Divider(color: kDarkGreyColor, height: 1.h),
+        // Player list
+        Expanded(
+          child: ListView.separated(
+            padding: EdgeInsets.symmetric(vertical: 8.h),
+            itemCount: players.length,
+            separatorBuilder: (_, __) => Divider(
+              color: kDarkGreyColor,
+              height: 1.h,
+              indent: 20.w,
+              endIndent: 20.w,
+            ),
+            itemBuilder: (context, index) {
+              final player = players[index];
+              final isSelected = selectedPlayer?.name == player.name;
+              final validCountryCode = ref
+                  .read(locationServiceProvider)
+                  .getValidCountryCode(player.countryCode);
+
+              return InkWell(
+                onTap: () {
+                  ref.read(selectedPlayerProvider.notifier).state = player;
+                  Navigator.pop(context);
+                },
+                child: Container(
+                  padding: EdgeInsets.symmetric(horizontal: 20.sp, vertical: 12.h),
+                  color: isSelected ? kBlack2Color : Colors.transparent,
+                  child: Row(
+                    children: [
+                      // Country flag
+                      if (player.countryCode.toUpperCase() == 'FID')
+                        Image.asset(
+                          PngAsset.fideLogo,
+                          height: 16.h,
+                          width: 22.w,
+                          fit: BoxFit.cover,
+                        )
+                      else if (validCountryCode.isNotEmpty)
+                        CountryFlag.fromCountryCode(
+                          validCountryCode,
+                          height: 16.h,
+                          width: 22.w,
+                        )
+                      else
+                        SizedBox(width: 22.w),
+                      SizedBox(width: 12.w),
+                      // Title and name
+                      Expanded(
+                        child: Text(
+                          '${player.title != null && player.title!.isNotEmpty ? '${player.title} ' : ''}${player.name}',
+                          style: AppTypography.textMdMedium.copyWith(
+                            color: isSelected ? kGreenColor : kWhiteColor,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      // Rating
+                      Text(
+                        player.score.toStringAsFixed(0),
+                        style: AppTypography.textSmMedium.copyWith(
+                          color: kWhiteColor70,
+                        ),
+                      ),
+                      // Selected indicator
+                      if (isSelected) ...[
+                        SizedBox(width: 8.w),
+                        Icon(Icons.check, color: kGreenColor, size: 20.ic),
+                      ],
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
     );
   }
 }

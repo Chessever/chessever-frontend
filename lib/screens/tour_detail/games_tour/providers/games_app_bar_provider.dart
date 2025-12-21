@@ -51,8 +51,15 @@ class _GamesAppBarNotifier
         knockoutTournamentStateProvider(tourId!),
         (previous, next) {
           if (previous == null) return;
+          // Reload when knockout state changes OR when games transition from
+          // empty to non-empty. This fixes a race condition where stage
+          // extraction runs before games are loaded, causing all games to be
+          // aggregated into a single round instead of proper stages.
+          final gamesWereEmpty = previous.allGames.isEmpty;
+          final gamesNowAvailable = next.allGames.isNotEmpty;
           if (previous.isKnockout != next.isKnockout ||
-              previous.stageName != next.stageName) {
+              previous.stageName != next.stageName ||
+              (gamesWereEmpty && gamesNowAvailable)) {
             _load();
           }
         },

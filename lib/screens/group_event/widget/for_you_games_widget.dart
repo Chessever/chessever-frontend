@@ -1,8 +1,11 @@
 import 'package:chessever2/providers/for_you_games_provider.dart';
+import 'package:chessever2/screens/chessboard/widgets/chess_board_from_fen_new.dart';
 import 'package:chessever2/screens/group_event/widget/for_you_tournament_card.dart';
 import 'package:chessever2/screens/group_event/widget/premium_collection_cards.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_tour_content_provider.dart';
 import 'package:chessever2/theme/app_theme.dart';
@@ -353,8 +356,52 @@ class _ForYouListView extends ConsumerWidget {
   final bool isLoadingMore;
   final bool isEmpty;
 
+  /// Build display items list, pairing consecutive games for grid mode
+  List<_DisplayItem> _buildDisplayItems(GamesListViewMode viewMode) {
+    final displayItems = <_DisplayItem>[];
+    final isGrid = viewMode == GamesListViewMode.chessBoardGrid;
+
+    int i = 0;
+    while (i < items.length) {
+      final item = items[i];
+
+      if (item.isHeader) {
+        displayItems.add(_DisplayItem.header(item));
+        i++;
+        continue;
+      }
+
+      // For grid mode, pair consecutive game items
+      if (isGrid) {
+        final game1 = item;
+        _ListItem? game2;
+
+        // Check if next item is also a game (not a header)
+        if (i + 1 < items.length && !items[i + 1].isHeader) {
+          game2 = items[i + 1];
+          i += 2;
+        } else {
+          i++;
+        }
+
+        displayItems.add(_DisplayItem.gridRow(game1, game2));
+      } else {
+        displayItems.add(_DisplayItem.game(item));
+        i++;
+      }
+    }
+
+    return displayItems;
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // Watch user's persisted layout preference
+    final viewMode = ref.watch(gamesListViewModeProvider);
+
+    // Build display items based on view mode
+    final displayItems = _buildDisplayItems(viewMode);
+
     return RefreshIndicator(
       onRefresh: () async {
         // Trigger refresh of the For You games
@@ -366,13 +413,13 @@ class _ForYouListView extends ConsumerWidget {
       strokeWidth: 3.w,
       child: ListView.builder(
         // CRITICAL: PageStorageKey preserves scroll position across tab switches
-        key: const PageStorageKey<String>('for_you_games_list'),
+        key: PageStorageKey<String>('for_you_games_list_${viewMode.index}'),
         controller: scrollController,
         padding: EdgeInsets.symmetric(horizontal: 16.sp, vertical: 16.sp),
         // +1 for premium cards at top, +1 for empty state if no items
         itemCount: isEmpty
             ? 2 // Premium cards + empty state message
-            : items.length + 1 + (isLoadingMore ? 1 : 0),
+            : displayItems.length + 1 + (isLoadingMore ? 1 : 0),
         // CRITICAL: Keep items alive when scrolled off-screen
         addAutomaticKeepAlives: true,
         addRepaintBoundaries: true,
@@ -397,13 +444,14 @@ class _ForYouListView extends ConsumerWidget {
           final adjustedIndex = index - 1;
 
           // Loading indicator at the end
-          if (adjustedIndex == items.length) {
+          if (adjustedIndex == displayItems.length) {
             return _buildLoadingIndicator();
           }
 
-          final item = items[adjustedIndex];
+          final displayItem = displayItems[adjustedIndex];
 
-          if (item.isHeader) {
+          if (displayItem.isHeader) {
+            final item = displayItem.headerItem!;
             return ForYouTournamentCard(
               key: ValueKey('header_${item.groupKey ?? item.tourId}'),
               tourId: item.tourId!,
@@ -414,19 +462,81 @@ class _ForYouListView extends ConsumerWidget {
             );
           }
 
-          // Game card with KeepAlive wrapper
-          final gamesTourModel = allGames[item.gameIndex!];
+          // Grid row with 2 games side by side
+          if (displayItem.isGridRow) {
+            return _buildGridRow(
+              context,
+              ref,
+              displayItem,
+              adjustedIndex,
+              viewMode,
+            );
+          }
+
+          // Single game card
+          final gameItem = displayItem.gameItem!;
+          final gamesTourModel = allGames[gameItem.gameIndex!];
 
           return _KeepAliveGameCard(
-            key: ValueKey('game_${gamesTourModel.gameId}'),
+            key: ValueKey('game_${gamesTourModel.gameId}_${viewMode.index}'),
             game: gamesTourModel,
             gamesData: gamesData,
-            gameIndex: item.gameIndex!,
+            gameIndex: gameItem.gameIndex!,
             listIndex: adjustedIndex,
-            allGames: allGames, // Pass all games for navigation
+            allGames: allGames,
+            viewMode: viewMode,
           );
         },
       ),
+    );
+  }
+
+  Widget _buildGridRow(
+    BuildContext context,
+    WidgetRef ref,
+    _DisplayItem displayItem,
+    int listIndex,
+    GamesListViewMode viewMode,
+  ) {
+    final game1Item = displayItem.gridGame1!;
+    final game2Item = displayItem.gridGame2;
+
+    final game1 = allGames[game1Item.gameIndex!];
+    final game2 = game2Item != null ? allGames[game2Item.gameIndex!] : null;
+
+    return Padding(
+      padding: EdgeInsets.only(bottom: 12.sp),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          _buildGridGame(context, ref, game1, game1Item.gameIndex!, listIndex),
+          if (game2 != null)
+            _buildGridGame(context, ref, game2, game2Item!.gameIndex!, listIndex),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildGridGame(
+    BuildContext context,
+    WidgetRef ref,
+    GamesTourModel game,
+    int gameIndex,
+    int listIndex,
+  ) {
+    return GridChessBoardFromFENNew(
+      key: ValueKey('grid_game_${game.gameId}'),
+      gamesTourModel: game,
+      onChanged: () => ref
+          .read(gameCardWrapperProvider)
+          .navigateToChessBoard(
+            context: context,
+            orderedGames: allGames,
+            gameIndex: gameIndex,
+            onReturnFromChessboard: (_) {},
+          ),
+      pinnedIds: const [],
+      onPinToggle: (_) {},
     );
   }
 
@@ -513,6 +623,7 @@ class _KeepAliveGameCard extends StatefulWidget {
     required this.gameIndex,
     required this.listIndex,
     required this.allGames,
+    required this.viewMode,
   });
 
   final GamesTourModel game;
@@ -520,6 +631,7 @@ class _KeepAliveGameCard extends StatefulWidget {
   final int gameIndex;
   final int listIndex;
   final List<GamesTourModel> allGames;
+  final GamesListViewMode viewMode;
 
   @override
   State<_KeepAliveGameCard> createState() => _KeepAliveGameCardState();
@@ -535,13 +647,17 @@ class _KeepAliveGameCardState extends State<_KeepAliveGameCard>
     super.build(context); // Required for AutomaticKeepAliveClientMixin
 
     final gameId = widget.game.gameId;
+
+    // Determine if chess board should be visible based on user's layout preference
+    final isChessBoardVisible = widget.viewMode == GamesListViewMode.chessBoard;
+
     final card = Padding(
       padding: EdgeInsets.only(bottom: 12.sp),
       child: GameCardWrapperWidget(
         game: widget.game,
         gamesData: widget.gamesData,
         gameIndex: widget.gameIndex,
-        isChessBoardVisible: false,
+        isChessBoardVisible: isChessBoardVisible,
         // Enable navigation for game cards in For You tab
         onReturnFromChessboard: (returnedIndex) {
           // Handle returning from chess board if needed
@@ -607,5 +723,49 @@ class _ListItem {
 
   factory _ListItem.game({required int gameIndex, required bool isLive}) {
     return _ListItem._(isHeader: false, gameIndex: gameIndex, isLive: isLive);
+  }
+}
+
+/// Helper class for display items (header, single game, or grid row with 2 games)
+class _DisplayItem {
+  final bool isHeader;
+  final bool isGridRow;
+  final _ListItem? headerItem;
+  final _ListItem? gameItem;
+  final _ListItem? gridGame1;
+  final _ListItem? gridGame2;
+
+  const _DisplayItem._({
+    required this.isHeader,
+    required this.isGridRow,
+    this.headerItem,
+    this.gameItem,
+    this.gridGame1,
+    this.gridGame2,
+  });
+
+  factory _DisplayItem.header(_ListItem item) {
+    return _DisplayItem._(
+      isHeader: true,
+      isGridRow: false,
+      headerItem: item,
+    );
+  }
+
+  factory _DisplayItem.game(_ListItem item) {
+    return _DisplayItem._(
+      isHeader: false,
+      isGridRow: false,
+      gameItem: item,
+    );
+  }
+
+  factory _DisplayItem.gridRow(_ListItem game1, _ListItem? game2) {
+    return _DisplayItem._(
+      isHeader: false,
+      isGridRow: true,
+      gridGame1: game1,
+      gridGame2: game2,
+    );
   }
 }

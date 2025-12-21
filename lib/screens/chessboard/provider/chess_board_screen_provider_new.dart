@@ -5226,6 +5226,16 @@ class ChessBoardScreenNotifierNew
       return;
     }
 
+    // CRITICAL FIX: Prevent duplicate sync when board is already at target position.
+    // Both the navigator listener and manual sync call this method, which caused
+    // race conditions during rapid tapping that could skip moves.
+    final currentPointer = current.analysisState.movePointer;
+    final targetPointer = navigatorState.movePointer;
+    if (listEquals(currentPointer, targetPointer)) {
+      // Already at target position, skip redundant sync to avoid race conditions
+      return;
+    }
+
     _releaseLog(
       '🎯 SYNC FROM NAVIGATOR: Syncing to pointer=${navigatorState.movePointer}',
     );

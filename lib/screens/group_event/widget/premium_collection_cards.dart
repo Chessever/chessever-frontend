@@ -12,7 +12,7 @@ import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
-import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
+
 import 'package:country_flags/country_flags.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -149,28 +149,23 @@ class _PremiumCollectionCard extends ConsumerWidget {
     }
   }
 
-  Future<void> _handleTap(BuildContext context, WidgetRef ref) async {
+  void _handleTap(BuildContext context, WidgetRef ref) {
     HapticFeedbackService.cardTap();
 
-    // Premium guard - show paywall if not subscribed
-    final hasPremium = await requirePremiumGuard(context, ref);
-    if (!hasPremium) return;
-
-    // Navigate to combined games screens
-    if (context.mounted) {
-      if (type == PremiumGamesType.favorites) {
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (_) => const FavoritesTabScreen(),
-          ),
-        );
-      } else {
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (_) => const CountrymenTabScreen(),
-          ),
-        );
-      }
+    // Navigate freely - paywall is shown on actions (tapping games, saving to book)
+    // This creates FOMO by letting users see what they're missing
+    if (type == PremiumGamesType.favorites) {
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => const FavoritesTabScreen(),
+        ),
+      );
+    } else {
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => const CountrymenTabScreen(),
+        ),
+      );
     }
   }
 }
