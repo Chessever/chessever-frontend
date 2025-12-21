@@ -5,10 +5,12 @@ import 'package:chessever2/providers/board_settings_provider_new.dart';
 import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/screens/chessboard/widgets/evaluation_bar_widget.dart';
 import 'package:chessever2/screens/chessboard/widgets/player_first_row_detail_widget.dart';
+import 'package:chessever2/screens/chessboard/widgets/share_game_card_overlay.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/utils/string_utils.dart';
 import 'package:chessground/chessground.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:flutter/material.dart';
@@ -19,6 +21,99 @@ bool _shouldShowEvalBar(WidgetRef ref) {
   final settings = ref.watch(engineSettingsProviderNew).valueOrNull;
   return (settings?.showEngineAnalysis ?? true) &&
       (settings?.showEngineGauge ?? true);
+}
+
+/// Shows the share overlay for a game from the grid/list view
+void _showShareOverlay(BuildContext context, WidgetRef ref, GamesTourModel game) {
+  final boardSettingsAsync = ref.read(boardSettingsProviderNew);
+  final boardSettingsNew = boardSettingsAsync.valueOrNull ?? const BoardSettingsNew();
+  final boardTheme = ref
+      .read(boardSettingsRepository)
+      .getBoardTheme(boardSettingsNew.boardColorValue);
+
+  final chessboardSettings = ChessboardSettings(
+    enableCoordinates: false,
+    colorScheme: ChessboardColorScheme(
+      lightSquare: boardTheme.lightSquareColor,
+      darkSquare: boardTheme.darkSquareColor,
+      background: SolidColorChessboardBackground(
+        lightSquare: boardTheme.lightSquareColor,
+        darkSquare: boardTheme.darkSquareColor,
+      ),
+      whiteCoordBackground: SolidColorChessboardBackground(
+        lightSquare: boardTheme.lightSquareColor,
+        darkSquare: boardTheme.darkSquareColor,
+        coordinates: false,
+        orientation: Side.white,
+      ),
+      blackCoordBackground: SolidColorChessboardBackground(
+        lightSquare: boardTheme.lightSquareColor,
+        darkSquare: boardTheme.darkSquareColor,
+        coordinates: false,
+        orientation: Side.black,
+      ),
+      lastMove: HighlightDetails(
+        solidColor: boardTheme.lightSquareColor.withValues(alpha: 0),
+      ),
+      selected: HighlightDetails(
+        solidColor: boardTheme.lightSquareColor.withValues(alpha: 0),
+      ),
+      validMoves: boardTheme.lightSquareColor.withValues(alpha: 0),
+      validPremoves: boardTheme.lightSquareColor.withValues(alpha: 0),
+    ),
+    borderRadius: const BorderRadius.all(Radius.circular(0)),
+    boxShadow: const [],
+  );
+
+  // Format tournament and round names
+  final tournamentName = game.tourSlug != null
+      ? StringUtils.slugToTitle(game.tourSlug!)
+      : null;
+  final roundInfo = game.roundSlug != null
+      ? StringUtils.formatRoundLabel(game.roundSlug)
+      : null;
+
+  // For grid/list view, we show the current position (latest move)
+  // We don't have full move history, so moveSans will be empty
+  final positionFen = game.fen ?? 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+  final lastMove = _uciToMove(game.lastMove ?? '');
+
+  Navigator.of(context).push(
+    PageRouteBuilder(
+      opaque: false,
+      barrierDismissible: true,
+      barrierColor: Colors.transparent,
+      pageBuilder: (context, animation, secondaryAnimation) => ShareGameCardOverlay(
+        boardSettings: chessboardSettings,
+        positionFen: positionFen,
+        lastMove: lastMove,
+        pgn: '',
+        moveSans: const [], // No move history available from grid view
+        whitePlayerName: game.whitePlayer.name,
+        blackPlayerName: game.blackPlayer.name,
+        whitePlayerCountry: game.whitePlayer.federation,
+        blackPlayerCountry: game.blackPlayer.federation,
+        whitePlayerElo: game.whitePlayer.rating.toString(),
+        blackPlayerElo: game.blackPlayer.rating.toString(),
+        whitePlayerTitle: game.whitePlayer.title,
+        blackPlayerTitle: game.blackPlayer.title,
+        whitePlayerClock: game.whiteTimeDisplay,
+        blackPlayerClock: game.blackTimeDisplay,
+        tournamentName: tournamentName,
+        roundInfo: roundInfo,
+        currentMoveIndex: -1, // No specific move index
+        evaluation: null, // No evaluation available from grid view
+        mate: 0,
+        isFlipped: false,
+        gameStatus: game.gameStatus,
+        onClose: () => Navigator.of(context).pop(),
+        gameId: game.gameId,
+      ),
+      transitionsBuilder: (context, animation, secondaryAnimation, child) {
+        return FadeTransition(opacity: animation, child: child);
+      },
+    ),
+  );
 }
 
 class ChessBoardFromFENNew extends ConsumerWidget {
@@ -37,7 +132,7 @@ class ChessBoardFromFENNew extends ConsumerWidget {
 
   bool get isPinned => pinnedIds.contains(gamesTourModel.gameId);
 
-  void _showBlurredPopup(BuildContext context, LongPressStartDetails details) {
+  void _showBlurredPopup(BuildContext context, WidgetRef ref, LongPressStartDetails details) {
     final RenderBox boardRenderBox = context.findRenderObject() as RenderBox;
     final Offset boardPosition = boardRenderBox.localToGlobal(Offset.zero);
     final Size boardSize = boardRenderBox.size;
@@ -95,7 +190,10 @@ class ChessBoardFromFENNew extends ConsumerWidget {
                         Navigator.pop(buildContext);
                       });
                     },
-                    onShare: () {},
+                    onShare: () {
+                      Navigator.pop(buildContext);
+                      _showShareOverlay(context, ref, gamesTourModel);
+                    },
                   ),
                 ),
               ],
@@ -131,7 +229,7 @@ class ChessBoardFromFENNew extends ConsumerWidget {
             },
             onLongPressStart: (details) {
               HapticFeedbackService.contextMenu();
-              _showBlurredPopup(context, details);
+              _showBlurredPopup(context, ref, details);
             },
             child: _ChessBoardLayout(
               gamesTourModel: gamesTourModel,
@@ -166,6 +264,7 @@ class GridChessBoardFromFENNew extends ConsumerWidget {
 
   void _showBlurredPopup({
     required BuildContext context,
+    required WidgetRef ref,
     required double size,
     required double screenWidth,
     required double sideBarWidth,
@@ -220,7 +319,10 @@ class GridChessBoardFromFENNew extends ConsumerWidget {
                                 Navigator.pop(buildContext);
                               });
                             },
-                            onShare: () {},
+                            onShare: () {
+                              Navigator.pop(buildContext);
+                              _showShareOverlay(context, ref, gamesTourModel);
+                            },
                           ),
                         ),
                       _PlayerRow(
@@ -266,7 +368,10 @@ class GridChessBoardFromFENNew extends ConsumerWidget {
                                 Navigator.pop(buildContext);
                               });
                             },
-                            onShare: () {},
+                            onShare: () {
+                              Navigator.pop(buildContext);
+                              _showShareOverlay(context, ref, gamesTourModel);
+                            },
                           ),
                         ),
                     ],
@@ -299,6 +404,7 @@ class GridChessBoardFromFENNew extends ConsumerWidget {
         HapticFeedbackService.contextMenu();
         _showBlurredPopup(
           context: context,
+          ref: ref,
           size: boardSize,
           screenWidth: screenWidth,
           sideBarWidth: sideBarWidth,

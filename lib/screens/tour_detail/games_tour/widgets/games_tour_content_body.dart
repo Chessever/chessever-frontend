@@ -89,7 +89,21 @@ class GamesTourContentBody extends ConsumerWidget {
     final isMultiStageKnockout = isKnockoutTournament &&
         rounds.any((r) => r.id.startsWith('$kKnockoutStagePrefix-'));
 
-    if (isMultiStageKnockout) {
+    // Distinguish between multi-tour knockouts (where stages are separate tours) and
+    // round-slug-derived stages (where stages are extracted from round_slug within one tour).
+    // Multi-tour stage IDs: "knockout-stage-{tourId}" (suffix is a valid tour ID)
+    // Round-slug stage IDs: "knockout-stage-{tourId}-{stageName}" (suffix includes stage name)
+    final isRoundSlugDerivedStages = isMultiStageKnockout && tourId != null &&
+        rounds.any((r) {
+          if (!r.id.startsWith('$kKnockoutStagePrefix-')) return false;
+          final suffix = r.id.replaceFirst('$kKnockoutStagePrefix-', '');
+          // If suffix contains the tourId plus more (e.g., "m2z9tePv-round-1"),
+          // it's a round-slug-derived stage, not a multi-tour stage
+          return suffix.startsWith('$tourId-') && suffix.length > tourId!.length + 1;
+        });
+
+    if (isMultiStageKnockout && !isRoundSlugDerivedStages) {
+      // Multi-tour knockout: each stage is a separate tour
       // Extract all stage tour IDs
       final stageTourIds = rounds
           .where((r) => r.id.startsWith('$kKnockoutStagePrefix-'))
@@ -143,6 +157,48 @@ class GamesTourContentBody extends ConsumerWidget {
               return aPinned ? -1 : 1; // Pinned games first
             }
             return 0; // Keep original order for same pin status
+          });
+        }
+      }
+    } else if (isRoundSlugDerivedStages) {
+      // Round-slug-derived knockout: stages are extracted from round_slug within one tour
+      // Group games by matching their roundSlug prefix to the stage name in round.id
+      for (final game in allGames) {
+        final gameSlug = game.roundSlug ?? '';
+        // Extract stage name from game's round_slug (e.g., "round-1--game-1" -> "round-1")
+        final stagePart = gameSlug.contains('--')
+            ? gameSlug.split('--').first.toLowerCase().replaceAll(' ', '-')
+            : gameSlug.toLowerCase().replaceAll(' ', '-');
+
+        // Find the matching stage round
+        for (final round in rounds) {
+          if (!round.id.startsWith('$kKnockoutStagePrefix-')) continue;
+          // Extract stage name from round ID (e.g., "knockout-stage-m2z9tePv-round-1" -> "round-1")
+          final roundStagePart = round.id.split('-').skip(3).join('-'); // Skip "knockout-stage-{tourId}"
+          if (roundStagePart == stagePart) {
+            final matchesSearch =
+                searchGameIds == null || searchGameIds.contains(game.gameId);
+            if (matchesSearch) {
+              gamesByRound.putIfAbsent(round.id, () => <GamesTourModel>[]);
+              gamesByRound[round.id]!.add(game);
+            }
+            break;
+          }
+        }
+      }
+
+      // Sort games in each round by pin status
+      final pinnedGameIds = gamesScreenModel.pinnedGamedIs;
+      if (pinnedGameIds.isNotEmpty) {
+        for (final roundId in gamesByRound.keys) {
+          final roundGames = gamesByRound[roundId]!;
+          roundGames.sort((a, b) {
+            final aPinned = pinnedGameIds.contains(a.gameId);
+            final bPinned = pinnedGameIds.contains(b.gameId);
+            if (aPinned != bPinned) {
+              return aPinned ? -1 : 1;
+            }
+            return 0;
           });
         }
       }

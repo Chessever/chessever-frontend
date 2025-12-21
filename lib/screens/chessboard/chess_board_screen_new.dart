@@ -531,12 +531,25 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
       return; // Wait until we have at least one move before syncing
     }
 
-    final lastMoveIndex = totalMoves - 1;
+    // For finished games, start from the beginning position
+    // For ongoing games, sync to the latest move
+    final isFinished = state.game.gameStatus.isFinished;
+    final targetMoveIndex = isFinished ? -1 : totalMoves - 1;
     final currentIndex = state.analysisState.currentMoveIndex;
 
-    if (currentIndex >= lastMoveIndex) {
-      _syncedLatestPositions.add(gameId);
-      return;
+    // Check if we're already at the target position
+    if (isFinished) {
+      // For finished games, we want to be at the start (index -1)
+      if (currentIndex == -1) {
+        _syncedLatestPositions.add(gameId);
+        return;
+      }
+    } else {
+      // For ongoing games, we want to be at the latest move
+      if (currentIndex >= totalMoves - 1) {
+        _syncedLatestPositions.add(gameId);
+        return;
+      }
     }
 
     final params = ChessBoardProviderParams(game: state.game, index: pageIndex);
@@ -549,7 +562,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
         return;
       }
       final notifier = ref.read(chessBoardScreenProviderNew(params).notifier);
-      notifier.goToMove(lastMoveIndex);
+      notifier.goToMove(targetMoveIndex);
     });
 
     _syncedLatestPositions.add(gameId);

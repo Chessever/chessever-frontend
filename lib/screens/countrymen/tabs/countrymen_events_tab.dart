@@ -1,8 +1,10 @@
 import 'dart:async';
 
 import 'package:chessever2/providers/country_dropdown_provider.dart';
+import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
 import 'package:chessever2/repository/supabase/tour/tour.dart';
 import 'package:chessever2/repository/supabase/tour/tour_repository.dart';
+import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
@@ -531,18 +533,34 @@ class _CountrymenEventsTabState extends ConsumerState<CountrymenEventsTab>
   }
 }
 
-class _EventCard extends StatelessWidget {
+class _EventCard extends ConsumerWidget {
   final Tour event;
 
   const _EventCard({required this.event});
 
+  Future<void> _onTap(BuildContext context, WidgetRef ref) async {
+    try {
+      final broadcast = await ref
+          .read(groupBroadcastRepositoryProvider)
+          .getGroupBroadcastById(event.id);
+      ref.read(selectedBroadcastModelProvider.notifier).state = broadcast;
+
+      if (!context.mounted) return;
+      if (ref.read(selectedBroadcastModelProvider) != null) {
+        Navigator.pushNamed(context, '/tournament_detail_screen');
+      }
+    } catch (_) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Unable to open event')),
+      );
+    }
+  }
+
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return GestureDetector(
-      onTap: () {
-        // Navigate to event detail
-        // TODO: Implement navigation to event detail
-      },
+      onTap: () => _onTap(context, ref),
       child: Container(
         padding: EdgeInsets.all(16.sp),
         decoration: BoxDecoration(
