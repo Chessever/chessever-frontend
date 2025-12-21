@@ -773,16 +773,18 @@ class ChessBoardScreenNotifierNew
           hasNewMoves && !shouldForceLatestPosition && !wasViewingLastMove;
 
       // Determine which move index to display:
-      // - If initial load or we previously had no moves: ALWAYS jump to last move
+      // - For finished games on initial load: start from beginning (move index -1)
+      // - For ongoing games on initial load: show latest move
       // - If user was viewing last move: jump to new last move
       // - If user was viewing an earlier move AND it's not initial load: stay at current position (don't jump)
       final isPreviewActive = currentState?.isPvPreviewActive == true;
+      final isGameFinished = game.gameStatus.isFinished;
 
       final newMoveIndex =
           isPreviewActive
               ? (currentState?.analysisState.currentMoveIndex ?? lastMoveIndex)
               : shouldForceLatestPosition
-              ? lastMoveIndex // Always show latest on initial screen load or when moves first arrive
+              ? (isGameFinished ? -1 : lastMoveIndex) // For finished games, start at beginning; for ongoing games, show latest
               : (wasViewingLastMove
                   ? lastMoveIndex // Jump to new last move if user was already viewing last
                   : currentState?.analysisState.currentMoveIndex ??
@@ -5231,12 +5233,16 @@ class ChessBoardScreenNotifierNew
     // race conditions during rapid tapping that could skip moves.
     // We must check BOTH movePointer AND FEN to ensure we don't skip a sync when
     // the pointer matches but the position is actually different (race condition).
+    // IMPORTANT: Never skip if game is null - first initialization must set the game.
     final currentPointer = current.analysisState.movePointer;
     final targetPointer = navigatorState.movePointer;
     final currentFen = current.analysisState.position.fen;
     final targetFen = navigatorState.currentFen;
-    if (listEquals(currentPointer, targetPointer) && currentFen == targetFen) {
-      // Already at target position with matching FEN, skip redundant sync
+    final gameAlreadySet = current.analysisState.game != null;
+    if (gameAlreadySet &&
+        listEquals(currentPointer, targetPointer) &&
+        currentFen == targetFen) {
+      // Already at target position with matching FEN and game is set, skip redundant sync
       return;
     }
 

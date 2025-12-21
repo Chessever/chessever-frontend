@@ -23,6 +23,9 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/widgets/segmented_switcher.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
+import 'package:chessever2/screens/group_event/widget/appbar_icons_widget.dart';
+import 'package:chessever2/utils/svg_asset.dart';
 
 enum GroupEventCategory { past, current, forYou, search }
 
@@ -252,41 +255,64 @@ class GroupEventScreen extends HookConsumerWidget {
           ),
 
           SizedBox(height: 16.h),
-          _SegmentedSwitcher(
-            searchController: searchController,
-            selectedTourEvent: selectedTourEvent,
-            visibleCategories: visibleCategories,
-            onSelectedChanged: (index) {
-              final newCategory = visibleCategories[index];
-              final currentCategory = selectedTourEvent;
+          Padding(
+            padding: EdgeInsets.symmetric(horizontal: 20.sp),
+            child: Row(
+              children: [
+                Expanded(
+                  child: _SegmentedSwitcher(
+                    searchController: searchController,
+                    selectedTourEvent: selectedTourEvent,
+                    visibleCategories: visibleCategories,
+                    onSelectedChanged: (index) {
+                      final newCategory = visibleCategories[index];
+                      final currentCategory = selectedTourEvent;
 
-              // If tapping the same tab, scroll to top
-              if (newCategory == currentCategory) {
-                ScrollController? controller;
-                if (newCategory == GroupEventCategory.forYou) {
-                  controller = forYouScrollController;
-                } else if (newCategory == GroupEventCategory.past) {
-                  controller = pastScrollController;
-                } else if (newCategory == GroupEventCategory.current) {
-                  controller = currentScrollController;
-                } else if (newCategory == GroupEventCategory.search) {
-                  controller = searchScrollController;
-                }
+                      // If tapping the same tab, scroll to top
+                      if (newCategory == currentCategory) {
+                        ScrollController? controller;
+                        if (newCategory == GroupEventCategory.forYou) {
+                          controller = forYouScrollController;
+                        } else if (newCategory == GroupEventCategory.past) {
+                          controller = pastScrollController;
+                        } else if (newCategory == GroupEventCategory.current) {
+                          controller = currentScrollController;
+                        } else if (newCategory == GroupEventCategory.search) {
+                          controller = searchScrollController;
+                        }
 
-                if (controller != null && controller.hasClients) {
-                  controller.animateTo(
-                    0,
-                    duration: const Duration(milliseconds: 300),
-                    curve: Curves.easeOutCubic,
-                  );
-                }
-                return; // Don't change category
-              }
+                        if (controller != null && controller.hasClients) {
+                          controller.animateTo(
+                            0,
+                            duration: const Duration(milliseconds: 300),
+                            curve: Curves.easeOutCubic,
+                          );
+                        }
+                        return; // Don't change category
+                      }
 
-              ref.invalidate(filterPopupProvider);
-              ref.read(selectedGroupCategoryProvider.notifier).state =
-                  newCategory;
-            },
+                      ref.invalidate(filterPopupProvider);
+                      ref.read(selectedGroupCategoryProvider.notifier).state =
+                          newCategory;
+                    },
+                  ),
+                ),
+                // Layout toggle button - only visible on For You and Search tabs
+                if (selectedTourEvent == GroupEventCategory.forYou ||
+                    selectedTourEvent == GroupEventCategory.search) ...[
+                  SizedBox(width: 12.w),
+                  Semantics(
+                    label: 'Toggle chessboard view',
+                    child: AppBarIcons(
+                      image: SvgAsset.chase_grid,
+                      onTap: () {
+                        ref.read(gamesListViewModeSwitcher).toggleViewMode();
+                      },
+                    ),
+                  ),
+                ],
+              ],
+            ),
           ),
 
           SizedBox(height: 12.h),
@@ -524,16 +550,13 @@ class _SegmentedSwitcher extends ConsumerWidget {
       return Text(baseLabel);
     }).toList();
 
-    return Padding(
-      padding: EdgeInsets.symmetric(horizontal: 20.sp),
-      child: SegmentedSwitcher(
-        backgroundColor: kBlackColor,
-        selectedBackgroundColor: kBlackColor,
-        options: options,
-        optionLabels: optionLabels,
-        currentSelection: visibleCategories.indexOf(selectedTourEvent).clamp(0, visibleCategories.length - 1),
-        onSelectionChanged: onSelectedChanged,
-      ),
+    return SegmentedSwitcher(
+      backgroundColor: kBlackColor,
+      selectedBackgroundColor: kBlackColor,
+      options: options,
+      optionLabels: optionLabels,
+      currentSelection: visibleCategories.indexOf(selectedTourEvent).clamp(0, visibleCategories.length - 1),
+      onSelectionChanged: onSelectedChanged,
     );
   }
 }

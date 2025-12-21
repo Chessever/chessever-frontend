@@ -248,7 +248,7 @@ class TournamentSortingService {
       return 0;
     });
 
-    // Sort hearted events by favorite player count (descending), then by timestamp, then by event date
+    // Sort hearted events by favorite player count (descending), then by ELO average, then by event date
     heartedEvents.sort((a, b) {
       final countA = eventFavoritePlayerCounts[a.id] ?? 0;
       final countB = eventFavoritePlayerCounts[b.id] ?? 0;
@@ -258,7 +258,14 @@ class TournamentSortingService {
         return countB.compareTo(countA);
       }
 
-      // Secondary sort: by timestamp (if counts are equal, show most recent first)
+      // Secondary sort: by max average ELO (higher ELO first when heart counts are equal)
+      final eloA = a.maxAvgElo;
+      final eloB = b.maxAvgElo;
+      if (eloA != eloB) {
+        return eloB.compareTo(eloA); // Higher ELO first
+      }
+
+      // Tertiary sort: by timestamp (if ELOs are also equal, show most recent first)
       final timestampA = favoriteTimestamps?[a.id];
       final timestampB = favoriteTimestamps?[b.id];
 
@@ -267,7 +274,7 @@ class TournamentSortingService {
         if (timestampComparison != 0) return timestampComparison;
       }
 
-      // Tertiary sort: by event date (latest event first)
+      // Quaternary sort: by event date (latest event first)
       final dateA = a.startDate ?? a.endDate;
       final dateB = b.startDate ?? b.endDate;
 
