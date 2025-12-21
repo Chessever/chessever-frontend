@@ -5229,10 +5229,14 @@ class ChessBoardScreenNotifierNew
     // CRITICAL FIX: Prevent duplicate sync when board is already at target position.
     // Both the navigator listener and manual sync call this method, which caused
     // race conditions during rapid tapping that could skip moves.
+    // We must check BOTH movePointer AND FEN to ensure we don't skip a sync when
+    // the pointer matches but the position is actually different (race condition).
     final currentPointer = current.analysisState.movePointer;
     final targetPointer = navigatorState.movePointer;
-    if (listEquals(currentPointer, targetPointer)) {
-      // Already at target position, skip redundant sync to avoid race conditions
+    final currentFen = current.analysisState.position.fen;
+    final targetFen = navigatorState.currentFen;
+    if (listEquals(currentPointer, targetPointer) && currentFen == targetFen) {
+      // Already at target position with matching FEN, skip redundant sync
       return;
     }
 
