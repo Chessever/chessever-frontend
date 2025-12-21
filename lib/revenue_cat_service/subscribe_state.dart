@@ -1,27 +1,82 @@
+import 'dart:async';
+
 import 'package:chessever2/revenue_cat_service/revenue_cat_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:purchases_flutter/models/package_wrapper.dart';
+import 'package:purchases_flutter/purchases_flutter.dart' show CustomerInfo, Package;
 
 final subscriptionProvider =
     StateNotifierProvider<SubscriptionNotifier, SubscriptionState>((ref) {
-      return SubscriptionNotifier();
+      final notifier = SubscriptionNotifier();
+      // Register global callback for app resume sync
+      RevenueCatService().onAppResumeCallback = notifier.syncAndRefresh;
+      ref.onDispose(() {
+        RevenueCatService().onAppResumeCallback = null;
+        // Note: notifier.dispose() is called automatically by StateNotifier
+      });
+      return notifier;
     });
 
 class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
   final _revenueCat = RevenueCatService();
+  Timer? _periodicSyncTimer;
+  Timer? _expirationTimer;
+
+  /// How often to sync with RevenueCat when app stays open (1 hour)
+  static const _periodicSyncInterval = Duration(hours: 1);
 
   SubscriptionNotifier() : super(SubscriptionState()) {
     _revenueCat.setCustomerInfoListener((customerInfo) {
-      final hasPremiumEntitlement = customerInfo.entitlements.active
-          .containsKey(RevenueCatService.premiumEntitlement);
-      final hasAnyEntitlement = customerInfo.entitlements.active.isNotEmpty;
-
-      state = state.copyWith(
-        isSubscribed: hasPremiumEntitlement || hasAnyEntitlement,
-      );
+      _updateStateFromCustomerInfo(customerInfo);
     });
     _initialize();
+    _startPeriodicSync();
+  }
+
+  @override
+  void dispose() {
+    _periodicSyncTimer?.cancel();
+    _expirationTimer?.cancel();
+    super.dispose();
+  }
+
+  /// Start periodic sync timer to catch expirations while app stays open
+  void _startPeriodicSync() {
+    _periodicSyncTimer?.cancel();
+    _periodicSyncTimer = Timer.periodic(_periodicSyncInterval, (_) {
+      debugPrint('⏰ Periodic subscription sync triggered');
+      syncAndRefresh();
+    });
+  }
+
+  /// Schedule a sync right when the subscription is about to expire
+  void _scheduleExpirationCheck() {
+    _expirationTimer?.cancel();
+
+    final expirationDate = state.expirationDate;
+    if (expirationDate == null || !state.isSubscribed) return;
+
+    final now = DateTime.now();
+    final timeUntilExpiration = expirationDate.difference(now);
+
+    // If already expired, sync immediately
+    if (timeUntilExpiration.isNegative) {
+      debugPrint('⚠️ Subscription already expired, syncing now');
+      syncAndRefresh();
+      return;
+    }
+
+    // Schedule sync 1 minute after expiration to catch it promptly
+    final syncDelay = timeUntilExpiration + const Duration(minutes: 1);
+
+    // Only schedule if within reasonable timeframe (< 7 days)
+    if (syncDelay.inDays < 7) {
+      debugPrint('📅 Scheduling expiration check in ${syncDelay.inHours}h ${syncDelay.inMinutes % 60}m');
+      _expirationTimer = Timer(syncDelay, () {
+        debugPrint('⏰ Expiration timer triggered, syncing subscription status');
+        syncAndRefresh();
+      });
+    }
   }
 
   Future<void> _initialize() async {
@@ -55,6 +110,11 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
         expirationDate: expirationDate,
         managementUrl: managementUrl,
       );
+
+      // Schedule expiration check if subscribed
+      if (isSubscribed && expirationDate != null) {
+        _scheduleExpirationCheck();
+      }
     } catch (e) {
       debugPrint('❌ Subscription initialization error: $e');
       state = state.copyWith(error: e.toString(), isLoading: false);
@@ -94,6 +154,52 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
     } catch (e) {
       debugPrint('❌ Subscription refresh error: $e');
       state = state.copyWith(error: e.toString(), isLoading: false);
+    }
+  }
+
+  /// Sync purchases with RevenueCat servers and update local state.
+  /// Call this on app resume/foreground to catch expired subscriptions.
+  Future<void> syncAndRefresh() async {
+    try {
+      final customerInfo = await _revenueCat.syncPurchases();
+      if (customerInfo != null) {
+        _updateStateFromCustomerInfo(customerInfo);
+      }
+    } catch (e) {
+      debugPrint('❌ Subscription sync error: $e');
+    }
+  }
+
+  /// Update state from CustomerInfo (used by listener and sync)
+  void _updateStateFromCustomerInfo(CustomerInfo customerInfo) {
+    final hasPremiumEntitlement = customerInfo.entitlements.active
+        .containsKey(RevenueCatService.premiumEntitlement);
+    final hasAnyEntitlement = customerInfo.entitlements.active.isNotEmpty;
+    final isSubscribed = hasPremiumEntitlement || hasAnyEntitlement;
+
+    DateTime? expirationDate;
+    if (customerInfo.entitlements.active.isNotEmpty) {
+      final entitlement = customerInfo.entitlements.active.values.first;
+      if (entitlement.expirationDate != null) {
+        expirationDate = DateTime.tryParse(entitlement.expirationDate!);
+      }
+    }
+
+    final previouslySubscribed = state.isSubscribed;
+    state = state.copyWith(
+      isSubscribed: isSubscribed,
+      expirationDate: expirationDate,
+      managementUrl: customerInfo.managementURL,
+    );
+
+    // Log subscription status changes for debugging
+    if (previouslySubscribed != isSubscribed) {
+      debugPrint('🔄 Subscription status changed: $previouslySubscribed → $isSubscribed');
+    }
+
+    // Schedule a check for when subscription expires (if subscribed)
+    if (isSubscribed && expirationDate != null) {
+      _scheduleExpirationCheck();
     }
   }
 

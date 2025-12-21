@@ -18,6 +18,7 @@ class Games {
   final DateTime? lastMoveTime;
   final int? lastClockWhite;
   final int? lastClockBlack;
+  final DateTime? dateStart;
 
   Games({
     required this.id,
@@ -37,6 +38,7 @@ class Games {
     this.lastMoveTime,
     this.lastClockWhite,
     this.lastClockBlack,
+    this.dateStart,
   });
 
   Games copyWith({
@@ -57,6 +59,7 @@ class Games {
     DateTime? lastMoveTime,
     int? lastClockWhite,
     int? lastClockBlack,
+    DateTime? dateStart,
   }) {
     return Games(
       id: id ?? this.id,
@@ -76,6 +79,7 @@ class Games {
       lastMoveTime: lastMoveTime ?? this.lastMoveTime,
       lastClockWhite: lastClockWhite ?? this.lastClockWhite,
       lastClockBlack: lastClockBlack ?? this.lastClockBlack,
+      dateStart: dateStart ?? this.dateStart,
     );
   }
 
@@ -120,6 +124,10 @@ class Games {
             json['last_clock_black'] != null
                 ? (json['last_clock_black'] as num).toInt()
                 : null,
+        dateStart:
+            json['date_start'] != null
+                ? DateTime.parse(json['date_start'] as String)
+                : null,
       );
     } catch (e, _) {
       rethrow;
@@ -146,6 +154,8 @@ class Games {
         'last_move_time': lastMoveTime!.toIso8601String(),
       if (lastClockWhite != null) 'last_clock_white': lastClockWhite,
       if (lastClockBlack != null) 'last_clock_black': lastClockBlack,
+      if (dateStart != null)
+        'date_start': dateStart!.toIso8601String().split('T').first,
     };
   }
 }

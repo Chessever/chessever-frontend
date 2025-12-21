@@ -97,14 +97,18 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
   /// Group games by date
   Map<String, List<GamesTourModel>> _groupGamesByDate(List<GamesTourModel> games) {
     final grouped = <String, List<GamesTourModel>>{};
+    const unknownDateKey = '0000-00-00'; // Sort to end
 
     for (final game in games) {
-      final date = game.lastMoveTime ?? DateTime.now();
-      final dateKey = DateFormat('yyyy-MM-dd').format(date);
+      final date = game.lastMoveTime;
+      final dateKey = date != null
+          ? DateFormat('yyyy-MM-dd').format(date)
+          : unknownDateKey;
       grouped.putIfAbsent(dateKey, () => []).add(game);
     }
 
     // Sort keys by date descending (most recent first)
+    // Unknown dates (0000-00-00) will sort to the end
     final sortedKeys = grouped.keys.toList()
       ..sort((a, b) => b.compareTo(a));
 
@@ -114,6 +118,11 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
   }
 
   String _formatDateHeader(String dateKey) {
+    // Handle unknown date case
+    if (dateKey == '0000-00-00') {
+      return 'Unknown date';
+    }
+
     final date = DateTime.parse(dateKey);
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);

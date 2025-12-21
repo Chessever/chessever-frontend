@@ -140,7 +140,14 @@ Future<void> main() async {
           },
           onAppResume: () async {
             // Sync purchases when app comes to foreground
-            unawaited(RevenueCatService().syncPurchases());
+            // This calls syncAndRefresh via callback to update Riverpod state
+            final revenueCat = RevenueCatService();
+            if (revenueCat.onAppResumeCallback != null) {
+              unawaited(revenueCat.onAppResumeCallback!());
+            } else {
+              // Fallback if provider not yet initialized
+              unawaited(revenueCat.syncPurchases());
+            }
           },
         ),
       );

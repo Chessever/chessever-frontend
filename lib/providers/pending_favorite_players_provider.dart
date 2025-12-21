@@ -85,11 +85,32 @@ class PendingFavoriteSelectionsNotifier
               })
           .toList();
 
-      await _supabase.from('user_favorite_players').upsert(
-        payload,
-        onConflict: 'user_id,player_name',
-        ignoreDuplicates: true,
-      );
+      // Use fide_id for conflict resolution since it's the unique player identifier
+      // This prevents duplicates when re-onboarding with the same account
+      for (final item in payload) {
+        final fideId = item['fide_id'];
+        if (fideId != null && fideId.toString().isNotEmpty) {
+          // Check if already exists by fide_id
+          final existing = await _supabase
+              .from('user_favorite_players')
+              .select('id')
+              .eq('user_id', user.id)
+              .eq('fide_id', fideId)
+              .maybeSingle();
+
+          if (existing != null) {
+            // Already exists, skip
+            continue;
+          }
+        }
+
+        // Insert new favorite
+        await _supabase.from('user_favorite_players').upsert(
+          item,
+          onConflict: 'user_id,player_name',
+          ignoreDuplicates: true,
+        );
+      }
 
       state = {};
       await _ref.read(favoritePlayersProviderNew.notifier).syncFromSupabase();

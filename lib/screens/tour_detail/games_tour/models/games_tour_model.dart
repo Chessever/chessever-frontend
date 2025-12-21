@@ -216,7 +216,8 @@ class GamesTourModel {
         pgn: game.pgn?.isNotEmpty == true ? game.pgn : null,
         lastMove: game.lastMove?.isNotEmpty == true ? game.lastMove : null,
         boardNr: game.boardNr,
-        lastMoveTime: game.lastMoveTime,
+        // Use lastMoveTime if available, otherwise fall back to dateStart
+        lastMoveTime: game.lastMoveTime ?? game.dateStart,
       );
     } catch (e) {
       throw ArgumentError(

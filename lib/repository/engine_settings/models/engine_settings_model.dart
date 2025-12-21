@@ -12,6 +12,7 @@ class EngineSettingsModel with EngineSettingsModelMappable {
   final bool showEngineAnalysis; // Controls visibility of PV cards & arrows (computer icon)
   final int searchTimeIndex;
   final int principalVariationIndex;
+  final int maxArrowsOnBoard; // Max arrows to show on board (index 0-4 = 1-5 arrows)
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -24,6 +25,7 @@ class EngineSettingsModel with EngineSettingsModelMappable {
     required this.showEngineAnalysis,
     required this.searchTimeIndex,
     required this.principalVariationIndex,
+    required this.maxArrowsOnBoard,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -39,6 +41,7 @@ class EngineSettingsModel with EngineSettingsModelMappable {
       showEngineAnalysis: json['show_engine_analysis'] as bool? ?? true,
       searchTimeIndex: json['search_time_index'] as int? ?? 5,
       principalVariationIndex: json['principal_variation_index'] as int? ?? 4,
+      maxArrowsOnBoard: json['max_arrows_on_board'] as int? ?? 2,
       createdAt: DateTime.parse(json['created_at'] as String),
       updatedAt: DateTime.parse(json['updated_at'] as String),
     );
@@ -55,6 +58,7 @@ class EngineSettingsModel with EngineSettingsModelMappable {
       'show_engine_analysis': showEngineAnalysis,
       'search_time_index': searchTimeIndex,
       'principal_variation_index': principalVariationIndex,
+      'max_arrows_on_board': maxArrowsOnBoard,
       'created_at': createdAt.toIso8601String(),
       'updated_at': updatedAt.toIso8601String(),
     };
@@ -70,6 +74,7 @@ class EngineSettingsModel with EngineSettingsModelMappable {
       'show_engine_analysis': showEngineAnalysis,
       'search_time_index': searchTimeIndex,
       'principal_variation_index': principalVariationIndex,
+      'max_arrows_on_board': maxArrowsOnBoard,
     };
   }
 
@@ -84,6 +89,7 @@ class EngineSettingsModel with EngineSettingsModelMappable {
       showEngineAnalysis: true, // Engine visibility enabled by default
       searchTimeIndex: 5, // Infinite default
       principalVariationIndex: 4, // Default to 5 lines (index 4)
+      maxArrowsOnBoard: 2, // Default to 3 arrows (index 2)
       createdAt: DateTime.now(),
       updatedAt: DateTime.now(),
     );
