@@ -844,12 +844,16 @@ class _ColorStatCard extends StatelessWidget {
             ),
           ),
           SizedBox(height: 8.h),
-          Text(
-            '+$wins / =$draws / -$losses',
-            style: AppTypography.textXsMedium.copyWith(
-              color: kWhiteColor.withValues(alpha: 0.7),
-            ),
+          Row(
+            children: [
+              _WLDIndicator(value: wins, type: 'W'),
+              SizedBox(width: 6.w),
+              _WLDIndicator(value: draws, type: 'D'),
+              SizedBox(width: 6.w),
+              _WLDIndicator(value: losses, type: 'L'),
+            ],
           ),
+          SizedBox(height: 4.h),
           Text(
             '$games games',
             style: AppTypography.textXsRegular.copyWith(
@@ -1011,11 +1015,22 @@ class _OpeningRow extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
-                Text(
-                  '+${opening.wins} =${opening.draws} -${opening.losses} (${opening.count} games)',
-                  style: AppTypography.textXsRegular.copyWith(
-                    color: kWhiteColor.withValues(alpha: 0.5),
-                  ),
+                SizedBox(height: 4.h),
+                Row(
+                  children: [
+                    _WLDIndicator(value: opening.wins, type: 'W', compact: true),
+                    SizedBox(width: 4.w),
+                    _WLDIndicator(value: opening.draws, type: 'D', compact: true),
+                    SizedBox(width: 4.w),
+                    _WLDIndicator(value: opening.losses, type: 'L', compact: true),
+                    SizedBox(width: 8.w),
+                    Text(
+                      '${opening.count} games',
+                      style: AppTypography.textXsRegular.copyWith(
+                        color: kWhiteColor.withValues(alpha: 0.4),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -1066,5 +1081,69 @@ class _OpeningRow extends StatelessWidget {
     if (score >= 0.6) return kGreenColor;
     if (score >= 0.4) return kWhiteColor;
     return Colors.redAccent;
+  }
+}
+
+/// Win/Loss/Draw indicator with color
+class _WLDIndicator extends StatelessWidget {
+  const _WLDIndicator({
+    required this.value,
+    required this.type,
+    this.compact = false,
+  });
+
+  final int value;
+  final String type; // 'W', 'L', or 'D'
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    final Color bgColor;
+    final Color textColor;
+
+    switch (type) {
+      case 'W':
+        bgColor = kGreenColor.withValues(alpha: 0.2);
+        textColor = kGreenColor;
+        break;
+      case 'L':
+        bgColor = Colors.redAccent.withValues(alpha: 0.2);
+        textColor = Colors.redAccent;
+        break;
+      case 'D':
+      default:
+        bgColor = kWhiteColor.withValues(alpha: 0.15);
+        textColor = kWhiteColor.withValues(alpha: 0.7);
+        break;
+    }
+
+    return Container(
+      padding: EdgeInsets.symmetric(
+        horizontal: compact ? 6.w : 8.w,
+        vertical: compact ? 2.h : 4.h,
+      ),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(4.br),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            type,
+            style: (compact ? AppTypography.textXsBold : AppTypography.textXsMedium).copyWith(
+              color: textColor,
+            ),
+          ),
+          SizedBox(width: compact ? 2.w : 4.w),
+          Text(
+            value.toString(),
+            style: (compact ? AppTypography.textXsBold : AppTypography.textXsMedium).copyWith(
+              color: textColor,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
