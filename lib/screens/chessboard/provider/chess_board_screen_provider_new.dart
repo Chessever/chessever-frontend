@@ -45,7 +45,7 @@ bool _shouldPersistCloudEval(CloudEval eval) {
 // REMOVED: Hardcoded limit - now we use all PVs that were requested
 // const int _kMaxPrincipalVariations = 3;
 
-enum ChessboardView { favScorecard, tour, countryman }
+enum ChessboardView { favScorecard, tour, countryman, playerProfile }
 
 final chessboardViewFromProviderNew = StateProvider<ChessboardView>((ref) {
   return ChessboardView.tour;

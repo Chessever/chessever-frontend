@@ -393,7 +393,7 @@ class _CountrymenCombinedGamesScreenState
                 allGames: games,
                 gameIndex: index,
                 animationIndex: index,
-                showRound: false,
+                showRound: true,
                 onAdd: () => _showAddToFolderSheet(context, game),
               ),
             );

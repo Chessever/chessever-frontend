@@ -98,21 +98,62 @@ extension GameTimeControlFilterX on GameTimeControlFilter {
   }
 }
 
+/// ECO opening filter - supports individual ECO codes (A00-E99)
+class GameEcoFilter {
+  const GameEcoFilter({this.code});
+
+  /// The specific ECO code (e.g., "B90", "C89") or null for all openings
+  final String? code;
+
+  /// Factory for "all openings" filter
+  static const GameEcoFilter all = GameEcoFilter();
+
+  /// Create a filter for a specific ECO code
+  factory GameEcoFilter.forCode(String code) => GameEcoFilter(code: code.toUpperCase());
+
+  /// Whether this filter shows all openings
+  bool get isAll => code == null;
+
+  /// Get the category letter (A, B, C, D, E) or null
+  String? get categoryLetter => code?.isNotEmpty == true ? code![0] : null;
+
+  /// Display text for the filter
+  String get displayText => code ?? 'All Openings';
+
+  /// Check if a game's ECO code matches this filter
+  bool matches(String? eco) {
+    if (isAll) return true;
+    if (eco == null || eco.isEmpty) return false;
+    return eco.toUpperCase().startsWith(code!);
+  }
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    return other is GameEcoFilter && other.code == code;
+  }
+
+  @override
+  int get hashCode => code.hashCode;
+}
+
 /// Complete filter state for chess games
 class GameFilter {
   const GameFilter({
     this.result = GameResultFilter.all,
     this.color = GameColorFilter.all,
     this.timeControl = GameTimeControlFilter.all,
+    GameEcoFilter? eco,
     this.minYear = 1990,
     this.maxYear = 2025,
     this.minRating = 1000,
     this.maxRating = 3500,
-  });
+  }) : eco = eco ?? GameEcoFilter.all;
 
   final GameResultFilter result;
   final GameColorFilter color;
   final GameTimeControlFilter timeControl;
+  final GameEcoFilter eco;
   final int minYear;
   final int maxYear;
   final int minRating;
@@ -123,6 +164,7 @@ class GameFilter {
       result != GameResultFilter.all ||
       color != GameColorFilter.all ||
       timeControl != GameTimeControlFilter.all ||
+      !eco.isAll ||
       minYear != 1990 ||
       maxYear != DateTime.now().year ||
       minRating != 1000 ||
@@ -134,6 +176,7 @@ class GameFilter {
     if (result != GameResultFilter.all) count++;
     if (color != GameColorFilter.all) count++;
     if (timeControl != GameTimeControlFilter.all) count++;
+    if (!eco.isAll) count++;
     if (minYear != 1990 || maxYear != DateTime.now().year) count++;
     if (minRating != 1000 || maxRating != 3500) count++;
     return count;
@@ -143,6 +186,7 @@ class GameFilter {
     GameResultFilter? result,
     GameColorFilter? color,
     GameTimeControlFilter? timeControl,
+    GameEcoFilter? eco,
     int? minYear,
     int? maxYear,
     int? minRating,
@@ -152,6 +196,7 @@ class GameFilter {
       result: result ?? this.result,
       color: color ?? this.color,
       timeControl: timeControl ?? this.timeControl,
+      eco: eco ?? this.eco,
       minYear: minYear ?? this.minYear,
       maxYear: maxYear ?? this.maxYear,
       minRating: minRating ?? this.minRating,
@@ -168,6 +213,7 @@ class GameFilter {
         other.result == result &&
         other.color == color &&
         other.timeControl == timeControl &&
+        other.eco == eco &&
         other.minYear == minYear &&
         other.maxYear == maxYear &&
         other.minRating == minRating &&
@@ -179,6 +225,7 @@ class GameFilter {
         result,
         color,
         timeControl,
+        eco,
         minYear,
         maxYear,
         minRating,
@@ -203,6 +250,9 @@ class GameFilterHelper {
         final inferred = _inferTimeControl(game);
         if (inferred != filter.timeControl) return false;
       }
+
+      // ECO filter - uses the new class-based filter
+      if (!filter.eco.matches(game.eco)) return false;
 
       // Year filter
       final year = game.lastMoveTime?.year;

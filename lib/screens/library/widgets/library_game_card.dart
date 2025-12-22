@@ -39,7 +39,7 @@ class LibraryGameCard extends ConsumerWidget {
       eventName ?? game.tourSlug ?? game.tourId,
     );
     final timeControlIcon = _getTimeControlIcon(displayEventName);
-    final displayEco = eco ?? game.roundSlug ?? '';
+    final displayEco = eco ?? '';  // Only ECO code, never round info
     final displayDate = _formatDate(date ?? game.lastMoveTime);
 
     return GestureDetector(
@@ -112,48 +112,40 @@ class LibraryGameCard extends ConsumerWidget {
               ),
               child: Row(
                 children: [
-                  Expanded(
-                    child: Row(
-                      children: [
-                        Image.asset(
-                          timeControlIcon,
-                          width: 14.sp,
-                          height: 14.sp,
-                        ),
-                        SizedBox(width: 8.w),
-                        Expanded(
-                          child: Text(
-                            displayEventName,
-                            style: AppTypography.textXsRegular.copyWith(
-                              color: const Color(0xFFA1A1AA),
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ],
-                    ),
+                  // Left: time control icon + event name (flexible, not greedy)
+                  Image.asset(
+                    timeControlIcon,
+                    width: 14.sp,
+                    height: 14.sp,
                   ),
-                  if (showRound && displayEco.isNotEmpty) ...[
-                    SizedBox(width: 8.w),
-                    Text(
-                      displayEco,
-                      style: AppTypography.textXsMedium.copyWith(
+                  SizedBox(width: 8.w),
+                  Flexible(
+                    child: Text(
+                      displayEventName,
+                      style: AppTypography.textXsRegular.copyWith(
                         color: const Color(0xFFA1A1AA),
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
+                  ),
+                  // Right: ECO code + date
+                  if (showRound && displayEco.isNotEmpty) ...[
+                    SizedBox(width: 10.w),
+                    Text(
+                      displayEco,
+                      style: AppTypography.textXsMedium.copyWith(
+                        color: const Color(0xFFA1A1AA),
+                      ),
+                    ),
                   ],
                   if (displayDate.isNotEmpty) ...[
-                    SizedBox(width: 10.w),
+                    SizedBox(width: 8.w),
                     Text(
                       displayDate,
                       style: AppTypography.textXsRegular.copyWith(
                         color: const Color(0xFF71717A),
                       ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
                     ),
                   ],
                 ],

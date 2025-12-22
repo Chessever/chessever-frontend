@@ -19,6 +19,8 @@ class Games {
   final int? lastClockWhite;
   final int? lastClockBlack;
   final DateTime? dateStart;
+  final String? eco;
+  final String? openingName;
 
   Games({
     required this.id,
@@ -39,6 +41,8 @@ class Games {
     this.lastClockWhite,
     this.lastClockBlack,
     this.dateStart,
+    this.eco,
+    this.openingName,
   });
 
   Games copyWith({
@@ -60,6 +64,8 @@ class Games {
     int? lastClockWhite,
     int? lastClockBlack,
     DateTime? dateStart,
+    String? eco,
+    String? openingName,
   }) {
     return Games(
       id: id ?? this.id,
@@ -80,6 +86,8 @@ class Games {
       lastClockWhite: lastClockWhite ?? this.lastClockWhite,
       lastClockBlack: lastClockBlack ?? this.lastClockBlack,
       dateStart: dateStart ?? this.dateStart,
+      eco: eco ?? this.eco,
+      openingName: openingName ?? this.openingName,
     );
   }
 
@@ -128,6 +136,8 @@ class Games {
             json['date_start'] != null
                 ? DateTime.parse(json['date_start'] as String)
                 : null,
+        eco: json['eco'] as String?,
+        openingName: json['opening_name'] as String?,
       );
     } catch (e, _) {
       rethrow;
@@ -156,6 +166,8 @@ class Games {
       if (lastClockBlack != null) 'last_clock_black': lastClockBlack,
       if (dateStart != null)
         'date_start': dateStart!.toIso8601String().split('T').first,
+      if (eco != null) 'eco': eco,
+      if (openingName != null) 'opening_name': openingName,
     };
   }
 }

@@ -361,6 +361,7 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
 
     // Build list items: date headers + games
     final items = <Widget>[];
+    bool isFirstGameCard = true;
 
     for (final entry in gamesByDate.entries) {
       final dateKey = entry.key;
@@ -385,6 +386,8 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
         for (int i = 0; i < dateGames.length; i++) {
           final game = dateGames[i];
           final isLast = i == dateGames.length - 1;
+          final showHint = isFirstGameCard;
+          if (isFirstGameCard) isFirstGameCard = false;
           items.add(
             Padding(
               padding: EdgeInsets.only(bottom: isLast ? 16.h : 12.h),
@@ -393,7 +396,8 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
                 allGames: games,
                 gameIndex: games.indexOf(game),
                 animationIndex: items.length,
-                showRound: false,
+                showRound: true,
+                showSwipeHint: showHint,
                 showGamebaseButton: false, // Hide book icon for Countrymen context
                 onAdd: () => _showAddToFolderSheet(context, game),
               ),
