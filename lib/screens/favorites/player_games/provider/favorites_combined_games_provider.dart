@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:chessever2/providers/favorite_players_provider.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -16,6 +17,7 @@ class FavoritesCombinedGamesState {
   final Set<String> seenGameIds;
   final String searchQuery; // Current search query
   final Set<String> selectedFideIds; // Filter chips - selected player FIDE IDs
+  final GameFilter filter; // Game filter settings
 
   const FavoritesCombinedGamesState({
     this.games = const [],
@@ -26,10 +28,23 @@ class FavoritesCombinedGamesState {
     this.seenGameIds = const {},
     this.searchQuery = '',
     this.selectedFideIds = const {},
+    this.filter = const GameFilter(),
   });
 
   bool get isSearching => searchQuery.isNotEmpty;
   bool get isFiltering => selectedFideIds.isNotEmpty;
+
+  /// Get filtered games based on current filter settings
+  /// Combines search results with filter settings (AND logic)
+  List<GamesTourModel> get filteredGames {
+    if (!filter.hasActiveFilters) return games;
+    // Pass searchQuery for Color filter to work correctly
+    return GameFilterHelper.applyFilter(
+      games,
+      filter,
+      playerNameQuery: searchQuery,
+    );
+  }
 
   FavoritesCombinedGamesState copyWith({
     List<GamesTourModel>? games,
@@ -40,6 +55,7 @@ class FavoritesCombinedGamesState {
     Set<String>? seenGameIds,
     String? searchQuery,
     Set<String>? selectedFideIds,
+    GameFilter? filter,
   }) {
     return FavoritesCombinedGamesState(
       games: games ?? this.games,
@@ -50,6 +66,7 @@ class FavoritesCombinedGamesState {
       seenGameIds: seenGameIds ?? this.seenGameIds,
       searchQuery: searchQuery ?? this.searchQuery,
       selectedFideIds: selectedFideIds ?? this.selectedFideIds,
+      filter: filter ?? this.filter,
     );
   }
 }
@@ -493,4 +510,15 @@ class FavoritesCombinedGamesNotifier
     }
   }
 
+  /// Apply a new filter to the games
+  void applyFilter(GameFilter filter) {
+    debugPrint('[FavoritesGames] Applying filter: result=${filter.result}, color=${filter.color}, timeControl=${filter.timeControl}');
+    state = state.copyWith(filter: filter);
+  }
+
+  /// Clear all game filters
+  void clearFilter() {
+    debugPrint('[FavoritesGames] Clearing filter');
+    state = state.copyWith(filter: GameFilter.defaultFilter());
+  }
 }

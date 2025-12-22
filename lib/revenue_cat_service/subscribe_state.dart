@@ -89,15 +89,17 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
 
       DateTime? expirationDate;
       String? managementUrl;
+      bool willRenew = true;
 
       if (customerInfo != null) {
-        // Get expiration date from active entitlements
+        // Get expiration date and willRenew from active entitlements
         final activeEntitlements = customerInfo.entitlements.active;
         if (activeEntitlements.isNotEmpty) {
           final entitlement = activeEntitlements.values.first;
           if (entitlement.expirationDate != null) {
             expirationDate = DateTime.tryParse(entitlement.expirationDate!);
           }
+          willRenew = entitlement.willRenew;
         }
         // Get management URL
         managementUrl = customerInfo.managementURL;
@@ -109,6 +111,7 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
         isLoading: false,
         expirationDate: expirationDate,
         managementUrl: managementUrl,
+        willRenew: willRenew,
       );
 
       // Schedule expiration check if subscribed
@@ -132,6 +135,7 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
 
       DateTime? expirationDate;
       String? managementUrl;
+      bool willRenew = true;
 
       if (customerInfo != null) {
         final activeEntitlements = customerInfo.entitlements.active;
@@ -140,6 +144,7 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
           if (entitlement.expirationDate != null) {
             expirationDate = DateTime.tryParse(entitlement.expirationDate!);
           }
+          willRenew = entitlement.willRenew;
         }
         managementUrl = customerInfo.managementURL;
       }
@@ -150,6 +155,7 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
         isLoading: false,
         expirationDate: expirationDate,
         managementUrl: managementUrl,
+        willRenew: willRenew,
       );
     } catch (e) {
       debugPrint('❌ Subscription refresh error: $e');
@@ -178,11 +184,13 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
     final isSubscribed = hasPremiumEntitlement || hasAnyEntitlement;
 
     DateTime? expirationDate;
+    bool willRenew = true;
     if (customerInfo.entitlements.active.isNotEmpty) {
       final entitlement = customerInfo.entitlements.active.values.first;
       if (entitlement.expirationDate != null) {
         expirationDate = DateTime.tryParse(entitlement.expirationDate!);
       }
+      willRenew = entitlement.willRenew;
     }
 
     final previouslySubscribed = state.isSubscribed;
@@ -190,6 +198,7 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
       isSubscribed: isSubscribed,
       expirationDate: expirationDate,
       managementUrl: customerInfo.managementURL,
+      willRenew: willRenew,
     );
 
     // Log subscription status changes for debugging
@@ -259,6 +268,9 @@ class SubscriptionState {
   final String? error;
   final DateTime? expirationDate;
   final String? managementUrl;
+  /// True if the subscription will auto-renew at the end of the billing period.
+  /// False if user has cancelled (but may still have access until expirationDate).
+  final bool willRenew;
 
   SubscriptionState({
     this.isSubscribed = false,
@@ -267,6 +279,7 @@ class SubscriptionState {
     this.error,
     this.expirationDate,
     this.managementUrl,
+    this.willRenew = true,
   });
 
   SubscriptionState copyWith({
@@ -276,6 +289,7 @@ class SubscriptionState {
     String? error,
     DateTime? expirationDate,
     String? managementUrl,
+    bool? willRenew,
   }) {
     return SubscriptionState(
       isSubscribed: isSubscribed ?? this.isSubscribed,
@@ -284,6 +298,7 @@ class SubscriptionState {
       error: error,
       expirationDate: expirationDate ?? this.expirationDate,
       managementUrl: managementUrl ?? this.managementUrl,
+      willRenew: willRenew ?? this.willRenew,
     );
   }
 }

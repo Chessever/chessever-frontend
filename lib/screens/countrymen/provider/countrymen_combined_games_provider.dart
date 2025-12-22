@@ -2,6 +2,7 @@ import 'package:chessever2/providers/country_dropdown_provider.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/utils/country_utils.dart';
+import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:country_picker/country_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -17,6 +18,7 @@ class CountrymenCombinedGamesState {
   final String? countryCode;
   final String? countryName;
   final String searchQuery; // Current search query
+  final GameFilter filter; // Game filter settings
 
   const CountrymenCombinedGamesState({
     this.games = const [],
@@ -27,9 +29,22 @@ class CountrymenCombinedGamesState {
     this.countryCode,
     this.countryName,
     this.searchQuery = '',
+    this.filter = const GameFilter(),
   });
 
   bool get isSearching => searchQuery.isNotEmpty;
+
+  /// Get filtered games based on current filter settings
+  /// Combines search results with filter settings (AND logic)
+  List<GamesTourModel> get filteredGames {
+    if (!filter.hasActiveFilters) return games;
+    // Pass searchQuery for Color filter to work correctly
+    return GameFilterHelper.applyFilter(
+      games,
+      filter,
+      playerNameQuery: searchQuery,
+    );
+  }
 
   CountrymenCombinedGamesState copyWith({
     List<GamesTourModel>? games,
@@ -40,6 +55,7 @@ class CountrymenCombinedGamesState {
     String? countryCode,
     String? countryName,
     String? searchQuery,
+    GameFilter? filter,
   }) {
     return CountrymenCombinedGamesState(
       games: games ?? this.games,
@@ -50,6 +66,7 @@ class CountrymenCombinedGamesState {
       countryCode: countryCode ?? this.countryCode,
       countryName: countryName ?? this.countryName,
       searchQuery: searchQuery ?? this.searchQuery,
+      filter: filter ?? this.filter,
     );
   }
 }
@@ -456,4 +473,15 @@ class CountrymenCombinedGamesNotifier
     }
   }
 
+  /// Apply a new filter to the games
+  void applyFilter(GameFilter filter) {
+    debugPrint('[CountrymenGames] Applying filter: result=${filter.result}, color=${filter.color}, timeControl=${filter.timeControl}');
+    state = state.copyWith(filter: filter);
+  }
+
+  /// Clear all filters
+  void clearFilter() {
+    debugPrint('[CountrymenGames] Clearing filter');
+    state = state.copyWith(filter: GameFilter.defaultFilter());
+  }
 }

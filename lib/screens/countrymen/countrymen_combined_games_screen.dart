@@ -8,6 +8,7 @@ import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/game_filter/game_filter.dart';
 import 'package:country_flags/country_flags.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -115,6 +116,8 @@ class _CountrymenCombinedGamesScreenState
   Widget _buildPinnedAppBar(BuildContext context, CountrymenCombinedGamesState state) {
     final countryCode = state.countryCode ?? '';
     final countryName = state.countryName ?? 'Your Country';
+    final hasActiveFilters = state.filter.hasActiveFilters;
+    final activeFilterCount = state.filter.activeFilterCount;
 
     return SliverAppBar(
       pinned: true,
@@ -182,10 +185,64 @@ class _CountrymenCombinedGamesScreenState
               ],
             ),
           ),
-          SizedBox(width: 16.w),
+          // Filter button
+          GestureDetector(
+            onTap: () => _showFilterDialog(state),
+            child: Container(
+              padding: EdgeInsets.all(8.w),
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Icon(
+                    Icons.tune_rounded,
+                    size: 22.ic,
+                    color: hasActiveFilters ? kWhiteColor : const Color(0xFFA1A1AA),
+                  ),
+                  // Badge showing active filter count
+                  if (hasActiveFilters)
+                    Positioned(
+                      right: -4.w,
+                      top: -4.h,
+                      child: Container(
+                        padding: EdgeInsets.all(4.w),
+                        decoration: const BoxDecoration(
+                          color: Color(0xFFEF4444),
+                          shape: BoxShape.circle,
+                        ),
+                        constraints: BoxConstraints(
+                          minWidth: 16.w,
+                          minHeight: 16.h,
+                        ),
+                        child: Text(
+                          '$activeFilterCount',
+                          style: AppTypography.textXsBold.copyWith(
+                            color: kWhiteColor,
+                            fontSize: 10.sp,
+                            height: 1,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+          SizedBox(width: 12.w),
         ],
       ),
     );
+  }
+
+  Future<void> _showFilterDialog(CountrymenCombinedGamesState state) async {
+    HapticFeedbackService.buttonPress();
+    final result = await showGameFilterDialog(
+      context: context,
+      currentFilter: state.filter,
+    );
+    if (result != null && mounted) {
+      ref.read(countrymenCombinedGamesProvider.notifier).applyFilter(result);
+    }
   }
 
   Widget _buildSearchBar() {
@@ -271,7 +328,16 @@ class _CountrymenCombinedGamesScreenState
       );
     }
 
-    final games = state.games;
+    // Use filtered games based on filter settings
+    final games = state.filteredGames;
+
+    // Show empty state if filter excludes all games
+    if (games.isEmpty && state.filter.hasActiveFilters) {
+      return SliverFillRemaining(
+        hasScrollBody: false,
+        child: _buildNoFilterResultsState(),
+      );
+    }
 
     // Show loading indicator when fetching more
     final showLoadingIndicator = (state.hasMore || state.isLoading) &&
@@ -515,6 +581,56 @@ class _CountrymenCombinedGamesScreenState
               color: kWhiteColor.withValues(alpha: 0.55),
             ),
             textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+    ).animate().fadeIn(duration: 300.ms);
+  }
+
+  Widget _buildNoFilterResultsState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.filter_alt_off_outlined,
+            size: 56.sp,
+            color: kWhiteColor.withValues(alpha: 0.4),
+          ),
+          SizedBox(height: 12.h),
+          Text(
+            'No matching games',
+            style: AppTypography.textMdMedium.copyWith(
+              color: kWhiteColor.withValues(alpha: 0.85),
+            ),
+          ),
+          SizedBox(height: 6.h),
+          Text(
+            'Try adjusting your filters',
+            style: AppTypography.textSmRegular.copyWith(
+              color: kWhiteColor.withValues(alpha: 0.55),
+            ),
+            textAlign: TextAlign.center,
+          ),
+          SizedBox(height: 20.h),
+          GestureDetector(
+            onTap: () {
+              HapticFeedback.mediumImpact();
+              ref.read(countrymenCombinedGamesProvider.notifier).clearFilter();
+            },
+            child: Container(
+              padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 10.h),
+              decoration: BoxDecoration(
+                color: kWhiteColor.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8.br),
+              ),
+              child: Text(
+                'Clear Filters',
+                style: AppTypography.textSmMedium.copyWith(
+                  color: kWhiteColor,
+                ),
+              ),
+            ),
           ),
         ],
       ),

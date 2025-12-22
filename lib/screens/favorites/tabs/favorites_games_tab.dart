@@ -11,6 +11,7 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/federation_flag.dart';
+import 'package:chessever2/widgets/game_filter/game_filter.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -271,55 +272,134 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
   }
 
   Widget _buildSearchBar(FavoritesCombinedGamesState state) {
-    return Container(
-      decoration: BoxDecoration(
-        color: const Color(0xFF09090B),
-        borderRadius: BorderRadius.circular(12.br),
-        border: Border.all(color: const Color(0xFF27272A)),
-      ),
+    final hasActiveFilters = state.filter.hasActiveFilters;
+    final activeFilterCount = state.filter.activeFilterCount;
+    final searchBarHeight = 48.h;
+
+    return SizedBox(
+      height: searchBarHeight,
       child: Row(
         children: [
-          SizedBox(width: 12.w),
-          Icon(
-            Icons.search,
-            size: 20.sp,
-            color: const Color(0xFFA1A1AA),
-          ),
-          SizedBox(width: 8.w),
+          // Search field
           Expanded(
-            child: TextField(
-              controller: _searchController,
-              focusNode: _searchFocusNode,
-              style: AppTypography.textSmRegular.copyWith(
-                color: const Color(0xFFFAFAFA),
+            child: Container(
+              decoration: BoxDecoration(
+                color: const Color(0xFF09090B),
+                borderRadius: BorderRadius.circular(12.br),
+                border: Border.all(color: const Color(0xFF27272A)),
               ),
-              onChanged: _onSearchChanged,
-              decoration: InputDecoration(
-                isDense: true,
-                hintText: 'Search games',
-                hintStyle: AppTypography.textSmRegular.copyWith(
-                  color: const Color(0xFFA1A1AA),
-                ),
-                border: InputBorder.none,
-                contentPadding: EdgeInsets.symmetric(vertical: 14.h),
+              child: Row(
+                children: [
+                  SizedBox(width: 12.w),
+                  Icon(
+                    Icons.search,
+                    size: 20.sp,
+                    color: const Color(0xFFA1A1AA),
+                  ),
+                  SizedBox(width: 8.w),
+                  Expanded(
+                    child: TextField(
+                      controller: _searchController,
+                      focusNode: _searchFocusNode,
+                      style: AppTypography.textSmRegular.copyWith(
+                        color: const Color(0xFFFAFAFA),
+                      ),
+                      onChanged: _onSearchChanged,
+                      decoration: InputDecoration(
+                        isDense: true,
+                        hintText: 'Search games',
+                        hintStyle: AppTypography.textSmRegular.copyWith(
+                          color: const Color(0xFFA1A1AA),
+                        ),
+                        border: InputBorder.none,
+                        contentPadding: EdgeInsets.symmetric(vertical: 14.h),
+                      ),
+                    ),
+                  ),
+                  if (_searchController.text.isNotEmpty || state.isSearching) ...[
+                    GestureDetector(
+                      onTap: _clearSearch,
+                      child: Icon(
+                        Icons.close,
+                        size: 20.sp,
+                        color: const Color(0xFFA1A1AA),
+                      ),
+                    ),
+                    SizedBox(width: 8.w),
+                  ],
+                  SizedBox(width: 8.w),
+                ],
               ),
             ),
           ),
-          if (_searchController.text.isNotEmpty || state.isSearching) ...[
-            GestureDetector(
-              onTap: _clearSearch,
-              child: Icon(
-                Icons.close,
-                size: 20.sp,
-                color: const Color(0xFFA1A1AA),
+          // Filter button
+          SizedBox(width: 8.w),
+          GestureDetector(
+            onTap: () => _showFilterDialog(state),
+            child: Container(
+              width: searchBarHeight,
+              height: searchBarHeight,
+              decoration: BoxDecoration(
+                color: hasActiveFilters
+                    ? const Color(0xFFEF4444).withValues(alpha: 0.15)
+                    : const Color(0xFF09090B),
+                borderRadius: BorderRadius.circular(12.br),
+                border: Border.all(
+                  color: hasActiveFilters
+                      ? const Color(0xFFEF4444).withValues(alpha: 0.5)
+                      : const Color(0xFF27272A),
+                ),
+              ),
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  Icon(
+                    Icons.tune_rounded,
+                    size: 20.sp,
+                    color: hasActiveFilters ? const Color(0xFFEF4444) : const Color(0xFFA1A1AA),
+                  ),
+                  // Badge showing active filter count
+                  if (hasActiveFilters)
+                    Positioned(
+                      right: 6.w,
+                      top: 6.h,
+                      child: Container(
+                        width: 14.w,
+                        height: 14.h,
+                        decoration: const BoxDecoration(
+                          color: Color(0xFFEF4444),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Center(
+                          child: Text(
+                            '$activeFilterCount',
+                            style: AppTypography.textXsBold.copyWith(
+                              color: kWhiteColor,
+                              fontSize: 9.sp,
+                              height: 1,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
               ),
             ),
-            SizedBox(width: 8.w),
-          ],
-          SizedBox(width: 8.w),
+          ),
         ],
       ),
     );
+  }
+
+  Future<void> _showFilterDialog(FavoritesCombinedGamesState state) async {
+    HapticFeedbackService.buttonPress();
+    final result = await showGameFilterDialog(
+      context: context,
+      currentFilter: state.filter,
+    );
+    if (result != null && mounted) {
+      ref.read(favoritesCombinedGamesProvider.notifier).applyFilter(result);
+    }
   }
 
   Widget _buildFilterChips(FavoritesCombinedGamesState state, List<FavoritePlayer> favorites) {
@@ -477,8 +557,16 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
       );
     }
 
-    // Games are already filtered by the provider via Supabase queries
-    final games = state.games;
+    // Use filtered games based on filter settings
+    final games = state.filteredGames;
+
+    // Show empty state if filter excludes all games
+    if (games.isEmpty && state.filter.hasActiveFilters) {
+      return SliverFillRemaining(
+        hasScrollBody: false,
+        child: _buildNoFilterResultsState(),
+      );
+    }
 
     // Group games by date
     final gamesByDate = _groupGamesByDate(games);
@@ -725,6 +813,56 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
               color: kWhiteColor.withValues(alpha: 0.55),
             ),
             textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+    ).animate().fadeIn(duration: 300.ms);
+  }
+
+  Widget _buildNoFilterResultsState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.filter_alt_off_outlined,
+            size: 56.sp,
+            color: kWhiteColor.withValues(alpha: 0.4),
+          ),
+          SizedBox(height: 12.h),
+          Text(
+            'No matching games',
+            style: AppTypography.textMdMedium.copyWith(
+              color: kWhiteColor.withValues(alpha: 0.85),
+            ),
+          ),
+          SizedBox(height: 6.h),
+          Text(
+            'Try adjusting your filters',
+            style: AppTypography.textSmRegular.copyWith(
+              color: kWhiteColor.withValues(alpha: 0.55),
+            ),
+            textAlign: TextAlign.center,
+          ),
+          SizedBox(height: 20.h),
+          GestureDetector(
+            onTap: () {
+              HapticFeedback.mediumImpact();
+              ref.read(favoritesCombinedGamesProvider.notifier).clearFilter();
+            },
+            child: Container(
+              padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 10.h),
+              decoration: BoxDecoration(
+                color: kWhiteColor.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8.br),
+              ),
+              child: Text(
+                'Clear Filters',
+                style: AppTypography.textSmMedium.copyWith(
+                  color: kWhiteColor,
+                ),
+              ),
+            ),
           ),
         ],
       ),

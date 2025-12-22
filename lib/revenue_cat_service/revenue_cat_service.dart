@@ -171,6 +171,8 @@ class RevenueCatService {
   /// Returns the latest CustomerInfo after sync.
   Future<CustomerInfo?> syncPurchases() async {
     try {
+      // Invalidate cache first to ensure we get fresh data from RevenueCat servers
+      await Purchases.invalidateCustomerInfoCache();
       await Purchases.syncPurchases();
       debugPrint('✅ RevenueCat purchases synced');
       // Always fetch fresh customer info after sync to ensure state is up-to-date

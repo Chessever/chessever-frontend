@@ -221,12 +221,14 @@ class ChessSheetRoutes {
     required WidgetBuilder builder,
     BuildContext? context,
   }) {
+    final padding = context != null ? MediaQuery.viewPaddingOf(context) : EdgeInsets.zero;
     return SpringModalSheetRoute<void>(
       builder: builder,
       springCurve: ChessSheetCurves.snappy,
       barrierColor: Colors.black.withValues(alpha: 0.65),
       barrierLabel: 'Close menu',
-      viewportPadding: context != null ? MediaQuery.viewPaddingOf(context) : EdgeInsets.zero,
+      // Only respect top padding; allow the sheet to cover the bottom safe area
+      viewportPadding: EdgeInsets.only(top: padding.top),
     );
   }
 
@@ -235,12 +237,14 @@ class ChessSheetRoutes {
     required WidgetBuilder builder,
     BuildContext? context,
   }) {
+    final padding = context != null ? MediaQuery.viewPaddingOf(context) : EdgeInsets.zero;
     return SpringModalSheetRoute<void>(
       builder: builder,
       springCurve: ChessSheetCurves.smooth,
       barrierColor: Colors.black.withValues(alpha: 0.70),
       barrierLabel: 'Close editor',
-      viewportPadding: context != null ? MediaQuery.viewPaddingOf(context) : EdgeInsets.zero,
+      // Only respect top padding; allow the sheet to cover the bottom safe area
+      viewportPadding: EdgeInsets.only(top: padding.top),
     );
   }
 

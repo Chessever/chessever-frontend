@@ -195,11 +195,26 @@ class _SubscriptionTierHeader extends ConsumerWidget {
     }
   }
 
+  String _getSubscriptionStatusText(DateTime? expirationDate, bool willRenew) {
+    if (expirationDate == null) {
+      return 'Active subscription';
+    }
+
+    final formattedDate = _formatExpirationDate(expirationDate);
+
+    // If subscription will auto-renew, show "Renews"
+    // Otherwise user has cancelled, show "Expires"
+    return willRenew
+        ? 'Renews $formattedDate'
+        : 'Expires $formattedDate';
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final subscriptionState = ref.watch(subscriptionProvider);
     final isPremium = subscriptionState.isSubscribed;
     final expirationDate = subscriptionState.expirationDate;
+    final willRenew = subscriptionState.willRenew;
 
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: 12.sp),
@@ -255,9 +270,7 @@ class _SubscriptionTierHeader extends ConsumerWidget {
                         SizedBox(height: 2.h),
                         Text(
                           isPremium
-                              ? (expirationDate != null
-                                  ? 'Renews ${_formatExpirationDate(expirationDate)}'
-                                  : 'Active subscription')
+                              ? _getSubscriptionStatusText(expirationDate, willRenew)
                               : 'Unlock all features',
                           style: AppTypography.textXsRegular.copyWith(
                             color: kWhiteColor.withValues(alpha: 0.5),

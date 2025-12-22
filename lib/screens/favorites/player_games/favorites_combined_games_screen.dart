@@ -11,6 +11,7 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/federation_flag.dart';
+import 'package:chessever2/widgets/game_filter/game_filter.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -247,7 +248,7 @@ class _FavoritesCombinedGamesScreenState
           ),
           slivers: [
             // Pinned app bar that floats
-            _buildPinnedAppBar(context, favoriteCount),
+            _buildPinnedAppBar(context, favoriteCount, state),
 
             // Pinned search bar
             SliverPersistentHeader(
@@ -275,7 +276,10 @@ class _FavoritesCombinedGamesScreenState
     );
   }
 
-  Widget _buildPinnedAppBar(BuildContext context, int favoriteCount) {
+  Widget _buildPinnedAppBar(BuildContext context, int favoriteCount, FavoritesCombinedGamesState state) {
+    final hasActiveFilters = state.filter.hasActiveFilters;
+    final activeFilterCount = state.filter.activeFilterCount;
+
     return SliverAppBar(
       pinned: true,
       floating: false,
@@ -327,32 +331,93 @@ class _FavoritesCombinedGamesScreenState
           ),
           SizedBox(width: 10.w),
           // Title
-          Text(
-            'Favorites',
-            style: AppTypography.textLgBold.copyWith(
-              color: kWhiteColor,
-              letterSpacing: -0.3,
+          Expanded(
+            child: Row(
+              children: [
+                Text(
+                  'Favorites',
+                  style: AppTypography.textLgBold.copyWith(
+                    color: kWhiteColor,
+                    letterSpacing: -0.3,
+                  ),
+                ),
+                SizedBox(width: 8.w),
+                // Count badge
+                Container(
+                  padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 3.h),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF27272A),
+                    borderRadius: BorderRadius.circular(10.br),
+                  ),
+                  child: Text(
+                    '$favoriteCount',
+                    style: AppTypography.textXsMedium.copyWith(
+                      color: const Color(0xFFA1A1AA),
+                      height: 1.1,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
-          SizedBox(width: 8.w),
-          // Count badge
-          Container(
-            padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 3.h),
-            decoration: BoxDecoration(
-              color: const Color(0xFF27272A),
-              borderRadius: BorderRadius.circular(10.br),
-            ),
-            child: Text(
-              '$favoriteCount',
-              style: AppTypography.textXsMedium.copyWith(
-                color: const Color(0xFFA1A1AA),
-                height: 1.1,
+          // Filter button
+          GestureDetector(
+            onTap: () => _showFilterDialog(state),
+            child: Container(
+              padding: EdgeInsets.all(8.w),
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Icon(
+                    Icons.tune_rounded,
+                    size: 22.ic,
+                    color: hasActiveFilters ? kWhiteColor : const Color(0xFFA1A1AA),
+                  ),
+                  // Badge showing active filter count
+                  if (hasActiveFilters)
+                    Positioned(
+                      right: -4.w,
+                      top: -4.h,
+                      child: Container(
+                        padding: EdgeInsets.all(4.w),
+                        decoration: const BoxDecoration(
+                          color: Color(0xFFEF4444),
+                          shape: BoxShape.circle,
+                        ),
+                        constraints: BoxConstraints(
+                          minWidth: 16.w,
+                          minHeight: 16.h,
+                        ),
+                        child: Text(
+                          '$activeFilterCount',
+                          style: AppTypography.textXsBold.copyWith(
+                            color: kWhiteColor,
+                            fontSize: 10.sp,
+                            height: 1,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    ),
+                ],
               ),
             ),
           ),
+          SizedBox(width: 12.w),
         ],
       ),
     );
+  }
+
+  Future<void> _showFilterDialog(FavoritesCombinedGamesState state) async {
+    HapticFeedbackService.buttonPress();
+    final result = await showGameFilterDialog(
+      context: context,
+      currentFilter: state.filter,
+    );
+    if (result != null && mounted) {
+      ref.read(favoritesCombinedGamesProvider.notifier).applyFilter(result);
+    }
   }
 
   Widget _buildSearchBar(FavoritesCombinedGamesState state) {
@@ -560,15 +625,28 @@ class _FavoritesCombinedGamesScreenState
       );
     }
 
-    // Only apply local filter when not searching (search already filters server-side)
-    final filteredGames = state.isSearching
+    // Apply local favorite player filter when not searching
+    var filteredGames = state.isSearching
         ? state.games
         : _filterGames(state.games, favorites);
+
+    // Then apply the game filter (result, color, time control, year, rating)
+    if (state.filter.hasActiveFilters) {
+      filteredGames = GameFilterHelper.applyFilter(filteredGames, state.filter);
+    }
 
     if (filteredGames.isEmpty && _selectedPlayerIds.isNotEmpty) {
       return SliverFillRemaining(
         hasScrollBody: false,
         child: _buildNoSearchResultsState(),
+      );
+    }
+
+    // Show filter empty state when game filter excludes all games
+    if (filteredGames.isEmpty && state.filter.hasActiveFilters) {
+      return SliverFillRemaining(
+        hasScrollBody: false,
+        child: _buildNoFilterResultsState(),
       );
     }
 
@@ -812,6 +890,56 @@ class _FavoritesCombinedGamesScreenState
               color: kWhiteColor.withValues(alpha: 0.55),
             ),
             textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+    ).animate().fadeIn(duration: 300.ms);
+  }
+
+  Widget _buildNoFilterResultsState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.filter_alt_off_outlined,
+            size: 56.sp,
+            color: kWhiteColor.withValues(alpha: 0.4),
+          ),
+          SizedBox(height: 12.h),
+          Text(
+            'No matching games',
+            style: AppTypography.textMdMedium.copyWith(
+              color: kWhiteColor.withValues(alpha: 0.85),
+            ),
+          ),
+          SizedBox(height: 6.h),
+          Text(
+            'Try adjusting your filters',
+            style: AppTypography.textSmRegular.copyWith(
+              color: kWhiteColor.withValues(alpha: 0.55),
+            ),
+            textAlign: TextAlign.center,
+          ),
+          SizedBox(height: 20.h),
+          GestureDetector(
+            onTap: () {
+              HapticFeedback.mediumImpact();
+              ref.read(favoritesCombinedGamesProvider.notifier).clearFilter();
+            },
+            child: Container(
+              padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 10.h),
+              decoration: BoxDecoration(
+                color: kWhiteColor.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8.br),
+              ),
+              child: Text(
+                'Clear Filters',
+                style: AppTypography.textSmMedium.copyWith(
+                  color: kWhiteColor,
+                ),
+              ),
+            ),
           ),
         ],
       ),
