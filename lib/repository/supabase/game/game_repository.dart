@@ -32,7 +32,9 @@ const String _gameListSelectColumns = '''
           board_nr,
           last_move_time,
           last_clock_white,
-          last_clock_black
+          last_clock_black,
+          eco,
+          opening_name
         ''';
 
 class GameRepository extends BaseRepository {
@@ -103,12 +105,11 @@ class GameRepository extends BaseRepository {
       print('===== GameRepository: Fetching games for fideId: $fideId =====');
 
       // Query games where the fideId appears in the players JSONB array
+      // Use JSON string format for JSONB contains query (consistent with other methods)
       var query = supabase
           .from('games')
           .select(_gameListSelectColumns)
-          .contains('players', [
-            {'fideId': int.parse(fideId)},
-          ])
+          .contains('players', '[{"fideId": $fideId}]')
           .order('date_start', ascending: false)
           .order('time_start', ascending: false);
 
@@ -138,9 +139,7 @@ class GameRepository extends BaseRepository {
       final response = await supabase
           .from('games')
           .select(_gameListSelectColumns)
-          .contains('players', [
-            {'fideId': int.parse(fideId)},
-          ])
+          .contains('players', '[{"fideId": $fideId}]')
           .order('date_start', ascending: false)
           .order('time_start', ascending: false)
           .range(offset, offset + limit - 1);

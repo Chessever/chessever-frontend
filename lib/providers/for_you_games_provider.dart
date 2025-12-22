@@ -82,6 +82,9 @@ final groupedForYouGamesProvider = Provider.autoDispose<
   final grouped = <String, GroupedTournamentGames>{};
   final groupOrder = <String>[]; // Track insertion order
 
+  // Hard limit: maximum 4 games per event card in For You tab
+  const maxGamesPerEvent = 4;
+
   for (final game in initialGames) {
     final tourId = game.tourId;
     final tourName = game.tourSlug;
@@ -99,7 +102,10 @@ final groupedForYouGamesProvider = Provider.autoDispose<
       groupOrder.add(groupKey); // Remember order of first appearance
     }
 
-    grouped[groupKey]!.games.add(game);
+    // Only add game if we haven't reached the limit for this event
+    if (grouped[groupKey]!.games.length < maxGamesPerEvent) {
+      grouped[groupKey]!.games.add(game);
+    }
     if (game.status == '*') {
       grouped[groupKey]!.hasLiveGames = true;
     }
@@ -134,7 +140,10 @@ final groupedForYouGamesProvider = Provider.autoDispose<
         paginationOrder.add(paginationGroupKey);
       }
 
-      paginationGrouped[paginationGroupKey]!.games.add(game);
+      // Only add game if we haven't reached the limit for this event
+      if (paginationGrouped[paginationGroupKey]!.games.length < maxGamesPerEvent) {
+        paginationGrouped[paginationGroupKey]!.games.add(game);
+      }
       if (game.status == '*') {
         paginationGrouped[paginationGroupKey]!.hasLiveGames = true;
       }

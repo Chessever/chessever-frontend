@@ -66,6 +66,8 @@ class GamesTourModel {
   final String tourId;
   final String? tourSlug;
   final DateTime? lastMoveTime;
+  final String? eco;
+  final String? openingName;
 
   GamesTourModel({
     required this.gameId,
@@ -87,6 +89,8 @@ class GamesTourModel {
     this.pgn,
     this.boardNr,
     this.lastMoveTime,
+    this.eco,
+    this.openingName,
   });
 
   GamesTourModel copyWith({
@@ -109,6 +113,8 @@ class GamesTourModel {
     String? tourId,
     String? tourSlug,
     DateTime? lastMoveTime,
+    String? eco,
+    String? openingName,
   }) {
     return GamesTourModel(
       gameId: gameId ?? this.gameId,
@@ -132,6 +138,8 @@ class GamesTourModel {
       tourId: tourId ?? this.tourId,
       tourSlug: tourSlug ?? this.tourSlug,
       lastMoveTime: lastMoveTime ?? this.lastMoveTime,
+      eco: eco ?? this.eco,
+      openingName: openingName ?? this.openingName,
     );
   }
 
@@ -218,6 +226,8 @@ class GamesTourModel {
         boardNr: game.boardNr,
         // Use lastMoveTime if available, otherwise fall back to dateStart
         lastMoveTime: game.lastMoveTime ?? game.dateStart,
+        eco: game.eco,
+        openingName: game.openingName,
       );
     } catch (e) {
       throw ArgumentError(

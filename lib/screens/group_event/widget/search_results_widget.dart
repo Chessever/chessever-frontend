@@ -1,5 +1,6 @@
 import 'package:chessever2/providers/search_games_provider.dart';
 import 'package:chessever2/screens/group_event/widget/for_you_tournament_card.dart';
+import 'package:chessever2/screens/group_event/widget/player_search_cards.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_widget.dart';
@@ -317,6 +318,9 @@ class _SearchResultsListView extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // Check if we have players to show in the cards
+    final hasPlayerCards = ref.watch(topSearchedPlayersProvider).isNotEmpty;
+
     return RefreshIndicator(
       onRefresh: () async {
         await ref.read(searchGamesProvider.notifier).refresh();
@@ -329,7 +333,8 @@ class _SearchResultsListView extends ConsumerWidget {
         key: PageStorageKey<String>('search_results_$searchQuery'),
         controller: scrollController,
         padding: EdgeInsets.symmetric(horizontal: 16.sp, vertical: 16.sp),
-        itemCount: items.length,
+        // Add 1 to item count if we have player cards to show
+        itemCount: items.length + (hasPlayerCards ? 1 : 0),
         addAutomaticKeepAlives: true,
         addRepaintBoundaries: true,
         cacheExtent: 2000,
@@ -337,7 +342,18 @@ class _SearchResultsListView extends ConsumerWidget {
           parent: BouncingScrollPhysics(),
         ),
         itemBuilder: (context, index) {
-          final item = items[index];
+          // Show player search cards at the top
+          if (hasPlayerCards && index == 0) {
+            return PlayerSearchCards(searchQuery: searchQuery);
+          }
+
+          // Adjust index if player cards are present
+          final adjustedIndex = hasPlayerCards ? index - 1 : index;
+          if (adjustedIndex < 0 || adjustedIndex >= items.length) {
+            return const SizedBox.shrink();
+          }
+
+          final item = items[adjustedIndex];
 
           if (item.isHeader) {
             return ForYouTournamentCard(
@@ -346,7 +362,7 @@ class _SearchResultsListView extends ConsumerWidget {
               tourName: item.tourName!,
               hasLiveGames: item.hasLiveGames!,
               gameCount: item.gameCount!,
-              isFirst: index == 0,
+              isFirst: adjustedIndex == 0,
             );
           }
 
@@ -357,7 +373,7 @@ class _SearchResultsListView extends ConsumerWidget {
             game: gamesTourModel,
             gamesData: gamesData,
             gameIndex: item.gameIndex!,
-            listIndex: index,
+            listIndex: adjustedIndex,
           );
         },
       ),

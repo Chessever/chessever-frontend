@@ -873,6 +873,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
 
     switch (view) {
       case ChessboardView.favScorecard:
+      case ChessboardView.playerProfile:
         final selectedPlayer = ref.watch(selectedPlayerProvider);
         final games = ref.watch(playerGamesProvider(selectedPlayer!)).value!;
         gamesAsync = AsyncValue.data(

@@ -324,6 +324,40 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
               ),
               textAlign: TextAlign.center,
             ),
+            SizedBox(height: 24.h),
+            GestureDetector(
+              onTap: () {
+                HapticFeedbackService.light();
+                Navigator.of(context).pop(true); // Signal to focus search
+              },
+              child: Container(
+                padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 12.h),
+                decoration: BoxDecoration(
+                  color: kWhiteColor.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(10.br),
+                  border: Border.all(
+                    color: kWhiteColor.withValues(alpha: 0.2),
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.search_rounded,
+                      size: 18.sp,
+                      color: kWhiteColor.withValues(alpha: 0.85),
+                    ),
+                    SizedBox(width: 8.w),
+                    Text(
+                      'Search games',
+                      style: AppTypography.textSmMedium.copyWith(
+                        color: kWhiteColor.withValues(alpha: 0.85),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           ],
         ),
       ),

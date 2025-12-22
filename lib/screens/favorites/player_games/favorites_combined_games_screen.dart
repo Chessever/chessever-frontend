@@ -704,7 +704,7 @@ class _FavoritesCombinedGamesScreenState
                 allGames: filteredGames,
                 gameIndex: index,
                 animationIndex: index,
-                showRound: false,
+                showRound: true,
                 onAdd: () => _showAddToFolderSheet(context, game),
               ),
             );

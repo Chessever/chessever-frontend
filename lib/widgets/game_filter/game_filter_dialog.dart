@@ -3,6 +3,7 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/back_drop_filter_widget.dart';
+import 'package:chessever2/widgets/game_filter/eco_filter_dropdown.dart';
 import 'package:chessever2/widgets/game_filter/expandable_filter_dropdown.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:flutter/material.dart';
@@ -33,9 +34,11 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
   late GameResultFilter _result;
   late GameColorFilter _color;
   late GameTimeControlFilter _timeControl;
+  late GameEcoFilter _eco;
   late RangeValues _yearRange;
   late RangeValues _ratingRange;
 
+  final ScrollController _scrollController = ScrollController();
   double _targetValue = 0.0;
 
   @override
@@ -44,6 +47,7 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
     _result = widget.initialFilter.result;
     _color = widget.initialFilter.color;
     _timeControl = widget.initialFilter.timeControl;
+    _eco = widget.initialFilter.eco;
     _yearRange = RangeValues(
       widget.initialFilter.minYear.toDouble(),
       widget.initialFilter.maxYear.toDouble(),
@@ -58,6 +62,12 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
         setState(() => _targetValue = 1.0);
       }
     });
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
   }
 
   @override
@@ -114,73 +124,91 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
           children: [
             _buildHeader(),
             Expanded(
-              child: SingleChildScrollView(
-                padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 8.h),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Result filter
-                    _sectionLabel('Result'),
-                    SizedBox(height: 8.h),
-                    ExpandableFilterDropdown<GameResultFilter>(
-                      value: _result,
-                      items: GameResultFilter.values,
-                      itemLabel: (v) => v.displayText,
-                      onChanged: (v) => setState(() => _result = v),
-                    ),
-                    SizedBox(height: 20.h),
+              child: Scrollbar(
+                controller: _scrollController,
+                thumbVisibility: true,
+                radius: Radius.circular(4.br),
+                child: SingleChildScrollView(
+                  controller: _scrollController,
+                  padding: EdgeInsets.symmetric(
+                    horizontal: 20.w,
+                    vertical: 8.h,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Result filter
+                      _sectionLabel('Result'),
+                      SizedBox(height: 8.h),
+                      ExpandableFilterDropdown<GameResultFilter>(
+                        value: _result,
+                        items: GameResultFilter.values,
+                        itemLabel: (v) => v.displayText,
+                        onChanged: (v) => setState(() => _result = v),
+                      ),
+                      SizedBox(height: 20.h),
 
-                    // Color filter
-                    _sectionLabel('Color'),
-                    SizedBox(height: 8.h),
-                    ExpandableFilterDropdown<GameColorFilter>(
-                      value: _color,
-                      items: GameColorFilter.values,
-                      itemLabel: (v) => v.displayText,
-                      onChanged: (v) => setState(() => _color = v),
-                    ),
-                    SizedBox(height: 20.h),
+                      // Color filter
+                      _sectionLabel('Color'),
+                      SizedBox(height: 8.h),
+                      ExpandableFilterDropdown<GameColorFilter>(
+                        value: _color,
+                        items: GameColorFilter.values,
+                        itemLabel: (v) => v.displayText,
+                        onChanged: (v) => setState(() => _color = v),
+                      ),
+                      SizedBox(height: 20.h),
 
-                    // Time Control filter
-                    _sectionLabel('Time Control'),
-                    SizedBox(height: 8.h),
-                    ExpandableFilterDropdown<GameTimeControlFilter>(
-                      value: _timeControl,
-                      items: GameTimeControlFilter.values,
-                      itemLabel: (v) => v.displayText,
-                      itemIcon: (v) => v.icon,
-                      onChanged: (v) => setState(() => _timeControl = v),
-                    ),
-                    SizedBox(height: 20.h),
+                      // Time Control filter
+                      _sectionLabel('Time Control'),
+                      SizedBox(height: 8.h),
+                      ExpandableFilterDropdown<GameTimeControlFilter>(
+                        value: _timeControl,
+                        items: GameTimeControlFilter.values,
+                        itemLabel: (v) => v.displayText,
+                        itemIcon: (v) => v.icon,
+                        onChanged: (v) => setState(() => _timeControl = v),
+                      ),
+                      SizedBox(height: 20.h),
 
-                    // Year range slider
-                    _sectionLabel('Year'),
-                    SizedBox(height: 8.h),
-                    _rangeSliderCard(
-                      values: _yearRange,
-                      min: 1990,
-                      max: DateTime.now().year.toDouble(),
-                      divisions: DateTime.now().year - 1990,
-                      labelStart: _yearRange.start.round().toString(),
-                      labelEnd: _yearRange.end.round().toString(),
-                      onChanged: (v) => setState(() => _yearRange = v),
-                    ),
-                    SizedBox(height: 20.h),
+                      // ECO Opening filter
+                      _sectionLabel('Opening'),
+                      SizedBox(height: 8.h),
+                      EcoFilterDropdown(
+                        value: _eco,
+                        onChanged: (v) => setState(() => _eco = v),
+                      ),
+                      SizedBox(height: 20.h),
 
-                    // Rating range slider
-                    _sectionLabel('Rating'),
-                    SizedBox(height: 8.h),
-                    _rangeSliderCard(
-                      values: _ratingRange,
-                      min: 1000,
-                      max: 3500,
-                      divisions: 50,
-                      labelStart: _ratingRange.start.round().toString(),
-                      labelEnd: _ratingRange.end.round().toString(),
-                      onChanged: (v) => setState(() => _ratingRange = v),
-                    ),
-                    SizedBox(height: 12.h),
-                  ],
+                      // Year range slider
+                      _sectionLabel('Year'),
+                      SizedBox(height: 8.h),
+                      _rangeSliderCard(
+                        values: _yearRange,
+                        min: 1990,
+                        max: DateTime.now().year.toDouble(),
+                        divisions: DateTime.now().year - 1990,
+                        labelStart: _yearRange.start.round().toString(),
+                        labelEnd: _yearRange.end.round().toString(),
+                        onChanged: (v) => setState(() => _yearRange = v),
+                      ),
+                      SizedBox(height: 20.h),
+
+                      // Rating range slider
+                      _sectionLabel('Rating'),
+                      SizedBox(height: 8.h),
+                      _rangeSliderCard(
+                        values: _ratingRange,
+                        min: 1000,
+                        max: 3500,
+                        divisions: 50,
+                        labelStart: _ratingRange.start.round().toString(),
+                        labelEnd: _ratingRange.end.round().toString(),
+                        onChanged: (v) => setState(() => _ratingRange = v),
+                      ),
+                      SizedBox(height: 12.h),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -257,9 +285,7 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
                 ),
                 child: Text(
                   'Apply Filters',
-                  style: AppTypography.textSmBold.copyWith(
-                    color: kBlackColor,
-                  ),
+                  style: AppTypography.textSmBold.copyWith(color: kBlackColor),
                 ),
               ),
             ),
@@ -281,6 +307,7 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
       result: _result,
       color: _color,
       timeControl: _timeControl,
+      eco: _eco,
       minYear: _yearRange.start.round(),
       maxYear: _yearRange.end.round(),
       minRating: _ratingRange.start.round(),
@@ -323,15 +350,11 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
             children: [
               Text(
                 labelStart,
-                style: AppTypography.textSmMedium.copyWith(
-                  color: kWhiteColor,
-                ),
+                style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
               ),
               Text(
                 labelEnd,
-                style: AppTypography.textSmMedium.copyWith(
-                  color: kWhiteColor,
-                ),
+                style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
               ),
             ],
           ),
@@ -344,9 +367,7 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
               thumbColor: kWhiteColor,
               overlayColor: kWhiteColor.withValues(alpha: 0.2),
               trackHeight: 3,
-              thumbShape: const RoundSliderThumbShape(
-                enabledThumbRadius: 10,
-              ),
+              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 10),
               rangeThumbShape: const RoundRangeSliderThumbShape(
                 enabledThumbRadius: 10,
               ),

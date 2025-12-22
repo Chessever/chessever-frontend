@@ -45,7 +45,7 @@ class GamebaseSearchGameCard extends ConsumerWidget {
     final card = LibraryGameCard(
       game: game,
       eventName: game.tourSlug ?? game.tourId,
-      eco: game.roundSlug,
+      eco: game.eco,  // Only ECO code, never round info
       date: game.lastMoveTime,
       showRound: showRound,
       onTap: () => _handleGamebaseTap(context, ref, game, allGames, gameIndex),

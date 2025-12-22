@@ -4,15 +4,15 @@ import 'package:chessever2/repository/library/models/library_folder.dart';
 import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/library/folder_contents_screen.dart';
-import 'package:chessever2/screens/library/providers/gamebase_database_search_provider.dart';
 import 'package:chessever2/screens/library/providers/gamebase_database_games_provider.dart';
+import 'package:chessever2/screens/library/providers/gamebase_filter_provider.dart';
 import 'package:chessever2/screens/library/providers/library_combined_search_provider.dart';
 import 'package:chessever2/screens/library/providers/library_folders_provider.dart';
 import 'package:chessever2/screens/library/utils/create_empty_game.dart';
 import 'package:chessever2/screens/library/utils/gamebase_game_to_games_tour_model.dart';
 import 'package:chessever2/screens/library/utils/gamebase_pgn_builder.dart';
 import 'package:chessever2/screens/library/utils/load_saved_analysis.dart';
-import 'package:chessever2/screens/library/widgets/library_gamebase_filters_sheet.dart';
+import 'package:chessever2/screens/library/widgets/library_gamebase_filter_dialog.dart';
 import 'package:chessever2/screens/library/widgets/create_folder_dialog.dart';
 import 'package:chessever2/screens/library/widgets/folder_card.dart';
 import 'package:chessever2/screens/library/widgets/library_search_bar.dart';
@@ -42,7 +42,6 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
   String _searchQuery = '';
-  bool _hasOpenedFilters = false;
   bool _isSearchFocused = false;
 
   @override
@@ -134,11 +133,14 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
         );
 
         // Redirect to the book games list view after creation.
-        Navigator.of(context).push(
+        final shouldFocusSearch = await Navigator.of(context).push<bool>(
           MaterialPageRoute(
             builder: (_) => FolderContentsScreen(folder: newFolder),
           ),
         );
+        if (shouldFocusSearch == true && mounted) {
+          _searchFocusNode.requestFocus();
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -168,13 +170,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
 
   Widget _buildTopBar() {
     final topPadding = MediaQuery.of(context).viewPadding.top;
-    final filtersActive =
-        _hasOpenedFilters &&
-        (ref
-                .watch(gamebaseDatabaseSearchProvider)
-                .valueOrNull
-                ?.hasActiveFilters ==
-            true);
+    final filtersActive = ref.watch(hasActiveGamebaseFiltersProvider);
 
     return Container(
       padding: EdgeInsets.fromLTRB(16.w, topPadding + 16.h, 16.w, 12.h),
@@ -269,16 +265,18 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       onChanged: (query) {
         final trimmed = query.trim();
         setState(() => _searchQuery = trimmed.toLowerCase());
-        if (_hasOpenedFilters) {
-          ref.read(gamebaseDatabaseSearchProvider.notifier).setQuery(trimmed);
-        }
+        // Sync to provider for gamebase search
+        ref.read(librarySearchQueryProvider.notifier).state = trimmed;
       },
-      onFolderTap: (folder) {
-        Navigator.of(context).push(
+      onFolderTap: (folder) async {
+        final shouldFocusSearch = await Navigator.of(context).push<bool>(
           MaterialPageRoute(
             builder: (_) => FolderContentsScreen(folder: folder),
           ),
         );
+        if (shouldFocusSearch == true && mounted) {
+          _searchFocusNode.requestFocus();
+        }
       },
       onAnalysisTap: (analysis) {
         loadSavedAnalysis(context, analysis);
@@ -385,29 +383,20 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
 
   Future<void> _openFilters() async {
     HapticFeedbackService.light();
-    setState(() => _hasOpenedFilters = true);
 
-    // Ensure the provider is initialized and synced to current query.
-    ref
-        .read(gamebaseDatabaseSearchProvider.notifier)
-        .setQuery(_searchController.text.trim());
-
-    await showModalBottomSheet<void>(
+    final currentFilter = ref.read(gamebaseFilterProvider);
+    final newFilter = await showLibraryGamebaseFilterDialog(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => const LibraryGamebaseFiltersSheet(),
+      currentFilter: currentFilter,
     );
+
+    if (newFilter != null) {
+      ref.read(gamebaseFilterProvider.notifier).state = newFilter;
+    }
   }
 
   Widget _buildContent() {
-    final filtersActive =
-        _hasOpenedFilters &&
-        (ref
-                .watch(gamebaseDatabaseSearchProvider)
-                .valueOrNull
-                ?.hasActiveFilters ==
-            true);
+    final filtersActive = ref.watch(hasActiveGamebaseFiltersProvider);
     final isSearchMode = _searchQuery.isNotEmpty || filtersActive;
 
     if (isSearchMode) {
@@ -416,19 +405,22 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       );
 
       final databaseGamesAsync =
-          _hasOpenedFilters ? ref.watch(gamebaseDatabaseGamesProvider) : null;
+          filtersActive ? ref.watch(gamebaseDatabaseGamesProvider) : null;
 
       return searchResultsAsync.when(
         data:
             (results) => LibrarySearchResultsView(
               results: results,
               databaseGamesAsync: databaseGamesAsync,
-              onFolderTap: (folder) {
-                Navigator.of(context).push(
+              onFolderTap: (folder) async {
+                final shouldFocusSearch = await Navigator.of(context).push<bool>(
                   MaterialPageRoute(
                     builder: (_) => FolderContentsScreen(folder: folder),
                   ),
                 );
+                if (shouldFocusSearch == true && mounted) {
+                  _searchFocusNode.requestFocus();
+                }
               },
               onAnalysisTap: (analysis) => loadSavedAnalysis(context, analysis),
               onPlayerTap: (player) {
@@ -530,7 +522,21 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
         delegate: SliverChildBuilderDelegate(
           (context, index) => Padding(
             padding: EdgeInsets.only(bottom: 12.h),
-            child: FolderCard(folder: filteredFolders[index], isExpanded: true),
+            child: FolderCard(
+              folder: filteredFolders[index],
+              isExpanded: true,
+              onTap: () async {
+                HapticFeedback.mediumImpact();
+                final shouldFocusSearch = await Navigator.of(context).push<bool>(
+                  MaterialPageRoute(
+                    builder: (_) => FolderContentsScreen(folder: filteredFolders[index]),
+                  ),
+                );
+                if (shouldFocusSearch == true && mounted) {
+                  _searchFocusNode.requestFocus();
+                }
+              },
+            ),
           ),
           childCount: filteredFolders.length,
         ),

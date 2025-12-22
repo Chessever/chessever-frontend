@@ -186,62 +186,74 @@ final supabaseCombinedSearchProvider =
           return matchesFlexibly(qLower, r.matchedText);
         });
 
-        // Fetch player ELOs from chess_players table
-        final playerNames = playerResults
-            .where((r) => r.player != null)
-            .map((r) => r.player!.name)
-            .toSet()
-            .toList();
+        // Direct search in chess_players table for better player data
+        final directPlayerResults = await _fetchPlayersByName(
+          query: trimmedQuery,
+          limit: 10,
+        );
 
-        final playerEloMap = <String, int>{};
-        if (playerNames.isNotEmpty) {
-          try {
-            final supabase = Supabase.instance.client;
-            // Fetch ELO for all matching player names
-            final response = await supabase
-                .from('chess_players')
-                .select('name, rating')
-                .filter('name', 'in', '(${playerNames.map((n) => '"$n"').join(',')})');
-
-            for (final row in response as List) {
-              final name = row['name'] as String?;
-              final rating = row['rating'] as int?;
-              if (name != null && rating != null) {
-                playerEloMap[name.toLowerCase()] = rating;
-              }
-            }
-          } catch (e) {
-            // Ignore ELO fetch errors, continue with default sorting
-          }
+        // Normalize name for comparison (handles "Lastname, Firstname" vs "Firstname Lastname")
+        String normalizeName(String name) {
+          final parts = name
+              .toLowerCase()
+              .replaceAll(',', ' ')
+              .replaceAll(RegExp(r'\s+'), ' ')
+              .trim()
+              .split(' ')
+              .where((p) => p.isNotEmpty)
+              .toList();
+          parts.sort();
+          return parts.join(' ');
         }
 
-        // Update player results with ELO ratings
-        for (final result in playerResults) {
-          if (result.player != null) {
-            final elo = playerEloMap[result.player!.name.toLowerCase()];
-            if (elo != null) {
-              // Create updated player with rating
-              final updatedPlayer = SearchPlayer(
-                id: result.player!.id,
-                name: result.player!.name,
-                rating: elo,
-                tournamentId: result.player!.tournamentId,
-                tournamentName: result.player!.tournamentName,
-                fideId: result.player!.fideId,
-                fed: result.player!.fed,
-                title: result.player!.title,
-                gameId: result.player!.gameId,
-                roundId: result.player!.roundId,
-                isWhitePlayer: result.player!.isWhitePlayer,
-              );
-              // Update the result's player reference
-              playerResults[playerResults.indexOf(result)] = SearchResult(
-                tournament: result.tournament,
-                score: result.score,
-                matchedText: result.matchedText,
-                type: result.type,
-                player: updatedPlayer,
-              );
+        // Merge direct player results with broadcast-based results
+        if (directPlayerResults.isNotEmpty) {
+          final existingNormalized = <String, int>{};
+          for (int i = 0; i < playerResults.length; i++) {
+            if (playerResults[i].player != null) {
+              existingNormalized[normalizeName(playerResults[i].player!.name)] = i;
+            }
+          }
+
+          for (final directResult in directPlayerResults) {
+            if (directResult.player != null) {
+              final normalizedName = normalizeName(directResult.player!.name);
+              final existingIndex = existingNormalized[normalizedName];
+
+              if (existingIndex != null) {
+                // Update existing player with proper data from chess_players
+                final existing = playerResults[existingIndex];
+                final updatedPlayer = SearchPlayer(
+                  id: existing.player!.id,
+                  name: existing.player!.name,
+                  rating: directResult.player!.rating ?? existing.player!.rating,
+                  tournamentId: existing.player!.tournamentId,
+                  tournamentName: existing.player!.tournamentName,
+                  fideId: directResult.player!.fideId ?? existing.player!.fideId,
+                  fed: directResult.player!.fed ?? existing.player!.fed,
+                  title: directResult.player!.title ?? existing.player!.title,
+                  gameId: existing.player!.gameId,
+                  roundId: existing.player!.roundId,
+                  isWhitePlayer: existing.player!.isWhitePlayer,
+                );
+                playerResults[existingIndex] = SearchResult(
+                  tournament: existing.tournament,
+                  score: existing.score + 10, // Boost score for enriched results
+                  matchedText: existing.matchedText,
+                  type: existing.type,
+                  player: updatedPlayer,
+                );
+              } else if (!existingNormalized.containsKey(normalizedName)) {
+                // Add new player from direct search at the beginning for priority
+                playerResults.insert(0, directResult);
+                existingNormalized[normalizedName] = 0;
+                // Update indices
+                for (final key in existingNormalized.keys.toList()) {
+                  if (key != normalizedName) {
+                    existingNormalized[key] = existingNormalized[key]! + 1;
+                  }
+                }
+              }
             }
           }
         }
@@ -509,6 +521,72 @@ Future<List<SearchResult>> _fetchTopCountryPlayers({
       results: results,
       cachedAt: DateTime.now(),
     );
+    return results;
+  } catch (_) {
+    return [];
+  }
+}
+
+/// Fetches players by name search directly from Supabase chess_players.
+Future<List<SearchResult>> _fetchPlayersByName({
+  required String query,
+  int limit = 10,
+}) async {
+  if (query.trim().length < 2) return [];
+
+  try {
+    final supabase = Supabase.instance.client;
+    final searchQuery = query.trim();
+
+    // Use ilike for case-insensitive partial matching
+    final rows = await supabase
+        .from('chess_players')
+        .select('fideid, name, title, rating, country')
+        .ilike('name', '%$searchQuery%')
+        .gt('rating', 0)
+        .order('rating', ascending: false)
+        .limit(limit);
+
+    final placeholderTournament = GroupEventCardModel(
+      id: 'player_search',
+      title: 'Player Search',
+      dates: '',
+      maxAvgElo: 0,
+      timeUntilStart: '',
+      tourEventCategory: TourEventCategory.completed,
+      timeControl: 'Standard',
+      endDate: null,
+      startDate: null,
+      location: '',
+      searchTerms: const [],
+    );
+
+    final results = (rows as List)
+        .map((row) {
+          final fideId = row['fideid'] as int?;
+          final name = row['name'] as String?;
+          if (name == null || name.isEmpty) return null;
+          final player = SearchPlayer(
+            id: 'search_${fideId ?? name.hashCode}',
+            name: name,
+            title: row['title'] as String?,
+            rating: (row['rating'] as num?)?.toInt(),
+            fideId: fideId,
+            fed: row['country'] as String?,
+            tournamentId: placeholderTournament.id,
+            tournamentName: placeholderTournament.title,
+          );
+          return SearchResult(
+            tournament: placeholderTournament,
+            score: 95.0,
+            matchedText: name,
+            type: SearchResultType.player,
+            player: player,
+          );
+        })
+        .whereType<SearchResult>()
+        .toList();
+
     return results;
   } catch (_) {
     return [];
