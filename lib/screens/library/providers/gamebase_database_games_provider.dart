@@ -30,8 +30,10 @@ final gamebaseDatabaseGamesProvider = FutureProvider.autoDispose<
 
   try {
     // Call globalSearch with filter parameters
+    // Use resources: ['game'] to limit search to games only (faster)
     final response = await repo.globalSearch(
       query: query.trim().isEmpty ? '*' : query.trim(),
+      resources: const ['game'],
       pageNumber: 1,
       pageSize: 50,
       result: filter.resultApiValue,

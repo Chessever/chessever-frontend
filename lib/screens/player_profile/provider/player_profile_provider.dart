@@ -651,6 +651,7 @@ Future<List<PlayerEventData>> _getPlayerEventsFromGames(
 /// State for player profile games with filtering
 class PlayerProfileGamesState {
   const PlayerProfileGamesState({
+    required this.targetFideId,
     this.allGames = const [],
     this.filter = const GameFilter(),
     this.isLoading = false,
@@ -658,6 +659,7 @@ class PlayerProfileGamesState {
     this.searchQuery = '',
   });
 
+  final int targetFideId;
   final List<GamesTourModel> allGames;
   final GameFilter filter;
   final bool isLoading;
@@ -678,11 +680,16 @@ class PlayerProfileGamesState {
       }).toList();
     }
 
-    // Apply filter
-    return GameFilterHelper.applyFilter(games, filter);
+    // Apply filter with targetFideId for accurate color filtering
+    return GameFilterHelper.applyFilter(
+      games,
+      filter,
+      targetFideId: targetFideId,
+    );
   }
 
   PlayerProfileGamesState copyWith({
+    int? targetFideId,
     List<GamesTourModel>? allGames,
     GameFilter? filter,
     bool? isLoading,
@@ -690,6 +697,7 @@ class PlayerProfileGamesState {
     String? searchQuery,
   }) {
     return PlayerProfileGamesState(
+      targetFideId: targetFideId ?? this.targetFideId,
       allGames: allGames ?? this.allGames,
       filter: filter ?? this.filter,
       isLoading: isLoading ?? this.isLoading,
@@ -703,7 +711,7 @@ class PlayerProfileGamesState {
 class PlayerProfileGamesNotifier
     extends StateNotifier<PlayerProfileGamesState> {
   PlayerProfileGamesNotifier(this._ref, this._fideId)
-      : super(const PlayerProfileGamesState()) {
+      : super(PlayerProfileGamesState(targetFideId: _fideId)) {
     _loadGames();
   }
 

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
 import 'package:chessever2/repository/library/library_repository.dart';
 import 'package:chessever2/repository/library/models/library_folder.dart';
@@ -44,6 +46,10 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   String _searchQuery = '';
   bool _isSearchFocused = false;
 
+  // Debounce timer for API calls
+  Timer? _debounceTimer;
+  static const _debounceDuration = Duration(milliseconds: 350);
+
   @override
   void initState() {
     super.initState();
@@ -58,6 +64,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
 
   @override
   void dispose() {
+    _debounceTimer?.cancel();
     _searchFocusNode.removeListener(_onSearchFocusChange);
     _searchFocusNode.dispose();
     _searchController.dispose();
@@ -171,6 +178,9 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   Widget _buildTopBar() {
     final topPadding = MediaQuery.of(context).viewPadding.top;
     final filtersActive = ref.watch(hasActiveGamebaseFiltersProvider);
+    // Only show filter button when user has entered a search query
+    // because Gamebase /api/search requires 'q' parameter
+    final showFilterButton = _searchQuery.isNotEmpty;
 
     return Container(
       padding: EdgeInsets.fromLTRB(16.w, topPadding + 16.h, 16.w, 12.h),
@@ -199,21 +209,22 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
             children: [
               // Search bar - expands to full width when focused
               Expanded(child: _buildSearchField()),
-              // Filter button gap
-              SizedBox(width: filterGap),
-              // Filter button
-              Opacity(
-                opacity: opacity,
-                child: SizedBox(
-                  width: buttonWidth,
-                  child: buttonWidth > 1
-                      ? _FilterButton(
-                          isActive: filtersActive,
-                          onTap: _openFilters,
-                        )
-                      : const SizedBox.shrink(),
+              // Filter button gap - only when filter button is shown
+              if (showFilterButton) SizedBox(width: filterGap),
+              // Filter button - only shown when search query exists
+              if (showFilterButton)
+                Opacity(
+                  opacity: opacity,
+                  child: SizedBox(
+                    width: buttonWidth,
+                    child: buttonWidth > 1
+                        ? _FilterButton(
+                            isActive: filtersActive,
+                            onTap: _openFilters,
+                          )
+                        : const SizedBox.shrink(),
+                  ),
                 ),
-              ),
               // Empty board button gap
               SizedBox(width: buttonGap),
               // Empty board button
@@ -264,9 +275,16 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       hintText: 'Search',
       onChanged: (query) {
         final trimmed = query.trim();
+        // Update local state immediately for UI responsiveness
         setState(() => _searchQuery = trimmed.toLowerCase());
-        // Sync to provider for gamebase search
-        ref.read(librarySearchQueryProvider.notifier).state = trimmed;
+
+        // Debounce the provider update to avoid excessive API calls
+        _debounceTimer?.cancel();
+        _debounceTimer = Timer(_debounceDuration, () {
+          if (mounted) {
+            ref.read(librarySearchQueryProvider.notifier).state = trimmed;
+          }
+        });
       },
       onFolderTap: (folder) async {
         final shouldFocusSearch = await Navigator.of(context).push<bool>(

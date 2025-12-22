@@ -236,10 +236,17 @@ class GameFilter {
 /// Helper to filter games locally based on GameFilter
 class GameFilterHelper {
   /// Apply filter to a list of games
+  ///
+  /// [targetFideId] - When provided, color filter checks if target player
+  /// played as white/black using FIDE ID matching (most accurate)
+  ///
+  /// [playerNameQuery] - Fallback for color filter when targetFideId not
+  /// available, uses name containment matching
   static List<GamesTourModel> applyFilter(
     List<GamesTourModel> games,
     GameFilter filter, {
     String? playerNameQuery,
+    int? targetFideId,
   }) {
     return games.where((game) {
       // Result filter
@@ -267,21 +274,31 @@ class GameFilterHelper {
         return false;
       }
 
-      // Color filter (only applies when player name query is provided)
-      if (filter.color != GameColorFilter.all &&
-          playerNameQuery != null &&
-          playerNameQuery.isNotEmpty) {
-        final qLower = playerNameQuery.toLowerCase();
-        final whiteName = game.whitePlayer.name.toLowerCase();
-        final blackName = game.blackPlayer.name.toLowerCase();
+      // Color filter - determine if target player is white or black
+      if (filter.color != GameColorFilter.all) {
+        bool isTargetWhite = false;
+        bool isTargetBlack = false;
 
-        if (filter.color == GameColorFilter.white &&
-            !whiteName.contains(qLower)) {
-          return false;
+        // Use FIDE ID matching when available (most accurate)
+        if (targetFideId != null) {
+          isTargetWhite = game.whitePlayer.fideId == targetFideId;
+          isTargetBlack = game.blackPlayer.fideId == targetFideId;
+        } else if (playerNameQuery != null && playerNameQuery.isNotEmpty) {
+          // Fallback to name matching
+          final qLower = playerNameQuery.toLowerCase();
+          isTargetWhite = game.whitePlayer.name.toLowerCase().contains(qLower);
+          isTargetBlack = game.blackPlayer.name.toLowerCase().contains(qLower);
         }
-        if (filter.color == GameColorFilter.black &&
-            !blackName.contains(qLower)) {
-          return false;
+
+        // Only apply filter if we could identify the target player
+        if (targetFideId != null ||
+            (playerNameQuery != null && playerNameQuery.isNotEmpty)) {
+          if (filter.color == GameColorFilter.white && !isTargetWhite) {
+            return false;
+          }
+          if (filter.color == GameColorFilter.black && !isTargetBlack) {
+            return false;
+          }
         }
       }
 

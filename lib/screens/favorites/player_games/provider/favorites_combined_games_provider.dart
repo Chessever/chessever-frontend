@@ -38,11 +38,18 @@ class FavoritesCombinedGamesState {
   /// Combines search results with filter settings (AND logic)
   List<GamesTourModel> get filteredGames {
     if (!filter.hasActiveFilters) return games;
-    // Pass searchQuery for Color filter to work correctly
+
+    // When a single player is selected via chip, use their FIDE ID for color filter
+    int? targetFideId;
+    if (selectedFideIds.length == 1) {
+      targetFideId = int.tryParse(selectedFideIds.first);
+    }
+
     return GameFilterHelper.applyFilter(
       games,
       filter,
       playerNameQuery: searchQuery,
+      targetFideId: targetFideId,
     );
   }
 
