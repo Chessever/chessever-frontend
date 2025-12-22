@@ -29,6 +29,7 @@ import 'package:chessever2/widgets/screen_wrapper.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:motor/motor.dart';
 
 class LibraryScreen extends ConsumerStatefulWidget {
   const LibraryScreen({super.key});
@@ -39,11 +40,27 @@ class LibraryScreen extends ConsumerStatefulWidget {
 
 class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   final TextEditingController _searchController = TextEditingController();
+  final FocusNode _searchFocusNode = FocusNode();
   String _searchQuery = '';
   bool _hasOpenedFilters = false;
+  bool _isSearchFocused = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _searchFocusNode.addListener(_onSearchFocusChange);
+  }
+
+  void _onSearchFocusChange() {
+    setState(() {
+      _isSearchFocused = _searchFocusNode.hasFocus;
+    });
+  }
 
   @override
   void dispose() {
+    _searchFocusNode.removeListener(_onSearchFocusChange);
+    _searchFocusNode.dispose();
     _searchController.dispose();
     super.dispose();
   }
@@ -169,36 +186,86 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
           ),
         ),
       ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Expanded(child: _buildSearchField(filtersActive: filtersActive)),
-          SizedBox(width: 10.w),
-          _SquareIconButton(
-            iconWidget: SvgWidget(
-              SvgAsset.chase_grid,
-              height: 20.sp,
-              width: 20.sp,
-            ),
-            onTap: _navigateToEmptyBoard,
-          ),
-          SizedBox(width: 8.w),
-          _SquareIconButton(
-            icon: Icons.add,
-            onTap: _handleCreateFolder,
-            isPrimary: true,
-          ),
-        ],
+      child: SingleMotionBuilder(
+        motion: CupertinoMotion.snappy(),
+        value: _isSearchFocused ? 1.0 : 0.0,
+        builder: (context, value, child) {
+          // value goes from 0 (unfocused) to 1 (focused)
+          // Clamp all values to avoid negative width constraints
+          final clampedValue = value.clamp(0.0, 1.0);
+          final buttonWidth = (44.h * (1 - clampedValue)).clamp(0.0, 44.h);
+          final filterGap = (10.w * (1 - clampedValue)).clamp(0.0, 10.w);
+          final buttonGap = (8.w * (1 - clampedValue)).clamp(0.0, 8.w);
+          final opacity = (1 - clampedValue).clamp(0.0, 1.0);
+
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              // Search bar - expands to full width when focused
+              Expanded(child: _buildSearchField()),
+              // Filter button gap
+              SizedBox(width: filterGap),
+              // Filter button
+              Opacity(
+                opacity: opacity,
+                child: SizedBox(
+                  width: buttonWidth,
+                  child: buttonWidth > 1
+                      ? _FilterButton(
+                          isActive: filtersActive,
+                          onTap: _openFilters,
+                        )
+                      : const SizedBox.shrink(),
+                ),
+              ),
+              // Empty board button gap
+              SizedBox(width: buttonGap),
+              // Empty board button
+              Opacity(
+                opacity: opacity,
+                child: SizedBox(
+                  width: buttonWidth,
+                  child: buttonWidth > 1
+                      ? _SquareIconButton(
+                          iconWidget: SvgWidget(
+                            SvgAsset.chase_grid,
+                            height: 20.sp,
+                            width: 20.sp,
+                          ),
+                          onTap: _navigateToEmptyBoard,
+                        )
+                      : const SizedBox.shrink(),
+                ),
+              ),
+              // Add folder button gap
+              SizedBox(width: buttonGap),
+              // Add folder button
+              Opacity(
+                opacity: opacity,
+                child: SizedBox(
+                  width: buttonWidth,
+                  child: buttonWidth > 1
+                      ? _SquareIconButton(
+                          icon: Icons.add,
+                          onTap: _handleCreateFolder,
+                          isPrimary: true,
+                        )
+                      : const SizedBox.shrink(),
+                ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
 
-  Widget _buildSearchField({required bool filtersActive}) {
+  Widget _buildSearchField() {
     return LibrarySearchBar(
       controller: _searchController,
+      focusNode: _searchFocusNode,
       enableOverlay: true,
       hintText: 'Search',
-      isFilterActive: filtersActive,
       onChanged: (query) {
         final trimmed = query.trim();
         setState(() => _searchQuery = trimmed.toLowerCase());
@@ -226,7 +293,6 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       onGameTap: (gameRow) {
         _openGame(gameRow);
       },
-      onFilterTap: _openFilters,
     );
   }
 
@@ -598,6 +664,46 @@ class _SquareIconButton extends StatelessWidget {
                         ? const Color(0xFF09090B)
                         : const Color(0xFFFAFAFA),
               ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Filter button styled to match the search bar island
+class _FilterButton extends StatelessWidget {
+  final bool isActive;
+  final VoidCallback onTap;
+
+  const _FilterButton({
+    required this.isActive,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    const double size = 44;
+    final dimension = size.h;
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: dimension,
+        height: dimension,
+        decoration: BoxDecoration(
+          color: const Color(0xFF09090B), // Zinc 950
+          borderRadius: BorderRadius.circular(10.br),
+          border: Border.all(
+            color: isActive
+                ? const Color(0xFF52525B) // Zinc 600 when active
+                : const Color(0xFF27272A), // Zinc 800
+          ),
+        ),
+        child: Center(
+          child: Icon(
+            Icons.tune_rounded,
+            size: 20.sp,
+            color: const Color(0xFFFAFAFA),
+          ),
         ),
       ),
     );

@@ -18,11 +18,10 @@ class LibrarySearchBar extends ConsumerStatefulWidget {
   final Function(SavedAnalysis) onAnalysisTap;
   final Function(GamebasePlayer) onPlayerTap;
   final Function(Map<String, dynamic>) onGameTap;
-  final VoidCallback? onFilterTap;
   final VoidCallback? onProfileTap;
   final bool enableOverlay;
   final String hintText;
-  final bool isFilterActive;
+  final FocusNode? focusNode;
 
   const LibrarySearchBar({
     super.key,
@@ -32,11 +31,10 @@ class LibrarySearchBar extends ConsumerStatefulWidget {
     required this.onAnalysisTap,
     required this.onPlayerTap,
     required this.onGameTap,
-    this.onFilterTap,
     this.onProfileTap,
     this.enableOverlay = true,
     this.hintText = 'Search',
-    this.isFilterActive = false,
+    this.focusNode,
   });
 
   @override
@@ -45,19 +43,21 @@ class LibrarySearchBar extends ConsumerStatefulWidget {
 
 class _LibrarySearchBarState extends ConsumerState<LibrarySearchBar> {
   bool _showOverlay = false;
-  final FocusNode _focusNode = FocusNode();
+  final FocusNode _internalFocusNode = FocusNode();
+  late final FocusNode _effectiveFocusNode;
 
   @override
   void initState() {
     super.initState();
-    _focusNode.addListener(_onFocusChange);
+    _effectiveFocusNode = widget.focusNode ?? _internalFocusNode;
+    _effectiveFocusNode.addListener(_onFocusChange);
     widget.controller.addListener(_onTextChange);
   }
 
   @override
   void dispose() {
-    _focusNode.removeListener(_onFocusChange);
-    _focusNode.dispose();
+    _effectiveFocusNode.removeListener(_onFocusChange);
+    if (widget.focusNode == null) _internalFocusNode.dispose();
     widget.controller.removeListener(_onTextChange);
     EasyDebounce.cancel('lib_search_debounce');
     super.dispose();
@@ -67,7 +67,7 @@ class _LibrarySearchBarState extends ConsumerState<LibrarySearchBar> {
     setState(() {
       _showOverlay =
           widget.enableOverlay &&
-          _focusNode.hasFocus &&
+          _effectiveFocusNode.hasFocus &&
           widget.controller.text.isNotEmpty;
     });
   }
@@ -75,7 +75,7 @@ class _LibrarySearchBarState extends ConsumerState<LibrarySearchBar> {
   void _onTextChange() {
     final hasText = widget.controller.text.isNotEmpty;
     final shouldShowOverlay =
-        widget.enableOverlay && _focusNode.hasFocus && hasText;
+        widget.enableOverlay && _effectiveFocusNode.hasFocus && hasText;
 
     if (shouldShowOverlay != _showOverlay) {
       setState(() => _showOverlay = shouldShowOverlay);
@@ -91,7 +91,7 @@ class _LibrarySearchBarState extends ConsumerState<LibrarySearchBar> {
 
   void _hideOverlay() {
     setState(() => _showOverlay = false);
-    _focusNode.unfocus();
+    _effectiveFocusNode.unfocus();
   }
 
   void _clearSearch() {
@@ -117,7 +117,7 @@ class _LibrarySearchBarState extends ConsumerState<LibrarySearchBar> {
           children: [
             SingleMotionBuilder(
               motion: CupertinoMotion.snappy(),
-              value: _focusNode.hasFocus ? 1.0 : 0.0,
+              value: _effectiveFocusNode.hasFocus ? 1.0 : 0.0,
               builder: (context, value, child) {
                 return Transform.scale(
                   scale: 0.98 + (value * 0.02),
@@ -127,12 +127,12 @@ class _LibrarySearchBarState extends ConsumerState<LibrarySearchBar> {
                       borderRadius: BorderRadius.circular(12.br),
                       border: Border.all(
                         color:
-                            _focusNode.hasFocus
+                            _effectiveFocusNode.hasFocus
                                 ? const Color(0xFF52525B) // Zinc 600
                                 : const Color(0xFF27272A), // Zinc 800
                       ),
                       boxShadow:
-                          _focusNode.hasFocus
+                          _effectiveFocusNode.hasFocus
                               ? [
                                 BoxShadow(
                                   color: Colors.black.withOpacity(0.25),
@@ -216,21 +216,21 @@ class _LibrarySearchBarState extends ConsumerState<LibrarySearchBar> {
               alignment: Alignment.centerLeft,
               children: [
                 // Animated hint text (shown when empty and not focused)
-                if (isEmpty && !_focusNode.hasFocus)
+                if (isEmpty && !_effectiveFocusNode.hasFocus)
                   const AnimatedSearchHint(
                     textColor: Color(0xFFA1A1AA), // Zinc 400
                   ),
                 // TextField (always present but transparent hint when animated)
                 TextField(
                   controller: widget.controller,
-                  focusNode: _focusNode,
+                  focusNode: _effectiveFocusNode,
                   style: AppTypography.textSmRegular.copyWith(
                     color: const Color(0xFFFAFAFA), // Zinc 50
                   ),
                   decoration: InputDecoration(
                     isDense: true,
                     // Show static hint only when focused and empty
-                    hintText: _focusNode.hasFocus ? widget.hintText : null,
+                    hintText: _effectiveFocusNode.hasFocus ? widget.hintText : null,
                     hintStyle: AppTypography.textSmRegular.copyWith(
                       color: const Color(0xFFA1A1AA), // Zinc 400
                     ),
@@ -250,33 +250,7 @@ class _LibrarySearchBarState extends ConsumerState<LibrarySearchBar> {
                 color: const Color(0xFFA1A1AA),
               ),
             ),
-          SizedBox(width: 8.w),
-          // Filter Button
-          GestureDetector(
-            onTap: widget.onFilterTap,
-            child: Container(
-              width: 32.h,
-              height: 32.h,
-              decoration: BoxDecoration(
-                color: const Color(0xFF18181B), // Zinc 900
-                borderRadius: BorderRadius.circular(8.br),
-                border: Border.all(
-                  color:
-                      widget.isFilterActive
-                          ? const Color(0xFF52525B) // Zinc 600
-                          : const Color(0xFF27272A),
-                ),
-              ),
-              child: Center(
-                child: Icon(
-                  Icons.tune_rounded,
-                  size: 16.sp,
-                  color: const Color(0xFFFAFAFA),
-                ),
-              ),
-            ),
-          ),
-          SizedBox(width: 6.w),
+          SizedBox(width: 12.w),
         ],
       ),
     );
