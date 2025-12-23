@@ -184,12 +184,14 @@ class GroupEventScreen extends HookConsumerWidget {
                         .searchForTournament(value, selectedTourEvent);
                     // Update search tab query
                     final trimmed = value.trim();
+                    final previousQuery = ref.read(searchTabQueryProvider);
                     ref.read(searchTabQueryProvider.notifier).state = trimmed;
                     if (trimmed.isNotEmpty) {
                       // Switch to search tab immediately when typing
                       ref.read(selectedGroupCategoryProvider.notifier).state = GroupEventCategory.search;
-                    } else {
-                      // Mirror clear icon behavior when user deletes text manually
+                    } else if (previousQuery.isNotEmpty) {
+                      // Only switch tabs when user actively clears a non-empty search
+                      // (not when tapping on an already empty field)
                       searchAnimatedEventIds.clear();
                       ref.read(selectedGroupCategoryProvider.notifier).state = GroupEventCategory.current;
                       // ignore: unused_result

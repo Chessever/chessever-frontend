@@ -1,18 +1,24 @@
 import 'dart:async';
 
+import 'package:chessever2/screens/chessboard/widgets/chess_board_from_fen_new.dart';
 import 'package:chessever2/screens/library/widgets/add_to_folder_sheet.dart';
 import 'package:chessever2/screens/library/widgets/gamebase_search_game_card.dart';
 import 'package:chessever2/screens/player_profile/provider/player_profile_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_widget.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/game_filter/game_filter.dart';
 import 'package:chessever2/widgets/scroll_to_top_button.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:intl/intl.dart';
 
@@ -136,6 +142,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
     super.build(context);
 
     final state = ref.watch(playerProfileGamesProvider(widget.fideId));
+    final viewMode = ref.watch(gamesListViewModeProvider);
 
     return Stack(
       children: [
@@ -180,7 +187,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
               ),
 
               // Content
-              _buildContentSliver(state),
+              _buildContentSliver(state, viewMode),
 
               // Bottom padding
               SliverToBoxAdapter(child: SizedBox(height: 24.h)),
@@ -316,6 +323,32 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
               ),
             ),
           ),
+
+          // Layout toggle button
+          SizedBox(width: 8.w),
+          GestureDetector(
+            onTap: () => ref.read(gamesListViewModeSwitcher).toggleViewMode(),
+            child: Container(
+              width: searchBarHeight,
+              height: searchBarHeight,
+              decoration: BoxDecoration(
+                color: const Color(0xFF09090B),
+                borderRadius: BorderRadius.circular(12.br),
+                border: Border.all(color: const Color(0xFF27272A)),
+              ),
+              child: Center(
+                child: SvgPicture.asset(
+                  SvgAsset.chase_grid,
+                  width: 20.sp,
+                  height: 20.sp,
+                  colorFilter: const ColorFilter.mode(
+                    Color(0xFFA1A1AA),
+                    BlendMode.srcIn,
+                  ),
+                ),
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -389,7 +422,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
     );
   }
 
-  Widget _buildContentSliver(PlayerProfileGamesState state) {
+  Widget _buildContentSliver(PlayerProfileGamesState state, GamesListViewMode viewMode) {
     if (state.isLoading && state.allGames.isEmpty) {
       return SliverFillRemaining(
         hasScrollBody: false,
@@ -420,6 +453,15 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
       );
     }
 
+    final isGridMode = viewMode == GamesListViewMode.chessBoardGrid;
+    final isChessBoardVisible = viewMode == GamesListViewMode.chessBoard;
+
+    // Create GamesScreenModel for GameCardWrapperWidget
+    final gamesData = GamesScreenModel(
+      gamesTourModels: games,
+      pinnedGamedIs: const [],
+    );
+
     // Group games by date
     final gamesByDate = _groupGamesByDate(games);
 
@@ -447,28 +489,72 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
 
       // Games under this date
       if (!isCollapsed) {
-        for (int i = 0; i < dateGames.length; i++) {
-          final game = dateGames[i];
-          final isLast = i == dateGames.length - 1;
-          final globalIndex = games.indexOf(game);
-          final showHint = isFirstGameCard;
-          if (isFirstGameCard) isFirstGameCard = false;
+        if (isGridMode) {
+          // Grid mode: show 2 chessboards per row
+          for (int i = 0; i < dateGames.length; i += 2) {
+            final game1 = dateGames[i];
+            final game2 = i + 1 < dateGames.length ? dateGames[i + 1] : null;
+            final gameIndex1 = games.indexOf(game1);
+            final gameIndex2 = game2 != null ? games.indexOf(game2) : -1;
+            final isLast = i + 2 >= dateGames.length;
 
-          items.add(
-            Padding(
-              padding: EdgeInsets.only(bottom: isLast ? 16.h : 12.h),
-              child: GamebaseSearchGameCard(
-                game: game,
-                allGames: games,
-                gameIndex: globalIndex,
-                animationIndex: items.length,
-                showRound: true,
-                showSwipeHint: showHint,
-                showGamebaseButton: false,
-                onAdd: () => _showAddToFolderSheet(game),
+            items.add(
+              Padding(
+                padding: EdgeInsets.only(bottom: isLast ? 16.h : 12.h),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    _buildGridGame(game1, gameIndex1, games),
+                    if (game2 != null)
+                      _buildGridGame(game2, gameIndex2, games),
+                  ],
+                ),
               ),
-            ),
-          );
+            );
+          }
+        } else {
+          // Card mode or Board mode
+          for (int i = 0; i < dateGames.length; i++) {
+            final game = dateGames[i];
+            final isLast = i == dateGames.length - 1;
+            final globalIndex = games.indexOf(game);
+            final showHint = isFirstGameCard && viewMode == GamesListViewMode.gamesCard;
+            if (isFirstGameCard) isFirstGameCard = false;
+
+            if (isChessBoardVisible) {
+              // Board mode: use GameCardWrapperWidget with chessboard visible
+              items.add(
+                Padding(
+                  padding: EdgeInsets.only(bottom: isLast ? 16.h : 12.h),
+                  child: GameCardWrapperWidget(
+                    key: ValueKey('player_game_${game.gameId}_${viewMode.index}'),
+                    game: game,
+                    gamesData: gamesData,
+                    gameIndex: globalIndex,
+                    isChessBoardVisible: true,
+                    onReturnFromChessboard: (_) {},
+                  ),
+                ),
+              );
+            } else {
+              // Card mode: use GamebaseSearchGameCard
+              items.add(
+                Padding(
+                  padding: EdgeInsets.only(bottom: isLast ? 16.h : 12.h),
+                  child: GamebaseSearchGameCard(
+                    game: game,
+                    allGames: games,
+                    gameIndex: globalIndex,
+                    animationIndex: items.length,
+                    showRound: true,
+                    showSwipeHint: showHint,
+                    showGamebaseButton: false,
+                    onAdd: () => _showAddToFolderSheet(game),
+                  ),
+                ),
+              );
+            }
+          }
         }
       }
     }
@@ -481,6 +567,27 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
           childCount: items.length,
         ),
       ),
+    );
+  }
+
+  Widget _buildGridGame(
+    GamesTourModel game,
+    int gameIndex,
+    List<GamesTourModel> allGames,
+  ) {
+    return GridChessBoardFromFENNew(
+      key: ValueKey('player_grid_game_${game.gameId}'),
+      gamesTourModel: game,
+      onChanged: () => ref
+          .read(gameCardWrapperProvider)
+          .navigateToChessBoard(
+            context: context,
+            orderedGames: allGames,
+            gameIndex: gameIndex,
+            onReturnFromChessboard: (_) {},
+          ),
+      pinnedIds: const [],
+      onPinToggle: (_) {},
     );
   }
 
