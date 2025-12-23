@@ -33,6 +33,9 @@ class GamesAppBarModel extends Equatable {
     final utcStart = round.startsAt;
     final startsAt = TimeUtils.toLocal(utcStart);
 
+    // Debug: log round start times
+    print('📅 Round "${round.name}" startsAt: $startsAt (from DB: ${round.startsAt})');
+
     return GamesAppBarModel(
       id: round.id,
       name: round.name,
@@ -87,6 +90,9 @@ class GamesAppBarModel extends Equatable {
   }
 
   String get formattedStartDate => TimeUtils.formatSingleDate(startsAt);
+
+  /// Formatted date for round dropdown: "29 Dec 2025, 17:00 UTC"
+  String get formattedRoundDateTime => TimeUtils.formatRoundDateTime(startsAt);
 
   @override
   List<Object?> get props => [id, name, startsAt, roundStatus];

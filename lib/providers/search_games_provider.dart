@@ -14,9 +14,6 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 // PROVIDER DEFINITIONS
 // ============================================================================
 
-/// Provider for the current search query used in search tab
-final searchTabQueryProvider = StateProvider<String>((ref) => '');
-
 /// Main provider for Search tab games - fetches games for top players matching search
 ///
 /// NOTE: Using keepAlive to prevent data loss when scrolling/interacting.

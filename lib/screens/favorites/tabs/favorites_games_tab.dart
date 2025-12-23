@@ -1,15 +1,21 @@
 import 'dart:async';
 
 import 'package:chessever2/repository/favorites/models/favorite_player.dart';
+import 'package:chessever2/screens/chessboard/widgets/chess_board_from_fen_new.dart';
 import 'package:chessever2/screens/favorites/favorite_players_provider.dart';
 import 'package:chessever2/screens/favorites/player_games/provider/favorites_combined_games_provider.dart';
+import 'package:chessever2/screens/group_event/widget/appbar_icons_widget.dart';
 import 'package:chessever2/screens/library/widgets/add_to_folder_sheet.dart';
 import 'package:chessever2/screens/library/widgets/gamebase_search_game_card.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_widget.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/federation_flag.dart';
 import 'package:chessever2/widgets/game_filter/game_filter.dart';
 import 'package:flutter/material.dart';
@@ -18,6 +24,9 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/widgets/scroll_to_top_button.dart';
 import 'package:intl/intl.dart';
+
+/// Track animated game IDs for Favorites to prevent re-animation
+final Set<String> _favoritesAnimatedGameIds = {};
 
 class FavoritesGamesTab extends ConsumerStatefulWidget {
   const FavoritesGamesTab({super.key});
@@ -196,6 +205,7 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
     super.build(context);
 
     final state = ref.watch(favoritesCombinedGamesProvider);
+    final viewMode = ref.watch(gamesListViewModeProvider);
     // Watch the notifier provider for optimistic updates when favorites change
     final favoritesState = ref.watch(favoritePlayersNotifierProvider);
     final playerModels = favoritesState.valueOrNull?.players ?? [];
@@ -234,6 +244,7 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
           color: kWhiteColor,
           backgroundColor: kBlack2Color,
           child: CustomScrollView(
+            key: PageStorageKey<String>('favorites_games_list_${viewMode.index}'),
             controller: _scrollController,
             physics: const AlwaysScrollableScrollPhysics(
               parent: BouncingScrollPhysics(),
@@ -254,7 +265,7 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
                 ),
 
               // Content
-              _buildContentSliver(state, favorites),
+              _buildContentSliver(state, favorites, viewMode),
 
               // Bottom padding
               SliverToBoxAdapter(child: SizedBox(height: 24.h)),
@@ -384,6 +395,16 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
                     ),
                 ],
               ),
+            ),
+          ),
+          // Layout toggle button
+          SizedBox(width: 8.w),
+          SizedBox(
+            width: searchBarHeight,
+            height: searchBarHeight,
+            child: AppBarIcons(
+              image: SvgAsset.chase_grid,
+              onTap: () => ref.read(gamesListViewModeSwitcher).toggleViewMode(),
             ),
           ),
         ],
@@ -529,6 +550,7 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
   Widget _buildContentSliver(
     FavoritesCombinedGamesState state,
     List<FavoritePlayer> favorites,
+    GamesListViewMode viewMode,
   ) {
     if (state.isLoading && state.games.isEmpty) {
       return SliverFillRemaining(
@@ -574,6 +596,14 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
     // Build list items: date headers + games
     final items = <Widget>[];
     bool isFirstGameCard = true;
+    final isGrid = viewMode == GamesListViewMode.chessBoardGrid;
+    final isChessBoardVisible = viewMode == GamesListViewMode.chessBoard;
+
+    // Create GamesScreenModel for GameCardWrapperWidget
+    final gamesData = GamesScreenModel(
+      gamesTourModels: games,
+      pinnedGamedIs: const [],
+    );
 
     for (final entry in gamesByDate.entries) {
       final dateKey = entry.key;
@@ -595,26 +625,69 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
 
       // Games under this date (only if expanded)
       if (!isCollapsed) {
-        for (int i = 0; i < dateGames.length; i++) {
-          final game = dateGames[i];
-          final isLast = i == dateGames.length - 1;
-          final showHint = isFirstGameCard;
-          if (isFirstGameCard) isFirstGameCard = false;
-          items.add(
-            Padding(
-              padding: EdgeInsets.only(bottom: isLast ? 16.h : 12.h),
-              child: GamebaseSearchGameCard(
-                game: game,
-                allGames: games,
-                gameIndex: games.indexOf(game),
-                animationIndex: items.length,
-                showRound: true,
-                showSwipeHint: showHint,
-                showGamebaseButton: false, // Hide book icon for Favorites context
-                onAdd: () => _showAddToFolderSheet(context, game),
+        if (isGrid) {
+          // Grid mode: pair games side by side
+          for (int i = 0; i < dateGames.length; i += 2) {
+            final game1 = dateGames[i];
+            final game2 = i + 1 < dateGames.length ? dateGames[i + 1] : null;
+            final isLast = i + 2 >= dateGames.length;
+
+            items.add(
+              Padding(
+                padding: EdgeInsets.only(bottom: isLast ? 16.h : 12.h),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    _buildGridGame(game1, games.indexOf(game1), games, items.length),
+                    if (game2 != null)
+                      _buildGridGame(game2, games.indexOf(game2), games, items.length),
+                  ],
+                ),
               ),
-            ),
-          );
+            );
+          }
+        } else {
+          // Card mode or Board mode
+          for (int i = 0; i < dateGames.length; i++) {
+            final game = dateGames[i];
+            final gameIndex = games.indexOf(game);
+            final isLast = i == dateGames.length - 1;
+            final showHint = isFirstGameCard && viewMode == GamesListViewMode.gamesCard;
+            if (isFirstGameCard) isFirstGameCard = false;
+
+            if (isChessBoardVisible) {
+              // Board mode: use GameCardWrapperWidget with chessboard visible
+              items.add(
+                _FavoritesKeepAliveGameCard(
+                  key: ValueKey('fav_game_${game.gameId}_${viewMode.index}'),
+                  game: game,
+                  gamesData: gamesData,
+                  gameIndex: gameIndex,
+                  listIndex: items.length,
+                  allGames: games,
+                  isChessBoardVisible: true,
+                  isLast: isLast,
+                ),
+              );
+            } else {
+              // Card mode: use GamebaseSearchGameCard
+              items.add(
+                Padding(
+                  padding: EdgeInsets.only(bottom: isLast ? 16.h : 12.h),
+                  child: GamebaseSearchGameCard(
+                    game: game,
+                    allGames: games,
+                    gameIndex: gameIndex,
+                    animationIndex: items.length,
+                    showRound: true,
+                    showSwipeHint: showHint,
+                    showGamebaseButton: false,
+                    onAdd: () => _showAddToFolderSheet(context, game),
+                  ),
+                ),
+              );
+            }
+          }
         }
       }
     }
@@ -661,8 +734,31 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
         delegate: SliverChildBuilderDelegate(
           (context, index) => items[index],
           childCount: items.length,
+          addAutomaticKeepAlives: true,
         ),
       ),
+    );
+  }
+
+  Widget _buildGridGame(
+    GamesTourModel game,
+    int gameIndex,
+    List<GamesTourModel> allGames,
+    int listIndex,
+  ) {
+    return GridChessBoardFromFENNew(
+      key: ValueKey('fav_grid_game_${game.gameId}'),
+      gamesTourModel: game,
+      onChanged: () => ref
+          .read(gameCardWrapperProvider)
+          .navigateToChessBoard(
+            context: context,
+            orderedGames: allGames,
+            gameIndex: gameIndex,
+            onReturnFromChessboard: (_) {},
+          ),
+      pinnedIds: const [],
+      onPinToggle: (_) {},
     );
   }
 
@@ -949,5 +1045,69 @@ class _DateHeader extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+/// StatefulWidget that uses AutomaticKeepAliveClientMixin to keep game cards alive
+/// This prevents the card from being disposed when scrolled off-screen
+class _FavoritesKeepAliveGameCard extends StatefulWidget {
+  const _FavoritesKeepAliveGameCard({
+    super.key,
+    required this.game,
+    required this.gamesData,
+    required this.gameIndex,
+    required this.listIndex,
+    required this.allGames,
+    required this.isChessBoardVisible,
+    required this.isLast,
+  });
+
+  final GamesTourModel game;
+  final GamesScreenModel gamesData;
+  final int gameIndex;
+  final int listIndex;
+  final List<GamesTourModel> allGames;
+  final bool isChessBoardVisible;
+  final bool isLast;
+
+  @override
+  State<_FavoritesKeepAliveGameCard> createState() => _FavoritesKeepAliveGameCardState();
+}
+
+class _FavoritesKeepAliveGameCardState extends State<_FavoritesKeepAliveGameCard>
+    with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
+
+    final gameId = widget.game.gameId;
+
+    final card = Padding(
+      padding: EdgeInsets.only(bottom: widget.isLast ? 16.h : 12.h),
+      child: GameCardWrapperWidget(
+        game: widget.game,
+        gamesData: widget.gamesData,
+        gameIndex: widget.gameIndex,
+        isChessBoardVisible: widget.isChessBoardVisible,
+        onReturnFromChessboard: (_) {},
+      ),
+    );
+
+    // Use global set to track animations - survives tab switches and rebuilds
+    if (!_favoritesAnimatedGameIds.contains(gameId)) {
+      _favoritesAnimatedGameIds.add(gameId);
+      return card
+          .animate()
+          .fadeIn(
+            duration: 200.ms,
+            delay: Duration(milliseconds: (widget.listIndex % 10) * 30),
+          )
+          .slideY(begin: 0.05, end: 0, duration: 200.ms, curve: Curves.easeOut);
+    }
+
+    return card;
   }
 }

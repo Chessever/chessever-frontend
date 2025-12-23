@@ -7,6 +7,7 @@ import 'package:chessever2/utils/chess_title_utils.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/png_asset.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/app_button.dart';
 import 'package:chessever2/widgets/federation_flag.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -38,22 +39,24 @@ class LibraryGameCard extends ConsumerWidget {
     final displayEventName = _formatEventName(
       eventName ?? game.tourSlug ?? game.tourId,
     );
-    final timeControlIcon = _getTimeControlIcon(displayEventName);
+    final timeControlIcon = _getTimeControlIcon(game, displayEventName);
     final displayEco = eco ?? '';  // Only ECO code, never round info
     final displayDate = _formatDate(date ?? game.lastMoveTime);
 
-    return GestureDetector(
+    return TappableScale(
       onTap: () {
         HapticFeedbackService.cardTap();
         onTap();
       },
-      onLongPress: onLongPress != null
-          ? () {
-              HapticFeedbackService.buttonPress();
-              onLongPress!();
-            }
-          : null,
-      child: Container(
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onLongPress: onLongPress != null
+            ? () {
+                HapticFeedbackService.buttonPress();
+                onLongPress!();
+              }
+            : null,
+        child: Container(
         decoration: BoxDecoration(
           color: const Color(0xFF2E2E2E),
           borderRadius: BorderRadius.circular(12.br),
@@ -153,6 +156,7 @@ class LibraryGameCard extends ConsumerWidget {
             ),
           ],
         ),
+        ),
       ),
     );
   }
@@ -211,7 +215,27 @@ class LibraryGameCard extends ConsumerWidget {
     return result.join(' ');
   }
 
-  String _getTimeControlIcon(String eventName) {
+  /// Infer time control icon from game clock data
+  /// Uses the same logic as GameFilterHelper._inferTimeControl()
+  String _getTimeControlIcon(GamesTourModel game, String eventName) {
+    // First, try to infer from clock data (most accurate)
+    // Try whiteClockSeconds first (from last_clock_white DB column, more reliable)
+    if (game.whiteClockSeconds != null && game.whiteClockSeconds! > 0) {
+      final baseSeconds = game.whiteClockSeconds!;
+      if (baseSeconds >= 1800) return PngAsset.classicalIcon; // 30+ min
+      if (baseSeconds >= 600) return PngAsset.rapidIcon; // 10-30 min
+      return PngAsset.blitzIcon; // < 10 min
+    }
+
+    // Fall back to whiteClockCentiseconds (from players JSON)
+    if (game.whiteClockCentiseconds > 0) {
+      final baseSeconds = (game.whiteClockCentiseconds / 100).round();
+      if (baseSeconds >= 1800) return PngAsset.classicalIcon;
+      if (baseSeconds >= 600) return PngAsset.rapidIcon;
+      return PngAsset.blitzIcon;
+    }
+
+    // Final fallback: check event name for keywords
     final event = eventName.toLowerCase();
     if (event.contains('blitz')) return PngAsset.blitzIcon;
     if (event.contains('rapid')) return PngAsset.rapidIcon;

@@ -123,7 +123,7 @@ class _CountrymenTabScreenState extends ConsumerState<CountrymenTabScreen> {
       body: Column(
         children: [
           SizedBox(height: MediaQuery.of(context).viewPadding.top + 4.h),
-          _buildAppBar(context, effectiveCountryAsync),
+          _buildAppBar(context, effectiveCountryAsync, selectedMode),
           SizedBox(height: 8.h),
           _buildSegmentedSwitcher(selectedMode),
           Expanded(
@@ -155,7 +155,11 @@ class _CountrymenTabScreenState extends ConsumerState<CountrymenTabScreen> {
     );
   }
 
-  Widget _buildAppBar(BuildContext context, AsyncValue<Country> countryAsync) {
+  Widget _buildAppBar(
+    BuildContext context,
+    AsyncValue<Country> countryAsync,
+    CountrymenScreenMode selectedMode,
+  ) {
     final isTemporary = _isTemporarySelection();
 
     return Padding(

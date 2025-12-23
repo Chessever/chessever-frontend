@@ -1,14 +1,16 @@
+import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
+import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/screens/player_profile/provider/player_profile_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/event_card/event_card.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:intl/intl.dart';
 
 /// Events tab showing tournaments the player has participated in
 class PlayerEventsTab extends ConsumerStatefulWidget {
@@ -35,6 +37,7 @@ class _PlayerEventsTabState extends ConsumerState<PlayerEventsTab>
       onRefresh: () async {
         HapticFeedbackService.medium();
         ref.invalidate(playerEventsProvider(widget.fideId));
+        ref.invalidate(playerEventCardsProvider(widget.fideId));
       },
       color: kWhiteColor,
       backgroundColor: kBlack2Color,
@@ -44,111 +47,23 @@ class _PlayerEventsTabState extends ConsumerState<PlayerEventsTab>
             return _buildEmptyState();
           }
 
-          // Sort events by games played (descending)
+          // Sort events by start date (most recent first)
           final sortedEvents = List<PlayerEventData>.from(events)
-            ..sort((a, b) => b.gamesPlayed.compareTo(a.gamesPlayed));
+            ..sort((a, b) {
+              final aDate = a.startDate ?? DateTime(1900);
+              final bDate = b.startDate ?? DateTime(1900);
+              return bDate.compareTo(aDate);
+            });
 
-          return ListView.builder(
-            physics: const AlwaysScrollableScrollPhysics(
-              parent: BouncingScrollPhysics(),
-            ),
-            padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 16.h),
-            itemCount: sortedEvents.length + 1, // +1 for header
-            itemBuilder: (context, index) {
-              if (index == 0) {
-                return Padding(
-                  padding: EdgeInsets.only(bottom: 16.h),
-                  child: _buildHeader(events.length),
-                );
-              }
-
-              final event = sortedEvents[index - 1];
-              return Padding(
-                padding: EdgeInsets.only(bottom: 12.h),
-                child: _EventCard(
-                  event: event,
-                  index: index - 1,
-                  onTap: () => _navigateToTournament(event),
-                ),
-              );
-            },
+          return _EventsListContent(
+            events: sortedEvents,
+            fideId: widget.fideId,
           );
         },
         loading: () => _buildLoadingState(),
         error: (error, _) => _buildErrorState(error.toString()),
       ),
     );
-  }
-
-  Widget _buildHeader(int totalEvents) {
-    return Container(
-      padding: EdgeInsets.all(16.sp),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            kPrimaryColor.withValues(alpha: 0.15),
-            kPrimaryColor.withValues(alpha: 0.05),
-          ],
-        ),
-        borderRadius: BorderRadius.circular(12.br),
-        border: Border.all(color: kPrimaryColor.withValues(alpha: 0.2)),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 48.w,
-            height: 48.h,
-            decoration: BoxDecoration(
-              color: kPrimaryColor.withValues(alpha: 0.2),
-              borderRadius: BorderRadius.circular(12.br),
-            ),
-            child: Icon(
-              Icons.emoji_events_outlined,
-              color: kPrimaryColor,
-              size: 24.ic,
-            ),
-          ),
-          SizedBox(width: 16.w),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                '$totalEvents Tournaments',
-                style: AppTypography.textLgBold.copyWith(color: kWhiteColor),
-              ),
-              Text(
-                'Events this player participated in',
-                style: AppTypography.textXsRegular.copyWith(
-                  color: kWhiteColor.withValues(alpha: 0.6),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    ).animate().fadeIn(duration: 300.ms).slideY(begin: -0.02, end: 0);
-  }
-
-  Future<void> _navigateToTournament(PlayerEventData event) async {
-    HapticFeedbackService.buttonPress();
-    try {
-      final broadcast = await ref
-          .read(groupBroadcastRepositoryProvider)
-          .getGroupBroadcastById(event.tourId);
-      ref.read(selectedBroadcastModelProvider.notifier).state = broadcast;
-
-      if (!mounted) return;
-      if (ref.read(selectedBroadcastModelProvider) != null) {
-        Navigator.pushNamed(context, '/tournament_detail_screen');
-      }
-    } catch (_) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Unable to open event')),
-      );
-    }
   }
 
   Widget _buildEmptyState() {
@@ -298,9 +213,342 @@ class _PlayerEventsTabState extends ConsumerState<PlayerEventsTab>
   }
 }
 
-/// Event card widget displaying tournament information
-class _EventCard extends StatelessWidget {
-  const _EventCard({
+/// Content widget that shows statistics and event list
+class _EventsListContent extends ConsumerWidget {
+  const _EventsListContent({
+    required this.events,
+    required this.fideId,
+  });
+
+  final List<PlayerEventData> events;
+  final int fideId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    // Calculate statistics from events
+    final totalGames = events.fold<int>(0, (sum, e) => sum + e.gamesPlayed);
+    final totalScore = events.fold<double>(0, (sum, e) => sum + (e.score ?? 0));
+    final avgScore = totalGames > 0 ? totalScore / totalGames : 0.0;
+
+    // Watch the event cards provider
+    final eventCardsAsync = ref.watch(playerEventCardsProvider(fideId));
+
+    return ListView.builder(
+      physics: const AlwaysScrollableScrollPhysics(
+        parent: BouncingScrollPhysics(),
+      ),
+      padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 16.h),
+      itemCount: events.length + 1, // +1 for header section
+      itemBuilder: (context, index) {
+        if (index == 0) {
+          return _StatsHeader(
+            totalEvents: events.length,
+            totalGames: totalGames,
+            avgScore: avgScore,
+          );
+        }
+
+        final event = events[index - 1];
+
+        return eventCardsAsync.when(
+          data: (eventCards) {
+            final eventCard = eventCards[event.tourId];
+            if (eventCard != null) {
+              return Padding(
+                padding: EdgeInsets.only(bottom: 12.h),
+                child: _PlayerEventCard(
+                  eventCard: eventCard,
+                  playerEventData: event,
+                  index: index - 1,
+                ),
+              );
+            }
+            // Fallback to custom card if GroupEventCardModel not available
+            return Padding(
+              padding: EdgeInsets.only(bottom: 12.h),
+              child: _FallbackEventCard(
+                event: event,
+                index: index - 1,
+                onTap: () => _navigateToTournament(context, ref, event),
+              ),
+            );
+          },
+          loading: () => Padding(
+            padding: EdgeInsets.only(bottom: 12.h),
+            child: _FallbackEventCard(
+              event: event,
+              index: index - 1,
+              onTap: () => _navigateToTournament(context, ref, event),
+            ),
+          ),
+          error: (_, __) => Padding(
+            padding: EdgeInsets.only(bottom: 12.h),
+            child: _FallbackEventCard(
+              event: event,
+              index: index - 1,
+              onTap: () => _navigateToTournament(context, ref, event),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _navigateToTournament(
+    BuildContext context,
+    WidgetRef ref,
+    PlayerEventData event,
+  ) async {
+    HapticFeedbackService.buttonPress();
+    try {
+      final broadcast = await ref
+          .read(groupBroadcastRepositoryProvider)
+          .getGroupBroadcastById(event.tourId);
+      ref.read(selectedBroadcastModelProvider.notifier).state = broadcast;
+
+      if (!context.mounted) return;
+      if (ref.read(selectedBroadcastModelProvider) != null) {
+        Navigator.pushNamed(context, '/tournament_detail_screen');
+      }
+    } catch (_) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Unable to open event')),
+      );
+    }
+  }
+}
+
+/// Statistics header section - similar design to about tab
+class _StatsHeader extends StatelessWidget {
+  const _StatsHeader({
+    required this.totalEvents,
+    required this.totalGames,
+    required this.avgScore,
+  });
+
+  final int totalEvents;
+  final int totalGames;
+  final double avgScore;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Tournament Statistics',
+          style: AppTypography.textSmBold.copyWith(color: kWhiteColor),
+        ),
+        SizedBox(height: 12.h),
+        Container(
+          padding: EdgeInsets.all(16.sp),
+          decoration: BoxDecoration(
+            color: kBlack2Color,
+            borderRadius: BorderRadius.circular(12.br),
+          ),
+          child: Row(
+            children: [
+              _StatBox(
+                value: totalEvents.toString(),
+                label: 'Events',
+                color: kPrimaryColor,
+              ),
+              SizedBox(width: 12.w),
+              _StatBox(
+                value: totalGames.toString(),
+                label: 'Games',
+                color: kWhiteColor70,
+              ),
+              SizedBox(width: 12.w),
+              _StatBox(
+                value: '${(avgScore * 100).toStringAsFixed(1)}%',
+                label: 'Avg Score',
+                color: _getScoreColor(avgScore),
+              ),
+            ],
+          ),
+        ),
+        SizedBox(height: 24.h),
+        Text(
+          'Participated Events',
+          style: AppTypography.textSmBold.copyWith(color: kWhiteColor),
+        ),
+        SizedBox(height: 12.h),
+      ],
+    ).animate().fadeIn(duration: 300.ms).slideY(begin: -0.02, end: 0);
+  }
+
+  Color _getScoreColor(double score) {
+    if (score >= 0.6) return kGreenColor;
+    if (score >= 0.4) return kWhiteColor;
+    return Colors.redAccent;
+  }
+}
+
+/// Stat box widget
+class _StatBox extends StatelessWidget {
+  const _StatBox({
+    required this.value,
+    required this.label,
+    required this.color,
+  });
+
+  final String value;
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: Container(
+        padding: EdgeInsets.symmetric(vertical: 12.h),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.15),
+          borderRadius: BorderRadius.circular(8.br),
+        ),
+        child: Column(
+          children: [
+            Text(
+              value,
+              style: AppTypography.textMdBold.copyWith(color: color),
+            ),
+            SizedBox(height: 2.h),
+            Text(
+              label,
+              style: AppTypography.textXsRegular.copyWith(
+                color: kWhiteColor.withValues(alpha: 0.6),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Player event card using standard EventCard with player stats overlay
+class _PlayerEventCard extends ConsumerWidget {
+  const _PlayerEventCard({
+    required this.eventCard,
+    required this.playerEventData,
+    required this.index,
+  });
+
+  final GroupEventCardModel eventCard;
+  final PlayerEventData playerEventData;
+  final int index;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return GestureDetector(
+      onTap: () => _navigateToTournament(context, ref),
+      child: Column(
+        children: [
+          // Standard event card
+          EventCard(
+            tourEventCardModel: eventCard,
+            heroTagSuffix: 'player-profile-$index',
+          ),
+          // Player stats row
+          Container(
+            margin: EdgeInsets.only(top: 1.h),
+            padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
+            decoration: BoxDecoration(
+              color: kBlack2Color,
+              borderRadius: BorderRadius.only(
+                bottomLeft: Radius.circular(8.br),
+                bottomRight: Radius.circular(8.br),
+              ),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
+                  children: [
+                    Icon(
+                      Icons.sports_esports_outlined,
+                      size: 14.sp,
+                      color: kWhiteColor.withValues(alpha: 0.5),
+                    ),
+                    SizedBox(width: 4.w),
+                    Text(
+                      '${playerEventData.gamesPlayed} ${playerEventData.gamesPlayed == 1 ? 'game' : 'games'}',
+                      style: AppTypography.textXsRegular.copyWith(
+                        color: kWhiteColor.withValues(alpha: 0.5),
+                      ),
+                    ),
+                  ],
+                ),
+                if (playerEventData.score != null)
+                  Container(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: 8.w,
+                      vertical: 3.h,
+                    ),
+                    decoration: BoxDecoration(
+                      color: _getScoreColor(
+                        playerEventData.score!,
+                        playerEventData.gamesPlayed,
+                      ).withValues(alpha: 0.2),
+                      borderRadius: BorderRadius.circular(4.br),
+                    ),
+                    child: Text(
+                      '${playerEventData.score!.toStringAsFixed(1)}/${playerEventData.gamesPlayed}',
+                      style: AppTypography.textXsBold.copyWith(
+                        color: _getScoreColor(
+                          playerEventData.score!,
+                          playerEventData.gamesPlayed,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    )
+        .animate()
+        .fadeIn(
+          duration: 200.ms,
+          delay: Duration(milliseconds: (index % 10) * 50),
+        )
+        .slideY(begin: 0.02, end: 0);
+  }
+
+  Future<void> _navigateToTournament(BuildContext context, WidgetRef ref) async {
+    HapticFeedbackService.buttonPress();
+    try {
+      final broadcast = await ref
+          .read(groupBroadcastRepositoryProvider)
+          .getGroupBroadcastById(playerEventData.tourId);
+      ref.read(selectedBroadcastModelProvider.notifier).state = broadcast;
+
+      if (!context.mounted) return;
+      if (ref.read(selectedBroadcastModelProvider) != null) {
+        Navigator.pushNamed(context, '/tournament_detail_screen');
+      }
+    } catch (_) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Unable to open event')),
+      );
+    }
+  }
+
+  Color _getScoreColor(double score, int totalGames) {
+    if (totalGames == 0) return kWhiteColor;
+    final percentage = score / totalGames;
+    if (percentage >= 0.6) return kGreenColor;
+    if (percentage >= 0.4) return kWhiteColor;
+    return Colors.redAccent;
+  }
+}
+
+/// Fallback event card when GroupEventCardModel is not available
+class _FallbackEventCard extends StatelessWidget {
+  const _FallbackEventCard({
     required this.event,
     required this.index,
     required this.onTap,
@@ -315,32 +563,29 @@ class _EventCard extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: EdgeInsets.all(16.sp),
+        padding: EdgeInsets.all(12.sp),
         decoration: BoxDecoration(
           color: kBlack2Color,
-          borderRadius: BorderRadius.circular(12.br),
-          border: Border.all(color: kDividerColor),
+          borderRadius: BorderRadius.circular(8.br),
         ),
         child: Row(
           children: [
-            // Tournament icon
+            // Event icon placeholder
             Container(
-              width: 48.w,
-              height: 48.h,
+              width: 60.w,
+              height: 40.h,
               decoration: BoxDecoration(
-                color: _getEventColor(index).withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(10.br),
+                color: kLightBlack,
+                borderRadius: BorderRadius.circular(6.br),
               ),
               child: Icon(
-                _getEventIcon(index),
-                color: _getEventColor(index),
-                size: 24.ic,
+                Icons.emoji_events_outlined,
+                color: kWhiteColor.withValues(alpha: 0.5),
+                size: 24.sp,
               ),
             ),
-
-            SizedBox(width: 14.w),
-
-            // Tournament info
+            SizedBox(width: 12.w),
+            // Event info
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -350,7 +595,7 @@ class _EventCard extends StatelessWidget {
                     style: AppTypography.textSmMedium.copyWith(
                       color: kWhiteColor,
                     ),
-                    maxLines: 2,
+                    maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
                   SizedBox(height: 4.h),
@@ -358,7 +603,7 @@ class _EventCard extends StatelessWidget {
                     children: [
                       Icon(
                         Icons.sports_esports_outlined,
-                        size: 14.sp,
+                        size: 12.sp,
                         color: kWhiteColor.withValues(alpha: 0.5),
                       ),
                       SizedBox(width: 4.w),
@@ -369,7 +614,7 @@ class _EventCard extends StatelessWidget {
                         ),
                       ),
                       if (event.score != null) ...[
-                        SizedBox(width: 12.w),
+                        SizedBox(width: 8.w),
                         Container(
                           padding: EdgeInsets.symmetric(
                             horizontal: 6.w,
@@ -393,30 +638,9 @@ class _EventCard extends StatelessWidget {
                       ],
                     ],
                   ),
-                  if (event.startDate != null) ...[
-                    SizedBox(height: 4.h),
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.calendar_today_outlined,
-                          size: 12.sp,
-                          color: kWhiteColor.withValues(alpha: 0.4),
-                        ),
-                        SizedBox(width: 4.w),
-                        Text(
-                          _formatDate(event.startDate!),
-                          style: AppTypography.textXsRegular.copyWith(
-                            color: kWhiteColor.withValues(alpha: 0.4),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
                 ],
               ),
             ),
-
-            // Arrow
             Icon(
               Icons.chevron_right_rounded,
               color: kWhiteColor.withValues(alpha: 0.3),
@@ -431,46 +655,7 @@ class _EventCard extends StatelessWidget {
           duration: 200.ms,
           delay: Duration(milliseconds: (index % 10) * 50),
         )
-        .slideX(begin: 0.02, end: 0);
-  }
-
-  String _formatDate(DateTime date) {
-    final now = DateTime.now();
-    final diff = now.difference(date).inDays;
-
-    if (diff < 7) {
-      return '${diff}d ago';
-    } else if (diff < 30) {
-      return '${diff ~/ 7}w ago';
-    } else if (diff < 365) {
-      return DateFormat('MMM yyyy').format(date);
-    } else {
-      return DateFormat('yyyy').format(date);
-    }
-  }
-
-  Color _getEventColor(int index) {
-    final colors = [
-      const Color(0xFF4A90A4), // Blue
-      const Color(0xFFD4AF37), // Gold
-      const Color(0xFF6B8E23), // Green
-      const Color(0xFF8B4513), // Brown
-      const Color(0xFF8B008B), // Purple
-      const Color(0xFFB8860B), // Dark Gold
-    ];
-    return colors[index % colors.length];
-  }
-
-  IconData _getEventIcon(int index) {
-    final icons = [
-      Icons.emoji_events_outlined,
-      Icons.military_tech_outlined,
-      Icons.workspace_premium_outlined,
-      Icons.star_outline_rounded,
-      Icons.diamond_outlined,
-      Icons.auto_awesome_outlined,
-    ];
-    return icons[index % icons.length];
+        .slideY(begin: 0.02, end: 0);
   }
 
   Color _getScoreColor(double score, int totalGames) {
@@ -481,3 +666,45 @@ class _EventCard extends StatelessWidget {
     return Colors.redAccent;
   }
 }
+
+/// Provider to fetch GroupEventCardModel for player events
+final playerEventCardsProvider = FutureProvider.family
+    .autoDispose<Map<String, GroupEventCardModel>, int>((ref, fideId) async {
+  try {
+    final events = await ref.watch(playerEventsProvider(fideId).future);
+    if (events.isEmpty) return {};
+
+    // Get unique group_broadcast_ids from tours
+    final groupBroadcastRepo = ref.read(groupBroadcastRepositoryProvider);
+    final eventCards = <String, GroupEventCardModel>{};
+
+    // Fetch all group broadcasts for these tours
+    for (final event in events) {
+      try {
+        final broadcast = await groupBroadcastRepo.getGroupBroadcastById(event.tourId);
+        final groupBroadcast = GroupBroadcast.fromJson({
+          'id': broadcast.id,
+          'created_at': DateTime.now().toIso8601String(),
+          'name': broadcast.name,
+          'search': broadcast.search,
+          'max_avg_elo': broadcast.maxAvgElo,
+          'date_start': broadcast.dateStart?.toIso8601String(),
+          'date_end': broadcast.dateEnd?.toIso8601String(),
+          'time_control': broadcast.timeControl,
+        });
+
+        eventCards[event.tourId] = GroupEventCardModel.fromGroupBroadcast(
+          groupBroadcast,
+          [], // No live events needed for player profile
+        );
+      } catch (_) {
+        // Skip events that can't be loaded
+      }
+    }
+
+    return eventCards;
+  } catch (e) {
+    debugPrint('[playerEventCardsProvider] Error: $e');
+    return {};
+  }
+});

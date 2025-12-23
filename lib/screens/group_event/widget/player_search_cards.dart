@@ -1,6 +1,6 @@
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:chessever2/providers/search_games_provider.dart';
-import 'package:chessever2/repository/supabase/game/games.dart';
+import 'package:chessever2/repository/supabase/game/games.dart' show SearchPlayer;
+import 'package:chessever2/screens/group_event/group_event_screen.dart' show searchTabQueryProvider;
 import 'package:chessever2/screens/group_event/providers/supabase_combined_search_provider.dart';
 import 'package:chessever2/screens/player_profile/player_profile_screen.dart';
 import 'package:chessever2/services/fide_photo_service.dart';

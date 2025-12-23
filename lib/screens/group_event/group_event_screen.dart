@@ -2,7 +2,7 @@ import 'dart:math';
 import 'package:chessever2/providers/event_favorite_players_provider.dart';
 import 'package:chessever2/providers/favorite_events_provider.dart';
 import 'package:chessever2/providers/for_you_games_provider.dart';
-import 'package:chessever2/providers/search_games_provider.dart';
+import 'package:chessever2/screens/group_event/widget/search_results_widget.dart' show searchAnimatedEventIds;
 import 'package:chessever2/screens/group_event/widget/all_events_tab_widget.dart';
 import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_provider.dart';
 import 'package:chessever2/screens/group_event/widget/filter_popup/group_event_filter_provider.dart';
@@ -28,6 +28,9 @@ import 'package:chessever2/screens/group_event/widget/appbar_icons_widget.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 
 enum GroupEventCategory { past, current, forYou, search }
+
+/// Provider for the current search query used in search tab
+final searchTabQueryProvider = StateProvider<String>((ref) => '');
 
 final _mappedName = {
   GroupEventCategory.past: 'Past',
@@ -179,16 +182,15 @@ class GroupEventScreen extends HookConsumerWidget {
                   onChanged: (value) {
                     ref.read(groupEventScreenProvider.notifier)
                         .searchForTournament(value, selectedTourEvent);
-                    // Update search tab query and trigger search
+                    // Update search tab query
                     final trimmed = value.trim();
                     ref.read(searchTabQueryProvider.notifier).state = trimmed;
                     if (trimmed.isNotEmpty) {
-                      ref.read(searchGamesProvider.notifier).loadGamesForSearch(value);
                       // Switch to search tab immediately when typing
                       ref.read(selectedGroupCategoryProvider.notifier).state = GroupEventCategory.search;
                     } else {
                       // Mirror clear icon behavior when user deletes text manually
-                      ref.read(searchGamesProvider.notifier).clearSearch();
+                      searchAnimatedEventIds.clear();
                       ref.read(selectedGroupCategoryProvider.notifier).state = GroupEventCategory.current;
                       // ignore: unused_result
                       ref.refresh(groupEventScreenProvider);
@@ -203,9 +205,8 @@ class GroupEventScreen extends HookConsumerWidget {
                     searchController.text = player.name;
                     if (context.mounted) {
                       ref.read(searchQueryProvider.notifier).state = player.name;
-                      // Set search tab query and trigger search - tab appears automatically
+                      // Set search tab query - tab appears automatically
                       ref.read(searchTabQueryProvider.notifier).state = player.name;
-                      ref.read(searchGamesProvider.notifier).loadGamesForSearch(player.name);
                       // Switch to search tab
                       ref.read(selectedGroupCategoryProvider.notifier).state = GroupEventCategory.search;
                     }
@@ -244,7 +245,7 @@ class GroupEventScreen extends HookConsumerWidget {
                     ref.refresh(groupEventScreenProvider);
                     // Clear search tab state and switch back if on search tab
                     ref.read(searchTabQueryProvider.notifier).state = '';
-                    ref.read(searchGamesProvider.notifier).clearSearch();
+                    searchAnimatedEventIds.clear();
                     if (selectedTourEvent == GroupEventCategory.search) {
                       ref.read(selectedGroupCategoryProvider.notifier).state = GroupEventCategory.current;
                     }

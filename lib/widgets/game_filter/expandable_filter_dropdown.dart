@@ -14,6 +14,7 @@ class ExpandableFilterDropdown<T> extends StatefulWidget {
     required this.itemLabel,
     required this.onChanged,
     this.itemIcon,
+    this.itemAssetPath,
   });
 
   final T value;
@@ -21,6 +22,8 @@ class ExpandableFilterDropdown<T> extends StatefulWidget {
   final String Function(T) itemLabel;
   final ValueChanged<T> onChanged;
   final IconData Function(T)? itemIcon;
+  /// Asset path for image-based icons (e.g., time control icons)
+  final String? Function(T)? itemAssetPath;
 
   @override
   State<ExpandableFilterDropdown<T>> createState() =>
@@ -100,8 +103,19 @@ class _ExpandableFilterDropdownState<T>
             ),
             child: Row(
               children: [
-                // Icon if available
-                if (widget.itemIcon != null) ...[
+                // Asset image icon (preferred)
+                if (widget.itemAssetPath != null) ...[
+                  if (widget.itemAssetPath!(widget.value) != null) ...[
+                    Image.asset(
+                      widget.itemAssetPath!(widget.value)!,
+                      width: 16.sp,
+                      height: 16.sp,
+                      color: _isExpanded ? kBlackColor : null,
+                    ),
+                    SizedBox(width: 8.w),
+                  ],
+                ] else if (widget.itemIcon != null) ...[
+                  // Fallback to IconData
                   Icon(
                     widget.itemIcon!(widget.value),
                     size: 18.ic,
@@ -164,16 +178,13 @@ class _ExpandableFilterDropdownState<T>
   }
 
   Widget _buildOptionItem(T item) {
-    // Check if this item has an icon and apply color
+    // Check for asset-based icon first
+    final assetPath = widget.itemAssetPath?.call(item);
+    final hasAssetIcon = assetPath != null;
+
+    // Fallback to IconData
     final hasIcon = widget.itemIcon != null;
     final iconData = hasIcon ? widget.itemIcon!(item) : null;
-
-    // Determine icon color based on item type (for time controls)
-    Color iconColor = kWhiteColor;
-    if (hasIcon && iconData == Icons.bolt) {
-      // Blitz - blue lightning bolt
-      iconColor = const Color(0xFF3B82F6);
-    }
 
     return GestureDetector(
       onTap: () => _selectItem(item),
@@ -183,11 +194,20 @@ class _ExpandableFilterDropdownState<T>
         padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 14.h),
         child: Row(
           children: [
-            if (hasIcon && iconData != null) ...[
+            // Asset image icon (preferred)
+            if (hasAssetIcon) ...[
+              Image.asset(
+                assetPath,
+                width: 16.sp,
+                height: 16.sp,
+              ),
+              SizedBox(width: 8.w),
+            ] else if (hasIcon && iconData != null) ...[
+              // Fallback to IconData
               Icon(
                 iconData,
                 size: 18.ic,
-                color: iconColor,
+                color: kWhiteColor,
               ),
               SizedBox(width: 8.w),
             ],

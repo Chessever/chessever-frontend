@@ -73,7 +73,7 @@ class _FavoritesTabScreenState extends ConsumerState<FavoritesTabScreen> {
       body: Column(
         children: [
           SizedBox(height: MediaQuery.of(context).viewPadding.top + 4.h),
-          _buildAppBar(context),
+          _buildAppBar(context, selectedMode),
           SizedBox(height: 8.h),
           _buildSegmentedSwitcher(selectedMode),
           Expanded(
@@ -105,7 +105,7 @@ class _FavoritesTabScreenState extends ConsumerState<FavoritesTabScreen> {
     );
   }
 
-  Widget _buildAppBar(BuildContext context) {
+  Widget _buildAppBar(BuildContext context, FavoritesScreenMode selectedMode) {
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: 16.w),
       child: Row(
@@ -141,8 +141,7 @@ class _FavoritesTabScreenState extends ConsumerState<FavoritesTabScreen> {
               ),
             ),
           ),
-          // Placeholder for symmetry
-          SizedBox(width: 48.w),
+          SizedBox(width: 48.w), // Placeholder for symmetry
         ],
       ),
     );

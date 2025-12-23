@@ -1,5 +1,4 @@
 import 'package:chessever2/providers/app_version_provider.dart';
-import 'package:chessever2/providers/country_dropdown_provider.dart';
 import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
@@ -9,10 +8,8 @@ import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/hamburger_menu/hamburger_menu_dialogs.dart';
 import 'package:chessever2/widgets/paywall/premium_celebration_overlay.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
-import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
-import 'package:country_flags/country_flags.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -22,8 +19,6 @@ import 'package:flutter_animate/flutter_animate.dart';
 /// Handler for hamburger menu callbacks
 class HamburgerMenuCallbacks {
   final VoidCallback onPlayersPressed;
-  final VoidCallback onFavoritesPressed;
-  final VoidCallback onCountrymanPressed;
   final VoidCallback onAnalysisBoardPressed;
   final VoidCallback onSupportPressed;
   final VoidCallback onPremiumPressed;
@@ -31,8 +26,6 @@ class HamburgerMenuCallbacks {
 
   const HamburgerMenuCallbacks({
     required this.onPlayersPressed,
-    required this.onFavoritesPressed,
-    required this.onCountrymanPressed,
     required this.onAnalysisBoardPressed,
     required this.onSupportPressed,
     required this.onPremiumPressed,
@@ -74,46 +67,6 @@ class HamburgerMenu extends StatelessWidget {
                       onPressed: () => showSettingsDialog(context),
                       showChevron: true,
                     ),
-                    // SizedBox(height: 12.h),
-                    // _MenuItem(
-                    //   customIcon: SvgWidget(
-                    //     SvgAsset.playersIcon,
-                    //     semanticsLabel: 'Players Icon',
-                    //     height: 24.h,
-                    //     width: 24.w,
-                    //   ),
-                    //   title: 'Players',
-                    //   onPressed: () {
-                    //     Navigator.pop(context); // Close drawer first
-                    //     callbacks.onPlayersPressed();
-                    //   },
-                    // ),
-                    SizedBox(height: 12.h),
-                    _MenuItem(
-                      customIcon: SvgWidget(
-                        SvgAsset.favouriteIcon,
-                        semanticsLabel: 'Fav Icon',
-                        height: 24.h,
-                        width: 24.w,
-                      ),
-                      title: 'Favorites',
-                      onPressed: () {
-                        Navigator.pop(context); // Close drawer first
-                        callbacks.onFavoritesPressed();
-                      },
-                    ),
-                    SizedBox(height: 12.h),
-                    _CountryMan(
-                      onCountryManPressed: () {
-                        requireFullAuthGuard(context).then((allowed) {
-                          if (!allowed) return;
-                          if (!context.mounted) return;
-                          Navigator.pop(context); // Close drawer first
-                          callbacks.onCountrymanPressed();
-                        });
-                      },
-                    ),
-                    SizedBox(height: 12.h),
                     // _MenuItem(
                     //   customIcon: AnalysisBoardIcon(size: 20.ic),
                     //   title: 'Board',
@@ -646,71 +599,6 @@ class _VersionFooter extends ConsumerWidget {
       },
       error: (_, __) => SizedBox.shrink(),
       loading: () => SizedBox.shrink(),
-    );
-  }
-}
-
-class _CountryMan extends ConsumerWidget {
-  const _CountryMan({required this.onCountryManPressed, super.key});
-
-  final VoidCallback onCountryManPressed;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final countryMan = ref.watch(countryDropdownProvider);
-    return countryMan.when(
-      data: (data) {
-        return _MenuItem(
-          customIcon: Padding(
-            padding: EdgeInsets.symmetric(horizontal: 4.w),
-            child: FittedBox(
-              fit: BoxFit.scaleDown,
-              child: CountryFlag.fromCountryCode(
-                data.countryCode,
-                height: 20.h,
-                width: 20.w,
-                shape: RoundedRectangle(0),
-              ),
-            ),
-          ),
-          title: 'Countryman',
-          textColors: kGreenColor,
-          onPressed: onCountryManPressed,
-          showChevron: false,
-        );
-      },
-      error: (error, _) {
-        return SkeletonWidget(
-          ignoreContainers: true,
-          child: _MenuItem(
-            customIcon: CountryFlag.fromCountryCode(
-              'US',
-              height: 20.h,
-              width: 20.w,
-              shape: RoundedRectangle(0),
-            ),
-            title: 'Countryman',
-            onPressed: onCountryManPressed,
-            showChevron: false,
-          ),
-        );
-      },
-      loading: () {
-        return SkeletonWidget(
-          ignoreContainers: true,
-          child: _MenuItem(
-            customIcon: CountryFlag.fromCountryCode(
-              'US',
-              height: 20.h,
-              width: 20.w,
-              shape: RoundedRectangle(0),
-            ),
-            title: 'Countryman',
-            onPressed: onCountryManPressed,
-            showChevron: false,
-          ),
-        );
-      },
     );
   }
 }

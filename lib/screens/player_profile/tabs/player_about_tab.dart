@@ -501,12 +501,14 @@ class _RatingCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 8.sp, vertical: 10.sp),
+      height: 110.w, // Match player avatar height
       decoration: BoxDecoration(
         color: kBlack2Color,
         borderRadius: BorderRadius.circular(10.br),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Image.asset(icon, width: 20.w, height: 20.h),
           SizedBox(height: 6.h),

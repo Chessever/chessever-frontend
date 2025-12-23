@@ -464,7 +464,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
                 animationIndex: items.length,
                 showRound: true,
                 showSwipeHint: showHint,
-                showGamebaseButton: true,
+                showGamebaseButton: false,
                 onAdd: () => _showAddToFolderSheet(game),
               ),
             ),

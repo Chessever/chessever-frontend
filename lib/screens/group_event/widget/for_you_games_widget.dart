@@ -11,6 +11,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_tour_con
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+
 import 'package:chessever2/widgets/generic_error_widget.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:flutter/material.dart';
