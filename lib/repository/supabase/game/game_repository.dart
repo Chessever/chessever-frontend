@@ -10,6 +10,32 @@ final gameRepositoryProvider = AutoDisposeProvider<GameRepository>((ref) {
   return GameRepository();
 });
 
+/// Chess title prefixes that may appear before player names
+const _chessTitlePrefixes = [
+  'GM ',
+  'IM ',
+  'FM ',
+  'CM ',
+  'NM ',
+  'WGM ',
+  'WIM ',
+  'WFM ',
+  'WCM ',
+  'WNM ',
+];
+
+/// Strips chess title prefix from a player name if present.
+/// e.g., "GM Nakamura, Hikaru" -> "Nakamura, Hikaru"
+String _stripTitlePrefix(String playerName) {
+  final trimmed = playerName.trim();
+  for (final prefix in _chessTitlePrefixes) {
+    if (trimmed.startsWith(prefix)) {
+      return trimmed.substring(prefix.length).trim();
+    }
+  }
+  return trimmed;
+}
+
 const String _gameListSelectColumns = '''
           id,
           round_id,
@@ -160,15 +186,18 @@ class GameRepository extends BaseRepository {
     int offset = 0,
   }) async {
     return handleApiCall(() async {
+      // Strip title prefix if present (e.g., "GM Nakamura, Hikaru" -> "Nakamura, Hikaru")
+      final normalizedName = _stripTitlePrefix(playerName);
+
       debugPrint(
-        '===== GameRepository: Fetching games for player name: $playerName =====',
+        '===== GameRepository: Fetching games for player name: $playerName (normalized: $normalizedName) =====',
       );
 
       // Query games where player_white or player_black matches the name
       var query = supabase
           .from('games')
           .select(_gameListSelectColumns)
-          .or('player_white.eq."$playerName",player_black.eq."$playerName"')
+          .or('player_white.eq."$normalizedName",player_black.eq."$normalizedName"')
           .order('date_start', ascending: false)
           .order('time_start', ascending: false);
 
@@ -195,10 +224,13 @@ class GameRepository extends BaseRepository {
     required int offset,
   }) async {
     return handleApiCall(() async {
+      // Strip title prefix if present (e.g., "GM Nakamura, Hikaru" -> "Nakamura, Hikaru")
+      final normalizedName = _stripTitlePrefix(playerName);
+
       final response = await supabase
           .from('games')
           .select(_gameListSelectColumns)
-          .or('player_white.eq.$playerName,player_black.eq.$playerName')
+          .or('player_white.eq.$normalizedName,player_black.eq.$normalizedName')
           .order('date_start', ascending: false)
           .order('time_start', ascending: false)
           .range(offset, offset + limit - 1);
@@ -749,15 +781,16 @@ class GameRepository extends BaseRepository {
       var games = await compute(_decodeGamesInIsolate, jsonList);
 
       // Filter to only include games with favorited players
+      // Strip title prefixes from player names for matching (e.g., "GM Nakamura, Hikaru" -> "Nakamura, Hikaru")
       final fideIdSet = fideIds.toSet();
-      final nameSet = playerNames.map((n) => n.toLowerCase()).toSet();
+      final normalizedNameSet = playerNames.map((n) => _stripTitlePrefix(n).toLowerCase()).toSet();
 
       final filtered = games.where((game) {
         if (game.players == null) return false;
         for (final player in game.players!) {
           if (fideIdSet.contains(player.fideId.toString())) return true;
           final playerNameLower = player.name.toLowerCase();
-          if (nameSet.any((name) =>
+          if (normalizedNameSet.any((name) =>
               playerNameLower.contains(name) || name.contains(playerNameLower))) {
             return true;
           }
