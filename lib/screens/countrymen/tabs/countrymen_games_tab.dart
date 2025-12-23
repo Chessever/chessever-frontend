@@ -1,14 +1,20 @@
 import 'dart:async';
 
 import 'package:chessever2/providers/country_dropdown_provider.dart';
+import 'package:chessever2/screens/chessboard/widgets/chess_board_from_fen_new.dart';
 import 'package:chessever2/screens/countrymen/provider/countrymen_combined_games_provider.dart';
+import 'package:chessever2/screens/group_event/widget/appbar_icons_widget.dart';
 import 'package:chessever2/screens/library/widgets/add_to_folder_sheet.dart';
 import 'package:chessever2/screens/library/widgets/gamebase_search_game_card.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_widget.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/game_filter/game_filter.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -16,6 +22,9 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/widgets/scroll_to_top_button.dart';
 import 'package:intl/intl.dart';
+
+/// Track animated game IDs for Countrymen to prevent re-animation
+final Set<String> _countrymenAnimatedGameIds = {};
 
 class CountrymenGamesTab extends ConsumerStatefulWidget {
   const CountrymenGamesTab({super.key});
@@ -144,6 +153,7 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
     super.build(context);
 
     final state = ref.watch(countrymenCombinedGamesProvider);
+    final viewMode = ref.watch(gamesListViewModeProvider);
 
     return Stack(
       children: [
@@ -155,6 +165,7 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
           color: kWhiteColor,
           backgroundColor: kBlack2Color,
           child: CustomScrollView(
+            key: PageStorageKey<String>('countrymen_games_list_${viewMode.index}'),
             controller: _scrollController,
             physics: const AlwaysScrollableScrollPhysics(
               parent: BouncingScrollPhysics(),
@@ -169,7 +180,7 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
               ),
 
               // Content
-              _buildContentSliver(state),
+              _buildContentSliver(state, viewMode),
 
               // Bottom padding
               SliverToBoxAdapter(child: SizedBox(height: 24.h)),
@@ -255,52 +266,62 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
               width: searchBarHeight,
               height: searchBarHeight,
               decoration: BoxDecoration(
-              color: hasActiveFilters
-                  ? const Color(0xFFEF4444).withValues(alpha: 0.15)
-                  : const Color(0xFF09090B),
-              borderRadius: BorderRadius.circular(12.br),
-              border: Border.all(
                 color: hasActiveFilters
-                    ? const Color(0xFFEF4444).withValues(alpha: 0.5)
-                    : const Color(0xFF27272A),
-              ),
-            ),
-            child: Stack(
-              alignment: Alignment.center,
-              children: [
-                Icon(
-                  Icons.tune_rounded,
-                  size: 20.sp,
-                  color: hasActiveFilters ? const Color(0xFFEF4444) : const Color(0xFFA1A1AA),
+                    ? const Color(0xFFEF4444).withValues(alpha: 0.15)
+                    : const Color(0xFF09090B),
+                borderRadius: BorderRadius.circular(12.br),
+                border: Border.all(
+                  color: hasActiveFilters
+                      ? const Color(0xFFEF4444).withValues(alpha: 0.5)
+                      : const Color(0xFF27272A),
                 ),
-                // Badge showing active filter count
-                if (hasActiveFilters)
-                  Positioned(
-                    right: 6.w,
-                    top: 6.h,
-                    child: Container(
-                      width: 14.w,
-                      height: 14.h,
-                      decoration: const BoxDecoration(
-                        color: Color(0xFFEF4444),
-                        shape: BoxShape.circle,
-                      ),
-                      child: Center(
-                        child: Text(
-                          '$activeFilterCount',
-                          style: AppTypography.textXsBold.copyWith(
-                            color: kWhiteColor,
-                            fontSize: 9.sp,
-                            height: 1,
+              ),
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  Icon(
+                    Icons.tune_rounded,
+                    size: 20.sp,
+                    color: hasActiveFilters ? const Color(0xFFEF4444) : const Color(0xFFA1A1AA),
+                  ),
+                  // Badge showing active filter count
+                  if (hasActiveFilters)
+                    Positioned(
+                      right: 6.w,
+                      top: 6.h,
+                      child: Container(
+                        width: 14.w,
+                        height: 14.h,
+                        decoration: const BoxDecoration(
+                          color: Color(0xFFEF4444),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Center(
+                          child: Text(
+                            '$activeFilterCount',
+                            style: AppTypography.textXsBold.copyWith(
+                              color: kWhiteColor,
+                              fontSize: 9.sp,
+                              height: 1,
+                            ),
                           ),
                         ),
                       ),
                     ),
-                  ),
-              ],
+                ],
+              ),
             ),
           ),
-        ),
+          // Layout toggle button
+          SizedBox(width: 8.w),
+          SizedBox(
+            width: searchBarHeight,
+            height: searchBarHeight,
+            child: AppBarIcons(
+              image: SvgAsset.chase_grid,
+              onTap: () => ref.read(gamesListViewModeSwitcher).toggleViewMode(),
+            ),
+          ),
         ],
       ),
     );
@@ -317,7 +338,10 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
     }
   }
 
-  Widget _buildContentSliver(CountrymenCombinedGamesState state) {
+  Widget _buildContentSliver(
+    CountrymenCombinedGamesState state,
+    GamesListViewMode viewMode,
+  ) {
     if (state.isLoading && state.games.isEmpty) {
       return SliverFillRemaining(
         hasScrollBody: false,
@@ -362,6 +386,14 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
     // Build list items: date headers + games
     final items = <Widget>[];
     bool isFirstGameCard = true;
+    final isGrid = viewMode == GamesListViewMode.chessBoardGrid;
+    final isChessBoardVisible = viewMode == GamesListViewMode.chessBoard;
+
+    // Create GamesScreenModel for GameCardWrapperWidget
+    final gamesData = GamesScreenModel(
+      gamesTourModels: games,
+      pinnedGamedIs: const [],
+    );
 
     for (final entry in gamesByDate.entries) {
       final dateKey = entry.key;
@@ -383,26 +415,69 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
 
       // Games under this date (only if expanded)
       if (!isCollapsed) {
-        for (int i = 0; i < dateGames.length; i++) {
-          final game = dateGames[i];
-          final isLast = i == dateGames.length - 1;
-          final showHint = isFirstGameCard;
-          if (isFirstGameCard) isFirstGameCard = false;
-          items.add(
-            Padding(
-              padding: EdgeInsets.only(bottom: isLast ? 16.h : 12.h),
-              child: GamebaseSearchGameCard(
-                game: game,
-                allGames: games,
-                gameIndex: games.indexOf(game),
-                animationIndex: items.length,
-                showRound: true,
-                showSwipeHint: showHint,
-                showGamebaseButton: false, // Hide book icon for Countrymen context
-                onAdd: () => _showAddToFolderSheet(context, game),
+        if (isGrid) {
+          // Grid mode: pair games side by side
+          for (int i = 0; i < dateGames.length; i += 2) {
+            final game1 = dateGames[i];
+            final game2 = i + 1 < dateGames.length ? dateGames[i + 1] : null;
+            final isLast = i + 2 >= dateGames.length;
+
+            items.add(
+              Padding(
+                padding: EdgeInsets.only(bottom: isLast ? 16.h : 12.h),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    _buildGridGame(game1, games.indexOf(game1), games, items.length),
+                    if (game2 != null)
+                      _buildGridGame(game2, games.indexOf(game2), games, items.length),
+                  ],
+                ),
               ),
-            ),
-          );
+            );
+          }
+        } else {
+          // Card mode or Board mode
+          for (int i = 0; i < dateGames.length; i++) {
+            final game = dateGames[i];
+            final gameIndex = games.indexOf(game);
+            final isLast = i == dateGames.length - 1;
+            final showHint = isFirstGameCard && viewMode == GamesListViewMode.gamesCard;
+            if (isFirstGameCard) isFirstGameCard = false;
+
+            if (isChessBoardVisible) {
+              // Board mode: use GameCardWrapperWidget with chessboard visible
+              items.add(
+                _CountrymenKeepAliveGameCard(
+                  key: ValueKey('cmen_game_${game.gameId}_${viewMode.index}'),
+                  game: game,
+                  gamesData: gamesData,
+                  gameIndex: gameIndex,
+                  listIndex: items.length,
+                  allGames: games,
+                  isChessBoardVisible: true,
+                  isLast: isLast,
+                ),
+              );
+            } else {
+              // Card mode: use GamebaseSearchGameCard
+              items.add(
+                Padding(
+                  padding: EdgeInsets.only(bottom: isLast ? 16.h : 12.h),
+                  child: GamebaseSearchGameCard(
+                    game: game,
+                    allGames: games,
+                    gameIndex: gameIndex,
+                    animationIndex: items.length,
+                    showRound: true,
+                    showSwipeHint: showHint,
+                    showGamebaseButton: false,
+                    onAdd: () => _showAddToFolderSheet(context, game),
+                  ),
+                ),
+              );
+            }
+          }
         }
       }
     }
@@ -449,8 +524,31 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
         delegate: SliverChildBuilderDelegate(
           (context, index) => items[index],
           childCount: items.length,
+          addAutomaticKeepAlives: true,
         ),
       ),
+    );
+  }
+
+  Widget _buildGridGame(
+    GamesTourModel game,
+    int gameIndex,
+    List<GamesTourModel> allGames,
+    int listIndex,
+  ) {
+    return GridChessBoardFromFENNew(
+      key: ValueKey('cmen_grid_game_${game.gameId}'),
+      gamesTourModel: game,
+      onChanged: () => ref
+          .read(gameCardWrapperProvider)
+          .navigateToChessBoard(
+            context: context,
+            orderedGames: allGames,
+            gameIndex: gameIndex,
+            onReturnFromChessboard: (_) {},
+          ),
+      pinnedIds: const [],
+      onPinToggle: (_) {},
     );
   }
 
@@ -739,5 +837,69 @@ class _DateHeader extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+/// StatefulWidget that uses AutomaticKeepAliveClientMixin to keep game cards alive
+/// This prevents the card from being disposed when scrolled off-screen
+class _CountrymenKeepAliveGameCard extends StatefulWidget {
+  const _CountrymenKeepAliveGameCard({
+    super.key,
+    required this.game,
+    required this.gamesData,
+    required this.gameIndex,
+    required this.listIndex,
+    required this.allGames,
+    required this.isChessBoardVisible,
+    required this.isLast,
+  });
+
+  final GamesTourModel game;
+  final GamesScreenModel gamesData;
+  final int gameIndex;
+  final int listIndex;
+  final List<GamesTourModel> allGames;
+  final bool isChessBoardVisible;
+  final bool isLast;
+
+  @override
+  State<_CountrymenKeepAliveGameCard> createState() => _CountrymenKeepAliveGameCardState();
+}
+
+class _CountrymenKeepAliveGameCardState extends State<_CountrymenKeepAliveGameCard>
+    with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
+
+    final gameId = widget.game.gameId;
+
+    final card = Padding(
+      padding: EdgeInsets.only(bottom: widget.isLast ? 16.h : 12.h),
+      child: GameCardWrapperWidget(
+        game: widget.game,
+        gamesData: widget.gamesData,
+        gameIndex: widget.gameIndex,
+        isChessBoardVisible: widget.isChessBoardVisible,
+        onReturnFromChessboard: (_) {},
+      ),
+    );
+
+    // Use global set to track animations - survives tab switches and rebuilds
+    if (!_countrymenAnimatedGameIds.contains(gameId)) {
+      _countrymenAnimatedGameIds.add(gameId);
+      return card
+          .animate()
+          .fadeIn(
+            duration: 200.ms,
+            delay: Duration(milliseconds: (widget.listIndex % 10) * 30),
+          )
+          .slideY(begin: 0.05, end: 0, duration: 200.ms, curve: Curves.easeOut);
+    }
+
+    return card;
   }
 }

@@ -846,6 +846,7 @@ class _RatingDisplay extends ConsumerWidget {
       return Container(
         padding: EdgeInsets.symmetric(horizontal: 4.sp, vertical: 10.sp),
         width: double.infinity,
+        height: 110.w, // Match player avatar height
         decoration: BoxDecoration(
           color: kBlack2Color,
           borderRadius: BorderRadius.circular(10.br),

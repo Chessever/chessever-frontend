@@ -1,5 +1,4 @@
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
-import 'package:flutter/material.dart';
 
 /// Result filter options for chess games
 enum GameResultFilter {
@@ -83,17 +82,17 @@ extension GameTimeControlFilterX on GameTimeControlFilter {
     }
   }
 
-  /// Icon data for time control display
-  IconData get icon {
+  /// Asset path for time control icon (matches event card icons)
+  String? get assetPath {
     switch (this) {
       case GameTimeControlFilter.all:
-        return Icons.timer_outlined;
+        return null; // No icon for "all"
       case GameTimeControlFilter.rapid:
-        return Icons.speed_outlined;
+        return 'assets/pngs/rapid.png';
       case GameTimeControlFilter.blitz:
-        return Icons.bolt;
+        return 'assets/pngs/blitz.png';
       case GameTimeControlFilter.classical:
-        return Icons.psychology_outlined;
+        return 'assets/pngs/classical.png';
     }
   }
 }

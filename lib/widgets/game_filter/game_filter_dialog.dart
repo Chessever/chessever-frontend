@@ -166,7 +166,7 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
                         value: _timeControl,
                         items: GameTimeControlFilter.values,
                         itemLabel: (v) => v.displayText,
-                        itemIcon: (v) => v.icon,
+                        itemAssetPath: (v) => v.assetPath,
                         onChanged: (v) => setState(() => _timeControl = v),
                       ),
                       SizedBox(height: 20.h),

@@ -9,11 +9,13 @@ import 'package:chessever2/utils/location_service_provider.dart';
 import 'package:chessever2/utils/png_asset.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/string_utils_provider.dart';
+import 'package:chessever2/widgets/app_button.dart';
 import 'package:chessever2/widgets/atomic_countdown_text.dart';
 import 'package:country_flags/country_flags.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:motor/motor.dart';
 import 'package:chessever2/screens/chessboard/widgets/context_pop_up_menu.dart';
 
 class GameCard extends ConsumerWidget {
@@ -34,22 +36,25 @@ class GameCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return GestureDetector(
+    return TappableScale(
       onTap: () {
         HapticFeedbackService.cardTap();
         onTap();
       },
-      onLongPressStart: (details) {
-        HapticFeedbackService.contextMenu();
-        _showBlurredPopup(context, details: details);
-      },
-      child: SizedBox(
-        width: double.infinity,
-        child: Stack(
-          children: [
-            _GameCardContent(matchComparison: matchComparison),
-            if (isPinned) PinIconOverlay(right: 8.sp, top: 2.sp),
-          ],
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onLongPressStart: (details) {
+          HapticFeedbackService.contextMenu();
+          _showBlurredPopup(context, details: details);
+        },
+        child: SizedBox(
+          width: double.infinity,
+          child: Stack(
+            children: [
+              _GameCardContent(matchComparison: matchComparison),
+              if (isPinned) PinIconOverlay(right: 8.sp, top: 2.sp),
+            ],
+          ),
         ),
       ),
     );
@@ -74,6 +79,8 @@ class GameCard extends ConsumerWidget {
       context: context,
       barrierDismissible: true,
       barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
+      barrierColor: Colors.transparent,
+      transitionDuration: Duration.zero, // Motor handles animation
       pageBuilder: (
         BuildContext buildContext,
         Animation<double> animation,
@@ -83,58 +90,24 @@ class GameCard extends ConsumerWidget {
             showAbove
                 ? cardPosition.dy - popupHeight - 8.sp
                 : cardPosition.dy + cardSize.height + 8.sp;
-        return Material(
-          color: Colors.transparent,
-          child: GestureDetector(
-            onTap: () => Navigator.of(buildContext).pop(),
-            child: Stack(
-              children: [
-                SelectiveBlurBackground(
-                  clearPosition: cardPosition,
-                  clearSize: cardSize,
-                ),
-                Positioned(
-                  left: cardPosition.dx,
-                  top: cardPosition.dy,
-                  child: GestureDetector(
-                    onTap: () => Navigator.pop(buildContext),
-                    child: SizedBox(
-                      width: cardSize.width,
-                      height: cardSize.height,
-                      child: Stack(
-                        children: [
-                          _GameCardContent(matchComparison: matchComparison),
-                          if (isPinned) PinIconOverlay(right: 8.sp, top: 4.sp),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-                Positioned(
-                  left: details.globalPosition.dx - 60.w,
-                  top: menuTop,
-                  child: ContextPopupMenu(
-                    isPinned: isPinned,
-                    onPinToggle: () {
-                      onPinToggle(matchComparison.game);
-                      Future.microtask(() {
-                        Navigator.pop(buildContext);
-                      });
-                    },
-                    onShare: () {
-                      Navigator.pop(buildContext);
-                    },
-                  ),
-                ),
-              ],
-            ),
-          ),
+        return _MotorPopupWrapper(
+          cardPosition: cardPosition,
+          cardSize: cardSize,
+          menuPosition: Offset(details.globalPosition.dx - 60.w, menuTop),
+          matchComparison: matchComparison,
+          isPinned: isPinned,
+          onDismiss: () => Navigator.of(buildContext).pop(),
+          onPinToggle: () {
+            onPinToggle(matchComparison.game);
+            Future.microtask(() {
+              Navigator.pop(buildContext);
+            });
+          },
+          onShare: () {
+            Navigator.pop(buildContext);
+          },
         );
       },
-      transitionBuilder: (context, animation, secondaryAnimation, child) {
-        return FadeTransition(opacity: animation, child: child);
-      },
-      transitionDuration: const Duration(milliseconds: 300),
     );
   }
 }
@@ -754,5 +727,115 @@ String _displayTextSupporter(MatchWithComparison game) {
       case GameStatus.unknown:
         return '';
     }
+  }
+}
+
+/// Motor-powered popup wrapper for smooth spring animations
+class _MotorPopupWrapper extends StatefulWidget {
+  const _MotorPopupWrapper({
+    required this.cardPosition,
+    required this.cardSize,
+    required this.menuPosition,
+    required this.matchComparison,
+    required this.isPinned,
+    required this.onDismiss,
+    required this.onPinToggle,
+    required this.onShare,
+  });
+
+  final Offset cardPosition;
+  final Size cardSize;
+  final Offset menuPosition;
+  final MatchWithComparison matchComparison;
+  final bool isPinned;
+  final VoidCallback onDismiss;
+  final VoidCallback onPinToggle;
+  final VoidCallback onShare;
+
+  @override
+  State<_MotorPopupWrapper> createState() => _MotorPopupWrapperState();
+}
+
+class _MotorPopupWrapperState extends State<_MotorPopupWrapper> {
+  double _animationProgress = 0.0;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        setState(() {
+          _animationProgress = 1.0;
+        });
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleMotionBuilder(
+      motion: const CupertinoMotion.bouncy(),
+      value: _animationProgress,
+      builder: (context, value, child) {
+        final scale = 0.9 + (0.1 * value);
+        final opacity = value.clamp(0.0, 1.0);
+
+        return Material(
+          color: Colors.transparent,
+          child: GestureDetector(
+            onTap: widget.onDismiss,
+            child: Stack(
+              children: [
+                // Backdrop with animated opacity
+                Opacity(
+                  opacity: opacity,
+                  child: SelectiveBlurBackground(
+                    clearPosition: widget.cardPosition,
+                    clearSize: widget.cardSize,
+                  ),
+                ),
+                // Card content
+                Positioned(
+                  left: widget.cardPosition.dx,
+                  top: widget.cardPosition.dy,
+                  child: GestureDetector(
+                    onTap: widget.onDismiss,
+                    child: SizedBox(
+                      width: widget.cardSize.width,
+                      height: widget.cardSize.height,
+                      child: Stack(
+                        children: [
+                          _GameCardContent(
+                            matchComparison: widget.matchComparison,
+                          ),
+                          if (widget.isPinned)
+                            PinIconOverlay(right: 8.sp, top: 4.sp),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                // Context menu with scale animation
+                Positioned(
+                  left: widget.menuPosition.dx,
+                  top: widget.menuPosition.dy,
+                  child: Opacity(
+                    opacity: opacity,
+                    child: Transform.scale(
+                      scale: scale,
+                      child: ContextPopupMenu(
+                        isPinned: widget.isPinned,
+                        onPinToggle: widget.onPinToggle,
+                        onShare: widget.onShare,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 }

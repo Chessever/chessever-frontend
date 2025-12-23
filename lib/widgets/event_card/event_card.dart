@@ -9,6 +9,7 @@ import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/location_service_provider.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
+import 'package:chessever2/widgets/app_button.dart';
 import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 import 'package:chessever2/widgets/event_card/event_image_provider.dart';
 import 'package:chessever2/widgets/heroine/no_padding_fade_shuttle_builder.dart';
@@ -34,18 +35,27 @@ class EventCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return GestureDetector(
-      onTap:
-          onTap != null
-              ? () {
-                HapticFeedbackService.cardTap();
-                onTap!();
-              }
-              : null,
-      onLongPressStart: (detail) {
-        HapticFeedbackService.contextMenu();
+    if (onTap == null) {
+      return _buildCard(context, ref);
+    }
+
+    return TappableScale(
+      onTap: () {
+        HapticFeedbackService.cardTap();
+        onTap!();
       },
-      child: Container(
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onLongPressStart: (detail) {
+          HapticFeedbackService.contextMenu();
+        },
+        child: _buildCard(context, ref),
+      ),
+    );
+  }
+
+  Widget _buildCard(BuildContext context, WidgetRef ref) {
+    return Container(
         decoration: BoxDecoration(
           color: kBlack2Color,
           borderRadius: BorderRadius.circular(8.br),
@@ -156,7 +166,6 @@ class EventCard extends ConsumerWidget {
             _StarWidget(tourEventCardModel: tourEventCardModel),
           ],
         ),
-      ),
     );
   }
 

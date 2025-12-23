@@ -112,8 +112,7 @@ class _RoundDropdown extends HookConsumerWidget {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Flexible(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              child: Row(
                 children: [
                   Text(
                     round.name,
@@ -123,14 +122,20 @@ class _RoundDropdown extends HookConsumerWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
-                  SizedBox(height: 2.h),
-                  Text(
-                    round.formattedStartDate,
-                    style: AppTypography.textXsRegular.copyWith(
-                      color: kWhiteColor70,
+                  if (round.formattedRoundDateTime.isNotEmpty) ...[
+                    SizedBox(width: 6.w),
+                    Flexible(
+                      child: Text(
+                        round.formattedRoundDateTime,
+                        style: AppTypography.textXsRegular.copyWith(
+                          color: kWhiteColor.withValues(alpha: 0.4),
+                          fontSize: 10.sp,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
-                    maxLines: 1,
-                  ),
+                  ],
                 ],
               ),
             ),
@@ -334,9 +339,7 @@ class _RoundDropdown extends HookConsumerWidget {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Expanded(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                child: Row(
                   children: [
                     Text(
                       selected.name,
@@ -345,15 +348,19 @@ class _RoundDropdown extends HookConsumerWidget {
                       ),
                       overflow: TextOverflow.ellipsis,
                     ),
-                    if (selected.startsAt != null)
-                      Text(
-                        selected.formattedStartDate,
-                        style: AppTypography.textXxsRegular.copyWith(
-                          color: kWhiteColor.withOpacity(0.5),
-                          fontSize: 9.sp,
+                    if (selected.formattedRoundDateTime.isNotEmpty) ...[
+                      SizedBox(width: 6.w),
+                      Flexible(
+                        child: Text(
+                          selected.formattedRoundDateTime,
+                          style: AppTypography.textXxsRegular.copyWith(
+                            color: kWhiteColor.withValues(alpha: 0.35),
+                            fontSize: 9.sp,
+                          ),
+                          overflow: TextOverflow.ellipsis,
                         ),
-                        overflow: TextOverflow.ellipsis,
                       ),
+                    ],
                   ],
                 ),
               ),

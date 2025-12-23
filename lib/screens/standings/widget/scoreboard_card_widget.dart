@@ -82,17 +82,6 @@ class ScoreboardCardWidget extends ConsumerWidget {
               style: AppTypography.textMdBold.copyWith(color: kWhiteColor),
             ),
             SizedBox(width: 10.w),
-            if (roundLabel != null) ...[
-              Padding(
-                padding: EdgeInsets.only(right: 8.w),
-                child: Text(
-                  roundLabel!,
-                  style: AppTypography.textXsMedium.copyWith(
-                    color: kWhiteColor70,
-                  ),
-                ),
-              ),
-            ],
             if (countryCode.toUpperCase() == 'FID') ...[
               SizedBox(
                 width: 20.w,
@@ -166,10 +155,10 @@ class ScoreboardCardWidget extends ConsumerWidget {
               ],
             ),
             SizedBox(width: 14.w),
-            if (isWhite != null) ...[
+            if (isWhite != null && matchScore != null)
               Container(
-                width: 14.w,
-                height: 14.h,
+                width: 28.w,
+                height: 28.h,
                 decoration: BoxDecoration(
                   color: isWhite! ? Colors.white : Colors.black,
                   shape: BoxShape.circle,
@@ -181,14 +170,22 @@ class ScoreboardCardWidget extends ConsumerWidget {
                             width: 1.1,
                           ),
                 ),
+                child: Center(
+                  child: Text(
+                    matchScore!,
+                    textAlign: TextAlign.center,
+                    style: AppTypography.textMdBold.copyWith(
+                      color: isWhite! ? Colors.black : kWhiteColor,
+                    ),
+                  ),
+                ),
+              )
+            else if (matchScore != null)
+              Text(
+                matchScore!,
+                textAlign: TextAlign.start,
+                style: AppTypography.textMdBold.copyWith(color: kWhiteColor),
               ),
-              SizedBox(width: 8.w),
-            ],
-            Text(
-              matchScore == null ? '' : matchScore!,
-              textAlign: TextAlign.start,
-              style: AppTypography.textMdBold.copyWith(color: kWhiteColor),
-            ),
           ],
         ),
       ),
