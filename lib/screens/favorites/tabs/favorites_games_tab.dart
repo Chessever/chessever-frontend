@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:chessever2/repository/favorites/models/favorite_player.dart';
+import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_board_from_fen_new.dart';
 import 'package:chessever2/screens/favorites/favorite_players_provider.dart';
 import 'package:chessever2/screens/favorites/player_games/provider/favorites_combined_games_provider.dart';
@@ -771,6 +772,7 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
             orderedGames: allGames,
             gameIndex: gameIndex,
             onReturnFromChessboard: (_) {},
+            viewSource: ChessboardView.favScorecard,
           ),
       pinnedIds: const [],
       onPinToggle: (_) {},

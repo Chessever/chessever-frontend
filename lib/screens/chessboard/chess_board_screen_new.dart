@@ -2,6 +2,7 @@ import 'dart:async';
 // import 'dart:io'; // UNUSED: Removed with old dialog approach
 import 'dart:math' as math;
 import 'dart:ui';
+import 'package:chessever2/providers/for_you_games_provider.dart';
 import 'package:chessever2/screens/standings/score_card_screen.dart';
 import 'package:skeletonizer/skeletonizer.dart';
 import 'package:chessever2/providers/board_settings_provider_new.dart';
@@ -888,6 +889,13 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
         break;
       case ChessboardView.countryman:
         gamesAsync = ref.watch(countrymanGamesTourScreenProvider);
+        break;
+      case ChessboardView.forYou:
+        // For "For You" tab, use the converted games from forYouGamesProvider
+        final games = ref.watch(convertedForYouGamesProvider);
+        gamesAsync = AsyncValue.data(
+          GamesScreenModel(gamesTourModels: games, pinnedGamedIs: []),
+        );
         break;
     }
 

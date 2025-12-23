@@ -1,7 +1,11 @@
+import 'package:chessever2/providers/for_you_games_provider.dart';
 import 'package:chessever2/screens/chessboard/view_model/chess_board_state_new.dart';
+import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
+import 'package:chessever2/screens/group_event/providers/countryman_games_tour_screen_provider.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/screens/standings/score_card_screen.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen_provider.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
@@ -261,6 +265,39 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
         ) ?? fallbackPlayer;
 
         ref.read(selectedPlayerProvider.notifier).state = playerStanding;
+
+        // Get the current games context based on the chessboard view source
+        // This ensures ScoreCardScreen displays games from the correct source
+        final view = ref.read(chessboardViewFromProviderNew);
+        List<GamesTourModel>? gamesContext;
+
+        switch (view) {
+          case ChessboardView.favScorecard:
+          case ChessboardView.playerProfile:
+            // For favorites/player profile, use playerGamesProvider
+            final selectedPlayer = ref.read(selectedPlayerProvider);
+            if (selectedPlayer != null) {
+              gamesContext = ref.read(playerGamesProvider(selectedPlayer)).valueOrNull;
+            }
+            break;
+          case ChessboardView.tour:
+            // For tournament view, selectedBroadcastModelProvider will be set
+            // ScoreCardScreen will use gamesTourScreenProvider directly
+            gamesContext = null;
+            break;
+          case ChessboardView.countryman:
+            // For countrymen view, get games from countrymenGamesTourScreenProvider
+            gamesContext = ref.read(countrymanGamesTourScreenProvider).valueOrNull?.gamesTourModels;
+            break;
+          case ChessboardView.forYou:
+            // For "For You" view, get games from convertedForYouGamesProvider
+            gamesContext = ref.read(convertedForYouGamesProvider);
+            break;
+        }
+
+        // Set the games context for ScoreCardScreen
+        ref.read(scoreCardGamesContextProvider.notifier).state = gamesContext;
+
         Navigator.pushNamed(context, '/scorecard_screen');
       },
       child: SizedBox(
