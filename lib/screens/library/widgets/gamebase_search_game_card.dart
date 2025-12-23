@@ -24,6 +24,7 @@ class GamebaseSearchGameCard extends ConsumerWidget {
     this.showRound = true,
     this.showSwipeHint = false,
     this.showGamebaseButton = true,
+    this.hideEventInfo = false,
   });
 
   final GamesTourModel game;
@@ -39,6 +40,10 @@ class GamebaseSearchGameCard extends ConsumerWidget {
   /// If true, shows the gamebase (book) button in ChessBoardScreenNew.
   /// Set to false for Countrymen/Favorites context where gamebase is not yet available.
   final bool showGamebaseButton;
+
+  /// If true, hides the event info button in ChessBoardScreenNew.
+  /// Set to true for library/position analysis where event info is not relevant.
+  final bool hideEventInfo;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -216,7 +221,7 @@ class GamebaseSearchGameCard extends ConsumerWidget {
         builder: (_) => ChessBoardScreenNew(
           games: games,
           currentIndex: index,
-          hideEventInfo: true,
+          hideEventInfo: hideEventInfo,
           showGamebaseButton: showGamebaseButton,
           disableGamebaseOverlayByDefault: true,
           showClock: false,

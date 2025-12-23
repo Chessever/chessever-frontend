@@ -343,6 +343,7 @@ class _GamesList extends ConsumerWidget {
                 gameIndex: index,
                 animationIndex: index,
                 onAdd: () => onAdd(game),
+                hideEventInfo: true,
               );
             },
           );

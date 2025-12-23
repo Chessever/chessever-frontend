@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:chessever2/providers/country_dropdown_provider.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_board_from_fen_new.dart';
 import 'package:chessever2/screens/countrymen/provider/countrymen_combined_games_provider.dart';
-import 'package:chessever2/screens/group_event/widget/appbar_icons_widget.dart';
 import 'package:chessever2/screens/library/widgets/add_to_folder_sheet.dart';
 import 'package:chessever2/screens/library/widgets/gamebase_search_game_card.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
@@ -19,6 +18,7 @@ import 'package:chessever2/widgets/game_filter/game_filter.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/widgets/scroll_to_top_button.dart';
 import 'package:intl/intl.dart';
@@ -314,12 +314,27 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
           ),
           // Layout toggle button
           SizedBox(width: 8.w),
-          SizedBox(
-            width: searchBarHeight,
-            height: searchBarHeight,
-            child: AppBarIcons(
-              image: SvgAsset.chase_grid,
-              onTap: () => ref.read(gamesListViewModeSwitcher).toggleViewMode(),
+          GestureDetector(
+            onTap: () => ref.read(gamesListViewModeSwitcher).toggleViewMode(),
+            child: Container(
+              width: searchBarHeight,
+              height: searchBarHeight,
+              decoration: BoxDecoration(
+                color: const Color(0xFF09090B),
+                borderRadius: BorderRadius.circular(12.br),
+                border: Border.all(color: const Color(0xFF27272A)),
+              ),
+              child: Center(
+                child: SvgPicture.asset(
+                  SvgAsset.chase_grid,
+                  width: 20.sp,
+                  height: 20.sp,
+                  colorFilter: const ColorFilter.mode(
+                    Color(0xFFA1A1AA),
+                    BlendMode.srcIn,
+                  ),
+                ),
+              ),
             ),
           ),
         ],

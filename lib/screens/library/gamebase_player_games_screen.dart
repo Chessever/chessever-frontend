@@ -209,6 +209,7 @@ class _GamebasePlayerGamesScreenState
               gameIndex: index,
               animationIndex: index,
               onAdd: () => _showAddToFolderSheet(context, game),
+              hideEventInfo: true,
             ),
           );
         },
