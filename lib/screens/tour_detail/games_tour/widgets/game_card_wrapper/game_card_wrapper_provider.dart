@@ -21,9 +21,9 @@ class _GameCardWrapperProvider {
     required List<GamesTourModel> orderedGames,
     required int gameIndex,
     required void Function(int)? onReturnFromChessboard,
+    ChessboardView viewSource = ChessboardView.tour,
   }) async {
-    _ref.read(chessboardViewFromProviderNew.notifier).state =
-        ChessboardView.tour;
+    _ref.read(chessboardViewFromProviderNew.notifier).state = viewSource;
 
     // Disable tournament streaming while inside the chessboard to avoid
     // periodic refreshes and repeated fetch logs.

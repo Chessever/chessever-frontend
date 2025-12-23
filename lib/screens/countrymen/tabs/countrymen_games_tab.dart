@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:chessever2/providers/country_dropdown_provider.dart';
+import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_board_from_fen_new.dart';
 import 'package:chessever2/screens/countrymen/provider/countrymen_combined_games_provider.dart';
 import 'package:chessever2/screens/library/widgets/add_to_folder_sheet.dart';
@@ -561,6 +562,7 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
             orderedGames: allGames,
             gameIndex: gameIndex,
             onReturnFromChessboard: (_) {},
+            viewSource: ChessboardView.countryman,
           ),
       pinnedIds: const [],
       onPinToggle: (_) {},

@@ -1,4 +1,5 @@
 import 'package:chessever2/providers/for_you_games_provider.dart';
+import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_board_from_fen_new.dart';
 import 'package:chessever2/screens/group_event/widget/for_you_tournament_card.dart';
 import 'package:chessever2/screens/group_event/widget/premium_collection_cards.dart';
@@ -535,6 +536,7 @@ class _ForYouListView extends ConsumerWidget {
             orderedGames: allGames,
             gameIndex: gameIndex,
             onReturnFromChessboard: (_) {},
+            viewSource: ChessboardView.forYou,
           ),
       pinnedIds: const [],
       onPinToggle: (_) {},

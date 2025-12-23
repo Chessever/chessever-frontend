@@ -33,6 +33,13 @@ final selectedPlayerProvider = StateProvider<PlayerStandingModel?>(
   (ref) => null,
 );
 
+/// Provider to store the current games context for ScoreCardScreen.
+/// This allows the screen to display games from the correct source (favorites, countrymen, etc.)
+/// instead of falling back to fetching all player games globally.
+final scoreCardGamesContextProvider = StateProvider<List<GamesTourModel>?>(
+  (ref) => null,
+);
+
 final playerGamesProvider = FutureProvider.family<
   List<GamesTourModel>,
   PlayerStandingModel
@@ -172,12 +179,14 @@ class ScoreCardScreen extends ConsumerWidget {
     }
 
     final selectedBroadcast = ref.watch(selectedBroadcastModelProvider);
+    final gamesContext = ref.watch(scoreCardGamesContextProvider);
 
     List<GamesTourModel> allGames = [];
     bool isLoadingGames = false;
     bool hasTournamentContext = false;
 
     if (selectedBroadcast != null) {
+      // Tournament context: use games from the tournament
       hasTournamentContext = true;
       final gamesTourAsync = ref.watch(gamesTourScreenProvider);
       allGames = gamesTourAsync.when(
@@ -188,7 +197,13 @@ class ScoreCardScreen extends ConsumerWidget {
         },
         error: (_, __) => [],
       );
+    } else if (gamesContext != null && gamesContext.isNotEmpty) {
+      // Games context provided (from favorites, countrymen, player profile, etc.)
+      // Use the provided games list directly
+      hasTournamentContext = false;
+      allGames = gamesContext;
     } else {
+      // No context available: fall back to fetching all player games
       hasTournamentContext = false;
       final playerGamesAsync = ref.watch(playerGamesProvider(player));
       allGames = playerGamesAsync.when(

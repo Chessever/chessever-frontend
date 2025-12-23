@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_board_from_fen_new.dart';
 import 'package:chessever2/screens/library/widgets/add_to_folder_sheet.dart';
 import 'package:chessever2/screens/library/widgets/gamebase_search_game_card.dart';
@@ -585,6 +586,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
             orderedGames: allGames,
             gameIndex: gameIndex,
             onReturnFromChessboard: (_) {},
+            viewSource: ChessboardView.playerProfile,
           ),
       pinnedIds: const [],
       onPinToggle: (_) {},
