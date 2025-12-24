@@ -3,6 +3,7 @@ import 'package:chessever2/repository/library/models/saved_analysis.dart';
 import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_board_from_fen_new.dart';
 import 'package:chessever2/screens/gamebase/models/models.dart';
+import 'package:chessever2/screens/library/providers/gamebase_database_games_provider.dart';
 import 'package:chessever2/screens/library/providers/library_combined_search_provider.dart';
 import 'package:chessever2/screens/library/utils/gamebase_pgn_builder.dart';
 import 'package:chessever2/screens/library/widgets/add_to_folder_sheet.dart';
@@ -15,12 +16,13 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_v
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/chess_title_utils.dart';
+import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-class LibrarySearchResultsView extends ConsumerWidget {
+class LibrarySearchResultsView extends ConsumerStatefulWidget {
   final LibrarySearchResult results;
   final AsyncValue<List<GamesTourModel>>? databaseGamesAsync;
   final GamesListViewMode viewMode;
@@ -41,6 +43,41 @@ class LibrarySearchResultsView extends ConsumerWidget {
     required this.onAnalysisTap,
     required this.onGameTap,
   });
+
+  @override
+  ConsumerState<LibrarySearchResultsView> createState() => _LibrarySearchResultsViewState();
+}
+
+class _LibrarySearchResultsViewState extends ConsumerState<LibrarySearchResultsView> {
+  final ScrollController _scrollController = ScrollController();
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(_onScroll);
+  }
+
+  @override
+  void dispose() {
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    // Load more when approaching the end of the list
+    if (_scrollController.position.pixels >=
+        _scrollController.position.maxScrollExtent - 200) {
+      _loadMoreGames();
+    }
+  }
+
+  void _loadMoreGames() {
+    final paginationState = ref.read(gamebaseDatabaseGamesPaginatedProvider);
+    if (!paginationState.isLoading && paginationState.hasMore) {
+      ref.read(gamebaseDatabaseGamesPaginatedProvider.notifier).loadNextPage();
+    }
+  }
 
   void _showAddToFolderSheet(BuildContext context, GamesTourModel game) {
     showAddToFolderSheet(context: context, game: game);
@@ -191,22 +228,26 @@ class LibrarySearchResultsView extends ConsumerWidget {
   }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final fallbackGameModels = results.games.map(_mapToGameModel).toList();
+  Widget build(BuildContext context) {
+    final fallbackGameModels = widget.results.games.map(_mapToGameModel).toList();
+
+    // Watch the paginated provider for database games
+    final paginationState = ref.watch(gamebaseDatabaseGamesPaginatedProvider);
 
     final hasDatabaseSection =
-        databaseGamesAsync?.maybeWhen(
+        widget.databaseGamesAsync?.maybeWhen(
           data: (games) => games.isNotEmpty,
           loading: () => true,
           error: (_, __) => true,
           orElse: () => false,
         ) ??
+        paginationState.games.isNotEmpty ||
         fallbackGameModels.isNotEmpty;
 
     final hasAnyResults =
-        results.folders.isNotEmpty ||
-        results.analyses.isNotEmpty ||
-        results.players.isNotEmpty ||
+        widget.results.folders.isNotEmpty ||
+        widget.results.analyses.isNotEmpty ||
+        widget.results.players.isNotEmpty ||
         hasDatabaseSection;
 
     if (!hasAnyResults) {
@@ -221,23 +262,24 @@ class LibrarySearchResultsView extends ConsumerWidget {
     }
 
     return ListView(
+      controller: _scrollController,
       padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
       children: [
         // Folders Section
-        if (results.folders.isNotEmpty) ...[
+        if (widget.results.folders.isNotEmpty) ...[
           _SectionHeader(title: 'Books'),
           ListView.separated(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
             padding: EdgeInsets.zero,
-            itemCount: results.folders.length,
+            itemCount: widget.results.folders.length,
             separatorBuilder: (_, __) => SizedBox(height: 12.h),
             itemBuilder: (context, index) {
-              final folder = results.folders[index];
+              final folder = widget.results.folders[index];
               return FolderCard(
                 folder: folder,
                 isExpanded: true,
-                onTap: () => onFolderTap(folder),
+                onTap: () => widget.onFolderTap(folder),
               );
             },
           ),
@@ -245,20 +287,25 @@ class LibrarySearchResultsView extends ConsumerWidget {
         ],
 
         // Players Section
-        if (results.players.isNotEmpty) ...[
-          _SectionHeader(title: 'Players'),
+        if (widget.results.players.isNotEmpty) ...[
+          _SectionHeader(
+            title: 'Players',
+            count: widget.results.playerTotalCount > 0
+                ? widget.results.playerTotalCount
+                : widget.results.players.length,
+          ),
           ListView.separated(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
             padding: EdgeInsets.zero,
-            itemCount: results.players.length,
+            itemCount: widget.results.players.length,
             separatorBuilder: (_, __) => SizedBox(height: 8.h),
             itemBuilder: (context, index) {
-              final player = results.players[index];
+              final player = widget.results.players[index];
               return GamebaseSearchPlayerCard(
                 player: player,
-                onTap: () => onPlayerTap(player),
-                onAdd: () => onPlayerFilter(player),
+                onTap: () => widget.onPlayerTap(player),
+                onAdd: () => widget.onPlayerFilter(player),
                 animationIndex: index,
               );
             },
@@ -267,29 +314,29 @@ class LibrarySearchResultsView extends ConsumerWidget {
         ],
 
         // Saved Analysis Section
-        if (results.analyses.isNotEmpty) ...[
+        if (widget.results.analyses.isNotEmpty) ...[
           _SectionHeader(title: 'Saved Games'),
           ListView.separated(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
             padding: EdgeInsets.zero,
-            itemCount: results.analyses.length,
+            itemCount: widget.results.analyses.length,
             separatorBuilder: (_, __) => SizedBox(height: 12.h),
             itemBuilder: (context, index) {
-              final analysis = results.analyses[index];
+              final analysis = widget.results.analyses[index];
               return BookSavedGameCard(analysis: analysis);
             },
           ),
           SizedBox(height: 24.h),
         ],
 
-        // Database Games Section
+        // Database Games Section with pagination
         ..._buildDatabaseGamesSection(
           context: context,
-          ref: ref,
-          databaseGamesAsync: databaseGamesAsync,
+          paginationState: paginationState,
+          databaseGamesAsync: widget.databaseGamesAsync,
           fallbackGames: fallbackGameModels,
-          viewMode: viewMode,
+          viewMode: widget.viewMode,
         ),
       ],
     );
@@ -297,69 +344,81 @@ class LibrarySearchResultsView extends ConsumerWidget {
 
   List<Widget> _buildDatabaseGamesSection({
     required BuildContext context,
-    required WidgetRef ref,
+    required DatabaseGamesPaginationState paginationState,
     required AsyncValue<List<GamesTourModel>>? databaseGamesAsync,
     required List<GamesTourModel> fallbackGames,
     required GamesListViewMode viewMode,
   }) {
-    if (databaseGamesAsync == null) {
-      if (fallbackGames.isEmpty) return const [];
-      return [
-        _SectionHeader(title: 'Database Games'),
-        _buildGamesList(
-          context: context,
-          ref: ref,
-          games: fallbackGames,
-          viewMode: viewMode,
-        ),
-      ];
+    // Use paginated games if available, otherwise fall back to legacy
+    final games = paginationState.games.isNotEmpty
+        ? paginationState.games
+        : (databaseGamesAsync?.valueOrNull ?? fallbackGames);
+
+    if (games.isEmpty && !paginationState.isLoading && databaseGamesAsync == null) {
+      return const [];
     }
 
     return [
-      _SectionHeader(title: 'Database Games'),
-      databaseGamesAsync.when(
-        data: (games) {
-          if (games.isEmpty) {
-            return Padding(
-              padding: EdgeInsets.only(top: 4.h, bottom: 12.h),
-              child: Text(
-                'No database games found',
-                style: AppTypography.textSmRegular.copyWith(
-                  color: const Color(0xFFA1A1AA),
-                ),
-              ),
-            );
-          }
-
-          return _buildGamesList(
-            context: context,
-            ref: ref,
-            games: games,
-            viewMode: viewMode,
-          );
-        },
-        loading:
-            () => Padding(
-              padding: EdgeInsets.symmetric(vertical: 24.h),
-              child: const Center(
-                child: CircularProgressIndicator(color: kWhiteColor),
-              ),
-            ),
-        error:
-            (e, _) => Padding(
-              padding: EdgeInsets.only(top: 4.h, bottom: 12.h),
-              child: Text(
-                'Failed to load database games: $e',
-                style: AppTypography.textSmRegular.copyWith(color: kRedColor),
-              ),
-            ),
+      _SectionHeader(
+        title: 'Database Games',
+        count: paginationState.totalCount > 0 ? paginationState.totalCount : null,
       ),
+      if (games.isEmpty && paginationState.isLoading)
+        Padding(
+          padding: EdgeInsets.symmetric(vertical: 24.h),
+          child: const Center(
+            child: CircularProgressIndicator(color: kWhiteColor),
+          ),
+        )
+      else if (paginationState.error != null && games.isEmpty)
+        Padding(
+          padding: EdgeInsets.only(top: 4.h, bottom: 12.h),
+          child: Text(
+            'Failed to load games',
+            style: AppTypography.textSmRegular.copyWith(color: kRedColor),
+          ),
+        )
+      else
+        _buildGamesList(
+          context: context,
+          games: games,
+          viewMode: viewMode,
+        ),
+
+      // Load more indicator
+      if (paginationState.hasMore && games.isNotEmpty) ...[
+        SizedBox(height: 16.h),
+        _LoadMoreButton(
+          isLoading: paginationState.isLoading,
+          onTap: _loadMoreGames,
+          remainingCount: paginationState.totalCount > 0
+              ? paginationState.totalCount - games.length
+              : null,
+        ),
+      ],
+
+      // Loading indicator at bottom when loading more
+      if (paginationState.isLoading && games.isNotEmpty)
+        Padding(
+          padding: EdgeInsets.symmetric(vertical: 16.h),
+          child: const Center(
+            child: SizedBox(
+              width: 24,
+              height: 24,
+              child: CircularProgressIndicator(
+                color: kWhiteColor,
+                strokeWidth: 2,
+              ),
+            ),
+          ),
+        ),
+
+      SizedBox(height: 24.h),
     ];
   }
 
   Widget _buildGamesList({
     required BuildContext context,
-    required WidgetRef ref,
     required List<GamesTourModel> games,
     required GamesListViewMode viewMode,
   }) {
@@ -376,7 +435,7 @@ class LibrarySearchResultsView extends ConsumerWidget {
 
         items.add(
           Padding(
-            padding: EdgeInsets.only(bottom: isLast ? 16.h : 12.h),
+            padding: EdgeInsets.only(bottom: isLast ? 0 : 12.h),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -436,6 +495,65 @@ class LibrarySearchResultsView extends ConsumerWidget {
           hideEventInfo: true,
         );
       },
+    );
+  }
+}
+
+/// Load more button widget
+class _LoadMoreButton extends StatelessWidget {
+  final bool isLoading;
+  final VoidCallback onTap;
+  final int? remainingCount;
+
+  const _LoadMoreButton({
+    required this.isLoading,
+    required this.onTap,
+    this.remainingCount,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: isLoading ? null : () {
+        HapticFeedbackService.light();
+        onTap();
+      },
+      child: Container(
+        padding: EdgeInsets.symmetric(vertical: 14.h, horizontal: 20.w),
+        decoration: BoxDecoration(
+          color: const Color(0xFF18181B),
+          borderRadius: BorderRadius.circular(12.br),
+          border: Border.all(
+            color: const Color(0xFF27272A),
+          ),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            if (isLoading) ...[
+              SizedBox(
+                width: 16.sp,
+                height: 16.sp,
+                child: const CircularProgressIndicator(
+                  color: kWhiteColor,
+                  strokeWidth: 2,
+                ),
+              ),
+              SizedBox(width: 10.w),
+            ],
+            Text(
+              isLoading
+                  ? 'Loading...'
+                  : remainingCount != null
+                      ? 'Load more ($remainingCount remaining)'
+                      : 'Load more games',
+              style: AppTypography.textSmMedium.copyWith(
+                color: kWhiteColor.withValues(alpha: 0.9),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -530,13 +648,38 @@ class _LibraryBoardGame extends ConsumerWidget {
 
 class _SectionHeader extends StatelessWidget {
   final String title;
-  const _SectionHeader({required this.title});
+  final int? count;
+
+  const _SectionHeader({required this.title, this.count});
 
   @override
   Widget build(BuildContext context) {
-    return Text(
-      title,
-      style: AppTypography.textSmBold.copyWith(color: kWhiteColor),
+    return Padding(
+      padding: EdgeInsets.only(bottom: 8.h),
+      child: Row(
+        children: [
+          Text(
+            title,
+            style: AppTypography.textSmBold.copyWith(color: kWhiteColor),
+          ),
+          if (count != null && count! > 0) ...[
+            SizedBox(width: 8.w),
+            Container(
+              padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 2.h),
+              decoration: BoxDecoration(
+                color: const Color(0xFF27272A),
+                borderRadius: BorderRadius.circular(10.br),
+              ),
+              child: Text(
+                count.toString(),
+                style: AppTypography.textXsRegular.copyWith(
+                  color: const Color(0xFFA1A1AA),
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
     );
   }
 }

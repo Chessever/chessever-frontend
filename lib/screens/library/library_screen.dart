@@ -226,26 +226,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                         : const SizedBox.shrink(),
                   ),
                 ),
-              // Layout toggle button gap - only during search
-              if (showFilterButton) SizedBox(width: filterGap),
-              // Layout toggle button - only shown when search query exists
-              if (showFilterButton)
-                Opacity(
-                  opacity: opacity,
-                  child: SizedBox(
-                    width: buttonWidth,
-                    child: buttonWidth > 1
-                        ? _SquareIconButton(
-                            iconWidget: SvgWidget(
-                              SvgAsset.chase_grid,
-                              height: 20.sp,
-                              width: 20.sp,
-                            ),
-                            onTap: () => ref.read(gamesListViewModeSwitcher).toggleViewMode(),
-                          )
-                        : const SizedBox.shrink(),
-                  ),
-                ),
+
               // Empty board button gap
               SizedBox(width: buttonGap),
               // Empty board button
@@ -255,11 +236,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                   width: buttonWidth,
                   child: buttonWidth > 1
                       ? _SquareIconButton(
-                          iconWidget: SvgWidget(
-                            SvgAsset.chase_grid,
-                            height: 20.sp,
-                            width: 20.sp,
-                          ),
+                          icon: Icons.grid_on_rounded,
                           onTap: _navigateToEmptyBoard,
                         )
                       : const SizedBox.shrink(),

@@ -23,7 +23,9 @@ class GamebaseSearchGameCard extends ConsumerWidget {
     this.animationIndex = 0,
     this.showRound = true,
     this.showSwipeHint = false,
-    this.showGamebaseButton = true,
+    // TODO: Re-enable gamebase button when ready
+    // this.showGamebaseButton = true,
+    this.showGamebaseButton = false,
     this.hideEventInfo = false,
   });
 
