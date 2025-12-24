@@ -25,9 +25,14 @@ import 'package:intl/intl.dart';
 
 /// Games tab showing all games of a player with comprehensive filters
 class PlayerGamesTab extends ConsumerStatefulWidget {
-  const PlayerGamesTab({super.key, required this.fideId});
+  const PlayerGamesTab({
+    super.key,
+    this.fideId,
+    required this.playerName,
+  });
 
-  final int fideId;
+  final int? fideId;
+  final String playerName;
 
   @override
   ConsumerState<PlayerGamesTab> createState() => _PlayerGamesTabState();
@@ -46,6 +51,12 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
   @override
   bool get wantKeepAlive => true;
 
+  /// Get the player profile key for provider lookups
+  PlayerProfileKey get _playerKey => PlayerProfileKey(
+        fideId: widget.fideId,
+        playerName: widget.playerName,
+      );
+
   @override
   void dispose() {
     _debounceTimer?.cancel();
@@ -59,7 +70,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
     _debounceTimer?.cancel();
     _debounceTimer = Timer(const Duration(milliseconds: 400), () {
       ref
-          .read(playerProfileGamesProvider(widget.fideId).notifier)
+          .read(playerProfileGamesKeyProvider(_playerKey).notifier)
           .setSearchQuery(value);
     });
   }
@@ -70,20 +81,20 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
     _searchController.clear();
     _searchFocusNode.unfocus();
     ref
-        .read(playerProfileGamesProvider(widget.fideId).notifier)
+        .read(playerProfileGamesKeyProvider(_playerKey).notifier)
         .setSearchQuery('');
   }
 
   Future<void> _showFilterDialog() async {
     HapticFeedbackService.buttonPress();
-    final currentState = ref.read(playerProfileGamesProvider(widget.fideId));
+    final currentState = ref.read(playerProfileGamesKeyProvider(_playerKey));
     final result = await showGameFilterDialog(
       context: context,
       currentFilter: currentState.filter,
     );
     if (result != null && mounted) {
       ref
-          .read(playerProfileGamesProvider(widget.fideId).notifier)
+          .read(playerProfileGamesKeyProvider(_playerKey).notifier)
           .applyFilter(result);
     }
   }
@@ -142,7 +153,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
   Widget build(BuildContext context) {
     super.build(context);
 
-    final state = ref.watch(playerProfileGamesProvider(widget.fideId));
+    final state = ref.watch(playerProfileGamesKeyProvider(_playerKey));
     final viewMode = ref.watch(gamesListViewModeProvider);
 
     return Stack(
@@ -151,7 +162,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
           onRefresh: () async {
             HapticFeedbackService.medium();
             await ref
-                .read(playerProfileGamesProvider(widget.fideId).notifier)
+                .read(playerProfileGamesKeyProvider(_playerKey).notifier)
                 .refresh();
           },
           color: kWhiteColor,
@@ -360,7 +371,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
       onTap: () {
         HapticFeedback.lightImpact();
         ref
-            .read(playerProfileGamesProvider(widget.fideId).notifier)
+            .read(playerProfileGamesKeyProvider(_playerKey).notifier)
             .clearFilter();
       },
       child: Container(
@@ -684,7 +695,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
           SizedBox(height: 24.h),
           TextButton(
             onPressed: () => ref
-                .read(playerProfileGamesProvider(widget.fideId).notifier)
+                .read(playerProfileGamesKeyProvider(_playerKey).notifier)
                 .refresh(),
             style: TextButton.styleFrom(
               backgroundColor: kWhiteColor.withValues(alpha: 0.1),
@@ -779,7 +790,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
             onTap: () {
               HapticFeedback.mediumImpact();
               ref
-                  .read(playerProfileGamesProvider(widget.fideId).notifier)
+                  .read(playerProfileGamesKeyProvider(_playerKey).notifier)
                   .clearFilter();
               _clearSearch();
             },

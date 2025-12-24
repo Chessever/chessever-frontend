@@ -37,14 +37,15 @@ final selectedPlayerProfileTabProvider =
 class PlayerProfileScreen extends ConsumerStatefulWidget {
   const PlayerProfileScreen({
     super.key,
-    required this.fideId,
+    this.fideId,
     required this.playerName,
     this.title,
     this.federation,
     this.rating,
   });
 
-  final int fideId;
+  /// FIDE ID - can be null for players without official FIDE registration
+  final int? fideId;
   final String playerName;
   final String? title;
   final String? federation;
@@ -53,7 +54,7 @@ class PlayerProfileScreen extends ConsumerStatefulWidget {
   /// Create from SearchPlayer model
   factory PlayerProfileScreen.fromSearchPlayer(SearchPlayer player) {
     return PlayerProfileScreen(
-      fideId: player.fideId ?? 0,
+      fideId: player.fideId,
       playerName: player.name,
       title: player.title,
       federation: player.fed,
@@ -204,9 +205,15 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
                       fallbackRating: widget.rating,
                     );
                   case PlayerProfileTab.games:
-                    return PlayerGamesTab(fideId: widget.fideId);
+                    return PlayerGamesTab(
+                      fideId: widget.fideId,
+                      playerName: widget.playerName,
+                    );
                   case PlayerProfileTab.events:
-                    return PlayerEventsTab(fideId: widget.fideId);
+                    return PlayerEventsTab(
+                      fideId: widget.fideId,
+                      playerName: widget.playerName,
+                    );
                 }
               },
             ),

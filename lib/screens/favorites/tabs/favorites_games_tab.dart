@@ -158,6 +158,35 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
         _collapsedDates.add(dateKey);
       }
     });
+    // After collapsing sections, check if we need to load more content
+    // This handles the case where collapsing reduces content height
+    // and the user is suddenly at/near the end of the list
+    _checkScrollAfterLayoutChange();
+  }
+
+  /// Check if we need to load more content after a layout change
+  /// (e.g., collapsing date sections reduces content height)
+  void _checkScrollAfterLayoutChange() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_scrollController.hasClients) return;
+
+      final position = _scrollController.position;
+      final maxScroll = position.maxScrollExtent;
+      final currentScroll = position.pixels;
+      final viewportHeight = position.viewportDimension;
+
+      // If content is shorter than viewport, or we're near the end, load more
+      // We use a larger threshold here since collapsing can dramatically reduce height
+      final needsMore = maxScroll <= 0 || // Content fits in viewport
+          maxScroll - currentScroll <= viewportHeight; // Within one screen of end
+
+      if (needsMore) {
+        final state = ref.read(favoritesCombinedGamesProvider);
+        if (state.hasMore && !state.isLoading) {
+          _loadMoreDays();
+        }
+      }
+    });
   }
 
   void _togglePlayerFilter(String fideId) {
