@@ -1451,14 +1451,34 @@ class _RoundRow extends StatelessWidget {
               ],
               // Round name
               Expanded(
-                child: Text(
-                  round.name,
-                  style: AppTypography.textSmRegular.copyWith(
-                    color: isSelected ? kPrimaryColor : kWhiteColor.withValues(alpha: 0.85),
-                    fontWeight: isSelected ? FontWeight.w500 : FontWeight.w400,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      round.name,
+                      style: AppTypography.textSmRegular.copyWith(
+                        color: isSelected
+                            ? kPrimaryColor
+                            : kWhiteColor.withValues(alpha: 0.85),
+                        fontWeight: isSelected ? FontWeight.w500 : FontWeight.w400,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    if (round.formattedRoundDateTime.isNotEmpty)
+                      Text(
+                        round.formattedRoundDateTime,
+                        style: AppTypography.textXxsRegular.copyWith(
+                          color: isSelected
+                              ? kPrimaryColor.withValues(alpha: 0.7)
+                              : kWhiteColor.withValues(alpha: 0.5),
+                          fontSize: 10.sp,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                  ],
                 ),
               ),
             ],
