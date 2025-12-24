@@ -1,5 +1,7 @@
 import 'package:chessever2/repository/library/models/library_folder.dart';
 import 'package:chessever2/repository/library/models/saved_analysis.dart';
+import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
+import 'package:chessever2/screens/chessboard/widgets/chess_board_from_fen_new.dart';
 import 'package:chessever2/screens/gamebase/models/models.dart';
 import 'package:chessever2/screens/library/providers/library_combined_search_provider.dart';
 import 'package:chessever2/screens/library/utils/gamebase_pgn_builder.dart';
@@ -9,16 +11,19 @@ import 'package:chessever2/screens/library/widgets/folder_card.dart';
 import 'package:chessever2/screens/library/widgets/gamebase_search_game_card.dart';
 import 'package:chessever2/screens/library/widgets/gamebase_search_player_card.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/chess_title_utils.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 class LibrarySearchResultsView extends ConsumerWidget {
   final LibrarySearchResult results;
   final AsyncValue<List<GamesTourModel>>? databaseGamesAsync;
+  final GamesListViewMode viewMode;
   final Function(LibraryFolder) onFolderTap;
   final Function(GamebasePlayer) onPlayerTap;
   final Function(GamebasePlayer) onPlayerFilter;
@@ -29,6 +34,7 @@ class LibrarySearchResultsView extends ConsumerWidget {
     super.key,
     required this.results,
     this.databaseGamesAsync,
+    this.viewMode = GamesListViewMode.gamesCard,
     required this.onFolderTap,
     required this.onPlayerTap,
     required this.onPlayerFilter,
@@ -280,8 +286,10 @@ class LibrarySearchResultsView extends ConsumerWidget {
         // Database Games Section
         ..._buildDatabaseGamesSection(
           context: context,
+          ref: ref,
           databaseGamesAsync: databaseGamesAsync,
           fallbackGames: fallbackGameModels,
+          viewMode: viewMode,
         ),
       ],
     );
@@ -289,30 +297,20 @@ class LibrarySearchResultsView extends ConsumerWidget {
 
   List<Widget> _buildDatabaseGamesSection({
     required BuildContext context,
+    required WidgetRef ref,
     required AsyncValue<List<GamesTourModel>>? databaseGamesAsync,
     required List<GamesTourModel> fallbackGames,
+    required GamesListViewMode viewMode,
   }) {
     if (databaseGamesAsync == null) {
       if (fallbackGames.isEmpty) return const [];
       return [
         _SectionHeader(title: 'Database Games'),
-        ListView.separated(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          padding: EdgeInsets.zero,
-          itemCount: fallbackGames.length,
-          separatorBuilder: (_, __) => SizedBox(height: 12.h),
-          itemBuilder: (context, index) {
-            return GamebaseSearchGameCard(
-              game: fallbackGames[index],
-              allGames: fallbackGames,
-              gameIndex: index,
-              animationIndex: index,
-              onAdd: () => _showAddToFolderSheet(context, fallbackGames[index]),
-              showSwipeHint: index == 0,
-              hideEventInfo: true,
-            );
-          },
+        _buildGamesList(
+          context: context,
+          ref: ref,
+          games: fallbackGames,
+          viewMode: viewMode,
         ),
       ];
     }
@@ -333,22 +331,11 @@ class LibrarySearchResultsView extends ConsumerWidget {
             );
           }
 
-          return ListView.separated(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: games.length,
-            separatorBuilder: (_, __) => SizedBox(height: 12.h),
-            itemBuilder: (context, index) {
-              return GamebaseSearchGameCard(
-                game: games[index],
-                allGames: games,
-                gameIndex: index,
-                animationIndex: index,
-                onAdd: () => _showAddToFolderSheet(context, games[index]),
-                showSwipeHint: index == 0,
-                hideEventInfo: true,
-              );
-            },
+          return _buildGamesList(
+            context: context,
+            ref: ref,
+            games: games,
+            viewMode: viewMode,
           );
         },
         loading:
@@ -368,6 +355,176 @@ class LibrarySearchResultsView extends ConsumerWidget {
             ),
       ),
     ];
+  }
+
+  Widget _buildGamesList({
+    required BuildContext context,
+    required WidgetRef ref,
+    required List<GamesTourModel> games,
+    required GamesListViewMode viewMode,
+  }) {
+    final isGrid = viewMode == GamesListViewMode.chessBoardGrid;
+    final isBoard = viewMode == GamesListViewMode.chessBoard;
+
+    if (isGrid) {
+      // Grid mode: 2 games per row
+      final items = <Widget>[];
+      for (int i = 0; i < games.length; i += 2) {
+        final game1 = games[i];
+        final game2 = i + 1 < games.length ? games[i + 1] : null;
+        final isLast = i + 2 >= games.length;
+
+        items.add(
+          Padding(
+            padding: EdgeInsets.only(bottom: isLast ? 16.h : 12.h),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                _LibraryGridGame(
+                  game: game1,
+                  gameIndex: i,
+                  allGames: games,
+                ),
+                if (game2 != null)
+                  _LibraryGridGame(
+                    game: game2,
+                    gameIndex: i + 1,
+                    allGames: games,
+                  ),
+              ],
+            ),
+          ),
+        );
+      }
+
+      return Column(children: items);
+    }
+
+    if (isBoard) {
+      // Board mode: full-width board cards
+      return ListView.separated(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        padding: EdgeInsets.zero,
+        itemCount: games.length,
+        separatorBuilder: (_, __) => SizedBox(height: 12.h),
+        itemBuilder: (context, index) {
+          return _LibraryBoardGame(
+            game: games[index],
+            gameIndex: index,
+            allGames: games,
+          );
+        },
+      );
+    }
+
+    // Card mode (default): use GamebaseSearchGameCard
+    return ListView.separated(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      padding: EdgeInsets.zero,
+      itemCount: games.length,
+      separatorBuilder: (_, __) => SizedBox(height: 12.h),
+      itemBuilder: (context, index) {
+        return GamebaseSearchGameCard(
+          game: games[index],
+          allGames: games,
+          gameIndex: index,
+          animationIndex: index,
+          onAdd: () => _showAddToFolderSheet(context, games[index]),
+          showSwipeHint: index == 0,
+          hideEventInfo: true,
+        );
+      },
+    );
+  }
+}
+
+/// Grid game widget with premium guard
+class _LibraryGridGame extends ConsumerWidget {
+  final GamesTourModel game;
+  final int gameIndex;
+  final List<GamesTourModel> allGames;
+
+  const _LibraryGridGame({
+    required this.game,
+    required this.gameIndex,
+    required this.allGames,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return GridChessBoardFromFENNew(
+      key: ValueKey('lib_grid_game_${game.gameId}'),
+      gamesTourModel: game,
+      onChanged: () async {
+        // Premium guard - show paywall if not subscribed
+        final hasPremium = await requirePremiumGuard(context, ref);
+        if (!hasPremium) return;
+        if (!context.mounted) return;
+
+        // Navigate directly with Library-specific params (no gamebase button)
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => ChessBoardScreenNew(
+              games: allGames,
+              currentIndex: gameIndex,
+              hideEventInfo: true,
+              showGamebaseButton: false,
+              disableGamebaseOverlayByDefault: true,
+              showClock: false,
+            ),
+          ),
+        );
+      },
+      pinnedIds: const [],
+      onPinToggle: (_) {},
+    );
+  }
+}
+
+/// Board game widget with premium guard
+class _LibraryBoardGame extends ConsumerWidget {
+  final GamesTourModel game;
+  final int gameIndex;
+  final List<GamesTourModel> allGames;
+
+  const _LibraryBoardGame({
+    required this.game,
+    required this.gameIndex,
+    required this.allGames,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return ChessBoardFromFENNew(
+      key: ValueKey('lib_board_game_${game.gameId}'),
+      gamesTourModel: game,
+      onChanged: () async {
+        // Premium guard - show paywall if not subscribed
+        final hasPremium = await requirePremiumGuard(context, ref);
+        if (!hasPremium) return;
+        if (!context.mounted) return;
+
+        // Navigate directly with Library-specific params (no gamebase button)
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => ChessBoardScreenNew(
+              games: allGames,
+              currentIndex: gameIndex,
+              hideEventInfo: true,
+              showGamebaseButton: false,
+              disableGamebaseOverlayByDefault: true,
+              showClock: false,
+            ),
+          ),
+        );
+      },
+      pinnedIds: const [],
+      onPinToggle: (_) {},
+    );
   }
 }
 
