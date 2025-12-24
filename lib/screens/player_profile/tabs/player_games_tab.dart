@@ -8,8 +8,8 @@ import 'package:chessever2/screens/player_profile/provider/player_profile_provid
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_provider.dart';
-import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_widget.dart';
 import 'package:chessever2/theme/app_theme.dart';
+import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -447,6 +447,12 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
 
     final games = state.filteredGames;
 
+    // Build a mapping of game IDs to their indices for reliable lookup
+    final gameIdToIndex = <String, int>{};
+    for (int i = 0; i < games.length; i++) {
+      gameIdToIndex[games[i].gameId] = i;
+    }
+
     if (games.isEmpty) {
       return SliverFillRemaining(
         hasScrollBody: false,
@@ -495,8 +501,9 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
           for (int i = 0; i < dateGames.length; i += 2) {
             final game1 = dateGames[i];
             final game2 = i + 1 < dateGames.length ? dateGames[i + 1] : null;
-            final gameIndex1 = games.indexOf(game1);
-            final gameIndex2 = game2 != null ? games.indexOf(game2) : -1;
+            // Use reliable index lookup by game ID
+            final gameIndex1 = gameIdToIndex[game1.gameId] ?? 0;
+            final gameIndex2 = game2 != null ? (gameIdToIndex[game2.gameId] ?? 0) : 0;
             final isLast = i + 2 >= dateGames.length;
 
             items.add(
@@ -518,22 +525,35 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
           for (int i = 0; i < dateGames.length; i++) {
             final game = dateGames[i];
             final isLast = i == dateGames.length - 1;
-            final globalIndex = games.indexOf(game);
+            // Use reliable index lookup by game ID
+            final globalIndex = gameIdToIndex[game.gameId] ?? 0;
             final showHint = isFirstGameCard && viewMode == GamesListViewMode.gamesCard;
             if (isFirstGameCard) isFirstGameCard = false;
 
             if (isChessBoardVisible) {
-              // Board mode: use GameCardWrapperWidget with chessboard visible
+              // Board mode: use ChessBoardFromFENNew with premium-guarded navigation
               items.add(
                 Padding(
                   padding: EdgeInsets.only(bottom: isLast ? 16.h : 12.h),
-                  child: GameCardWrapperWidget(
-                    key: ValueKey('player_game_${game.gameId}_${viewMode.index}'),
-                    game: game,
-                    gamesData: gamesData,
-                    gameIndex: globalIndex,
-                    isChessBoardVisible: true,
-                    onReturnFromChessboard: (_) {},
+                  child: ChessBoardFromFENNew(
+                    key: ValueKey('player_board_game_${game.gameId}'),
+                    gamesTourModel: game,
+                    onChanged: () async {
+                      // Premium guard - show paywall if not subscribed
+                      final hasPremium = await requirePremiumGuard(context, ref);
+                      if (!hasPremium) return;
+                      if (!mounted) return;
+
+                      ref.read(gameCardWrapperProvider).navigateToChessBoard(
+                            context: context,
+                            orderedGames: games,
+                            gameIndex: globalIndex,
+                            onReturnFromChessboard: (_) {},
+                            viewSource: ChessboardView.playerProfile,
+                          );
+                    },
+                    pinnedIds: gamesData.pinnedGamedIs,
+                    onPinToggle: (_) {},
                   ),
                 ),
               );
@@ -579,15 +599,20 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
     return GridChessBoardFromFENNew(
       key: ValueKey('player_grid_game_${game.gameId}'),
       gamesTourModel: game,
-      onChanged: () => ref
-          .read(gameCardWrapperProvider)
-          .navigateToChessBoard(
-            context: context,
-            orderedGames: allGames,
-            gameIndex: gameIndex,
-            onReturnFromChessboard: (_) {},
-            viewSource: ChessboardView.playerProfile,
-          ),
+      onChanged: () async {
+        // Premium guard - show paywall if not subscribed
+        final hasPremium = await requirePremiumGuard(context, ref);
+        if (!hasPremium) return;
+        if (!mounted) return;
+
+        ref.read(gameCardWrapperProvider).navigateToChessBoard(
+              context: context,
+              orderedGames: allGames,
+              gameIndex: gameIndex,
+              onReturnFromChessboard: (_) {},
+              viewSource: ChessboardView.playerProfile,
+            );
+      },
       pinnedIds: const [],
       onPinToggle: (_) {},
     );

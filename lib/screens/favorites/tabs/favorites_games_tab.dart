@@ -10,7 +10,6 @@ import 'package:chessever2/screens/library/widgets/gamebase_search_game_card.dar
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_provider.dart';
-import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_widget.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
@@ -18,6 +17,7 @@ import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/federation_flag.dart';
 import 'package:chessever2/widgets/game_filter/game_filter.dart';
+import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -621,6 +621,12 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
       pinnedGamedIs: const [],
     );
 
+    // Build a mapping of game IDs to their indices for reliable lookup
+    final gameIdToIndex = <String, int>{};
+    for (int i = 0; i < games.length; i++) {
+      gameIdToIndex[games[i].gameId] = i;
+    }
+
     for (final entry in gamesByDate.entries) {
       final dateKey = entry.key;
       final dateGames = entry.value;
@@ -648,15 +654,19 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
             final game2 = i + 1 < dateGames.length ? dateGames[i + 1] : null;
             final isLast = i + 2 >= dateGames.length;
 
+            // Use reliable index lookup by game ID
+            final gameIndex1 = gameIdToIndex[game1.gameId] ?? 0;
+            final gameIndex2 = game2 != null ? (gameIdToIndex[game2.gameId] ?? 0) : 0;
+
             items.add(
               Padding(
                 padding: EdgeInsets.only(bottom: isLast ? 16.h : 12.h),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    _buildGridGame(game1, games.indexOf(game1), games, items.length),
+                    _buildGridGame(game1, gameIndex1, games, items.length),
                     if (game2 != null)
-                      _buildGridGame(game2, games.indexOf(game2), games, items.length),
+                      _buildGridGame(game2, gameIndex2, games, items.length),
                   ],
                 ),
               ),
@@ -666,7 +676,7 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
           // Card mode or Board mode
           for (int i = 0; i < dateGames.length; i++) {
             final game = dateGames[i];
-            final gameIndex = games.indexOf(game);
+            final gameIndex = gameIdToIndex[game.gameId] ?? 0;
             final isLast = i == dateGames.length - 1;
             final showHint = isFirstGameCard && viewMode == GamesListViewMode.gamesCard;
             if (isFirstGameCard) isFirstGameCard = false;
@@ -765,15 +775,20 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
     return GridChessBoardFromFENNew(
       key: ValueKey('fav_grid_game_${game.gameId}'),
       gamesTourModel: game,
-      onChanged: () => ref
-          .read(gameCardWrapperProvider)
-          .navigateToChessBoard(
-            context: context,
-            orderedGames: allGames,
-            gameIndex: gameIndex,
-            onReturnFromChessboard: (_) {},
-            viewSource: ChessboardView.favScorecard,
-          ),
+      onChanged: () async {
+        // Premium guard - show paywall if not subscribed
+        final hasPremium = await requirePremiumGuard(context, ref);
+        if (!hasPremium) return;
+        if (!mounted) return;
+
+        ref.read(gameCardWrapperProvider).navigateToChessBoard(
+              context: context,
+              orderedGames: allGames,
+              gameIndex: gameIndex,
+              onReturnFromChessboard: (_) {},
+              viewSource: ChessboardView.favScorecard,
+            );
+      },
       pinnedIds: const [],
       onPinToggle: (_) {},
     );
@@ -1065,9 +1080,10 @@ class _DateHeader extends StatelessWidget {
   }
 }
 
-/// StatefulWidget that uses AutomaticKeepAliveClientMixin to keep game cards alive
+/// ConsumerStatefulWidget that uses AutomaticKeepAliveClientMixin to keep game cards alive
 /// This prevents the card from being disposed when scrolled off-screen
-class _FavoritesKeepAliveGameCard extends StatefulWidget {
+/// Also adds premium guard for navigation
+class _FavoritesKeepAliveGameCard extends ConsumerStatefulWidget {
   const _FavoritesKeepAliveGameCard({
     super.key,
     required this.game,
@@ -1088,13 +1104,30 @@ class _FavoritesKeepAliveGameCard extends StatefulWidget {
   final bool isLast;
 
   @override
-  State<_FavoritesKeepAliveGameCard> createState() => _FavoritesKeepAliveGameCardState();
+  ConsumerState<_FavoritesKeepAliveGameCard> createState() =>
+      _FavoritesKeepAliveGameCardState();
 }
 
-class _FavoritesKeepAliveGameCardState extends State<_FavoritesKeepAliveGameCard>
+class _FavoritesKeepAliveGameCardState
+    extends ConsumerState<_FavoritesKeepAliveGameCard>
     with AutomaticKeepAliveClientMixin {
   @override
   bool get wantKeepAlive => true;
+
+  Future<void> _handleNavigate() async {
+    // Premium guard - show paywall if not subscribed
+    final hasPremium = await requirePremiumGuard(context, ref);
+    if (!hasPremium) return;
+    if (!mounted) return;
+
+    ref.read(gameCardWrapperProvider).navigateToChessBoard(
+          context: context,
+          orderedGames: widget.gamesData.gamesTourModels,
+          gameIndex: widget.gameIndex,
+          onReturnFromChessboard: (_) {},
+          viewSource: ChessboardView.favScorecard,
+        );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1102,14 +1135,15 @@ class _FavoritesKeepAliveGameCardState extends State<_FavoritesKeepAliveGameCard
 
     final gameId = widget.game.gameId;
 
+    // Use ChessBoardFromFENNew directly with premium-guarded navigation
     final card = Padding(
       padding: EdgeInsets.only(bottom: widget.isLast ? 16.h : 12.h),
-      child: GameCardWrapperWidget(
-        game: widget.game,
-        gamesData: widget.gamesData,
-        gameIndex: widget.gameIndex,
-        isChessBoardVisible: widget.isChessBoardVisible,
-        onReturnFromChessboard: (_) {},
+      child: ChessBoardFromFENNew(
+        key: ValueKey('fav_board_game_${widget.game.gameId}'),
+        gamesTourModel: widget.game,
+        onChanged: _handleNavigate,
+        pinnedIds: widget.gamesData.pinnedGamedIs,
+        onPinToggle: (_) {},
       ),
     );
 

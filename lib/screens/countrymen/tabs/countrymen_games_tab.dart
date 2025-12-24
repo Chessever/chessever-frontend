@@ -9,8 +9,8 @@ import 'package:chessever2/screens/library/widgets/gamebase_search_game_card.dar
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_provider.dart';
-import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_widget.dart';
 import 'package:chessever2/theme/app_theme.dart';
+import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -388,6 +388,12 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
     // Use filtered games based on filter settings
     final games = state.filteredGames;
 
+    // Build a mapping of game IDs to their indices for reliable lookup
+    final gameIdToIndex = <String, int>{};
+    for (int i = 0; i < games.length; i++) {
+      gameIdToIndex[games[i].gameId] = i;
+    }
+
     // Show empty state if filter excludes all games
     if (games.isEmpty && state.filter.hasActiveFilters) {
       return SliverFillRemaining(
@@ -438,15 +444,19 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
             final game2 = i + 1 < dateGames.length ? dateGames[i + 1] : null;
             final isLast = i + 2 >= dateGames.length;
 
+            // Use reliable index lookup by game ID
+            final gameIndex1 = gameIdToIndex[game1.gameId] ?? 0;
+            final gameIndex2 = game2 != null ? (gameIdToIndex[game2.gameId] ?? 0) : 0;
+
             items.add(
               Padding(
                 padding: EdgeInsets.only(bottom: isLast ? 16.h : 12.h),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    _buildGridGame(game1, games.indexOf(game1), games, items.length),
+                    _buildGridGame(game1, gameIndex1, games, items.length),
                     if (game2 != null)
-                      _buildGridGame(game2, games.indexOf(game2), games, items.length),
+                      _buildGridGame(game2, gameIndex2, games, items.length),
                   ],
                 ),
               ),
@@ -456,7 +466,8 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
           // Card mode or Board mode
           for (int i = 0; i < dateGames.length; i++) {
             final game = dateGames[i];
-            final gameIndex = games.indexOf(game);
+            // Use reliable index lookup by game ID
+            final gameIndex = gameIdToIndex[game.gameId] ?? 0;
             final isLast = i == dateGames.length - 1;
             final showHint = isFirstGameCard && viewMode == GamesListViewMode.gamesCard;
             if (isFirstGameCard) isFirstGameCard = false;
@@ -555,15 +566,20 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
     return GridChessBoardFromFENNew(
       key: ValueKey('cmen_grid_game_${game.gameId}'),
       gamesTourModel: game,
-      onChanged: () => ref
-          .read(gameCardWrapperProvider)
-          .navigateToChessBoard(
-            context: context,
-            orderedGames: allGames,
-            gameIndex: gameIndex,
-            onReturnFromChessboard: (_) {},
-            viewSource: ChessboardView.countryman,
-          ),
+      onChanged: () async {
+        // Premium guard - show paywall if not subscribed
+        final hasPremium = await requirePremiumGuard(context, ref);
+        if (!hasPremium) return;
+        if (!mounted) return;
+
+        ref.read(gameCardWrapperProvider).navigateToChessBoard(
+              context: context,
+              orderedGames: allGames,
+              gameIndex: gameIndex,
+              onReturnFromChessboard: (_) {},
+              viewSource: ChessboardView.countryman,
+            );
+      },
       pinnedIds: const [],
       onPinToggle: (_) {},
     );
@@ -857,9 +873,9 @@ class _DateHeader extends StatelessWidget {
   }
 }
 
-/// StatefulWidget that uses AutomaticKeepAliveClientMixin to keep game cards alive
+/// ConsumerStatefulWidget that uses AutomaticKeepAliveClientMixin to keep game cards alive
 /// This prevents the card from being disposed when scrolled off-screen
-class _CountrymenKeepAliveGameCard extends StatefulWidget {
+class _CountrymenKeepAliveGameCard extends ConsumerStatefulWidget {
   const _CountrymenKeepAliveGameCard({
     super.key,
     required this.game,
@@ -880,13 +896,30 @@ class _CountrymenKeepAliveGameCard extends StatefulWidget {
   final bool isLast;
 
   @override
-  State<_CountrymenKeepAliveGameCard> createState() => _CountrymenKeepAliveGameCardState();
+  ConsumerState<_CountrymenKeepAliveGameCard> createState() =>
+      _CountrymenKeepAliveGameCardState();
 }
 
-class _CountrymenKeepAliveGameCardState extends State<_CountrymenKeepAliveGameCard>
+class _CountrymenKeepAliveGameCardState
+    extends ConsumerState<_CountrymenKeepAliveGameCard>
     with AutomaticKeepAliveClientMixin {
   @override
   bool get wantKeepAlive => true;
+
+  Future<void> _handleNavigate() async {
+    // Premium guard - show paywall if not subscribed
+    final hasPremium = await requirePremiumGuard(context, ref);
+    if (!hasPremium) return;
+    if (!mounted) return;
+
+    ref.read(gameCardWrapperProvider).navigateToChessBoard(
+          context: context,
+          orderedGames: widget.gamesData.gamesTourModels,
+          gameIndex: widget.gameIndex,
+          onReturnFromChessboard: (_) {},
+          viewSource: ChessboardView.countryman,
+        );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -894,14 +927,15 @@ class _CountrymenKeepAliveGameCardState extends State<_CountrymenKeepAliveGameCa
 
     final gameId = widget.game.gameId;
 
+    // Use ChessBoardFromFENNew directly with premium-guarded navigation
     final card = Padding(
       padding: EdgeInsets.only(bottom: widget.isLast ? 16.h : 12.h),
-      child: GameCardWrapperWidget(
-        game: widget.game,
-        gamesData: widget.gamesData,
-        gameIndex: widget.gameIndex,
-        isChessBoardVisible: widget.isChessBoardVisible,
-        onReturnFromChessboard: (_) {},
+      child: ChessBoardFromFENNew(
+        key: ValueKey('cmen_board_game_${widget.game.gameId}'),
+        gamesTourModel: widget.game,
+        onChanged: _handleNavigate,
+        pinnedIds: widget.gamesData.pinnedGamedIs,
+        onPinToggle: (_) {},
       ),
     );
 

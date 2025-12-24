@@ -56,6 +56,11 @@ final forYouGamesProvider = StateNotifierProvider.autoDispose<
 /// Provider for grouped games (by event/group_broadcast) for UI display
 /// Games are grouped by their parent event (group_broadcast_id) to ensure
 /// events with categories (U17, U19, etc.) appear under one event card
+///
+/// SORTING ORDER:
+/// 1. Starred (favorite) events go on top
+/// 2. Within each event, games from the latest round are selected
+/// 3. Games are sorted by ELO with priority to favorited players
 final groupedForYouGamesProvider = Provider.autoDispose<
   List<GroupedTournamentGames>
 >((ref) {
@@ -63,6 +68,22 @@ final groupedForYouGamesProvider = Provider.autoDispose<
   final games = ref.watch(forYouGamesProvider).valueOrNull ?? [];
   final initialGameIds = ref.read(forYouGamesProvider.notifier).initialGameIds;
   final tourToGroupMapping = ref.watch(tourToGroupBroadcastMappingProvider);
+
+  // Get favorite events and players for prioritization
+  final favoriteEventsAsync = ref.watch(favoriteEventsProvider);
+  final favoriteEventIds = favoriteEventsAsync.valueOrNull
+      ?.map((e) => e.eventId)
+      .toSet() ?? <String>{};
+
+  final favoritesAsync = ref.watch(favoritePlayersProviderNew);
+  final favorites = favoritesAsync.valueOrNull ?? [];
+  final favoritedFideIds = favorites
+      .where((f) => f.fideId != null && f.fideId!.isNotEmpty)
+      .map((f) => f.fideId!)
+      .toSet();
+  final favoritedNames = favorites
+      .map((f) => f.playerName.toLowerCase())
+      .toSet();
 
   // CRITICAL: Separate initial games from pagination games to prevent scroll jumping
   // Initial games are grouped normally, pagination games are appended at the end
@@ -79,11 +100,10 @@ final groupedForYouGamesProvider = Provider.autoDispose<
 
   // Group only initial games (maintains scroll position stability)
   // Group by group_broadcast_id (event level) instead of tour_id
-  final grouped = <String, GroupedTournamentGames>{};
+  // Collect ALL games per group first, then select top 4 from last round
+  final grouped = <String, List<Games>>{};
   final groupOrder = <String>[]; // Track insertion order
-
-  // Hard limit: maximum 4 games per event card in For You tab
-  const maxGamesPerEvent = 4;
+  final groupTourNames = <String, String>{}; // Track tour names
 
   for (final game in initialGames) {
     final tourId = game.tourId;
@@ -92,33 +112,65 @@ final groupedForYouGamesProvider = Provider.autoDispose<
     final groupKey = tourToGroupMapping[tourId] ?? tourId;
 
     if (!grouped.containsKey(groupKey)) {
-      grouped[groupKey] = GroupedTournamentGames(
-        groupKey: groupKey,
-        tourId: groupKey, // Use group_broadcast_id for navigation
-        tourName: tourName,
-        games: [],
-        hasLiveGames: false,
-      );
-      groupOrder.add(groupKey); // Remember order of first appearance
+      grouped[groupKey] = [];
+      groupOrder.add(groupKey);
+      groupTourNames[groupKey] = tourName;
     }
 
-    // Only add game if we haven't reached the limit for this event
-    if (grouped[groupKey]!.games.length < maxGamesPerEvent) {
-      grouped[groupKey]!.games.add(game);
-    }
-    if (game.status == '*') {
-      grouped[groupKey]!.hasLiveGames = true;
-    }
+    grouped[groupKey]!.add(game);
   }
 
-  // Convert to list in order of first appearance
-  final result = groupOrder.map((key) => grouped[key]!).toList();
+  // Hard limit: maximum 4 games per event card in For You tab
+  const maxGamesPerEvent = 4;
+
+  // Process each group to select top 4 games from the last round
+  // Priority: favorite players first, then by ELO
+  final result = <GroupedTournamentGames>[];
+
+  for (final groupKey in groupOrder) {
+    final allGroupGames = grouped[groupKey]!;
+    final tourName = groupTourNames[groupKey] ?? '';
+
+    // Select top games from last round with favorite player priority
+    final selectedGames = _selectTopGamesFromLastRound(
+      allGroupGames,
+      maxGamesPerEvent,
+      favoritedFideIds,
+      favoritedNames,
+    );
+
+    final hasLiveGames = selectedGames.any((g) => g.status == '*');
+
+    result.add(GroupedTournamentGames(
+      groupKey: groupKey,
+      tourId: groupKey, // Use group_broadcast_id for navigation
+      tourName: tourName,
+      games: selectedGames,
+      hasLiveGames: hasLiveGames,
+    ));
+  }
+
+  // SORT GROUPS: Starred events go on top
+  result.sort((a, b) {
+    final aIsStarred = favoriteEventIds.contains(a.tourId);
+    final bIsStarred = favoriteEventIds.contains(b.tourId);
+
+    if (aIsStarred && !bIsStarred) return -1;
+    if (!aIsStarred && bIsStarred) return 1;
+
+    // Within same starred status, prioritize events with live games
+    if (a.hasLiveGames && !b.hasLiveGames) return -1;
+    if (!a.hasLiveGames && b.hasLiveGames) return 1;
+
+    return 0; // Keep original order otherwise
+  });
 
   // Group pagination games separately and append at the end
   // This ensures new items are always added at the END, never in the middle
   if (paginationGames.isNotEmpty) {
-    final paginationGrouped = <String, GroupedTournamentGames>{};
+    final paginationGrouped = <String, List<Games>>{};
     final paginationOrder = <String>[];
+    final paginationTourNames = <String, String>{};
 
     for (final game in paginationGames) {
       final tourId = game.tourId;
@@ -130,31 +182,163 @@ final groupedForYouGamesProvider = Provider.autoDispose<
       final paginationGroupKey = '${groupKey}_more';
 
       if (!paginationGrouped.containsKey(paginationGroupKey)) {
-        paginationGrouped[paginationGroupKey] = GroupedTournamentGames(
-          groupKey: paginationGroupKey, // Unique grouping key
-          tourId: groupKey, // Use group_broadcast_id for navigation
-          tourName: tourName,
-          games: [],
-          hasLiveGames: false,
-        );
+        paginationGrouped[paginationGroupKey] = [];
         paginationOrder.add(paginationGroupKey);
+        paginationTourNames[paginationGroupKey] = tourName;
       }
 
-      // Only add game if we haven't reached the limit for this event
-      if (paginationGrouped[paginationGroupKey]!.games.length < maxGamesPerEvent) {
-        paginationGrouped[paginationGroupKey]!.games.add(game);
-      }
-      if (game.status == '*') {
-        paginationGrouped[paginationGroupKey]!.hasLiveGames = true;
-      }
+      paginationGrouped[paginationGroupKey]!.add(game);
     }
 
-    // Append pagination groups at the end
-    result.addAll(paginationOrder.map((key) => paginationGrouped[key]!));
+    // Process pagination groups with the same selection logic
+    for (final paginationGroupKey in paginationOrder) {
+      final allGroupGames = paginationGrouped[paginationGroupKey]!;
+      final tourName = paginationTourNames[paginationGroupKey] ?? '';
+      final originalGroupKey = paginationGroupKey.replaceAll('_more', '');
+
+      final selectedGames = _selectTopGamesFromLastRound(
+        allGroupGames,
+        maxGamesPerEvent,
+        favoritedFideIds,
+        favoritedNames,
+      );
+
+      final hasLiveGames = selectedGames.any((g) => g.status == '*');
+
+      result.add(GroupedTournamentGames(
+        groupKey: paginationGroupKey,
+        tourId: originalGroupKey,
+        tourName: tourName,
+        games: selectedGames,
+        hasLiveGames: hasLiveGames,
+      ));
+    }
   }
 
   return result;
 });
+
+/// Extracts round number from roundSlug (e.g., "round-5" -> 5)
+int _extractRoundNumber(String roundSlug) {
+  // Try to extract number from common patterns like "round-5", "round5", "r5"
+  final regex = RegExp(r'(\d+)');
+  final match = regex.firstMatch(roundSlug);
+  if (match != null) {
+    return int.tryParse(match.group(1) ?? '') ?? 0;
+  }
+  return 0;
+}
+
+/// Selects top games from the last round, prioritizing favorite players then ELO
+List<Games> _selectTopGamesFromLastRound(
+  List<Games> allGames,
+  int maxGames,
+  Set<String> favoritedFideIds,
+  Set<String> favoritedNames,
+) {
+  if (allGames.isEmpty) return [];
+
+  // Group games by round
+  final gamesByRound = <String, List<Games>>{};
+  for (final game in allGames) {
+    final roundId = game.roundId;
+    gamesByRound.putIfAbsent(roundId, () => []).add(game);
+  }
+
+  // Find the latest round (highest round number or most recent lastMoveTime)
+  String? latestRoundId;
+  int highestRoundNumber = -1;
+  DateTime? latestMoveTime;
+
+  for (final roundId in gamesByRound.keys) {
+    final roundGames = gamesByRound[roundId]!;
+    final roundSlug = roundGames.first.roundSlug;
+    final roundNumber = _extractRoundNumber(roundSlug);
+
+    // Find the most recent move time in this round
+    DateTime? roundLatestMove;
+    for (final game in roundGames) {
+      if (game.lastMoveTime != null) {
+        if (roundLatestMove == null || game.lastMoveTime!.isAfter(roundLatestMove)) {
+          roundLatestMove = game.lastMoveTime;
+        }
+      }
+    }
+
+    // Determine if this is the latest round
+    // Priority: round number > latest move time
+    bool isLatest = false;
+    if (roundNumber > highestRoundNumber) {
+      isLatest = true;
+    } else if (roundNumber == highestRoundNumber && roundLatestMove != null) {
+      if (latestMoveTime == null || roundLatestMove.isAfter(latestMoveTime)) {
+        isLatest = true;
+      }
+    } else if (roundNumber == 0 && roundLatestMove != null) {
+      // No round numbers available, use move time
+      if (latestMoveTime == null || roundLatestMove.isAfter(latestMoveTime)) {
+        isLatest = true;
+      }
+    }
+
+    if (isLatest) {
+      latestRoundId = roundId;
+      highestRoundNumber = roundNumber;
+      latestMoveTime = roundLatestMove;
+    }
+  }
+
+  // Get games from the latest round
+  List<Games> candidateGames;
+  if (latestRoundId != null && gamesByRound[latestRoundId]!.isNotEmpty) {
+    candidateGames = gamesByRound[latestRoundId]!;
+  } else {
+    // Fallback: use all games if round detection fails
+    candidateGames = allGames;
+  }
+
+  // Sort games: favorite players first, then by ELO
+  candidateGames.sort((a, b) {
+    final aHasFavorite = _gameHasFavoritePlayer(a, favoritedFideIds, favoritedNames);
+    final bHasFavorite = _gameHasFavoritePlayer(b, favoritedFideIds, favoritedNames);
+
+    // Priority 1: Favorite players go first
+    if (aHasFavorite && !bHasFavorite) return -1;
+    if (!aHasFavorite && bHasFavorite) return 1;
+
+    // Priority 2: Sort by max ELO (highest first)
+    final aMaxElo = _getGameMaxElo(a);
+    final bMaxElo = _getGameMaxElo(b);
+    return bMaxElo.compareTo(aMaxElo);
+  });
+
+  return candidateGames.take(maxGames).toList();
+}
+
+/// Checks if a game has a favorited player
+bool _gameHasFavoritePlayer(
+  Games game,
+  Set<String> favoritedFideIds,
+  Set<String> favoritedNames,
+) {
+  if (game.players == null) return false;
+
+  for (final player in game.players!) {
+    if (player.fideId > 0 && favoritedFideIds.contains(player.fideId.toString())) {
+      return true;
+    }
+    if (favoritedNames.contains(player.name.toLowerCase())) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/// Gets the maximum ELO from a game's players
+int _getGameMaxElo(Games game) {
+  if (game.players == null || game.players!.isEmpty) return 0;
+  return game.players!.map((p) => p.rating).fold<int>(0, (max, r) => r > max ? r : max);
+}
 
 /// Provider for converted games (Games to GamesTourModel)
 final convertedForYouGamesProvider = Provider.autoDispose<List<GamesTourModel>>(

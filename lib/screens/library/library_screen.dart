@@ -9,6 +9,7 @@ import 'package:chessever2/screens/library/folder_contents_screen.dart';
 import 'package:chessever2/screens/library/providers/gamebase_database_games_provider.dart';
 import 'package:chessever2/screens/library/providers/gamebase_filter_provider.dart';
 import 'package:chessever2/screens/library/providers/library_combined_search_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
 import 'package:chessever2/screens/library/providers/library_folders_provider.dart';
 import 'package:chessever2/screens/library/utils/create_empty_game.dart';
 import 'package:chessever2/screens/library/utils/gamebase_game_to_games_tour_model.dart';
@@ -225,6 +226,26 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                         : const SizedBox.shrink(),
                   ),
                 ),
+              // Layout toggle button gap - only during search
+              if (showFilterButton) SizedBox(width: filterGap),
+              // Layout toggle button - only shown when search query exists
+              if (showFilterButton)
+                Opacity(
+                  opacity: opacity,
+                  child: SizedBox(
+                    width: buttonWidth,
+                    child: buttonWidth > 1
+                        ? _SquareIconButton(
+                            iconWidget: SvgWidget(
+                              SvgAsset.chase_grid,
+                              height: 20.sp,
+                              width: 20.sp,
+                            ),
+                            onTap: () => ref.read(gamesListViewModeSwitcher).toggleViewMode(),
+                          )
+                        : const SizedBox.shrink(),
+                  ),
+                ),
               // Empty board button gap
               SizedBox(width: buttonGap),
               // Empty board button
@@ -416,6 +437,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   Widget _buildContent() {
     final filtersActive = ref.watch(hasActiveGamebaseFiltersProvider);
     final isSearchMode = _searchQuery.isNotEmpty || filtersActive;
+    final viewMode = ref.watch(gamesListViewModeProvider);
 
     if (isSearchMode) {
       final searchResultsAsync = ref.watch(
@@ -430,6 +452,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
             (results) => LibrarySearchResultsView(
               results: results,
               databaseGamesAsync: databaseGamesAsync,
+              viewMode: viewMode,
               onFolderTap: (folder) async {
                 final shouldFocusSearch = await Navigator.of(context).push<bool>(
                   MaterialPageRoute(
