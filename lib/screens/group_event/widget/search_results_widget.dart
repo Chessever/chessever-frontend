@@ -1,4 +1,5 @@
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
+import 'package:chessever2/screens/group_event/providers/group_event_screen_provider.dart';
 import 'package:chessever2/screens/group_event/providers/supabase_combined_search_provider.dart';
 import 'package:chessever2/screens/group_event/widget/player_search_cards.dart';
 import 'package:chessever2/theme/app_theme.dart';
@@ -248,7 +249,7 @@ class _SearchResultsListView extends ConsumerWidget {
 }
 
 /// Event card widget with keep-alive and animation support
-class _SearchEventCard extends StatefulWidget {
+class _SearchEventCard extends ConsumerStatefulWidget {
   const _SearchEventCard({
     super.key,
     required this.tournament,
@@ -261,10 +262,10 @@ class _SearchEventCard extends StatefulWidget {
   final int listIndex;
 
   @override
-  State<_SearchEventCard> createState() => _SearchEventCardState();
+  ConsumerState<_SearchEventCard> createState() => _SearchEventCardState();
 }
 
-class _SearchEventCardState extends State<_SearchEventCard>
+class _SearchEventCardState extends ConsumerState<_SearchEventCard>
     with AutomaticKeepAliveClientMixin {
   @override
   bool get wantKeepAlive => true;
@@ -282,6 +283,9 @@ class _SearchEventCardState extends State<_SearchEventCard>
       child: EventCard(
         tourEventCardModel: widget.tournament,
         heroTagSuffix: 'search-${widget.tournament.id}',
+        onTap: () => ref
+            .read(groupEventScreenProvider.notifier)
+            .onSelectTournament(context: context, id: widget.tournament.id),
       ),
     );
 

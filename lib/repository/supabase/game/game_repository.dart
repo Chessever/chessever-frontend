@@ -803,6 +803,43 @@ class GameRepository extends BaseRepository {
     });
   }
 
+  /// Get games from multiple tour IDs (for fetching all current events' games)
+  /// Returns games ordered by last_move_time descending
+  Future<List<Games>> getGamesFromTourIds({
+    required List<String> tourIds,
+    int limit = 500,
+    int offset = 0,
+  }) async {
+    return handleApiCall(() async {
+      if (tourIds.isEmpty) {
+        return <Games>[];
+      }
+
+      debugPrint(
+        '[GameRepository] Fetching games from ${tourIds.length} tour IDs (limit: $limit, offset: $offset)',
+      );
+
+      // Use inFilter for multiple tour IDs
+      final response = await supabase
+          .from('games')
+          .select(_gameListSelectColumns)
+          .inFilter('tour_id', tourIds)
+          .order('last_move_time', ascending: false)
+          .range(offset, offset + limit - 1);
+
+      final jsonList =
+          (response as List).map((item) => json.encode(item)).toList();
+
+      final games = await compute(_decodeGamesInIsolate, jsonList);
+
+      debugPrint(
+        '[GameRepository] Fetched ${games.length} games from current events',
+      );
+
+      return games;
+    });
+  }
+
   /// Get top live games globally, ordered by recency.
   Future<List<Games>> getTopLiveGames({int limit = 200}) async {
     return handleApiCall(() async {

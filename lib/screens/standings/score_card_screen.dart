@@ -226,10 +226,11 @@ class ScoreCardScreen extends ConsumerWidget {
                   .read(playerUtilsProvider)
                   .isSamePlayer(game.blackPlayer.name, player.name);
         }).toList();
+    // Sort by round/date ascending - Round 1 first, then Round 2, etc.
     playerGames.sort((a, b) {
       final aTime = a.lastMoveTime ?? gameDateFallback;
       final bTime = b.lastMoveTime ?? gameDateFallback;
-      return bTime.compareTo(aTime);
+      return aTime.compareTo(bTime);
     });
 
     final nameParts = player.name.split(',');
