@@ -55,26 +55,35 @@ final forYouGamesProvider = StateNotifierProvider.autoDispose<
 
 /// Provider for grouped games (by event/group_broadcast) for UI display
 /// Games are grouped by their parent event (group_broadcast_id) to ensure
-/// events with categories (U17, U19, etc.) appear under one event card
+/// events with categories (U17, U19, etc.) appear under one umbrella event card
 ///
-/// SORTING ORDER:
-/// 1. Starred (favorite) events go on top
-/// 2. Within each event, games from the latest round are selected
-/// 3. Games are sorted by ELO with priority to favorited players
+/// KEY BEHAVIOR:
+/// - Games from the same event (group_broadcast_id) are MERGED into one card
+/// - Starred (favorite) events appear at the top
+/// - Each event card shows top 4 boards from the latest round
+/// - Favorite players' games get priority within each event
+///
+/// REACTIVE: This provider watches favoriteEventsProvider, favoritePlayersProviderNew,
+/// and countryDropdownProvider - so it rebuilds immediately when any preference changes.
 final groupedForYouGamesProvider = Provider.autoDispose<
   List<GroupedTournamentGames>
 >((ref) {
   ref.keepAlive(); // Keep alive to match main provider
   final games = ref.watch(forYouGamesProvider).valueOrNull ?? [];
-  final initialGameIds = ref.read(forYouGamesProvider.notifier).initialGameIds;
   final tourToGroupMapping = ref.watch(tourToGroupBroadcastMappingProvider);
 
-  // Get favorite events and players for prioritization
+  // ============================================================
+  // WATCH ALL PREFERENCE PROVIDERS FOR REACTIVE UPDATES
+  // When any of these change, this provider rebuilds immediately
+  // ============================================================
+
+  // Watch favorite events
   final favoriteEventsAsync = ref.watch(favoriteEventsProvider);
   final favoriteEventIds = favoriteEventsAsync.valueOrNull
       ?.map((e) => e.eventId)
       .toSet() ?? <String>{};
 
+  // Watch favorite players
   final favoritesAsync = ref.watch(favoritePlayersProviderNew);
   final favorites = favoritesAsync.valueOrNull ?? [];
   final favoritedFideIds = favorites
@@ -85,27 +94,26 @@ final groupedForYouGamesProvider = Provider.autoDispose<
       .map((f) => f.playerName.toLowerCase())
       .toSet();
 
-  // CRITICAL: Separate initial games from pagination games to prevent scroll jumping
-  // Initial games are grouped normally, pagination games are appended at the end
-  final initialGames = <Games>[];
-  final paginationGames = <Games>[];
+  // Watch country selection
+  final countryAsync = ref.watch(countryDropdownProvider);
+  final selectedCountry = countryAsync.valueOrNull;
+  final fideCountryCode = selectedCountry != null
+      ? CountryUtils.toFideCode(selectedCountry.countryCode)
+      : null;
+
+  // CRITICAL FIX: Group ALL games by group_broadcast_id (event umbrella)
+  // This merges games from same event (e.g., U17, U19 categories) into ONE card
+  // No more duplicate cards for the same event!
+  final grouped = <String, List<Games>>{};
+  final groupOrder = <String>[]; // Track insertion order for stable ordering
+  final groupTourNames = <String, String>{}; // Track tour names (use first seen)
+  final seenGameIds = <String>{}; // Deduplicate games
 
   for (final game in games) {
-    if (initialGameIds.contains(game.id)) {
-      initialGames.add(game);
-    } else {
-      paginationGames.add(game);
-    }
-  }
+    // Skip duplicate games
+    if (seenGameIds.contains(game.id)) continue;
+    seenGameIds.add(game.id);
 
-  // Group only initial games (maintains scroll position stability)
-  // Group by group_broadcast_id (event level) instead of tour_id
-  // Collect ALL games per group first, then select top 4 from last round
-  final grouped = <String, List<Games>>{};
-  final groupOrder = <String>[]; // Track insertion order
-  final groupTourNames = <String, String>{}; // Track tour names
-
-  for (final game in initialGames) {
     final tourId = game.tourId;
     final tourName = game.tourSlug;
     // Use group_broadcast_id if available, fallback to tour_id
@@ -150,70 +158,79 @@ final groupedForYouGamesProvider = Provider.autoDispose<
     ));
   }
 
-  // SORT GROUPS: Starred events go on top
-  result.sort((a, b) {
-    final aIsStarred = favoriteEventIds.contains(a.tourId);
-    final bIsStarred = favoriteEventIds.contains(b.tourId);
-
-    if (aIsStarred && !bIsStarred) return -1;
-    if (!aIsStarred && bIsStarred) return 1;
-
-    // Within same starred status, prioritize events with live games
-    if (a.hasLiveGames && !b.hasLiveGames) return -1;
-    if (!a.hasLiveGames && b.hasLiveGames) return 1;
-
-    return 0; // Keep original order otherwise
-  });
-
-  // Group pagination games separately and append at the end
-  // This ensures new items are always added at the END, never in the middle
-  if (paginationGames.isNotEmpty) {
-    final paginationGrouped = <String, List<Games>>{};
-    final paginationOrder = <String>[];
-    final paginationTourNames = <String, String>{};
-
-    for (final game in paginationGames) {
-      final tourId = game.tourId;
-      final tourName = game.tourSlug;
-      // Use group_broadcast_id if available, fallback to tour_id
-      final groupKey = tourToGroupMapping[tourId] ?? tourId;
-
-      // Use a unique key for pagination groups to avoid key conflicts
-      final paginationGroupKey = '${groupKey}_more';
-
-      if (!paginationGrouped.containsKey(paginationGroupKey)) {
-        paginationGrouped[paginationGroupKey] = [];
-        paginationOrder.add(paginationGroupKey);
-        paginationTourNames[paginationGroupKey] = tourName;
+  // Helper to check if an event has favorited player games
+  bool eventHasFavoritePlayer(GroupedTournamentGames group) {
+    for (final game in group.games) {
+      if (_gameHasFavoritePlayer(game, favoritedFideIds, favoritedNames)) {
+        return true;
       }
-
-      paginationGrouped[paginationGroupKey]!.add(game);
     }
-
-    // Process pagination groups with the same selection logic
-    for (final paginationGroupKey in paginationOrder) {
-      final allGroupGames = paginationGrouped[paginationGroupKey]!;
-      final tourName = paginationTourNames[paginationGroupKey] ?? '';
-      final originalGroupKey = paginationGroupKey.replaceAll('_more', '');
-
-      final selectedGames = _selectTopGamesFromLastRound(
-        allGroupGames,
-        maxGamesPerEvent,
-        favoritedFideIds,
-        favoritedNames,
-      );
-
-      final hasLiveGames = selectedGames.any((g) => g.status == '*');
-
-      result.add(GroupedTournamentGames(
-        groupKey: paginationGroupKey,
-        tourId: originalGroupKey,
-        tourName: tourName,
-        games: selectedGames,
-        hasLiveGames: hasLiveGames,
-      ));
-    }
+    return false;
   }
+
+  // Helper to check if an event has countryman games
+  bool eventHasCountryman(GroupedTournamentGames group) {
+    if (fideCountryCode == null) return false;
+    for (final game in group.games) {
+      if (game.players != null) {
+        for (final player in game.players!) {
+          if (player.fed.toUpperCase() == fideCountryCode.toUpperCase() &&
+              player.rating >= 2300) {
+            return true;
+          }
+        }
+      }
+    }
+    return false;
+  }
+
+  // Get max ELO from event's games for secondary sorting
+  int getEventMaxElo(GroupedTournamentGames group) {
+    int maxElo = 0;
+    for (final game in group.games) {
+      final gameMaxElo = _getGameMaxElo(game);
+      if (gameMaxElo > maxElo) maxElo = gameMaxElo;
+    }
+    return maxElo;
+  }
+
+  // =============================================================
+  // EVENT SORTING - Same hierarchy as game scoring
+  // =============================================================
+  // Priority 1: Starred events (+100000) - ABSOLUTE TOP
+  // Priority 2: Favorite players (+50000)
+  // Priority 3: Countrymen (+20000)
+  // Priority 4: ELO (× 1.0) - Dominates for non-pref events
+  // Tie-breaker: Live (+50)
+  // =============================================================
+  result.sort((a, b) {
+    double scoreA = 0;
+    double scoreB = 0;
+
+    // Priority 1: Starred (favorite) events - ABSOLUTE TOP
+    if (favoriteEventIds.contains(a.tourId)) scoreA += 100000;
+    if (favoriteEventIds.contains(b.tourId)) scoreB += 100000;
+
+    // Priority 2: Events with favorited players
+    if (eventHasFavoritePlayer(a)) scoreA += 50000;
+    if (eventHasFavoritePlayer(b)) scoreB += 50000;
+
+    // Priority 3: Events with countrymen
+    if (eventHasCountryman(a)) scoreA += 20000;
+    if (eventHasCountryman(b)) scoreB += 20000;
+
+    // Priority 4: ELO is the DOMINANT factor
+    // Higher ELO events should rank higher (unless preferences override)
+    scoreA += getEventMaxElo(a).toDouble();
+    scoreB += getEventMaxElo(b).toDouble();
+
+    // Tie-breaker: Live games (small boost, won't override ELO)
+    if (a.hasLiveGames) scoreA += 50;
+    if (b.hasLiveGames) scoreB += 50;
+
+    // Sort by score descending
+    return scoreB.compareTo(scoreA);
+  });
 
   return result;
 });
@@ -229,7 +246,15 @@ int _extractRoundNumber(String roundSlug) {
   return 0;
 }
 
-/// Selects top games from the last round, prioritizing favorite players then ELO
+/// Selects top 4 games for an event card
+///
+/// PRIORITY ORDER:
+/// 1. Favorite players (highest)
+/// 2. Higher ELO
+/// 3. Live games (tie-breaker only)
+///
+/// CONSISTENCY: Always tries to return exactly [maxGames] (4) games.
+/// First fills from latest round, then from previous rounds if needed.
 List<Games> _selectTopGamesFromLastRound(
   List<Games> allGames,
   int maxGames,
@@ -238,67 +263,9 @@ List<Games> _selectTopGamesFromLastRound(
 ) {
   if (allGames.isEmpty) return [];
 
-  // Group games by round
-  final gamesByRound = <String, List<Games>>{};
-  for (final game in allGames) {
-    final roundId = game.roundId;
-    gamesByRound.putIfAbsent(roundId, () => []).add(game);
-  }
-
-  // Find the latest round (highest round number or most recent lastMoveTime)
-  String? latestRoundId;
-  int highestRoundNumber = -1;
-  DateTime? latestMoveTime;
-
-  for (final roundId in gamesByRound.keys) {
-    final roundGames = gamesByRound[roundId]!;
-    final roundSlug = roundGames.first.roundSlug;
-    final roundNumber = _extractRoundNumber(roundSlug);
-
-    // Find the most recent move time in this round
-    DateTime? roundLatestMove;
-    for (final game in roundGames) {
-      if (game.lastMoveTime != null) {
-        if (roundLatestMove == null || game.lastMoveTime!.isAfter(roundLatestMove)) {
-          roundLatestMove = game.lastMoveTime;
-        }
-      }
-    }
-
-    // Determine if this is the latest round
-    // Priority: round number > latest move time
-    bool isLatest = false;
-    if (roundNumber > highestRoundNumber) {
-      isLatest = true;
-    } else if (roundNumber == highestRoundNumber && roundLatestMove != null) {
-      if (latestMoveTime == null || roundLatestMove.isAfter(latestMoveTime)) {
-        isLatest = true;
-      }
-    } else if (roundNumber == 0 && roundLatestMove != null) {
-      // No round numbers available, use move time
-      if (latestMoveTime == null || roundLatestMove.isAfter(latestMoveTime)) {
-        isLatest = true;
-      }
-    }
-
-    if (isLatest) {
-      latestRoundId = roundId;
-      highestRoundNumber = roundNumber;
-      latestMoveTime = roundLatestMove;
-    }
-  }
-
-  // Get games from the latest round
-  List<Games> candidateGames;
-  if (latestRoundId != null && gamesByRound[latestRoundId]!.isNotEmpty) {
-    candidateGames = gamesByRound[latestRoundId]!;
-  } else {
-    // Fallback: use all games if round detection fails
-    candidateGames = allGames;
-  }
-
-  // Sort games: favorite players first, then by ELO
-  candidateGames.sort((a, b) {
+  // Sort ALL games by our priority (favorite players > ELO > live as tie-breaker)
+  final sortedGames = List<Games>.from(allGames);
+  sortedGames.sort((a, b) {
     final aHasFavorite = _gameHasFavoritePlayer(a, favoritedFideIds, favoritedNames);
     final bHasFavorite = _gameHasFavoritePlayer(b, favoritedFideIds, favoritedNames);
 
@@ -309,10 +276,74 @@ List<Games> _selectTopGamesFromLastRound(
     // Priority 2: Sort by max ELO (highest first)
     final aMaxElo = _getGameMaxElo(a);
     final bMaxElo = _getGameMaxElo(b);
-    return bMaxElo.compareTo(aMaxElo);
+    if (aMaxElo != bMaxElo) {
+      return bMaxElo.compareTo(aMaxElo);
+    }
+
+    // Tie-breaker: Live games come first (within same ELO)
+    final aIsLive = a.status == '*';
+    final bIsLive = b.status == '*';
+    if (aIsLive && !bIsLive) return -1;
+    if (!aIsLive && bIsLive) return 1;
+
+    return 0;
   });
 
-  return candidateGames.take(maxGames).toList();
+  // Group sorted games by round to prefer latest round
+  final gamesByRound = <String, List<Games>>{};
+  final roundNumbers = <String, int>{};
+
+  for (final game in sortedGames) {
+    final roundId = game.roundId;
+    gamesByRound.putIfAbsent(roundId, () => []).add(game);
+    if (!roundNumbers.containsKey(roundId)) {
+      roundNumbers[roundId] = _extractRoundNumber(game.roundSlug);
+    }
+  }
+
+  // Sort rounds by round number (descending) to get latest first
+  final sortedRoundIds = gamesByRound.keys.toList()
+    ..sort((a, b) => (roundNumbers[b] ?? 0).compareTo(roundNumbers[a] ?? 0));
+
+  // Collect games: prioritize latest round, fill from earlier rounds if needed
+  final selectedGames = <Games>[];
+  final selectedIds = <String>{};
+
+  for (final roundId in sortedRoundIds) {
+    if (selectedGames.length >= maxGames) break;
+
+    for (final game in gamesByRound[roundId]!) {
+      if (selectedGames.length >= maxGames) break;
+      if (!selectedIds.contains(game.id)) {
+        selectedGames.add(game);
+        selectedIds.add(game.id);
+      }
+    }
+  }
+
+  // Re-sort the final selection to ensure proper order
+  selectedGames.sort((a, b) {
+    final aHasFavorite = _gameHasFavoritePlayer(a, favoritedFideIds, favoritedNames);
+    final bHasFavorite = _gameHasFavoritePlayer(b, favoritedFideIds, favoritedNames);
+
+    if (aHasFavorite && !bHasFavorite) return -1;
+    if (!aHasFavorite && bHasFavorite) return 1;
+
+    final aMaxElo = _getGameMaxElo(a);
+    final bMaxElo = _getGameMaxElo(b);
+    if (aMaxElo != bMaxElo) {
+      return bMaxElo.compareTo(aMaxElo);
+    }
+
+    final aIsLive = a.status == '*';
+    final bIsLive = b.status == '*';
+    if (aIsLive && !bIsLive) return -1;
+    if (!aIsLive && bIsLive) return 1;
+
+    return 0;
+  });
+
+  return selectedGames;
 }
 
 /// Checks if a game has a favorited player
@@ -389,12 +420,6 @@ class ForYouGamesNotifier extends StateNotifier<AsyncValue<List<Games>>> {
   /// (tournaments may have more if the algorithm's criteria bring more games)
   static const int _gamesPerTournament = 4;
   int _emptyFetchCount = 0; // Track consecutive empty fetches
-  int _favoritePlayersOffset = 0;
-  final Map<String, int> _favoriteNameOffsets = {};
-  final Map<String, int> _favoriteEventOffsets = {};
-  int _countryOffset = 0;
-  int _highEloOffset = 0;
-  int _highEloLiveOffset = 0;
 
   /// Track whether initial load had preferences available
   /// This helps determine if we need to refresh when user visits the tab
@@ -459,12 +484,6 @@ class ForYouGamesNotifier extends StateNotifier<AsyncValue<List<Games>>> {
     _hasMore = true;
     _isFetchingMore = false;
     _emptyFetchCount = 0;
-    _favoritePlayersOffset = 0;
-    _favoriteNameOffsets.clear();
-    _favoriteEventOffsets.clear();
-    _countryOffset = 0;
-    _highEloOffset = 0;
-    _highEloLiveOffset = 0;
     _lastFetchAt = null;
   }
 
@@ -544,29 +563,34 @@ class ForYouGamesNotifier extends StateNotifier<AsyncValue<List<Games>>> {
     }
   }
 
-  /// Fetch games from repository based on user preferences
+  /// Fetch games from ALL current events
   ///
-  /// This method fetches games from different sources in priority order:
-  /// 1. Favorited players' games
-  /// 2. Favorited events' games
-  /// 3. Countryman games (with ELO filter)
-  /// 4. High ELO games as fallback
+  /// NEW APPROACH: Fetch all games from current events, then prioritize based on:
+  /// 1. Starred (favorite) events - highest priority
+  /// 2. Games with favorited players
+  /// 3. Games from user's country (countrymen)
+  /// 4. Higher ELO games
   ///
-  /// Games from past events are filtered out to avoid showing stale content.
+  /// This ensures a RICH feed with many events, not just restricted to favorites.
   Future<void> _fetchGames({required bool isInitialLoad}) async {
     final repository = _ref.read(gameRepositoryProvider);
 
-    // Get current (non-past) tour IDs to filter out games from past events
+    // Get current (non-past) tour IDs - these are ALL events from Current tab
     Set<String> currentTourIds = {};
     try {
       currentTourIds = await _ref.read(currentTourIdsProvider.future);
       debugPrint('[ForYouGames] Loaded ${currentTourIds.length} current tour IDs');
     } catch (e) {
       debugPrint('[ForYouGames] Error loading current tour IDs: $e');
-      // Continue without filtering if we can't load tour IDs
     }
 
-    // Get user preferences
+    if (currentTourIds.isEmpty) {
+      debugPrint('[ForYouGames] No current events found!');
+      _hasMore = false;
+      return;
+    }
+
+    // Get user preferences for prioritization
     final favoritesAsync = _ref.read(favoritePlayersProviderNew);
     final favorites = favoritesAsync.valueOrNull ?? [];
 
@@ -584,25 +608,31 @@ class ForYouGamesNotifier extends StateNotifier<AsyncValue<List<Games>>> {
           (selectedCountry != null && selectedCountry.countryCode.isNotEmpty);
     }
 
-    debugPrint(
-      '[ForYouGames] === Fetching games (page: ${_allGames.length}) ===',
-    );
-    debugPrint('[ForYouGames] Favorites: ${favorites.length}');
-    debugPrint('[ForYouGames] Favorite events: ${favoriteEvents.length}');
-    debugPrint('[ForYouGames] Country: ${selectedCountry?.countryCode}');
+    // Check if we have any preferences at all
+    final hasAnyPreferences = favorites.isNotEmpty ||
+        favoriteEvents.isNotEmpty ||
+        (selectedCountry != null && selectedCountry.countryCode.isNotEmpty);
+
+    debugPrint('[ForYouGames] === Fetching ALL current events games ===');
+    debugPrint('[ForYouGames] Current events: ${currentTourIds.length}');
+    debugPrint('[ForYouGames] Has preferences: $hasAnyPreferences');
+    if (hasAnyPreferences) {
+      debugPrint('[ForYouGames]   - Favorites: ${favorites.length}');
+      debugPrint('[ForYouGames]   - Favorite events: ${favoriteEvents.length}');
+      debugPrint('[ForYouGames]   - Country: ${selectedCountry?.countryCode}');
+    } else {
+      debugPrint('[ForYouGames]   → No preferences set, using ELO/live/recency scoring');
+    }
 
     final newGames = <Games>[];
     final seenGameIds = _allGames.map((g) => g.id).toSet();
 
-    // Helper to filter live games on loadMore, drop future (not-started) games,
-    // filter out games from past events, and deduplicate within this fetch.
+    // Helper to deduplicate and filter future games
     void addUniqueGames(List<Games> games) {
       final filteredGames = (isInitialLoad
               ? games
               : games.where((g) => g.status != '*'))
-          .where((g) => !_isFutureGame(g))
-          // Filter out games from past events (only if we have current tour IDs)
-          .where((g) => currentTourIds.isEmpty || currentTourIds.contains(g.tourId));
+          .where((g) => !_isFutureGame(g));
 
       for (final game in filteredGames) {
         if (seenGameIds.add(game.id)) {
@@ -611,218 +641,43 @@ class ForYouGamesNotifier extends StateNotifier<AsyncValue<List<Games>>> {
       }
     }
 
-    // === LIVE GAMES (absolute priority, but only relevant sources) ===
-    if (isInitialLoad) {
-      // Live games for favorited players
-      final fideIds =
-          favorites
-              .where((f) => f.fideId != null && f.fideId!.isNotEmpty)
-              .map((f) => f.fideId!)
-              .toList();
-      if (fideIds.isNotEmpty) {
-        try {
-          final liveFavPlayers = await repository.getLiveGamesForPlayers(
-            fideIds: fideIds,
-            limit: _pageSize,
-          );
-          addUniqueGames(liveFavPlayers);
-          debugPrint(
-            '[ForYouGames] Fetched ${liveFavPlayers.length} LIVE games for favorited players',
-          );
-        } catch (e) {
-          debugPrint(
-            '[ForYouGames] Error fetching live games for favorites: $e',
-          );
-        }
-      }
-
-      // Live games from favorited events
-      if (favoriteEvents.isNotEmpty) {
-        try {
-          final liveEventGames = await repository.getLiveGamesForEvents(
-            eventIds: favoriteEvents.map((e) => e.eventId).toList(),
-            limit: _pageSize,
-          );
-          addUniqueGames(liveEventGames);
-          debugPrint(
-            '[ForYouGames] Fetched ${liveEventGames.length} LIVE games from favorited events',
-          );
-        } catch (e) {
-          debugPrint('[ForYouGames] Error fetching live event games: $e');
-        }
-      }
-
-      // Live high-ELO games (fallback, least priority but still relevant)
-      try {
-        final liveHighElo = await repository.getHighEloGames(
-          minElo: 2600,
-          limit: _pageSize,
-          offset: _highEloLiveOffset,
-          onlyLive: true,
-        );
-        // keep offset in sync with multiplier inside repo when live-only
-        _highEloLiveOffset += _pageSize * 2;
-        addUniqueGames(liveHighElo);
-        debugPrint(
-          '[ForYouGames] Fetched ${liveHighElo.length} LIVE high ELO games',
-        );
-      } catch (e) {
-        debugPrint('[ForYouGames] Error fetching live high ELO games: $e');
-      }
-    }
-
-    // === PRIORITY 1: Favorited players' games ===
-    // Fetch games for all favorited players
-    // (Live games within this category are prioritized in sorting)
-    if (favorites.isNotEmpty) {
-      final fideIds =
-          favorites
-              .where((f) => f.fideId != null && f.fideId!.isNotEmpty)
-              .map((f) => f.fideId!)
-              .toList();
-
-      debugPrint(
-        '[ForYouGames] Fetching games for ${fideIds.length} favorited players',
-      );
-
-      if (fideIds.isNotEmpty) {
-        try {
-          final favPlayerLimit = _pageSize * 2;
-          final favPlayerGames = await repository.getGamesByMultipleFideIds(
-            fideIds: fideIds,
-            limit: favPlayerLimit, // Fetch more to compensate for filtering
-            offset: _favoritePlayersOffset,
-          );
-          _favoritePlayersOffset += favPlayerLimit;
-          addUniqueGames(favPlayerGames);
-          debugPrint(
-            '[ForYouGames] Fetched ${favPlayerGames.length} favorited player games',
-          );
-        } catch (e) {
-          debugPrint('[ForYouGames] Error fetching favorited player games: $e');
-        }
-      }
-
-      // Also fetch games by player names (for players without FIDE IDs)
-      final playerNames =
-          favorites
-              .where((f) => f.fideId == null || f.fideId!.isEmpty)
-              .map((f) => f.playerName)
-              .toList();
-
-      for (final name in playerNames) {
-        try {
-          final perNameLimit = (_pageSize ~/ playerNames.length.clamp(1, 5));
-          final limit = perNameLimit > 0 ? perNameLimit : 1;
-          final offsetForName = _favoriteNameOffsets[name] ?? 0;
-          final nameGames = await repository.getGamesByPlayerName(
-            name,
-            limit: limit,
-            offset: offsetForName,
-          );
-          _favoriteNameOffsets[name] = offsetForName + limit;
-          addUniqueGames(nameGames);
-        } catch (e) {
-          debugPrint('[ForYouGames] Error fetching games for player $name: $e');
-        }
-      }
-    }
-
-    // === PRIORITY 2: Favorited events' games ===
-    // Fetch games from favorited tournaments
-    // (Live games within this category are prioritized in sorting)
-    if (favoriteEvents.isNotEmpty) {
-      final eventIds = favoriteEvents.map((e) => e.eventId).toList();
-
-      debugPrint(
-        '[ForYouGames] Fetching games for ${eventIds.length} favorited events',
-      );
-
-      // Then get regular games from favorited events
-      for (final eventId in eventIds.take(3)) {
-        // Limit to avoid too many queries
-        try {
-          final perEventLimit = (_pageSize ~/ eventIds.length.clamp(1, 5));
-          final limit = perEventLimit > 0 ? perEventLimit : _pageSize;
-          final offsetForEvent = _favoriteEventOffsets[eventId] ?? 0;
-          final eventGames = await repository.getGamesByTourId(
-            eventId,
-            limit: limit,
-            offset: offsetForEvent,
-          );
-          _favoriteEventOffsets[eventId] = offsetForEvent + limit;
-          addUniqueGames(eventGames);
-        } catch (e) {
-          debugPrint(
-            '[ForYouGames] Error fetching games for event $eventId: $e',
-          );
-        }
-      }
-    }
-
-    // === PRIORITY 3: Countryman games ===
-    // Only games where at least one player from the country has ELO ≥ 2300
-    // (Live games within this category are prioritized in sorting)
-    if (selectedCountry != null && selectedCountry.countryCode.isNotEmpty) {
-      try {
-        final countryLimit = _pageSize;
-        // Convert ISO 2-letter code (TR) to FIDE 3-letter code (TUR)
-        final fideCode = CountryUtils.toFideCode(selectedCountry.countryCode);
-        final countryGames = await repository.getCountrymanGamesWithMinElo(
-          countryCode: fideCode,
-          minElo: 2300, // Only show countryman games with ELO > 2300
-          limit: countryLimit, // Increased from _pageSize ~/ 2
-          offset: _countryOffset,
-        );
-        _countryOffset +=
-            countryLimit * 2; // Matches the multiplier used in the query
-        addUniqueGames(countryGames);
-        debugPrint(
-          '[ForYouGames] Fetched ${countryGames.length} countryman games (ELO > 2300)',
-        );
-      } catch (e) {
-        debugPrint('[ForYouGames] Error fetching countryman games: $e');
-      }
-    }
-
-    // === PRIORITY 4: High ELO games (fallback) ===
-    // Only games where at least one player has ELO >= 2500
-    // (Live games within this category are prioritized in sorting)
+    // === FETCH ALL GAMES FROM CURRENT EVENTS ===
+    // This is the key change: fetch from ALL current tours, not just filtered ones
     try {
-      final highEloLimit = _pageSize;
-      final highEloGames = await repository.getHighEloGames(
-        minElo: 2600, // Only show games with 2600+ ELO players
-        limit:
-            highEloLimit, // Increased from _pageSize ~/ 2 for better coverage
-        offset: _highEloOffset,
+      final currentGamesLimit = _pageSize * 10; // Fetch more to cover all events
+      final offset = isInitialLoad ? 0 : _allGames.length;
+
+      final allCurrentGames = await repository.getGamesFromTourIds(
+        tourIds: currentTourIds.toList(),
+        limit: currentGamesLimit,
+        offset: offset,
       );
-      // Keep offset in sync with the multiplier inside getHighEloGames (3x)
-      _highEloOffset += highEloLimit * 3;
-      addUniqueGames(highEloGames);
+
+      addUniqueGames(allCurrentGames);
       debugPrint(
-        '[ForYouGames] Fetched ${highEloGames.length} high ELO (2500+) games',
+        '[ForYouGames] Fetched ${allCurrentGames.length} games from ${currentTourIds.length} current events',
       );
     } catch (e) {
-      debugPrint('[ForYouGames] Error fetching high ELO games: $e');
+      debugPrint('[ForYouGames] Error fetching current events games: $e');
     }
 
     if (newGames.isNotEmpty) {
       _allGames.addAll(newGames);
-      _emptyFetchCount = 0; // Reset empty fetch counter
+      _emptyFetchCount = 0;
 
-      // CRITICAL: Only sort on initial load to prevent scroll position jumping
-      // On pagination (loadMore), new items are already appended at the end
+      // Sort games with priority-based scoring
       if (isInitialLoad) {
-        // Sort games with heterogeneous distribution
-        final favoriteEventIds =
-            favoriteEvents
-                .map((e) => e.eventId)
-                .where((id) => id.isNotEmpty)
-                .toSet();
+        final favoriteEventIds = favoriteEvents
+            .map((e) => e.eventId)
+            .where((id) => id.isNotEmpty)
+            .toSet();
 
-        _sortGames(favorites, selectedCountry?.countryCode, favoriteEventIds);
+        _sortGamesForFeed(
+          favorites,
+          selectedCountry?.countryCode,
+          favoriteEventIds,
+        );
 
-        // Track initial game IDs AFTER sorting to preserve grouping order
         _initialGameIds.addAll(_allGames.map((g) => g.id));
       }
     } else {
@@ -830,15 +685,161 @@ class ForYouGamesNotifier extends StateNotifier<AsyncValue<List<Games>>> {
       debugPrint('[ForYouGames] Empty fetch #$_emptyFetchCount');
     }
 
-    // Check if we have more - allow up to 3 empty fetches before giving up
-    // This handles cases where live games dominate the results
-    _hasMore = _emptyFetchCount < 3;
+    _hasMore = newGames.length >= _pageSize;
     debugPrint(
-      '[ForYouGames] Has more: $_hasMore, Total games: ${_allGames.length}, Empty fetches: $_emptyFetchCount',
+      '[ForYouGames] Total games: ${_allGames.length}, Has more: $_hasMore',
     );
 
-    // Track last successful fetch to detect stale data when revisiting the tab
     _lastFetchAt = DateTime.now();
+  }
+
+  /// Sort games for the For You feed with priority-based scoring
+  ///
+  /// Priority order:
+  /// 1. Games from starred (favorite) events
+  /// 2. Games with favorited players
+  /// 3. Games from user's country (countrymen with decent ELO)
+  /// 4. Higher ELO games
+  /// 5. Live games get a boost within each category
+  void _sortGamesForFeed(
+    List favorites,
+    String? countryCode,
+    Set<String> favoriteEventIds,
+  ) {
+    if (_allGames.isEmpty) return;
+
+    debugPrint('[ForYouGames] Sorting ${_allGames.length} games for feed...');
+
+    // Create lookup sets for performance
+    final Set<String> favoritedFideIds = favorites
+        .where((f) => f.fideId != null && f.fideId!.isNotEmpty)
+        .map((f) => f.fideId as String)
+        .toSet();
+
+    final Set<String> favoritedNames = favorites
+        .map((f) => f.playerName as String)
+        .map((name) => name.toLowerCase())
+        .toSet();
+
+    // Convert country code to FIDE format
+    String? fideCountryCode;
+    if (countryCode != null && countryCode.isNotEmpty) {
+      fideCountryCode = CountryUtils.toFideCode(countryCode);
+    }
+
+    // Score each game
+    final scoredGames = _allGames.map((game) {
+      double score = 0;
+      final isLive = game.status == '*';
+      final maxElo = _getMaxElo(game);
+      final isFromFavoriteEvent = favoriteEventIds.contains(game.tourId);
+      final hasFavoritePlayer = _hasFavoritedPlayer(
+        game,
+        favoritedFideIds,
+        favoritedNames,
+      );
+      final hasCountryman = fideCountryCode != null &&
+          _hasPlayerFromCountry(game, fideCountryCode);
+
+      // =============================================================
+      // SCORING SYSTEM - Clear priority hierarchy
+      // =============================================================
+      // Priority 1: Starred events (+100000) - ABSOLUTE TOP
+      // Priority 2: Favorite players (+50000) - Very high priority
+      // Priority 3: Countrymen with ELO >= 2300 (+20000)
+      // Priority 4: ELO score (ELO × 1.0) - Dominates for non-pref games
+      // Tie-breaker: Live (+50), Recency (+10-30)
+      // =============================================================
+
+      // Priority 1: Starred events (ABSOLUTE TOP)
+      if (isFromFavoriteEvent) {
+        score += 100000;
+      }
+
+      // Priority 2: Favorite players (very high priority)
+      if (hasFavoritePlayer) {
+        score += 50000;
+      }
+
+      // Priority 3: Countrymen (with decent ELO)
+      if (hasCountryman && maxElo >= 2300) {
+        score += 20000;
+      }
+
+      // Priority 4: ELO is the DOMINANT factor for sorting
+      // A 2800 game should ALWAYS beat a 2200 game (unless preferences override)
+      score += maxElo.toDouble();
+
+      // Tie-breaker: Live games get small boost (won't override ELO difference)
+      // 50 points = less than 50 ELO difference
+      if (isLive) {
+        score += 50;
+      }
+
+      // Tie-breaker: Small recency boost
+      if (game.lastMoveTime != null) {
+        final minutesAgo = DateTime.now().difference(game.lastMoveTime!).inMinutes;
+        if (minutesAgo < 30) {
+          score += 30;
+        } else if (minutesAgo < 120) {
+          score += 20;
+        } else if (minutesAgo < 360) {
+          score += 10;
+        }
+      }
+
+      return _ScoredGame(
+        game: game,
+        score: score,
+        category: isFromFavoriteEvent
+            ? 'favorite_event'
+            : hasFavoritePlayer
+                ? 'favorite_player'
+                : hasCountryman
+                    ? 'countryman'
+                    : 'other',
+        isLive: isLive,
+        maxElo: maxElo,
+      );
+    }).toList();
+
+    // Sort by score descending
+    scoredGames.sort((a, b) => b.score.compareTo(a.score));
+
+    // Update the games list
+    _allGames
+      ..clear()
+      ..addAll(scoredGames.map((sg) => sg.game));
+
+    // Debug output
+    final categoryCounts = <String, int>{};
+    int liveCount = 0;
+    int maxEloInTop20 = 0;
+    int minEloInTop20 = 9999;
+    for (final sg in scoredGames.take(20)) {
+      categoryCounts[sg.category] = (categoryCounts[sg.category] ?? 0) + 1;
+      if (sg.isLive) liveCount++;
+      if (sg.maxElo > maxEloInTop20) maxEloInTop20 = sg.maxElo;
+      if (sg.maxElo > 0 && sg.maxElo < minEloInTop20) minEloInTop20 = sg.maxElo;
+    }
+
+    // When no preferences, 'other' category dominates - show ELO range
+    final hasPreferenceGames = categoryCounts.entries
+        .where((e) => e.key != 'other')
+        .fold(0, (sum, e) => sum + e.value) > 0;
+
+    if (!hasPreferenceGames && scoredGames.isNotEmpty) {
+      debugPrint(
+        '[ForYouGames] No preference-based games, sorted by ELO/live/recency',
+      );
+      debugPrint(
+        '[ForYouGames] Top 20: live=$liveCount, ELO range: $minEloInTop20-$maxEloInTop20',
+      );
+    } else {
+      debugPrint(
+        '[ForYouGames] Top 20 distribution: $categoryCounts, live: $liveCount',
+      );
+    }
   }
 
   /// Enforces the standard of at least 4 games per tournament
@@ -930,228 +931,6 @@ class ForYouGamesNotifier extends StateNotifier<AsyncValue<List<Games>>> {
     );
   }
 
-  /// Sort games with heterogeneous distribution while respecting priority
-  ///
-  /// Creates a weighted scoring system that:
-  /// 1. Respects category priority (favorite players > events > countryman > high ELO)
-  /// 2. Prioritizes live games within each category
-  /// 3. Creates variety by interleaving different categories (weighted round robin)
-  /// 4. Ensures finished games from higher categories appear before lower categories, but live games get an extra boost and are top-most
-  void _sortGames(
-    List favorites,
-    String? countryCode,
-    Set<String> favoriteEventIds,
-  ) {
-    if (_allGames.isEmpty) return;
-
-    debugPrint(
-      '[ForYouGames] Creating heterogeneous distribution for ${_allGames.length} games...',
-    );
-
-    // Create lookup sets for performance
-    final Set<String> favoritedFideIds =
-        favorites
-            .where((f) => f.fideId != null && f.fideId!.isNotEmpty)
-            .map((f) => f.fideId as String)
-            .toSet();
-
-    final Set<String> favoritedNames =
-        favorites
-            .map((f) => f.playerName as String)
-            .map((name) => name.toLowerCase())
-            .toSet();
-
-    // Category priorities (higher number = higher priority)
-    const categoryPriority = <String, int>{
-      'favorite_player': 4,
-      'favorite_event': 3,
-      'countryman': 2,
-      'high_elo':
-          1, // keep minimal; extra penalty applied below to make it rarer
-    };
-
-    // Helper to compute a strong freshness boost; live games get an extra layer
-    double _recencyBonus(
-      DateTime? lastMoveTime, {
-      required bool isLive,
-      required DateTime now,
-    }) {
-      if (lastMoveTime == null) return isLive ? 160.0 : 10.0;
-      final minutesAgo = now.difference(lastMoveTime).inMinutes;
-
-      if (minutesAgo <= 3) return isLive ? 700.0 : 520.0;
-      if (minutesAgo <= 30) return isLive ? 560.0 : 430.0;
-      if (minutesAgo <= 120) return isLive ? 380.0 : 300.0;
-      if (minutesAgo <= 360) return isLive ? 260.0 : 210.0;
-      if (minutesAgo <= 720) return isLive ? 170.0 : 130.0;
-      if (minutesAgo <= 1440) return isLive ? 120.0 : 90.0;
-      return isLive ? 70.0 : 50.0;
-    }
-
-    double _eloBonus(int maxElo) {
-      if (maxElo >= 2700) return 20;
-      if (maxElo >= 2600) return 12;
-      if (maxElo >= 2500) return 6;
-      if (maxElo >= 2300) return 2; // Only matters for countrymen
-      return 0;
-    }
-
-    // Bucket games by category so we can interleave them with weighted round-robin.
-    final Map<String, List<_ScoredGame>> buckets = {
-      for (final entry in categoryPriority.entries) entry.key: <_ScoredGame>[],
-    };
-    final List<_ScoredGame> liveGames = [];
-
-    final now = DateTime.now();
-
-    for (final game in _allGames) {
-      // Check game categories
-      final hasFavorite = _hasFavoritedPlayer(
-        game,
-        favoritedFideIds,
-        favoritedNames,
-      );
-      final hasEvent = favoriteEventIds.contains(game.tourId);
-      final hasCountryman =
-          countryCode != null && _hasPlayerFromCountry(game, countryCode);
-      final maxElo = _getMaxElo(game);
-      final isLive = _isLiveGame(game);
-
-      // Decide category (single highest-priority match)
-      String? category;
-      if (hasFavorite) {
-        category = 'favorite_player';
-      } else if (hasEvent) {
-        category = 'favorite_event';
-      } else if (hasCountryman && maxElo >= 2300) {
-        category = 'countryman';
-      } else if (maxElo >= 2600) {
-        category = 'high_elo';
-      }
-
-      if (category == null)
-        continue; // Skip games that don't match any category
-
-      // Build a compact score: category weight dominates, live gives an extra bump,
-      // recency/ELO provide tie-breakers without causing random spikes.
-      final baseWeight = (categoryPriority[category] ?? 0) * 100.0;
-      final liveBonus = isLive ? 250.0 : 0.0; // Strong push for live games
-      final score =
-          baseWeight +
-          liveBonus +
-          _recencyBonus(
-            game.lastMoveTime,
-            isLive: isLive,
-            now: now,
-          ) +
-          _eloBonus(maxElo);
-
-      final scored = _ScoredGame(
-        game: game,
-        score: score,
-        category: category,
-        isLive: isLive,
-        maxElo: maxElo,
-      );
-
-      if (isLive) {
-        liveGames.add(scored);
-      } else {
-        buckets[category]!.add(scored);
-      }
-    }
-
-    // Live games sit at the absolute top, still respecting priority/ELO/recency inside the live slice.
-    _sortScoredGames(liveGames, prioritizeElo: true);
-
-    // Sort inside each bucket by score (and ELO/recency where applicable)
-    for (final bucket in buckets.values) {
-      _sortScoredGames(bucket, prioritizeElo: true);
-    }
-
-    // Weighted round-robin: prefer higher categories, but decay per category to keep variety.
-    final Map<String, int> pickCounts = {
-      for (final entry in categoryPriority.entries) entry.key: 0,
-    };
-
-    final List<_ScoredGame> distributed = [];
-
-    while (true) {
-      _ScoredGame? bestCandidate;
-      String? bestCategory;
-      double bestAdjusted = -1;
-
-      for (final entry in buckets.entries) {
-        final category = entry.key;
-        final games = entry.value;
-        if (games.isEmpty) continue;
-
-        final candidate = games.first;
-        final picksSoFar = pickCounts[category] ?? 0;
-
-        // Diversity penalty grows as we pick repeatedly from the same category.
-        final diversityPenalty = 1 + (picksSoFar * 0.45);
-        final highEloPenalty =
-            candidate.category == 'high_elo'
-                ? 2.5
-                : 1.0; // Make high-ELO inserts rarer
-
-        // Extra nudge for live games AFTER diversity penalty to surface them earlier.
-        final adjustedScore =
-            (candidate.score / (diversityPenalty * highEloPenalty)) +
-            (candidate.isLive ? 25.0 : 0.0);
-
-        if (adjustedScore > bestAdjusted) {
-          bestAdjusted = adjustedScore;
-          bestCandidate = candidate;
-          bestCategory = category;
-        }
-      }
-
-      if (bestCandidate == null || bestCategory == null) break;
-
-      distributed.add(bestCandidate);
-      pickCounts[bestCategory] = (pickCounts[bestCategory] ?? 0) + 1;
-      buckets[bestCategory]!.removeAt(0);
-    }
-
-    // Update games list: live games first, then distributed non-live
-    _allGames
-      ..clear()
-      ..addAll([
-        ...liveGames.map((sg) => sg.game),
-        ...distributed.map((sg) => sg.game),
-      ]);
-
-    // Debug output
-    if (distributed.isNotEmpty || liveGames.isNotEmpty) {
-      final categoryCounts = <String, int>{};
-      int liveCount = 0;
-      for (final sg in [...liveGames, ...distributed].take(20)) {
-        categoryCounts[sg.category] = (categoryCounts[sg.category] ?? 0) + 1;
-        if (sg.isLive) liveCount++;
-      }
-      debugPrint(
-        '[ForYouGames] Top 20 distribution: $categoryCounts, live in top 20: $liveCount',
-      );
-    }
-  }
-
-  /// Sort helper: by score, then recency
-  void _sortScoredGames(List<_ScoredGame> games, {bool prioritizeElo = false}) {
-    games.sort((a, b) {
-      final scoreDiff = b.score.compareTo(a.score);
-      if (scoreDiff != 0) return scoreDiff;
-      final recencyDiff = _compareByLastMoveTime(a.game, b.game);
-      if (recencyDiff != 0) return recencyDiff;
-      if (prioritizeElo) {
-        final eloDiff = b.maxElo.compareTo(a.maxElo);
-        if (eloDiff != 0) return eloDiff;
-      }
-      return 0;
-    });
-  }
-
   bool _isLiveGame(Games game) {
     return game.status == '*' || game.status == 'ongoing';
   }
@@ -1185,13 +964,6 @@ class ForYouGamesNotifier extends StateNotifier<AsyncValue<List<Games>>> {
   int _getMaxElo(Games game) {
     if (game.players == null || game.players!.isEmpty) return 0;
     return game.players!.map((p) => p.rating).reduce((a, b) => a > b ? a : b);
-  }
-
-  int _compareByLastMoveTime(Games a, Games b) {
-    if (a.lastMoveTime == null && b.lastMoveTime == null) return 0;
-    if (a.lastMoveTime == null) return 1;
-    if (b.lastMoveTime == null) return -1;
-    return b.lastMoveTime!.compareTo(a.lastMoveTime!);
   }
 
   /// Refresh the feed

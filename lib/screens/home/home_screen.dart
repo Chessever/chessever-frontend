@@ -24,6 +24,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       key: _scaffoldKey,
+      resizeToAvoidBottomInset: false,
       drawer: HamburgerMenu(
         callbacks: HamburgerMenuCallbacks(
           onPlayersPressed: () {
