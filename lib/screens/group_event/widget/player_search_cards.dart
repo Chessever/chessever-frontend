@@ -125,24 +125,14 @@ class _PlayerSearchCard extends ConsumerWidget {
   final bool isCompact;
 
   void _navigateToProfile(BuildContext context) {
-    // Allow navigation even without fideId - profile can still show name and available data
-    final fideId = player.fideId ?? 0;
-    if (fideId == 0) {
-      // Show a snackbar if no FIDE ID available
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Player profile not available'),
-          duration: Duration(seconds: 2),
-        ),
-      );
-      return;
-    }
+    // Navigate to player profile - works with or without fideId
+    // Players without fideId will have games fetched by name instead
     HapticFeedbackService.buttonPress();
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => PlayerProfileScreen(
-          fideId: fideId,
+          fideId: player.fideId,
           playerName: player.name,
           title: player.title,
           federation: player.fed,

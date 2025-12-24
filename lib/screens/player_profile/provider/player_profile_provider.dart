@@ -1,9 +1,38 @@
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
+import 'package:chessever2/repository/supabase/game/games.dart' show Games;
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+
+/// Key to identify a player - can use either fideId OR playerName
+/// This allows viewing player profiles even without a FIDE ID
+class PlayerProfileKey {
+  final int? fideId;
+  final String playerName;
+
+  const PlayerProfileKey({
+    this.fideId,
+    required this.playerName,
+  });
+
+  /// Whether this player has a valid FIDE ID
+  bool get hasFideId => fideId != null && fideId! > 0;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is PlayerProfileKey &&
+          fideId == other.fideId &&
+          playerName == other.playerName;
+
+  @override
+  int get hashCode => fideId.hashCode ^ playerName.hashCode;
+
+  @override
+  String toString() => 'PlayerProfileKey(fideId: $fideId, name: $playerName)';
+}
 
 /// Model for comprehensive player profile data
 class PlayerProfileData {
@@ -214,9 +243,45 @@ final playerGamesDataProvider = FutureProvider.family
   }
 });
 
+/// Provider to fetch games for a player using PlayerProfileKey (supports both fideId and name lookup)
+final playerGamesDataKeyProvider = FutureProvider.family
+    .autoDispose<List<GamesTourModel>, PlayerProfileKey>((ref, playerKey) async {
+  try {
+    final gameRepo = ref.read(gameRepositoryProvider);
+    List<Games> games;
+
+    if (playerKey.hasFideId) {
+      games = await gameRepo.getGamesByFideId(
+        playerKey.fideId.toString(),
+        limit: 500,
+      );
+    } else {
+      games = await gameRepo.getGamesByPlayerName(
+        playerKey.playerName,
+        limit: 500,
+      );
+    }
+
+    final allGames = games.map((game) => GamesTourModel.fromGame(game)).toList();
+
+    // Sort by date descending
+    final epochFallback = DateTime.fromMillisecondsSinceEpoch(0);
+    allGames.sort((a, b) {
+      final aTime = a.lastMoveTime ?? epochFallback;
+      final bTime = b.lastMoveTime ?? epochFallback;
+      return bTime.compareTo(aTime);
+    });
+
+    return allGames;
+  } catch (e) {
+    debugPrint('[playerGamesDataKeyProvider] Error: $e');
+    return [];
+  }
+});
+
 /// Request for player analytics with fideId and name context
 class PlayerAnalyticsRequest {
-  final int fideId;
+  final int? fideId;
   final String playerName;
   final List<GamesTourModel> games;
 
@@ -266,7 +331,7 @@ class PlayerAnalytics {
 
   factory PlayerAnalytics.fromGames(
     List<GamesTourModel> games,
-    int targetFideId,
+    int? targetFideId,
     String targetPlayerName,
   ) {
     if (games.isEmpty) {
@@ -474,6 +539,212 @@ final playerEventsProvider = FutureProvider.family
   }
 });
 
+/// Provider to fetch events using PlayerProfileKey (supports both fideId and name lookup)
+final playerEventsKeyProvider = FutureProvider.family
+    .autoDispose<List<PlayerEventData>, PlayerProfileKey>((ref, playerKey) async {
+  try {
+    final supabase = Supabase.instance.client;
+    return await _getPlayerEventsFromGamesWithKey(supabase, playerKey);
+  } catch (e) {
+    debugPrint('[playerEventsKeyProvider] Error: $e');
+    return [];
+  }
+});
+
+/// Get player events from games table - supports both fideId and name-based lookup
+Future<List<PlayerEventData>> _getPlayerEventsFromGamesWithKey(
+  SupabaseClient supabase,
+  PlayerProfileKey playerKey,
+) async {
+  try {
+    List<dynamic> response;
+
+    if (playerKey.hasFideId) {
+      // Query by fideId in players JSONB array
+      response = await supabase
+          .from('games')
+          .select('tour_id, tour_slug, status, players, date_start, player_white, player_black')
+          .contains('players', '[{"fideId": ${playerKey.fideId}}]')
+          .order('date_start', ascending: false)
+          .limit(500);
+    } else {
+      // Query by player name in player_white or player_black columns
+      response = await supabase
+          .from('games')
+          .select('tour_id, tour_slug, status, players, date_start, player_white, player_black')
+          .or('player_white.eq."${playerKey.playerName}",player_black.eq."${playerKey.playerName}"')
+          .order('date_start', ascending: false)
+          .limit(500);
+    }
+
+    if (response.isEmpty) {
+      return [];
+    }
+
+    // Group by tour_id and calculate stats
+    final tourMap = <String, Map<String, dynamic>>{};
+    for (final row in response) {
+      final tourId = row['tour_id'] as String?;
+      if (tourId == null) continue;
+
+      if (!tourMap.containsKey(tourId)) {
+        tourMap[tourId] = {
+          'tour_id': tourId,
+          'tour_slug': row['tour_slug'],
+          'count': 0,
+          'wins': 0,
+          'draws': 0,
+          'losses': 0,
+          'latest_date': row['date_start'],
+        };
+      }
+      tourMap[tourId]!['count'] = (tourMap[tourId]!['count'] as int) + 1;
+
+      // Calculate score based on game result
+      final status = row['status'] as String?;
+      final playerWhite = row['player_white'] as String?;
+      final playerBlack = row['player_black'] as String?;
+      final players = row['players'] as List<dynamic>?;
+
+      bool isWhite = false;
+      bool isBlack = false;
+
+      if (playerKey.hasFideId && players != null && players.length >= 2) {
+        final whitePlayer = players[0] as Map<String, dynamic>?;
+        final blackPlayer = players.length > 1 ? players[1] as Map<String, dynamic>? : null;
+        isWhite = whitePlayer?['fideId'] == playerKey.fideId;
+        isBlack = blackPlayer?['fideId'] == playerKey.fideId;
+      } else {
+        // Name-based matching
+        isWhite = playerWhite == playerKey.playerName;
+        isBlack = playerBlack == playerKey.playerName;
+      }
+
+      if (status != null && (isWhite || isBlack)) {
+        final isWhiteWin = status == 'whiteWins' || status == '1-0';
+        final isBlackWin = status == 'blackWins' || status == '0-1';
+        final isDraw = status == 'draw' || status == '1/2-1/2';
+
+        if ((isWhite && isWhiteWin) || (isBlack && isBlackWin)) {
+          tourMap[tourId]!['wins'] = (tourMap[tourId]!['wins'] as int) + 1;
+        } else if ((isWhite && isBlackWin) || (isBlack && isWhiteWin)) {
+          tourMap[tourId]!['losses'] = (tourMap[tourId]!['losses'] as int) + 1;
+        } else if (isDraw) {
+          tourMap[tourId]!['draws'] = (tourMap[tourId]!['draws'] as int) + 1;
+        }
+      }
+    }
+
+    // Get tour details including group_broadcast info
+    final tourIds = tourMap.keys.toList();
+    if (tourIds.isEmpty) return [];
+
+    final toursResponse = await supabase
+        .from('tours')
+        .select('id, name, slug, group_broadcast_id, dates')
+        .inFilter('id', tourIds);
+
+    // Also get group_broadcast details for dates
+    final groupBroadcastIds = <String>{};
+    final tourDetails = <String, Map<String, dynamic>>{};
+
+    if (toursResponse != null) {
+      for (final tour in toursResponse as List) {
+        final tourId = tour['id'] as String;
+        tourDetails[tourId] = tour;
+        final gbId = tour['group_broadcast_id'] as String?;
+        if (gbId != null && gbId.isNotEmpty) {
+          groupBroadcastIds.add(gbId);
+        }
+      }
+    }
+
+    // Fetch group_broadcast dates
+    final groupBroadcastDates = <String, Map<String, DateTime?>>{};
+    if (groupBroadcastIds.isNotEmpty) {
+      final gbResponse = await supabase
+          .from('group_broadcasts')
+          .select('id, date_start, date_end')
+          .inFilter('id', groupBroadcastIds.toList());
+
+      if (gbResponse != null) {
+        for (final gb in gbResponse as List) {
+          final gbId = gb['id'] as String;
+          groupBroadcastDates[gbId] = {
+            'start': gb['date_start'] != null
+                ? DateTime.tryParse(gb['date_start'] as String)
+                : null,
+            'end': gb['date_end'] != null
+                ? DateTime.tryParse(gb['date_end'] as String)
+                : null,
+          };
+        }
+      }
+    }
+
+    // Build event list
+    final events = <PlayerEventData>[];
+    for (final entry in tourMap.entries) {
+      final tourId = entry.key;
+      final data = entry.value;
+      final tour = tourDetails[tourId];
+      final gbId = tour?['group_broadcast_id'] as String?;
+      final gbDates = gbId != null ? groupBroadcastDates[gbId] : null;
+
+      // Calculate score (wins + 0.5 * draws)
+      final wins = data['wins'] as int;
+      final draws = data['draws'] as int;
+      final score = wins + (draws * 0.5);
+
+      // Get dates from tour or group_broadcast
+      DateTime? startDate;
+      DateTime? endDate;
+
+      if (gbDates != null) {
+        startDate = gbDates['start'];
+        endDate = gbDates['end'];
+      } else if (tour != null) {
+        final dates = tour['dates'] as List<dynamic>?;
+        if (dates != null && dates.isNotEmpty) {
+          startDate = DateTime.tryParse(dates.first as String);
+          if (dates.length > 1) {
+            endDate = DateTime.tryParse(dates.last as String);
+          }
+        }
+      }
+
+      // Fallback to latest game date
+      if (startDate == null && data['latest_date'] != null) {
+        startDate = DateTime.tryParse(data['latest_date'] as String);
+      }
+
+      events.add(PlayerEventData(
+        tourId: tourId,
+        tourName: tour?['name'] as String? ??
+            data['tour_slug'] as String? ??
+            'Unknown Tournament',
+        tourSlug: tour?['slug'] as String? ?? data['tour_slug'] as String?,
+        gamesPlayed: data['count'] as int,
+        score: score,
+        startDate: startDate,
+        endDate: endDate,
+      ));
+    }
+
+    // Sort by start date descending (most recent first)
+    events.sort((a, b) {
+      final aDate = a.startDate ?? DateTime(1900);
+      final bDate = b.startDate ?? DateTime(1900);
+      return bDate.compareTo(aDate);
+    });
+
+    return events;
+  } catch (e) {
+    debugPrint('[_getPlayerEventsFromGamesWithKey] Error: $e');
+    return [];
+  }
+}
+
 /// Get player events from games table by querying the players JSONB array
 Future<List<PlayerEventData>> _getPlayerEventsFromGames(
   SupabaseClient supabase,
@@ -651,7 +922,7 @@ Future<List<PlayerEventData>> _getPlayerEventsFromGames(
 /// State for player profile games with filtering
 class PlayerProfileGamesState {
   const PlayerProfileGamesState({
-    required this.targetFideId,
+    required this.playerKey,
     this.allGames = const [],
     this.filter = const GameFilter(),
     this.isLoading = false,
@@ -659,12 +930,15 @@ class PlayerProfileGamesState {
     this.searchQuery = '',
   });
 
-  final int targetFideId;
+  final PlayerProfileKey playerKey;
   final List<GamesTourModel> allGames;
   final GameFilter filter;
   final bool isLoading;
   final String? error;
   final String searchQuery;
+
+  /// For backwards compatibility
+  int get targetFideId => playerKey.fideId ?? 0;
 
   List<GamesTourModel> get filteredGames {
     var games = allGames;
@@ -681,15 +955,17 @@ class PlayerProfileGamesState {
     }
 
     // Apply filter with targetFideId for accurate color filtering
+    // Also pass playerName for name-based matching when fideId is not available
     return GameFilterHelper.applyFilter(
       games,
       filter,
-      targetFideId: targetFideId,
+      targetFideId: playerKey.fideId,
+      playerNameQuery: playerKey.hasFideId ? null : playerKey.playerName,
     );
   }
 
   PlayerProfileGamesState copyWith({
-    int? targetFideId,
+    PlayerProfileKey? playerKey,
     List<GamesTourModel>? allGames,
     GameFilter? filter,
     bool? isLoading,
@@ -697,7 +973,7 @@ class PlayerProfileGamesState {
     String? searchQuery,
   }) {
     return PlayerProfileGamesState(
-      targetFideId: targetFideId ?? this.targetFideId,
+      playerKey: playerKey ?? this.playerKey,
       allGames: allGames ?? this.allGames,
       filter: filter ?? this.filter,
       isLoading: isLoading ?? this.isLoading,
@@ -710,23 +986,34 @@ class PlayerProfileGamesState {
 /// Notifier for player profile games state
 class PlayerProfileGamesNotifier
     extends StateNotifier<PlayerProfileGamesState> {
-  PlayerProfileGamesNotifier(this._ref, this._fideId)
-      : super(PlayerProfileGamesState(targetFideId: _fideId)) {
+  PlayerProfileGamesNotifier(this._ref, this._playerKey)
+      : super(PlayerProfileGamesState(playerKey: _playerKey)) {
     _loadGames();
   }
 
   final Ref _ref;
-  final int _fideId;
+  final PlayerProfileKey _playerKey;
 
   Future<void> _loadGames() async {
     state = state.copyWith(isLoading: true, error: null);
 
     try {
       final gameRepo = _ref.read(gameRepositoryProvider);
-      final games = await gameRepo.getGamesByFideId(
-        _fideId.toString(),
-        limit: 1000,
-      );
+      List<Games> games;
+
+      // Fetch by fideId if available, otherwise by player name
+      if (_playerKey.hasFideId) {
+        games = await gameRepo.getGamesByFideId(
+          _playerKey.fideId.toString(),
+          limit: 1000,
+        );
+      } else {
+        // Fetch by player name when no FIDE ID is available
+        games = await gameRepo.getGamesByPlayerName(
+          _playerKey.playerName,
+          limit: 1000,
+        );
+      }
 
       final allGames =
           games.map((game) => GamesTourModel.fromGame(game)).toList();
@@ -762,8 +1049,17 @@ class PlayerProfileGamesNotifier
   }
 }
 
-/// Provider family for player profile games state
+/// Provider family for player profile games state using PlayerProfileKey
+final playerProfileGamesKeyProvider = StateNotifierProvider.family
+    .autoDispose<PlayerProfileGamesNotifier, PlayerProfileGamesState, PlayerProfileKey>(
+  (ref, playerKey) => PlayerProfileGamesNotifier(ref, playerKey),
+);
+
+/// Legacy provider for backwards compatibility - uses fideId only
 final playerProfileGamesProvider = StateNotifierProvider.family
     .autoDispose<PlayerProfileGamesNotifier, PlayerProfileGamesState, int>(
-  (ref, fideId) => PlayerProfileGamesNotifier(ref, fideId),
+  (ref, fideId) => PlayerProfileGamesNotifier(
+    ref,
+    PlayerProfileKey(fideId: fideId, playerName: ''),
+  ),
 );

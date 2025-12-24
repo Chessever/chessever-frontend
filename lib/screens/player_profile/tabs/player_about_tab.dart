@@ -15,14 +15,14 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 class PlayerAboutTab extends ConsumerStatefulWidget {
   const PlayerAboutTab({
     super.key,
-    required this.fideId,
+    this.fideId,
     required this.playerName,
     this.title,
     this.federation,
     this.fallbackRating,
   });
 
-  final int fideId;
+  final int? fideId;
   final String playerName;
   final String? title;
   final String? federation;
@@ -37,17 +37,29 @@ class _PlayerAboutTabState extends ConsumerState<PlayerAboutTab>
   @override
   bool get wantKeepAlive => true;
 
+  /// Get the player profile key for provider lookups
+  PlayerProfileKey get _playerKey => PlayerProfileKey(
+        fideId: widget.fideId,
+        playerName: widget.playerName,
+      );
+
   @override
   Widget build(BuildContext context) {
     super.build(context);
 
-    final profileDataAsync = ref.watch(playerProfileDataProvider(widget.fideId));
-    final gamesAsync = ref.watch(playerGamesDataProvider(widget.fideId));
+    // Profile data only available with fideId
+    final profileDataAsync = widget.fideId != null
+        ? ref.watch(playerProfileDataProvider(widget.fideId!))
+        : const AsyncValue<PlayerProfileData?>.data(null);
+    // Games can be fetched by name or fideId
+    final gamesAsync = ref.watch(playerGamesDataKeyProvider(_playerKey));
 
     return RefreshIndicator(
       onRefresh: () async {
-        ref.invalidate(playerProfileDataProvider(widget.fideId));
-        ref.invalidate(playerGamesDataProvider(widget.fideId));
+        if (widget.fideId != null) {
+          ref.invalidate(playerProfileDataProvider(widget.fideId!));
+        }
+        ref.invalidate(playerGamesDataKeyProvider(_playerKey));
       },
       color: kWhiteColor,
       backgroundColor: kBlack2Color,
@@ -212,7 +224,7 @@ class _PlayerAboutTabState extends ConsumerState<PlayerAboutTab>
 /// Player header with photo and rating cards
 class _PlayerHeaderSection extends StatefulWidget {
   const _PlayerHeaderSection({
-    required this.fideId,
+    this.fideId,
     required this.playerName,
     this.title,
     this.federation,
@@ -220,7 +232,7 @@ class _PlayerHeaderSection extends StatefulWidget {
     this.fallbackRating,
   });
 
-  final int fideId;
+  final int? fideId;
   final String playerName;
   final String? title;
   final String? federation;
@@ -237,7 +249,10 @@ class _PlayerHeaderSectionState extends State<_PlayerHeaderSection> {
   @override
   void initState() {
     super.initState();
-    _photoFuture = FidePhotoService.getPhotoUrlOrNull(widget.fideId.toString());
+    // Only fetch photo if fideId is available
+    if (widget.fideId != null) {
+      _photoFuture = FidePhotoService.getPhotoUrlOrNull(widget.fideId.toString());
+    }
   }
 
   @override
@@ -355,7 +370,7 @@ class _PlayerHeaderSectionState extends State<_PlayerHeaderSection> {
                 child: Column(
                   children: [
                     Text(
-                      widget.fideId.toString(),
+                      widget.fideId?.toString() ?? '-',
                       style: AppTypography.textSmBold.copyWith(
                         color: kWhiteColor,
                         fontFamily: 'monospace',

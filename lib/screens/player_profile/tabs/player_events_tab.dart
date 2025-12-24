@@ -14,9 +14,14 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 /// Events tab showing tournaments the player has participated in
 class PlayerEventsTab extends ConsumerStatefulWidget {
-  const PlayerEventsTab({super.key, required this.fideId});
+  const PlayerEventsTab({
+    super.key,
+    this.fideId,
+    required this.playerName,
+  });
 
-  final int fideId;
+  final int? fideId;
+  final String playerName;
 
   @override
   ConsumerState<PlayerEventsTab> createState() => _PlayerEventsTabState();
@@ -27,17 +32,25 @@ class _PlayerEventsTabState extends ConsumerState<PlayerEventsTab>
   @override
   bool get wantKeepAlive => true;
 
+  /// Get the player profile key for provider lookups
+  PlayerProfileKey get _playerKey => PlayerProfileKey(
+        fideId: widget.fideId,
+        playerName: widget.playerName,
+      );
+
   @override
   Widget build(BuildContext context) {
     super.build(context);
 
-    final eventsAsync = ref.watch(playerEventsProvider(widget.fideId));
+    final eventsAsync = ref.watch(playerEventsKeyProvider(_playerKey));
 
     return RefreshIndicator(
       onRefresh: () async {
         HapticFeedbackService.medium();
-        ref.invalidate(playerEventsProvider(widget.fideId));
-        ref.invalidate(playerEventCardsProvider(widget.fideId));
+        ref.invalidate(playerEventsKeyProvider(_playerKey));
+        if (widget.fideId != null) {
+          ref.invalidate(playerEventCardsProvider(widget.fideId!));
+        }
       },
       color: kWhiteColor,
       backgroundColor: kBlack2Color,
@@ -189,7 +202,7 @@ class _PlayerEventsTabState extends ConsumerState<PlayerEventsTab>
               GestureDetector(
                 onTap: () {
                   HapticFeedbackService.buttonPress();
-                  ref.invalidate(playerEventsProvider(widget.fideId));
+                  ref.invalidate(playerEventsKeyProvider(_playerKey));
                 },
                 child: Container(
                   padding:
@@ -217,11 +230,11 @@ class _PlayerEventsTabState extends ConsumerState<PlayerEventsTab>
 class _EventsListContent extends ConsumerWidget {
   const _EventsListContent({
     required this.events,
-    required this.fideId,
+    this.fideId,
   });
 
   final List<PlayerEventData> events;
-  final int fideId;
+  final int? fideId;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -230,8 +243,10 @@ class _EventsListContent extends ConsumerWidget {
     final totalScore = events.fold<double>(0, (sum, e) => sum + (e.score ?? 0));
     final avgScore = totalGames > 0 ? totalScore / totalGames : 0.0;
 
-    // Watch the event cards provider
-    final eventCardsAsync = ref.watch(playerEventCardsProvider(fideId));
+    // Watch the event cards provider (only if fideId is available)
+    final eventCardsAsync = fideId != null
+        ? ref.watch(playerEventCardsProvider(fideId!))
+        : const AsyncValue<Map<String, GroupEventCardModel>>.data({});
 
     return ListView.builder(
       physics: const AlwaysScrollableScrollPhysics(
