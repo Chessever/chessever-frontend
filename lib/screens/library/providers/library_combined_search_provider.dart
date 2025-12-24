@@ -18,15 +18,71 @@ class LibrarySearchResult {
   final List<GamebasePlayer> players;
   final List<Map<String, dynamic>> games; // Gamebase games (raw rows)
 
+  /// Pagination metadata for players
+  final int playerPageNumber;
+  final int playerTotalCount;
+  final bool hasMorePlayers;
+
+  /// Pagination metadata for games
+  final int gamePageNumber;
+  final int gameTotalCount;
+  final bool hasMoreGames;
+
   const LibrarySearchResult({
     this.folders = const [],
     this.analyses = const [],
     this.players = const [],
     this.games = const [],
+    this.playerPageNumber = 1,
+    this.playerTotalCount = 0,
+    this.hasMorePlayers = false,
+    this.gamePageNumber = 1,
+    this.gameTotalCount = 0,
+    this.hasMoreGames = false,
   });
 
   bool get isEmpty =>
       folders.isEmpty && analyses.isEmpty && players.isEmpty && games.isEmpty;
+
+  /// Creates a copy with additional players appended
+  LibrarySearchResult appendPlayers(List<GamebasePlayer> morePlayers, {
+    required int newPageNumber,
+    required int totalCount,
+    required bool hasMore,
+  }) {
+    return LibrarySearchResult(
+      folders: folders,
+      analyses: analyses,
+      players: [...players, ...morePlayers],
+      games: games,
+      playerPageNumber: newPageNumber,
+      playerTotalCount: totalCount,
+      hasMorePlayers: hasMore,
+      gamePageNumber: gamePageNumber,
+      gameTotalCount: gameTotalCount,
+      hasMoreGames: hasMoreGames,
+    );
+  }
+
+  /// Creates a copy with additional games appended
+  LibrarySearchResult appendGames(List<Map<String, dynamic>> moreGames, {
+    required int newPageNumber,
+    required int totalCount,
+    required bool hasMore,
+  }) {
+    return LibrarySearchResult(
+      folders: folders,
+      analyses: analyses,
+      players: players,
+      games: [...games, ...moreGames],
+      playerPageNumber: playerPageNumber,
+      playerTotalCount: playerTotalCount,
+      hasMorePlayers: hasMorePlayers,
+      gamePageNumber: newPageNumber,
+      gameTotalCount: totalCount,
+      hasMoreGames: hasMore,
+    );
+  }
 }
 
 // --- Providers ---
@@ -49,6 +105,9 @@ class LibraryCombinedSearchNotifier
   final Ref _ref;
   final String _query;
   Timer? _debounceTimer;
+
+  /// Page size for initial dropdown search (smaller for quick results)
+  static const int _dropdownPageSize = 10;
 
   LibraryCombinedSearchNotifier(this._ref, this._query)
     : super(const AsyncValue.loading()) {
@@ -118,16 +177,22 @@ class LibraryCombinedSearchNotifier
       debugPrint('[LibrarySearch] Local analyses found: ${filteredAnalyses.length}');
 
       // 2. Gamebase Global Search - queries ALL columns (players, games, events, etc.)
+      // Use smaller page size for quick dropdown results
       final gamebaseRepo = _ref.read(gamebaseRepositoryProvider);
       List<GamebasePlayer> players = [];
       List<Map<String, dynamic>> games = [];
+      int playerTotalCount = 0;
+      int gameTotalCount = 0;
+      bool hasMorePlayers = false;
+      bool hasMoreGames = false;
 
       try {
         debugPrint('[LibrarySearch] Calling gamebaseRepo.globalSearch with query="$queryTrimmed"');
-        // Use globalSearch to search across ALL SQL columns
+        // Use globalSearch to search across ALL SQL columns with pagination
         final searchResponse = await gamebaseRepo.globalSearch(
           query: queryTrimmed,
-          pageSize: 50,
+          pageNumber: 1,
+          pageSize: _dropdownPageSize * 2, // Fetch enough for both players and games
         );
         debugPrint('[LibrarySearch] globalSearch returned ${searchResponse.results.length} results');
 
@@ -148,6 +213,9 @@ class LibraryCombinedSearchNotifier
               gender: gender,
               fed: (preview['fed'] as String?) ?? '',
               title: normalizedTitle,
+              ratingClassical: (preview['ratingClassical'] as num?)?.toInt(),
+              ratingRapid: (preview['ratingRapid'] as num?)?.toInt(),
+              ratingBlitz: (preview['ratingBlitz'] as num?)?.toInt(),
             ));
           } else if (result.resource == 'game') {
             // Add game data from preview to games list
@@ -163,6 +231,14 @@ class LibraryCombinedSearchNotifier
             games.add(gameData);
           }
         }
+
+        // Calculate pagination info from metadata
+        final totalCount = searchResponse.metadata.totalCount ?? 0;
+        // Estimate player/game counts (API doesn't separate them)
+        playerTotalCount = players.length;
+        gameTotalCount = games.length;
+        hasMorePlayers = searchResponse.metadata.hasMore && players.isNotEmpty;
+        hasMoreGames = searchResponse.metadata.hasMore && games.isNotEmpty;
 
         // Enrich game preview rows with player details (titles/ratings/federations).
         // This keeps the UI informative even when full game PGN isn't available.
@@ -249,8 +325,11 @@ class LibraryCombinedSearchNotifier
           debugPrint('[LibrarySearch] Falling back to getPlayers');
           players = await gamebaseRepo.getPlayers(
             name: queryTrimmed,
-            pageSize: 30,
+            pageNumber: 0,
+            pageSize: _dropdownPageSize,
           );
+          playerTotalCount = players.length;
+          hasMorePlayers = players.length >= _dropdownPageSize;
           debugPrint('[LibrarySearch] getPlayers fallback returned ${players.length} players');
         } catch (e2) {
           debugPrint('[LibrarySearch] getPlayers fallback also failed: $e2');
@@ -267,6 +346,12 @@ class LibraryCombinedSearchNotifier
           analyses: filteredAnalyses,
           players: players,
           games: games,
+          playerPageNumber: 1,
+          playerTotalCount: playerTotalCount,
+          hasMorePlayers: hasMorePlayers,
+          gamePageNumber: 1,
+          gameTotalCount: gameTotalCount,
+          hasMoreGames: hasMoreGames,
         ),
       );
       debugPrint('[LibrarySearch] State updated with results');

@@ -12,6 +12,12 @@ import 'package:chessever2/widgets/federation_flag.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
+/// Maximum number of items to show per section in dropdown
+const int _maxPlayersInDropdown = 5;
+const int _maxGamesInDropdown = 4;
+const int _maxBooksInDropdown = 3;
+const int _maxSavedGamesInDropdown = 3;
+
 class LibrarySearchOverlay extends ConsumerWidget {
   final String query;
   final Function(LibraryFolder) onFolderTap;
@@ -35,8 +41,9 @@ class LibrarySearchOverlay extends ConsumerWidget {
     final topSafe = mq.padding.top;
     final reservedAbove = 120.h;
     final available = screenH - topSafe - keyboard - reservedAbove;
-    final cap = screenH * 0.60;
-    return available.clamp(200.h, cap);
+    // Cap at 55% of screen to leave room for keyboard
+    final cap = screenH * 0.55;
+    return available.clamp(180.h, cap);
   }
 
   @override
@@ -77,30 +84,57 @@ class LibrarySearchOverlay extends ConsumerWidget {
   }
 
   Widget _buildResultsList(LibrarySearchResult result) {
+    // Prioritize sections: Books > Players > Saved Games > Database Games
+    // This ensures players are always visible without scrolling
     return SingleChildScrollView(
       padding: EdgeInsets.symmetric(vertical: 8.h),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
+          // 1. Books (folders) - highest priority, always shown first
           if (result.folders.isNotEmpty) ...[
             _buildSectionHeader('Books'),
-            ...result.folders.map((f) => _buildFolderTile(f)),
+            ...result.folders.take(_maxBooksInDropdown).map((f) => _buildFolderTile(f)),
+            if (result.folders.length > _maxBooksInDropdown)
+              _buildMoreIndicator(result.folders.length - _maxBooksInDropdown, 'books'),
             SizedBox(height: 8.h),
           ],
+
+          // 2. Players - second priority, shown prominently
+          if (result.players.isNotEmpty) ...[
+            _buildSectionHeader('Players', count: result.players.length),
+            ...result.players.take(_maxPlayersInDropdown).map((p) => _buildPlayerTile(p)),
+            if (result.players.length > _maxPlayersInDropdown || result.hasMorePlayers)
+              _buildMoreIndicator(
+                result.hasMorePlayers
+                    ? null // Unknown total, show "more..."
+                    : result.players.length - _maxPlayersInDropdown,
+                'players',
+              ),
+            SizedBox(height: 8.h),
+          ],
+
+          // 3. Saved Games (analyses) - user's own games
           if (result.analyses.isNotEmpty) ...[
             _buildSectionHeader('Saved Games'),
-            ...result.analyses.map((a) => _buildAnalysisTile(a)),
+            ...result.analyses.take(_maxSavedGamesInDropdown).map((a) => _buildAnalysisTile(a)),
+            if (result.analyses.length > _maxSavedGamesInDropdown)
+              _buildMoreIndicator(result.analyses.length - _maxSavedGamesInDropdown, 'saved games'),
             SizedBox(height: 8.h),
           ],
-          if (result.players.isNotEmpty) ...[
-            _buildSectionHeader('Players'),
-            ...result.players.map((p) => _buildPlayerTile(p)),
-            SizedBox(height: 8.h),
-          ],
+
+          // 4. Database Games - lowest priority in dropdown, scroll to see more
           if (result.games.isNotEmpty) ...[
-            _buildSectionHeader('Games'),
-            ...result.games.take(6).map((g) => _buildGameTile(g)),
+            _buildSectionHeader('Games', count: result.games.length),
+            ...result.games.take(_maxGamesInDropdown).map((g) => _buildGameTile(g)),
+            if (result.games.length > _maxGamesInDropdown || result.hasMoreGames)
+              _buildMoreIndicator(
+                result.hasMoreGames
+                    ? null
+                    : result.games.length - _maxGamesInDropdown,
+                'games',
+              ),
             SizedBox(height: 8.h),
           ],
         ],
@@ -108,15 +142,52 @@ class LibrarySearchOverlay extends ConsumerWidget {
     );
   }
 
-  Widget _buildSectionHeader(String title) {
+  Widget _buildSectionHeader(String title, {int? count}) {
     return Padding(
       padding: EdgeInsets.fromLTRB(16.w, 4.h, 16.w, 8.h),
+      child: Row(
+        children: [
+          Text(
+            title,
+            style: AppTypography.textXsBold.copyWith(
+              color: const Color(0xFFA1A1AA), // Zinc 400
+              letterSpacing: 0.5,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          if (count != null && count > 0) ...[
+            SizedBox(width: 6.w),
+            Container(
+              padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 2.h),
+              decoration: BoxDecoration(
+                color: const Color(0xFF27272A),
+                borderRadius: BorderRadius.circular(8.br),
+              ),
+              child: Text(
+                count.toString(),
+                style: AppTypography.textXsRegular.copyWith(
+                  color: const Color(0xFF71717A),
+                  fontSize: 10.sp,
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMoreIndicator(int? remaining, String type) {
+    final text = remaining != null
+        ? '+$remaining more $type'
+        : 'More $type...';
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 6.h),
       child: Text(
-        title,
-        style: AppTypography.textXsBold.copyWith(
-          color: const Color(0xFFA1A1AA), // Zinc 400
-          letterSpacing: 0.5,
-          fontWeight: FontWeight.w600,
+        text,
+        style: AppTypography.textXsRegular.copyWith(
+          color: const Color(0xFF52525B), // Zinc 600
+          fontStyle: FontStyle.italic,
         ),
       ),
     );
