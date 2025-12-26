@@ -245,10 +245,11 @@ class _EventImage extends ConsumerWidget {
           ),
           clipBehavior: Clip.antiAlias,
           child: imageAsync.when(
-            data: (imageUrl) {
-              if (imageUrl != null && imageUrl.isNotEmpty) {
+            data: (imageData) {
+              // If we have an image URL, show it
+              if (imageData.hasImage) {
                 return CachedNetworkImage(
-                  imageUrl: imageUrl,
+                  imageUrl: imageData.imageUrl!,
                   fit: BoxFit.cover,
                   fadeInDuration: const Duration(milliseconds: 300),
                   fadeOutDuration: const Duration(milliseconds: 200),
@@ -264,23 +265,13 @@ class _EventImage extends ConsumerWidget {
                         child: Container(color: kLightBlack),
                       ),
                   errorWidget:
-                      (context, url, error) => Center(
-                        child: Icon(
-                          Icons.image_not_supported_outlined,
-                          color: kWhiteColor.withValues(alpha: 0.3),
-                          size: 24.sp,
-                        ),
+                      (context, url, error) => _buildFallbackFlag(
+                        imageData.fallbackCountryCode,
                       ),
                 );
               }
-              // No image available
-              return Center(
-                child: Icon(
-                  Icons.image_outlined,
-                  color: kWhiteColor.withValues(alpha: 0.3),
-                  size: 24.sp,
-                ),
-              );
+              // No image - show country flag if available
+              return _buildFallbackFlag(imageData.fallbackCountryCode);
             },
             loading:
                 () => Skeletonizer(
@@ -312,6 +303,55 @@ class _EventImage extends ConsumerWidget {
       tag: heroTag,
       flightShuttleBuilder: const NoPaddingFadeShuttleBuilder(),
       child: image,
+    );
+  }
+
+  /// Builds a fallback widget - country flag if available, otherwise generic icon
+  Widget _buildFallbackFlag(String? countryCode) {
+    if (countryCode != null && countryCode.isNotEmpty) {
+      // Use the same flag style as community events
+      return Stack(
+        fit: StackFit.expand,
+        children: [
+          Container(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                colors: [Color(0xFF1F1C2C), Color(0xFF2C5364)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+            ),
+          ),
+          CountryFlag.fromCountryCode(
+            countryCode,
+            height: double.infinity,
+            width: double.infinity,
+          ),
+          Positioned.fill(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    Colors.black.withValues(alpha: 0.35),
+                    Colors.black.withValues(alpha: 0.6),
+                  ],
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                ),
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
+    // No country code available - show generic icon
+    return Center(
+      child: Icon(
+        Icons.image_outlined,
+        color: kWhiteColor.withValues(alpha: 0.3),
+        size: 24.sp,
+      ),
     );
   }
 

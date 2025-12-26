@@ -113,7 +113,7 @@ class CalendarEventDetailScreen extends StatelessWidget {
               SizedBox(height: 12.h),
               if (event.description != null &&
                   event.description!.isNotEmpty) ...[
-                Text(
+                SelectableText(
                   event.description!,
                   style: AppTypography.textSmMedium.copyWith(
                     color: kWhiteColor70,
