@@ -288,10 +288,12 @@ class GameRepository extends BaseRepository {
       // Build the query based on what filters we have
       // If we have favorited players or country code, filter for them
       // Otherwise, just get high ELO games as fallback
+      // Order by date_start first to group games by day, then by last_move_time
       final response = await supabase
           .from('games')
           .select(_gameListSelectColumns)
-          .order('last_move_time', ascending: false)
+          .order('date_start', ascending: false, nullsFirst: false)
+          .order('last_move_time', ascending: false, nullsFirst: false)
           .range(offset, offset + limit - 1);
 
       final jsonList =
@@ -323,11 +325,13 @@ class GameRepository extends BaseRepository {
         return 'players.cs.[{"fideId":${int.parse(fideId)}}]';
       }).join(',');
 
+      // Order by date_start first to group games by day, then by last_move_time
       final response = await supabase
           .from('games')
           .select(_gameListSelectColumns)
           .or(orConditions)
-          .order('last_move_time', ascending: false)
+          .order('date_start', ascending: false, nullsFirst: false)
+          .order('last_move_time', ascending: false, nullsFirst: false)
           .range(offset, offset + limit - 1);
 
       final jsonList =
@@ -350,11 +354,13 @@ class GameRepository extends BaseRepository {
     return handleApiCall(() async {
       debugPrint('===== GameRepository: Fetching games for country $countryCode =====');
 
+      // Order by date_start first to group games by day, then by last_move_time
       final response = await supabase
           .from('games')
           .select(_gameListSelectColumns)
           .contains('players', '[{"fed": "$countryCode"}]')
-          .order('last_move_time', ascending: false)
+          .order('date_start', ascending: false, nullsFirst: false)
+          .order('last_move_time', ascending: false, nullsFirst: false)
           .range(offset, offset + limit - 1);
 
       final jsonList =
@@ -387,8 +393,10 @@ class GameRepository extends BaseRepository {
         query = query.eq('status', '*');
       }
 
+      // Order by date_start first to group games by day, then by last_move_time
       query = query
-          .order('last_move_time', ascending: false)
+          .order('date_start', ascending: false, nullsFirst: false)
+          .order('last_move_time', ascending: false, nullsFirst: false)
           .range(
             offset,
             offset + limit * (onlyLive ? 2 : 3) - 1, // Fetch extra to compensate for ELO filter
@@ -422,11 +430,13 @@ class GameRepository extends BaseRepository {
     return handleApiCall(() async {
       debugPrint('===== GameRepository: Fetching LIVE games =====');
 
+      // Order by date_start first to group games by day, then by last_move_time
       final response = await supabase
           .from('games')
           .select(_gameListSelectColumns)
           .eq('status', '*')
-          .order('last_move_time', ascending: false)
+          .order('date_start', ascending: false, nullsFirst: false)
+          .order('last_move_time', ascending: false, nullsFirst: false)
           .range(offset, offset + limit - 1);
 
       final jsonList =
@@ -464,10 +474,13 @@ class GameRepository extends BaseRepository {
       final containsFilter = '[{"fed": "$countryCode"}]';
       debugPrint('===== GameRepository: Using contains filter: $containsFilter, fetching up to $fetchLimit raw games =====');
 
+      // Order by date_start first to group games by day, then by last_move_time
+      // This ensures all games from today appear together, even if some have NULL last_move_time
       final response = await supabase
           .from('games')
           .select(_gameListSelectColumns)
           .contains('players', containsFilter)
+          .order('date_start', ascending: false, nullsFirst: false)
           .order('last_move_time', ascending: false, nullsFirst: false)
           .range(rawOffset, rawOffset + fetchLimit - 1);
 
@@ -525,12 +538,14 @@ class GameRepository extends BaseRepository {
         return 'players.cs.[{"fideId":${int.parse(fideId)}}]';
       }).join(',');
 
+      // Order by date_start first to group games by day, then by last_move_time
       final response = await supabase
           .from('games')
           .select(_gameListSelectColumns)
           .eq('status', '*')
           .or(orConditions)
-          .order('last_move_time', ascending: false)
+          .order('date_start', ascending: false, nullsFirst: false)
+          .order('last_move_time', ascending: false, nullsFirst: false)
           .limit(limit);
 
       final jsonList =
@@ -554,12 +569,14 @@ class GameRepository extends BaseRepository {
 
       debugPrint('===== GameRepository: Fetching LIVE games for ${eventIds.length} events =====');
 
+      // Order by date_start first to group games by day, then by last_move_time
       final response = await supabase
           .from('games')
           .select(_gameListSelectColumns)
           .eq('status', '*')
           .inFilter('tour_id', eventIds)
-          .order('last_move_time', ascending: false)
+          .order('date_start', ascending: false, nullsFirst: false)
+          .order('last_move_time', ascending: false, nullsFirst: false)
           .limit(limit);
 
       final jsonList =
@@ -650,8 +667,10 @@ class GameRepository extends BaseRepository {
       }
 
       // Transform operations (order, range) come after filters
+      // Order by date_start first to group games by day, then by last_move_time
       final response = await query
-          .order('last_move_time', ascending: false)
+          .order('date_start', ascending: false, nullsFirst: false)
+          .order('last_move_time', ascending: false, nullsFirst: false)
           .range(offset, offset + limit - 1);
 
       final jsonList =
@@ -692,7 +711,9 @@ class GameRepository extends BaseRepository {
         dbQuery = dbQuery.contains('players', '[{"fed": "$countryCode"}]');
       }
 
+      // Order by date_start first to group games by day, then by last_move_time
       final response = await dbQuery
+          .order('date_start', ascending: false, nullsFirst: false)
           .order('last_move_time', ascending: false, nullsFirst: false)
           .range(offset, offset + limit - 1);
 
@@ -731,7 +752,9 @@ class GameRepository extends BaseRepository {
         dbQuery = dbQuery.ilike('name', '%${query.trim()}%');
       }
 
+      // Order by date_start first to group games by day, then by last_move_time
       final response = await dbQuery
+          .order('date_start', ascending: false, nullsFirst: false)
           .order('last_move_time', ascending: false, nullsFirst: false)
           .range(offset, offset + fetchLimit - 1);
 
@@ -771,7 +794,9 @@ class GameRepository extends BaseRepository {
         dbQuery = dbQuery.ilike('name', '%${query.trim()}%');
       }
 
+      // Order by date_start first to group games by day, then by last_move_time
       final response = await dbQuery
+          .order('date_start', ascending: false, nullsFirst: false)
           .order('last_move_time', ascending: false, nullsFirst: false)
           .range(offset, offset + limit * 3 - 1);
 
@@ -820,11 +845,13 @@ class GameRepository extends BaseRepository {
       );
 
       // Use inFilter for multiple tour IDs
+      // Order by date_start first to group games by day, then by last_move_time
       final response = await supabase
           .from('games')
           .select(_gameListSelectColumns)
           .inFilter('tour_id', tourIds)
-          .order('last_move_time', ascending: false)
+          .order('date_start', ascending: false, nullsFirst: false)
+          .order('last_move_time', ascending: false, nullsFirst: false)
           .range(offset, offset + limit - 1);
 
       final jsonList =
@@ -843,11 +870,13 @@ class GameRepository extends BaseRepository {
   /// Get top live games globally, ordered by recency.
   Future<List<Games>> getTopLiveGames({int limit = 200}) async {
     return handleApiCall(() async {
+      // Order by date_start first to group games by day, then by last_move_time
       final response = await supabase
           .from('games')
           .select(_gameListSelectColumns)
           .eq('status', '*')
-          .order('last_move_time', ascending: false)
+          .order('date_start', ascending: false, nullsFirst: false)
+          .order('last_move_time', ascending: false, nullsFirst: false)
           .limit(limit);
 
       final jsonList =
@@ -932,7 +961,7 @@ class GameRepository extends BaseRepository {
           .select(_gameListSelectColumns)
           .or(orConditions)
           .eq('date_start', dateStr)
-          .order('last_move_time', ascending: false)
+          .order('last_move_time', ascending: false, nullsFirst: false)
           .range(offset, offset + limit - 1);
 
       final jsonList =
@@ -1024,7 +1053,7 @@ class GameRepository extends BaseRepository {
           .select(_gameListSelectColumns)
           .contains('players', containsFilter)
           .eq('date_start', dateStr)
-          .order('last_move_time', ascending: false)
+          .order('last_move_time', ascending: false, nullsFirst: false)
           .range(offset, offset + fetchLimit - 1);
 
       final jsonList =
