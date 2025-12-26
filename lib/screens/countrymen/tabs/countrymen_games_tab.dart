@@ -9,6 +9,7 @@ import 'package:chessever2/screens/library/widgets/gamebase_search_game_card.dar
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/live_game_card_provider.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:chessever2/utils/app_typography.dart';
@@ -954,14 +955,16 @@ class _CountrymenKeepAliveGameCardState
   Widget build(BuildContext context) {
     super.build(context);
 
-    final gameId = widget.game.gameId;
+    // Watch live game updates for ongoing games
+    final liveGame = ref.watch(liveGameCardProvider(widget.game));
+    final gameId = liveGame.gameId;
 
     // Use ChessBoardFromFENNew directly with premium-guarded navigation
     final card = Padding(
       padding: EdgeInsets.only(bottom: widget.isLast ? 16.h : 12.h),
       child: ChessBoardFromFENNew(
-        key: ValueKey('cmen_board_game_${widget.game.gameId}'),
-        gamesTourModel: widget.game,
+        key: ValueKey('cmen_board_game_${liveGame.gameId}'),
+        gamesTourModel: liveGame,
         onChanged: _handleNavigate,
         pinnedIds: widget.gamesData.pinnedGamedIs,
         onPinToggle: (_) {},

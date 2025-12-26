@@ -756,7 +756,7 @@ class ChessBoardScreenNotifierNew
           ref.read(lastSeenMoveCountProvider)[game.gameId] ?? 0;
       final currentMoveCount = moveSans.length;
       final hasNewMoves = currentMoveCount > lastSeenMoveCount;
-      final hadMovesPreviously = currentState?.allMoves.isNotEmpty ?? false;
+      final hadMovesPreviously = currentState?.analysisState.allMoves.isNotEmpty ?? false;
       final hasMovesNow = moveSans.isNotEmpty;
 
       // Use instance-level initial load flag instead of global lastSeenMoveCount
@@ -764,9 +764,9 @@ class ChessBoardScreenNotifierNew
       final isFirstLoad = _isInitialLoad;
       final wasViewingLastMove =
           currentState != null &&
-          currentState.allMoves.isNotEmpty &&
+          currentState.analysisState.allMoves.isNotEmpty &&
           currentState.analysisState.currentMoveIndex ==
-              currentState.allMoves.length - 1;
+              currentState.analysisState.allMoves.length - 1;
       final shouldForceLatestPosition =
           isFirstLoad || (!hadMovesPreviously && hasMovesNow);
       final shouldMarkAsUnseen =
