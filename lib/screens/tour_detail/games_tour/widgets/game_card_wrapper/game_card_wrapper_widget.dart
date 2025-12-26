@@ -3,6 +3,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_mode
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/live_game_card_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_tour_content_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -25,18 +26,29 @@ class GameCardWrapperWidget extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final keyValue = 'game_${game.gameId}';
+    // Watch live game updates for ongoing games
+    final liveGame = ref.watch(liveGameCardProvider(game));
+    final keyValue = 'game_${liveGame.gameId}';
+
+    // Build updated games list with the live game data for navigation
+    List<GamesTourModel> getUpdatedGamesList() {
+      final games = List<GamesTourModel>.from(gamesData.gamesTourModels);
+      if (gameIndex >= 0 && gameIndex < games.length) {
+        games[gameIndex] = liveGame;
+      }
+      return games;
+    }
 
     return isChessBoardVisible
         ? ChessBoardFromFENNew(
           key: ValueKey(keyValue),
-          gamesTourModel: game,
+          gamesTourModel: liveGame,
           onChanged:
               () => ref
                   .read(gameCardWrapperProvider)
                   .navigateToChessBoard(
                     context: context,
-                    orderedGames: gamesData.gamesTourModels,
+                    orderedGames: getUpdatedGamesList(),
                     gameIndex: gameIndex,
                     onReturnFromChessboard: onReturnFromChessboard,
                   ),
@@ -44,25 +56,25 @@ class GameCardWrapperWidget extends ConsumerWidget {
           onPinToggle:
               (_) async => await ref
                   .read(gamesTourScreenProvider.notifier)
-                  .togglePinGame(game.gameId),
+                  .togglePinGame(liveGame.gameId),
         )
         : GameCard(
           key: ValueKey(keyValue),
           matchComparison: MatchWithComparison(
-            game: game,
+            game: liveGame,
             comparison: MatchComparison.sameOrder,
           ),
           pinnedIds: gamesData.pinnedGamedIs,
           onPinToggle:
               (_) async => await ref
                   .read(gamesTourScreenProvider.notifier)
-                  .togglePinGame(game.gameId),
+                  .togglePinGame(liveGame.gameId),
           onTap:
               () => ref
                   .read(gameCardWrapperProvider)
                   .navigateToChessBoard(
                     context: context,
-                    orderedGames: gamesData.gamesTourModels,
+                    orderedGames: getUpdatedGamesList(),
                     gameIndex: gameIndex,
                     onReturnFromChessboard: onReturnFromChessboard,
                   ),
