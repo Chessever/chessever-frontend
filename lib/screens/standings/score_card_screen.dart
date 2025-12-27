@@ -40,6 +40,17 @@ final scoreCardGamesContextProvider = StateProvider<List<GamesTourModel>?>(
   (ref) => null,
 );
 
+/// Explicit flag to indicate whether ScoreCardScreen should display event context.
+/// This is set by the navigation source (ChessBoard player tap, Favorites tabs, etc.)
+/// to explicitly control whether performance/score/rating should be calculated
+/// and whether games should show round numerization.
+///
+/// - true: Games are from a specific event (tournament), show round numbers, calculate stats
+/// - false: Games are from player's full history, no round numbers, show "-" for stats
+final scoreCardHasEventContextProvider = StateProvider<bool>(
+  (ref) => false,
+);
+
 final playerGamesProvider = FutureProvider.family<
   List<GamesTourModel>,
   PlayerStandingModel
@@ -180,14 +191,39 @@ class ScoreCardScreen extends ConsumerWidget {
 
     final selectedBroadcast = ref.watch(selectedBroadcastModelProvider);
     final gamesContext = ref.watch(scoreCardGamesContextProvider);
+    final explicitEventContext = ref.watch(scoreCardHasEventContextProvider);
 
     List<GamesTourModel> allGames = [];
     bool isLoadingGames = false;
-    bool hasEventContext = false;
+
+    // Determine event context from explicit flag or selectedBroadcast
+    // - selectedBroadcast != null: definitely has event context (tournament view)
+    // - explicitEventContext: set by navigation source (ChessBoard player tap with filtered games)
+    final bool hasEventContext = selectedBroadcast != null || explicitEventContext;
+
+    // Try to get the actual player scoreChange from standings when in tournament context
+    // This handles the case where the player was initially set with fallback data
+    // (scoreChange: 0) before standings were loaded
+    int? actualScoreChange = player.scoreChange;
+    if (selectedBroadcast != null) {
+      final standingsAsync = ref.watch(playerTourScreenProvider);
+      standingsAsync.whenData((standings) {
+        // Find player in standings by name or fideId for accurate scoreChange
+        final playerUtils = ref.read(playerUtilsProvider);
+        final standingPlayer = standings.where((p) {
+          if (player.fideId != null && p.fideId != null) {
+            return p.fideId == player.fideId;
+          }
+          return playerUtils.isSamePlayer(p.name, player.name);
+        }).firstOrNull;
+        if (standingPlayer != null) {
+          actualScoreChange = standingPlayer.scoreChange;
+        }
+      });
+    }
 
     if (selectedBroadcast != null) {
       // Tournament context: use games from the tournament
-      hasEventContext = true;
       final gamesTourAsync = ref.watch(gamesTourScreenProvider);
       allGames = gamesTourAsync.when(
         data: (data) => data.gamesTourModels,
@@ -201,14 +237,8 @@ class ScoreCardScreen extends ConsumerWidget {
       // Games context provided (from favorites, countrymen, player profile, etc.)
       // Use the provided games list directly
       allGames = gamesContext;
-      // Check if all games share the same tourId (event-filtered from countryman/forYou)
-      // If so, we have event context. If games are from multiple events, no context.
-      final firstTourId = gamesContext.first.tourId;
-      hasEventContext = firstTourId.isNotEmpty &&
-          gamesContext.every((g) => g.tourId == firstTourId);
     } else {
       // No context available: fall back to fetching all player games
-      hasEventContext = false;
       final playerGamesAsync = ref.watch(playerGamesProvider(player));
       allGames = playerGamesAsync.when(
         data: (games) => games,
@@ -414,7 +444,7 @@ class ScoreCardScreen extends ConsumerWidget {
                       performanceRating: performanceRating,
                       score: eventScore,
                       totalGames: eventTotalGames,
-                      ratingDiff: hasEventContext ? player.scoreChange : null,
+                      ratingDiff: hasEventContext ? actualScoreChange : null,
                     ),
                   ],
                 ),

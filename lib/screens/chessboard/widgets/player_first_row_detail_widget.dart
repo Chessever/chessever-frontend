@@ -270,27 +270,26 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
         // This ensures ScoreCardScreen displays games from the correct source
         final view = ref.read(chessboardViewFromProviderNew);
         List<GamesTourModel>? gamesContext;
+        bool hasEventContext = false;
 
         switch (view) {
           case ChessboardView.favScorecard:
           case ChessboardView.playerProfile:
-            // For favorites/player profile, use playerGamesProvider
+            // For favorites/player profile, show ALL player games (no event context)
             // Clear tournament context to avoid ScoreCardScreen using stale tournament data
             ref.read(selectedBroadcastModelProvider.notifier).state = null;
-            final selectedPlayer = ref.read(selectedPlayerProvider);
-            if (selectedPlayer != null) {
-              gamesContext = ref.read(playerGamesProvider(selectedPlayer)).valueOrNull;
-            }
+            gamesContext = null; // Let ScoreCardScreen fetch via playerGamesProvider
+            hasEventContext = false;
             break;
           case ChessboardView.tour:
             // For tournament view, selectedBroadcastModelProvider will be set
             // ScoreCardScreen will use gamesTourScreenProvider directly
             gamesContext = null;
+            hasEventContext = true; // Tournament context
             break;
           case ChessboardView.countryman:
             // For countrymen view, filter games by the current game's tournament
             // This ensures ScoreCardScreen shows only games from that specific event
-            // Clear tournament context to avoid ScoreCardScreen using stale tournament data
             ref.read(selectedBroadcastModelProvider.notifier).state = null;
             final allCountrymanGames = ref.read(countrymanGamesTourScreenProvider).valueOrNull?.gamesTourModels ?? [];
             final currentTourIdCountryman = gamesTourModel.tourId;
@@ -298,14 +297,15 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
               gamesContext = allCountrymanGames
                   .where((g) => g.tourId == currentTourIdCountryman)
                   .toList();
+              hasEventContext = true; // Filtered to specific event
             } else {
               gamesContext = allCountrymanGames;
+              hasEventContext = false; // No specific event
             }
             break;
           case ChessboardView.forYou:
             // For "For You" view, filter games by the current game's tournament
             // This ensures ScoreCardScreen shows only games from that specific event
-            // Clear tournament context to avoid ScoreCardScreen using stale tournament data
             ref.read(selectedBroadcastModelProvider.notifier).state = null;
             final allForYouGames = ref.read(convertedForYouGamesProvider);
             final currentTourId = gamesTourModel.tourId;
@@ -313,14 +313,17 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
               gamesContext = allForYouGames
                   .where((g) => g.tourId == currentTourId)
                   .toList();
+              hasEventContext = true; // Filtered to specific event
             } else {
               gamesContext = allForYouGames;
+              hasEventContext = false; // No specific event
             }
             break;
         }
 
-        // Set the games context for ScoreCardScreen
+        // Set the games context and event context flag for ScoreCardScreen
         ref.read(scoreCardGamesContextProvider.notifier).state = gamesContext;
+        ref.read(scoreCardHasEventContextProvider.notifier).state = hasEventContext;
 
         Navigator.pushNamed(context, '/scorecard_screen');
       },
