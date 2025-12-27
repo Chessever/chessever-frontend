@@ -12,34 +12,31 @@ class FavoritesCombinedGamesState {
   final List<GamesTourModel> games;
   final bool isLoading;
   final bool hasMore;
-  final int supabaseOffset;
   final String? error;
   final Set<String> seenGameIds;
-  final String searchQuery; // Current search query
-  final Set<String> selectedFideIds; // Filter chips - selected player FIDE IDs
-  final GameFilter filter; // Game filter settings
+  final String searchQuery;
+  final Set<String> selectedFideIds;
+  final GameFilter filter;
+  final int dateOffset; // For date-based pagination
 
   const FavoritesCombinedGamesState({
     this.games = const [],
     this.isLoading = false,
     this.hasMore = true,
-    this.supabaseOffset = 0,
     this.error,
     this.seenGameIds = const {},
     this.searchQuery = '',
     this.selectedFideIds = const {},
     this.filter = const GameFilter(),
+    this.dateOffset = 0,
   });
 
   bool get isSearching => searchQuery.isNotEmpty;
   bool get isFiltering => selectedFideIds.isNotEmpty;
 
-  /// Get filtered games based on current filter settings
-  /// Combines search results with filter settings (AND logic)
   List<GamesTourModel> get filteredGames {
     if (!filter.hasActiveFilters) return games;
 
-    // When a single player is selected via chip, use their FIDE ID for color filter
     int? targetFideId;
     if (selectedFideIds.length == 1) {
       targetFideId = int.tryParse(selectedFideIds.first);
@@ -57,23 +54,23 @@ class FavoritesCombinedGamesState {
     List<GamesTourModel>? games,
     bool? isLoading,
     bool? hasMore,
-    int? supabaseOffset,
     String? error,
     Set<String>? seenGameIds,
     String? searchQuery,
     Set<String>? selectedFideIds,
     GameFilter? filter,
+    int? dateOffset,
   }) {
     return FavoritesCombinedGamesState(
       games: games ?? this.games,
       isLoading: isLoading ?? this.isLoading,
       hasMore: hasMore ?? this.hasMore,
-      supabaseOffset: supabaseOffset ?? this.supabaseOffset,
       error: error,
       seenGameIds: seenGameIds ?? this.seenGameIds,
       searchQuery: searchQuery ?? this.searchQuery,
       selectedFideIds: selectedFideIds ?? this.selectedFideIds,
       filter: filter ?? this.filter,
+      dateOffset: dateOffset ?? this.dateOffset,
     );
   }
 }
@@ -88,11 +85,11 @@ final favoritesCombinedGamesProvider = StateNotifierProvider.autoDispose<
 class FavoritesCombinedGamesNotifier
     extends StateNotifier<FavoritesCombinedGamesState> {
   final Ref _ref;
-  static const int _pageSize = 15; // Small page size for fast first render
+  static const int _datesPerBatch = 3; // Load 3 days at a time
 
-  // Track if Supabase has more data
-  bool _supabaseHasMore = true;
-  final List<GamesTourModel> _pendingGames = [];
+  // Cache available dates
+  List<DateTime> _availableDates = [];
+  bool _hasMoreDates = true;
 
   FavoritesCombinedGamesNotifier(this._ref)
       : super(const FavoritesCombinedGamesState(isLoading: true)) {
@@ -101,9 +98,9 @@ class FavoritesCombinedGamesNotifier
 
   Future<void> _loadInitialGames() async {
     try {
-      _supabaseHasMore = true;
-      _pendingGames.clear();
-      await _fetchNextBatch(isInitial: true);
+      _availableDates = [];
+      _hasMoreDates = true;
+      await _fetchNextDates(isInitial: true);
     } catch (e) {
       debugPrint('[FavoritesGames] Initial load error: $e');
       if (!mounted) return;
@@ -113,24 +110,23 @@ class FavoritesCombinedGamesNotifier
 
   Future<void> loadMoreGames() async {
     if (state.isLoading || !state.hasMore) return;
-    await _fetchNextBatch(isInitial: false);
+    await _fetchNextDates(isInitial: false);
   }
 
   Future<void> refreshGames() async {
-    _supabaseHasMore = true;
-    _pendingGames.clear();
+    _availableDates = [];
+    _hasMoreDates = true;
     _currentSearchQuery = '';
 
-    // Preserve selected filters during refresh
     final currentFilters = state.selectedFideIds;
     state = FavoritesCombinedGamesState(
       isLoading: true,
       selectedFideIds: currentFilters,
     );
-    await _fetchNextBatch(isInitial: true);
+    await _fetchNextDates(isInitial: true);
   }
 
-  /// Toggle a player filter by FIDE ID - triggers fresh Supabase query
+  /// Toggle a player filter by FIDE ID
   Future<void> togglePlayerFilter(String fideId) async {
     final currentFilters = Set<String>.from(state.selectedFideIds);
 
@@ -140,106 +136,108 @@ class FavoritesCombinedGamesNotifier
       currentFilters.add(fideId);
     }
 
-    // Reset pagination and re-query
-    _supabaseHasMore = true;
-    _pendingGames.clear();
+    _availableDates = [];
+    _hasMoreDates = true;
     _currentSearchQuery = '';
 
     state = state.copyWith(
       isLoading: true,
       games: [],
       seenGameIds: {},
-      supabaseOffset: 0,
+      dateOffset: 0,
       hasMore: true,
       searchQuery: '',
       selectedFideIds: currentFilters,
       error: null,
     );
 
-    await _fetchNextBatch(isInitial: true);
+    await _fetchNextDates(isInitial: true);
   }
 
-  /// Clear all player filters - triggers fresh Supabase query for all favorites
+  /// Clear all player filters
   Future<void> clearPlayerFilters() async {
     if (state.selectedFideIds.isEmpty) return;
 
-    _supabaseHasMore = true;
-    _pendingGames.clear();
+    _availableDates = [];
+    _hasMoreDates = true;
     _currentSearchQuery = '';
 
     state = state.copyWith(
       isLoading: true,
       games: [],
       seenGameIds: {},
-      supabaseOffset: 0,
+      dateOffset: 0,
       hasMore: true,
       searchQuery: '',
       selectedFideIds: {},
       error: null,
     );
 
-    await _fetchNextBatch(isInitial: true);
+    await _fetchNextDates(isInitial: true);
   }
 
-  // Current search query for fresh queries
   String _currentSearchQuery = '';
 
-  /// Search games with a query - queries fresh from Supabase
+  void updateFilter(GameFilter newFilter) {
+    state = state.copyWith(filter: newFilter);
+  }
+
+  void applyFilter(GameFilter newFilter) {
+    state = state.copyWith(filter: newFilter);
+  }
+
+  void clearFilter() {
+    state = state.copyWith(filter: const GameFilter());
+  }
+
+  /// Search games by player name
   Future<void> searchGames(String query) async {
     final trimmedQuery = query.trim();
-
-    // If query is empty, go back to normal listing
-    if (trimmedQuery.isEmpty) {
-      await clearSearch();
-      return;
-    }
-
-    // If same query, don't re-fetch
-    if (trimmedQuery == _currentSearchQuery && state.games.isNotEmpty) {
-      return;
-    }
+    if (trimmedQuery == _currentSearchQuery) return;
 
     _currentSearchQuery = trimmedQuery;
-
-    // Reset pagination for new search
-    _supabaseHasMore = true;
-    _pendingGames.clear();
+    _availableDates = [];
+    _hasMoreDates = true;
 
     state = state.copyWith(
       isLoading: true,
       games: [],
       seenGameIds: {},
-      supabaseOffset: 0,
+      dateOffset: 0,
       hasMore: true,
       searchQuery: trimmedQuery,
       error: null,
     );
 
-    await _fetchSearchResults(isInitial: true);
+    if (trimmedQuery.isEmpty) {
+      await _fetchNextDates(isInitial: true);
+    } else {
+      await _fetchSearchResults(isInitial: true);
+    }
   }
 
-  /// Clear search and go back to normal listing
+  /// Clear search
   Future<void> clearSearch() async {
     if (_currentSearchQuery.isEmpty && !state.isSearching) return;
 
     _currentSearchQuery = '';
-    _supabaseHasMore = true;
-    _pendingGames.clear();
+    _availableDates = [];
+    _hasMoreDates = true;
 
     state = state.copyWith(
       isLoading: true,
       games: [],
       seenGameIds: {},
-      supabaseOffset: 0,
+      dateOffset: 0,
       hasMore: true,
       searchQuery: '',
       error: null,
     );
 
-    await _fetchNextBatch(isInitial: true);
+    await _fetchNextDates(isInitial: true);
   }
 
-  /// Fetch search results from Supabase
+  /// Fetch search results
   Future<void> _fetchSearchResults({required bool isInitial}) async {
     if (!mounted) return;
 
@@ -253,29 +251,33 @@ class FavoritesCombinedGamesNotifier
     }
 
     try {
+      final gameRepo = _ref.read(gameRepositoryProvider);
+      final fideIds = favorites
+          .where((f) => f.fideId != null && f.fideId!.isNotEmpty)
+          .map((f) => f.fideId!)
+          .toList();
+
+      final games = await gameRepo.searchFavoritesGames(
+        fideIds: fideIds,
+        playerNames: [],
+        query: query,
+        limit: 50,
+        offset: isInitial ? 0 : state.games.length,
+      );
+
       final newGames = <GamesTourModel>[];
       final seenKeys = Set<String>.from(isInitial ? {} : state.seenGameIds);
-      int supabaseOffset = isInitial ? 0 : state.supabaseOffset;
 
-      if (_supabaseHasMore) {
-        final supabaseGames = await _searchSupabase(favorites, query, supabaseOffset);
-
-        debugPrint('[FavoritesSearch] Supabase returned ${supabaseGames.length} games');
-        if (supabaseGames.length < _pageSize) {
-          _supabaseHasMore = false;
+      for (final game in games) {
+        final gameModel = GamesTourModel.fromGame(game);
+        final key = _generateDedupeKey(gameModel);
+        if (!seenKeys.contains(key)) {
+          seenKeys.add(key);
+          newGames.add(gameModel);
         }
-        for (final game in supabaseGames) {
-          final key = _generateDedupeKey(game);
-          if (!seenKeys.contains(key)) {
-            seenKeys.add(key);
-            newGames.add(game);
-          }
-        }
-        supabaseOffset += supabaseGames.length;
       }
 
       newGames.sort(_compareByDateDesc);
-
       final allGames = isInitial ? newGames : [...state.games, ...newGames];
 
       if (!mounted) return;
@@ -283,8 +285,7 @@ class FavoritesCombinedGamesNotifier
       state = state.copyWith(
         games: allGames,
         isLoading: false,
-        hasMore: _supabaseHasMore,
-        supabaseOffset: supabaseOffset,
+        hasMore: games.length >= 50,
         seenGameIds: seenKeys,
       );
     } catch (e) {
@@ -294,54 +295,14 @@ class FavoritesCombinedGamesNotifier
     }
   }
 
-  /// Search Supabase for favorites games matching the query
-  Future<List<GamesTourModel>> _searchSupabase(
-    List favorites,
-    String query,
-    int offset,
-  ) async {
-    try {
-      final gameRepo = _ref.read(gameRepositoryProvider);
-
-      // Get FIDE IDs from favorites
-      final fideIds = favorites
-          .where((f) => f.fideId != null && f.fideId!.isNotEmpty)
-          .map((f) => f.fideId! as String)
-          .toList();
-
-      // Get player names for matching
-      final playerNames = favorites
-          .map((f) => f.playerName as String)
-          .toList();
-
-      debugPrint('[FavoritesSearch] Supabase search: query="$query", fideIds=${fideIds.length}, offset=$offset');
-
-      // Use the new searchFavoritesGames method with ILIKE
-      final games = await gameRepo.searchFavoritesGames(
-        fideIds: fideIds,
-        playerNames: playerNames,
-        query: query,
-        limit: _pageSize,
-        offset: offset,
-      );
-
-      debugPrint('[FavoritesSearch] Supabase results: ${games.length}');
-
-      return games.map((g) => GamesTourModel.fromGame(g)).toList();
-    } catch (e) {
-      debugPrint('[FavoritesSearch] Supabase error: $e');
-      return [];
-    }
-  }
-
-  /// Load more search results (for pagination)
   Future<void> loadMoreSearchResults() async {
     if (state.isLoading || !state.hasMore || !state.isSearching) return;
     state = state.copyWith(isLoading: true);
     await _fetchSearchResults(isInitial: false);
   }
 
-  Future<void> _fetchNextBatch({required bool isInitial}) async {
+  /// Main method: Fetch next batch of dates and ALL their games
+  Future<void> _fetchNextDates({required bool isInitial}) async {
     if (!mounted) return;
 
     state = state.copyWith(isLoading: true, error: null);
@@ -351,84 +312,84 @@ class FavoritesCombinedGamesNotifier
       final favorites = favoritesAsync.valueOrNull ?? [];
 
       if (favorites.isEmpty) {
-        state = state.copyWith(
-          isLoading: false,
-          hasMore: false,
-          error: null,
-        );
+        state = state.copyWith(isLoading: false, hasMore: false, error: null);
         return;
       }
 
-      final newGames = <GamesTourModel>[];
-      final seenKeys = Set<String>.from(isInitial ? {} : state.seenGameIds);
+      // Get FIDE IDs
+      var fideIds = favorites
+          .where((f) => f.fideId != null && f.fideId!.isNotEmpty)
+          .map((f) => f.fideId!)
+          .toList();
 
-      int supabaseOffset = isInitial ? 0 : state.supabaseOffset;
-
-      newGames.addAll(_takePendingDay(seenKeys));
-
-      while (newGames.isEmpty && (_pendingGames.isNotEmpty || _supabaseHasMore)) {
-        if (newGames.isEmpty) {
-          newGames.addAll(_takePendingDay(seenKeys));
-        }
-
-        if (newGames.isNotEmpty || !_supabaseHasMore) {
-          break;
-        }
-
-        String? targetDayKey;
-        var reachedNextDay = false;
-
-        while (_supabaseHasMore && !reachedNextDay) {
-          final supabaseGames = await _fetchFromSupabase(favorites, supabaseOffset);
-
-          debugPrint('[FavoritesGames] Supabase returned ${supabaseGames.length} games (offset: $supabaseOffset)');
-
-          if (supabaseGames.isEmpty) {
-            _supabaseHasMore = false;
-            break;
-          }
-
-          supabaseOffset += supabaseGames.length;
-          if (supabaseGames.length < _pageSize) {
-            _supabaseHasMore = false;
-          }
-
-          for (var i = 0; i < supabaseGames.length; i++) {
-            final game = supabaseGames[i];
-            final dayKey = _dayKeyForGame(game);
-            targetDayKey ??= dayKey;
-
-            if (dayKey == targetDayKey) {
-              final key = _generateDedupeKey(game);
-              if (!seenKeys.contains(key)) {
-                seenKeys.add(key);
-                newGames.add(game);
-              }
-              continue;
-            }
-
-            _stashPendingGames(supabaseGames.sublist(i), seenKeys);
-            reachedNextDay = true;
-            break;
-          }
-        }
+      // Apply filter if selected
+      final selectedFilters = state.selectedFideIds;
+      if (selectedFilters.isNotEmpty) {
+        fideIds = fideIds.where((id) => selectedFilters.contains(id)).toList();
       }
 
-      newGames.sort(_compareByDateDesc);
+      if (fideIds.isEmpty) {
+        state = state.copyWith(isLoading: false, hasMore: false);
+        return;
+      }
 
-      // Combine with existing games
-      final allGames = isInitial ? newGames : [...state.games, ...newGames];
+      final gameRepo = _ref.read(gameRepositoryProvider);
 
-      debugPrint('[FavoritesGames] Total games now: ${allGames.length}, hasMore: $_supabaseHasMore');
+      // Get available dates if not cached
+      if (_availableDates.isEmpty && _hasMoreDates) {
+        final dates = await gameRepo.getDistinctDatesForFavorites(
+          fideIds: fideIds,
+          limit: 30,
+          offset: 0,
+        );
+        _availableDates = dates;
+        _hasMoreDates = dates.length >= 30;
+        debugPrint('[FavoritesGames] Got ${dates.length} available dates');
+      }
 
-      if (!mounted) return;
+      // Determine which dates to load
+      final dateOffset = isInitial ? 0 : state.dateOffset;
+      final datesToLoad = _availableDates
+          .skip(dateOffset)
+          .take(_datesPerBatch)
+          .toList();
 
-      state = state.copyWith(
-        games: allGames,
-        isLoading: false,
-        hasMore: _supabaseHasMore || _pendingGames.isNotEmpty,
-        supabaseOffset: supabaseOffset,
-        seenGameIds: seenKeys,
+      if (datesToLoad.isEmpty) {
+        // Try to get more dates
+        if (_hasMoreDates) {
+          final moreDates = await gameRepo.getDistinctDatesForFavorites(
+            fideIds: fideIds,
+            limit: 30,
+            offset: _availableDates.length,
+          );
+          _availableDates.addAll(moreDates);
+          _hasMoreDates = moreDates.length >= 30;
+
+          final retryDates = _availableDates
+              .skip(dateOffset)
+              .take(_datesPerBatch)
+              .toList();
+
+          if (retryDates.isNotEmpty) {
+            await _loadGamesForDates(
+              dates: retryDates,
+              fideIds: fideIds,
+              isInitial: isInitial,
+              dateOffset: dateOffset,
+            );
+            return;
+          }
+        }
+
+        state = state.copyWith(isLoading: false, hasMore: false);
+        return;
+      }
+
+      await _loadGamesForDates(
+        dates: datesToLoad,
+        fideIds: fideIds,
+        isInitial: isInitial,
+        dateOffset: dateOffset,
       );
     } catch (e) {
       debugPrint('[FavoritesGames] Fetch error: $e');
@@ -437,191 +398,89 @@ class FavoritesCombinedGamesNotifier
     }
   }
 
-  /// Generate a dedupe key based on game content, not IDs.
-  /// Uses: sorted player names + date + result
-  String _generateDedupeKey(GamesTourModel game) {
-    // Normalize player names: lowercase, trim, remove extra spaces
-    final white = _normalizePlayerName(game.whitePlayer.name);
-    final black = _normalizePlayerName(game.blackPlayer.name);
+  /// Load ALL games for the specified dates
+  Future<void> _loadGamesForDates({
+    required List<DateTime> dates,
+    required List<String> fideIds,
+    required bool isInitial,
+    required int dateOffset,
+  }) async {
+    final gameRepo = _ref.read(gameRepositoryProvider);
+    final newGames = <GamesTourModel>[];
+    final seenKeys = Set<String>.from(isInitial ? {} : state.seenGameIds);
 
-    // Sort players alphabetically so Carlsen|Caruana == Caruana|Carlsen
-    // This handles reversed board orientation between sources
-    final players = [white, black]..sort();
+    for (final date in dates) {
+      debugPrint('[FavoritesGames] Loading ALL games for ${date.toString().split(' ')[0]}');
 
-    // Use date if available
-    final date = game.lastMoveTime != null
-        ? '${game.lastMoveTime!.year}-${game.lastMoveTime!.month.toString().padLeft(2, '0')}-${game.lastMoveTime!.day.toString().padLeft(2, '0')}'
-        : 'unknown';
+      final dayGames = await gameRepo.getGamesByFideIdsAndDate(
+        fideIds: fideIds,
+        date: date,
+      );
 
-    final result = game.gameStatus.displayText;
+      debugPrint('[FavoritesGames] Got ${dayGames.length} games for ${date.toString().split(' ')[0]}');
 
-    return '${players[0]}|${players[1]}|$date|$result';
-  }
-
-  /// Normalize player name for deduplication.
-  /// Handles variations like "Carlsen, Magnus" vs "Magnus Carlsen"
-  String _normalizePlayerName(String name) {
-    // Lowercase and trim
-    var normalized = name.toLowerCase().trim();
-
-    // Remove extra whitespace
-    normalized = normalized.replaceAll(RegExp(r'\s+'), ' ');
-
-    // If name contains comma (e.g., "Carlsen, Magnus"), normalize to "magnus carlsen"
-    if (normalized.contains(',')) {
-      final parts = normalized.split(',').map((p) => p.trim()).toList();
-      if (parts.length == 2) {
-        // Swap order: "Last, First" -> "first last"
-        normalized = '${parts[1]} ${parts[0]}';
+      for (final game in dayGames) {
+        final gameModel = GamesTourModel.fromGame(game);
+        final key = _generateDedupeKey(gameModel);
+        if (!seenKeys.contains(key)) {
+          seenKeys.add(key);
+          newGames.add(gameModel);
+        }
       }
     }
 
+    newGames.sort(_compareByDateDesc);
+
+    final allGames = isInitial ? newGames : [...state.games, ...newGames];
+    final newDateOffset = dateOffset + dates.length;
+    final hasMore = newDateOffset < _availableDates.length || _hasMoreDates;
+
+    debugPrint('[FavoritesGames] Total games: ${allGames.length}, hasMore: $hasMore');
+
+    if (!mounted) return;
+
+    state = state.copyWith(
+      games: allGames,
+      isLoading: false,
+      hasMore: hasMore,
+      seenGameIds: seenKeys,
+      dateOffset: newDateOffset,
+    );
+  }
+
+  /// Generate dedupe key based on game content
+  String _generateDedupeKey(GamesTourModel game) {
+    final names = [
+      _normalizeName(game.whitePlayer.name),
+      _normalizeName(game.blackPlayer.name),
+    ]..sort();
+    final dateStr = game.lastMoveTime?.toString().split(' ')[0] ?? '';
+    final result = game.gameStatus.name;
+    return '${names.join('|')}|$dateStr|$result';
+  }
+
+  String _normalizeName(String name) {
+    var normalized = name.toLowerCase().trim();
+    normalized = normalized.replaceAll(RegExp(r'\s+'), ' ');
+    final titles = ['gm', 'im', 'fm', 'cm', 'wgm', 'wim', 'wfm', 'wcm'];
+    for (final title in titles) {
+      if (normalized.startsWith('$title ')) {
+        normalized = normalized.substring(title.length + 1);
+        break;
+      }
+    }
     return normalized;
   }
 
-  Future<List<GamesTourModel>> _fetchFromSupabase(
-    List favorites,
-    int offset,
-  ) async {
-    try {
-      final gameRepo = _ref.read(gameRepositoryProvider);
-      final games = <GamesTourModel>[];
-
-      // Get FIDE IDs from favorites
-      var fideIds = favorites
-          .where((f) => f.fideId != null && f.fideId!.isNotEmpty)
-          .map((f) => f.fideId! as String)
-          .toList();
-
-      // If filter chips are selected, only query those specific players
-      final selectedFilters = state.selectedFideIds;
-      if (selectedFilters.isNotEmpty) {
-        fideIds = fideIds.where((id) => selectedFilters.contains(id)).toList();
-        debugPrint('[FavoritesGames] Filtering by ${fideIds.length} selected players');
-      }
-
-      if (fideIds.isNotEmpty) {
-        final supabaseGames = await gameRepo.getGamesByMultipleFideIds(
-          fideIds: fideIds,
-          limit: _pageSize,
-          offset: offset,
-        );
-
-        for (final game in supabaseGames) {
-          games.add(GamesTourModel.fromGame(game));
-        }
-      }
-
-      // Also fetch by player names for those without FIDE IDs (only if no filter active)
-      if (selectedFilters.isEmpty) {
-        final playerNames = favorites
-            .where((f) => f.fideId == null || f.fideId!.isEmpty)
-            .map((f) => f.playerName as String)
-            .toList();
-
-        for (final name in playerNames.take(3)) {
-          try {
-            final nameGames = await gameRepo.getGamesByPlayerName(
-              name,
-              limit: (_pageSize ~/ 3).clamp(5, 10),
-              offset: offset,
-            );
-            for (final game in nameGames) {
-              games.add(GamesTourModel.fromGame(game));
-            }
-          } catch (e) {
-            debugPrint('[FavoritesGames] Error fetching for $name: $e');
-          }
-        }
-      }
-
-      debugPrint('[FavoritesGames] Fetched ${games.length} from Supabase');
-      games.sort(_compareByDateDesc);
-      return games;
-    } catch (e) {
-      debugPrint('[FavoritesGames] Supabase fetch error: $e');
-      return [];
-    }
-  }
-
-  List<GamesTourModel> _takePendingDay(Set<String> seenKeys) {
-    if (_pendingGames.isEmpty) return [];
-
-    final targetDayKey = _dayKeyForGame(_pendingGames.first);
-    final remaining = <GamesTourModel>[];
-    final dayGames = <GamesTourModel>[];
-
-    for (final game in _pendingGames) {
-      final dayKey = _dayKeyForGame(game);
-      if (dayKey == targetDayKey) {
-        final key = _generateDedupeKey(game);
-        if (!seenKeys.contains(key)) {
-          seenKeys.add(key);
-          dayGames.add(game);
-        }
-      } else {
-        remaining.add(game);
-      }
-    }
-
-    _pendingGames
-      ..clear()
-      ..addAll(remaining);
-
-    return dayGames;
-  }
-
-  void _stashPendingGames(List<GamesTourModel> games, Set<String> seenKeys) {
-    for (final game in games) {
-      final key = _generateDedupeKey(game);
-      if (!seenKeys.contains(key)) {
-        _pendingGames.add(game);
-      }
-    }
-  }
-
   int _compareByDateDesc(GamesTourModel a, GamesTourModel b) {
-    final aDayKey = _dayKeyForGame(a);
-    final bDayKey = _dayKeyForGame(b);
-    final dayCompare = bDayKey.compareTo(aDayKey);
-    if (dayCompare != 0) {
-      return dayCompare;
-    }
+    final aDate = a.lastMoveTime ?? DateTime(1900);
+    final bDate = b.lastMoveTime ?? DateTime(1900);
+    final dateCmp = bDate.compareTo(aDate);
+    if (dateCmp != 0) return dateCmp;
 
-    final eloCompare = b.cardElo.compareTo(a.cardElo);
-    if (eloCompare != 0) {
-      return eloCompare;
-    }
-
-    final aTime = a.lastMoveTime ?? DateTime(1900);
-    final bTime = b.lastMoveTime ?? DateTime(1900);
-    return bTime.compareTo(aTime);
-  }
-
-  String _dayKeyForGame(GamesTourModel game) {
-    final date = game.lastMoveTime;
-    if (date == null) {
-      return '0000-00-00';
-    }
-    return _formatDateKey(date);
-  }
-
-  String _formatDateKey(DateTime date) {
-    final year = date.year.toString().padLeft(4, '0');
-    final month = date.month.toString().padLeft(2, '0');
-    final day = date.day.toString().padLeft(2, '0');
-    return '$year-$month-$day';
-  }
-
-  /// Apply a new filter to the games
-  void applyFilter(GameFilter filter) {
-    debugPrint('[FavoritesGames] Applying filter: result=${filter.result}, color=${filter.color}, timeControl=${filter.timeControl}');
-    state = state.copyWith(filter: filter);
-  }
-
-  /// Clear all game filters
-  void clearFilter() {
-    debugPrint('[FavoritesGames] Clearing filter');
-    state = state.copyWith(filter: GameFilter.defaultFilter());
+    // Within same date, sort by max rating
+    final aMaxRating = [a.whitePlayer.rating, a.blackPlayer.rating].reduce((a, b) => a > b ? a : b);
+    final bMaxRating = [b.whitePlayer.rating, b.blackPlayer.rating].reduce((a, b) => a > b ? a : b);
+    return bMaxRating.compareTo(aMaxRating);
   }
 }

@@ -30,7 +30,8 @@ class RevenueCatService {
   RevenueCatService._internal();
 
   /// The entitlement identifier for ChessEver premium
-  static const String premiumEntitlement = 'Chessever Subscription';
+  /// Must match the lookup_key in RevenueCat dashboard
+  static const String premiumEntitlement = 'premium';
 
   /// Callback to be invoked on app resume to sync subscription state.
   /// Set by SubscriptionNotifier to ensure state is updated after sync.
