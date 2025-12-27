@@ -5,7 +5,6 @@ import 'package:chessever2/screens/group_event/providers/countryman_games_tour_s
 import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/screens/standings/score_card_screen.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
-import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen_provider.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
@@ -286,12 +285,30 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
             gamesContext = null;
             break;
           case ChessboardView.countryman:
-            // For countrymen view, get games from countrymenGamesTourScreenProvider
-            gamesContext = ref.read(countrymanGamesTourScreenProvider).valueOrNull?.gamesTourModels;
+            // For countrymen view, filter games by the current game's tournament
+            // This ensures ScoreCardScreen shows only games from that specific event
+            final allCountrymanGames = ref.read(countrymanGamesTourScreenProvider).valueOrNull?.gamesTourModels ?? [];
+            final currentTourIdCountryman = gamesTourModel.tourId;
+            if (currentTourIdCountryman.isNotEmpty) {
+              gamesContext = allCountrymanGames
+                  .where((g) => g.tourId == currentTourIdCountryman)
+                  .toList();
+            } else {
+              gamesContext = allCountrymanGames;
+            }
             break;
           case ChessboardView.forYou:
-            // For "For You" view, get games from convertedForYouGamesProvider
-            gamesContext = ref.read(convertedForYouGamesProvider);
+            // For "For You" view, filter games by the current game's tournament
+            // This ensures ScoreCardScreen shows only games from that specific event
+            final allForYouGames = ref.read(convertedForYouGamesProvider);
+            final currentTourId = gamesTourModel.tourId;
+            if (currentTourId.isNotEmpty) {
+              gamesContext = allForYouGames
+                  .where((g) => g.tourId == currentTourId)
+                  .toList();
+            } else {
+              gamesContext = allForYouGames;
+            }
             break;
         }
 

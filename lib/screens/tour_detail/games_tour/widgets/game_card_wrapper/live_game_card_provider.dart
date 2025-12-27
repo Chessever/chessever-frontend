@@ -8,8 +8,9 @@ final liveGameCardProvider = AutoDisposeProvider.family<GamesTourModel, GamesTou
   ref,
   baseGame,
 ) {
-  // Only subscribe to updates for ongoing games
-  if (baseGame.gameStatus != GameStatus.ongoing) {
+  // Subscribe to updates for any non-finished game so status changes don't
+  // require a manual refresh to appear.
+  if (baseGame.gameStatus.isFinished) {
     return baseGame;
   }
 

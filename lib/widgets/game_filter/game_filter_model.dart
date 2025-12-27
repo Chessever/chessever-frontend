@@ -266,10 +266,9 @@ class GameFilterHelper {
         if (year < filter.minYear || year > filter.maxYear) return false;
       }
 
-      // Rating filter - check both players
-      final avgRating =
-          (game.whitePlayer.rating + game.blackPlayer.rating) / 2;
-      if (avgRating < filter.minRating || avgRating > filter.maxRating) {
+      // Rating filter - use the game's top rating
+      final cardElo = game.cardElo;
+      if (cardElo < filter.minRating || cardElo > filter.maxRating) {
         return false;
       }
 

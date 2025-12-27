@@ -92,6 +92,7 @@ class FavoritesCombinedGamesNotifier
 
   // Track if Supabase has more data
   bool _supabaseHasMore = true;
+  final List<GamesTourModel> _pendingGames = [];
 
   FavoritesCombinedGamesNotifier(this._ref)
       : super(const FavoritesCombinedGamesState(isLoading: true)) {
@@ -101,6 +102,7 @@ class FavoritesCombinedGamesNotifier
   Future<void> _loadInitialGames() async {
     try {
       _supabaseHasMore = true;
+      _pendingGames.clear();
       await _fetchNextBatch(isInitial: true);
     } catch (e) {
       debugPrint('[FavoritesGames] Initial load error: $e');
@@ -116,6 +118,7 @@ class FavoritesCombinedGamesNotifier
 
   Future<void> refreshGames() async {
     _supabaseHasMore = true;
+    _pendingGames.clear();
     _currentSearchQuery = '';
 
     // Preserve selected filters during refresh
@@ -139,6 +142,7 @@ class FavoritesCombinedGamesNotifier
 
     // Reset pagination and re-query
     _supabaseHasMore = true;
+    _pendingGames.clear();
     _currentSearchQuery = '';
 
     state = state.copyWith(
@@ -160,6 +164,7 @@ class FavoritesCombinedGamesNotifier
     if (state.selectedFideIds.isEmpty) return;
 
     _supabaseHasMore = true;
+    _pendingGames.clear();
     _currentSearchQuery = '';
 
     state = state.copyWith(
@@ -198,6 +203,7 @@ class FavoritesCombinedGamesNotifier
 
     // Reset pagination for new search
     _supabaseHasMore = true;
+    _pendingGames.clear();
 
     state = state.copyWith(
       isLoading: true,
@@ -218,6 +224,7 @@ class FavoritesCombinedGamesNotifier
 
     _currentSearchQuery = '';
     _supabaseHasMore = true;
+    _pendingGames.clear();
 
     state = state.copyWith(
       isLoading: true,
@@ -267,12 +274,7 @@ class FavoritesCombinedGamesNotifier
         supabaseOffset += supabaseGames.length;
       }
 
-      // Sort by date
-      newGames.sort((a, b) {
-        final aDate = a.lastMoveTime ?? DateTime(1900);
-        final bDate = b.lastMoveTime ?? DateTime(1900);
-        return bDate.compareTo(aDate);
-      });
+      newGames.sort(_compareByDateDesc);
 
       final allGames = isInitial ? newGames : [...state.games, ...newGames];
 
@@ -362,33 +364,57 @@ class FavoritesCombinedGamesNotifier
 
       int supabaseOffset = isInitial ? 0 : state.supabaseOffset;
 
-      // Fetch from Supabase
-      if (_supabaseHasMore) {
-        final supabaseGames = await _fetchFromSupabase(favorites, supabaseOffset);
+      newGames.addAll(_takePendingDay(seenKeys));
 
-        debugPrint('[FavoritesGames] Supabase returned ${supabaseGames.length} games (offset: $supabaseOffset)');
-
-        if (supabaseGames.length < _pageSize) {
-          _supabaseHasMore = false;
+      while (newGames.isEmpty && (_pendingGames.isNotEmpty || _supabaseHasMore)) {
+        if (newGames.isEmpty) {
+          newGames.addAll(_takePendingDay(seenKeys));
         }
 
-        for (final game in supabaseGames) {
-          final key = _generateDedupeKey(game);
-          if (!seenKeys.contains(key)) {
-            seenKeys.add(key);
-            newGames.add(game);
+        if (newGames.isNotEmpty || !_supabaseHasMore) {
+          break;
+        }
+
+        String? targetDayKey;
+        var reachedNextDay = false;
+
+        while (_supabaseHasMore && !reachedNextDay) {
+          final supabaseGames = await _fetchFromSupabase(favorites, supabaseOffset);
+
+          debugPrint('[FavoritesGames] Supabase returned ${supabaseGames.length} games (offset: $supabaseOffset)');
+
+          if (supabaseGames.isEmpty) {
+            _supabaseHasMore = false;
+            break;
+          }
+
+          supabaseOffset += supabaseGames.length;
+          if (supabaseGames.length < _pageSize) {
+            _supabaseHasMore = false;
+          }
+
+          for (var i = 0; i < supabaseGames.length; i++) {
+            final game = supabaseGames[i];
+            final dayKey = _dayKeyForGame(game);
+            targetDayKey ??= dayKey;
+
+            if (dayKey == targetDayKey) {
+              final key = _generateDedupeKey(game);
+              if (!seenKeys.contains(key)) {
+                seenKeys.add(key);
+                newGames.add(game);
+              }
+              continue;
+            }
+
+            _stashPendingGames(supabaseGames.sublist(i), seenKeys);
+            reachedNextDay = true;
+            break;
           }
         }
-
-        supabaseOffset += supabaseGames.length;
       }
 
-      // Sort new games by date
-      newGames.sort((a, b) {
-        final aDate = a.lastMoveTime ?? DateTime(1900);
-        final bDate = b.lastMoveTime ?? DateTime(1900);
-        return bDate.compareTo(aDate);
-      });
+      newGames.sort(_compareByDateDesc);
 
       // Combine with existing games
       final allGames = isInitial ? newGames : [...state.games, ...newGames];
@@ -400,7 +426,7 @@ class FavoritesCombinedGamesNotifier
       state = state.copyWith(
         games: allGames,
         isLoading: false,
-        hasMore: _supabaseHasMore,
+        hasMore: _supabaseHasMore || _pendingGames.isNotEmpty,
         supabaseOffset: supabaseOffset,
         seenGameIds: seenKeys,
       );
@@ -510,11 +536,81 @@ class FavoritesCombinedGamesNotifier
       }
 
       debugPrint('[FavoritesGames] Fetched ${games.length} from Supabase');
+      games.sort(_compareByDateDesc);
       return games;
     } catch (e) {
       debugPrint('[FavoritesGames] Supabase fetch error: $e');
       return [];
     }
+  }
+
+  List<GamesTourModel> _takePendingDay(Set<String> seenKeys) {
+    if (_pendingGames.isEmpty) return [];
+
+    final targetDayKey = _dayKeyForGame(_pendingGames.first);
+    final remaining = <GamesTourModel>[];
+    final dayGames = <GamesTourModel>[];
+
+    for (final game in _pendingGames) {
+      final dayKey = _dayKeyForGame(game);
+      if (dayKey == targetDayKey) {
+        final key = _generateDedupeKey(game);
+        if (!seenKeys.contains(key)) {
+          seenKeys.add(key);
+          dayGames.add(game);
+        }
+      } else {
+        remaining.add(game);
+      }
+    }
+
+    _pendingGames
+      ..clear()
+      ..addAll(remaining);
+
+    return dayGames;
+  }
+
+  void _stashPendingGames(List<GamesTourModel> games, Set<String> seenKeys) {
+    for (final game in games) {
+      final key = _generateDedupeKey(game);
+      if (!seenKeys.contains(key)) {
+        _pendingGames.add(game);
+      }
+    }
+  }
+
+  int _compareByDateDesc(GamesTourModel a, GamesTourModel b) {
+    final aDayKey = _dayKeyForGame(a);
+    final bDayKey = _dayKeyForGame(b);
+    final dayCompare = bDayKey.compareTo(aDayKey);
+    if (dayCompare != 0) {
+      return dayCompare;
+    }
+
+    final eloCompare = b.cardElo.compareTo(a.cardElo);
+    if (eloCompare != 0) {
+      return eloCompare;
+    }
+
+    final aTime = a.lastMoveTime ?? DateTime(1900);
+    final bTime = b.lastMoveTime ?? DateTime(1900);
+    return bTime.compareTo(aTime);
+  }
+
+  String _dayKeyForGame(GamesTourModel game) {
+    final date = game.lastMoveTime;
+    if (date == null) {
+      return '0000-00-00';
+    }
+    return _formatDateKey(date);
+  }
+
+  String _formatDateKey(DateTime date) {
+    final year = date.year.toString().padLeft(4, '0');
+    final month = date.month.toString().padLeft(2, '0');
+    final day = date.day.toString().padLeft(2, '0');
+    return '$year-$month-$day';
   }
 
   /// Apply a new filter to the games

@@ -177,7 +177,7 @@ class _CountrymenCombinedGamesScreenState
                   overflow: TextOverflow.ellipsis,
                 ),
                 Text(
-                  'Games with 2000+ rated players',
+                  'Games with players from your country',
                   style: AppTypography.textXsRegular.copyWith(
                     color: const Color(0xFFA1A1AA),
                   ),
@@ -526,7 +526,7 @@ class _CountrymenCombinedGamesScreenState
           Padding(
             padding: EdgeInsets.symmetric(horizontal: 40.w),
             child: Text(
-              'No recent games found for players from $countryName with rating 2300+',
+              'No recent games found for players from $countryName',
               style: AppTypography.textSmRegular.copyWith(
                 color: const Color(0xFFA1A1AA),
               ),

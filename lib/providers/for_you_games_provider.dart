@@ -184,6 +184,18 @@ final groupedForYouGamesProvider = Provider.autoDispose<
     return false;
   }
 
+  int getEventRecency(GroupedTournamentGames group) {
+    DateTime? mostRecent;
+    for (final game in group.games) {
+      final candidate = game.lastMoveTime ?? game.dateStart;
+      if (candidate == null) continue;
+      if (mostRecent == null || candidate.isAfter(mostRecent)) {
+        mostRecent = candidate;
+      }
+    }
+    return mostRecent?.millisecondsSinceEpoch ?? 0;
+  }
+
   // Get max ELO from event's games for secondary sorting
   int getEventMaxElo(GroupedTournamentGames group) {
     int maxElo = 0;
@@ -203,6 +215,34 @@ final groupedForYouGamesProvider = Provider.autoDispose<
   // Priority 4: ELO (× 1.0) - Dominates for non-pref events
   // Tie-breaker: Live (+50)
   // =============================================================
+  final hasAnyPreferences =
+      favoriteEventIds.isNotEmpty ||
+      favoritedFideIds.isNotEmpty ||
+      favoritedNames.isNotEmpty ||
+      fideCountryCode != null;
+
+  if (!hasAnyPreferences) {
+    result.sort((a, b) {
+      if (a.hasLiveGames && !b.hasLiveGames) return -1;
+      if (!a.hasLiveGames && b.hasLiveGames) return 1;
+
+      final aMaxElo = getEventMaxElo(a);
+      final bMaxElo = getEventMaxElo(b);
+      if (aMaxElo != bMaxElo) {
+        return bMaxElo.compareTo(aMaxElo);
+      }
+
+      final aRecency = getEventRecency(a);
+      final bRecency = getEventRecency(b);
+      if (aRecency != bRecency) {
+        return bRecency.compareTo(aRecency);
+      }
+
+      return 0;
+    });
+    return result;
+  }
+
   result.sort((a, b) {
     double scoreA = 0;
     double scoreB = 0;
@@ -228,6 +268,10 @@ final groupedForYouGamesProvider = Provider.autoDispose<
     if (a.hasLiveGames) scoreA += 50;
     if (b.hasLiveGames) scoreB += 50;
 
+    // Final tie-breaker: event recency
+    scoreA += getEventRecency(a) * 1e-12;
+    scoreB += getEventRecency(b) * 1e-12;
+
     // Sort by score descending
     return scoreB.compareTo(scoreA);
   });
@@ -249,12 +293,12 @@ int _extractRoundNumber(String roundSlug) {
 /// Selects top 4 games for an event card
 ///
 /// PRIORITY ORDER:
-/// 1. Favorite players (highest)
-/// 2. Higher ELO
-/// 3. Live games (tie-breaker only)
+/// 1. Latest round factor (favorites' latest round first if any)
+/// 2. Favorite players (within a round)
+/// 3. Live games (within a round)
+/// 4. Higher ELO (within a round)
 ///
 /// CONSISTENCY: Always tries to return exactly [maxGames] (4) games.
-/// First fills from latest round, then from previous rounds if needed.
 List<Games> _selectTopGamesFromLastRound(
   List<Games> allGames,
   int maxGames,
@@ -263,37 +307,25 @@ List<Games> _selectTopGamesFromLastRound(
 ) {
   if (allGames.isEmpty) return [];
 
-  // Sort ALL games by our priority (favorite players > ELO > live as tie-breaker)
-  final sortedGames = List<Games>.from(allGames);
-  sortedGames.sort((a, b) {
-    final aHasFavorite = _gameHasFavoritePlayer(a, favoritedFideIds, favoritedNames);
-    final bHasFavorite = _gameHasFavoritePlayer(b, favoritedFideIds, favoritedNames);
+  int compareByLiveThenElo(Games a, Games b) {
+    final aIsLive = a.status == '*';
+    final bIsLive = b.status == '*';
+    if (aIsLive && !bIsLive) return -1;
+    if (!aIsLive && bIsLive) return 1;
 
-    // Priority 1: Favorite players go first
-    if (aHasFavorite && !bHasFavorite) return -1;
-    if (!aHasFavorite && bHasFavorite) return 1;
-
-    // Priority 2: Sort by max ELO (highest first)
     final aMaxElo = _getGameMaxElo(a);
     final bMaxElo = _getGameMaxElo(b);
     if (aMaxElo != bMaxElo) {
       return bMaxElo.compareTo(aMaxElo);
     }
 
-    // Tie-breaker: Live games come first (within same ELO)
-    final aIsLive = a.status == '*';
-    final bIsLive = b.status == '*';
-    if (aIsLive && !bIsLive) return -1;
-    if (!aIsLive && bIsLive) return 1;
-
     return 0;
-  });
+  }
 
-  // Group sorted games by round to prefer latest round
   final gamesByRound = <String, List<Games>>{};
   final roundNumbers = <String, int>{};
 
-  for (final game in sortedGames) {
+  for (final game in allGames) {
     final roundId = game.roundId;
     gamesByRound.putIfAbsent(roundId, () => []).add(game);
     if (!roundNumbers.containsKey(roundId)) {
@@ -301,47 +333,77 @@ List<Games> _selectTopGamesFromLastRound(
     }
   }
 
-  // Sort rounds by round number (descending) to get latest first
   final sortedRoundIds = gamesByRound.keys.toList()
     ..sort((a, b) => (roundNumbers[b] ?? 0).compareTo(roundNumbers[a] ?? 0));
 
-  // Collect games: prioritize latest round, fill from earlier rounds if needed
+  final hasFavoritesInEvent = allGames.any(
+    (game) => _gameHasFavoritePlayer(game, favoritedFideIds, favoritedNames),
+  );
+
+  String? latestFavoriteRoundId;
+  if (hasFavoritesInEvent) {
+    final favoriteRoundIds = sortedRoundIds
+        .where(
+          (roundId) => gamesByRound[roundId]!.any(
+            (game) =>
+                _gameHasFavoritePlayer(game, favoritedFideIds, favoritedNames),
+          ),
+        )
+        .toList();
+    if (favoriteRoundIds.isNotEmpty) {
+      latestFavoriteRoundId = favoriteRoundIds.first;
+    }
+  }
+
+  final orderedRoundIds = <String>[];
+  if (latestFavoriteRoundId != null) {
+    orderedRoundIds.add(latestFavoriteRoundId);
+  }
+  for (final roundId in sortedRoundIds) {
+    if (roundId != latestFavoriteRoundId) {
+      orderedRoundIds.add(roundId);
+    }
+  }
+
   final selectedGames = <Games>[];
   final selectedIds = <String>{};
 
-  for (final roundId in sortedRoundIds) {
-    if (selectedGames.length >= maxGames) break;
-
-    for (final game in gamesByRound[roundId]!) {
-      if (selectedGames.length >= maxGames) break;
-      if (!selectedIds.contains(game.id)) {
+  void addGames(List<Games> games) {
+    for (final game in games) {
+      if (selectedGames.length >= maxGames) return;
+      if (selectedIds.add(game.id)) {
         selectedGames.add(game);
-        selectedIds.add(game.id);
       }
     }
   }
 
-  // Re-sort the final selection to ensure proper order
-  selectedGames.sort((a, b) {
-    final aHasFavorite = _gameHasFavoritePlayer(a, favoritedFideIds, favoritedNames);
-    final bHasFavorite = _gameHasFavoritePlayer(b, favoritedFideIds, favoritedNames);
+  for (final roundId in orderedRoundIds) {
+    if (selectedGames.length >= maxGames) break;
+    final roundGames = gamesByRound[roundId] ?? [];
 
-    if (aHasFavorite && !bHasFavorite) return -1;
-    if (!aHasFavorite && bHasFavorite) return 1;
+    if (hasFavoritesInEvent) {
+      final favorites = <Games>[];
+      final nonFavorites = <Games>[];
 
-    final aMaxElo = _getGameMaxElo(a);
-    final bMaxElo = _getGameMaxElo(b);
-    if (aMaxElo != bMaxElo) {
-      return bMaxElo.compareTo(aMaxElo);
+      for (final game in roundGames) {
+        if (_gameHasFavoritePlayer(game, favoritedFideIds, favoritedNames)) {
+          favorites.add(game);
+        } else {
+          nonFavorites.add(game);
+        }
+      }
+
+      favorites.sort(compareByLiveThenElo);
+      nonFavorites.sort(compareByLiveThenElo);
+
+      addGames(favorites);
+      addGames(nonFavorites);
+    } else {
+      final sortedRoundGames = List<Games>.from(roundGames)
+        ..sort(compareByLiveThenElo);
+      addGames(sortedRoundGames);
     }
-
-    final aIsLive = a.status == '*';
-    final bIsLive = b.status == '*';
-    if (aIsLive && !bIsLive) return -1;
-    if (!aIsLive && bIsLive) return 1;
-
-    return 0;
-  });
+  }
 
   return selectedGames;
 }
