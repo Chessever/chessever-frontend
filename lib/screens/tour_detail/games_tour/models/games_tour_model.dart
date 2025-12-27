@@ -143,6 +143,12 @@ class GamesTourModel {
     );
   }
 
+  int get cardElo {
+    final whiteElo = whitePlayer.rating;
+    final blackElo = blackPlayer.rating;
+    return whiteElo >= blackElo ? whiteElo : blackElo;
+  }
+
   factory GamesTourModel.fromGame(Games game) {
     // Enhanced null safety and validation
     if (game.players == null || game.players!.length < 2) {

@@ -82,10 +82,10 @@ class CountrymenCombinedGamesNotifier
     extends StateNotifier<CountrymenCombinedGamesState> {
   final Ref _ref;
   static const int _pageSize = 15; // Small page size for fast first render
-  static const int _minElo = 2000; // Lowered to show more countrymen games
 
   // Track if Supabase has more data
   bool _supabaseHasMore = true;
+  final List<GamesTourModel> _pendingGames = [];
 
   // Track RAW offset for Supabase (how many raw games we've fetched from DB)
   // This is different from filtered games count - we need to track raw to avoid skipping games
@@ -132,6 +132,7 @@ class CountrymenCombinedGamesNotifier
       // Reset pagination trackers
       _supabaseHasMore = true;
       _supabaseRawOffset = 0;
+      _pendingGames.clear();
 
       await _fetchNextBatch(isInitial: true);
     } catch (e) {
@@ -150,6 +151,7 @@ class CountrymenCombinedGamesNotifier
     // Reset everything
     _supabaseHasMore = true;
     _supabaseRawOffset = 0;
+    _pendingGames.clear();
     _currentSearchQuery = '';
 
     state = CountrymenCombinedGamesState(
@@ -195,6 +197,7 @@ class CountrymenCombinedGamesNotifier
     // Reset pagination for new search
     _supabaseHasMore = true;
     _supabaseRawOffset = 0;
+    _pendingGames.clear();
 
     state = state.copyWith(
       isLoading: true,
@@ -215,6 +218,7 @@ class CountrymenCombinedGamesNotifier
     _currentSearchQuery = '';
     _supabaseHasMore = true;
     _supabaseRawOffset = 0;
+    _pendingGames.clear();
 
     state = state.copyWith(
       isLoading: true,
@@ -261,12 +265,7 @@ class CountrymenCombinedGamesNotifier
         _supabaseRawOffset += supabaseGames.length;
       }
 
-      // Sort by date
-      newGames.sort((a, b) {
-        final aDate = a.lastMoveTime ?? DateTime(1900);
-        final bDate = b.lastMoveTime ?? DateTime(1900);
-        return bDate.compareTo(aDate);
-      });
+      newGames.sort(_compareByDateDesc);
 
       final allGames = isInitial ? newGames : [...state.games, ...newGames];
 
@@ -301,7 +300,6 @@ class CountrymenCombinedGamesNotifier
       final games = await gameRepo.searchCountrymenGames(
         countryCode: fideCode,
         query: query,
-        minElo: _minElo,
         limit: _pageSize,
         offset: offset,
       );
@@ -342,44 +340,31 @@ class CountrymenCombinedGamesNotifier
       final newGames = <GamesTourModel>[];
       final seenKeys = Set<String>.from(isInitial ? {} : state.seenGameIds);
 
-      // Reset offsets on initial load
       if (isInitial) {
         _supabaseRawOffset = 0;
+        _pendingGames.clear();
       }
 
-      // Fetch from Supabase
-      if (_supabaseHasMore) {
-        final supabaseResult = await _fetchFromSupabase(countryCode, _supabaseRawOffset);
-        final supabaseGames = supabaseResult.games;
-        final rawFetched = supabaseResult.rawFetched;
-
-        debugPrint('[CountrymenGames] Supabase: fetched ${supabaseGames.length} filtered games from $rawFetched raw (rawOffset: $_supabaseRawOffset)');
-
-        // If raw fetch returned fewer than expected, Supabase is exhausted
-        // (We fetch limit * 10 raw games, so if we get less than that, no more data)
-        if (rawFetched < _pageSize * 10) {
-          _supabaseHasMore = false;
-          debugPrint('[CountrymenGames] Supabase exhausted: rawFetched=$rawFetched < ${_pageSize * 10}');
+      while (newGames.isEmpty && (_pendingGames.isNotEmpty || _supabaseHasMore)) {
+        var rawDayGames = _takePendingDayRaw();
+        if (rawDayGames.isEmpty) {
+          rawDayGames = await _fetchNextDayFromSupabase(countryCode);
         }
 
-        for (final game in supabaseGames) {
+        if (rawDayGames.isEmpty) {
+          break;
+        }
+
+        for (final game in rawDayGames) {
           final key = _generateDedupeKey(game);
           if (!seenKeys.contains(key)) {
             seenKeys.add(key);
             newGames.add(game);
           }
         }
-
-        // Advance raw offset by how many raw games were actually fetched from DB
-        _supabaseRawOffset += rawFetched;
       }
 
-      // Sort new games by date
-      newGames.sort((a, b) {
-        final aDate = a.lastMoveTime ?? DateTime(1900);
-        final bDate = b.lastMoveTime ?? DateTime(1900);
-        return bDate.compareTo(aDate);
-      });
+      newGames.sort(_compareByDateDesc);
 
       // Combine with existing games
       final allGames = isInitial ? newGames : [...state.games, ...newGames];
@@ -391,7 +376,7 @@ class CountrymenCombinedGamesNotifier
       state = state.copyWith(
         games: allGames,
         isLoading: false,
-        hasMore: _supabaseHasMore,
+        hasMore: _supabaseHasMore || _pendingGames.isNotEmpty,
         seenGameIds: seenKeys,
       );
     } catch (e) {
@@ -443,9 +428,74 @@ class CountrymenCombinedGamesNotifier
     return normalized;
   }
 
-  /// Fetch games from Supabase with proper pagination.
-  /// Returns both filtered games and raw count for proper offset tracking.
-  Future<({List<GamesTourModel> games, int rawFetched})> _fetchFromSupabase(
+  List<GamesTourModel> _takePendingDayRaw() {
+    if (_pendingGames.isEmpty) return [];
+
+    final targetDayKey = _dayKeyForGame(_pendingGames.first);
+    final remaining = <GamesTourModel>[];
+    final dayGames = <GamesTourModel>[];
+
+    for (final game in _pendingGames) {
+      final dayKey = _dayKeyForGame(game);
+      if (dayKey == targetDayKey) {
+        dayGames.add(game);
+      } else {
+        remaining.add(game);
+      }
+    }
+
+    _pendingGames
+      ..clear()
+      ..addAll(remaining);
+
+    return dayGames;
+  }
+
+  Future<List<GamesTourModel>> _fetchNextDayFromSupabase(
+    String countryCode,
+  ) async {
+    String? targetDayKey;
+    final dayGames = <GamesTourModel>[];
+    var reachedNextDay = false;
+
+    while (_supabaseHasMore && !reachedNextDay) {
+      final result = await _fetchRawFromSupabase(countryCode, _supabaseRawOffset);
+      final supabaseGames = result.games;
+      final rawFetched = result.rawFetched;
+
+      debugPrint('[CountrymenGames] Supabase returned ${supabaseGames.length} raw games (rawOffset: $_supabaseRawOffset)');
+
+      if (supabaseGames.isEmpty) {
+        _supabaseHasMore = false;
+        break;
+      }
+
+      _supabaseRawOffset += rawFetched;
+      if (rawFetched < _pageSize) {
+        _supabaseHasMore = false;
+      }
+
+      supabaseGames.sort(_compareByDateDesc);
+
+      for (var i = 0; i < supabaseGames.length; i++) {
+        final game = supabaseGames[i];
+        final dayKey = _dayKeyForGame(game);
+        targetDayKey ??= dayKey;
+
+        if (dayKey == targetDayKey) {
+          dayGames.add(game);
+        } else {
+          _pendingGames.addAll(supabaseGames.sublist(i));
+          reachedNextDay = true;
+          break;
+        }
+      }
+    }
+
+    return dayGames;
+  }
+
+  Future<({List<GamesTourModel> games, int rawFetched})> _fetchRawFromSupabase(
     String countryCode,
     int rawOffset,
   ) async {
@@ -455,22 +505,51 @@ class CountrymenCombinedGamesNotifier
 
       debugPrint('[CountrymenGames] Supabase query: fideCode=$fideCode, rawOffset=$rawOffset, limit=$_pageSize');
 
-      // Fetch games with ELO filter applied - returns both filtered games AND raw count
-      final result = await gameRepo.getCountrymanGamesWithMinEloAndRawCount(
+      final supabaseGames = await gameRepo.getGamesByCountryCodePaginated(
         countryCode: fideCode,
-        minElo: _minElo,
         limit: _pageSize,
-        rawOffset: rawOffset,
+        offset: rawOffset,
       );
 
-      debugPrint('[CountrymenGames] Supabase returned ${result.games.length} filtered games from ${result.rawFetched} raw');
-
-      final games = result.games.map((game) => GamesTourModel.fromGame(game)).toList();
-      return (games: games, rawFetched: result.rawFetched);
+      final games = supabaseGames.map((game) => GamesTourModel.fromGame(game)).toList();
+      return (games: games, rawFetched: supabaseGames.length);
     } catch (e, st) {
       debugPrint('[CountrymenGames] Supabase error: $e\n$st');
       return (games: <GamesTourModel>[], rawFetched: 0);
     }
+  }
+
+  int _compareByDateDesc(GamesTourModel a, GamesTourModel b) {
+    final aDayKey = _dayKeyForGame(a);
+    final bDayKey = _dayKeyForGame(b);
+    final dayCompare = bDayKey.compareTo(aDayKey);
+    if (dayCompare != 0) {
+      return dayCompare;
+    }
+
+    final eloCompare = b.cardElo.compareTo(a.cardElo);
+    if (eloCompare != 0) {
+      return eloCompare;
+    }
+
+    final aTime = a.lastMoveTime ?? DateTime(1900);
+    final bTime = b.lastMoveTime ?? DateTime(1900);
+    return bTime.compareTo(aTime);
+  }
+
+  String _dayKeyForGame(GamesTourModel game) {
+    final date = game.lastMoveTime;
+    if (date == null) {
+      return '0000-00-00';
+    }
+    return _formatDateKey(date);
+  }
+
+  String _formatDateKey(DateTime date) {
+    final year = date.year.toString().padLeft(4, '0');
+    final month = date.month.toString().padLeft(2, '0');
+    final day = date.day.toString().padLeft(2, '0');
+    return '$year-$month-$day';
   }
 
   /// Apply a new filter to the games

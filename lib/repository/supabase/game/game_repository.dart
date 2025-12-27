@@ -732,15 +732,11 @@ class GameRepository extends BaseRepository {
   Future<List<Games>> searchCountrymenGames({
     required String countryCode,
     String? query,
-    int minElo = 2000,
     int limit = 30,
     int offset = 0,
   }) async {
     return handleApiCall(() async {
-      debugPrint('[GameRepository] searchCountrymenGames: country=$countryCode, query=$query, minElo=$minElo');
-
-      // Fetch more for ELO filtering
-      final fetchLimit = limit * 5;
+      debugPrint('[GameRepository] searchCountrymenGames: country=$countryCode, query=$query');
 
       var dbQuery = supabase
           .from('games')
@@ -756,21 +752,14 @@ class GameRepository extends BaseRepository {
       final response = await dbQuery
           .order('date_start', ascending: false, nullsFirst: false)
           .order('last_move_time', ascending: false, nullsFirst: false)
-          .range(offset, offset + fetchLimit - 1);
+          .range(offset, offset + limit - 1);
 
       debugPrint('[GameRepository] searchCountrymenGames: raw results = ${(response as List).length}');
 
       final jsonList = response.map((item) => json.encode(item)).toList();
-      var games = await compute(_decodeGamesInIsolate, jsonList);
+      final games = await compute(_decodeGamesInIsolate, jsonList);
 
-      // Filter by minimum ELO
-      final filtered = games.where((game) {
-        if (game.players == null) return false;
-        return game.players!.any((p) => p.rating >= minElo);
-      }).take(limit).toList();
-
-      debugPrint('[GameRepository] searchCountrymenGames: after ELO filter = ${filtered.length}');
-      return filtered;
+      return games;
     });
   }
 
