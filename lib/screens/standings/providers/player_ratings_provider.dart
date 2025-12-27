@@ -3,15 +3,59 @@ import 'package:chessever2/repository/supabase/supabase.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 /// Unified rating provider that handles all fallback sources in sequence:
-/// 1. Lichess FIDE API (if fideId available)
-/// 2. Supabase chess_players table (if fideId available)
-/// 3. PGN-based ratings from games table
+/// 1. Supabase chess_players table by fideId (23k+ players, most reliable)
+/// 2. Supabase chess_players table by name (fallback if no fideId)
+/// 3. Lichess FIDE API (if fideId available)
+/// 4. PGN-based ratings from games table
 /// This avoids nested widget issues with autoDispose providers.
 final unifiedRatingProvider = FutureProvider.family.autoDispose<
     int?,
     UnifiedRatingRequest>((ref, request) async {
-  // Source 1: Try Lichess FIDE API first (if we have fideId)
-  if (request.fideId != null) {
+  final supabase = ref.read(supabaseProvider);
+
+  // Source 1: Try Supabase chess_players table by fideId (most reliable)
+  if (request.fideId != null && request.fideId! > 0) {
+    try {
+      final response = await supabase
+          .from('chess_players')
+          .select('rating, rapid_rating, blitz_rating')
+          .eq('fideid', request.fideId!)
+          .maybeSingle();
+
+      if (response != null) {
+        final rating = _extractRatingByType(response, request.timeControlType);
+        if (rating != null && rating > 0) {
+          return rating;
+        }
+      }
+    } catch (e) {
+      // Supabase fideId query failed, continue to next source
+    }
+  }
+
+  // Source 2: Try Supabase chess_players table by NAME (fallback when no fideId)
+  if (request.playerName.isNotEmpty) {
+    try {
+      final response = await supabase
+          .from('chess_players')
+          .select('rating, rapid_rating, blitz_rating')
+          .ilike('name', '%${request.playerName}%')
+          .limit(1)
+          .maybeSingle();
+
+      if (response != null) {
+        final rating = _extractRatingByType(response, request.timeControlType);
+        if (rating != null && rating > 0) {
+          return rating;
+        }
+      }
+    } catch (e) {
+      // Supabase name query failed, continue to next source
+    }
+  }
+
+  // Source 3: Try Lichess FIDE API (if we have fideId and Supabase didn't have it)
+  if (request.fideId != null && request.fideId! > 0) {
     try {
       final lichessRepo = ref.read(lichessFideRepoProvider);
       final player = await lichessRepo.getPlayerById(request.fideId!);
@@ -22,48 +66,13 @@ final unifiedRatingProvider = FutureProvider.family.autoDispose<
         }
       }
     } catch (e) {
-      print('Lichess API failed for fideId ${request.fideId}: $e');
+      // Lichess API failed, continue to next source
     }
   }
 
-  // Source 2: Try Supabase chess_players table (if we have fideId)
-  if (request.fideId != null) {
-    try {
-      final supabase = ref.read(supabaseProvider);
-      final response = await supabase
-          .from('chess_players')
-          .select('rating, rapid_rating, blitz_rating')
-          .eq('fideid', request.fideId!)
-          .maybeSingle();
-
-      if (response != null) {
-        int? rating;
-        switch (request.timeControlType) {
-          case 'standard':
-            rating = response['rating'] as int?;
-            break;
-          case 'rapid':
-            rating = response['rapid_rating'] as int?;
-            break;
-          case 'blitz':
-            rating = response['blitz_rating'] as int?;
-            break;
-          default:
-            rating = response['rating'] as int?;
-        }
-        if (rating != null && rating > 0) {
-          return rating;
-        }
-      }
-    } catch (e) {
-      print('Supabase chess_players query failed: $e');
-    }
-  }
-
-  // Source 3: Try PGN-based ratings from games table
+  // Source 4: Try PGN-based ratings from games table
   if (request.playerName.isNotEmpty) {
     try {
-      final supabase = ref.read(supabaseProvider);
       final response = await supabase
           .from('games')
           .select('pgn, players')
@@ -100,12 +109,26 @@ final unifiedRatingProvider = FutureProvider.family.autoDispose<
         }
       }
     } catch (e) {
-      print('PGN-based rating query failed: $e');
+      // PGN-based rating query failed
     }
   }
 
   return null;
 });
+
+/// Helper to extract rating by time control type from chess_players response
+int? _extractRatingByType(Map<String, dynamic> response, String timeControlType) {
+  switch (timeControlType) {
+    case 'standard':
+      return response['rating'] as int?;
+    case 'rapid':
+      return response['rapid_rating'] as int?;
+    case 'blitz':
+      return response['blitz_rating'] as int?;
+    default:
+      return response['rating'] as int?;
+  }
+}
 
 class UnifiedRatingRequest {
   final int? fideId;
