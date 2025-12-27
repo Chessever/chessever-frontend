@@ -917,12 +917,11 @@ class GameRepository extends BaseRepository {
     });
   }
 
-  /// Get games by FIDE IDs for a specific date.
+  /// Get ALL games by FIDE IDs for a specific date.
+  /// No pagination - returns all games for the date.
   Future<List<Games>> getGamesByFideIdsAndDate({
     required List<String> fideIds,
     required DateTime date,
-    int limit = 50,
-    int offset = 0,
   }) async {
     return handleApiCall(() async {
       if (fideIds.isEmpty) return <Games>[];
@@ -935,20 +934,20 @@ class GameRepository extends BaseRepository {
         return 'players.cs.[{"fideId":${int.parse(fideId)}}]';
       }).join(',');
 
+      // Fetch ALL games for this date (no limit)
       final response = await supabase
           .from('games')
           .select(_gameListSelectColumns)
           .or(orConditions)
           .eq('date_start', dateStr)
-          .order('last_move_time', ascending: false, nullsFirst: false)
-          .range(offset, offset + limit - 1);
+          .order('last_move_time', ascending: false, nullsFirst: false);
 
       final jsonList =
           (response as List).map((item) => json.encode(item)).toList();
 
       final games = await compute(_decodeGamesInIsolate, jsonList);
 
-      debugPrint('[GameRepository] getGamesByFideIdsAndDate: found ${games.length} games');
+      debugPrint('[GameRepository] getGamesByFideIdsAndDate: found ${games.length} games for $dateStr');
       return games;
     });
   }
