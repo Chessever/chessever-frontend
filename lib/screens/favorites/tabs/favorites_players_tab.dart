@@ -575,6 +575,8 @@ class _FavoritesPlayersTabState extends ConsumerState<FavoritesPlayersTab>
     ref.read(selectedPlayerProvider.notifier).state = player;
     // Clear games context to use fallback (fetches all player games globally)
     ref.read(scoreCardGamesContextProvider.notifier).state = null;
+    // No event context from favorites players tab
+    ref.read(scoreCardHasEventContextProvider.notifier).state = false;
     Navigator.pushNamed(context, '/scorecard_screen');
   }
 
