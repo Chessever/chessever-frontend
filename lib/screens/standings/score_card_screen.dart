@@ -2,8 +2,7 @@ import 'dart:math' as math;
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/screens/standings/providers/player_ratings_provider.dart'
-    show PlayerRatingRequest, playerLatestRatingProvider, ChessPlayerRatingRequest, chessPlayerRatingProvider;
-import 'package:chessever2/screens/standings/providers/fide_ratings_provider.dart';
+    show UnifiedRatingRequest, unifiedRatingProvider;
 import 'package:chessever2/screens/standings/providers/player_utils_provider.dart';
 import 'package:chessever2/screens/standings/widget/scoreboard_card_widget.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
@@ -201,27 +200,6 @@ class ScoreCardScreen extends ConsumerWidget {
     // - explicitEventContext: set by navigation source (ChessBoard player tap with filtered games)
     final bool hasEventContext = selectedBroadcast != null || explicitEventContext;
 
-    // Try to get the actual player scoreChange from standings when in tournament context
-    // This handles the case where the player was initially set with fallback data
-    // (scoreChange: 0) before standings were loaded
-    int? actualScoreChange = player.scoreChange;
-    if (selectedBroadcast != null) {
-      final standingsAsync = ref.watch(playerTourScreenProvider);
-      standingsAsync.whenData((standings) {
-        // Find player in standings by name or fideId for accurate scoreChange
-        final playerUtils = ref.read(playerUtilsProvider);
-        final standingPlayer = standings.where((p) {
-          if (player.fideId != null && p.fideId != null) {
-            return p.fideId == player.fideId;
-          }
-          return playerUtils.isSamePlayer(p.name, player.name);
-        }).firstOrNull;
-        if (standingPlayer != null) {
-          actualScoreChange = standingPlayer.scoreChange;
-        }
-      });
-    }
-
     if (selectedBroadcast != null) {
       // Tournament context: use games from the tournament
       final gamesTourAsync = ref.watch(gamesTourScreenProvider);
@@ -305,11 +283,12 @@ class ScoreCardScreen extends ConsumerWidget {
             )
             : '';
 
-    // Calculate performance rating only when we have event context
+    // Calculate performance rating and total rating diff only when we have event context
     // Without event context (e.g., from Favorites tab), we can't calculate meaningful performance
     int? performanceRating;
     double? eventScore;
     int? eventTotalGames;
+    double totalRatingDiff = 0.0; // Sum of rating changes from all games
 
     if (hasEventContext) {
       // Calculate performance rating using standard chess formula:
@@ -326,6 +305,7 @@ class ScoreCardScreen extends ConsumerWidget {
 
         final isWhite = game.whitePlayer.name == player.name;
         final opponent = isWhite ? game.blackPlayer : game.whitePlayer;
+        final playerRating = _getPlayerRating(game, player.name);
         final opponentRating = _getPlayerRating(game, opponent.name);
 
         if (opponentRating > 0) {
@@ -345,6 +325,18 @@ class ScoreCardScreen extends ConsumerWidget {
               break;
             default:
               break;
+          }
+
+          // Calculate rating change for this game and add to total
+          if (playerRating > 0) {
+            final ratingChange = _calculateFideRatingChange(
+              playerRating,
+              opponentRating,
+              game.gameStatus,
+              player.name,
+              game,
+            );
+            totalRatingDiff += ratingChange;
           }
         }
       }
@@ -444,7 +436,10 @@ class ScoreCardScreen extends ConsumerWidget {
                       performanceRating: performanceRating,
                       score: eventScore,
                       totalGames: eventTotalGames,
-                      ratingDiff: hasEventContext ? actualScoreChange : null,
+                      // Use calculated sum of rating changes from games instead of standings value
+                      ratingDiff: hasEventContext && totalRatingDiff != 0.0
+                          ? totalRatingDiff.round()
+                          : null,
                     ),
                   ],
                 ),
@@ -970,6 +965,9 @@ class _AvatarPlaceholder extends StatelessWidget {
   }
 }
 
+/// Simplified rating display that uses a single unified provider
+/// to handle all fallback sources (Lichess API, Supabase, PGN).
+/// This avoids nested widget issues with autoDispose providers.
 class _RatingDisplay extends ConsumerWidget {
   final String label;
   final String playerName;
@@ -987,199 +985,62 @@ class _RatingDisplay extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    Widget _wrapCard(Widget value) {
-      return Container(
-        padding: EdgeInsets.symmetric(horizontal: 4.sp, vertical: 10.sp),
-        width: double.infinity,
-        height: 110.w, // Match player avatar height
-        decoration: BoxDecoration(
-          color: kBlack2Color,
-          borderRadius: BorderRadius.circular(10.br),
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            Image.asset(assetPath, width: 22.w, height: 22.h),
-            SizedBox(height: 6.h),
-            Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: AppTypography.textXsMedium.copyWith(
-                color: kWhiteColor70,
-                fontSize: 11.sp,
-              ),
-              textAlign: TextAlign.center,
+    // Use the unified provider that handles all fallbacks internally
+    final ratingRequest = UnifiedRatingRequest(
+      fideId: fideId,
+      playerName: playerName,
+      timeControlType: timeControlType,
+    );
+    final ratingAsync = ref.watch(unifiedRatingProvider(ratingRequest));
+
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 4.sp, vertical: 10.sp),
+      width: double.infinity,
+      height: 110.w,
+      decoration: BoxDecoration(
+        color: kBlack2Color,
+        borderRadius: BorderRadius.circular(10.br),
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Image.asset(assetPath, width: 22.w, height: 22.h),
+          SizedBox(height: 6.h),
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: AppTypography.textXsMedium.copyWith(
+              color: kWhiteColor70,
+              fontSize: 11.sp,
             ),
-            SizedBox(height: 6.h),
-            value,
-          ],
-        ),
-      );
-    }
-
-    // Try FIDE API first if we have a FIDE ID
-    if (fideId != null) {
-      final fideRequest = FideRatingRequest(
-        fideId: fideId,
-        timeControlType: timeControlType,
-      );
-      final fideRatingAsync = ref.watch(fideRatingProvider(fideRequest));
-
-      return _wrapCard(
-        fideRatingAsync.when(
-          data: (rating) {
-            if (rating != null && rating > 0) {
-              return Text(
-                rating.toString(),
-                style: AppTypography.textLgBold.copyWith(color: kWhiteColor),
-              );
-            }
-            return _FallbackRatingDisplay(
-              playerName: playerName,
-              timeControlType: timeControlType,
-              fideId: fideId,
-            );
-          },
-          loading:
-              () => Skeletonizer(
-                enabled: true,
-                ignoreContainers: true,
-                effect: const ShimmerEffect(
-                  baseColor: Color(0xFF2A2A2A),
-                  highlightColor: Color(0xFF3A3A3A),
-                ),
-                child: Text(
-                  '2400',
-                  style: AppTypography.textLgBold.copyWith(color: kWhiteColor),
-                ),
-              ),
-          error:
-              (_, __) => _FallbackRatingDisplay(
-                playerName: playerName,
-                timeControlType: timeControlType,
-                fideId: fideId,
-              ),
-        ),
-      );
-    }
-
-    // No FIDE ID - use PGN-based ratings
-    return _wrapCard(
-      _FallbackRatingDisplay(
-        playerName: playerName,
-        timeControlType: timeControlType,
-        fideId: fideId,
-      ),
-    );
-  }
-}
-
-/// Fallback widget using chess_players table first, then PGN-based ratings
-class _FallbackRatingDisplay extends ConsumerWidget {
-  final String playerName;
-  final String timeControlType;
-  final int? fideId;
-
-  const _FallbackRatingDisplay({
-    required this.playerName,
-    required this.timeControlType,
-    this.fideId,
-  });
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    // First try chess_players table if we have a FIDE ID
-    if (fideId != null) {
-      final chessPlayerRequest = ChessPlayerRatingRequest(
-        fideId: fideId,
-        timeControlType: timeControlType,
-      );
-      final chessPlayerRatingAsync = ref.watch(
-        chessPlayerRatingProvider(chessPlayerRequest),
-      );
-
-      return chessPlayerRatingAsync.when(
-        data: (rating) {
-          if (rating != null && rating > 0) {
-            return Text(
-              rating.toString(),
+            textAlign: TextAlign.center,
+          ),
+          SizedBox(height: 6.h),
+          ratingAsync.when(
+            data: (rating) => Text(
+              rating?.toString() ?? '-',
               style: AppTypography.textLgBold.copyWith(color: kWhiteColor),
-            );
-          }
-          // Fallback to PGN-based ratings if chess_players didn't have rating
-          return _PgnBasedRatingDisplay(
-            playerName: playerName,
-            timeControlType: timeControlType,
-          );
-        },
-        loading: () => Skeletonizer(
-          enabled: true,
-          ignoreContainers: true,
-          effect: const ShimmerEffect(
-            baseColor: Color(0xFF2A2A2A),
-            highlightColor: Color(0xFF3A3A3A),
+            ),
+            loading: () => Skeletonizer(
+              enabled: true,
+              ignoreContainers: true,
+              effect: const ShimmerEffect(
+                baseColor: Color(0xFF2A2A2A),
+                highlightColor: Color(0xFF3A3A3A),
+              ),
+              child: Text(
+                '2400',
+                style: AppTypography.textLgBold.copyWith(color: kWhiteColor),
+              ),
+            ),
+            error: (_, __) => Text(
+              '-',
+              style: AppTypography.textLgBold.copyWith(color: kWhiteColor),
+            ),
           ),
-          child: Text(
-            '2400',
-            style: AppTypography.textLgBold.copyWith(color: kWhiteColor),
-          ),
-        ),
-        error: (_, __) => _PgnBasedRatingDisplay(
-          playerName: playerName,
-          timeControlType: timeControlType,
-        ),
-      );
-    }
-
-    // No FIDE ID - use PGN-based ratings directly
-    return _PgnBasedRatingDisplay(
-      playerName: playerName,
-      timeControlType: timeControlType,
-    );
-  }
-}
-
-/// Last resort fallback: PGN-based ratings from games table
-class _PgnBasedRatingDisplay extends ConsumerWidget {
-  final String playerName;
-  final String timeControlType;
-
-  const _PgnBasedRatingDisplay({
-    required this.playerName,
-    required this.timeControlType,
-  });
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final ratingRequest = PlayerRatingRequest(
-      playerName: playerName,
-      timeControlType: timeControlType,
-    );
-
-    final ratingAsync = ref.watch(playerLatestRatingProvider(ratingRequest));
-
-    return ratingAsync.when(
-      data: (rating) => Text(
-        rating?.toString() ?? '-',
-        style: AppTypography.textLgBold.copyWith(color: kWhiteColor),
-      ),
-      loading: () => Skeletonizer(
-        enabled: true,
-        ignoreContainers: true,
-        effect: const ShimmerEffect(
-          baseColor: Color(0xFF2A2A2A),
-          highlightColor: Color(0xFF3A3A3A),
-        ),
-        child: Text(
-          '2400',
-          style: AppTypography.textLgBold.copyWith(color: kWhiteColor),
-        ),
-      ),
-      error: (_, __) => Text(
-        '-',
-        style: AppTypography.textLgBold.copyWith(color: kWhiteColor),
+        ],
       ),
     );
   }
