@@ -27,7 +27,10 @@ class GameCardWrapperWidget extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     // Watch live game updates for ongoing games
-    final liveGame = ref.watch(liveGameCardProvider(game));
+    // Use gameId as the stable key to prevent provider recreation
+    final liveGame = ref.watch(
+      liveGameCardProvider((gameId: game.gameId, baseGame: game)),
+    );
     final keyValue = 'game_${liveGame.gameId}';
 
     // Build updated games list with the live game data for navigation

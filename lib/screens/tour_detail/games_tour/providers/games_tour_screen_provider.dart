@@ -272,10 +272,21 @@ class GamesTourScreenProvider
       });
 
       final models = <GamesTourModel>[];
+      int skippedCount = 0;
       for (final g in sortedGames) {
         try {
           models.add(GamesTourModel.fromGame(g));
-        } catch (_) {}
+        } catch (e) {
+          skippedCount++;
+          debugPrint(
+            '⚠️ GamesTourScreenProvider: Failed to parse game ${g.id} (${g.name ?? 'unnamed'}): $e',
+          );
+        }
+      }
+      if (skippedCount > 0) {
+        debugPrint(
+          '⚠️ GamesTourScreenProvider: Skipped $skippedCount games due to parsing errors',
+        );
       }
 
       if (mounted) {
@@ -513,12 +524,21 @@ class GamesTourScreenProvider
     if (games.isEmpty) return const <GamesTourModel>[];
 
     final models = <GamesTourModel>[];
+    int skippedCount = 0;
     for (final game in games) {
       try {
         models.add(GamesTourModel.fromGame(game));
-      } catch (_) {
-        // Ignore games that fail to parse into display models
+      } catch (e) {
+        skippedCount++;
+        debugPrint(
+          '⚠️ _mapGamesToModels: Failed to parse game ${game.id} (${game.name ?? 'unnamed'}): $e',
+        );
       }
+    }
+    if (skippedCount > 0) {
+      debugPrint(
+        '⚠️ _mapGamesToModels: Skipped $skippedCount games due to parsing errors',
+      );
     }
     return models;
   }

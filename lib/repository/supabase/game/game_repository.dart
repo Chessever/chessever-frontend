@@ -764,6 +764,7 @@ class GameRepository extends BaseRepository {
   }
 
   /// Search games for favorite players with optional text query.
+  /// First filters by FIDE IDs (indexed), then applies text search.
   Future<List<Games>> searchFavoritesGames({
     required List<String> fideIds,
     required List<String> playerNames,
@@ -772,48 +773,37 @@ class GameRepository extends BaseRepository {
     int offset = 0,
   }) async {
     return handleApiCall(() async {
-      debugPrint('[GameRepository] searchFavoritesGames: fideIds=${fideIds.length}, names=${playerNames.length}, query=$query');
+      debugPrint('[GameRepository] searchFavoritesGames: fideIds=${fideIds.length}, query=$query, offset=$offset');
 
-      if (fideIds.isEmpty && playerNames.isEmpty) return <Games>[];
+      if (fideIds.isEmpty) return <Games>[];
 
-      var dbQuery = supabase.from('games').select(_gameListSelectColumns);
+      // Build OR conditions for FIDE IDs (uses indexed JSONB query)
+      final fideConditions = fideIds.map((fideId) {
+        return 'players.cs.[{"fideId":${int.parse(fideId)}}]';
+      }).join(',');
 
-      // Add text search if query provided
+      var dbQuery = supabase
+          .from('games')
+          .select(_gameListSelectColumns)
+          .or(fideConditions);
+
+      // Add text search on name column if query provided
       if (query != null && query.trim().isNotEmpty) {
         dbQuery = dbQuery.ilike('name', '%${query.trim()}%');
       }
 
-      // Order by date_start first to group games by day, then by last_move_time
+      // Order and paginate
       final response = await dbQuery
           .order('date_start', ascending: false, nullsFirst: false)
           .order('last_move_time', ascending: false, nullsFirst: false)
-          .range(offset, offset + limit * 3 - 1);
+          .range(offset, offset + limit - 1);
 
-      debugPrint('[GameRepository] searchFavoritesGames: raw results = ${(response as List).length}');
+      debugPrint('[GameRepository] searchFavoritesGames: results = ${(response as List).length}');
 
       final jsonList = (response as List).map((item) => json.encode(item)).toList();
-      var games = await compute(_decodeGamesInIsolate, jsonList);
+      final games = await compute(_decodeGamesInIsolate, jsonList);
 
-      // Filter to only include games with favorited players
-      // Strip title prefixes from player names for matching (e.g., "GM Nakamura, Hikaru" -> "Nakamura, Hikaru")
-      final fideIdSet = fideIds.toSet();
-      final normalizedNameSet = playerNames.map((n) => _stripTitlePrefix(n).toLowerCase()).toSet();
-
-      final filtered = games.where((game) {
-        if (game.players == null) return false;
-        for (final player in game.players!) {
-          if (fideIdSet.contains(player.fideId.toString())) return true;
-          final playerNameLower = player.name.toLowerCase();
-          if (normalizedNameSet.any((name) =>
-              playerNameLower.contains(name) || name.contains(playerNameLower))) {
-            return true;
-          }
-        }
-        return false;
-      }).take(limit).toList();
-
-      debugPrint('[GameRepository] searchFavoritesGames: after filter = ${filtered.length}');
-      return filtered;
+      return games;
     });
   }
 

@@ -1,5 +1,6 @@
 import 'package:chessever2/providers/country_dropdown_provider.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
+import 'package:chessever2/screens/countrymen/tabs/countrymen_players_tab.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/utils/country_utils.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
@@ -19,6 +20,8 @@ class CountrymenCombinedGamesState {
   final String? countryName;
   final String searchQuery; // Current search query
   final GameFilter filter; // Game filter settings
+  final List<DateTime> loadedDates; // Dates we've fully loaded
+  final int dateOffset; // For date pagination
 
   const CountrymenCombinedGamesState({
     this.games = const [],
@@ -30,6 +33,8 @@ class CountrymenCombinedGamesState {
     this.countryName,
     this.searchQuery = '',
     this.filter = const GameFilter(),
+    this.loadedDates = const [],
+    this.dateOffset = 0,
   });
 
   bool get isSearching => searchQuery.isNotEmpty;
@@ -56,6 +61,8 @@ class CountrymenCombinedGamesState {
     String? countryName,
     String? searchQuery,
     GameFilter? filter,
+    List<DateTime>? loadedDates,
+    int? dateOffset,
   }) {
     return CountrymenCombinedGamesState(
       games: games ?? this.games,
@@ -67,6 +74,8 @@ class CountrymenCombinedGamesState {
       countryName: countryName ?? this.countryName,
       searchQuery: searchQuery ?? this.searchQuery,
       filter: filter ?? this.filter,
+      loadedDates: loadedDates ?? this.loadedDates,
+      dateOffset: dateOffset ?? this.dateOffset,
     );
   }
 }
@@ -81,15 +90,11 @@ final countrymenCombinedGamesProvider = StateNotifierProvider.autoDispose<
 class CountrymenCombinedGamesNotifier
     extends StateNotifier<CountrymenCombinedGamesState> {
   final Ref _ref;
-  static const int _pageSize = 15; // Small page size for fast first render
+  static const int _datesPerBatch = 3; // Load 3 days at a time
 
-  // Track if Supabase has more data
-  bool _supabaseHasMore = true;
-  final List<GamesTourModel> _pendingGames = [];
-
-  // Track RAW offset for Supabase (how many raw games we've fetched from DB)
-  // This is different from filtered games count - we need to track raw to avoid skipping games
-  int _supabaseRawOffset = 0;
+  // Cache available dates
+  List<DateTime> _availableDates = [];
+  bool _hasMoreDates = true;
 
   CountrymenCombinedGamesNotifier(this._ref)
       : super(const CountrymenCombinedGamesState(isLoading: true)) {
@@ -130,11 +135,10 @@ class CountrymenCombinedGamesNotifier
       );
 
       // Reset pagination trackers
-      _supabaseHasMore = true;
-      _supabaseRawOffset = 0;
-      _pendingGames.clear();
+      _availableDates = [];
+      _hasMoreDates = true;
 
-      await _fetchNextBatch(isInitial: true);
+      await _fetchNextDates(isInitial: true);
     } catch (e) {
       debugPrint('[CountrymenGames] Initial load error: $e');
       if (!mounted) return;
@@ -144,14 +148,13 @@ class CountrymenCombinedGamesNotifier
 
   Future<void> loadMoreGames() async {
     if (state.isLoading || !state.hasMore) return;
-    await _fetchNextBatch(isInitial: false);
+    await _fetchNextDates(isInitial: false);
   }
 
   Future<void> refreshGames() async {
     // Reset everything
-    _supabaseHasMore = true;
-    _supabaseRawOffset = 0;
-    _pendingGames.clear();
+    _availableDates = [];
+    _hasMoreDates = true;
     _currentSearchQuery = '';
 
     state = CountrymenCombinedGamesState(
@@ -171,7 +174,7 @@ class CountrymenCombinedGamesNotifier
       );
     }
 
-    await _fetchNextBatch(isInitial: true);
+    await _fetchNextDates(isInitial: true);
   }
 
   // Current search query for fresh queries
@@ -195,14 +198,15 @@ class CountrymenCombinedGamesNotifier
     _currentSearchQuery = trimmedQuery;
 
     // Reset pagination for new search
-    _supabaseHasMore = true;
-    _supabaseRawOffset = 0;
-    _pendingGames.clear();
+    _availableDates = [];
+    _hasMoreDates = true;
 
     state = state.copyWith(
       isLoading: true,
       games: [],
       seenGameIds: {},
+      loadedDates: [],
+      dateOffset: 0,
       hasMore: true,
       searchQuery: trimmedQuery,
       error: null,
@@ -216,20 +220,21 @@ class CountrymenCombinedGamesNotifier
     if (_currentSearchQuery.isEmpty && !state.isSearching) return;
 
     _currentSearchQuery = '';
-    _supabaseHasMore = true;
-    _supabaseRawOffset = 0;
-    _pendingGames.clear();
+    _availableDates = [];
+    _hasMoreDates = true;
 
     state = state.copyWith(
       isLoading: true,
       games: [],
       seenGameIds: {},
+      loadedDates: [],
+      dateOffset: 0,
       hasMore: true,
       searchQuery: '',
       error: null,
     );
 
-    await _fetchNextBatch(isInitial: true);
+    await _fetchNextDates(isInitial: true);
   }
 
   /// Fetch search results from Supabase
@@ -245,28 +250,31 @@ class CountrymenCombinedGamesNotifier
     }
 
     try {
+      final gameRepo = _ref.read(gameRepositoryProvider);
+      final fideCode = CountryUtils.toFideCode(countryCode);
+
+      debugPrint('[CountrymenSearch] Searching for "$query" in country $fideCode');
+
+      final games = await gameRepo.searchCountrymenGames(
+        countryCode: fideCode,
+        query: query,
+        limit: 50,
+        offset: isInitial ? 0 : state.games.length,
+      );
+
       final newGames = <GamesTourModel>[];
       final seenKeys = Set<String>.from(isInitial ? {} : state.seenGameIds);
 
-      if (_supabaseHasMore) {
-        final supabaseGames = await _searchSupabase(countryCode, query, _supabaseRawOffset);
-
-        debugPrint('[CountrymenSearch] Supabase returned ${supabaseGames.length} games');
-        if (supabaseGames.length < _pageSize) {
-          _supabaseHasMore = false;
+      for (final game in games) {
+        final gameModel = GamesTourModel.fromGame(game);
+        final key = _generateDedupeKey(gameModel);
+        if (!seenKeys.contains(key)) {
+          seenKeys.add(key);
+          newGames.add(gameModel);
         }
-        for (final game in supabaseGames) {
-          final key = _generateDedupeKey(game);
-          if (!seenKeys.contains(key)) {
-            seenKeys.add(key);
-            newGames.add(game);
-          }
-        }
-        _supabaseRawOffset += supabaseGames.length;
       }
 
       newGames.sort(_compareByDateDesc);
-
       final allGames = isInitial ? newGames : [...state.games, ...newGames];
 
       if (!mounted) return;
@@ -274,42 +282,13 @@ class CountrymenCombinedGamesNotifier
       state = state.copyWith(
         games: allGames,
         isLoading: false,
-        hasMore: _supabaseHasMore,
+        hasMore: games.length >= 50,
         seenGameIds: seenKeys,
       );
     } catch (e) {
       debugPrint('[CountrymenSearch] Error: $e');
       if (!mounted) return;
       state = state.copyWith(isLoading: false, error: e.toString());
-    }
-  }
-
-  /// Search Supabase for countrymen games matching the query
-  Future<List<GamesTourModel>> _searchSupabase(
-    String countryCode,
-    String query,
-    int offset,
-  ) async {
-    try {
-      final gameRepo = _ref.read(gameRepositoryProvider);
-      final fideCode = CountryUtils.toFideCode(countryCode);
-
-      debugPrint('[CountrymenSearch] Supabase search: query="$query", fideCode=$fideCode, offset=$offset');
-
-      // Use the new searchCountrymenGames method with ILIKE
-      final games = await gameRepo.searchCountrymenGames(
-        countryCode: fideCode,
-        query: query,
-        limit: _pageSize,
-        offset: offset,
-      );
-
-      debugPrint('[CountrymenSearch] Supabase results: ${games.length}');
-
-      return games.map((g) => GamesTourModel.fromGame(g)).toList();
-    } catch (e) {
-      debugPrint('[CountrymenSearch] Supabase error: $e');
-      return [];
     }
   }
 
@@ -320,7 +299,8 @@ class CountrymenCombinedGamesNotifier
     await _fetchSearchResults(isInitial: false);
   }
 
-  Future<void> _fetchNextBatch({required bool isInitial}) async {
+  /// Main method: Fetch next batch of dates and their games
+  Future<void> _fetchNextDates({required bool isInitial}) async {
     if (!mounted) return;
 
     state = state.copyWith(isLoading: true, error: null);
@@ -337,53 +317,128 @@ class CountrymenCombinedGamesNotifier
         return;
       }
 
-      final newGames = <GamesTourModel>[];
-      final seenKeys = Set<String>.from(isInitial ? {} : state.seenGameIds);
+      final gameRepo = _ref.read(gameRepositoryProvider);
+      final fideCode = CountryUtils.toFideCode(countryCode);
 
-      if (isInitial) {
-        _supabaseRawOffset = 0;
-        _pendingGames.clear();
+      // Step 1: Get available dates if not cached
+      if (_availableDates.isEmpty && _hasMoreDates) {
+        final dates = await gameRepo.getDistinctDatesForCountry(
+          countryCode: fideCode,
+          limit: 30, // Get enough dates
+          offset: 0,
+        );
+        _availableDates = dates;
+        _hasMoreDates = dates.length >= 30;
+        debugPrint('[CountrymenGames] Got ${dates.length} available dates');
       }
 
-      while (newGames.isEmpty && (_pendingGames.isNotEmpty || _supabaseHasMore)) {
-        var rawDayGames = _takePendingDayRaw();
-        if (rawDayGames.isEmpty) {
-          rawDayGames = await _fetchNextDayFromSupabase(countryCode);
-        }
+      // Step 2: Determine which dates to load
+      final dateOffset = isInitial ? 0 : state.dateOffset;
+      final datesToLoad = _availableDates
+          .skip(dateOffset)
+          .take(_datesPerBatch)
+          .toList();
 
-        if (rawDayGames.isEmpty) {
-          break;
-        }
+      if (datesToLoad.isEmpty) {
+        // Try to get more dates
+        if (_hasMoreDates) {
+          final moreDates = await gameRepo.getDistinctDatesForCountry(
+            countryCode: fideCode,
+            limit: 30,
+            offset: _availableDates.length,
+          );
+          _availableDates.addAll(moreDates);
+          _hasMoreDates = moreDates.length >= 30;
 
-        for (final game in rawDayGames) {
-          final key = _generateDedupeKey(game);
-          if (!seenKeys.contains(key)) {
-            seenKeys.add(key);
-            newGames.add(game);
+          // Retry with new dates
+          final retryDates = _availableDates
+              .skip(dateOffset)
+              .take(_datesPerBatch)
+              .toList();
+          if (retryDates.isNotEmpty) {
+            await _loadGamesForDates(
+              dates: retryDates,
+              fideCode: fideCode,
+              isInitial: isInitial,
+              dateOffset: dateOffset,
+            );
+            return;
           }
         }
+
+        state = state.copyWith(
+          isLoading: false,
+          hasMore: false,
+        );
+        return;
       }
 
-      newGames.sort(_compareByDateDesc);
-
-      // Combine with existing games
-      final allGames = isInitial ? newGames : [...state.games, ...newGames];
-
-      debugPrint('[CountrymenGames] Total games now: ${allGames.length}, hasMore: $_supabaseHasMore');
-
-      if (!mounted) return;
-
-      state = state.copyWith(
-        games: allGames,
-        isLoading: false,
-        hasMore: _supabaseHasMore || _pendingGames.isNotEmpty,
-        seenGameIds: seenKeys,
+      await _loadGamesForDates(
+        dates: datesToLoad,
+        fideCode: fideCode,
+        isInitial: isInitial,
+        dateOffset: dateOffset,
       );
     } catch (e) {
       debugPrint('[CountrymenGames] Fetch error: $e');
       if (!mounted) return;
       state = state.copyWith(isLoading: false, error: e.toString());
     }
+  }
+
+  /// Load ALL games for the specified dates
+  Future<void> _loadGamesForDates({
+    required List<DateTime> dates,
+    required String fideCode,
+    required bool isInitial,
+    required int dateOffset,
+  }) async {
+    final gameRepo = _ref.read(gameRepositoryProvider);
+    final newGames = <GamesTourModel>[];
+    final seenKeys = Set<String>.from(isInitial ? {} : state.seenGameIds);
+    final loadedDates = List<DateTime>.from(isInitial ? [] : state.loadedDates);
+
+    for (final date in dates) {
+      debugPrint('[CountrymenGames] Loading ALL games for ${date.toString().split(' ')[0]}');
+
+      final dayGames = await gameRepo.getGamesByCountryAndDate(
+        countryCode: fideCode,
+        date: date,
+      );
+
+      debugPrint('[CountrymenGames] Got ${dayGames.length} games for ${date.toString().split(' ')[0]}');
+
+      for (final game in dayGames) {
+        final gameModel = GamesTourModel.fromGame(game);
+        final key = _generateDedupeKey(gameModel);
+        if (!seenKeys.contains(key)) {
+          seenKeys.add(key);
+          newGames.add(gameModel);
+        }
+      }
+
+      loadedDates.add(date);
+    }
+
+    // Sort by date descending, then by ELO
+    newGames.sort(_compareByDateDesc);
+
+    final allGames = isInitial ? newGames : [...state.games, ...newGames];
+    final newDateOffset = dateOffset + dates.length;
+    final hasMore = newDateOffset < _availableDates.length || _hasMoreDates;
+
+    debugPrint('[CountrymenGames] Total games: ${allGames.length}, dates loaded: ${loadedDates.length}, hasMore: $hasMore');
+
+    if (!mounted) return;
+
+    state = state.copyWith(
+      games: allGames,
+      isLoading: false,
+      hasMore: hasMore,
+      seenGameIds: seenKeys,
+      loadedDates: loadedDates,
+      dateOffset: newDateOffset,
+    );
   }
 
   /// Generate a dedupe key based on game content, not IDs.
@@ -426,97 +481,6 @@ class CountrymenCombinedGamesNotifier
     }
 
     return normalized;
-  }
-
-  List<GamesTourModel> _takePendingDayRaw() {
-    if (_pendingGames.isEmpty) return [];
-
-    final targetDayKey = _dayKeyForGame(_pendingGames.first);
-    final remaining = <GamesTourModel>[];
-    final dayGames = <GamesTourModel>[];
-
-    for (final game in _pendingGames) {
-      final dayKey = _dayKeyForGame(game);
-      if (dayKey == targetDayKey) {
-        dayGames.add(game);
-      } else {
-        remaining.add(game);
-      }
-    }
-
-    _pendingGames
-      ..clear()
-      ..addAll(remaining);
-
-    return dayGames;
-  }
-
-  Future<List<GamesTourModel>> _fetchNextDayFromSupabase(
-    String countryCode,
-  ) async {
-    String? targetDayKey;
-    final dayGames = <GamesTourModel>[];
-    var reachedNextDay = false;
-
-    while (_supabaseHasMore && !reachedNextDay) {
-      final result = await _fetchRawFromSupabase(countryCode, _supabaseRawOffset);
-      final supabaseGames = result.games;
-      final rawFetched = result.rawFetched;
-
-      debugPrint('[CountrymenGames] Supabase returned ${supabaseGames.length} raw games (rawOffset: $_supabaseRawOffset)');
-
-      if (supabaseGames.isEmpty) {
-        _supabaseHasMore = false;
-        break;
-      }
-
-      _supabaseRawOffset += rawFetched;
-      if (rawFetched < _pageSize) {
-        _supabaseHasMore = false;
-      }
-
-      supabaseGames.sort(_compareByDateDesc);
-
-      for (var i = 0; i < supabaseGames.length; i++) {
-        final game = supabaseGames[i];
-        final dayKey = _dayKeyForGame(game);
-        targetDayKey ??= dayKey;
-
-        if (dayKey == targetDayKey) {
-          dayGames.add(game);
-        } else {
-          _pendingGames.addAll(supabaseGames.sublist(i));
-          reachedNextDay = true;
-          break;
-        }
-      }
-    }
-
-    return dayGames;
-  }
-
-  Future<({List<GamesTourModel> games, int rawFetched})> _fetchRawFromSupabase(
-    String countryCode,
-    int rawOffset,
-  ) async {
-    try {
-      final gameRepo = _ref.read(gameRepositoryProvider);
-      final fideCode = CountryUtils.toFideCode(countryCode);
-
-      debugPrint('[CountrymenGames] Supabase query: fideCode=$fideCode, rawOffset=$rawOffset, limit=$_pageSize');
-
-      final supabaseGames = await gameRepo.getGamesByCountryCodePaginated(
-        countryCode: fideCode,
-        limit: _pageSize,
-        offset: rawOffset,
-      );
-
-      final games = supabaseGames.map((game) => GamesTourModel.fromGame(game)).toList();
-      return (games: games, rawFetched: supabaseGames.length);
-    } catch (e, st) {
-      debugPrint('[CountrymenGames] Supabase error: $e\n$st');
-      return (games: <GamesTourModel>[], rawFetched: 0);
-    }
   }
 
   int _compareByDateDesc(GamesTourModel a, GamesTourModel b) {

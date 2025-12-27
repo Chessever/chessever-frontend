@@ -1,6 +1,62 @@
 import 'package:chessever2/repository/supabase/supabase.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
+/// Provider to get player rating from chess_players table by FIDE ID
+/// This table has 23k+ players with all their ratings
+final chessPlayerRatingProvider = FutureProvider.family.autoDispose<
+    int?,
+    ChessPlayerRatingRequest>((ref, request) async {
+  if (request.fideId == null) return null;
+
+  final supabase = ref.read(supabaseProvider);
+
+  try {
+    final response = await supabase
+        .from('chess_players')
+        .select('rating, rapid_rating, blitz_rating')
+        .eq('fideid', request.fideId!)
+        .maybeSingle();
+
+    if (response == null) return null;
+
+    // Map time control type to the correct column
+    switch (request.timeControlType) {
+      case 'standard':
+        return response['rating'] as int?;
+      case 'rapid':
+        return response['rapid_rating'] as int?;
+      case 'blitz':
+        return response['blitz_rating'] as int?;
+      default:
+        return response['rating'] as int?;
+    }
+  } catch (e) {
+    print('Error fetching rating from chess_players for fideId ${request.fideId}: $e');
+    return null;
+  }
+});
+
+class ChessPlayerRatingRequest {
+  final int? fideId;
+  final String timeControlType;
+
+  const ChessPlayerRatingRequest({
+    required this.fideId,
+    required this.timeControlType,
+  });
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ChessPlayerRatingRequest &&
+          runtimeType == other.runtimeType &&
+          fideId == other.fideId &&
+          timeControlType == other.timeControlType;
+
+  @override
+  int get hashCode => fideId.hashCode ^ timeControlType.hashCode;
+}
+
 // Helper method to extract rating from PGN
 int? _extractRatingFromPGN(String pgn, String playerName) {
   try {

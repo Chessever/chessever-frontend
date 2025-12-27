@@ -134,6 +134,12 @@ class PlayerTourScreen extends ConsumerWidget {
                                               selectedPlayerProvider.notifier,
                                             )
                                             .state = player;
+                                        // Clear games context - tournament games come from gamesTourScreenProvider
+                                        ref
+                                            .read(
+                                              scoreCardGamesContextProvider.notifier,
+                                            )
+                                            .state = null;
                                         Navigator.of(
                                           context,
                                         ).pushNamed('/scorecard_screen');

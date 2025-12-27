@@ -1,7 +1,8 @@
 import 'dart:math' as math;
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
-import 'package:chessever2/screens/standings/providers/player_ratings_provider.dart';
+import 'package:chessever2/screens/standings/providers/player_ratings_provider.dart'
+    show PlayerRatingRequest, playerLatestRatingProvider, ChessPlayerRatingRequest, chessPlayerRatingProvider;
 import 'package:chessever2/screens/standings/providers/fide_ratings_provider.dart';
 import 'package:chessever2/screens/standings/providers/player_utils_provider.dart';
 import 'package:chessever2/screens/standings/widget/scoreboard_appbar.dart';
@@ -217,14 +218,22 @@ class ScoreCardScreen extends ConsumerWidget {
     }
 
     final gameDateFallback = DateTime.fromMillisecondsSinceEpoch(0);
+    final playerUtils = ref.read(playerUtilsProvider);
     final playerGames =
         allGames.where((game) {
-          return ref
-                  .read(playerUtilsProvider)
-                  .isSamePlayer(game.whitePlayer.name, player.name) ||
-              ref
-                  .read(playerUtilsProvider)
-                  .isSamePlayer(game.blackPlayer.name, player.name);
+          // Use fideId matching when available (more reliable), fall back to name matching
+          return playerUtils.isSamePlayerWithFideId(
+                game.whitePlayer.name,
+                player.name,
+                fideId1: game.whitePlayer.fideId,
+                fideId2: player.fideId,
+              ) ||
+              playerUtils.isSamePlayerWithFideId(
+                game.blackPlayer.name,
+                player.name,
+                fideId1: game.blackPlayer.fideId,
+                fideId2: player.fideId,
+              );
         }).toList();
     // Sort by round/date ascending - Round 1 first, then Round 2, etc.
     playerGames.sort((a, b) {
@@ -910,6 +919,7 @@ class _RatingDisplay extends ConsumerWidget {
             return _FallbackRatingDisplay(
               playerName: playerName,
               timeControlType: timeControlType,
+              fideId: fideId,
             );
           },
           loading:
@@ -929,6 +939,7 @@ class _RatingDisplay extends ConsumerWidget {
               (_, __) => _FallbackRatingDisplay(
                 playerName: playerName,
                 timeControlType: timeControlType,
+                fideId: fideId,
               ),
         ),
       );
@@ -939,17 +950,83 @@ class _RatingDisplay extends ConsumerWidget {
       _FallbackRatingDisplay(
         playerName: playerName,
         timeControlType: timeControlType,
+        fideId: fideId,
       ),
     );
   }
 }
 
-/// Fallback widget using PGN-based ratings from Supabase
+/// Fallback widget using chess_players table first, then PGN-based ratings
 class _FallbackRatingDisplay extends ConsumerWidget {
   final String playerName;
   final String timeControlType;
+  final int? fideId;
 
   const _FallbackRatingDisplay({
+    required this.playerName,
+    required this.timeControlType,
+    this.fideId,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    // First try chess_players table if we have a FIDE ID
+    if (fideId != null) {
+      final chessPlayerRequest = ChessPlayerRatingRequest(
+        fideId: fideId,
+        timeControlType: timeControlType,
+      );
+      final chessPlayerRatingAsync = ref.watch(
+        chessPlayerRatingProvider(chessPlayerRequest),
+      );
+
+      return chessPlayerRatingAsync.when(
+        data: (rating) {
+          if (rating != null && rating > 0) {
+            return Text(
+              rating.toString(),
+              style: AppTypography.textLgBold.copyWith(color: kWhiteColor),
+            );
+          }
+          // Fallback to PGN-based ratings if chess_players didn't have rating
+          return _PgnBasedRatingDisplay(
+            playerName: playerName,
+            timeControlType: timeControlType,
+          );
+        },
+        loading: () => Skeletonizer(
+          enabled: true,
+          ignoreContainers: true,
+          effect: const ShimmerEffect(
+            baseColor: Color(0xFF2A2A2A),
+            highlightColor: Color(0xFF3A3A3A),
+          ),
+          child: Text(
+            '2400',
+            style: AppTypography.textLgBold.copyWith(color: kWhiteColor),
+          ),
+        ),
+        error: (_, __) => _PgnBasedRatingDisplay(
+          playerName: playerName,
+          timeControlType: timeControlType,
+        ),
+      );
+    }
+
+    // No FIDE ID - use PGN-based ratings directly
+    return _PgnBasedRatingDisplay(
+      playerName: playerName,
+      timeControlType: timeControlType,
+    );
+  }
+}
+
+/// Last resort fallback: PGN-based ratings from games table
+class _PgnBasedRatingDisplay extends ConsumerWidget {
+  final String playerName;
+  final String timeControlType;
+
+  const _PgnBasedRatingDisplay({
     required this.playerName,
     required this.timeControlType,
   });
@@ -964,29 +1041,26 @@ class _FallbackRatingDisplay extends ConsumerWidget {
     final ratingAsync = ref.watch(playerLatestRatingProvider(ratingRequest));
 
     return ratingAsync.when(
-      data:
-          (rating) => Text(
-            rating?.toString() ?? '-',
-            style: AppTypography.textLgBold.copyWith(color: kWhiteColor),
-          ),
-      loading:
-          () => Skeletonizer(
-            enabled: true,
-            ignoreContainers: true,
-            effect: const ShimmerEffect(
-              baseColor: Color(0xFF2A2A2A),
-              highlightColor: Color(0xFF3A3A3A),
-            ),
-            child: Text(
-              '2400',
-              style: AppTypography.textLgBold.copyWith(color: kWhiteColor),
-            ),
-          ),
-      error:
-          (_, __) => Text(
-            '-',
-            style: AppTypography.textLgBold.copyWith(color: kWhiteColor),
-          ),
+      data: (rating) => Text(
+        rating?.toString() ?? '-',
+        style: AppTypography.textLgBold.copyWith(color: kWhiteColor),
+      ),
+      loading: () => Skeletonizer(
+        enabled: true,
+        ignoreContainers: true,
+        effect: const ShimmerEffect(
+          baseColor: Color(0xFF2A2A2A),
+          highlightColor: Color(0xFF3A3A3A),
+        ),
+        child: Text(
+          '2400',
+          style: AppTypography.textLgBold.copyWith(color: kWhiteColor),
+        ),
+      ),
+      error: (_, __) => Text(
+        '-',
+        style: AppTypography.textLgBold.copyWith(color: kWhiteColor),
+      ),
     );
   }
 }

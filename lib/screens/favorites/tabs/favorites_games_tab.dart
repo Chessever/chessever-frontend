@@ -2,14 +2,15 @@ import 'dart:async';
 
 import 'package:chessever2/repository/favorites/models/favorite_player.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
-import 'package:chessever2/screens/chessboard/widgets/chess_board_from_fen_new.dart';
 import 'package:chessever2/screens/favorites/favorite_players_provider.dart';
 import 'package:chessever2/screens/favorites/player_games/provider/favorites_combined_games_provider.dart';
 import 'package:chessever2/screens/library/widgets/add_to_folder_sheet.dart';
-import 'package:chessever2/screens/library/widgets/gamebase_search_game_card.dart';
+import 'package:chessever2/screens/library/widgets/live_gamebase_search_game_card.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/board_game_card_wrapper_widget.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/grid_game_card_wrapper_widget.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
@@ -725,11 +726,11 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
                 ),
               );
             } else {
-              // Card mode: use GamebaseSearchGameCard
+              // Card mode: use LiveGamebaseSearchGameCard for live position updates
               items.add(
                 Padding(
                   padding: EdgeInsets.only(bottom: isLast ? 16.h : 12.h),
-                  child: GamebaseSearchGameCard(
+                  child: LiveGamebaseSearchGameCard(
                     game: game,
                     allGames: games,
                     gameIndex: gameIndex,
@@ -801,9 +802,9 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
     List<GamesTourModel> allGames,
     int listIndex,
   ) {
-    return GridChessBoardFromFENNew(
+    return GridGameCardWrapperWidget(
       key: ValueKey('fav_grid_game_${game.gameId}'),
-      gamesTourModel: game,
+      game: game,
       onChanged: () async {
         // Premium guard - show paywall if not subscribed
         final hasPremium = await requirePremiumGuard(context, ref);
@@ -1164,12 +1165,12 @@ class _FavoritesKeepAliveGameCardState
 
     final gameId = widget.game.gameId;
 
-    // Use ChessBoardFromFENNew directly with premium-guarded navigation
+    // Use BoardGameCardWrapperWidget for live position updates
     final card = Padding(
       padding: EdgeInsets.only(bottom: widget.isLast ? 16.h : 12.h),
-      child: ChessBoardFromFENNew(
+      child: BoardGameCardWrapperWidget(
         key: ValueKey('fav_board_game_${widget.game.gameId}'),
-        gamesTourModel: widget.game,
+        game: widget.game,
         onChanged: _handleNavigate,
         pinnedIds: widget.gamesData.pinnedGamedIs,
         onPinToggle: (_) {},
