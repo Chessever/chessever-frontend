@@ -29,25 +29,30 @@ class PerformanceStatsRow extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
-          // Performance Rating
-          if (performanceRating != null)
-            _buildStatItem(
-              label: 'Performance',
-              value: performanceRating.toString(),
-            ),
+          // Performance Rating - always show, "-" when no data
+          _buildStatItem(
+            label: 'Performance',
+            value: performanceRating?.toString() ?? '-',
+          ),
 
-          // Score
-          if (score != null && totalGames != null)
-            _buildStatItem(
-              label: 'Score',
-              value: _formatScore(score!, totalGames!),
-            ),
+          // Score - always show, "-" when no data
+          _buildStatItem(
+            label: 'Score',
+            value: (score != null && totalGames != null)
+                ? _formatScore(score!, totalGames!)
+                : '-',
+          ),
 
-          // Rating Diff
+          // Rating Diff - always show, "-" when no data
           if (ratingDiff != null)
             _buildRatingDiffItem(
               label: 'Rating',
               diff: ratingDiff!,
+            )
+          else
+            _buildStatItem(
+              label: 'Rating',
+              value: '-',
             ),
         ],
       ),

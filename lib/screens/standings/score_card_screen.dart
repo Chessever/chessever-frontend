@@ -5,7 +5,6 @@ import 'package:chessever2/screens/standings/providers/player_ratings_provider.d
     show PlayerRatingRequest, playerLatestRatingProvider, ChessPlayerRatingRequest, chessPlayerRatingProvider;
 import 'package:chessever2/screens/standings/providers/fide_ratings_provider.dart';
 import 'package:chessever2/screens/standings/providers/player_utils_provider.dart';
-import 'package:chessever2/screens/standings/widget/scoreboard_appbar.dart';
 import 'package:chessever2/screens/standings/widget/scoreboard_card_widget.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen_provider.dart';
@@ -184,11 +183,11 @@ class ScoreCardScreen extends ConsumerWidget {
 
     List<GamesTourModel> allGames = [];
     bool isLoadingGames = false;
-    bool hasTournamentContext = false;
+    bool hasEventContext = false;
 
     if (selectedBroadcast != null) {
       // Tournament context: use games from the tournament
-      hasTournamentContext = true;
+      hasEventContext = true;
       final gamesTourAsync = ref.watch(gamesTourScreenProvider);
       allGames = gamesTourAsync.when(
         data: (data) => data.gamesTourModels,
@@ -201,11 +200,15 @@ class ScoreCardScreen extends ConsumerWidget {
     } else if (gamesContext != null && gamesContext.isNotEmpty) {
       // Games context provided (from favorites, countrymen, player profile, etc.)
       // Use the provided games list directly
-      hasTournamentContext = false;
       allGames = gamesContext;
+      // Check if all games share the same tourId (event-filtered from countryman/forYou)
+      // If so, we have event context. If games are from multiple events, no context.
+      final firstTourId = gamesContext.first.tourId;
+      hasEventContext = firstTourId.isNotEmpty &&
+          gamesContext.every((g) => g.tourId == firstTourId);
     } else {
       // No context available: fall back to fetching all player games
-      hasTournamentContext = false;
+      hasEventContext = false;
       final playerGamesAsync = ref.watch(playerGamesProvider(player));
       allGames = playerGamesAsync.when(
         data: (games) => games,
@@ -217,7 +220,6 @@ class ScoreCardScreen extends ConsumerWidget {
       );
     }
 
-    final gameDateFallback = DateTime.fromMillisecondsSinceEpoch(0);
     final playerUtils = ref.read(playerUtilsProvider);
     final playerGames =
         allGames.where((game) {
@@ -235,12 +237,31 @@ class ScoreCardScreen extends ConsumerWidget {
                 fideId2: player.fideId,
               );
         }).toList();
-    // Sort by round/date ascending - Round 1 first, then Round 2, etc.
-    playerGames.sort((a, b) {
-      final aTime = a.lastMoveTime ?? gameDateFallback;
-      final bTime = b.lastMoveTime ?? gameDateFallback;
-      return aTime.compareTo(bTime);
-    });
+    // Sort games based on context:
+    // - With event context: by round number ascending (Round 1, 2, 3...)
+    // - Without event context: by date descending (most recent first)
+    if (hasEventContext) {
+      // Sort by round number ascending - Round 1 first, then Round 2, etc.
+      playerGames.sort((a, b) {
+        final aRound = _extractRoundNumber(a.roundSlug) ?? _extractRoundNumber(a.roundId) ?? 9999;
+        final bRound = _extractRoundNumber(b.roundSlug) ?? _extractRoundNumber(b.roundId) ?? 9999;
+        if (aRound != bRound) {
+          return aRound.compareTo(bRound);
+        }
+        // If same round, sort by board number (lower board = higher importance)
+        final aBoard = a.boardNr ?? 9999;
+        final bBoard = b.boardNr ?? 9999;
+        return aBoard.compareTo(bBoard);
+      });
+    } else {
+      // Sort by date descending - most recent games first
+      final epochFallback = DateTime.fromMillisecondsSinceEpoch(0);
+      playerGames.sort((a, b) {
+        final aTime = a.lastMoveTime ?? epochFallback;
+        final bTime = b.lastMoveTime ?? epochFallback;
+        return bTime.compareTo(aTime); // Descending order
+      });
+    }
 
     final nameParts = player.name.split(',');
     final initials =
@@ -254,36 +275,75 @@ class ScoreCardScreen extends ConsumerWidget {
             )
             : '';
 
-    // Calculate total performance
-    double totalPerformance = 0.0;
-    for (final game in playerGames) {
-      final playerRating = _getPlayerRating(game, player.name);
-      final isWhite = game.whitePlayer.name == player.name;
-      final opponent = isWhite ? game.blackPlayer : game.whitePlayer;
-      final opponentRating = _getPlayerRating(game, opponent.name);
+    // Calculate performance rating only when we have event context
+    // Without event context (e.g., from Favorites tab), we can't calculate meaningful performance
+    int? performanceRating;
+    double? eventScore;
+    int? eventTotalGames;
 
-      if (playerRating > 0 && opponentRating > 0) {
-        final ratingChange = _calculateFideRatingChange(
-          playerRating,
-          opponentRating,
-          game.gameStatus,
-          player.name,
-          game,
-        );
-        totalPerformance += ratingChange;
+    if (hasEventContext) {
+      // Calculate performance rating using standard chess formula:
+      // Performance = Average Opponent Rating + DP (delta points based on score percentage)
+      double totalOpponentRating = 0.0;
+      double playerScore = 0.0;
+      int validGamesCount = 0;
+
+      for (final game in playerGames) {
+        // Skip ongoing/unknown games for performance calculation
+        if (game.gameStatus == GameStatus.ongoing || game.gameStatus == GameStatus.unknown) {
+          continue;
+        }
+
+        final isWhite = game.whitePlayer.name == player.name;
+        final opponent = isWhite ? game.blackPlayer : game.whitePlayer;
+        final opponentRating = _getPlayerRating(game, opponent.name);
+
+        if (opponentRating > 0) {
+          totalOpponentRating += opponentRating;
+          validGamesCount++;
+
+          // Calculate player score for this game
+          switch (game.gameStatus) {
+            case GameStatus.whiteWins:
+              playerScore += isWhite ? 1.0 : 0.0;
+              break;
+            case GameStatus.blackWins:
+              playerScore += isWhite ? 0.0 : 1.0;
+              break;
+            case GameStatus.draw:
+              playerScore += 0.5;
+              break;
+            default:
+              break;
+          }
+        }
+      }
+
+      // Calculate performance rating
+      if (validGamesCount > 0) {
+        final avgOpponentRating = totalOpponentRating / validGamesCount;
+        final scorePercentage = playerScore / validGamesCount;
+        double dp;
+        if (scorePercentage >= 1.0) {
+          dp = 800; // Perfect score cap
+        } else if (scorePercentage <= 0.0) {
+          dp = -800; // Zero score cap
+        } else {
+          dp = 400 * (2 * scorePercentage - 1);
+        }
+        performanceRating = (avgOpponentRating + dp).round();
+        eventScore = playerScore;
+        eventTotalGames = validGamesCount;
+      } else {
+        // No valid games in event - use player's current rating
+        performanceRating = player.score.round();
+        final displayScore = player.matchScore ?? "0 / 0";
+        final parsedScore = _parseScoreValues(displayScore);
+        eventScore = parsedScore.$1;
+        eventTotalGames = parsedScore.$2;
       }
     }
-
-    final displayPerformance =
-        playerGames.isEmpty
-            ? (player.scoreChange.toDouble())
-            : totalPerformance;
-    final performanceRating = (player.score + displayPerformance).round();
-    final displayScore = player.matchScore ?? "0 / 0";
-    final parsedScore = _parseScoreValues(displayScore);
-    final validCountryCode = ref
-        .read(locationServiceProvider)
-        .getValidCountryCode(player.countryCode);
+    // When !hasEventContext: performanceRating, eventScore, eventTotalGames remain null
     final photoFuture = FidePhotoService.getPhotoUrlOrNull(
       player.fideId?.toString(),
     );
@@ -352,9 +412,9 @@ class ScoreCardScreen extends ConsumerWidget {
                     SizedBox(height: 16.h),
                     PerformanceStatsRow(
                       performanceRating: performanceRating,
-                      score: parsedScore.$1,
-                      totalGames: parsedScore.$2,
-                      ratingDiff: player.scoreChange,
+                      score: eventScore,
+                      totalGames: eventTotalGames,
+                      ratingDiff: hasEventContext ? player.scoreChange : null,
                     ),
                   ],
                 ),
@@ -380,7 +440,7 @@ class ScoreCardScreen extends ConsumerWidget {
                       ),
                       SizedBox(height: 16.h),
                       Text(
-                        hasTournamentContext
+                        hasEventContext
                             ? 'No games in this tournament'
                             : 'No games available',
                         style: AppTypography.textMdMedium.copyWith(
@@ -389,7 +449,7 @@ class ScoreCardScreen extends ConsumerWidget {
                       ),
                       SizedBox(height: 8.h),
                       Text(
-                        hasTournamentContext
+                        hasEventContext
                             ? 'This player has not played in this tournament yet'
                             : 'Games will appear once they are played',
                         textAlign: TextAlign.center,
@@ -429,7 +489,7 @@ class ScoreCardScreen extends ConsumerWidget {
                       padding: EdgeInsets.symmetric(horizontal: 20.0.sp),
                       child: ScoreboardCardWidget(
                         roundLabel:
-                            hasTournamentContext ? _buildRoundLabel(game) : null,
+                            hasEventContext ? _buildRoundLabel(game) : null,
                         countryCode: opponent.countryCode,
                         title: opponent.title,
                         name: opponent.name,
@@ -535,6 +595,36 @@ class ScoreCardScreen extends ConsumerWidget {
         final number = match.group(1);
         if (number != null && number.isNotEmpty) {
           return '$number.';
+        }
+      }
+    }
+
+    return null;
+  }
+
+  /// Extract round number from a round slug or round id string
+  /// e.g., "round-2" -> 2, "round7" -> 7, "r3" -> 3
+  int? _extractRoundNumber(String? source) {
+    if (source == null || source.isEmpty) return null;
+
+    final patterns = [
+      RegExp(r'round[-\s]?(\d+)', caseSensitive: false),
+      RegExp(r'rapid[-\s]?(\d+)', caseSensitive: false),
+      RegExp(r'blitz[-\s]?(\d+)', caseSensitive: false),
+      RegExp(r'^(\d+)$'),
+      RegExp(r'r(\d+)', caseSensitive: false),
+      RegExp(r'game[-\s]?(\d+)', caseSensitive: false),
+      // Handle tiebreak, losers rounds with game numbers
+      RegExp(r'tiebreak[-\s]?(\d+)', caseSensitive: false),
+      RegExp(r'losers[-\s]?r?(\d+)', caseSensitive: false),
+    ];
+
+    for (final pattern in patterns) {
+      final match = pattern.firstMatch(source);
+      if (match != null && match.groupCount >= 1) {
+        final number = match.group(1);
+        if (number != null && number.isNotEmpty) {
+          return int.tryParse(number);
         }
       }
     }
