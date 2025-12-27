@@ -1220,6 +1220,7 @@ class _GamePage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scaffold = Scaffold(
+      backgroundColor: Colors.black,
       resizeToAvoidBottomInset: false,
       bottomNavigationBar: _BottomNavBar(
         index: currentGameIndex,
@@ -1275,6 +1276,7 @@ class _LoadingScreen extends StatelessWidget {
     final boardSize = screenWidth - sideBarWidth - 32.w;
 
     final scaffold = Scaffold(
+      backgroundColor: Colors.black,
       resizeToAvoidBottomInset: false,
       appBar: _AppBar(
         game: games[currentGameIndex],
