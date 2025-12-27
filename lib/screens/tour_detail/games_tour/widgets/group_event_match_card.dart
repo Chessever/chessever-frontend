@@ -1,6 +1,7 @@
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_widget.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/grid_game_card_wrapper_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_tour_content_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/group_event_games_card.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/group_event_match_card_provider.dart';
@@ -13,7 +14,6 @@ import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_provider.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
-import 'package:chessever2/screens/chessboard/widgets/chess_board_from_fen_new.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
 
 class GroupEventMatchCard extends ConsumerWidget {
@@ -293,9 +293,9 @@ class GroupEventMatchCard extends ConsumerWidget {
       (g) => g.gameId == matchWithComparison.game.gameId,
     );
 
-    return GridChessBoardFromFENNew(
+    return GridGameCardWrapperWidget(
       key: ValueKey('game_${matchWithComparison.game.gameId}'),
-      gamesTourModel: matchWithComparison.game,
+      game: matchWithComparison.game,
       onChanged:
           () => ref
               .read(gameCardWrapperProvider)

@@ -2,20 +2,28 @@ import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
+/// Parameters for liveGameCardProvider.
+typedef LiveGameCardParams = ({String gameId, GamesTourModel baseGame});
+
 /// Provider that combines the base game model with real-time updates from the stream.
 /// This is used by game cards to show live updates without entering the game screen.
-final liveGameCardProvider = AutoDisposeProvider.family<GamesTourModel, GamesTourModel>((
+final liveGameCardProvider =
+    AutoDisposeProvider.family<GamesTourModel, LiveGameCardParams>((
   ref,
-  baseGame,
+  params,
 ) {
-  // Subscribe to updates for any non-finished game so status changes don't
-  // require a manual refresh to appear.
+  final (:gameId, :baseGame) = params;
+
+  // For finished games, return the base game directly (no stream needed)
   if (baseGame.gameStatus.isFinished) {
     return baseGame;
   }
 
-  // Watch the game updates stream
-  final streamAsync = ref.watch(gameUpdatesStreamProvider(baseGame.gameId));
+  // Keep subscription alive for ongoing games to prevent churn when scrolling
+  ref.keepAlive();
+
+  // Watch the game updates stream - SharedGameStreamManager handles batching
+  final streamAsync = ref.watch(gameUpdatesStreamProvider(gameId));
 
   return streamAsync.when(
     data: (gameData) {
@@ -38,7 +46,7 @@ final liveGameCardProvider = AutoDisposeProvider.family<GamesTourModel, GamesTou
         }
       }
 
-      // Update the game with streamed data
+      // Merge streamed data with base game
       return baseGame.copyWith(
         pgn: gameData['pgn'] as String? ?? baseGame.pgn,
         fen: gameData['fen'] as String? ?? baseGame.fen,
@@ -46,8 +54,10 @@ final liveGameCardProvider = AutoDisposeProvider.family<GamesTourModel, GamesTou
         lastMoveTime: gameData['last_move_time'] != null
             ? DateTime.tryParse(gameData['last_move_time'] as String)
             : baseGame.lastMoveTime,
-        whiteClockSeconds: (gameData['last_clock_white'] as num?)?.round() ?? baseGame.whiteClockSeconds,
-        blackClockSeconds: (gameData['last_clock_black'] as num?)?.round() ?? baseGame.blackClockSeconds,
+        whiteClockSeconds: (gameData['last_clock_white'] as num?)?.round() ??
+            baseGame.whiteClockSeconds,
+        blackClockSeconds: (gameData['last_clock_black'] as num?)?.round() ??
+            baseGame.blackClockSeconds,
         gameStatus: parseGameStatus(gameData['status'] as String?),
       );
     },

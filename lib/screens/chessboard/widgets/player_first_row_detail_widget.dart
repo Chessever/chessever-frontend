@@ -6,6 +6,7 @@ import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/screens/standings/score_card_screen.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen_provider.dart';
+import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/location_service_provider.dart';
@@ -274,6 +275,8 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
           case ChessboardView.favScorecard:
           case ChessboardView.playerProfile:
             // For favorites/player profile, use playerGamesProvider
+            // Clear tournament context to avoid ScoreCardScreen using stale tournament data
+            ref.read(selectedBroadcastModelProvider.notifier).state = null;
             final selectedPlayer = ref.read(selectedPlayerProvider);
             if (selectedPlayer != null) {
               gamesContext = ref.read(playerGamesProvider(selectedPlayer)).valueOrNull;
@@ -287,6 +290,8 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
           case ChessboardView.countryman:
             // For countrymen view, filter games by the current game's tournament
             // This ensures ScoreCardScreen shows only games from that specific event
+            // Clear tournament context to avoid ScoreCardScreen using stale tournament data
+            ref.read(selectedBroadcastModelProvider.notifier).state = null;
             final allCountrymanGames = ref.read(countrymanGamesTourScreenProvider).valueOrNull?.gamesTourModels ?? [];
             final currentTourIdCountryman = gamesTourModel.tourId;
             if (currentTourIdCountryman.isNotEmpty) {
@@ -300,6 +305,8 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
           case ChessboardView.forYou:
             // For "For You" view, filter games by the current game's tournament
             // This ensures ScoreCardScreen shows only games from that specific event
+            // Clear tournament context to avoid ScoreCardScreen using stale tournament data
+            ref.read(selectedBroadcastModelProvider.notifier).state = null;
             final allForYouGames = ref.read(convertedForYouGamesProvider);
             final currentTourId = gamesTourModel.tourId;
             if (currentTourId.isNotEmpty) {

@@ -573,6 +573,8 @@ class _FavoritesPlayersTabState extends ConsumerState<FavoritesPlayersTab>
   void _navigateToPlayerDetail(PlayerStandingModel player) {
     ref.read(selectedBroadcastModelProvider.notifier).state = null;
     ref.read(selectedPlayerProvider.notifier).state = player;
+    // Clear games context to use fallback (fetches all player games globally)
+    ref.read(scoreCardGamesContextProvider.notifier).state = null;
     Navigator.pushNamed(context, '/scorecard_screen');
   }
 

@@ -1,13 +1,14 @@
 import 'dart:async';
 
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
-import 'package:chessever2/screens/chessboard/widgets/chess_board_from_fen_new.dart';
 import 'package:chessever2/screens/library/widgets/add_to_folder_sheet.dart';
-import 'package:chessever2/screens/library/widgets/gamebase_search_game_card.dart';
+import 'package:chessever2/screens/library/widgets/live_gamebase_search_game_card.dart';
 import 'package:chessever2/screens/player_profile/provider/player_profile_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/board_game_card_wrapper_widget.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/grid_game_card_wrapper_widget.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:chessever2/utils/app_typography.dart';
@@ -542,13 +543,13 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
             if (isFirstGameCard) isFirstGameCard = false;
 
             if (isChessBoardVisible) {
-              // Board mode: use ChessBoardFromFENNew with premium-guarded navigation
+              // Board mode: use BoardGameCardWrapperWidget for live position updates
               items.add(
                 Padding(
                   padding: EdgeInsets.only(bottom: isLast ? 16.h : 12.h),
-                  child: ChessBoardFromFENNew(
+                  child: BoardGameCardWrapperWidget(
                     key: ValueKey('player_board_game_${game.gameId}'),
-                    gamesTourModel: game,
+                    game: game,
                     onChanged: () async {
                       // Premium guard - show paywall if not subscribed
                       final hasPremium = await requirePremiumGuard(context, ref);
@@ -569,11 +570,11 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
                 ),
               );
             } else {
-              // Card mode: use GamebaseSearchGameCard
+              // Card mode: use LiveGamebaseSearchGameCard for live position updates
               items.add(
                 Padding(
                   padding: EdgeInsets.only(bottom: isLast ? 16.h : 12.h),
-                  child: GamebaseSearchGameCard(
+                  child: LiveGamebaseSearchGameCard(
                     game: game,
                     allGames: games,
                     gameIndex: globalIndex,
@@ -607,9 +608,9 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
     int gameIndex,
     List<GamesTourModel> allGames,
   ) {
-    return GridChessBoardFromFENNew(
+    return GridGameCardWrapperWidget(
       key: ValueKey('player_grid_game_${game.gameId}'),
-      gamesTourModel: game,
+      game: game,
       onChanged: () async {
         // Premium guard - show paywall if not subscribed
         final hasPremium = await requirePremiumGuard(context, ref);

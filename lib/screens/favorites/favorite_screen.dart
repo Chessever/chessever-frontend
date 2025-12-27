@@ -200,6 +200,8 @@ class _FavoriteScreenState extends ConsumerState<FavoriteScreen> {
                       // Clear tournament context so scorecard shows player's full game history
                       ref.read(selectedBroadcastModelProvider.notifier).state = null;
                       ref.read(selectedPlayerProvider.notifier).state = player;
+                      // Clear games context to use fallback (fetches all player games globally)
+                      ref.read(scoreCardGamesContextProvider.notifier).state = null;
                       Navigator.pushNamed(context, '/scorecard_screen');
                     },
                     onToggleFavorite: () => _removeFavoritePlayer(player),
