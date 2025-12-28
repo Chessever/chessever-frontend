@@ -876,10 +876,24 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
       case ChessboardView.favScorecard:
       case ChessboardView.playerProfile:
         final selectedPlayer = ref.watch(selectedPlayerProvider);
-        final games = ref.watch(playerGamesProvider(selectedPlayer!)).value!;
-        gamesAsync = AsyncValue.data(
-          GamesScreenModel(gamesTourModels: games, pinnedGamedIs: []),
-        );
+        if (selectedPlayer == null) {
+          // Fallback to widget.games if no player is selected
+          gamesAsync = AsyncValue.data(
+            GamesScreenModel(gamesTourModels: widget.games, pinnedGamedIs: []),
+          );
+        } else {
+          final gamesValue = ref.watch(playerGamesProvider(selectedPlayer)).valueOrNull;
+          if (gamesValue == null) {
+            // Still loading player games, use widget.games as fallback
+            gamesAsync = AsyncValue.data(
+              GamesScreenModel(gamesTourModels: widget.games, pinnedGamedIs: []),
+            );
+          } else {
+            gamesAsync = AsyncValue.data(
+              GamesScreenModel(gamesTourModels: gamesValue, pinnedGamedIs: []),
+            );
+          }
+        }
         break;
       case ChessboardView.tour:
         // Use a non-listening read here to avoid triggering rebuilds of the
@@ -920,16 +934,28 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
       );
     }
 
-    final liveGamesMap = Map.fromEntries(
-      gamesModel.gamesTourModels.map((g) => MapEntry(g.gameId, g)),
-    );
-    final liveGames =
-        widget.games
-            .map(
-              (originalGame) =>
-                  liveGamesMap[originalGame.gameId] ?? originalGame,
-            )
-            .toList();
+    // Merge game data between gamesModel and widget.games
+    // CRITICAL: For "For You" view, widget.games has live updates from liveGameCardProvider,
+    // while gamesModel (convertedForYouGamesProvider) is a static snapshot without live streaming.
+    // So for "For You", we use widget.games directly to preserve live state.
+    // For tour/countryman views, gamesModel has live streaming, so prefer it.
+    final List<GamesTourModel> liveGames;
+    if (view == ChessboardView.forYou) {
+      // For "For You": widget.games already has live updates from liveGameCardProvider
+      liveGames = widget.games;
+    } else {
+      // For other views: merge with gamesModel which has live streaming
+      final liveGamesMap = Map.fromEntries(
+        gamesModel.gamesTourModels.map((g) => MapEntry(g.gameId, g)),
+      );
+      liveGames =
+          widget.games
+              .map(
+                (originalGame) =>
+                    liveGamesMap[originalGame.gameId] ?? originalGame,
+              )
+              .toList();
+    }
 
     final syncedGames = List<GamesTourModel>.from(liveGames);
     if (syncedGames.isEmpty) {

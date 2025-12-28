@@ -889,6 +889,15 @@ class ChessBoardScreenNotifierNew
       } else if (_analysisNavigator != null) {
         final liveAnalysisGame = _createChessGameFromPgn(resolvedPgn);
         _analysisNavigator!.updateWithLatestGame(liveAnalysisGame);
+
+        // CRITICAL: When user was viewing the last move and new moves arrived,
+        // jump the navigator to the tail so the animation plays.
+        // Without this, the navigator stays at the old position and the
+        // listener sync would reset the state back to the old move.
+        if (wasViewingLastMove && hasNewMoves) {
+          _analysisNavigator!.goToTail();
+        }
+
         unawaited(_persistAnalysisState());
       }
 

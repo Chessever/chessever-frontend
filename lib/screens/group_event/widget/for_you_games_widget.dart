@@ -529,11 +529,13 @@ class _ForYouListView extends ConsumerWidget {
     return GridGameCardWrapperWidget(
       key: ValueKey('grid_game_${game.gameId}'),
       game: game,
-      onChanged: () => ref
+      orderedGames: allGames,
+      gameIndex: gameIndex,
+      onChangedWithLiveGames: (updatedGames) => ref
           .read(gameCardWrapperProvider)
           .navigateToChessBoard(
             context: context,
-            orderedGames: allGames,
+            orderedGames: updatedGames,
             gameIndex: gameIndex,
             onReturnFromChessboard: (_) {},
             viewSource: ChessboardView.forYou,

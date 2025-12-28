@@ -597,7 +597,9 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
     return GridGameCardWrapperWidget(
       key: ValueKey('cmen_grid_game_${game.gameId}'),
       game: game,
-      onChanged: () async {
+      orderedGames: allGames,
+      gameIndex: gameIndex,
+      onChangedWithLiveGames: (updatedGames) async {
         // Premium guard - show paywall if not subscribed
         final hasPremium = await requirePremiumGuard(context, ref);
         if (!hasPremium) return;
@@ -605,7 +607,7 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
 
         ref.read(gameCardWrapperProvider).navigateToChessBoard(
               context: context,
-              orderedGames: allGames,
+              orderedGames: updatedGames,
               gameIndex: gameIndex,
               onReturnFromChessboard: (_) {},
               viewSource: ChessboardView.countryman,
