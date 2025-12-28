@@ -1,6 +1,47 @@
+import 'package:chessever2/repository/lichess/fide/fide_player.dart';
 import 'package:chessever2/repository/lichess/fide/lichess_fide_repository.dart';
 import 'package:chessever2/repository/supabase/supabase.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+
+const List<String> _chessTitlePrefixes = [
+  'GM ',
+  'IM ',
+  'FM ',
+  'CM ',
+  'NM ',
+  'WGM ',
+  'WIM ',
+  'WFM ',
+  'WCM ',
+  'WNM ',
+];
+
+String _stripTitlePrefix(String playerName) {
+  final trimmed = playerName.trim();
+  for (final prefix in _chessTitlePrefixes) {
+    if (trimmed.startsWith(prefix)) {
+      return trimmed.substring(prefix.length).trim();
+    }
+  }
+  return trimmed;
+}
+
+String _normalizeNameForMatch(String name) {
+  final normalized = name
+      .toLowerCase()
+      .replaceAll(RegExp(r'[^a-z0-9\s]'), ' ')
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .trim();
+  return normalized;
+}
+
+int? _parseRating(dynamic value) {
+  if (value == null) return null;
+  if (value is int) return value;
+  if (value is num) return value.round();
+  if (value is String) return int.tryParse(value) ?? double.tryParse(value)?.round();
+  return null;
+}
 
 /// Unified rating provider that handles all fallback sources in sequence:
 /// 1. Supabase chess_players table by fideId (23k+ players, most reliable)
@@ -12,6 +53,7 @@ final unifiedRatingProvider = FutureProvider.family.autoDispose<
     int?,
     UnifiedRatingRequest>((ref, request) async {
   final supabase = ref.read(supabaseProvider);
+  final normalizedName = _stripTitlePrefix(request.playerName);
 
   // Source 1: Try Supabase chess_players table by fideId (most reliable)
   if (request.fideId != null && request.fideId! > 0) {
@@ -34,12 +76,12 @@ final unifiedRatingProvider = FutureProvider.family.autoDispose<
   }
 
   // Source 2: Try Supabase chess_players table by NAME (fallback when no fideId)
-  if (request.playerName.isNotEmpty) {
+  if (normalizedName.isNotEmpty) {
     try {
       final response = await supabase
           .from('chess_players')
           .select('rating, rapid_rating, blitz_rating')
-          .ilike('name', '%${request.playerName}%')
+          .ilike('name', '%$normalizedName%')
           .limit(1)
           .maybeSingle();
 
@@ -70,13 +112,44 @@ final unifiedRatingProvider = FutureProvider.family.autoDispose<
     }
   }
 
+  // Source 3b: Try Lichess search by name when no fideId is available
+  if (request.fideId == null && normalizedName.isNotEmpty) {
+    try {
+      final lichessRepo = ref.read(lichessFideRepoProvider);
+      final matches = await lichessRepo.searchPlayersByName(normalizedName);
+      if (matches.isNotEmpty) {
+        final normalizedTarget = _normalizeNameForMatch(normalizedName);
+        FidePlayer? bestMatch;
+        for (final candidate in matches) {
+          final candidateName = _normalizeNameForMatch(candidate.name);
+          if (candidateName == normalizedTarget) {
+            bestMatch = candidate;
+            break;
+          }
+          if (bestMatch == null &&
+              (candidateName.contains(normalizedTarget) ||
+                  normalizedTarget.contains(candidateName))) {
+            bestMatch = candidate;
+          }
+        }
+        bestMatch ??= matches.first;
+        final rating = bestMatch.getRating(request.timeControlType);
+        if (rating != null && rating > 0) {
+          return rating;
+        }
+      }
+    } catch (e) {
+      // Lichess search failed, continue to next source
+    }
+  }
+
   // Source 4: Try PGN-based ratings from games table
-  if (request.playerName.isNotEmpty) {
+  if (normalizedName.isNotEmpty) {
     try {
       final response = await supabase
           .from('games')
           .select('pgn, players')
-          .or('player_white.ilike.%${request.playerName}%,player_black.ilike.%${request.playerName}%')
+          .or('player_white.ilike.%$normalizedName%,player_black.ilike.%$normalizedName%')
           .order('last_move_time', ascending: false)
           .limit(1);
 
@@ -89,9 +162,11 @@ final unifiedRatingProvider = FutureProvider.family.autoDispose<
           for (final player in players) {
             final playerMap = player as Map<String, dynamic>;
             final name = playerMap['name'] as String? ?? '';
-            if (name.toLowerCase().contains(request.playerName.toLowerCase()) ||
-                request.playerName.toLowerCase().contains(name.toLowerCase())) {
-              final rating = playerMap['rating'] as int?;
+            final normalizedPlayer = _normalizeNameForMatch(name);
+            final normalizedTarget = _normalizeNameForMatch(normalizedName);
+            if (normalizedPlayer.contains(normalizedTarget) ||
+                normalizedTarget.contains(normalizedPlayer)) {
+              final rating = _parseRating(playerMap['rating']);
               if (rating != null && rating > 0) {
                 return rating;
               }
@@ -120,13 +195,13 @@ final unifiedRatingProvider = FutureProvider.family.autoDispose<
 int? _extractRatingByType(Map<String, dynamic> response, String timeControlType) {
   switch (timeControlType) {
     case 'standard':
-      return response['rating'] as int?;
+      return _parseRating(response['rating']);
     case 'rapid':
-      return response['rapid_rating'] as int?;
+      return _parseRating(response['rapid_rating']);
     case 'blitz':
-      return response['blitz_rating'] as int?;
+      return _parseRating(response['blitz_rating']);
     default:
-      return response['rating'] as int?;
+      return _parseRating(response['rating']);
   }
 }
 
@@ -214,12 +289,19 @@ class ChessPlayerRatingRequest {
 // Helper method to extract rating from PGN
 int? _extractRatingFromPGN(String pgn, String playerName) {
   try {
+    final normalizedTarget =
+        _normalizeNameForMatch(_stripTitlePrefix(playerName));
     // Check if player is White or Black
     final whiteMatch = RegExp(r'\[White "([^"]+)"\]').firstMatch(pgn);
     final blackMatch = RegExp(r'\[Black "([^"]+)"\]').firstMatch(pgn);
 
-    final isWhite = whiteMatch?.group(1) == playerName;
-    final isBlack = blackMatch?.group(1) == playerName;
+    final whiteName =
+        _normalizeNameForMatch(_stripTitlePrefix(whiteMatch?.group(1) ?? ''));
+    final blackName =
+        _normalizeNameForMatch(_stripTitlePrefix(blackMatch?.group(1) ?? ''));
+
+    final isWhite = whiteName == normalizedTarget;
+    final isBlack = blackName == normalizedTarget;
 
     if (isWhite != true && isBlack != true) return null;
 
