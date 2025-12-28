@@ -296,12 +296,14 @@ class GroupEventMatchCard extends ConsumerWidget {
     return GridGameCardWrapperWidget(
       key: ValueKey('game_${matchWithComparison.game.gameId}'),
       game: matchWithComparison.game,
-      onChanged:
-          () => ref
+      orderedGames: fullGamesList,
+      gameIndex: gameIndex,
+      onChangedWithLiveGames:
+          (updatedGames) => ref
               .read(gameCardWrapperProvider)
               .navigateToChessBoard(
                 context: context,
-                orderedGames: fullGamesList,
+                orderedGames: updatedGames,
                 gameIndex: gameIndex,
                 onReturnFromChessboard: onReturnFromChessboard,
               ),

@@ -550,7 +550,9 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
                   child: BoardGameCardWrapperWidget(
                     key: ValueKey('player_board_game_${game.gameId}'),
                     game: game,
-                    onChanged: () async {
+                    orderedGames: games,
+                    gameIndex: globalIndex,
+                    onChangedWithLiveGames: (updatedGames) async {
                       // Premium guard - show paywall if not subscribed
                       final hasPremium = await requirePremiumGuard(context, ref);
                       if (!hasPremium) return;
@@ -558,7 +560,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
 
                       ref.read(gameCardWrapperProvider).navigateToChessBoard(
                             context: context,
-                            orderedGames: games,
+                            orderedGames: updatedGames,
                             gameIndex: globalIndex,
                             onReturnFromChessboard: (_) {},
                             viewSource: ChessboardView.playerProfile,
@@ -611,7 +613,9 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
     return GridGameCardWrapperWidget(
       key: ValueKey('player_grid_game_${game.gameId}'),
       game: game,
-      onChanged: () async {
+      orderedGames: allGames,
+      gameIndex: gameIndex,
+      onChangedWithLiveGames: (updatedGames) async {
         // Premium guard - show paywall if not subscribed
         final hasPremium = await requirePremiumGuard(context, ref);
         if (!hasPremium) return;
@@ -619,7 +623,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
 
         ref.read(gameCardWrapperProvider).navigateToChessBoard(
               context: context,
-              orderedGames: allGames,
+              orderedGames: updatedGames,
               gameIndex: gameIndex,
               onReturnFromChessboard: (_) {},
               viewSource: ChessboardView.playerProfile,

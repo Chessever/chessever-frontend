@@ -223,12 +223,14 @@ class GamesListView extends ConsumerWidget {
     return GridGameCardWrapperWidget(
       key: ValueKey('game_${game.gameId}'),
       game: game,
-      onChanged:
-          () => ref
+      orderedGames: orderedGamesList,
+      gameIndex: globalIndex,
+      onChangedWithLiveGames:
+          (updatedGames) => ref
               .read(gameCardWrapperProvider)
               .navigateToChessBoard(
                 context: context,
-                orderedGames: orderedGamesList,
+                orderedGames: updatedGames,
                 gameIndex: globalIndex,
                 onReturnFromChessboard: (returnedIndex) {
                   final latestMatchExpansion = ref.read(matchExpansionProvider);

@@ -805,7 +805,9 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
     return GridGameCardWrapperWidget(
       key: ValueKey('fav_grid_game_${game.gameId}'),
       game: game,
-      onChanged: () async {
+      orderedGames: allGames,
+      gameIndex: gameIndex,
+      onChangedWithLiveGames: (updatedGames) async {
         // Premium guard - show paywall if not subscribed
         final hasPremium = await requirePremiumGuard(context, ref);
         if (!hasPremium) return;
@@ -813,7 +815,7 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
 
         ref.read(gameCardWrapperProvider).navigateToChessBoard(
               context: context,
-              orderedGames: allGames,
+              orderedGames: updatedGames,
               gameIndex: gameIndex,
               onReturnFromChessboard: (_) {},
               viewSource: ChessboardView.favScorecard,
@@ -1144,7 +1146,7 @@ class _FavoritesKeepAliveGameCardState
   @override
   bool get wantKeepAlive => true;
 
-  Future<void> _handleNavigate() async {
+  Future<void> _handleNavigate(List<GamesTourModel> updatedGames) async {
     // Premium guard - show paywall if not subscribed
     final hasPremium = await requirePremiumGuard(context, ref);
     if (!hasPremium) return;
@@ -1152,7 +1154,7 @@ class _FavoritesKeepAliveGameCardState
 
     ref.read(gameCardWrapperProvider).navigateToChessBoard(
           context: context,
-          orderedGames: widget.gamesData.gamesTourModels,
+          orderedGames: updatedGames,
           gameIndex: widget.gameIndex,
           onReturnFromChessboard: (_) {},
           viewSource: ChessboardView.favScorecard,
@@ -1171,7 +1173,9 @@ class _FavoritesKeepAliveGameCardState
       child: BoardGameCardWrapperWidget(
         key: ValueKey('fav_board_game_${widget.game.gameId}'),
         game: widget.game,
-        onChanged: _handleNavigate,
+        orderedGames: widget.allGames,
+        gameIndex: widget.gameIndex,
+        onChangedWithLiveGames: _handleNavigate,
         pinnedIds: widget.gamesData.pinnedGamedIs,
         onPinToggle: (_) {},
       ),

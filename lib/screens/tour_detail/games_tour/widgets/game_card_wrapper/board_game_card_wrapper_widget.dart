@@ -8,14 +8,20 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 /// Similar to GridGameCardWrapperWidget but for the larger board view.
 class BoardGameCardWrapperWidget extends ConsumerWidget {
   final GamesTourModel game;
-  final VoidCallback onChanged;
+  /// Callback that receives the live-updated games list for navigation.
+  /// The list will have the current game replaced with the live-updated version.
+  final void Function(List<GamesTourModel> updatedGames) onChangedWithLiveGames;
+  final List<GamesTourModel> orderedGames;
+  final int gameIndex;
   final List<String> pinnedIds;
   final void Function(GamesTourModel game) onPinToggle;
 
   const BoardGameCardWrapperWidget({
     super.key,
     required this.game,
-    required this.onChanged,
+    required this.onChangedWithLiveGames,
+    required this.orderedGames,
+    required this.gameIndex,
     required this.pinnedIds,
     required this.onPinToggle,
   });
@@ -28,10 +34,19 @@ class BoardGameCardWrapperWidget extends ConsumerWidget {
       liveGameCardProvider((gameId: game.gameId, baseGame: game)),
     );
 
+    // Build updated games list with the live game data
+    List<GamesTourModel> getUpdatedGamesList() {
+      final games = List<GamesTourModel>.from(orderedGames);
+      if (gameIndex >= 0 && gameIndex < games.length) {
+        games[gameIndex] = liveGame;
+      }
+      return games;
+    }
+
     return ChessBoardFromFENNew(
       key: ValueKey('board_game_${liveGame.gameId}'),
       gamesTourModel: liveGame,
-      onChanged: onChanged,
+      onChanged: () => onChangedWithLiveGames(getUpdatedGamesList()),
       pinnedIds: pinnedIds,
       onPinToggle: onPinToggle,
     );
