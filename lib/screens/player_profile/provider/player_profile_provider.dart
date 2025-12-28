@@ -564,7 +564,7 @@ Future<List<PlayerEventData>> _getPlayerEventsFromGamesWithKey(
       response = await supabase
           .from('games')
           .select('tour_id, tour_slug, status, players, date_start, player_white, player_black')
-          .contains('players', '[{"fideId": ${playerKey.fideId}}]')
+          .contains('player_fide_ids', [playerKey.fideId])
           .order('date_start', ascending: false)
           .limit(500);
     } else {
@@ -756,7 +756,7 @@ Future<List<PlayerEventData>> _getPlayerEventsFromGames(
     final response = await supabase
         .from('games')
         .select('tour_id, tour_slug, status, players, date_start')
-        .contains('players', '[{"fideId": $fideId}]')
+        .contains('player_fide_ids', [fideId])
         .order('date_start', ascending: false)
         .limit(500);
 

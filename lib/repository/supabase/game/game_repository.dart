@@ -64,6 +64,16 @@ const String _gameListSelectColumns = '''
         ''';
 
 class GameRepository extends BaseRepository {
+  List<int> _parseFideIds(List<String> fideIds) {
+    return fideIds.map((id) => int.tryParse(id)).whereType<int>().toList();
+  }
+
+  int? _parseFideId(String fideId) => int.tryParse(fideId);
+
+  String _normalizeCountryCode(String countryCode) {
+    return countryCode.trim().toUpperCase();
+  }
+
   // Fetch games by round ID
   Future<List<Games>> getGamesByRoundId(String roundId) async {
     return handleApiCall(() async {
@@ -130,12 +140,14 @@ class GameRepository extends BaseRepository {
     return handleApiCall(() async {
       print('===== GameRepository: Fetching games for fideId: $fideId =====');
 
-      // Query games where the fideId appears in the players JSONB array
-      // Use JSON string format for JSONB contains query (consistent with other methods)
+      final fideIdInt = _parseFideId(fideId);
+      if (fideIdInt == null) return <Games>[];
+
+      // Query games where the fideId appears in the generated array column
       var query = supabase
           .from('games')
           .select(_gameListSelectColumns)
-          .contains('players', '[{"fideId": $fideId}]')
+          .contains('player_fide_ids', [fideIdInt])
           .order('date_start', ascending: false)
           .order('time_start', ascending: false);
 
@@ -162,10 +174,13 @@ class GameRepository extends BaseRepository {
     required int offset,
   }) async {
     return handleApiCall(() async {
+      final fideIdInt = _parseFideId(fideId);
+      if (fideIdInt == null) return <Games>[];
+
       final response = await supabase
           .from('games')
           .select(_gameListSelectColumns)
-          .contains('players', '[{"fideId": $fideId}]')
+          .contains('player_fide_ids', [fideIdInt])
           .order('date_start', ascending: false)
           .order('time_start', ascending: false)
           .range(offset, offset + limit - 1);
@@ -256,10 +271,11 @@ class GameRepository extends BaseRepository {
   // Get games where any player has a specific country code
   Future<List<Games>> getGamesByCountryCode(String countryCode) async {
     return handleApiCall(() async {
+      final normalizedCode = _normalizeCountryCode(countryCode);
       final response = await supabase
           .from('games')
           .select(_gameListSelectColumns)
-          .contains('players', '[{"fed": "$countryCode"}]')
+          .contains('player_feds', [normalizedCode])
           .order('id', ascending: true);
 
       final jsonList =
@@ -314,22 +330,18 @@ class GameRepository extends BaseRepository {
     int offset = 0,
   }) async {
     return handleApiCall(() async {
-      if (fideIds.isEmpty) {
+      final fideIdInts = _parseFideIds(fideIds);
+      if (fideIdInts.isEmpty) {
         return <Games>[];
       }
 
-      debugPrint('===== GameRepository: Fetching games for ${fideIds.length} FIDE IDs =====');
-
-      // Build OR query for multiple FIDE IDs
-      final orConditions = fideIds.map((fideId) {
-        return 'players.cs.[{"fideId":${int.parse(fideId)}}]';
-      }).join(',');
+      debugPrint('===== GameRepository: Fetching games for ${fideIdInts.length} FIDE IDs =====');
 
       // Order by date_start first to group games by day, then by last_move_time
       final response = await supabase
           .from('games')
           .select(_gameListSelectColumns)
-          .or(orConditions)
+          .overlaps('player_fide_ids', fideIdInts)
           .order('date_start', ascending: false, nullsFirst: false)
           .order('last_move_time', ascending: false, nullsFirst: false)
           .range(offset, offset + limit - 1);
@@ -352,13 +364,14 @@ class GameRepository extends BaseRepository {
     int offset = 0,
   }) async {
     return handleApiCall(() async {
-      debugPrint('===== GameRepository: Fetching games for country $countryCode =====');
+      final normalizedCode = _normalizeCountryCode(countryCode);
+      debugPrint('===== GameRepository: Fetching games for country $normalizedCode =====');
 
       // Order by date_start first to group games by day, then by last_move_time
       final response = await supabase
           .from('games')
           .select(_gameListSelectColumns)
-          .contains('players', '[{"fed": "$countryCode"}]')
+          .contains('player_feds', [normalizedCode])
           .order('date_start', ascending: false, nullsFirst: false)
           .order('last_move_time', ascending: false, nullsFirst: false)
           .range(offset, offset + limit - 1);
@@ -454,10 +467,8 @@ class GameRepository extends BaseRepository {
   /// Shows games where at least one player from the country has rating >= minElo.
   ///
   /// The caller is responsible for pagination. This method fetches exactly
-  /// `limit` games starting at `offset` (after ELO filtering is applied in-memory).
-  ///
-  /// To handle ELO filtering, we fetch extra records and filter in Dart.
-  /// Returns: (filteredGames, rawGamesFetched) so caller can track raw offset.
+  /// `limit` games starting at `offset` with server-side ELO filtering.
+  /// Returns: (filteredGames, rawGamesFetched).
   Future<({List<Games> games, int rawFetched})> getCountrymanGamesWithMinEloAndRawCount({
     required String countryCode,
     int minElo = 2300,
@@ -465,24 +476,19 @@ class GameRepository extends BaseRepository {
     int rawOffset = 0,
   }) async {
     return handleApiCall(() async {
-      debugPrint('===== GameRepository: Fetching countryman games (ELO >= $minElo) for countryCode="$countryCode", limit=$limit, rawOffset=$rawOffset =====');
-
-      // Fetch more than needed since we filter by ELO in Dart
-      // Fetch limit * 10 to have enough buffer for ELO filtering
-      final fetchLimit = limit * 10;
-
-      final containsFilter = '[{"fed": "$countryCode"}]';
-      debugPrint('===== GameRepository: Using contains filter: $containsFilter, fetching up to $fetchLimit raw games =====');
+      final normalizedCode = _normalizeCountryCode(countryCode);
+      debugPrint('===== GameRepository: Fetching countryman games (ELO >= $minElo) for countryCode="$normalizedCode", limit=$limit, rawOffset=$rawOffset =====');
 
       // Order by date_start first to group games by day, then by last_move_time
       // This ensures all games from today appear together, even if some have NULL last_move_time
       final response = await supabase
           .from('games')
           .select(_gameListSelectColumns)
-          .contains('players', containsFilter)
+          .contains('player_feds', [normalizedCode])
+          .gte('player_max_rating', minElo)
           .order('date_start', ascending: false, nullsFirst: false)
           .order('last_move_time', ascending: false, nullsFirst: false)
-          .range(rawOffset, rawOffset + fetchLimit - 1);
+          .range(rawOffset, rawOffset + limit - 1);
 
       final rawCount = (response as List).length;
       debugPrint('===== GameRepository: Raw response count: $rawCount =====');
@@ -490,20 +496,11 @@ class GameRepository extends BaseRepository {
       final jsonList =
           (response as List).map((item) => json.encode(item)).toList();
 
-      var games = await compute(_decodeGamesInIsolate, jsonList);
+      final games = await compute(_decodeGamesInIsolate, jsonList);
 
-      debugPrint('===== GameRepository: Decoded ${games.length} games, now filtering by ELO >= $minElo =====');
+      debugPrint('===== GameRepository: Decoded ${games.length} games =====');
 
-      // Filter games where at least one player has rating >= minElo
-      // (shows countrymen games against strong opponents too)
-      final filtered = games.where((game) {
-        if (game.players == null) return false;
-        return game.players!.any((player) => player.rating >= minElo);
-      }).take(limit).toList();
-
-      debugPrint('===== GameRepository: After ELO filter: ${filtered.length} countryman games (from $rawCount raw) =====');
-
-      return (games: filtered, rawFetched: rawCount);
+      return (games: games, rawFetched: rawCount);
     });
   }
 
@@ -530,20 +527,17 @@ class GameRepository extends BaseRepository {
     int limit = 20,
   }) async {
     return handleApiCall(() async {
-      if (fideIds.isEmpty) return <Games>[];
+      final fideIdInts = _parseFideIds(fideIds);
+      if (fideIdInts.isEmpty) return <Games>[];
 
-      debugPrint('===== GameRepository: Fetching LIVE games for ${fideIds.length} players =====');
-
-      final orConditions = fideIds.map((fideId) {
-        return 'players.cs.[{"fideId":${int.parse(fideId)}}]';
-      }).join(',');
+      debugPrint('===== GameRepository: Fetching LIVE games for ${fideIdInts.length} players =====');
 
       // Order by date_start first to group games by day, then by last_move_time
       final response = await supabase
           .from('games')
           .select(_gameListSelectColumns)
           .eq('status', '*')
-          .or(orConditions)
+          .overlaps('player_fide_ids', fideIdInts)
           .order('date_start', ascending: false, nullsFirst: false)
           .order('last_move_time', ascending: false, nullsFirst: false)
           .limit(limit);
@@ -708,7 +702,7 @@ class GameRepository extends BaseRepository {
 
       // If we have a country filter, add it
       if (countryCode != null && countryCode.isNotEmpty) {
-        dbQuery = dbQuery.contains('players', '[{"fed": "$countryCode"}]');
+        dbQuery = dbQuery.contains('player_feds', [_normalizeCountryCode(countryCode)]);
       }
 
       // Order by date_start first to group games by day, then by last_move_time
@@ -736,12 +730,13 @@ class GameRepository extends BaseRepository {
     int offset = 0,
   }) async {
     return handleApiCall(() async {
-      debugPrint('[GameRepository] searchCountrymenGames: country=$countryCode, query=$query');
+      final normalizedCode = _normalizeCountryCode(countryCode);
+      debugPrint('[GameRepository] searchCountrymenGames: country=$normalizedCode, query=$query');
 
       var dbQuery = supabase
           .from('games')
           .select(_gameListSelectColumns)
-          .contains('players', '[{"fed": "$countryCode"}]');
+          .contains('player_feds', [normalizedCode]);
 
       // Add text search if query provided
       if (query != null && query.trim().isNotEmpty) {
@@ -775,17 +770,13 @@ class GameRepository extends BaseRepository {
     return handleApiCall(() async {
       debugPrint('[GameRepository] searchFavoritesGames: fideIds=${fideIds.length}, query=$query, offset=$offset');
 
-      if (fideIds.isEmpty) return <Games>[];
-
-      // Build OR conditions for FIDE IDs (uses indexed JSONB query)
-      final fideConditions = fideIds.map((fideId) {
-        return 'players.cs.[{"fideId":${int.parse(fideId)}}]';
-      }).join(',');
+      final fideIdInts = _parseFideIds(fideIds);
+      if (fideIdInts.isEmpty) return <Games>[];
 
       var dbQuery = supabase
           .from('games')
           .select(_gameListSelectColumns)
-          .or(fideConditions);
+          .overlaps('player_fide_ids', fideIdInts);
 
       // Add text search on name column if query provided
       if (query != null && query.trim().isNotEmpty) {
@@ -874,46 +865,34 @@ class GameRepository extends BaseRepository {
     int offset = 0,
   }) async {
     return handleApiCall(() async {
-      if (fideIds.isEmpty) return <DateTime>[];
+      final fideIdInts = _parseFideIds(fideIds);
+      if (fideIdInts.isEmpty) return <DateTime>[];
 
-      debugPrint('[GameRepository] getDistinctDatesForFavorites: fideIds=${fideIds.length}');
+      debugPrint('[GameRepository] getDistinctDatesForFavorites: fideIds=${fideIdInts.length}');
 
-      // Build OR query for multiple FIDE IDs
-      final orConditions = fideIds.map((fideId) {
-        return 'players.cs.[{"fideId":${int.parse(fideId)}}]';
-      }).join(',');
+      final response = await supabase.rpc(
+        'get_distinct_dates_for_favorites',
+        params: {
+          'fide_ids': fideIdInts,
+          'limit_count': limit,
+          'offset_count': offset,
+        },
+      );
 
-      // Use raw query to get distinct dates
-      final response = await supabase
-          .from('games')
-          .select('date_start')
-          .or(orConditions)
-          .not('date_start', 'is', null)
-          .order('date_start', ascending: false);
-
-      // Extract unique dates from response
-      final seenDates = <String>{};
       final dates = <DateTime>[];
 
       for (final row in (response as List)) {
-        final dateStr = row['date_start'] as String?;
-        if (dateStr != null && !seenDates.contains(dateStr)) {
-          seenDates.add(dateStr);
-          try {
-            dates.add(DateTime.parse(dateStr));
-          } catch (e) {
-            debugPrint('[GameRepository] Error parsing date: $dateStr');
-          }
+        final dateStr = row['date_start']?.toString();
+        if (dateStr == null) continue;
+        try {
+          dates.add(DateTime.parse(dateStr));
+        } catch (e) {
+          debugPrint('[GameRepository] Error parsing date: $dateStr');
         }
       }
 
-      // Apply pagination
-      final start = offset.clamp(0, dates.length);
-      final end = (offset + limit).clamp(0, dates.length);
-      final paginatedDates = dates.sublist(start, end);
-
-      debugPrint('[GameRepository] getDistinctDatesForFavorites: found ${paginatedDates.length} dates');
-      return paginatedDates;
+      debugPrint('[GameRepository] getDistinctDatesForFavorites: found ${dates.length} dates');
+      return dates;
     });
   }
 
@@ -924,22 +903,23 @@ class GameRepository extends BaseRepository {
     required DateTime date,
   }) async {
     return handleApiCall(() async {
-      if (fideIds.isEmpty) return <Games>[];
+      final fideIdInts = _parseFideIds(fideIds);
+      if (fideIdInts.isEmpty) return <Games>[];
 
       final dateStr = '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
-      debugPrint('[GameRepository] getGamesByFideIdsAndDate: fideIds=${fideIds.length}, date=$dateStr');
-
-      // Build OR query for multiple FIDE IDs
-      final orConditions = fideIds.map((fideId) {
-        return 'players.cs.[{"fideId":${int.parse(fideId)}}]';
-      }).join(',');
+      final dayStartUtc = DateTime.utc(date.year, date.month, date.day);
+      final nextDayUtc = dayStartUtc.add(const Duration(days: 1));
+      final dayFilter =
+          'and(last_move_time.gte.${dayStartUtc.toIso8601String()},last_move_time.lt.${nextDayUtc.toIso8601String()}),'
+          'and(last_move_time.is.null,date_start.eq.$dateStr)';
+      debugPrint('[GameRepository] getGamesByFideIdsAndDate: fideIds=${fideIdInts.length}, date=$dateStr');
 
       // Fetch ALL games for this date (no limit)
       final response = await supabase
           .from('games')
           .select(_gameListSelectColumns)
-          .or(orConditions)
-          .eq('date_start', dateStr)
+          .overlaps('player_fide_ids', fideIdInts)
+          .or(dayFilter)
           .order('last_move_time', ascending: false, nullsFirst: false);
 
       final jsonList =
@@ -961,37 +941,24 @@ class GameRepository extends BaseRepository {
     int offset = 0,
   }) async {
     return handleApiCall(() async {
-      debugPrint('[GameRepository] getDistinctDatesForCountry: countryCode=$countryCode');
+      final normalizedCode = _normalizeCountryCode(countryCode);
+      debugPrint('[GameRepository] getDistinctDatesForCountry: countryCode=$normalizedCode');
 
-      final containsFilter = '[{"fed": "$countryCode"}]';
+      final response = await supabase.rpc(
+        'get_distinct_dates_for_country',
+        params: {
+          'country_code': normalizedCode,
+          'min_elo': minElo,
+          'limit_count': limit,
+          'offset_count': offset,
+        },
+      );
 
-      // Get dates from games with country filter
-      final response = await supabase
-          .from('games')
-          .select('date_start, players')
-          .contains('players', containsFilter)
-          .not('date_start', 'is', null)
-          .order('date_start', ascending: false);
-
-      // Extract unique dates with ELO filtering
-      final seenDates = <String>{};
       final dates = <DateTime>[];
 
       for (final row in (response as List)) {
-        final dateStr = row['date_start'] as String?;
-        if (dateStr == null || seenDates.contains(dateStr)) continue;
-
-        // Check if at least one player has rating >= minElo
-        final players = row['players'] as List?;
-        if (players != null) {
-          final hasHighElo = players.any((p) {
-            final rating = p['rating'] as int?;
-            return rating != null && rating >= minElo;
-          });
-          if (!hasHighElo) continue;
-        }
-
-        seenDates.add(dateStr);
+        final dateStr = row['date_start']?.toString();
+        if (dateStr == null) continue;
         try {
           dates.add(DateTime.parse(dateStr));
         } catch (e) {
@@ -999,13 +966,8 @@ class GameRepository extends BaseRepository {
         }
       }
 
-      // Apply pagination
-      final start = offset.clamp(0, dates.length);
-      final end = (offset + limit).clamp(0, dates.length);
-      final paginatedDates = dates.sublist(start, end);
-
-      debugPrint('[GameRepository] getDistinctDatesForCountry: found ${paginatedDates.length} dates');
-      return paginatedDates;
+      debugPrint('[GameRepository] getDistinctDatesForCountry: found ${dates.length} dates');
+      return dates;
     });
   }
 
@@ -1018,35 +980,31 @@ class GameRepository extends BaseRepository {
     int offset = 0,
   }) async {
     return handleApiCall(() async {
+      final normalizedCode = _normalizeCountryCode(countryCode);
       final dateStr = '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
-      debugPrint('[GameRepository] getGamesByCountryAndDate: countryCode=$countryCode, date=$dateStr');
-
-      final containsFilter = '[{"fed": "$countryCode"}]';
-
-      // Fetch more for ELO filtering
-      final fetchLimit = limit * 5;
+      final dayStartUtc = DateTime.utc(date.year, date.month, date.day);
+      final nextDayUtc = dayStartUtc.add(const Duration(days: 1));
+      final dayFilter =
+          'and(last_move_time.gte.${dayStartUtc.toIso8601String()},last_move_time.lt.${nextDayUtc.toIso8601String()}),'
+          'and(last_move_time.is.null,date_start.eq.$dateStr)';
+      debugPrint('[GameRepository] getGamesByCountryAndDate: countryCode=$normalizedCode, date=$dateStr');
 
       final response = await supabase
           .from('games')
           .select(_gameListSelectColumns)
-          .contains('players', containsFilter)
-          .eq('date_start', dateStr)
+          .contains('player_feds', [normalizedCode])
+          .or(dayFilter)
+          .gte('player_max_rating', minElo)
           .order('last_move_time', ascending: false, nullsFirst: false)
-          .range(offset, offset + fetchLimit - 1);
+          .range(offset, offset + limit - 1);
 
       final jsonList =
           (response as List).map((item) => json.encode(item)).toList();
 
-      var games = await compute(_decodeGamesInIsolate, jsonList);
+      final games = await compute(_decodeGamesInIsolate, jsonList);
 
-      // Filter by minimum ELO
-      final filtered = games.where((game) {
-        if (game.players == null) return false;
-        return game.players!.any((p) => p.rating >= minElo);
-      }).take(limit).toList();
-
-      debugPrint('[GameRepository] getGamesByCountryAndDate: found ${filtered.length} games');
-      return filtered;
+      debugPrint('[GameRepository] getGamesByCountryAndDate: found ${games.length} games');
+      return games;
     });
   }
 }
