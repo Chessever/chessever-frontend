@@ -28,6 +28,7 @@ import 'package:chessever2/screens/chessboard/widgets/smooth_sheet_config.dart';
 import 'package:chessever2/screens/chessboard/widgets/save_analysis_sheet.dart';
 import 'package:chessever2/screens/group_event/providers/countryman_games_tour_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/screens/chessboard/widgets/player_first_row_detail_widget.dart';
@@ -939,8 +940,10 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     // while gamesModel (convertedForYouGamesProvider) is a static snapshot without live streaming.
     // So for "For You", we use widget.games directly to preserve live state.
     // For tour/countryman views, gamesModel has live streaming, so prefer it.
+    final shouldStream = ref.watch(shouldStreamProvider);
+    final preferWidgetGames = view == ChessboardView.forYou || !shouldStream;
     final List<GamesTourModel> liveGames;
-    if (view == ChessboardView.forYou) {
+    if (preferWidgetGames) {
       // For "For You": widget.games already has live updates from liveGameCardProvider
       liveGames = widget.games;
     } else {

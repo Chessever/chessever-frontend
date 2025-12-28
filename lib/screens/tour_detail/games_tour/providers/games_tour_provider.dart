@@ -98,38 +98,88 @@ class GamesTourNotifier extends StateNotifier<AsyncValue<List<Games>>> {
         tourId,
       );
 
-      // Check if there are new games OR if games count changed
+      final currentById = {for (final game in currentGames) game.id: game};
+      final freshIds = <String>{};
+      bool hasChanges = freshGames.length != currentGames.length;
+      final mergedGames = <Games>[];
+
       if (freshGames.length != currentGames.length) {
         debugPrint(
           '🔥 GamesTourNotifier: Detected game count change! Current: ${currentGames.length}, Fresh: ${freshGames.length}',
         );
+      }
 
-        if (freshGames.length > currentGames.length) {
-          // Find the new games
-          final currentGameIds = currentGames.map((g) => g.id).toSet();
-          final newGames =
-              freshGames.where((g) => !currentGameIds.contains(g.id)).toList();
+      for (final fresh in freshGames) {
+        freshIds.add(fresh.id);
+        final current = currentById[fresh.id];
 
-          debugPrint(
-            '🔥 GamesTourNotifier: New games: ${newGames.map((g) => g.roundSlug).join(", ")}',
-          );
+        if (current == null) {
+          hasChanges = true;
+          mergedGames.add(fresh);
 
-          // Set up stream listeners only for live games
-          for (final game in newGames) {
-            if (game.status == "*") {
-              _listenToGameStreams(game.id);
-            }
+          if (fresh.status == "*") {
+            _listenToGameStreams(fresh.id);
           }
+          continue;
         }
 
-        // Always update state with fresh games
-        if (mounted) {
-          state = AsyncValue.data(freshGames);
+        if (_hasGameChanged(current, fresh)) {
+          hasChanges = true;
         }
+
+        final becameLive = current.status != "*" && fresh.status == "*";
+        final becameFinished = current.status == "*" && fresh.status != "*";
+        if (becameLive) {
+          _listenToGameStreams(fresh.id);
+        } else if (becameFinished) {
+          _stopListeningToGame(fresh.id);
+        }
+
+        mergedGames.add(_mergeGameSnapshots(current, fresh));
+      }
+
+      for (final removedId in currentById.keys) {
+        if (!freshIds.contains(removedId)) {
+          hasChanges = true;
+          _stopListeningToGame(removedId);
+        }
+      }
+
+      if (hasChanges && mounted) {
+        state = AsyncValue.data(mergedGames);
       }
     } catch (error, _) {
       debugPrint('🔥 GamesTourNotifier: Error checking for new games: $error');
     }
+  }
+
+  bool _hasGameChanged(Games current, Games fresh) {
+    return current.status != fresh.status ||
+        current.lastMove != fresh.lastMove ||
+        current.fen != fresh.fen ||
+        current.lastMoveTime != fresh.lastMoveTime ||
+        current.lastClockWhite != fresh.lastClockWhite ||
+        current.lastClockBlack != fresh.lastClockBlack;
+  }
+
+  Games _mergeGameSnapshots(Games current, Games fresh) {
+    final currentMoveTime = current.lastMoveTime;
+    final freshMoveTime = fresh.lastMoveTime;
+    final useFreshMove =
+        currentMoveTime == null ||
+        (freshMoveTime != null && freshMoveTime.isAfter(currentMoveTime));
+
+    return fresh.copyWith(
+      fen: useFreshMove ? fresh.fen : current.fen,
+      lastMove: useFreshMove ? fresh.lastMove : current.lastMove,
+      lastMoveTime: useFreshMove ? freshMoveTime : currentMoveTime,
+      lastClockWhite:
+          useFreshMove ? fresh.lastClockWhite : current.lastClockWhite,
+      lastClockBlack:
+          useFreshMove ? fresh.lastClockBlack : current.lastClockBlack,
+      pgn: useFreshMove ? fresh.pgn : current.pgn,
+      status: fresh.status ?? current.status,
+    );
   }
 
   void _setupGameStreamListeners(List<Games> games) {
@@ -164,6 +214,15 @@ class GamesTourNotifier extends StateNotifier<AsyncValue<List<Games>>> {
   }
 
   void _listenToGameStreams(String gameId) {
+    if (_streamSubscriptions.containsKey(gameId)) {
+      return;
+    }
+
+    final shouldStream = ref.read(shouldStreamProvider);
+    if (!shouldStream) {
+      return;
+    }
+
     final subscriptions = <ProviderSubscription>[];
 
     // CONSOLIDATED: Use ONE stream for ALL game data (reduces channels by 83%)

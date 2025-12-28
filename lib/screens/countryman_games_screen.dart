@@ -4,11 +4,11 @@ import 'package:chessever2/screens/chessboard/widgets/chess_board_from_fen_new.d
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
 import 'package:chessever2/screens/group_event/providers/countryman_games_tour_screen_provider.dart';
-import 'package:chessever2/screens/tour_detail/games_tour/providers/game_fen_stream_provider.dart';
 import 'package:chessever2/screens/group_event/widget/empty_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card.dart';
 import 'package:chessever2/screens/group_event/widget/tour_loading_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_tour_content_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/live_game_card_provider.dart';
 import 'package:chessever2/widgets/generic_error_widget.dart';
 import 'package:chessever2/widgets/screen_wrapper.dart';
 import 'package:flutter/material.dart';
@@ -68,17 +68,14 @@ class CountrymanGamesList extends ConsumerWidget {
               itemBuilder: (context, index) {
                 var game = data.gamesTourModels[index];
 
-                // Update game with live FEN if ongoing
+                // Update game with unified live stream to keep FEN/PGN/clocks in sync
                 if (game.gameStatus == GameStatus.ongoing) {
-                  ref
-                      .watch(gameFenStreamProvider(game.gameId))
-                      .whenOrNull(
-                        data: (fen) {
-                          if (fen != null) {
-                            game = game.copyWith(fen: fen);
-                          }
-                        },
-                      );
+                  game = ref.watch(
+                    liveGameCardProvider((
+                      gameId: game.gameId,
+                      baseGame: game,
+                    )),
+                  );
                 }
 
                 return Padding(

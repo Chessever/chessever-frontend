@@ -663,6 +663,7 @@ class _KeepAliveGameCardState extends State<_KeepAliveGameCard>
         gamesData: widget.gamesData,
         gameIndex: widget.gameIndex,
         isChessBoardVisible: isChessBoardVisible,
+        viewSource: ChessboardView.forYou,
         // Enable navigation for game cards in For You tab
         onReturnFromChessboard: (returnedIndex) {
           // Handle returning from chess board if needed

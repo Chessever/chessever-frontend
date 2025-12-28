@@ -1,4 +1,5 @@
 import 'package:chessever2/screens/chessboard/widgets/chess_board_from_fen_new.dart';
+import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card.dart';
@@ -14,6 +15,7 @@ class GameCardWrapperWidget extends ConsumerWidget {
   final int gameIndex;
   final bool isChessBoardVisible;
   final void Function(int)? onReturnFromChessboard;
+  final ChessboardView viewSource;
 
   const GameCardWrapperWidget({
     super.key,
@@ -22,6 +24,7 @@ class GameCardWrapperWidget extends ConsumerWidget {
     required this.gameIndex,
     required this.isChessBoardVisible,
     this.onReturnFromChessboard,
+    this.viewSource = ChessboardView.tour,
   });
 
   @override
@@ -54,6 +57,7 @@ class GameCardWrapperWidget extends ConsumerWidget {
                     orderedGames: getUpdatedGamesList(),
                     gameIndex: gameIndex,
                     onReturnFromChessboard: onReturnFromChessboard,
+                    viewSource: viewSource,
                   ),
           pinnedIds: gamesData.pinnedGamedIs,
           onPinToggle:
@@ -80,6 +84,7 @@ class GameCardWrapperWidget extends ConsumerWidget {
                     orderedGames: getUpdatedGamesList(),
                     gameIndex: gameIndex,
                     onReturnFromChessboard: onReturnFromChessboard,
+                    viewSource: viewSource,
                   ),
         );
   }

@@ -482,7 +482,7 @@ class ChessBoardScreenNotifierNew
       '🔧 STREAM SETUP: game ${game.gameId}, index: $index, status: ${game.gameStatus}',
     );
 
-    if (game.gameStatus == GameStatus.ongoing) {
+    if (!game.gameStatus.isFinished) {
       _releaseLog('✅ LISTENER ACTIVE for game ${game.gameId}');
       // CONSOLIDATED: One stream for ALL game data (PGN, clocks, status, etc.)
       ref.listen(gameUpdatesStreamProvider(game.gameId), (previous, next) {
@@ -745,8 +745,37 @@ class ChessBoardScreenNotifierNew
         game = game.copyWith(pgn: resolvedPgn);
       }
 
-      final lastMoveIndex = allMoves.length - 1;
+      var lastMoveIndex = allMoves.length - 1;
       final moveTimes = _parseMoveTimesFromPgn(resolvedPgn);
+
+      final liveFen = game.fen?.trim();
+      final liveUci = game.lastMove?.trim();
+      if (liveFen != null &&
+          liveFen.isNotEmpty &&
+          liveUci != null &&
+          liveUci.isNotEmpty) {
+        final parsedFen = _normalizeFen(finalPos.fen);
+        final targetFen = _normalizeFen(liveFen);
+        if (parsedFen != targetFen) {
+          try {
+            final extraMove = Move.parse(liveUci);
+            if (finalPos.isLegal(extraMove)) {
+              final sanResult = finalPos.makeSan(extraMove);
+              final candidate = finalPos.play(extraMove);
+              if (_normalizeFen(candidate.fen) == targetFen) {
+                allMoves.add(extraMove);
+                moveSans.add(sanResult.$2);
+                moveTimes.add('');
+                lastMove = extraMove;
+                finalPos = candidate;
+                lastMoveIndex = allMoves.length - 1;
+              }
+            }
+          } catch (_) {
+            // Ignore live move patch failures and fall back to PGN state.
+          }
+        }
+      }
 
       // Only update state if still mounted
       if (!mounted) return;

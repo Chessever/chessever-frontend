@@ -19,7 +19,9 @@ import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
+import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
 import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
@@ -180,6 +182,18 @@ class ScoreCardScreen extends ConsumerWidget {
     return ratingChange;
   }
 
+  List<GamesTourModel> _toGamesTourModels(List<Games> games) {
+    final result = <GamesTourModel>[];
+    for (final game in games) {
+      try {
+        result.add(GamesTourModel.fromGame(game));
+      } catch (_) {
+        // Skip malformed rows to keep scorecard resilient.
+      }
+    }
+    return result;
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final player = ref.watch(selectedPlayerProvider);
@@ -199,6 +213,15 @@ class ScoreCardScreen extends ConsumerWidget {
     // - selectedBroadcast != null: definitely has event context (tournament view)
     // - explicitEventContext: set by navigation source (ChessBoard player tap with filtered games)
     final bool hasEventContext = selectedBroadcast != null || explicitEventContext;
+    final String? contextTourId =
+        gamesContext != null && gamesContext.isNotEmpty
+            ? gamesContext.first.tourId
+            : null;
+    final bool shouldFetchFullEventGames =
+        selectedBroadcast == null &&
+        hasEventContext &&
+        contextTourId != null &&
+        contextTourId.isNotEmpty;
 
     if (selectedBroadcast != null) {
       // Tournament context: use games from the tournament
@@ -210,6 +233,21 @@ class ScoreCardScreen extends ConsumerWidget {
           return [];
         },
         error: (_, __) => [],
+      );
+    } else if (shouldFetchFullEventGames) {
+      // Event context from non-tournament routes (e.g. For You, Countryman)
+      // Fetch full event games by tourId to include all rounds.
+      final fullGamesAsync = ref.watch(gamesTourProvider(contextTourId!));
+      allGames = fullGamesAsync.when(
+        data: (games) {
+          final converted = _toGamesTourModels(games);
+          return converted.isNotEmpty ? converted : (gamesContext ?? []);
+        },
+        loading: () {
+          isLoadingGames = true;
+          return gamesContext ?? [];
+        },
+        error: (_, __) => gamesContext ?? [],
       );
     } else if (gamesContext != null && gamesContext.isNotEmpty) {
       // Games context provided (from favorites, countrymen, player profile, etc.)
