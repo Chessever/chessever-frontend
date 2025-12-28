@@ -759,7 +759,7 @@ class ChessBoardScreenNotifierNew
         if (parsedFen != targetFen) {
           try {
             final extraMove = Move.parse(liveUci);
-            if (finalPos.isLegal(extraMove)) {
+            if (extraMove != null && finalPos.isLegal(extraMove)) {
               final sanResult = finalPos.makeSan(extraMove);
               final candidate = finalPos.play(extraMove);
               if (_normalizeFen(candidate.fen) == targetFen) {
