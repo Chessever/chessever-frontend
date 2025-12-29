@@ -107,7 +107,7 @@ class CountrymanGamesList extends ConsumerWidget {
                                 ),
                               );
                             },
-                            gamesTourModel: data.gamesTourModels[index],
+                            gamesTourModel: game,
                           )
                           : GameCard(
                             onTap: () {

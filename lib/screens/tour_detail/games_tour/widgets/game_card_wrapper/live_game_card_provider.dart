@@ -7,6 +7,9 @@ typedef LiveGameCardParams = ({String gameId, GamesTourModel baseGame});
 
 /// Provider that combines the base game model with real-time updates from the stream.
 /// This is used by game cards to show live updates without entering the game screen.
+///
+/// Auto-disposes when the widget is scrolled out of view, which automatically
+/// cleans up the Supabase Realtime subscription for this game.
 final liveGameCardProvider =
     AutoDisposeProvider.family<GamesTourModel, LiveGameCardParams>((
   ref,
@@ -19,10 +22,10 @@ final liveGameCardProvider =
     return baseGame;
   }
 
-  // Keep subscription alive for ongoing games to prevent churn when scrolling
-  ref.keepAlive();
+  // NO ref.keepAlive() - allow auto-dispose when scrolled out of view
+  // This ensures the Realtime channel is cleaned up properly
 
-  // Watch the game updates stream - SharedGameStreamManager handles batching
+  // Watch the game updates stream - individual channel per game
   final streamAsync = ref.watch(gameUpdatesStreamProvider(gameId));
 
   return streamAsync.when(

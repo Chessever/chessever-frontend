@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:chessever2/repository/local_storage/tournament/games/games_local_storage.dart';
 import 'package:chessever2/repository/supabase/game/games.dart';
-import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -13,6 +12,18 @@ final gamesTourProvider = AutoDisposeStateNotifierProvider.family<
   String
 >((ref, tourId) => GamesTourNotifier(ref: ref, tourId: tourId));
 
+/// Notifier that manages the list of games for a tournament.
+///
+/// **Architecture (Post-Revert):**
+/// - This provider holds ALL games in memory as a list
+/// - It does NOT maintain individual Supabase Realtime streams per game
+/// - Instead, it uses periodic polling (every 10 seconds) to fetch updates
+/// - Individual game cards use `liveGameCardProvider` with `.autoDispose`
+///   to get realtime updates only for VISIBLE games
+/// - When a game card scrolls out of view, its stream is disposed
+///
+/// This approach minimizes Supabase Realtime connections while still
+/// providing instant updates for games the user is actively viewing.
 class GamesTourNotifier extends StateNotifier<AsyncValue<List<Games>>> {
   GamesTourNotifier({required this.ref, required this.tourId})
     : super(const AsyncValue.loading()) {
@@ -24,10 +35,8 @@ class GamesTourNotifier extends StateNotifier<AsyncValue<List<Games>>> {
       next,
     ) {
       if (next) {
-        _setupGameStreamListeners(state.valueOrNull ?? []);
         _startPeriodicRefresh();
       } else {
-        _cleanupStreamSubscriptions();
         _stopPeriodicRefresh();
       }
     });
@@ -35,7 +44,6 @@ class GamesTourNotifier extends StateNotifier<AsyncValue<List<Games>>> {
 
   final Ref ref;
   final String tourId;
-  final Map<String, List<ProviderSubscription>> _streamSubscriptions = {};
   ProviderSubscription? _shouldStreamListener;
   Timer? _refreshTimer;
 
@@ -47,13 +55,12 @@ class GamesTourNotifier extends StateNotifier<AsyncValue<List<Games>>> {
       if (mounted) {
         state = AsyncValue.data(games);
 
-        // Only set up listeners if streaming is enabled
+        // Only start periodic refresh if streaming is enabled
         final shouldStream = ref.read(shouldStreamProvider);
         if (shouldStream) {
-          _setupGameStreamListeners(games);
           _startPeriodicRefresh();
 
-          // Do an immediate check for new games (don't wait 30 seconds)
+          // Do an immediate check for new games (don't wait 10 seconds)
           Future.delayed(const Duration(seconds: 2), () {
             _checkForNewGames();
           });
@@ -69,7 +76,9 @@ class GamesTourNotifier extends StateNotifier<AsyncValue<List<Games>>> {
   void _startPeriodicRefresh() {
     _stopPeriodicRefresh();
 
-    // Check for new rounds/games every 10 seconds (more frequent)
+    // Check for new rounds/games every 10 seconds
+    // This handles: new games, status changes, game completions
+    // Realtime updates for visible games are handled by liveGameCardProvider
     _refreshTimer = Timer.periodic(const Duration(seconds: 10), (_) async {
       await _checkForNewGames();
     });
@@ -92,7 +101,7 @@ class GamesTourNotifier extends StateNotifier<AsyncValue<List<Games>>> {
       final currentGames = state.valueOrNull;
       if (currentGames == null) return;
 
-      // Fetch fresh games from the server (bypassing cache)
+      // Fetch fresh games from the server
       final gamesLocalStorageProvider = ref.read(gamesLocalStorage);
       final freshGames = await gamesLocalStorageProvider.fetchAndSaveGames(
         tourId,
@@ -114,12 +123,9 @@ class GamesTourNotifier extends StateNotifier<AsyncValue<List<Games>>> {
         final current = currentById[fresh.id];
 
         if (current == null) {
+          // New game added
           hasChanges = true;
           mergedGames.add(fresh);
-
-          if (fresh.status == "*") {
-            _listenToGameStreams(fresh.id);
-          }
           continue;
         }
 
@@ -127,21 +133,13 @@ class GamesTourNotifier extends StateNotifier<AsyncValue<List<Games>>> {
           hasChanges = true;
         }
 
-        final becameLive = current.status != "*" && fresh.status == "*";
-        final becameFinished = current.status == "*" && fresh.status != "*";
-        if (becameLive) {
-          _listenToGameStreams(fresh.id);
-        } else if (becameFinished) {
-          _stopListeningToGame(fresh.id);
-        }
-
         mergedGames.add(_mergeGameSnapshots(current, fresh));
       }
 
+      // Check for removed games
       for (final removedId in currentById.keys) {
         if (!freshIds.contains(removedId)) {
           hasChanges = true;
-          _stopListeningToGame(removedId);
         }
       }
 
@@ -182,181 +180,6 @@ class GamesTourNotifier extends StateNotifier<AsyncValue<List<Games>>> {
     );
   }
 
-  void _setupGameStreamListeners(List<Games> games) {
-    // Clean up existing subscriptions
-    _cleanupStreamSubscriptions();
-
-    // Only proceed if streaming is enabled
-    final shouldStream = ref.read(shouldStreamProvider);
-    if (!shouldStream) {
-      debugPrint('🔥 GamesTourNotifier: Streaming is disabled, skipping setup');
-      return;
-    }
-
-    debugPrint(
-      '🔥 GamesTourNotifier: Setting up stream listeners for ${games.length} games',
-    );
-
-    // Set up listeners ONLY for ongoing games
-    // Finished games already have stable data (result/FEN) so we skip
-    // real-time streams for them to avoid unnecessary updates & logs.
-    for (final game in games) {
-      debugPrint(
-        '🔥 GamesTourNotifier: Game ${game.id} status: ${game.status}',
-      );
-      if (game.status == "*") {
-        debugPrint(
-          '🔥 GamesTourNotifier: Setting up streams for ongoing game ${game.id}',
-        );
-        _listenToGameStreams(game.id);
-      }
-    }
-  }
-
-  void _listenToGameStreams(String gameId) {
-    if (_streamSubscriptions.containsKey(gameId)) {
-      return;
-    }
-
-    final shouldStream = ref.read(shouldStreamProvider);
-    if (!shouldStream) {
-      return;
-    }
-
-    final subscriptions = <ProviderSubscription>[];
-
-    // CONSOLIDATED: Use ONE stream for ALL game data (reduces channels by 83%)
-    // This single stream provides: fen, last_move, clocks, status, last_move_time
-    debugPrint(
-      '🔥 GamesTourNotifier: Setting up CONSOLIDATED stream for game $gameId',
-    );
-
-    final gameUpdatesSubscription = ref.listen<
-      AsyncValue<Map<String, dynamic>?>
-    >(gameUpdatesStreamProvider(gameId), (previous, next) {
-      next.whenData((gameData) {
-        if (gameData == null) return;
-
-        final fen = gameData['fen'] as String?;
-        final fenPreviewLength =
-            fen == null ? 0 : (fen.length < 20 ? fen.length : 20);
-        final fenPreview =
-            fen == null ? '' : fen.substring(0, fenPreviewLength);
-        final fenSuffix =
-            fen != null && fen.length > fenPreviewLength ? '...' : '';
-        debugPrint(
-          '🔥 GamesTourNotifier: Stream update for game $gameId - status: ${gameData['status']}, fen: ${fenPreview.isNotEmpty ? fenPreview + fenSuffix : '—'}',
-        );
-
-        // Always update status (for all games, even finished ones)
-        final status = gameData['status'] as String?;
-
-        _updateGameData(
-          gameId,
-          fen: gameData['fen'] as String?,
-          lastMove: gameData['last_move'] as String?,
-          whiteClockSeconds: (gameData['last_clock_white'] as num?)?.round(),
-          blackClockSeconds: (gameData['last_clock_black'] as num?)?.round(),
-          lastMoveTime:
-              gameData['last_move_time'] != null
-                  ? DateTime.tryParse(gameData['last_move_time'] as String)
-                  : null,
-          status: status,
-        );
-
-        // As soon as a game finishes, tear down its stream subscription.
-        if (status != null && status != '*') {
-          _stopListeningToGame(gameId);
-        }
-      });
-    });
-    subscriptions.add(gameUpdatesSubscription);
-
-    // Store subscriptions for cleanup
-    _streamSubscriptions[gameId] = subscriptions;
-  }
-
-  void _updateGameData(
-    String gameId, {
-    String? fen,
-    String? lastMove,
-    int? whiteClockSeconds,
-    int? blackClockSeconds,
-    DateTime? lastMoveTime,
-    String? status,
-  }) {
-    final currentGames = state.valueOrNull;
-    if (currentGames == null) return;
-
-    // Check if any actual changes occurred
-    bool hasChanges = false;
-    Games? targetGame;
-
-    for (final game in currentGames) {
-      if (game.id == gameId) {
-        targetGame = game;
-        break;
-      }
-    }
-
-    if (targetGame != null) {
-      // Only update if values actually changed
-      hasChanges =
-          (fen != null && fen != targetGame.fen) ||
-          (lastMove != null && lastMove != targetGame.lastMove) ||
-          (whiteClockSeconds != null &&
-              whiteClockSeconds != targetGame.lastClockWhite) ||
-          (blackClockSeconds != null &&
-              blackClockSeconds != targetGame.lastClockBlack) ||
-          (lastMoveTime != null && lastMoveTime != targetGame.lastMoveTime) ||
-          (status != null && status != targetGame.status);
-    }
-
-    if (!hasChanges) {
-      // No actual changes, skip update to prevent unnecessary rebuilds
-      return;
-    }
-
-    final updatedGames =
-        currentGames.map((game) {
-          if (game.id == gameId) {
-            return game.copyWith(
-              fen: fen ?? game.fen,
-              lastMove: lastMove ?? game.lastMove,
-              lastClockWhite: whiteClockSeconds ?? game.lastClockWhite,
-              lastClockBlack: blackClockSeconds ?? game.lastClockBlack,
-              lastMoveTime: lastMoveTime ?? game.lastMoveTime,
-              status: status ?? game.status,
-            );
-          }
-          return game;
-        }).toList();
-
-    if (mounted) {
-      state = AsyncValue.data(updatedGames);
-    }
-  }
-
-  void _cleanupStreamSubscriptions() {
-    debugPrint(
-      '🔥 GamesTourNotifier: Cleaning up ${_streamSubscriptions.length} stream subscriptions',
-    );
-    for (final subscriptions in _streamSubscriptions.values) {
-      for (final subscription in subscriptions) {
-        subscription.close();
-      }
-    }
-    _streamSubscriptions.clear();
-  }
-
-  void _stopListeningToGame(String gameId) {
-    final subscriptions = _streamSubscriptions.remove(gameId);
-    if (subscriptions == null) return;
-    for (final subscription in subscriptions) {
-      subscription.close();
-    }
-  }
-
   Future<void> refreshGames() async {
     await _loadInitialGames();
   }
@@ -364,7 +187,6 @@ class GamesTourNotifier extends StateNotifier<AsyncValue<List<Games>>> {
   @override
   void dispose() {
     _stopPeriodicRefresh();
-    _cleanupStreamSubscriptions();
     _shouldStreamListener?.close();
     super.dispose();
   }
