@@ -124,8 +124,32 @@ class GamesTourScreenProvider
         }
       }
 
-      // Skip recomputation during search mode to maintain search results
+      // During search mode or filter mode, we need to re-apply the filter
+      // when significant game changes occur (like status changes)
       if (current?.isSearchMode == true) {
+        // If this is a filter mode (not text search), re-apply the filter
+        final displayMode = current?.gameDisplayMode;
+        if (displayMode != null && displayMode != GameDisplayMode.all) {
+          // Check if any game status changed (finished/started)
+          bool statusChanged = false;
+          for (int i = 0; i < nextGames.length && i < previousGames.length; i++) {
+            if (previousGames[i].status != nextGames[i].status) {
+              statusChanged = true;
+              break;
+            }
+          }
+
+          if (statusChanged) {
+            debugPrint('🎮 GamesTourScreen: Game status changed during filter mode - re-applying filter');
+            // Re-apply the current filter
+            if (displayMode == GameDisplayMode.hideFinishedGames) {
+              hideFinishedGames();
+            } else if (displayMode == GameDisplayMode.showfinishedGame) {
+              showFinishedGames();
+            }
+          }
+        }
+        // For text search mode, keep the current search results
         return;
       }
       _recompute();
@@ -186,7 +210,7 @@ class GamesTourScreenProvider
     try {
       final gamesAsync = ref.read(gamesTourProvider(aboutTourModel!.id));
        if (gamesAsync.isLoading) {
-      return; 
+      return;
     }
       final pins = ref.read(gamesPinprovider(aboutTourModel!.id));
 
