@@ -57,6 +57,7 @@ const String _gameListSelectColumns = '''
           time_start,
           board_nr,
           last_move_time,
+          game_day,
           last_clock_white,
           last_clock_black,
           eco,
@@ -910,8 +911,9 @@ class GameRepository extends BaseRepository {
       final dayStartUtc = DateTime.utc(date.year, date.month, date.day);
       final nextDayUtc = dayStartUtc.add(const Duration(days: 1));
       final dayFilter =
-          'and(last_move_time.gte.${dayStartUtc.toIso8601String()},last_move_time.lt.${nextDayUtc.toIso8601String()}),'
-          'and(last_move_time.is.null,date_start.eq.$dateStr)';
+          'game_day.eq.$dateStr,'
+          'and(game_day.is.null,last_move_time.gte.${dayStartUtc.toIso8601String()},last_move_time.lt.${nextDayUtc.toIso8601String()}),'
+          'and(game_day.is.null,last_move_time.is.null,date_start.eq.$dateStr)';
       debugPrint('[GameRepository] getGamesByFideIdsAndDate: fideIds=${fideIdInts.length}, date=$dateStr');
 
       // Fetch ALL games for this date (no limit)
@@ -972,12 +974,12 @@ class GameRepository extends BaseRepository {
   }
 
   /// Get games by country for a specific date.
+  /// Returns ALL games for the date (no limit) - the countrymen tab should display
+  /// everything your countrymen played on that date.
   Future<List<Games>> getGamesByCountryAndDate({
     required String countryCode,
     required DateTime date,
     int minElo = 2000,
-    int limit = 50,
-    int offset = 0,
   }) async {
     return handleApiCall(() async {
       final normalizedCode = _normalizeCountryCode(countryCode);
@@ -985,18 +987,19 @@ class GameRepository extends BaseRepository {
       final dayStartUtc = DateTime.utc(date.year, date.month, date.day);
       final nextDayUtc = dayStartUtc.add(const Duration(days: 1));
       final dayFilter =
-          'and(last_move_time.gte.${dayStartUtc.toIso8601String()},last_move_time.lt.${nextDayUtc.toIso8601String()}),'
-          'and(last_move_time.is.null,date_start.eq.$dateStr)';
+          'game_day.eq.$dateStr,'
+          'and(game_day.is.null,last_move_time.gte.${dayStartUtc.toIso8601String()},last_move_time.lt.${nextDayUtc.toIso8601String()}),'
+          'and(game_day.is.null,last_move_time.is.null,date_start.eq.$dateStr)';
       debugPrint('[GameRepository] getGamesByCountryAndDate: countryCode=$normalizedCode, date=$dateStr');
 
+      // No limit - fetch ALL games for this date
       final response = await supabase
           .from('games')
           .select(_gameListSelectColumns)
           .contains('player_feds', [normalizedCode])
           .or(dayFilter)
           .gte('player_max_rating', minElo)
-          .order('last_move_time', ascending: false, nullsFirst: false)
-          .range(offset, offset + limit - 1);
+          .order('last_move_time', ascending: false, nullsFirst: false);
 
       final jsonList =
           (response as List).map((item) => json.encode(item)).toList();

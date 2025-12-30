@@ -2,7 +2,7 @@ import 'dart:math' as math;
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/screens/standings/providers/player_ratings_provider.dart'
-    show UnifiedRatingRequest, unifiedRatingProvider;
+    show AllRatingsRequest, allRatingsProvider;
 import 'package:chessever2/screens/standings/providers/player_utils_provider.dart';
 import 'package:chessever2/screens/standings/widget/scoreboard_card_widget.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
@@ -237,7 +237,7 @@ class ScoreCardScreen extends ConsumerWidget {
     } else if (shouldFetchFullEventGames) {
       // Event context from non-tournament routes (e.g. For You, Countryman)
       // Fetch full event games by tourId to include all rounds.
-      final fullGamesAsync = ref.watch(gamesTourProvider(contextTourId!));
+      final fullGamesAsync = ref.watch(gamesTourProvider(contextTourId));
       allGames = fullGamesAsync.when(
         data: (games) {
           final converted = _toGamesTourModels(games);
@@ -1003,9 +1003,8 @@ class _AvatarPlaceholder extends StatelessWidget {
   }
 }
 
-/// Simplified rating display that uses a single unified provider
-/// to handle all fallback sources (Lichess API, Supabase, PGN).
-/// This avoids nested widget issues with autoDispose providers.
+/// Simplified rating display that uses a cached provider to fetch all ratings
+/// at once, avoiding 3 separate API calls for the same player.
 class _RatingDisplay extends ConsumerWidget {
   final String label;
   final String playerName;
@@ -1023,13 +1022,14 @@ class _RatingDisplay extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // Use the unified provider that handles all fallbacks internally
-    final ratingRequest = UnifiedRatingRequest(
+    // Use allRatingsProvider which fetches all ratings at once and caches them.
+    // This is efficient because the same request key (fideId + playerName) is
+    // shared by all 3 rating widgets, so only ONE API call is made.
+    final ratingsRequest = AllRatingsRequest(
       fideId: fideId,
       playerName: playerName,
-      timeControlType: timeControlType,
     );
-    final ratingAsync = ref.watch(unifiedRatingProvider(ratingRequest));
+    final ratingsAsync = ref.watch(allRatingsProvider(ratingsRequest));
 
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 4.sp, vertical: 10.sp),
@@ -1056,11 +1056,14 @@ class _RatingDisplay extends ConsumerWidget {
             textAlign: TextAlign.center,
           ),
           SizedBox(height: 6.h),
-          ratingAsync.when(
-            data: (rating) => Text(
-              rating?.toString() ?? '-',
-              style: AppTypography.textLgBold.copyWith(color: kWhiteColor),
-            ),
+          ratingsAsync.when(
+            data: (ratings) {
+              final rating = ratings.getRating(timeControlType);
+              return Text(
+                rating?.toString() ?? '-',
+                style: AppTypography.textLgBold.copyWith(color: kWhiteColor),
+              );
+            },
             loading: () => Skeletonizer(
               enabled: true,
               ignoreContainers: true,

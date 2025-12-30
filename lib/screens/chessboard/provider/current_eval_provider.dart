@@ -399,3 +399,127 @@ Future<CloudEval> _fetchLichessWithFallback(
 // - onDepthUpdate callback in board provider fires at each depth level
 // - PV cards and eval bar update simultaneously as depth increases
 // - Priority: Show depth 12 FAST, then continuously improve to 50
+
+/// Evaluation provider for game cards with Stockfish fallback.
+/// Uses cascade (local → Supabase → Lichess) as primary, with local Stockfish
+/// at depth 8 as fallback when cloud sources fail.
+/// - Auto-disposes when card scrolls out of view (via autoDispose)
+/// - Low priority Stockfish (isCurrentPosition: false) to not interfere with active board
+/// - Depth 8 is fast enough for responsive UI fallback
+final gameCardEvalWithStockfishFallbackProvider = FutureProvider.family.autoDispose<
+  CloudEval,
+  String // FEN string
+>((ref, fen) async {
+  if (fen.isEmpty) {
+    return CloudEval(
+      fen: fen,
+      knodes: 0,
+      depth: 0,
+      pvs: const [],
+      requestedMultiPv: 1,
+    );
+  }
+
+  const multiPV = 1;
+  final local = ref.watch(localEvalCacheProvider);
+  final lichess = ref.watch(lichessEvalRepoProvider);
+  final evalsRepo = ref.watch(evalsRepositoryProvider);
+  final persist = ref.watch(persistCloudEvalProvider);
+
+  // 1️⃣ Check local cache first (instant hit)
+  final cached = await local.fetch(fen, multiPV: multiPV);
+  if (cached != null && _isValidEvaluation(cached)) {
+    return cached;
+  }
+
+  // 2️⃣ Try Supabase
+  try {
+    final supabaseEval = await evalsRepo
+        .fetchFromSupabase(fen, desiredMultiPv: multiPV)
+        .timeout(const Duration(milliseconds: 600), onTimeout: () => null);
+    if (supabaseEval != null) {
+      final cloud = evalsRepo.evalsToCloudEval(fen, supabaseEval);
+      if (_isValidEvaluation(cloud)) {
+        // Background cache save
+        unawaited(
+          local.save(fen, cloud, multiPV: cloud.requestedMultiPv ?? cloud.pvs.length)
+              .catchError((_) => null),
+        );
+        return cloud;
+      }
+    }
+  } catch (_) {
+    // Continue to Lichess
+  }
+
+  // 3️⃣ Try Lichess API
+  try {
+    if (!_LichessRateLimitTracker.isInCooldown()) {
+      final cloud = await lichess
+          .getEval(fen, multiPv: multiPV)
+          .timeout(const Duration(milliseconds: 800));
+
+      if (_isValidEvaluation(cloud)) {
+        _LichessRateLimitTracker.reset();
+        // Background persist to caches
+        unawaited(
+          Future.wait<void>([
+            persist.call(fen, cloud),
+            local.save(fen, cloud, multiPV: cloud.requestedMultiPv ?? cloud.pvs.length),
+          ]).catchError((_) => <void>[]),
+        );
+        return cloud;
+      }
+    }
+  } on RateLimitException {
+    _LichessRateLimitTracker.recordRateLimit();
+  } catch (_) {
+    // Fall through to Stockfish
+  }
+
+  // 4️⃣ Fallback: Local Stockfish at depth 8
+  const fallbackDepth = 8;
+  try {
+    final sfEval = await StockfishSingleton().evaluatePosition(
+      fen,
+      depth: fallbackDepth,
+      multiPV: multiPV,
+      isCurrentPosition: false, // Low priority for background game cards
+      allowCache: true,
+    );
+
+    if (sfEval.pvs.isEmpty || sfEval.pvs.first.moves.isEmpty) {
+      return CloudEval(
+        fen: fen,
+        knodes: 0,
+        depth: 0,
+        pvs: const [],
+        requestedMultiPv: multiPV,
+      );
+    }
+
+    final cloudFromSf = CloudEval(
+      fen: fen,
+      knodes: sfEval.knodes,
+      depth: sfEval.depth,
+      pvs: sfEval.pvs,
+      requestedMultiPv: multiPV,
+    );
+
+    // Cache Stockfish result for future use (fire-and-forget)
+    unawaited(
+      local.save(fen, cloudFromSf, multiPV: multiPV).catchError((_) => null),
+    );
+
+    return cloudFromSf;
+  } catch (e) {
+    // Return empty result on error - don't block the UI
+    return CloudEval(
+      fen: fen,
+      knodes: 0,
+      depth: 0,
+      pvs: const [],
+      requestedMultiPv: multiPV,
+    );
+  }
+});

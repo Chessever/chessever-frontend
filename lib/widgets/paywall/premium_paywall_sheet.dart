@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 /// Show the premium paywall sheet.
 /// Returns `true` if the user successfully subscribed.
@@ -205,7 +206,42 @@ class _PaywallContent extends HookConsumerWidget {
             ),
           ),
           SizedBox(height: 16.h),
-          // Legal text
+          // Legal links
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              GestureDetector(
+                onTap: () => _launchUrl('https://chessever.com/privacy-policy'),
+                child: Text(
+                  'Privacy Policy',
+                  style: AppTypography.textXsMedium.copyWith(
+                    color: kWhiteColor.withOpacity(0.4),
+                    decoration: TextDecoration.underline,
+                    decorationColor: kWhiteColor.withOpacity(0.4),
+                  ),
+                ),
+              ),
+              SizedBox(width: 16.w),
+              Text(
+                '|',
+                style: AppTypography.textXsMedium.copyWith(
+                  color: kWhiteColor.withOpacity(0.3),
+                ),
+              ),
+              SizedBox(width: 16.w),
+              GestureDetector(
+                onTap: () => _launchUrl('https://chessever.com/terms-of-use'),
+                child: Text(
+                  'Terms of Use',
+                  style: AppTypography.textXsMedium.copyWith(
+                    color: kWhiteColor.withOpacity(0.4),
+                    decoration: TextDecoration.underline,
+                    decorationColor: kWhiteColor.withOpacity(0.4),
+                  ),
+                ),
+              ),
+            ],
+          ),
           SizedBox(height: 12.h),
         ],
       ),
@@ -277,12 +313,10 @@ class _PricingSection extends HookWidget {
     double? monthlyCost;
     double? annualCost;
     int savingsPercent = 0;
-    String? monthlyEquivalentFromAnnual; // $4.99
-    String? monthlyPlanPrice; // $9.99
+    String? monthlyEquivalentFromAnnual; // $4.99/mo
 
     if (monthlyPackage != null) {
       monthlyCost = monthlyPackage!.storeProduct.price;
-      monthlyPlanPrice = monthlyPackage!.storeProduct.priceString;
     }
     if (annualPackage != null) {
       annualCost = annualPackage!.storeProduct.price;
@@ -303,7 +337,7 @@ class _PricingSection extends HookWidget {
       final effectiveSymbol = currencySymbol.isEmpty ? '\$' : currencySymbol;
 
       monthlyEquivalentFromAnnual =
-          '$effectiveSymbol${(annualCost / 12).toStringAsFixed(2)}';
+          '$effectiveSymbol${(annualCost / 12).toStringAsFixed(2)}/mo';
     }
 
     // Don't render pricing cards if packages aren't loaded
@@ -317,6 +351,7 @@ class _PricingSection extends HookWidget {
           child: _PricingCard(
             isSelected: selectedPlan.value == PlanType.monthly,
             title: 'Monthly',
+            // BILLED AMOUNT is the main price (Apple requirement)
             price: monthlyPackage?.storeProduct.priceString,
             period: '/mo',
             isLoading: !hasPackages,
@@ -327,23 +362,18 @@ class _PricingSection extends HookWidget {
           ),
         ),
         SizedBox(width: 12.w),
-        // Annual card
+        // Annual card - BILLED AMOUNT must be most prominent (Apple Guideline 3.1.2)
         Expanded(
           child: _PricingCard(
             isSelected: selectedPlan.value == PlanType.annual,
             isBestValue: true,
             title: 'Annual',
-            // Show monthly equivalent as the MAIN price
-            price: monthlyEquivalentFromAnnual,
-            period: '/mo',
-            // Show the actual billing info as subtitle
-            subtitle:
-                annualPackage != null
-                    ? 'Billed ${annualPackage!.storeProduct.priceString} yearly'
-                    : null,
+            // BILLED AMOUNT is the main price (Apple requirement)
+            price: annualPackage?.storeProduct.priceString,
+            period: '/yr',
+            // Monthly equivalent shown as subordinate subtitle
+            subtitle: monthlyEquivalentFromAnnual,
             badge: savingsPercent > 0 ? 'SAVE $savingsPercent%' : null,
-            // Show monthly plan price as "original" price to strike through
-            fakeOriginalPrice: monthlyPlanPrice,
             isLoading: !hasPackages,
             onTap:
                 hasPackages ? () => selectedPlan.value = PlanType.annual : null,
@@ -363,7 +393,6 @@ class _PricingCard extends HookWidget {
     this.onTap,
     this.badge,
     this.subtitle,
-    this.fakeOriginalPrice,
     this.isLoading = false,
     this.isBestValue = false,
   });
@@ -375,7 +404,6 @@ class _PricingCard extends HookWidget {
   final VoidCallback? onTap;
   final String? badge;
   final String? subtitle;
-  final String? fakeOriginalPrice;
   final bool isLoading;
   final bool isBestValue;
 
@@ -488,7 +516,7 @@ class _PricingCard extends HookWidget {
 
                   SizedBox(height: 8.h),
 
-                  // Pricing Block
+                  // Pricing Block - BILLED AMOUNT is most prominent (Apple Guideline 3.1.2)
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -502,20 +530,7 @@ class _PricingCard extends HookWidget {
                           ),
                         )
                       else ...[
-                        // Fake Original Price (Strikethrough) ABOVE the main price for better hierarchy
-                        if (fakeOriginalPrice != null)
-                          Text(
-                            fakeOriginalPrice!,
-                            style: AppTypography.textXsMedium.copyWith(
-                              color: kWhiteColor.withValues(alpha: 0.4),
-                              decoration: TextDecoration.lineThrough,
-                              decorationColor: kWhiteColor.withValues(
-                                alpha: 0.4,
-                              ),
-                            ),
-                          ),
-
-                        // Main Price
+                        // Main Price (BILLED AMOUNT - most prominent)
                         Row(
                           crossAxisAlignment: CrossAxisAlignment.baseline,
                           textBaseline: TextBaseline.alphabetic,
@@ -538,7 +553,7 @@ class _PricingCard extends HookWidget {
                         ),
                       ],
 
-                      // Subtitle (Billed yearly)
+                      // Subtitle (monthly equivalent - subordinate)
                       if (subtitle != null && !showLoading) ...[
                         SizedBox(height: 2.h),
                         Text(
@@ -726,5 +741,13 @@ String _getPeriodUnitString(PeriodUnit periodUnit, int count) {
       return count == 1 ? 'year' : 'years';
     case PeriodUnit.unknown:
       return count == 1 ? 'day' : 'days';
+  }
+}
+
+/// Helper function to launch a URL
+Future<void> _launchUrl(String url) async {
+  final uri = Uri.parse(url);
+  if (await canLaunchUrl(uri)) {
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 }

@@ -55,29 +55,40 @@ final unifiedRatingProvider = FutureProvider.family.autoDispose<
   final supabase = ref.read(supabaseProvider);
   final normalizedName = _stripTitlePrefix(request.playerName);
 
+  // Debug logging (uncomment to troubleshoot rating lookups)
+  // print('🔍 UnifiedRating: Starting lookup for ${request.playerName} (fideId: ${request.fideId}, tc: ${request.timeControlType})');
+
   // Source 1: Try Supabase chess_players table by fideId (most reliable)
   if (request.fideId != null && request.fideId! > 0) {
     try {
+      // print('📊 UnifiedRating: Trying chess_players by fideId ${request.fideId}');
       final response = await supabase
           .from('chess_players')
           .select('rating, rapid_rating, blitz_rating')
           .eq('fideid', request.fideId!)
           .maybeSingle();
 
+      // print('📊 UnifiedRating: chess_players response: $response');
       if (response != null) {
         final rating = _extractRatingByType(response, request.timeControlType);
+        // print('📊 UnifiedRating: Extracted ${request.timeControlType} rating: $rating');
         if (rating != null && rating > 0) {
+          // print('✅ UnifiedRating: Returning $rating from chess_players');
           return rating;
         }
       }
     } catch (e) {
+      // print('❌ UnifiedRating: chess_players fideId query failed: $e');
       // Supabase fideId query failed, continue to next source
     }
+  } else {
+    // print('⚠️ UnifiedRating: No fideId available, skipping chess_players lookup');
   }
 
   // Source 2: Try Supabase chess_players table by NAME (fallback when no fideId)
   if (normalizedName.isNotEmpty) {
     try {
+      // print('📊 UnifiedRating: Trying chess_players by name "$normalizedName"');
       final response = await supabase
           .from('chess_players')
           .select('rating, rapid_rating, blitz_rating')
@@ -85,13 +96,16 @@ final unifiedRatingProvider = FutureProvider.family.autoDispose<
           .limit(1)
           .maybeSingle();
 
+      // print('📊 UnifiedRating: Name search response: $response');
       if (response != null) {
         final rating = _extractRatingByType(response, request.timeControlType);
         if (rating != null && rating > 0) {
+          // print('✅ UnifiedRating: Returning $rating from name search');
           return rating;
         }
       }
     } catch (e) {
+      // print('❌ UnifiedRating: Name search failed: $e');
       // Supabase name query failed, continue to next source
     }
   }
@@ -99,15 +113,21 @@ final unifiedRatingProvider = FutureProvider.family.autoDispose<
   // Source 3: Try Lichess FIDE API (if we have fideId and Supabase didn't have it)
   if (request.fideId != null && request.fideId! > 0) {
     try {
+      // print('🌐 UnifiedRating: Trying Lichess FIDE API for fideId ${request.fideId}');
       final lichessRepo = ref.read(lichessFideRepoProvider);
       final player = await lichessRepo.getPlayerById(request.fideId!);
       if (player != null) {
         final rating = player.getRating(request.timeControlType);
+        // print('🌐 UnifiedRating: Lichess returned ${request.timeControlType}: $rating');
         if (rating != null && rating > 0) {
+          // print('✅ UnifiedRating: Returning $rating from Lichess API');
           return rating;
         }
+      } else {
+        // print('🌐 UnifiedRating: Lichess returned null player');
       }
     } catch (e) {
+      // print('❌ UnifiedRating: Lichess API failed: $e');
       // Lichess API failed, continue to next source
     }
   }
@@ -179,15 +199,18 @@ final unifiedRatingProvider = FutureProvider.family.autoDispose<
         if (pgn != null && pgn.isNotEmpty) {
           final pgnRating = _extractRatingFromPGN(pgn, request.playerName);
           if (pgnRating != null && pgnRating > 0) {
+            // print('✅ UnifiedRating: Returning $pgnRating from PGN');
             return pgnRating;
           }
         }
       }
     } catch (e) {
+      // print('❌ UnifiedRating: PGN query failed: $e');
       // PGN-based rating query failed
     }
   }
 
+  // print('⚠️ UnifiedRating: All sources exhausted, returning null for ${request.playerName} (${request.timeControlType})');
   return null;
 });
 
@@ -229,6 +252,173 @@ class UnifiedRatingRequest {
   int get hashCode =>
       fideId.hashCode ^ playerName.hashCode ^ timeControlType.hashCode;
 }
+
+/// Request for all player ratings at once (avoids 3 separate API calls)
+class AllRatingsRequest {
+  final int? fideId;
+  final String playerName;
+
+  const AllRatingsRequest({
+    this.fideId,
+    required this.playerName,
+  });
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is AllRatingsRequest &&
+          runtimeType == other.runtimeType &&
+          fideId == other.fideId &&
+          playerName == other.playerName;
+
+  @override
+  int get hashCode => fideId.hashCode ^ playerName.hashCode;
+}
+
+/// Result containing all three rating types
+class AllRatingsResult {
+  final int? standard;
+  final int? rapid;
+  final int? blitz;
+
+  const AllRatingsResult({this.standard, this.rapid, this.blitz});
+
+  int? getRating(String timeControlType) {
+    switch (timeControlType.toLowerCase()) {
+      case 'standard':
+      case 'classical':
+        return standard;
+      case 'rapid':
+        return rapid;
+      case 'blitz':
+        return blitz;
+      default:
+        return standard;
+    }
+  }
+
+  bool get hasAnyRating => standard != null || rapid != null || blitz != null;
+}
+
+/// Provider that fetches ALL ratings for a player at once.
+/// This is much more efficient than making 3 separate API calls.
+/// The result is cached by Riverpod since AllRatingsRequest only includes
+/// fideId and playerName (not timeControlType).
+final allRatingsProvider = FutureProvider.family.autoDispose<
+    AllRatingsResult,
+    AllRatingsRequest>((ref, request) async {
+  final supabase = ref.read(supabaseProvider);
+  final normalizedName = _stripTitlePrefix(request.playerName);
+
+  // Source 1: Try Supabase chess_players table by fideId (most reliable)
+  if (request.fideId != null && request.fideId! > 0) {
+    try {
+      final response = await supabase
+          .from('chess_players')
+          .select('rating, rapid_rating, blitz_rating')
+          .eq('fideid', request.fideId!)
+          .maybeSingle();
+
+      if (response != null) {
+        final standard = _parseRating(response['rating']);
+        final rapid = _parseRating(response['rapid_rating']);
+        final blitz = _parseRating(response['blitz_rating']);
+        if ((standard != null && standard > 0) ||
+            (rapid != null && rapid > 0) ||
+            (blitz != null && blitz > 0)) {
+          return AllRatingsResult(
+            standard: standard != null && standard > 0 ? standard : null,
+            rapid: rapid != null && rapid > 0 ? rapid : null,
+            blitz: blitz != null && blitz > 0 ? blitz : null,
+          );
+        }
+      }
+    } catch (e) {
+      // Continue to next source
+    }
+  }
+
+  // Source 2: Try Supabase chess_players table by NAME
+  if (normalizedName.isNotEmpty) {
+    try {
+      final response = await supabase
+          .from('chess_players')
+          .select('rating, rapid_rating, blitz_rating')
+          .ilike('name', '%$normalizedName%')
+          .limit(1)
+          .maybeSingle();
+
+      if (response != null) {
+        final standard = _parseRating(response['rating']);
+        final rapid = _parseRating(response['rapid_rating']);
+        final blitz = _parseRating(response['blitz_rating']);
+        if ((standard != null && standard > 0) ||
+            (rapid != null && rapid > 0) ||
+            (blitz != null && blitz > 0)) {
+          return AllRatingsResult(
+            standard: standard != null && standard > 0 ? standard : null,
+            rapid: rapid != null && rapid > 0 ? rapid : null,
+            blitz: blitz != null && blitz > 0 ? blitz : null,
+          );
+        }
+      }
+    } catch (e) {
+      // Continue to next source
+    }
+  }
+
+  // Source 3: Try Lichess FIDE API (returns all ratings in one call!)
+  if (request.fideId != null && request.fideId! > 0) {
+    try {
+      final lichessRepo = ref.read(lichessFideRepoProvider);
+      final player = await lichessRepo.getPlayerById(request.fideId!);
+      if (player != null) {
+        return AllRatingsResult(
+          standard: player.standard != null && player.standard! > 0 ? player.standard : null,
+          rapid: player.rapid != null && player.rapid! > 0 ? player.rapid : null,
+          blitz: player.blitz != null && player.blitz! > 0 ? player.blitz : null,
+        );
+      }
+    } catch (e) {
+      // Continue to next source
+    }
+  }
+
+  // Source 3b: Try Lichess search by name when no fideId
+  if (request.fideId == null && normalizedName.isNotEmpty) {
+    try {
+      final lichessRepo = ref.read(lichessFideRepoProvider);
+      final matches = await lichessRepo.searchPlayersByName(normalizedName);
+      if (matches.isNotEmpty) {
+        final normalizedTarget = _normalizeNameForMatch(normalizedName);
+        FidePlayer? bestMatch;
+        for (final candidate in matches) {
+          final candidateName = _normalizeNameForMatch(candidate.name);
+          if (candidateName == normalizedTarget) {
+            bestMatch = candidate;
+            break;
+          }
+          if (bestMatch == null &&
+              (candidateName.contains(normalizedTarget) ||
+                  normalizedTarget.contains(candidateName))) {
+            bestMatch = candidate;
+          }
+        }
+        bestMatch ??= matches.first;
+        return AllRatingsResult(
+          standard: bestMatch.standard != null && bestMatch.standard! > 0 ? bestMatch.standard : null,
+          rapid: bestMatch.rapid != null && bestMatch.rapid! > 0 ? bestMatch.rapid : null,
+          blitz: bestMatch.blitz != null && bestMatch.blitz! > 0 ? bestMatch.blitz : null,
+        );
+      }
+    } catch (e) {
+      // Continue to next source
+    }
+  }
+
+  // Return empty result (no ratings found)
+  return const AllRatingsResult();
+});
 
 /// Provider to get player rating from chess_players table by FIDE ID
 /// This table has 23k+ players with all their ratings
