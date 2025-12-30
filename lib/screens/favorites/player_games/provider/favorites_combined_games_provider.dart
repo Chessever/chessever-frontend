@@ -1,6 +1,6 @@
 import 'dart:async';
-import 'package:chessever2/providers/favorite_players_provider.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
+import 'package:chessever2/screens/favorites/favorite_players_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:flutter/foundation.dart';
@@ -238,11 +238,14 @@ class FavoritesCombinedGamesNotifier
   }
 
   /// Fetch search results
+  /// Uses large batch sizes to ensure all matching games can be displayed
+  static const int _searchBatchSize = 500;
+
   Future<void> _fetchSearchResults({required bool isInitial}) async {
     if (!mounted) return;
 
-    final favoritesAsync = _ref.read(favoritePlayersProviderNew);
-    final favorites = favoritesAsync.valueOrNull ?? [];
+    final favoritesAsync = _ref.read(favoritePlayersNotifierProvider);
+    final favorites = favoritesAsync.valueOrNull?.players ?? [];
     final query = _currentSearchQuery;
 
     if (favorites.isEmpty || query.isEmpty) {
@@ -253,15 +256,15 @@ class FavoritesCombinedGamesNotifier
     try {
       final gameRepo = _ref.read(gameRepositoryProvider);
       final fideIds = favorites
-          .where((f) => f.fideId != null && f.fideId!.isNotEmpty)
-          .map((f) => f.fideId!)
+          .where((f) => f.fideId != null)
+          .map((f) => f.fideId!.toString())
           .toList();
 
       final games = await gameRepo.searchFavoritesGames(
         fideIds: fideIds,
         playerNames: [],
         query: query,
-        limit: 50,
+        limit: _searchBatchSize,
         offset: isInitial ? 0 : state.games.length,
       );
 
@@ -285,7 +288,7 @@ class FavoritesCombinedGamesNotifier
       state = state.copyWith(
         games: allGames,
         isLoading: false,
-        hasMore: games.length >= 50,
+        hasMore: games.length >= _searchBatchSize,
         seenGameIds: seenKeys,
       );
     } catch (e) {
@@ -301,25 +304,27 @@ class FavoritesCombinedGamesNotifier
     await _fetchSearchResults(isInitial: false);
   }
 
-  /// Main method: Fetch next batch of dates and ALL their games
+  /// Main method: Fetch games based on current filter state
+  /// - Single player filter: Fetch ALL games directly (guaranteed complete)
+  /// - Multiple players or no filter: Use date-based pagination
   Future<void> _fetchNextDates({required bool isInitial}) async {
     if (!mounted) return;
 
     state = state.copyWith(isLoading: true, error: null);
 
     try {
-      final favoritesAsync = _ref.read(favoritePlayersProviderNew);
-      final favorites = favoritesAsync.valueOrNull ?? [];
+      final favoritesAsync = _ref.read(favoritePlayersNotifierProvider);
+      final favorites = favoritesAsync.valueOrNull?.players ?? [];
 
       if (favorites.isEmpty) {
         state = state.copyWith(isLoading: false, hasMore: false, error: null);
         return;
       }
 
-      // Get FIDE IDs
+      // Get FIDE IDs (convert int? to String)
       var fideIds = favorites
-          .where((f) => f.fideId != null && f.fideId!.isNotEmpty)
-          .map((f) => f.fideId!)
+          .where((f) => f.fideId != null)
+          .map((f) => f.fideId!.toString())
           .toList();
 
       // Apply filter if selected
@@ -335,7 +340,7 @@ class FavoritesCombinedGamesNotifier
 
       final gameRepo = _ref.read(gameRepositoryProvider);
 
-      // Get available dates if not cached
+      // Get available dates if not cached (day-based pagination)
       if (_availableDates.isEmpty && _hasMoreDates) {
         final dates = await gameRepo.getDistinctDatesForFavorites(
           fideIds: fideIds,
@@ -448,28 +453,12 @@ class FavoritesCombinedGamesNotifier
     );
   }
 
-  /// Generate dedupe key based on game content
+  /// Generate dedupe key based on game ID (unique identifier)
+  /// Previously used player names + date + result, but this caused issues
+  /// when games had NULL lastMoveTime - multiple games between same players
+  /// with same result would get incorrectly deduplicated.
   String _generateDedupeKey(GamesTourModel game) {
-    final names = [
-      _normalizeName(game.whitePlayer.name),
-      _normalizeName(game.blackPlayer.name),
-    ]..sort();
-    final dateStr = game.lastMoveTime?.toString().split(' ')[0] ?? '';
-    final result = game.gameStatus.name;
-    return '${names.join('|')}|$dateStr|$result';
-  }
-
-  String _normalizeName(String name) {
-    var normalized = name.toLowerCase().trim();
-    normalized = normalized.replaceAll(RegExp(r'\s+'), ' ');
-    final titles = ['gm', 'im', 'fm', 'cm', 'wgm', 'wim', 'wfm', 'wcm'];
-    for (final title in titles) {
-      if (normalized.startsWith('$title ')) {
-        normalized = normalized.substring(title.length + 1);
-        break;
-      }
-    }
-    return normalized;
+    return game.gameId;
   }
 
   int _compareByDateDesc(GamesTourModel a, GamesTourModel b) {

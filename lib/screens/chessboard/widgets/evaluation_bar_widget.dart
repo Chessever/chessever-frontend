@@ -209,7 +209,9 @@ class _EvaluationBarWidgetState extends State<EvaluationBarWidget> {
   }
 }
 
-/// Evaluation widget used on game cards (still watches the cascade provider).
+/// Evaluation widget used on game cards.
+/// Uses cascade (local → Supabase → Lichess) with Stockfish depth 8 as fallback.
+/// Auto-disposes when card scrolls out of view (only evaluates visible boards).
 class EvaluationBarWidgetForGames extends ConsumerWidget {
   final double width;
   final double height;
@@ -226,8 +228,10 @@ class EvaluationBarWidgetForGames extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // Uses cascade (local → Supabase → Lichess) with Stockfish depth 8 fallback
+    // Auto-disposes when card scrolls out of view
     return ref
-        .watch(cascadeEvalProvider(CascadeEvalParams(fen: fen, multiPV: 1)))
+        .watch(gameCardEvalWithStockfishFallbackProvider(fen))
         .when(
           loading: () {
             return SkeletonWidget(

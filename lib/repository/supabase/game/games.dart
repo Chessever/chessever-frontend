@@ -16,6 +16,7 @@ class Games {
   final List<String>? search;
   final int? boardNr;
   final DateTime? lastMoveTime;
+  final DateTime? gameDay;
   final int? lastClockWhite;
   final int? lastClockBlack;
   final DateTime? dateStart;
@@ -38,6 +39,7 @@ class Games {
     this.search,
     this.boardNr,
     this.lastMoveTime,
+    this.gameDay,
     this.lastClockWhite,
     this.lastClockBlack,
     this.dateStart,
@@ -61,6 +63,7 @@ class Games {
     List<String>? search,
     int? boardNr,
     DateTime? lastMoveTime,
+    DateTime? gameDay,
     int? lastClockWhite,
     int? lastClockBlack,
     DateTime? dateStart,
@@ -83,6 +86,7 @@ class Games {
       search: search ?? this.search,
       boardNr: boardNr ?? this.boardNr,
       lastMoveTime: lastMoveTime ?? this.lastMoveTime,
+      gameDay: gameDay ?? this.gameDay,
       lastClockWhite: lastClockWhite ?? this.lastClockWhite,
       lastClockBlack: lastClockBlack ?? this.lastClockBlack,
       dateStart: dateStart ?? this.dateStart,
@@ -124,6 +128,10 @@ class Games {
             json['last_move_time'] != null
                 ? DateTime.parse(json['last_move_time'] as String)
                 : null,
+        gameDay:
+            json['game_day'] != null
+                ? DateTime.parse(json['game_day'] as String)
+                : null,
         lastClockWhite:
             json['last_clock_white'] != null
                 ? (json['last_clock_white'] as num).toInt()
@@ -162,6 +170,8 @@ class Games {
       if (boardNr != null) 'board_nr': boardNr,
       if (lastMoveTime != null)
         'last_move_time': lastMoveTime!.toIso8601String(),
+      if (gameDay != null)
+        'game_day': gameDay!.toIso8601String().split('T').first,
       if (lastClockWhite != null) 'last_clock_white': lastClockWhite,
       if (lastClockBlack != null) 'last_clock_black': lastClockBlack,
       if (dateStart != null)

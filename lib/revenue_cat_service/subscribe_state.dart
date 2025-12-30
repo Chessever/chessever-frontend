@@ -83,17 +83,27 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
     state = state.copyWith(isLoading: true);
 
     try {
-      final isSubscribed = await _revenueCat.isSubscribed();
-      final products = await _revenueCat.getProducts();
-      final customerInfo = await _revenueCat.getCustomerInfo();
+      // Fetch products and customer info in parallel (2 API calls, not 3)
+      final results = await Future.wait([
+        _revenueCat.getProducts(),
+        _revenueCat.getCustomerInfo(),
+      ]);
+      final products = results[0] as List<Package>;
+      final customerInfo = results[1] as CustomerInfo?;
 
+      // Derive isSubscribed from customerInfo (no extra API call)
+      bool isSubscribed = false;
       DateTime? expirationDate;
       String? managementUrl;
       bool willRenew = true;
 
       if (customerInfo != null) {
-        // Get expiration date and willRenew from active entitlements
+        // Check entitlements from the already-fetched customerInfo
         final activeEntitlements = customerInfo.entitlements.active;
+        isSubscribed = activeEntitlements
+                .containsKey(RevenueCatService.premiumEntitlement) ||
+            activeEntitlements.isNotEmpty;
+
         if (activeEntitlements.isNotEmpty) {
           final entitlement = activeEntitlements.values.first;
           if (entitlement.expirationDate != null) {
@@ -101,7 +111,6 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
           }
           willRenew = entitlement.willRenew;
         }
-        // Get management URL
         managementUrl = customerInfo.managementURL;
       }
 
@@ -129,16 +138,26 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
     state = state.copyWith(isLoading: true, error: null);
 
     try {
-      final isSubscribed = await _revenueCat.isSubscribed();
-      final products = await _revenueCat.getProducts();
-      final customerInfo = await _revenueCat.getCustomerInfo();
+      // Fetch products and customer info in parallel (2 API calls, not 3)
+      final results = await Future.wait([
+        _revenueCat.getProducts(),
+        _revenueCat.getCustomerInfo(),
+      ]);
+      final products = results[0] as List<Package>;
+      final customerInfo = results[1] as CustomerInfo?;
 
+      // Derive isSubscribed from customerInfo (no extra API call)
+      bool isSubscribed = false;
       DateTime? expirationDate;
       String? managementUrl;
       bool willRenew = true;
 
       if (customerInfo != null) {
         final activeEntitlements = customerInfo.entitlements.active;
+        isSubscribed = activeEntitlements
+                .containsKey(RevenueCatService.premiumEntitlement) ||
+            activeEntitlements.isNotEmpty;
+
         if (activeEntitlements.isNotEmpty) {
           final entitlement = activeEntitlements.values.first;
           if (entitlement.expirationDate != null) {
@@ -157,6 +176,11 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
         managementUrl: managementUrl,
         willRenew: willRenew,
       );
+
+      // Schedule expiration check if subscribed
+      if (isSubscribed && expirationDate != null) {
+        _scheduleExpirationCheck();
+      }
     } catch (e) {
       debugPrint('❌ Subscription refresh error: $e');
       state = state.copyWith(error: e.toString(), isLoading: false);

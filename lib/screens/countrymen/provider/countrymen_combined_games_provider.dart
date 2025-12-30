@@ -238,6 +238,9 @@ class CountrymenCombinedGamesNotifier
   }
 
   /// Fetch search results from Supabase
+  /// Uses large batch sizes to ensure all matching games can be displayed
+  static const int _searchBatchSize = 500;
+
   Future<void> _fetchSearchResults({required bool isInitial}) async {
     if (!mounted) return;
 
@@ -258,7 +261,7 @@ class CountrymenCombinedGamesNotifier
       final games = await gameRepo.searchCountrymenGames(
         countryCode: fideCode,
         query: query,
-        limit: 50,
+        limit: _searchBatchSize,
         offset: isInitial ? 0 : state.games.length,
       );
 
@@ -282,7 +285,7 @@ class CountrymenCombinedGamesNotifier
       state = state.copyWith(
         games: allGames,
         isLoading: false,
-        hasMore: games.length >= 50,
+        hasMore: games.length >= _searchBatchSize,
         seenGameIds: seenKeys,
       );
     } catch (e) {

@@ -257,12 +257,20 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
         );
 
         // Try to find player in tournament standings, otherwise use fallback
-        final playerStanding = standingsAsync.whenOrNull(
+        var playerStanding = standingsAsync.whenOrNull(
           data: (standings) => standings.firstWhere(
             (player) => player.name == playerCard.name,
             orElse: () => fallbackPlayer,
           ),
         ) ?? fallbackPlayer;
+
+        // IMPORTANT: If standings player has null fideId but game data has it,
+        // use the fideId from game data (playerCard) - this is more reliable
+        // since games.players always has fideId from broadcast while tours.players
+        // may sometimes be missing it
+        if (playerStanding.fideId == null && playerCard.fideId != null) {
+          playerStanding = playerStanding.copyWith(fideId: playerCard.fideId);
+        }
 
         ref.read(selectedPlayerProvider.notifier).state = playerStanding;
 

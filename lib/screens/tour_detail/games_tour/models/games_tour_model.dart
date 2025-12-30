@@ -230,8 +230,8 @@ class GamesTourModel {
         pgn: game.pgn?.isNotEmpty == true ? game.pgn : null,
         lastMove: game.lastMove?.isNotEmpty == true ? game.lastMove : null,
         boardNr: game.boardNr,
-        // Use lastMoveTime if available, otherwise fall back to dateStart
-        lastMoveTime: game.lastMoveTime ?? game.dateStart,
+        // Prefer lastMoveTime, then gameDay (round start), then dateStart.
+        lastMoveTime: game.lastMoveTime ?? game.gameDay ?? game.dateStart,
         eco: game.eco,
         openingName: game.openingName,
       );
