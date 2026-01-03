@@ -670,34 +670,38 @@ class _BoardThemeGallerySheetState extends State<_BoardThemeGallerySheet> {
               ],
             ),
           ),
-          // Grid of themes
+          // Grid of themes with scroll indicator
           Expanded(
-            child: GridView.builder(
-              padding: EdgeInsets.only(
-                left: 16.sp,
-                right: 16.sp,
-                bottom: bottomPadding + 24.sp,
-              ),
-              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 4,
-                mainAxisSpacing: 16.sp,
-                crossAxisSpacing: 12.sp,
-                childAspectRatio: 0.75,
-              ),
-              itemCount: kBoardThemes.length,
-              itemBuilder: (context, index) {
-                final theme = kBoardThemes[index];
-                final isSelected = _selectedIndex == index;
+            child: Scrollbar(
+              thumbVisibility: true,
+              radius: Radius.circular(4.br),
+              child: GridView.builder(
+                padding: EdgeInsets.only(
+                  left: 16.sp,
+                  right: 16.sp,
+                  bottom: bottomPadding + 24.sp,
+                ),
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 4,
+                  mainAxisSpacing: 16.sp,
+                  crossAxisSpacing: 12.sp,
+                  childAspectRatio: 0.75,
+                ),
+                itemCount: kBoardThemes.length,
+                itemBuilder: (context, index) {
+                  final theme = kBoardThemes[index];
+                  final isSelected = _selectedIndex == index;
 
-                return _BoardThemeGridItem(
-                  theme: theme,
-                  isSelected: isSelected,
-                  onTap: () {
-                    setState(() => _selectedIndex = index);
-                    widget.onThemeSelected(index);
-                  },
-                );
-              },
+                  return _BoardThemeGridItem(
+                    theme: theme,
+                    isSelected: isSelected,
+                    onTap: () {
+                      setState(() => _selectedIndex = index);
+                      widget.onThemeSelected(index);
+                    },
+                  );
+                },
+              ),
             ),
           ),
         ],
@@ -1091,34 +1095,38 @@ class _PieceSetGallerySheetState extends State<_PieceSetGallerySheet> {
               ],
             ),
           ),
-          // Grid of piece sets
+          // Grid of piece sets with scroll indicator
           Expanded(
-            child: GridView.builder(
-              padding: EdgeInsets.only(
-                left: 16.sp,
-                right: 16.sp,
-                bottom: bottomPadding + 24.sp,
-              ),
-              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 4,
-                mainAxisSpacing: 16.sp,
-                crossAxisSpacing: 12.sp,
-                childAspectRatio: 0.72,
-              ),
-              itemCount: kPieceSets.length,
-              itemBuilder: (context, index) {
-                final pieceSet = kPieceSets[index];
-                final isSelected = _selectedIndex == index;
+            child: Scrollbar(
+              thumbVisibility: true,
+              radius: Radius.circular(4.br),
+              child: GridView.builder(
+                padding: EdgeInsets.only(
+                  left: 16.sp,
+                  right: 16.sp,
+                  bottom: bottomPadding + 24.sp,
+                ),
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 4,
+                  mainAxisSpacing: 16.sp,
+                  crossAxisSpacing: 12.sp,
+                  childAspectRatio: 0.72,
+                ),
+                itemCount: kPieceSets.length,
+                itemBuilder: (context, index) {
+                  final pieceSet = kPieceSets[index];
+                  final isSelected = _selectedIndex == index;
 
-                return _PieceSetGridItem(
-                  pieceSet: pieceSet,
-                  isSelected: isSelected,
-                  onTap: () {
-                    setState(() => _selectedIndex = index);
-                    widget.onPieceSetSelected(index);
-                  },
-                );
-              },
+                  return _PieceSetGridItem(
+                    pieceSet: pieceSet,
+                    isSelected: isSelected,
+                    onTap: () {
+                      setState(() => _selectedIndex = index);
+                      widget.onPieceSetSelected(index);
+                    },
+                  );
+                },
+              ),
             ),
           ),
         ],
