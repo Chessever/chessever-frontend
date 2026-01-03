@@ -13,6 +13,7 @@ import 'package:chessever2/widgets/app_button.dart';
 import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 import 'package:chessever2/widgets/event_card/event_image_provider.dart';
 import 'package:chessever2/widgets/heroine/no_padding_fade_shuttle_builder.dart';
+import 'package:chessever2/widgets/logo_pattern_fallback.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:country_flags/country_flags.dart';
 import 'package:flutter/material.dart';
@@ -284,14 +285,7 @@ class _EventImage extends ConsumerWidget {
                   ),
                   child: Container(color: kLightBlack),
                 ),
-            error:
-                (_, __) => Center(
-                  child: Icon(
-                    Icons.image_not_supported_outlined,
-                    color: kWhiteColor.withValues(alpha: 0.3),
-                    size: 24.sp,
-                  ),
-                ),
+            error: (_, __) => const LogoPatternFallback(),
           ),
         ),
       ),
@@ -345,14 +339,8 @@ class _EventImage extends ConsumerWidget {
       );
     }
 
-    // No country code available - show generic icon
-    return Center(
-      child: Icon(
-        Icons.image_outlined,
-        color: kWhiteColor.withValues(alpha: 0.3),
-        size: 24.sp,
-      ),
-    );
+    // No country code available - show logo pattern
+    return const LogoPatternFallback();
   }
 
   String? _extractCountryCode(WidgetRef ref, String? location) {
@@ -424,14 +412,7 @@ class _FlagEventImage extends StatelessWidget {
                   ),
                 ),
               ),
-              if (countryCode == null)
-                Center(
-                  child: Icon(
-                    Icons.flag_outlined,
-                    color: kWhiteColor.withValues(alpha: 0.3),
-                    size: 24.sp,
-                  ),
-                ),
+              if (countryCode == null) const LogoPatternFallback(),
             ],
           ),
         ),

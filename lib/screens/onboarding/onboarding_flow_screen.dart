@@ -87,6 +87,27 @@ class OnboardingFlowScreen extends HookConsumerWidget {
                 children: [
                   _WelcomeStep(
                     onNext: () => goToPage(1),
+                    onSignIn: () async {
+                      // Mark onboarding as seen before navigating to auth
+                      try {
+                        await ref
+                            .read(onboardingRepositoryProvider)
+                            .markAsSeen(
+                              userId:
+                                  Supabase.instance.client.auth.currentUser?.id,
+                            );
+                        if (kDebugMode) {
+                          debugPrint('[Onboarding] Marked as seen before auth navigation');
+                        }
+                      } catch (e) {
+                        if (kDebugMode) {
+                          debugPrint('[Onboarding] Failed to mark as seen: $e');
+                        }
+                      }
+                      if (context.mounted) {
+                        Navigator.pushReplacementNamed(context, '/auth_screen');
+                      }
+                    },
                     topPadding: topPadding,
                     bottomPadding: bottomPadding,
                   ),
@@ -1089,11 +1110,13 @@ class _PageIndicator extends StatelessWidget {
 class _WelcomeStep extends HookWidget {
   const _WelcomeStep({
     required this.onNext,
+    required this.onSignIn,
     required this.topPadding,
     required this.bottomPadding,
   });
 
   final VoidCallback onNext;
+  final VoidCallback onSignIn;
   final double topPadding;
   final double bottomPadding;
 
@@ -1105,8 +1128,12 @@ class _WelcomeStep extends HookWidget {
         children: [
           const Spacer(flex: 1),
 
-          // Hero visual - Animated chess knight
-          _AnimatedKnightHero()
+          // App logo from Figma
+          Image.asset(
+            PngAsset.newAppLogo,
+            height: 120.h,
+            width: 120.w,
+          )
               .animate()
               .fadeIn(duration: 600.ms, curve: _gentleSpring)
               .scale(
@@ -1117,18 +1144,6 @@ class _WelcomeStep extends HookWidget {
               ),
 
           SizedBox(height: 48.h),
-
-          // App logo
-          Image.asset(
-            PngAsset.newAppLogoCircle,
-            height: 56.h,
-            width: 56.w,
-          )
-              .animate(delay: 200.ms)
-              .fadeIn(duration: 500.ms, curve: _smoothSpring)
-              .scale(begin: const Offset(0.5, 0.5), curve: _snappySpring),
-
-          SizedBox(height: 24.h),
 
           // Tagline - minimal text
           Text(
@@ -1167,156 +1182,23 @@ class _WelcomeStep extends HookWidget {
               .fadeIn(duration: 400.ms, curve: _smoothSpring)
               .move(begin: const Offset(0, 30), curve: _smoothSpring),
 
-          SizedBox(height: 8.h),
-        ],
-      ),
-    );
-  }
-}
+          SizedBox(height: 16.h),
 
-// ════════════════════════════════════════════════════════════════════════════
-// ANIMATED KNIGHT HERO
-// ════════════════════════════════════════════════════════════════════════════
-
-class _AnimatedKnightHero extends HookWidget {
-  @override
-  Widget build(BuildContext context) {
-    final breatheController = useAnimationController(
-      duration: const Duration(milliseconds: 3000),
-    )..repeat(reverse: true);
-
-    final breatheAnimation = useAnimation(
-      CurvedAnimation(parent: breatheController, curve: Curves.easeInOut),
-    );
-
-    return SizedBox(
-      height: 200.h,
-      width: 200.w,
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          // Outer glow ring
-          Transform.scale(
-            scale: 1.0 + breatheAnimation * 0.05,
-            child: Container(
-              width: 180.w,
-              height: 180.h,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: RadialGradient(
-                  colors: [
-                    kPrimaryColor.withValues(alpha: 0.15),
-                    kPrimaryColor.withValues(alpha: 0.0),
-                  ],
-                ),
+          // Sign in link for returning users
+          GestureDetector(
+            onTap: onSignIn,
+            child: Text(
+              'I already have an account',
+              style: AppTypography.textSmMedium.copyWith(
+                color: kPrimaryColor,
               ),
             ),
-          ),
+          )
+              .animate(delay: 700.ms)
+              .fadeIn(duration: 400.ms, curve: _smoothSpring),
 
-          // Chess pattern background
-          _ChessPatternCircle(animation: breatheAnimation),
-
-          // Knight piece icon
-          Transform.translate(
-            offset: Offset(0, -3 + breatheAnimation * 6),
-            child: _KnightIcon(size: 100.sp),
-          ),
+          SizedBox(height: 8.h),
         ],
-      ),
-    );
-  }
-}
-
-class _ChessPatternCircle extends StatelessWidget {
-  const _ChessPatternCircle({required this.animation});
-
-  final double animation;
-
-  @override
-  Widget build(BuildContext context) {
-    return Transform.rotate(
-      angle: animation * 0.1,
-      child: Container(
-        width: 140.w,
-        height: 140.h,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          border: Border.all(
-            color: kWhiteColor.withValues(alpha: 0.08),
-            width: 1,
-          ),
-        ),
-        child: ClipOval(
-          child: CustomPaint(
-            painter: _MiniChessBoardPainter(),
-            size: Size(140.w, 140.h),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _MiniChessBoardPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final squareSize = size.width / 4;
-    final lightColor = kWhiteColor.withValues(alpha: 0.06);
-    final darkColor = kBlack2Color.withValues(alpha: 0.4);
-
-    for (int row = 0; row < 4; row++) {
-      for (int col = 0; col < 4; col++) {
-        final isLight = (row + col) % 2 == 0;
-        final paint = Paint()..color = isLight ? lightColor : darkColor;
-
-        canvas.drawRect(
-          Rect.fromLTWH(
-            col * squareSize,
-            row * squareSize,
-            squareSize,
-            squareSize,
-          ),
-          paint,
-        );
-      }
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
-
-class _KnightIcon extends StatelessWidget {
-  const _KnightIcon({required this.size});
-
-  final double size;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: EdgeInsets.all(20.sp),
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: kBlack2Color.withValues(alpha: 0.8),
-        border: Border.all(
-          color: kPrimaryColor.withValues(alpha: 0.3),
-          width: 2,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: kPrimaryColor.withValues(alpha: 0.2),
-            blurRadius: 30,
-            spreadRadius: 5,
-          ),
-        ],
-      ),
-      child: Text(
-        '♞',
-        style: TextStyle(
-          fontSize: size * 0.5,
-          color: kWhiteColor,
-          height: 1,
-        ),
       ),
     );
   }

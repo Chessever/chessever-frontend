@@ -43,7 +43,7 @@ class BottomNavBarWidget extends StatelessWidget {
             SizedBox(height: 4.h),
             Text(
               title,
-              style: AppTypography.textMdMedium.copyWith(
+              style: AppTypography.textXsMedium.copyWith(
                 color: isSelected ? kWhiteColor : kDarkGreyColor,
               ),
             ),

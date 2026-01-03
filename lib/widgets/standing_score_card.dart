@@ -17,6 +17,7 @@ class StandingScoreCard extends ConsumerWidget {
   final int? scoreChange; // Score change (can be positive or negative)
   final String? matchScore; // Match score (e.g., "2.5/3")
   final int index;
+  final int? rank; // Player ranking position
   final bool isFav;
   final bool isFirst;
   final bool isLast;
@@ -37,6 +38,7 @@ class StandingScoreCard extends ConsumerWidget {
     this.scoreChange,
     this.matchScore,
     required this.index,
+    this.rank,
     required this.isFirst,
     required this.isLast,
     this.hideScore = false,
@@ -77,72 +79,75 @@ class StandingScoreCard extends ConsumerWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            // Player Info (flag + name)
+            // Left padding before rank
+            SizedBox(width: 8.w),
+            // Rank column - left aligned for consistent start position
+            if (rank != null)
+              SizedBox(
+                width: 20.w,
+                child: Text(
+                  rank.toString(),
+                  style: AppTypography.textXsMedium.copyWith(
+                    color: kSecondaryTextColor,
+                  ),
+                  textAlign: TextAlign.left,
+                ),
+              ),
+            // Flag with gap after
+            SizedBox(
+              width: 16.w,
+              height: 12.h,
+              child: countryCode.toUpperCase() == 'FID'
+                  ? Image.asset(
+                      PngAsset.fideLogo,
+                      height: 12.h,
+                      width: 16.w,
+                      fit: BoxFit.contain,
+                      cacheWidth: 48,
+                      cacheHeight: 36,
+                    )
+                  : validCountryCode.isNotEmpty
+                      ? CountryFlag.fromCountryCode(
+                          validCountryCode,
+                          height: 12.h,
+                          width: 16.w,
+                        )
+                      : null,
+            ),
+            SizedBox(width: 8.w), // Gap between flag and name
+            // Player name - takes remaining space
             Expanded(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  if (countryCode.toUpperCase() == 'FID') ...[
-                    SizedBox(
-                      width: 16.w,
-                      height: 12.h,
-                      child: Image.asset(
-                        PngAsset.fideLogo,
-                        height: 12.h,
-                        width: 16.w,
-                        fit: BoxFit.cover,
-                        cacheWidth: 48,
-                        cacheHeight: 36,
-                      ),
-                    ),
-                    SizedBox(width: 6.w),
-                  ] else if (validCountryCode.isNotEmpty) ...[
-                    SizedBox(
-                      width: 16.w,
-                      height: 12.h,
-                      child: CountryFlag.fromCountryCode(
-                        validCountryCode,
-                        height: 12.h,
-                        width: 16.w,
-                      ),
-                    ),
-                    SizedBox(width: 6.w),
-                  ],
-                  Flexible(
-                    child: Padding(
-                      padding: EdgeInsets.only(bottom: 4.sp),
-                      child: RichText(
-                        overflow: TextOverflow.ellipsis,
-                        maxLines: 1,
-                        text: TextSpan(
-                          children: [
-                            if (title != null)
-                              TextSpan(
-                                text: '$title ',
-                                style: AppTypography.textXsMedium.copyWith(
-                                  color: kLightYellowColor,
-                                ),
-                              ),
-                            TextSpan(
-                              text: name,
-                              style: AppTypography.textXsMedium.copyWith(
-                                color: kWhiteColor,
-                              ),
-                            ),
-                          ],
+              child: Padding(
+                padding: EdgeInsets.only(bottom: 4.sp),
+                child: RichText(
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 1,
+                  text: TextSpan(
+                    children: [
+                      if (title != null)
+                        TextSpan(
+                          text: '$title ',
+                          style: AppTypography.textXsMedium.copyWith(
+                            color: kLightYellowColor,
+                          ),
+                        ),
+                      TextSpan(
+                        text: name,
+                        style: AppTypography.textXsMedium.copyWith(
+                          color: kWhiteColor,
                         ),
                       ),
-                    ),
+                    ],
                   ),
-                ],
+                ),
               ),
             ),
 
-            // ELO column (fixed width to match header)
+            // ELO column - LEFT aligned so all ratings start at same position
             SizedBox(
-              width: 100.w,
+              width: 80.w,
               child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisAlignment: MainAxisAlignment.start,
                 children: [
                   Text(
                     score.toString(),
@@ -151,7 +156,7 @@ class StandingScoreCard extends ConsumerWidget {
                     ),
                   ),
                   if (scoreChange != null && scoreChange != 0) ...[
-                    SizedBox(width: 4.w),
+                    SizedBox(width: 2.w),
                     Text(
                       scoreChange! > 0 ? '+$scoreChange' : '$scoreChange',
                       style: AppTypography.textXsMedium.copyWith(
@@ -163,34 +168,31 @@ class StandingScoreCard extends ConsumerWidget {
               ),
             ),
 
-            // Match Score column (fixed width to match header)
+            // Match Score column - LEFT aligned for consistent start
             if (!hideScore)
               SizedBox(
-                width: 60.w,
+                width: 52.w,
                 child: Text(
-                  matchScore == null ? '' : matchScore!,
-                  textAlign: TextAlign.end,
+                  matchScore ?? '',
+                  textAlign: TextAlign.left,
                   style: AppTypography.textXsMedium.copyWith(
                     color: kWhiteColor,
                   ),
                 ),
               ),
+            // Favorite icon
             GestureDetector(
               behavior: HitTestBehavior.opaque,
               onTap: onToggleFavorite,
               child: Container(
-                alignment: Alignment.centerRight,
-                width: 60.w,
-                child: Container(
-                  width: 32.w,
-                  height: 49.h,
-                  padding: EdgeInsets.all(8.sp),
-                  child: SvgWidget(
-                    isFav ? SvgAsset.favouriteRedIcon : SvgAsset.favouriteIcon2,
-                    semanticsLabel: 'Favorite Icon',
-                    height: 20.h,
-                    width: 20.w,
-                  ),
+                alignment: Alignment.center,
+                width: 36.w,
+                height: 49.h,
+                child: SvgWidget(
+                  isFav ? SvgAsset.favouriteRedIcon : SvgAsset.favouriteIcon2,
+                  semanticsLabel: 'Favorite Icon',
+                  height: 18.h,
+                  width: 18.w,
                 ),
               ),
             ),

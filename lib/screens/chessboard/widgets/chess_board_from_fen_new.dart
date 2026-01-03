@@ -1,5 +1,3 @@
-import 'package:chessever2/providers/board_settings_provider.dart';
-import 'package:chessever2/repository/local_storage/board_settings_repository/board_settings_repository.dart';
 import 'package:chessever2/screens/chessboard/widgets/context_pop_up_menu.dart';
 import 'package:chessever2/providers/board_settings_provider_new.dart';
 import 'package:chessever2/providers/engine_settings_provider.dart';
@@ -15,7 +13,6 @@ import 'package:chessground/chessground.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:fast_immutable_collections/fast_immutable_collections.dart';
 
 bool _shouldShowEvalBar(WidgetRef ref) {
   final settings = ref.watch(engineSettingsProviderNew).valueOrNull;
@@ -27,40 +24,32 @@ bool _shouldShowEvalBar(WidgetRef ref) {
 void _showShareOverlay(BuildContext context, WidgetRef ref, GamesTourModel game) {
   final boardSettingsAsync = ref.read(boardSettingsProviderNew);
   final boardSettingsNew = boardSettingsAsync.valueOrNull ?? const BoardSettingsNew();
-  final boardTheme = ref
-      .read(boardSettingsRepository)
-      .getBoardTheme(boardSettingsNew.boardColorValue);
 
+  // Get the base color scheme from settings
+  final baseColorScheme = boardSettingsNew.colorScheme;
+
+  // Build board settings for the share overlay board
+  // We use the theme colors but hide all highlights for clean screenshots
   final chessboardSettings = ChessboardSettings(
     enableCoordinates: false,
     colorScheme: ChessboardColorScheme(
-      lightSquare: boardTheme.lightSquareColor,
-      darkSquare: boardTheme.darkSquareColor,
-      background: SolidColorChessboardBackground(
-        lightSquare: boardTheme.lightSquareColor,
-        darkSquare: boardTheme.darkSquareColor,
-      ),
-      whiteCoordBackground: SolidColorChessboardBackground(
-        lightSquare: boardTheme.lightSquareColor,
-        darkSquare: boardTheme.darkSquareColor,
-        coordinates: false,
-        orientation: Side.white,
-      ),
-      blackCoordBackground: SolidColorChessboardBackground(
-        lightSquare: boardTheme.lightSquareColor,
-        darkSquare: boardTheme.darkSquareColor,
-        coordinates: false,
-        orientation: Side.black,
-      ),
+      lightSquare: baseColorScheme.lightSquare,
+      darkSquare: baseColorScheme.darkSquare,
+      background: baseColorScheme.background,
+      whiteCoordBackground: baseColorScheme.whiteCoordBackground,
+      blackCoordBackground: baseColorScheme.blackCoordBackground,
+      // Hide all highlights for clean screenshots
       lastMove: HighlightDetails(
-        solidColor: boardTheme.lightSquareColor.withValues(alpha: 0),
+        solidColor: baseColorScheme.lightSquare.withValues(alpha: 0),
       ),
       selected: HighlightDetails(
-        solidColor: boardTheme.lightSquareColor.withValues(alpha: 0),
+        solidColor: baseColorScheme.lightSquare.withValues(alpha: 0),
       ),
-      validMoves: boardTheme.lightSquareColor.withValues(alpha: 0),
-      validPremoves: boardTheme.lightSquareColor.withValues(alpha: 0),
+      validMoves: baseColorScheme.lightSquare.withValues(alpha: 0),
+      validPremoves: baseColorScheme.lightSquare.withValues(alpha: 0),
     ),
+    // Use piece set from settings
+    pieceAssets: boardSettingsNew.pieceAssets,
     borderRadius: const BorderRadius.all(Radius.circular(0)),
     boxShadow: const [],
   );
@@ -671,9 +660,6 @@ class _ChessBoardWidget extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final boardSettingsAsync = ref.watch(boardSettingsProviderNew);
     final boardSettings = boardSettingsAsync.valueOrNull ?? const BoardSettingsNew();
-    final boardTheme = ref
-        .read(boardSettingsRepository)
-        .getBoardTheme(boardSettings.boardColorValue);
 
     return Container(
       height: boardSize,
@@ -692,40 +678,16 @@ class _ChessBoardWidget extends ConsumerWidget {
           size: boardSize,
           settings: ChessboardSettings(
             enableCoordinates: showCoordinates,
-            colorScheme: _buildColorScheme(boardTheme),
+            // Use theme colors from settings with our custom app colors
+            colorScheme: boardSettings.colorScheme,
+            // Use piece set from settings
+            pieceAssets: boardSettings.pieceAssets,
           ),
           orientation: Side.white,
           fen: fen ?? '',
           lastMove: lastMove,
         ),
       ),
-    );
-  }
-
-  ChessboardColorScheme _buildColorScheme(dynamic boardTheme) {
-    return ChessboardColorScheme(
-      lightSquare: boardTheme.lightSquareColor,
-      darkSquare: boardTheme.darkSquareColor,
-      background: SolidColorChessboardBackground(
-        lightSquare: boardTheme.lightSquareColor,
-        darkSquare: boardTheme.darkSquareColor,
-      ),
-      whiteCoordBackground: SolidColorChessboardBackground(
-        lightSquare: boardTheme.lightSquareColor,
-        darkSquare: boardTheme.darkSquareColor,
-        coordinates: true,
-        orientation: Side.white,
-      ),
-      blackCoordBackground: SolidColorChessboardBackground(
-        lightSquare: boardTheme.lightSquareColor,
-        darkSquare: boardTheme.darkSquareColor,
-        coordinates: true,
-        orientation: Side.black,
-      ),
-      lastMove: HighlightDetails(solidColor: kPrimaryColor),
-      selected: const HighlightDetails(solidColor: kPrimaryColor),
-      validMoves: kPrimaryColor,
-      validPremoves: kPrimaryColor,
     );
   }
 }

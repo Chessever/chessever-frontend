@@ -15,9 +15,15 @@ class GroupBroadcastRepository extends BaseRepository {
   Future<Set<String>> getCurrentTourIds() async {
     return handleApiCall(() async {
       // First get current group_broadcast IDs
-      final currentGroupsResponse = await supabase
+      // Using dynamic type to prevent Dart from optimizing away null check
+      final dynamic currentGroupsResponse = await supabase
           .from('group_broadcasts_current')
           .select('id');
+
+      // Handle null response gracefully
+      if (currentGroupsResponse == null) {
+        return <String>{};
+      }
 
       final currentGroupIds = (currentGroupsResponse as List)
           .map((row) => row['id'] as String)
@@ -28,10 +34,16 @@ class GroupBroadcastRepository extends BaseRepository {
       }
 
       // Then get tour IDs that belong to these group_broadcasts
-      final toursResponse = await supabase
+      // Using dynamic type to prevent Dart from optimizing away null check
+      final dynamic toursResponse = await supabase
           .from('tours')
           .select('id, group_broadcast_id')
           .inFilter('group_broadcast_id', currentGroupIds.toList());
+
+      // Handle null response gracefully
+      if (toursResponse == null) {
+        return <String>{};
+      }
 
       return (toursResponse as List)
           .map((row) => row['id'] as String)
@@ -329,10 +341,16 @@ class GroupBroadcastRepository extends BaseRepository {
     if (tourIds.isEmpty) return {};
 
     return handleApiCall(() async {
-      final response = await supabase
+      // Using dynamic type to prevent Dart from optimizing away null check
+      final dynamic response = await supabase
           .from('tours')
           .select('id, group_broadcast_id')
           .inFilter('id', tourIds);
+
+      // Handle null response gracefully
+      if (response == null) {
+        return <String, String>{};
+      }
 
       final mapping = <String, String>{};
       for (final row in response as List) {

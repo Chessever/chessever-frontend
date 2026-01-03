@@ -138,16 +138,17 @@ class GameEcoFilter {
 
 /// Complete filter state for chess games
 class GameFilter {
-  const GameFilter({
+  GameFilter({
     this.result = GameResultFilter.all,
     this.color = GameColorFilter.all,
     this.timeControl = GameTimeControlFilter.all,
     GameEcoFilter? eco,
     this.minYear = 1990,
-    this.maxYear = 2025,
+    int? maxYear,
     this.minRating = 1000,
     this.maxRating = 3500,
-  }) : eco = eco ?? GameEcoFilter.all;
+  })  : eco = eco ?? GameEcoFilter.all,
+        maxYear = maxYear ?? DateTime.now().year;
 
   final GameResultFilter result;
   final GameColorFilter color;

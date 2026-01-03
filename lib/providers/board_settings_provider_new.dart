@@ -1,14 +1,15 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:chessever2/providers/board_settings_provider.dart';
 import 'package:chessever2/repository/board_settings/models/board_settings_model.dart';
+import 'package:chessever2/utils/board_customization_utils.dart';
+import 'package:chessground/chessground.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-/// Board color enum matching index values stored in Supabase
+/// Board color enum matching index values stored in Supabase (DEPRECATED - kept for migration)
 enum BoardColor {
   defaultColor, // index 0
   brown,        // index 1
@@ -24,21 +25,39 @@ enum BoardColor {
 class BoardSettingsNew {
   const BoardSettingsNew({
     this.boardColorIndex = 0,
+    this.boardThemeIndex = 0, // New: chessground theme index
     this.showEvaluationBar = true,
     this.soundEnabled = true,
     this.chatEnabled = true,
-    this.pieceStyleIndex = 0,
+    this.pieceStyleIndex = 0, // Now used for chessground PieceSet
     this.gamesListViewModeIndex = 0,
   });
 
+  /// DEPRECATED: Kept for backwards compatibility migration only
   final int boardColorIndex;
+  /// New: Index into kBoardThemes list (chessground themes)
+  final int boardThemeIndex;
   final bool showEvaluationBar;
   final bool soundEnabled;
   final bool chatEnabled;
+  /// Index into PieceSet.values (chessground piece sets)
   final int pieceStyleIndex;
   /// Games list view mode: 0=gamesCard, 1=chessBoardGrid, 2=chessBoard
   final int gamesListViewModeIndex;
 
+  /// Get the current piece set from chessground
+  PieceSet get pieceSet => getPieceSetByIndex(pieceStyleIndex);
+
+  /// Get the PieceAssets for the current piece set
+  PieceAssets get pieceAssets => pieceSet.assets;
+
+  /// Get the ChessboardColorScheme with our custom last move highlight
+  ChessboardColorScheme get colorScheme => getColorSchemeByIndex(boardThemeIndex);
+
+  /// Get the board theme option
+  BoardThemeOption get boardTheme => getBoardThemeByIndex(boardThemeIndex);
+
+  // DEPRECATED: Legacy accessors kept for backwards compatibility
   BoardColor get boardColor {
     switch (boardColorIndex) {
       case 0:
@@ -83,15 +102,9 @@ class BoardSettingsNew {
     }
   }
 
-  PieceStyle get pieceStyle {
-    if (pieceStyleIndex >= 0 && pieceStyleIndex < PieceStyle.values.length) {
-      return PieceStyle.values[pieceStyleIndex];
-    }
-    return PieceStyle.standard;
-  }
-
   BoardSettingsNew copyWith({
     int? boardColorIndex,
+    int? boardThemeIndex,
     bool? showEvaluationBar,
     bool? soundEnabled,
     bool? chatEnabled,
@@ -100,6 +113,7 @@ class BoardSettingsNew {
   }) {
     return BoardSettingsNew(
       boardColorIndex: boardColorIndex ?? this.boardColorIndex,
+      boardThemeIndex: boardThemeIndex ?? this.boardThemeIndex,
       showEvaluationBar: showEvaluationBar ?? this.showEvaluationBar,
       soundEnabled: soundEnabled ?? this.soundEnabled,
       chatEnabled: chatEnabled ?? this.chatEnabled,
@@ -158,8 +172,18 @@ class BoardSettingsNotifierNew extends AsyncNotifier<BoardSettingsNew> {
       }
 
       final model = BoardSettingsModel.fromSupabase(response);
+
+      // Migration: If boardThemeIndex is 0 (default) but boardColorIndex is set,
+      // migrate old color to new theme
+      int boardThemeIndex = model.boardThemeIndex;
+      if (boardThemeIndex == 0 && model.boardColorIndex > 0) {
+        boardThemeIndex = migrateOldBoardColorToTheme(model.boardColorIndex);
+        debugPrint('[BoardSettings] Migrated old boardColorIndex ${model.boardColorIndex} to boardThemeIndex $boardThemeIndex');
+      }
+
       final settings = BoardSettingsNew(
         boardColorIndex: model.boardColorIndex,
+        boardThemeIndex: boardThemeIndex,
         showEvaluationBar: model.showEvaluationBar,
         soundEnabled: model.soundEnabled,
         chatEnabled: model.chatEnabled,
@@ -236,10 +260,22 @@ class BoardSettingsNotifierNew extends AsyncNotifier<BoardSettingsNew> {
     await _persist(newSettings);
   }
 
-  /// Set piece style
-  Future<void> setPieceStyle(PieceStyle style) async {
+  /// Set board theme by index (chessground themes)
+  Future<void> setBoardThemeIndex(int index) async {
+    final clamped = index.clamp(0, kBoardThemes.length - 1);
     final currentState = state.valueOrNull ?? const BoardSettingsNew();
-    final newSettings = currentState.copyWith(pieceStyleIndex: style.index);
+    final newSettings = currentState.copyWith(boardThemeIndex: clamped);
+    debugPrint('🎨 BoardSettings: Board theme changed to index=$clamped (${kBoardThemes[clamped].name})');
+    state = AsyncValue.data(newSettings);
+    await _persist(newSettings);
+  }
+
+  /// Set piece set by index (chessground piece sets)
+  Future<void> setPieceSetIndex(int index) async {
+    final clamped = index.clamp(0, PieceSet.values.length - 1);
+    final currentState = state.valueOrNull ?? const BoardSettingsNew();
+    final newSettings = currentState.copyWith(pieceStyleIndex: clamped);
+    debugPrint('♟️ BoardSettings: Piece set changed to index=$clamped (${PieceSet.values[clamped].label})');
     state = AsyncValue.data(newSettings);
     await _persist(newSettings);
   }
@@ -304,6 +340,7 @@ class BoardSettingsNotifierNew extends AsyncNotifier<BoardSettingsNew> {
         {
           'user_id': userId,
           'board_color_index': settings.boardColorIndex,
+          'board_theme_index': settings.boardThemeIndex,
           'show_evaluation_bar': settings.showEvaluationBar,
           'sound_enabled': settings.soundEnabled,
           'chat_enabled': settings.chatEnabled,
@@ -325,6 +362,7 @@ class BoardSettingsNotifierNew extends AsyncNotifier<BoardSettingsNew> {
       final prefs = await SharedPreferences.getInstance();
       final json = jsonEncode({
         'boardColorIndex': settings.boardColorIndex,
+        'boardThemeIndex': settings.boardThemeIndex,
         'showEvaluationBar': settings.showEvaluationBar,
         'soundEnabled': settings.soundEnabled,
         'chatEnabled': settings.chatEnabled,
@@ -348,8 +386,19 @@ class BoardSettingsNotifierNew extends AsyncNotifier<BoardSettingsNew> {
       }
 
       final map = jsonDecode(json) as Map<String, dynamic>;
+      final boardColorIndex = map['boardColorIndex'] as int? ?? 0;
+      int boardThemeIndex = map['boardThemeIndex'] as int? ?? 0;
+
+      // Migration: If boardThemeIndex is 0 (default) but boardColorIndex is set,
+      // migrate old color to new theme
+      if (boardThemeIndex == 0 && boardColorIndex > 0) {
+        boardThemeIndex = migrateOldBoardColorToTheme(boardColorIndex);
+        debugPrint('[BoardSettings] Cache migration: boardColorIndex $boardColorIndex -> boardThemeIndex $boardThemeIndex');
+      }
+
       final settings = BoardSettingsNew(
-        boardColorIndex: map['boardColorIndex'] as int? ?? 0,
+        boardColorIndex: boardColorIndex,
+        boardThemeIndex: boardThemeIndex,
         showEvaluationBar: map['showEvaluationBar'] as bool? ?? true,
         soundEnabled: map['soundEnabled'] as bool? ?? true,
         chatEnabled: map['chatEnabled'] as bool? ?? true,

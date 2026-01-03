@@ -329,7 +329,7 @@ class _GameSearchResultTileState extends State<_GameSearchResultTile>
                                       _isHovered
                                           ? kWhiteColor
                                           : kWhiteColor.withOpacity(0.9),
-                                  fontSize: 14.f,
+                                  fontSize: 12.f,
                                   fontWeight: FontWeight.w500,
                                   letterSpacing: 0.2,
                                 ),
@@ -374,7 +374,7 @@ class _IdleState extends StatelessWidget {
               'Start typing to search games',
               style: TextStyle(
                 color: kBoardLightGrey.withOpacity(0.7),
-                fontSize: 14.f,
+                fontSize: 12.f,
                 fontWeight: FontWeight.w400,
               ),
             ),
@@ -409,7 +409,7 @@ class _LoadingState extends StatelessWidget {
               'Searching games...',
               style: TextStyle(
                 color: kWhiteColor70,
-                fontSize: 14.f,
+                fontSize: 12.f,
                 fontWeight: FontWeight.w400,
               ),
             ),
@@ -445,7 +445,7 @@ class _ErrorState extends StatelessWidget {
               message,
               style: TextStyle(
                 color: kRedColor,
-                fontSize: 14.f,
+                fontSize: 12.f,
                 fontWeight: FontWeight.w500,
               ),
               textAlign: TextAlign.center,

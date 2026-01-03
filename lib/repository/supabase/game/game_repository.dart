@@ -817,13 +817,20 @@ class GameRepository extends BaseRepository {
 
       // Use inFilter for multiple tour IDs
       // Order by date_start first to group games by day, then by last_move_time
-      final response = await supabase
+      final dynamic response = await supabase
           .from('games')
           .select(_gameListSelectColumns)
           .inFilter('tour_id', tourIds)
           .order('date_start', ascending: false, nullsFirst: false)
           .order('last_move_time', ascending: false, nullsFirst: false)
           .range(offset, offset + limit - 1);
+
+      // Handle null response gracefully (can happen with certain RLS/query edge cases)
+      // Using dynamic type to prevent Dart from optimizing away null check
+      if (response == null) {
+        debugPrint('[GameRepository] Warning: null response from getGamesFromTourIds query');
+        return <Games>[];
+      }
 
       final jsonList =
           (response as List).map((item) => json.encode(item)).toList();

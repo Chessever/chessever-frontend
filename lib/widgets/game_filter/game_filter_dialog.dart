@@ -171,14 +171,14 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
                       ),
                       SizedBox(height: 20.h),
 
-                      // ECO Opening filter
-                      _sectionLabel('Opening'),
-                      SizedBox(height: 8.h),
-                      EcoFilterDropdown(
-                        value: _eco,
-                        onChanged: (v) => setState(() => _eco = v),
-                      ),
-                      SizedBox(height: 20.h),
+                      // TODO: ECO Opening filter - commented out until database supports it
+                      // _sectionLabel('Opening'),
+                      // SizedBox(height: 8.h),
+                      // EcoFilterDropdown(
+                      //   value: _eco,
+                      //   onChanged: (v) => setState(() => _eco = v),
+                      // ),
+                      // SizedBox(height: 20.h),
 
                       // Year range slider
                       _sectionLabel('Year'),

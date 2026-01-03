@@ -19,7 +19,7 @@ class FavoritesCombinedGamesState {
   final GameFilter filter;
   final int dateOffset; // For date-based pagination
 
-  const FavoritesCombinedGamesState({
+  FavoritesCombinedGamesState({
     this.games = const [],
     this.isLoading = false,
     this.hasMore = true,
@@ -27,9 +27,9 @@ class FavoritesCombinedGamesState {
     this.seenGameIds = const {},
     this.searchQuery = '',
     this.selectedFideIds = const {},
-    this.filter = const GameFilter(),
+    GameFilter? filter,
     this.dateOffset = 0,
-  });
+  }) : filter = filter ?? GameFilter();
 
   bool get isSearching => searchQuery.isNotEmpty;
   bool get isFiltering => selectedFideIds.isNotEmpty;
@@ -92,7 +92,7 @@ class FavoritesCombinedGamesNotifier
   bool _hasMoreDates = true;
 
   FavoritesCombinedGamesNotifier(this._ref)
-      : super(const FavoritesCombinedGamesState(isLoading: true)) {
+      : super(FavoritesCombinedGamesState(isLoading: true)) {
     _loadInitialGames();
   }
 
@@ -187,7 +187,7 @@ class FavoritesCombinedGamesNotifier
   }
 
   void clearFilter() {
-    state = state.copyWith(filter: const GameFilter());
+    state = state.copyWith(filter: GameFilter());
   }
 
   /// Search games by player name

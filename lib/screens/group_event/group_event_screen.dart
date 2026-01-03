@@ -155,7 +155,7 @@ class GroupEventScreen extends HookConsumerWidget {
         crossAxisAlignment: CrossAxisAlignment.center,
         mainAxisSize: MainAxisSize.min,
         children: [
-          SizedBox(height: 16.h + MediaQuery.of(context).viewPadding.top),
+          SizedBox(height: 24.h + MediaQuery.of(context).viewPadding.top),
           Padding(
             padding: EdgeInsets.symmetric(horizontal: 20.sp),
             child: AnimatedSwitcher(

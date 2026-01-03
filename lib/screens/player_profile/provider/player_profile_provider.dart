@@ -921,14 +921,14 @@ Future<List<PlayerEventData>> _getPlayerEventsFromGames(
 
 /// State for player profile games with filtering
 class PlayerProfileGamesState {
-  const PlayerProfileGamesState({
+  PlayerProfileGamesState({
     required this.playerKey,
     this.allGames = const [],
-    this.filter = const GameFilter(),
+    GameFilter? filter,
     this.isLoading = false,
     this.error,
     this.searchQuery = '',
-  });
+  }) : filter = filter ?? GameFilter();
 
   final PlayerProfileKey playerKey;
   final List<GamesTourModel> allGames;

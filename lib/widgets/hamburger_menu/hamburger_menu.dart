@@ -562,37 +562,6 @@ class _VersionFooter extends ConsumerWidget {
                 .fadeIn(delay: 350.ms, duration: 400.ms)
                 .slideX(begin: -0.2, end: 0),
 
-            // Delete Account Button
-            InkWell(
-              onTap: () {
-                HapticFeedbackService.buttonPress();
-                showDeleteAccountDialog(context);
-              },
-              child: Container(
-                padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 8.sp),
-                height: 40.h,
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.person_remove_outlined,
-                      size: 18.ic,
-                      color: Colors.red.withOpacity(0.6),
-                    ),
-                    SizedBox(width: 8.w),
-                    Text(
-                      'Delete Account',
-                      style: AppTypography.textSmRegular.copyWith(
-                        color: Colors.red.withOpacity(0.6),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            )
-                .animate()
-                .fadeIn(delay: 450.ms, duration: 400.ms)
-                .slideX(begin: -0.2, end: 0),
-
             SizedBox(height: 8.h),
           ],
         );
