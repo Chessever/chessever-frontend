@@ -521,11 +521,13 @@ class _BoardThemePickerCard extends StatelessWidget {
                     ),
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(8.br),
-                      child: CustomPaint(
-                        painter: _BoardThemePreviewPainter(
-                          lightColor: currentTheme.colorScheme.lightSquare,
-                          darkColor: currentTheme.colorScheme.darkSquare,
-                          gridSize: 4,
+                      child: SizedBox.expand(
+                        child: CustomPaint(
+                          painter: _BoardThemePreviewPainter(
+                            lightColor: currentTheme.colorScheme.lightSquare,
+                            darkColor: currentTheme.colorScheme.darkSquare,
+                            gridSize: 4,
+                          ),
                         ),
                       ),
                     ),
@@ -671,7 +673,11 @@ class _BoardThemeGallerySheetState extends State<_BoardThemeGallerySheet> {
           // Grid of themes
           Expanded(
             child: GridView.builder(
-              padding: EdgeInsets.symmetric(horizontal: 16.sp),
+              padding: EdgeInsets.only(
+                left: 16.sp,
+                right: 16.sp,
+                bottom: bottomPadding + 24.sp,
+              ),
               gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                 crossAxisCount: 4,
                 mainAxisSpacing: 16.sp,
@@ -694,7 +700,6 @@ class _BoardThemeGallerySheetState extends State<_BoardThemeGallerySheet> {
               },
             ),
           ),
-          SizedBox(height: bottomPadding + 16.sp),
         ],
       ),
     );
@@ -754,11 +759,13 @@ class _BoardThemeGridItem extends StatelessWidget {
                 ),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(8.br),
-                  child: CustomPaint(
-                    painter: _BoardThemePreviewPainter(
-                      lightColor: theme.colorScheme.lightSquare,
-                      darkColor: theme.colorScheme.darkSquare,
-                      gridSize: 4,
+                  child: SizedBox.expand(
+                    child: CustomPaint(
+                      painter: _BoardThemePreviewPainter(
+                        lightColor: theme.colorScheme.lightSquare,
+                        darkColor: theme.colorScheme.darkSquare,
+                        gridSize: 4,
+                      ),
                     ),
                   ),
                 ),
@@ -1080,7 +1087,11 @@ class _PieceSetGallerySheetState extends State<_PieceSetGallerySheet> {
           // Grid of piece sets
           Expanded(
             child: GridView.builder(
-              padding: EdgeInsets.symmetric(horizontal: 16.sp),
+              padding: EdgeInsets.only(
+                left: 16.sp,
+                right: 16.sp,
+                bottom: bottomPadding + 24.sp,
+              ),
               gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                 crossAxisCount: 4,
                 mainAxisSpacing: 16.sp,
@@ -1103,7 +1114,6 @@ class _PieceSetGallerySheetState extends State<_PieceSetGallerySheet> {
               },
             ),
           ),
-          SizedBox(height: bottomPadding + 16.sp),
         ],
       ),
     );
