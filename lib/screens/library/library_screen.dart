@@ -20,7 +20,7 @@ import 'package:chessever2/screens/library/widgets/create_folder_dialog.dart';
 import 'package:chessever2/screens/library/widgets/folder_card.dart';
 import 'package:chessever2/screens/library/widgets/library_search_bar.dart';
 import 'package:chessever2/screens/library/widgets/library_search_results_view.dart';
-import 'package:chessever2/screens/library/gamebase_player_games_screen.dart';
+import 'package:chessever2/screens/library/library_player_profile_screen.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
@@ -300,7 +300,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       onPlayerTap: (player) {
         Navigator.of(context).push(
           MaterialPageRoute(
-            builder: (_) => GamebasePlayerGamesScreen(player: player),
+            builder: (_) => LibraryPlayerProfileScreen(player: player),
           ),
         );
       },
@@ -444,14 +444,14 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
               onPlayerTap: (player) {
                 Navigator.of(context).push(
                   MaterialPageRoute(
-                    builder: (_) => GamebasePlayerGamesScreen(player: player),
+                    builder: (_) => LibraryPlayerProfileScreen(player: player),
                   ),
                 );
               },
               onPlayerFilter: (player) {
                 Navigator.of(context).push(
                   MaterialPageRoute(
-                    builder: (_) => GamebasePlayerGamesScreen(player: player),
+                    builder: (_) => LibraryPlayerProfileScreen(player: player),
                   ),
                 );
               },

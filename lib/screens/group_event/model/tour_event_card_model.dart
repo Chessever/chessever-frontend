@@ -54,6 +54,7 @@ class GroupEventCardModel extends Equatable {
       timeUntilStart: TimeUtils.timeUntilStart(utcStart),
       tourEventCategory: getCategory(
         groupId: groupBroadcast.id,
+        groupName: groupBroadcast.name,
         startDate: utcStart,
         endDate: utcEnd,
         liveGroupIds: liveGroupIds,
@@ -103,12 +104,15 @@ class GroupEventCardModel extends Equatable {
 
   static TourEventCategory getCategory({
     required String groupId,
+    String? groupName,
     required DateTime? startDate,
     required DateTime? endDate,
     required List<String> liveGroupIds,
   }) {
     // Check if it's a live event first (highest priority)
-    if (liveGroupIds.contains(groupId)) {
+    // Settings may store either IDs or names, so check both
+    if (liveGroupIds.contains(groupId) ||
+        (groupName != null && liveGroupIds.contains(groupName))) {
       return TourEventCategory.live;
     }
 

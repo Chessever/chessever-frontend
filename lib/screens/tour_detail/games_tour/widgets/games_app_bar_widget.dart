@@ -440,11 +440,8 @@ class _GamesAppBarWidgetState extends ConsumerState<GamesAppBarWidget>
                                               Navigator.pop(context);
                                               await ref
                                                   .read(
-                                                    gamesPinprovider(
-                                                      tourData
-                                                          .aboutTourModel
-                                                          .id,
-                                                    ).notifier,
+                                                    gamesTourScreenProvider
+                                                        .notifier,
                                                   )
                                                   .enableAutoPin();
                                             },
@@ -486,11 +483,8 @@ class _GamesAppBarWidgetState extends ConsumerState<GamesAppBarWidget>
                                               Navigator.pop(context);
                                               await ref
                                                   .read(
-                                                    gamesPinprovider(
-                                                      tourData
-                                                          .aboutTourModel
-                                                          .id,
-                                                    ).notifier,
+                                                    gamesTourScreenProvider
+                                                        .notifier,
                                                   )
                                                   .disableAutoPin();
                                             },

@@ -1,6 +1,7 @@
 import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/repository/local_storage/tournament/games/games_local_storage.dart';
+import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:flutter/material.dart';
@@ -54,8 +55,14 @@ class _GameCardWrapperProvider {
         return _ResolvedNavigation(games: orderedGames, index: safeIndex);
       }
 
+      // Sort games to match tour detail screen ordering:
+      // 1. Round number descending (latest round first)
+      // 2. Game number descending
+      // 3. Board number ascending (board 1 first)
+      final sortedGames = _sortGamesForNavigation(fullGames);
+
       final fullModels = <GamesTourModel>[];
-      for (final game in fullGames) {
+      for (final game in sortedGames) {
         try {
           fullModels.add(GamesTourModel.fromGame(game));
         } catch (_) {
@@ -87,7 +94,7 @@ class _GameCardWrapperProvider {
             );
           }).toList();
 
-      final resolvedIndex = fullModels.indexWhere(
+      final resolvedIndex = mergedModels.indexWhere(
         (game) => game.gameId == currentGame.gameId,
       );
       final finalIndex =
@@ -100,6 +107,55 @@ class _GameCardWrapperProvider {
       debugPrint('Failed to expand for-you games list: $e');
       return _ResolvedNavigation(games: orderedGames, index: safeIndex);
     }
+  }
+
+  /// Sorts games to match tour detail screen ordering.
+  /// Order: round descending → game number descending → board number ascending
+  List<Games> _sortGamesForNavigation(List<Games> games) {
+    if (games.isEmpty) return games;
+
+    // Pre-parse round and game numbers for performance
+    final gameInfo = <String, (int, int)>{};
+    for (final game in games) {
+      gameInfo[game.id] = (
+        _extractRoundNumber(game.roundSlug),
+        _extractGameNumber(game.roundSlug),
+      );
+    }
+
+    final sortedGames = List<Games>.from(games);
+    sortedGames.sort((a, b) {
+      final (roundA, gameA) = gameInfo[a.id] ?? (0, 0);
+      final (roundB, gameB) = gameInfo[b.id] ?? (0, 0);
+
+      // Sort by round number descending (latest round first)
+      if (roundA != roundB) return roundB.compareTo(roundA);
+
+      // Within same round, sort by game number descending
+      if (gameA != gameB) return gameB.compareTo(gameA);
+
+      // Finally, sort by board number ascending (board 1 first)
+      final aBoard = a.boardNr, bBoard = b.boardNr;
+      if (aBoard != null && bBoard != null) return aBoard.compareTo(bBoard);
+      if (aBoard != null) return -1;
+      if (bBoard != null) return 1;
+      return 0;
+    });
+
+    return sortedGames;
+  }
+
+  /// Extracts round number from round slug (e.g., "round-5" -> 5)
+  int _extractRoundNumber(String roundSlug) {
+    final match = RegExp(r'round-?(\d+)', caseSensitive: false).firstMatch(roundSlug) ??
+                  RegExp(r'(\d+)').firstMatch(roundSlug);
+    return int.tryParse(match?.group(1) ?? '0') ?? 0;
+  }
+
+  /// Extracts game number from round slug (e.g., "round-6--game-2" -> 2)
+  int _extractGameNumber(String roundSlug) {
+    final match = RegExp(r'game-?(\d+)', caseSensitive: false).firstMatch(roundSlug);
+    return int.tryParse(match?.group(1) ?? '0') ?? 0;
   }
 
   void navigateToChessBoard({
