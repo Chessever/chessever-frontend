@@ -33,6 +33,11 @@ class BoardSettingsModelMapper extends ClassMapperBase<BoardSettingsModel> {
     'boardColorIndex',
     _$boardColorIndex,
   );
+  static int _$boardThemeIndex(BoardSettingsModel v) => v.boardThemeIndex;
+  static const Field<BoardSettingsModel, int> _f$boardThemeIndex = Field(
+    'boardThemeIndex',
+    _$boardThemeIndex,
+  );
   static bool _$showEvaluationBar(BoardSettingsModel v) => v.showEvaluationBar;
   static const Field<BoardSettingsModel, bool> _f$showEvaluationBar = Field(
     'showEvaluationBar',
@@ -75,6 +80,7 @@ class BoardSettingsModelMapper extends ClassMapperBase<BoardSettingsModel> {
     #id: _f$id,
     #userId: _f$userId,
     #boardColorIndex: _f$boardColorIndex,
+    #boardThemeIndex: _f$boardThemeIndex,
     #showEvaluationBar: _f$showEvaluationBar,
     #soundEnabled: _f$soundEnabled,
     #chatEnabled: _f$chatEnabled,
@@ -89,6 +95,7 @@ class BoardSettingsModelMapper extends ClassMapperBase<BoardSettingsModel> {
       id: data.dec(_f$id),
       userId: data.dec(_f$userId),
       boardColorIndex: data.dec(_f$boardColorIndex),
+      boardThemeIndex: data.dec(_f$boardThemeIndex),
       showEvaluationBar: data.dec(_f$showEvaluationBar),
       soundEnabled: data.dec(_f$soundEnabled),
       chatEnabled: data.dec(_f$chatEnabled),
@@ -174,6 +181,7 @@ abstract class BoardSettingsModelCopyWith<
     String? id,
     String? userId,
     int? boardColorIndex,
+    int? boardThemeIndex,
     bool? showEvaluationBar,
     bool? soundEnabled,
     bool? chatEnabled,
@@ -200,6 +208,7 @@ class _BoardSettingsModelCopyWithImpl<$R, $Out>
     String? id,
     String? userId,
     int? boardColorIndex,
+    int? boardThemeIndex,
     bool? showEvaluationBar,
     bool? soundEnabled,
     bool? chatEnabled,
@@ -212,6 +221,7 @@ class _BoardSettingsModelCopyWithImpl<$R, $Out>
       if (id != null) #id: id,
       if (userId != null) #userId: userId,
       if (boardColorIndex != null) #boardColorIndex: boardColorIndex,
+      if (boardThemeIndex != null) #boardThemeIndex: boardThemeIndex,
       if (showEvaluationBar != null) #showEvaluationBar: showEvaluationBar,
       if (soundEnabled != null) #soundEnabled: soundEnabled,
       if (chatEnabled != null) #chatEnabled: chatEnabled,
@@ -227,6 +237,7 @@ class _BoardSettingsModelCopyWithImpl<$R, $Out>
     id: data.get(#id, or: $value.id),
     userId: data.get(#userId, or: $value.userId),
     boardColorIndex: data.get(#boardColorIndex, or: $value.boardColorIndex),
+    boardThemeIndex: data.get(#boardThemeIndex, or: $value.boardThemeIndex),
     showEvaluationBar: data.get(
       #showEvaluationBar,
       or: $value.showEvaluationBar,

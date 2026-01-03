@@ -29,52 +29,56 @@ class PlayerTourScreen extends ConsumerWidget {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                // Player column (Expanded — same as in ScoreCard)
+                // Left padding before rank
+                SizedBox(width: 8.w),
+                // Rank column header - matches card's 28.w minus extra left padding
+                SizedBox(
+                  width: 20.w,
+                  child: Text(
+                    '#',
+                    style: AppTypography.textSmMedium.copyWith(
+                      color: kWhiteColor,
+                    ),
+                    textAlign: TextAlign.left,
+                  ),
+                ),
+                // Player column - starts where flag starts in the card
                 Expanded(
-                  child: Row(
-                    children: [
-                      SizedBox(
-                        width: 18.w,
-                      ), // Space for flag area (16.w + 2.w spacing)
-                      Flexible(
-                        child: Text(
-                          'Player',
-                          style: AppTypography.textSmMedium.copyWith(
-                            color: kWhiteColor,
-                          ),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ],
+                  child: Text(
+                    'Player',
+                    style: AppTypography.textSmMedium.copyWith(
+                      color: kWhiteColor,
+                    ),
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
 
-                // Elo column (fixed width 100.w)
+                // Elo column - LEFT aligned, matches card's 80.w
                 SizedBox(
-                  width: 100.w,
+                  width: 80.w,
                   child: Text(
                     'Elo',
                     style: AppTypography.textSmMedium.copyWith(
                       color: kWhiteColor,
                     ),
-                    textAlign: TextAlign.center,
+                    textAlign: TextAlign.left,
                   ),
                 ),
 
-                // Score column (fixed width 60.w)
+                // Score column - LEFT aligned, matches card's 52.w
                 SizedBox(
-                  width: 60.w,
+                  width: 52.w,
                   child: Text(
                     'Score',
                     style: AppTypography.textSmMedium.copyWith(
                       color: kWhiteColor,
                     ),
-                    textAlign: TextAlign.end,
+                    textAlign: TextAlign.left,
                   ),
                 ),
 
-                // Favorite icon column (fixed width 60.w)
-                SizedBox(width: 60.w),
+                // Favorite icon column - matches card's 36.w
+                SizedBox(width: 36.w),
               ],
             ),
           ),
@@ -126,6 +130,7 @@ class PlayerTourScreen extends ConsumerWidget {
                                       scoreChange: player.scoreChange,
                                       matchScore: player.matchScore,
                                       index: index,
+                                      rank: index + 1,
                                       isFirst: index == 0,
                                       isLast: index == data.length - 1,
                                       onTap: () {

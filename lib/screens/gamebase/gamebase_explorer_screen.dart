@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 import 'package:chessever2/providers/board_settings_provider_new.dart';
-import 'package:chessever2/repository/local_storage/board_settings_repository/board_settings_repository.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/screen_wrapper.dart';
@@ -141,9 +140,6 @@ class _GamebaseChessBoard extends ConsumerWidget {
     final boardSettingsAsync = ref.watch(boardSettingsProviderNew);
     final boardSettings =
         boardSettingsAsync.valueOrNull ?? const BoardSettingsNew();
-    final boardTheme = ref
-        .read(boardSettingsRepository)
-        .getBoardTheme(boardSettings.boardColorValue);
 
     return Container(
       height: boardSize,
@@ -165,30 +161,10 @@ class _GamebaseChessBoard extends ConsumerWidget {
             size: boardSize,
             settings: ChessboardSettings(
               enableCoordinates: true,
-              colorScheme: ChessboardColorScheme(
-                lightSquare: boardTheme.lightSquareColor,
-                darkSquare: boardTheme.darkSquareColor,
-                background: SolidColorChessboardBackground(
-                  lightSquare: boardTheme.lightSquareColor,
-                  darkSquare: boardTheme.darkSquareColor,
-                ),
-                whiteCoordBackground: SolidColorChessboardBackground(
-                  lightSquare: boardTheme.lightSquareColor,
-                  darkSquare: boardTheme.darkSquareColor,
-                  coordinates: true,
-                  orientation: Side.white,
-                ),
-                blackCoordBackground: SolidColorChessboardBackground(
-                  lightSquare: boardTheme.lightSquareColor,
-                  darkSquare: boardTheme.darkSquareColor,
-                  coordinates: true,
-                  orientation: Side.black,
-                ),
-                lastMove: HighlightDetails(solidColor: kPrimaryColor),
-                selected: const HighlightDetails(solidColor: kPrimaryColor),
-                validMoves: kPrimaryColor,
-                validPremoves: kPrimaryColor,
-              ),
+              // Use theme colors from settings with our custom app colors
+              colorScheme: boardSettings.colorScheme,
+              // Use piece set from settings
+              pieceAssets: boardSettings.pieceAssets,
             ),
             orientation: Side.white,
             fen: fen,

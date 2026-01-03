@@ -107,7 +107,7 @@ dependencies:
   logger: ^2.6.1
   collection: ^1.19.1
 
-  chessground: ^7.1.6
+  chessground: ^7.3.0
   dartchess: ^0.11.1
   fast_immutable_collections: ^11.0.4
   flutter_soloud: ^3.3.6
@@ -174,8 +174,8 @@ flutter:
     - assets/sfx/
     - assets/launch.jpg
     - assets/app_icon.png
-    # - .env
-    # - .env.dev
+    - .env
+    - .env.dev
     - shorebird.yaml
 
   # An image asset can refer to one or more resolution-specific "variants", see

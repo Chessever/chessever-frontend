@@ -23,7 +23,7 @@ class CountrymenCombinedGamesState {
   final List<DateTime> loadedDates; // Dates we've fully loaded
   final int dateOffset; // For date pagination
 
-  const CountrymenCombinedGamesState({
+  CountrymenCombinedGamesState({
     this.games = const [],
     this.isLoading = false,
     this.hasMore = true,
@@ -32,10 +32,10 @@ class CountrymenCombinedGamesState {
     this.countryCode,
     this.countryName,
     this.searchQuery = '',
-    this.filter = const GameFilter(),
+    GameFilter? filter,
     this.loadedDates = const [],
     this.dateOffset = 0,
-  });
+  }) : filter = filter ?? GameFilter();
 
   bool get isSearching => searchQuery.isNotEmpty;
 
@@ -97,7 +97,7 @@ class CountrymenCombinedGamesNotifier
   bool _hasMoreDates = true;
 
   CountrymenCombinedGamesNotifier(this._ref)
-      : super(const CountrymenCombinedGamesState(isLoading: true)) {
+      : super(CountrymenCombinedGamesState(isLoading: true)) {
     _loadInitialGames();
 
     // Listen for country changes (temporary or persisted)

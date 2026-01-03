@@ -6,7 +6,6 @@ import 'package:chessever2/providers/for_you_games_provider.dart';
 import 'package:chessever2/screens/standings/score_card_screen.dart';
 import 'package:skeletonizer/skeletonizer.dart';
 import 'package:chessever2/providers/board_settings_provider_new.dart';
-import 'package:chessever2/repository/local_storage/board_settings_repository/board_settings_repository.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
 import 'package:chessever2/screens/chessboard/analysis/move_impact_analyzer.dart';
 import 'package:chessever2/screens/chessboard/analysis/simple_move_impact.dart';
@@ -48,6 +47,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
+import 'package:chessever2/widgets/logo_pattern_fallback.dart';
 // import 'package:chessever2/widgets/smooth_dialog.dart'; // UNUSED: Removed with old dialog
 import 'package:smooth_sheets/smooth_sheets.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -333,22 +333,12 @@ final gameMovesImpactProvider = FutureProvider.family.autoDispose<
 
 // Helper function to get move highlight color
 Color getLastMoveHighlightColor(ChessBoardStateNew state) {
-  if (state.currentMoveIndex < 0) return kPrimaryColor;
-
-  // Determine if the current move (last move played) was by white or black
-  // Move index 0 = white's first move, 1 = black's first move, etc.
-  final isWhiteMove = state.currentMoveIndex % 2 == 0;
-
-  return isWhiteMove ? kPrimaryColor : kChessBlackMoveColor;
+  return kLastMoveHighlightColor;
 }
 
 // Helper function to get move highlight color for analysis mode
 Color getAnalysisLastMoveHighlightColor(ChessBoardStateNew state) {
-  if (state.analysisState.lastMove == null) return kPrimaryColor;
-
-  // If it's black's turn, white made the last move, and vice versa.
-  final isWhiteMove = state.analysisState.position.turn == Side.black;
-  return isWhiteMove ? kPrimaryColor : kChessBlackMoveColor;
+  return kLastMoveHighlightColor;
 }
 
 bool _gameHasCustomVariations(ChessGame? game) {
@@ -4015,9 +4005,6 @@ class _AnalysisBoard extends ConsumerWidget {
     final boardSettingsAsync = ref.watch(boardSettingsProviderNew);
     final boardSettings =
         boardSettingsAsync.valueOrNull ?? const BoardSettingsNew();
-    final boardTheme = ref
-        .read(boardSettingsRepository)
-        .getBoardTheme(boardSettings.boardColorValue);
     final params = ChessBoardProviderParams(game: game, index: index);
     final notifier = ref.read(chessBoardScreenProviderNew(params).notifier);
 
@@ -4029,39 +4016,16 @@ class _AnalysisBoard extends ConsumerWidget {
       size: size,
       settings: ChessboardSettings(
         enableCoordinates: true,
-
         animationDuration: const Duration(milliseconds: 200),
         dragFeedbackScale: 1,
         dragTargetKind: DragTargetKind.none,
         pieceShiftMethod: PieceShiftMethod.tapTwoSquares,
         autoQueenPromotionOnPremove: false,
         pieceOrientationBehavior: PieceOrientationBehavior.facingUser,
-        colorScheme: ChessboardColorScheme(
-          lightSquare: boardTheme.lightSquareColor,
-          darkSquare: boardTheme.darkSquareColor,
-          background: SolidColorChessboardBackground(
-            lightSquare: boardTheme.lightSquareColor,
-            darkSquare: boardTheme.darkSquareColor,
-          ),
-          whiteCoordBackground: SolidColorChessboardBackground(
-            lightSquare: boardTheme.lightSquareColor,
-            darkSquare: boardTheme.darkSquareColor,
-            coordinates: true,
-            orientation: Side.white,
-          ),
-          blackCoordBackground: SolidColorChessboardBackground(
-            lightSquare: boardTheme.lightSquareColor,
-            darkSquare: boardTheme.darkSquareColor,
-            coordinates: true,
-            orientation: Side.black,
-          ),
-          lastMove: HighlightDetails(
-            solidColor: getAnalysisLastMoveHighlightColor(chessBoardState),
-          ),
-          selected: const HighlightDetails(solidColor: kPrimaryColor),
-          validMoves: kPrimaryColor,
-          validPremoves: kPrimaryColor,
-        ),
+        // Use theme colors from settings with our custom app colors
+        colorScheme: boardSettings.colorScheme,
+        // Use piece set from settings
+        pieceAssets: boardSettings.pieceAssets,
       ),
       orientation: isFlipped ? Side.black : Side.white,
       fen: chessBoardState.analysisState.position.fen,
@@ -7300,41 +7264,32 @@ class _ShareGameScreen extends ConsumerWidget {
     final boardSettingsAsync = ref.watch(boardSettingsProviderNew);
     final boardSettingsNew =
         boardSettingsAsync.valueOrNull ?? const BoardSettingsNew();
-    final boardTheme = ref
-        .read(boardSettingsRepository)
-        .getBoardTheme(boardSettingsNew.boardColorValue);
+
+    // Get the base color scheme from settings
+    final baseColorScheme = boardSettingsNew.colorScheme;
 
     // Build board settings for the share overlay board (sized responsively inside the overlay)
+    // We use the theme colors but hide all highlights for clean screenshots
     final chessboardSettings = ChessboardSettings(
       enableCoordinates: false,
       colorScheme: ChessboardColorScheme(
-        lightSquare: boardTheme.lightSquareColor,
-        darkSquare: boardTheme.darkSquareColor,
-        background: SolidColorChessboardBackground(
-          lightSquare: boardTheme.lightSquareColor,
-          darkSquare: boardTheme.darkSquareColor,
-        ),
-        whiteCoordBackground: SolidColorChessboardBackground(
-          lightSquare: boardTheme.lightSquareColor,
-          darkSquare: boardTheme.darkSquareColor,
-          coordinates: false,
-          orientation: Side.white,
-        ),
-        blackCoordBackground: SolidColorChessboardBackground(
-          lightSquare: boardTheme.lightSquareColor,
-          darkSquare: boardTheme.darkSquareColor,
-          coordinates: false,
-          orientation: Side.black,
-        ),
+        lightSquare: baseColorScheme.lightSquare,
+        darkSquare: baseColorScheme.darkSquare,
+        background: baseColorScheme.background,
+        whiteCoordBackground: baseColorScheme.whiteCoordBackground,
+        blackCoordBackground: baseColorScheme.blackCoordBackground,
+        // Hide all highlights for clean screenshots
         lastMove: HighlightDetails(
-          solidColor: boardTheme.lightSquareColor.withValues(alpha: 0),
+          solidColor: baseColorScheme.lightSquare.withValues(alpha: 0),
         ),
         selected: HighlightDetails(
-          solidColor: boardTheme.lightSquareColor.withValues(alpha: 0),
+          solidColor: baseColorScheme.lightSquare.withValues(alpha: 0),
         ),
-        validMoves: boardTheme.lightSquareColor.withValues(alpha: 0),
-        validPremoves: boardTheme.lightSquareColor.withValues(alpha: 0),
+        validMoves: baseColorScheme.lightSquare.withValues(alpha: 0),
+        validPremoves: baseColorScheme.lightSquare.withValues(alpha: 0),
       ),
+      // Use piece set from settings
+      pieceAssets: boardSettingsNew.pieceAssets,
       borderRadius: const BorderRadius.all(Radius.circular(0)),
       boxShadow: const [],
     );
@@ -8846,16 +8801,7 @@ class _EventInfoSheet extends ConsumerWidget {
                       ),
                     ),
                 errorWidget:
-                    (_, __, ___) => Container(
-                      color: kLightBlack,
-                      child: Center(
-                        child: Icon(
-                          Icons.image_not_supported,
-                          color: kWhiteColor.withValues(alpha: 0.3),
-                          size: 40.sp,
-                        ),
-                      ),
-                    ),
+                    (_, __, ___) => const LogoPatternFallback(),
               ),
             ),
           ),

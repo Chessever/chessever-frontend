@@ -109,7 +109,7 @@ class _SearchResultTileState extends State<SearchResultTile>
                 player?.name ?? widget.result.matchedText,
                 style: const TextStyle(
                   color: Colors.white,
-                  fontSize: 14,
+                  fontSize: 12,
                   fontWeight: FontWeight.w500,
                 ),
                 maxLines: 1,
@@ -139,7 +139,7 @@ class _SearchResultTileState extends State<SearchResultTile>
           widget.result.tournament.title,
           style: const TextStyle(
             color: Colors.white,
-            fontSize: 14,
+            fontSize: 12,
             fontWeight: FontWeight.w500,
           ),
           maxLines: 2,

@@ -1,6 +1,6 @@
-import 'package:chessever2/theme/app_theme.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/logo_pattern_fallback.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:flutter/material.dart';
 
@@ -55,20 +55,13 @@ class NetworkImageWidget extends StatelessWidget {
               ),
             ),
         errorWidget:
-            (context, url, error) => ClipRRect(
-              borderRadius: const BorderRadius.only(
-                topLeft: Radius.circular(16),
-                topRight: Radius.circular(16),
-              ),
-              child: Container(
-                height: height,
-                width: double.infinity,
-                color: kDarkGreyColor,
-                alignment: Alignment.center,
-                child: const Icon(
-                  Icons.image_not_supported,
-                  color: kWhiteColor,
-                  size: 50,
+            (context, url, error) => SizedBox(
+              height: height,
+              width: double.infinity,
+              child: LogoPatternFallback(
+                borderRadius: BorderRadius.only(
+                  topLeft: Radius.circular(16.br),
+                  topRight: Radius.circular(16.br),
                 ),
               ),
             ),

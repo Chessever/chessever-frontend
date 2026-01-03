@@ -2,10 +2,11 @@ import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/providers/board_settings_provider_new.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
+import 'package:chessever2/utils/board_customization_utils.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
-import 'package:chessever2/utils/svg_asset.dart';
+import 'package:chessground/chessground.dart';
+import 'package:dartchess/dartchess.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 class ChessBoardSettingsPage extends ConsumerStatefulWidget {
@@ -106,7 +107,7 @@ class _ChessBoardSettingsPageState extends ConsumerState<ChessBoardSettingsPage>
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Engine Gauge',
+                      'Evaluation Bar',
                       style: AppTypography.textMdMedium.copyWith(
                         color: kWhiteColor,
                         fontSize: 13.f,
@@ -114,7 +115,7 @@ class _ChessBoardSettingsPageState extends ConsumerState<ChessBoardSettingsPage>
                     ),
                     SizedBox(height: 4.h),
                     Text(
-                      'Show the evaluation gauge beside the board.',
+                      'Display a bar showing which side is winning.',
                       style: AppTypography.textSmRegular.copyWith(
                         color: kWhiteColor70,
                         fontSize: 11.f,
@@ -147,7 +148,7 @@ class _ChessBoardSettingsPageState extends ConsumerState<ChessBoardSettingsPage>
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Engine Analysis',
+                      'Computer Analysis',
                       style: AppTypography.textMdMedium.copyWith(
                         color: kWhiteColor,
                         fontSize: 13.f,
@@ -155,7 +156,7 @@ class _ChessBoardSettingsPageState extends ConsumerState<ChessBoardSettingsPage>
                     ),
                     SizedBox(height: 4.h),
                     Text(
-                      'Show engine lines and PV arrows on the board. Same as the computer icon button.',
+                      'Enable Stockfish to analyze positions and suggest best moves.',
                       style: AppTypography.textSmRegular.copyWith(
                         color: kWhiteColor70,
                         fontSize: 11.f,
@@ -192,7 +193,7 @@ class _ChessBoardSettingsPageState extends ConsumerState<ChessBoardSettingsPage>
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Computer Depth Badge',
+                      'Analysis Depth Indicator',
                       style: AppTypography.textMdMedium.copyWith(
                         color: kWhiteColor,
                         fontSize: 13.f,
@@ -200,7 +201,7 @@ class _ChessBoardSettingsPageState extends ConsumerState<ChessBoardSettingsPage>
                     ),
                     SizedBox(height: 4.h),
                     Text(
-                      'Display the live Stockfish depth badge beneath the computer icon toggle.',
+                      'Show how deep the engine is calculating (higher = more accurate).',
                       style: AppTypography.textSmRegular.copyWith(
                         color: kWhiteColor70,
                         fontSize: 11.f,
@@ -237,7 +238,7 @@ class _ChessBoardSettingsPageState extends ConsumerState<ChessBoardSettingsPage>
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'PV Arrows',
+                      'Show Arrows',
                       style: AppTypography.textMdMedium.copyWith(
                         color: kWhiteColor,
                         fontSize: 13.f,
@@ -245,7 +246,7 @@ class _ChessBoardSettingsPageState extends ConsumerState<ChessBoardSettingsPage>
                     ),
                     SizedBox(height: 4.h),
                     Text(
-                      'Show arrows for best move suggestions on the board.',
+                      'Draw arrows on the board showing recommended moves.',
                       style: AppTypography.textSmRegular.copyWith(
                         color: kWhiteColor70,
                         fontSize: 11.f,
@@ -279,7 +280,7 @@ class _ChessBoardSettingsPageState extends ConsumerState<ChessBoardSettingsPage>
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Search Time',
+                'Thinking Time',
                 style: AppTypography.textMdMedium.copyWith(
                   color: kWhiteColor,
                   fontSize: 13.f,
@@ -287,7 +288,7 @@ class _ChessBoardSettingsPageState extends ConsumerState<ChessBoardSettingsPage>
               ),
               SizedBox(height: 4.h),
               Text(
-                'Control how long Stockfish keeps thinking for each request.',
+                'How long the engine thinks per move. Longer = stronger analysis.',
                 style: AppTypography.textSmRegular.copyWith(
                   color: kWhiteColor70,
                   fontSize: 11.f,
@@ -322,7 +323,7 @@ class _ChessBoardSettingsPageState extends ConsumerState<ChessBoardSettingsPage>
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Principal Variations',
+                'Number of Lines',
                 style: AppTypography.textMdMedium.copyWith(
                   color: kWhiteColor,
                   fontSize: 13.f,
@@ -330,7 +331,7 @@ class _ChessBoardSettingsPageState extends ConsumerState<ChessBoardSettingsPage>
               ),
               SizedBox(height: 4.h),
               Text(
-                'Choose how many engine lines to display.',
+                'How many alternative move sequences to show.',
                 style: AppTypography.textSmRegular.copyWith(
                   color: kWhiteColor70,
                   fontSize: 11.f,
@@ -365,7 +366,7 @@ class _ChessBoardSettingsPageState extends ConsumerState<ChessBoardSettingsPage>
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Number of Arrows on Board',
+                'Arrow Count',
                 style: AppTypography.textMdMedium.copyWith(
                   color: kWhiteColor,
                   fontSize: 13.f,
@@ -373,7 +374,7 @@ class _ChessBoardSettingsPageState extends ConsumerState<ChessBoardSettingsPage>
               ),
               SizedBox(height: 4.h),
               Text(
-                'Choose how many PV arrows to display on the board.',
+                'Maximum arrows to display for suggested moves.',
                 style: AppTypography.textSmRegular.copyWith(
                   color: kWhiteColor70,
                   fontSize: 11.f,
@@ -407,12 +408,14 @@ class _ChessBoardSettingsPageState extends ConsumerState<ChessBoardSettingsPage>
         SizedBox(height: 24.h),
         _SectionLabel(title: 'Board Settings'),
         SizedBox(height: 12.h),
+
+        // Board Theme Selector
         _SettingCard(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Board Color',
+                'Board Theme',
                 style: AppTypography.textMdMedium.copyWith(
                   color: kWhiteColor,
                   fontSize: 13.f,
@@ -420,118 +423,77 @@ class _ChessBoardSettingsPageState extends ConsumerState<ChessBoardSettingsPage>
               ),
               SizedBox(height: 4.h),
               Text(
-                'Choose your preferred board color theme.',
+                'Choose your preferred board style.',
                 style: AppTypography.textSmRegular.copyWith(
                   color: kWhiteColor70,
                   fontSize: 11.f,
                 ),
               ),
-              SizedBox(height: 20.h),
-              // Visual board color options
-              Padding(
-                padding: EdgeInsets.symmetric(horizontal: 10.w),
-                child: Column(
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        _buildBoardColorOption(
-                          context: context,
-                          svgAsset: SvgAsset.boardColorDefault,
-                          label: 'Default',
-                          colorIndex: 0,
-                          isSelected: boardSettings.boardColorIndex == 0,
-                          onTap: () {
-                            debugPrint('🎨 Settings UI: Board color changed to Default');
-                            _trackPersist(boardNotifier.setBoardColorIndex(0));
-                          },
-                        ),
-                        _buildBoardColorOption(
-                          context: context,
-                          svgAsset: SvgAsset.boardColorBrown,
-                          label: 'Brown',
-                          colorIndex: 1,
-                          isSelected: boardSettings.boardColorIndex == 1,
-                          onTap: () {
-                            debugPrint('🎨 Settings UI: Board color changed to Brown');
-                            _trackPersist(boardNotifier.setBoardColorIndex(1));
-                          },
-                        ),
-                        _buildBoardColorOption(
-                          context: context,
-                          svgAsset: SvgAsset.boardColorGrey,
-                          label: 'Grey',
-                          colorIndex: 2,
-                          isSelected: boardSettings.boardColorIndex == 2,
-                          onTap: () {
-                            debugPrint('🎨 Settings UI: Board color changed to Grey');
-                            _trackPersist(boardNotifier.setBoardColorIndex(2));
-                          },
-                        ),
-                        _buildBoardColorOption(
-                          context: context,
-                          svgAsset: SvgAsset.boardColorGreen,
-                          label: 'Green',
-                          colorIndex: 3,
-                          isSelected: boardSettings.boardColorIndex == 3,
-                          onTap: () {
-                            debugPrint('🎨 Settings UI: Board color changed to Green');
-                            _trackPersist(boardNotifier.setBoardColorIndex(3));
-                          },
-                        ),
-                      ],
-                    ),
-                    SizedBox(height: 20.h),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        _buildBoardColorOption(
-                          context: context,
-                          svgAsset: SvgAsset.boardColorOrange,
-                          label: 'Orange',
-                          colorIndex: 4,
-                          isSelected: boardSettings.boardColorIndex == 4,
-                          onTap: () {
-                            debugPrint('🎨 Settings UI: Board color changed to Orange');
-                            _trackPersist(boardNotifier.setBoardColorIndex(4));
-                          },
-                        ),
-                        _buildBoardColorOption(
-                          context: context,
-                          svgAsset: SvgAsset.boardColorPurple,
-                          label: 'Purple',
-                          colorIndex: 5,
-                          isSelected: boardSettings.boardColorIndex == 5,
-                          onTap: () {
-                            debugPrint('🎨 Settings UI: Board color changed to Purple');
-                            _trackPersist(boardNotifier.setBoardColorIndex(5));
-                          },
-                        ),
-                        _buildBoardColorOption(
-                          context: context,
-                          svgAsset: SvgAsset.boardColorBlue,
-                          label: 'Blue',
-                          colorIndex: 6,
-                          isSelected: boardSettings.boardColorIndex == 6,
-                          onTap: () {
-                            debugPrint('🎨 Settings UI: Board color changed to Blue');
-                            _trackPersist(boardNotifier.setBoardColorIndex(6));
-                          },
-                        ),
-                        _buildBoardColorOption(
-                          context: context,
-                          svgAsset: SvgAsset.boardColorPink,
-                          label: 'Pink',
-                          colorIndex: 7,
-                          isSelected: boardSettings.boardColorIndex == 7,
-                          onTap: () {
-                            debugPrint('🎨 Settings UI: Board color changed to Pink');
-                            _trackPersist(boardNotifier.setBoardColorIndex(7));
-                          },
-                        ),
-                      ],
-                    ),
-                  ],
+              SizedBox(height: 16.h),
+              // Horizontal scrolling board theme options
+              SizedBox(
+                height: 90.h,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: kBoardThemes.length,
+                  separatorBuilder: (_, __) => SizedBox(width: 12.w),
+                  itemBuilder: (context, index) {
+                    final theme = kBoardThemes[index];
+                    final isSelected = boardSettings.boardThemeIndex == index;
+                    return _BoardThemeOption(
+                      theme: theme,
+                      isSelected: isSelected,
+                      onTap: () {
+                        _trackPersist(boardNotifier.setBoardThemeIndex(index));
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+        SizedBox(height: 18.h),
+
+        // Piece Set Selector
+        _SettingCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Piece Set',
+                style: AppTypography.textMdMedium.copyWith(
+                  color: kWhiteColor,
+                  fontSize: 13.f,
+                ),
+              ),
+              SizedBox(height: 4.h),
+              Text(
+                'Choose your preferred piece style.',
+                style: AppTypography.textSmRegular.copyWith(
+                  color: kWhiteColor70,
+                  fontSize: 11.f,
+                ),
+              ),
+              SizedBox(height: 16.h),
+              // Horizontal scrolling piece set options
+              SizedBox(
+                height: 90.h,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: kPieceSets.length,
+                  separatorBuilder: (_, __) => SizedBox(width: 12.w),
+                  itemBuilder: (context, index) {
+                    final pieceSet = kPieceSets[index];
+                    final isSelected = boardSettings.pieceStyleIndex == index;
+                    return _PieceSetOption(
+                      pieceSet: pieceSet,
+                      isSelected: isSelected,
+                      onTap: () {
+                        _trackPersist(boardNotifier.setPieceSetIndex(index));
+                      },
+                    );
+                  },
                 ),
               ),
             ],
@@ -541,48 +503,182 @@ class _ChessBoardSettingsPageState extends ConsumerState<ChessBoardSettingsPage>
       ],
     );
   }
+}
 
-  Widget _buildBoardColorOption({
-    required BuildContext context,
-    required String svgAsset,
-    required String label,
-    required int colorIndex,
-    required bool isSelected,
-    required VoidCallback onTap,
-  }) {
-    const Color checkMarkColor = Color(0xFF247435);
+/// Board theme option widget showing a preview of the theme colors
+class _BoardThemeOption extends StatelessWidget {
+  const _BoardThemeOption({
+    required this.theme,
+    required this.isSelected,
+    required this.onTap,
+  });
 
+  final BoardThemeOption theme;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onTap,
       child: Column(
         children: [
-          // SVG Board Preview with fixed dimensions
+          // Mini board preview showing light/dark squares
+          Container(
+            width: 48.w,
+            height: 48.h,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(6.br),
+              border: Border.all(
+                color: isSelected ? kPrimaryColor : Colors.transparent,
+                width: 2,
+              ),
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(4.br),
+              child: CustomPaint(
+                painter: _BoardThemePreviewPainter(
+                  lightColor: theme.colorScheme.lightSquare,
+                  darkColor: theme.colorScheme.darkSquare,
+                ),
+              ),
+            ),
+          ),
+          SizedBox(height: 6.h),
           SizedBox(
-            width: 32,
-            height: 32,
-            child: SvgPicture.asset(svgAsset, fit: BoxFit.contain),
+            width: 56.w,
+            child: Text(
+              theme.name,
+              style: AppTypography.textXsRegular.copyWith(
+                color: isSelected ? kPrimaryColor : kWhiteColor,
+                fontSize: 10.f,
+              ),
+              textAlign: TextAlign.center,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
           ),
-          SizedBox(height: 8.h),
-          Text(
-            label,
-            style: AppTypography.textXsRegular.copyWith(color: kWhiteColor),
-          ),
-          SizedBox(height: 8.h),
+          SizedBox(height: 4.h),
           // Selection indicator
           Container(
-            width: 20,
-            height: 20,
+            width: 16,
+            height: 16,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              border: Border.all(color: Colors.white, width: 2),
-              color: isSelected ? checkMarkColor : Colors.transparent,
+              border: Border.all(
+                color: isSelected ? kPrimaryColor : kSecondaryTextColor,
+                width: 2,
+              ),
+              color: isSelected ? kPrimaryColor : Colors.transparent,
             ),
             child: isSelected
-                ? const Icon(
-                    Icons.check,
-                    color: Colors.white,
-                    size: 14,
-                  )
+                ? const Icon(Icons.check, color: Colors.white, size: 10)
+                : null,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Custom painter for board theme preview (2x2 checkerboard)
+class _BoardThemePreviewPainter extends CustomPainter {
+  const _BoardThemePreviewPainter({
+    required this.lightColor,
+    required this.darkColor,
+  });
+
+  final Color lightColor;
+  final Color darkColor;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final halfWidth = size.width / 2;
+    final halfHeight = size.height / 2;
+
+    final lightPaint = Paint()..color = lightColor;
+    final darkPaint = Paint()..color = darkColor;
+
+    // Draw 2x2 checkerboard pattern
+    canvas.drawRect(Rect.fromLTWH(0, 0, halfWidth, halfHeight), lightPaint);
+    canvas.drawRect(Rect.fromLTWH(halfWidth, 0, halfWidth, halfHeight), darkPaint);
+    canvas.drawRect(Rect.fromLTWH(0, halfHeight, halfWidth, halfHeight), darkPaint);
+    canvas.drawRect(Rect.fromLTWH(halfWidth, halfHeight, halfWidth, halfHeight), lightPaint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _BoardThemePreviewPainter oldDelegate) {
+    return oldDelegate.lightColor != lightColor || oldDelegate.darkColor != darkColor;
+  }
+}
+
+/// Piece set option widget showing a preview of the king piece
+class _PieceSetOption extends StatelessWidget {
+  const _PieceSetOption({
+    required this.pieceSet,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  final PieceSet pieceSet;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Column(
+        children: [
+          // Piece preview showing white king
+          Container(
+            width: 48.w,
+            height: 48.h,
+            decoration: BoxDecoration(
+              color: kBlack3Color,
+              borderRadius: BorderRadius.circular(6.br),
+              border: Border.all(
+                color: isSelected ? kPrimaryColor : Colors.transparent,
+                width: 2,
+              ),
+            ),
+            child: Padding(
+              padding: EdgeInsets.all(4.sp),
+              child: Image(
+                image: pieceSet.assets[PieceKind.whiteKing]!,
+                fit: BoxFit.contain,
+              ),
+            ),
+          ),
+          SizedBox(height: 6.h),
+          SizedBox(
+            width: 56.w,
+            child: Text(
+              pieceSet.label,
+              style: AppTypography.textXsRegular.copyWith(
+                color: isSelected ? kPrimaryColor : kWhiteColor,
+                fontSize: 10.f,
+              ),
+              textAlign: TextAlign.center,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          SizedBox(height: 4.h),
+          // Selection indicator
+          Container(
+            width: 16,
+            height: 16,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: isSelected ? kPrimaryColor : kSecondaryTextColor,
+                width: 2,
+              ),
+              color: isSelected ? kPrimaryColor : Colors.transparent,
+            ),
+            child: isSelected
+                ? const Icon(Icons.check, color: Colors.white, size: 10)
                 : null,
           ),
         ],

@@ -7,7 +7,6 @@ import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
-import 'package:chessever2/utils/country_utils.dart';
 import 'package:country_picker/country_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -94,12 +93,8 @@ final groupedForYouGamesProvider = Provider.autoDispose<
       .map((f) => f.playerName.toLowerCase())
       .toSet();
 
-  // Watch country selection
-  final countryAsync = ref.watch(countryDropdownProvider);
-  final selectedCountry = countryAsync.valueOrNull;
-  final fideCountryCode = selectedCountry != null
-      ? CountryUtils.toFideCode(selectedCountry.countryCode)
-      : null;
+  // Watch country selection (for reactive refresh when country changes)
+  ref.watch(countryDropdownProvider);
 
   // CRITICAL FIX: Group ALL games by group_broadcast_id (event umbrella)
   // This merges games from same event (e.g., U17, U19 categories) into ONE card
@@ -168,22 +163,6 @@ final groupedForYouGamesProvider = Provider.autoDispose<
     return false;
   }
 
-  // Helper to check if an event has countryman games
-  bool eventHasCountryman(GroupedTournamentGames group) {
-    if (fideCountryCode == null) return false;
-    for (final game in group.games) {
-      if (game.players != null) {
-        for (final player in game.players!) {
-          if (player.fed.toUpperCase() == fideCountryCode.toUpperCase() &&
-              player.rating >= 2300) {
-            return true;
-          }
-        }
-      }
-    }
-    return false;
-  }
-
   int getEventRecency(GroupedTournamentGames group) {
     DateTime? mostRecent;
     for (final game in group.games) {
@@ -207,76 +186,69 @@ final groupedForYouGamesProvider = Provider.autoDispose<
   }
 
   // =============================================================
-  // EVENT SORTING - Same hierarchy as game scoring
+  // EVENT SORTING - Three-tier categorization (like Current tab)
   // =============================================================
-  // Priority 1: Starred events (+100000) - ABSOLUTE TOP
-  // Priority 2: Favorite players (+50000)
-  // Priority 3: Countrymen (+20000)
-  // Priority 4: ELO (× 1.0) - Dominates for non-pref events
-  // Tie-breaker: Live (+50)
+  // Tier 1: Starred events (user explicitly starred)
+  // Tier 2: Events with favorite players (hearted)
+  // Tier 3: Regular events (sorted by ELO, live as tiebreaker)
   // =============================================================
-  final hasAnyPreferences =
-      favoriteEventIds.isNotEmpty ||
-      favoritedFideIds.isNotEmpty ||
-      favoritedNames.isNotEmpty ||
-      fideCountryCode != null;
 
-  if (!hasAnyPreferences) {
-    result.sort((a, b) {
-      if (a.hasLiveGames && !b.hasLiveGames) return -1;
-      if (!a.hasLiveGames && b.hasLiveGames) return 1;
+  // Categorize events into three tiers (matching Current tab approach)
+  final starredEvents = <GroupedTournamentGames>[];
+  final heartedEvents = <GroupedTournamentGames>[];
+  final regularEvents = <GroupedTournamentGames>[];
 
-      final aMaxElo = getEventMaxElo(a);
-      final bMaxElo = getEventMaxElo(b);
-      if (aMaxElo != bMaxElo) {
-        return bMaxElo.compareTo(aMaxElo);
-      }
-
-      final aRecency = getEventRecency(a);
-      final bRecency = getEventRecency(b);
-      if (aRecency != bRecency) {
-        return bRecency.compareTo(aRecency);
-      }
-
-      return 0;
-    });
-    return result;
+  for (final event in result) {
+    if (favoriteEventIds.contains(event.tourId)) {
+      starredEvents.add(event);
+    } else if (eventHasFavoritePlayer(event)) {
+      heartedEvents.add(event);
+    } else {
+      regularEvents.add(event);
+    }
   }
 
-  result.sort((a, b) {
-    double scoreA = 0;
-    double scoreB = 0;
-
-    // Priority 1: Starred (favorite) events - ABSOLUTE TOP
-    if (favoriteEventIds.contains(a.tourId)) scoreA += 100000;
-    if (favoriteEventIds.contains(b.tourId)) scoreB += 100000;
-
-    // Priority 2: Events with favorited players
-    if (eventHasFavoritePlayer(a)) scoreA += 50000;
-    if (eventHasFavoritePlayer(b)) scoreB += 50000;
-
-    // Priority 3: Events with countrymen
-    if (eventHasCountryman(a)) scoreA += 20000;
-    if (eventHasCountryman(b)) scoreB += 20000;
-
-    // Priority 4: ELO is the DOMINANT factor
-    // Higher ELO events should rank higher (unless preferences override)
-    scoreA += getEventMaxElo(a).toDouble();
-    scoreB += getEventMaxElo(b).toDouble();
-
-    // Tie-breaker: Live games (small boost, won't override ELO)
-    if (a.hasLiveGames) scoreA += 50;
-    if (b.hasLiveGames) scoreB += 50;
-
-    // Final tie-breaker: event recency
-    scoreA += getEventRecency(a) * 1e-12;
-    scoreB += getEventRecency(b) * 1e-12;
-
-    // Sort by score descending
-    return scoreB.compareTo(scoreA);
+  // Sort starred events by recency (most recent activity first)
+  starredEvents.sort((a, b) {
+    final aRecency = getEventRecency(a);
+    final bRecency = getEventRecency(b);
+    return bRecency.compareTo(aRecency);
   });
 
-  return result;
+  // Sort hearted events by ELO (higher first), then recency
+  heartedEvents.sort((a, b) {
+    final aMaxElo = getEventMaxElo(a);
+    final bMaxElo = getEventMaxElo(b);
+    if (aMaxElo != bMaxElo) {
+      return bMaxElo.compareTo(aMaxElo);
+    }
+    final aRecency = getEventRecency(a);
+    final bRecency = getEventRecency(b);
+    return bRecency.compareTo(aRecency);
+  });
+
+  // Sort regular events: ELO first, live as tiebreaker within similar ELO
+  regularEvents.sort((a, b) {
+    final aMaxElo = getEventMaxElo(a);
+    final bMaxElo = getEventMaxElo(b);
+
+    // Primary: Higher ELO first
+    if (aMaxElo != bMaxElo) {
+      return bMaxElo.compareTo(aMaxElo);
+    }
+
+    // Tiebreaker: Live games (only when ELO is equal)
+    if (a.hasLiveGames && !b.hasLiveGames) return -1;
+    if (!a.hasLiveGames && b.hasLiveGames) return 1;
+
+    // Final tiebreaker: recency
+    final aRecency = getEventRecency(a);
+    final bRecency = getEventRecency(b);
+    return bRecency.compareTo(aRecency);
+  });
+
+  // Return: starred first, then hearted, then regular (like Current tab)
+  return [...starredEvents, ...heartedEvents, ...regularEvents];
 });
 
 /// Extracts round number from roundSlug (e.g., "round-5" -> 5)
@@ -453,14 +425,10 @@ final forYouAnimatedGameIds = <String>{};
 
 /// Notifier for managing For You games state
 ///
-/// Priority system (IMPORTANT):
-/// 1. Favorited players' games (highest priority, live games first within category)
-/// 2. Favorited events' games (live games first within category)
-/// 3. Countryman games (ELO ≥ 2300, live games first, then by ELO)
-/// 4. High ELO games (ELO ≥ 2600, live games first, then by ELO; injected rarely)
-///
-/// Within each priority level, LIVE games always come before finished games.
-/// But a finished game from a higher priority ALWAYS beats a live game from lower priority.
+/// Three-tier categorization (matching Current tab approach):
+/// Tier 1: Starred events (user explicitly starred) - sorted by recency
+/// Tier 2: Events with favorite players (hearted) - sorted by ELO, then recency
+/// Tier 3: Regular events - sorted by ELO first, live as tiebreaker
 ///
 /// STANDARD: Each tournament displays exactly 4 games. If there aren't enough
 /// personalized games, we fill up with top board games (highest ELO players).
@@ -755,14 +723,12 @@ class ForYouGamesNotifier extends StateNotifier<AsyncValue<List<Games>>> {
     _lastFetchAt = DateTime.now();
   }
 
-  /// Sort games for the For You feed with priority-based scoring
+  /// Sort games for the For You feed with three-tier categorization (like Current tab)
   ///
-  /// Priority order:
+  /// Tier order:
   /// 1. Games from starred (favorite) events
-  /// 2. Games with favorited players
-  /// 3. Games from user's country (countrymen with decent ELO)
-  /// 4. Higher ELO games
-  /// 5. Live games get a boost within each category
+  /// 2. Games with favorited players (hearted)
+  /// 3. Regular games (sorted by ELO, live as tiebreaker)
   void _sortGamesForFeed(
     List favorites,
     String? countryCode,
@@ -783,125 +749,88 @@ class ForYouGamesNotifier extends StateNotifier<AsyncValue<List<Games>>> {
         .map((name) => name.toLowerCase())
         .toSet();
 
-    // Convert country code to FIDE format
-    String? fideCountryCode;
-    if (countryCode != null && countryCode.isNotEmpty) {
-      fideCountryCode = CountryUtils.toFideCode(countryCode);
-    }
+    // =============================================================
+    // THREE-TIER CATEGORIZATION (matching Current tab approach)
+    // =============================================================
+    // Tier 1: Games from starred events
+    // Tier 2: Games with favorite players (hearted)
+    // Tier 3: Regular games (sorted by ELO, live as tiebreaker)
+    // =============================================================
 
-    // Score each game
-    final scoredGames = _allGames.map((game) {
-      double score = 0;
-      final isLive = game.status == '*';
-      final maxElo = _getMaxElo(game);
+    final starredGames = <Games>[];
+    final heartedGames = <Games>[];
+    final regularGames = <Games>[];
+
+    for (final game in _allGames) {
       final isFromFavoriteEvent = favoriteEventIds.contains(game.tourId);
       final hasFavoritePlayer = _hasFavoritedPlayer(
         game,
         favoritedFideIds,
         favoritedNames,
       );
-      final hasCountryman = fideCountryCode != null &&
-          _hasPlayerFromCountry(game, fideCountryCode);
 
-      // =============================================================
-      // SCORING SYSTEM - Clear priority hierarchy
-      // =============================================================
-      // Priority 1: Starred events (+100000) - ABSOLUTE TOP
-      // Priority 2: Favorite players (+50000) - Very high priority
-      // Priority 3: Countrymen with ELO >= 2300 (+20000)
-      // Priority 4: ELO score (ELO × 1.0) - Dominates for non-pref games
-      // Tie-breaker: Live (+50), Recency (+10-30)
-      // =============================================================
-
-      // Priority 1: Starred events (ABSOLUTE TOP)
       if (isFromFavoriteEvent) {
-        score += 100000;
+        starredGames.add(game);
+      } else if (hasFavoritePlayer) {
+        heartedGames.add(game);
+      } else {
+        regularGames.add(game);
+      }
+    }
+
+    // Helper to get recency score
+    int getRecency(Games game) {
+      return game.lastMoveTime?.millisecondsSinceEpoch ??
+             game.dateStart?.millisecondsSinceEpoch ?? 0;
+    }
+
+    // Sort starred games by recency (most recent first)
+    starredGames.sort((a, b) {
+      return getRecency(b).compareTo(getRecency(a));
+    });
+
+    // Sort hearted games by ELO (higher first), then recency
+    heartedGames.sort((a, b) {
+      final aMaxElo = _getMaxElo(a);
+      final bMaxElo = _getMaxElo(b);
+      if (aMaxElo != bMaxElo) {
+        return bMaxElo.compareTo(aMaxElo);
+      }
+      return getRecency(b).compareTo(getRecency(a));
+    });
+
+    // Sort regular games: ELO first, live as tiebreaker
+    regularGames.sort((a, b) {
+      final aMaxElo = _getMaxElo(a);
+      final bMaxElo = _getMaxElo(b);
+
+      // Primary: Higher ELO first
+      if (aMaxElo != bMaxElo) {
+        return bMaxElo.compareTo(aMaxElo);
       }
 
-      // Priority 2: Favorite players (very high priority)
-      if (hasFavoritePlayer) {
-        score += 50000;
-      }
+      // Tiebreaker: Live games (only when ELO is equal)
+      final aIsLive = a.status == '*';
+      final bIsLive = b.status == '*';
+      if (aIsLive && !bIsLive) return -1;
+      if (!aIsLive && bIsLive) return 1;
 
-      // Priority 3: Countrymen (with decent ELO)
-      if (hasCountryman && maxElo >= 2300) {
-        score += 20000;
-      }
+      // Final tiebreaker: recency
+      return getRecency(b).compareTo(getRecency(a));
+    });
 
-      // Priority 4: ELO is the DOMINANT factor for sorting
-      // A 2800 game should ALWAYS beat a 2200 game (unless preferences override)
-      score += maxElo.toDouble();
-
-      // Tie-breaker: Live games get small boost (won't override ELO difference)
-      // 50 points = less than 50 ELO difference
-      if (isLive) {
-        score += 50;
-      }
-
-      // Tie-breaker: Small recency boost
-      if (game.lastMoveTime != null) {
-        final minutesAgo = DateTime.now().difference(game.lastMoveTime!).inMinutes;
-        if (minutesAgo < 30) {
-          score += 30;
-        } else if (minutesAgo < 120) {
-          score += 20;
-        } else if (minutesAgo < 360) {
-          score += 10;
-        }
-      }
-
-      return _ScoredGame(
-        game: game,
-        score: score,
-        category: isFromFavoriteEvent
-            ? 'favorite_event'
-            : hasFavoritePlayer
-                ? 'favorite_player'
-                : hasCountryman
-                    ? 'countryman'
-                    : 'other',
-        isLive: isLive,
-        maxElo: maxElo,
-      );
-    }).toList();
-
-    // Sort by score descending
-    scoredGames.sort((a, b) => b.score.compareTo(a.score));
-
-    // Update the games list
+    // Combine: starred first, then hearted, then regular
     _allGames
       ..clear()
-      ..addAll(scoredGames.map((sg) => sg.game));
+      ..addAll(starredGames)
+      ..addAll(heartedGames)
+      ..addAll(regularGames);
 
     // Debug output
-    final categoryCounts = <String, int>{};
-    int liveCount = 0;
-    int maxEloInTop20 = 0;
-    int minEloInTop20 = 9999;
-    for (final sg in scoredGames.take(20)) {
-      categoryCounts[sg.category] = (categoryCounts[sg.category] ?? 0) + 1;
-      if (sg.isLive) liveCount++;
-      if (sg.maxElo > maxEloInTop20) maxEloInTop20 = sg.maxElo;
-      if (sg.maxElo > 0 && sg.maxElo < minEloInTop20) minEloInTop20 = sg.maxElo;
-    }
-
-    // When no preferences, 'other' category dominates - show ELO range
-    final hasPreferenceGames = categoryCounts.entries
-        .where((e) => e.key != 'other')
-        .fold(0, (sum, e) => sum + e.value) > 0;
-
-    if (!hasPreferenceGames && scoredGames.isNotEmpty) {
-      debugPrint(
-        '[ForYouGames] No preference-based games, sorted by ELO/live/recency',
-      );
-      debugPrint(
-        '[ForYouGames] Top 20: live=$liveCount, ELO range: $minEloInTop20-$maxEloInTop20',
-      );
-    } else {
-      debugPrint(
-        '[ForYouGames] Top 20 distribution: $categoryCounts, live: $liveCount',
-      );
-    }
+    debugPrint(
+      '[ForYouGames] Sorted: ${starredGames.length} starred, '
+      '${heartedGames.length} hearted, ${regularGames.length} regular',
+    );
   }
 
   /// Enforces the standard of at least 4 games per tournament
@@ -1014,13 +943,6 @@ class ForYouGamesNotifier extends StateNotifier<AsyncValue<List<Games>>> {
       }
     }
     return false;
-  }
-
-  bool _hasPlayerFromCountry(Games game, String countryCode) {
-    if (game.players == null) return false;
-    return game.players!.any(
-      (p) => p.fed.toUpperCase() == countryCode.toUpperCase(),
-    );
   }
 
   int _getMaxElo(Games game) {
@@ -1140,19 +1062,3 @@ class GroupedTournamentGames {
   bool hasLiveGames;
 }
 
-/// Internal model for scoring games during sorting
-class _ScoredGame {
-  const _ScoredGame({
-    required this.game,
-    required this.score,
-    required this.category,
-    required this.isLive,
-    required this.maxElo,
-  });
-
-  final Games game;
-  final double score;
-  final String category;
-  final bool isLive;
-  final int maxElo;
-}

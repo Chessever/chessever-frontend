@@ -10,6 +10,7 @@ import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/utils/url_launcher_provider.dart';
 import 'package:chessever2/widgets/heroine/no_padding_fade_shuttle_builder.dart';
+import 'package:chessever2/widgets/logo_pattern_fallback.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:country_flags/country_flags.dart';
 import 'package:flutter/material.dart';
@@ -238,12 +239,10 @@ class _AboutTourScreenState extends ConsumerState<AboutTourScreen> {
   }
 
   Widget _buildHeroError() {
-    return Container(
+    return SizedBox(
       height: 240.h,
       width: double.infinity,
-      color: kDarkGreyColor,
-      alignment: Alignment.center,
-      child: Icon(Icons.image_not_supported, color: kWhiteColor, size: 50.sp),
+      child: const LogoPatternFallback(),
     );
   }
 

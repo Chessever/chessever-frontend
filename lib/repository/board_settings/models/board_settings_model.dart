@@ -6,11 +6,12 @@ part 'board_settings_model.mapper.dart';
 class BoardSettingsModel with BoardSettingsModelMappable {
   final String id;
   final String userId;
-  final int boardColorIndex; // 0=default, 1=brown, 2=grey, 3=green, 4=orange, 5=purple, 6=blue, 7=pink
+  final int boardColorIndex; // DEPRECATED: 0=default, 1=brown, 2=grey, 3=green, 4=orange, 5=purple, 6=blue, 7=pink
+  final int boardThemeIndex; // NEW: Index into chessground's board themes
   final bool showEvaluationBar;
   final bool soundEnabled;
   final bool chatEnabled;
-  final int pieceStyleIndex;
+  final int pieceStyleIndex; // Index into chessground's PieceSet
   final int gamesListViewModeIndex; // 0=gamesCard, 1=chessBoardGrid, 2=chessBoard
   final DateTime createdAt;
   final DateTime updatedAt;
@@ -19,6 +20,7 @@ class BoardSettingsModel with BoardSettingsModelMappable {
     required this.id,
     required this.userId,
     required this.boardColorIndex,
+    required this.boardThemeIndex,
     required this.showEvaluationBar,
     required this.soundEnabled,
     required this.chatEnabled,
@@ -35,6 +37,7 @@ class BoardSettingsModel with BoardSettingsModelMappable {
       id: json['id'] as String,
       userId: json['user_id'] as String,
       boardColorIndex: json['board_color_index'] as int? ?? 0,
+      boardThemeIndex: json['board_theme_index'] as int? ?? 0,
       showEvaluationBar: json['show_evaluation_bar'] as bool? ?? true,
       soundEnabled: json['sound_enabled'] as bool? ?? true,
       chatEnabled: json['chat_enabled'] as bool? ?? true,
@@ -51,6 +54,7 @@ class BoardSettingsModel with BoardSettingsModelMappable {
       'id': id,
       'user_id': userId,
       'board_color_index': boardColorIndex,
+      'board_theme_index': boardThemeIndex,
       'show_evaluation_bar': showEvaluationBar,
       'sound_enabled': soundEnabled,
       'chat_enabled': chatEnabled,
@@ -66,6 +70,7 @@ class BoardSettingsModel with BoardSettingsModelMappable {
     return {
       'user_id': userId,
       'board_color_index': boardColorIndex,
+      'board_theme_index': boardThemeIndex,
       'show_evaluation_bar': showEvaluationBar,
       'sound_enabled': soundEnabled,
       'chat_enabled': chatEnabled,
@@ -79,11 +84,12 @@ class BoardSettingsModel with BoardSettingsModelMappable {
     return BoardSettingsModel(
       id: '',
       userId: userId,
-      boardColorIndex: 0, // Default color
+      boardColorIndex: 0, // DEPRECATED
+      boardThemeIndex: 0, // Brown (default)
       showEvaluationBar: true,
       soundEnabled: true,
       chatEnabled: true,
-      pieceStyleIndex: 0, // Standard piece style
+      pieceStyleIndex: 0, // cburnett (default)
       gamesListViewModeIndex: 0, // gamesCard view
       createdAt: DateTime.now(),
       updatedAt: DateTime.now(),

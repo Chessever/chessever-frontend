@@ -186,7 +186,7 @@ class SearchOverlay extends ConsumerWidget {
                 '$title (${filteredResults.length})',
                 style: TextStyle(
                   color: kWhiteColor,
-                  fontSize: 14.sp,
+                  fontSize: 12.sp,
                   fontWeight: FontWeight.w600,
                 ),
               ),
@@ -239,7 +239,7 @@ class SearchOverlay extends ConsumerWidget {
               '$totalResults result${totalResults != 1 ? 's' : ''} for "$query"',
               style: TextStyle(
                 color: kWhiteColor,
-                fontSize: 14.sp,
+                fontSize: 12.sp,
                 fontWeight: FontWeight.w500,
               ),
             ),
@@ -264,7 +264,7 @@ class SearchOverlay extends ConsumerWidget {
             SizedBox(height: 16.h),
             Text(
               'Searching...',
-              style: TextStyle(color: Colors.white70, fontSize: 14.sp),
+              style: TextStyle(color: Colors.white70, fontSize: 12.sp),
             ),
           ],
         ),
@@ -324,7 +324,7 @@ class SearchOverlay extends ConsumerWidget {
             SizedBox(height: 8.h),
             Text(
               'Try different keywords for "$query"',
-              style: TextStyle(color: kBoardLightGrey, fontSize: 14.sp),
+              style: TextStyle(color: kBoardLightGrey, fontSize: 12.sp),
               textAlign: TextAlign.center,
             ),
           ],

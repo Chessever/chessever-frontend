@@ -31,7 +31,7 @@ class TournamentDetailScreen extends ConsumerStatefulWidget {
 }
 
 class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
-    with RouteAware {
+    with RouteAware, WidgetsBindingObserver {
   late PageController pageController;
   late final String _scrollScopeId;
 
@@ -80,13 +80,52 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    if (!mounted) return;
+
+    if (state == AppLifecycleState.resumed) {
+      _handleAppResumed();
+    } else if (state == AppLifecycleState.paused) {
+      _handleAppPaused();
+    }
+  }
+
+  void _handleAppResumed() {
+    print('🔥 TournamentDetail: App resumed - refreshing games');
+    // Re-enable streaming when app comes back to foreground
+    ref.read(shouldStreamProvider.notifier).state = true;
+
+    // Refresh games data while preserving current UI state
+    // This avoids showing "no games" during the refresh
+    final tourDetailAsync = ref.read(tourDetailScreenProvider);
+    final aboutTourModel = tourDetailAsync.valueOrNull?.aboutTourModel;
+    if (aboutTourModel != null) {
+      // Use refreshGames() instead of invalidate() to preserve current state
+      // while fetching fresh data in the background
+      try {
+        ref.read(gamesTourProvider(aboutTourModel.id).notifier).refreshGames();
+      } catch (e) {
+        print('🔥 TournamentDetail: Error refreshing games on resume: $e');
+      }
+    }
+  }
+
+  void _handleAppPaused() {
+    print('🔥 TournamentDetail: App paused - stopping streaming');
+    // Stop streaming when app goes to background to save resources
+    ref.read(shouldStreamProvider.notifier).state = false;
+  }
+
+  @override
   void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
     final initialPage = TournamentDetailScreenMode.values.indexOf(
       ref.read(selectedTourModeProvider),
     );
     pageController = PageController(initialPage: initialPage);
     _scrollScopeId = 'games_scroll_${UniqueKey()}';
-    super.initState();
   }
 
   @override
@@ -114,6 +153,7 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     pageController.dispose();
     super.dispose();
   }
