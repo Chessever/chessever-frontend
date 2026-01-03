@@ -132,8 +132,8 @@ class ScoreboardCardWidget extends ConsumerWidget {
               ),
             ),
             SizedBox(width: 12.w),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
+            Row(
+              mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
                   score.toString(),
@@ -142,11 +142,11 @@ class ScoreboardCardWidget extends ConsumerWidget {
                   ),
                 ),
                 if (scoreChange != null && scoreChange != 0.0) ...[
-                  SizedBox(height: 4.h),
+                  SizedBox(width: 4.w),
                   Text(
                     scoreChange! > 0
-                        ? '+${scoreChange!.toStringAsFixed(1)}'
-                        : scoreChange!.toStringAsFixed(1),
+                        ? '+${scoreChange!.toStringAsFixed(0)}'
+                        : scoreChange!.toStringAsFixed(0),
                     style: AppTypography.textXsMedium.copyWith(
                       color: scoreChange! > 0 ? kGreenColor : kRedColor,
                     ),
