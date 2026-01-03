@@ -409,95 +409,21 @@ class _ChessBoardSettingsPageState extends ConsumerState<ChessBoardSettingsPage>
         _SectionLabel(title: 'Board Settings'),
         SizedBox(height: 12.h),
 
-        // Board Theme Selector
-        _SettingCard(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Board Theme',
-                style: AppTypography.textMdMedium.copyWith(
-                  color: kWhiteColor,
-                  fontSize: 13.f,
-                ),
-              ),
-              SizedBox(height: 4.h),
-              Text(
-                'Choose your preferred board style.',
-                style: AppTypography.textSmRegular.copyWith(
-                  color: kWhiteColor70,
-                  fontSize: 11.f,
-                ),
-              ),
-              SizedBox(height: 16.h),
-              // Horizontal scrolling board theme options
-              SizedBox(
-                height: 90.h,
-                child: ListView.separated(
-                  scrollDirection: Axis.horizontal,
-                  itemCount: kBoardThemes.length,
-                  separatorBuilder: (_, __) => SizedBox(width: 12.w),
-                  itemBuilder: (context, index) {
-                    final theme = kBoardThemes[index];
-                    final isSelected = boardSettings.boardThemeIndex == index;
-                    return _BoardThemeOption(
-                      theme: theme,
-                      isSelected: isSelected,
-                      onTap: () {
-                        _trackPersist(boardNotifier.setBoardThemeIndex(index));
-                      },
-                    );
-                  },
-                ),
-              ),
-            ],
-          ),
+        // Board Theme Selector - Tap to open gallery
+        _BoardThemePickerCard(
+          currentIndex: boardSettings.boardThemeIndex,
+          onThemeSelected: (index) {
+            _trackPersist(boardNotifier.setBoardThemeIndex(index));
+          },
         ),
         SizedBox(height: 18.h),
 
-        // Piece Set Selector
-        _SettingCard(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Piece Set',
-                style: AppTypography.textMdMedium.copyWith(
-                  color: kWhiteColor,
-                  fontSize: 13.f,
-                ),
-              ),
-              SizedBox(height: 4.h),
-              Text(
-                'Choose your preferred piece style.',
-                style: AppTypography.textSmRegular.copyWith(
-                  color: kWhiteColor70,
-                  fontSize: 11.f,
-                ),
-              ),
-              SizedBox(height: 16.h),
-              // Horizontal scrolling piece set options
-              SizedBox(
-                height: 90.h,
-                child: ListView.separated(
-                  scrollDirection: Axis.horizontal,
-                  itemCount: kPieceSets.length,
-                  separatorBuilder: (_, __) => SizedBox(width: 12.w),
-                  itemBuilder: (context, index) {
-                    final pieceSet = kPieceSets[index];
-                    final isSelected = boardSettings.pieceStyleIndex == index;
-                    return _PieceSetOption(
-                      pieceSet: pieceSet,
-                      isSelected: isSelected,
-                      onTap: () {
-                        _trackPersist(boardNotifier.setPieceSetIndex(index));
-                      },
-                    );
-                  },
-                ),
-              ),
-            ],
-          ),
+        // Piece Set Selector - Tap to open gallery
+        _PieceSetPickerCard(
+          currentIndex: boardSettings.pieceStyleIndex,
+          onPieceSetSelected: (index) {
+            _trackPersist(boardNotifier.setPieceSetIndex(index));
+          },
         ),
 
       ],
@@ -505,9 +431,279 @@ class _ChessBoardSettingsPageState extends ConsumerState<ChessBoardSettingsPage>
   }
 }
 
-/// Board theme option widget showing a preview of the theme colors
-class _BoardThemeOption extends StatelessWidget {
-  const _BoardThemeOption({
+/// Board Theme Picker Card - Shows current selection and opens gallery on tap
+class _BoardThemePickerCard extends StatelessWidget {
+  const _BoardThemePickerCard({
+    required this.currentIndex,
+    required this.onThemeSelected,
+  });
+
+  final int currentIndex;
+  final ValueChanged<int> onThemeSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final currentTheme = getBoardThemeByIndex(currentIndex);
+
+    return _SettingCard(
+      child: InkWell(
+        onTap: () => _showBoardThemeGallery(context),
+        borderRadius: BorderRadius.circular(12.br),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Board Theme',
+                        style: AppTypography.textMdMedium.copyWith(
+                          color: kWhiteColor,
+                          fontSize: 13.f,
+                        ),
+                      ),
+                      SizedBox(height: 4.h),
+                      Text(
+                        'Choose from ${kBoardThemes.length} beautiful board styles',
+                        style: AppTypography.textSmRegular.copyWith(
+                          color: kWhiteColor70,
+                          fontSize: 11.f,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                // Count badge
+                Container(
+                  padding: EdgeInsets.symmetric(horizontal: 10.sp, vertical: 4.sp),
+                  decoration: BoxDecoration(
+                    color: kPrimaryColor.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(12.br),
+                    border: Border.all(color: kPrimaryColor.withValues(alpha: 0.3)),
+                  ),
+                  child: Text(
+                    '${kBoardThemes.length}',
+                    style: AppTypography.textSmMedium.copyWith(
+                      color: kPrimaryColor,
+                      fontSize: 12.f,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: 16.h),
+            // Current selection preview
+            Container(
+              padding: EdgeInsets.all(12.sp),
+              decoration: BoxDecoration(
+                color: kBlack2Color,
+                borderRadius: BorderRadius.circular(12.br),
+                border: Border.all(color: kPrimaryColor.withValues(alpha: 0.4)),
+              ),
+              child: Row(
+                children: [
+                  // Board preview (4x4 checkerboard)
+                  Container(
+                    width: 56.w,
+                    height: 56.h,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(8.br),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.3),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(8.br),
+                      child: CustomPaint(
+                        painter: _BoardThemePreviewPainter(
+                          lightColor: currentTheme.colorScheme.lightSquare,
+                          darkColor: currentTheme.colorScheme.darkSquare,
+                          gridSize: 4,
+                        ),
+                      ),
+                    ),
+                  ),
+                  SizedBox(width: 16.w),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          currentTheme.name,
+                          style: AppTypography.textMdMedium.copyWith(
+                            color: kWhiteColor,
+                            fontSize: 14.f,
+                          ),
+                        ),
+                        SizedBox(height: 4.h),
+                        Text(
+                          'Tap to browse all themes',
+                          style: AppTypography.textSmRegular.copyWith(
+                            color: kSecondaryTextColor,
+                            fontSize: 11.f,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Icon(
+                    Icons.chevron_right_rounded,
+                    color: kSecondaryTextColor,
+                    size: 24.ic,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showBoardThemeGallery(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => _BoardThemeGallerySheet(
+        currentIndex: currentIndex,
+        onThemeSelected: (index) {
+          onThemeSelected(index);
+          Navigator.pop(context);
+        },
+      ),
+    );
+  }
+}
+
+/// Board Theme Gallery Bottom Sheet
+class _BoardThemeGallerySheet extends StatefulWidget {
+  const _BoardThemeGallerySheet({
+    required this.currentIndex,
+    required this.onThemeSelected,
+  });
+
+  final int currentIndex;
+  final ValueChanged<int> onThemeSelected;
+
+  @override
+  State<_BoardThemeGallerySheet> createState() => _BoardThemeGallerySheetState();
+}
+
+class _BoardThemeGallerySheetState extends State<_BoardThemeGallerySheet> {
+  late int _selectedIndex;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedIndex = widget.currentIndex;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomPadding = MediaQuery.of(context).viewPadding.bottom;
+
+    return Container(
+      height: MediaQuery.of(context).size.height * 0.75,
+      decoration: BoxDecoration(
+        color: kBlack2Color,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24.br)),
+      ),
+      child: Column(
+        children: [
+          // Handle bar
+          Container(
+            margin: EdgeInsets.only(top: 12.sp),
+            width: 40.w,
+            height: 4.h,
+            decoration: BoxDecoration(
+              color: kDividerColor,
+              borderRadius: BorderRadius.circular(2.br),
+            ),
+          ),
+          // Header
+          Padding(
+            padding: EdgeInsets.all(20.sp),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Board Themes',
+                        style: AppTypography.textLgMedium.copyWith(
+                          color: kWhiteColor,
+                          fontSize: 18.f,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      SizedBox(height: 4.h),
+                      Text(
+                        '${kBoardThemes.length} styles available',
+                        style: AppTypography.textSmRegular.copyWith(
+                          color: kSecondaryTextColor,
+                          fontSize: 12.f,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                // Close button
+                IconButton(
+                  onPressed: () => Navigator.pop(context),
+                  icon: Icon(Icons.close_rounded, color: kSecondaryTextColor, size: 24.ic),
+                  style: IconButton.styleFrom(
+                    backgroundColor: kBlack3Color,
+                    padding: EdgeInsets.all(8.sp),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          // Grid of themes
+          Expanded(
+            child: GridView.builder(
+              padding: EdgeInsets.symmetric(horizontal: 16.sp),
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 4,
+                mainAxisSpacing: 16.sp,
+                crossAxisSpacing: 12.sp,
+                childAspectRatio: 0.75,
+              ),
+              itemCount: kBoardThemes.length,
+              itemBuilder: (context, index) {
+                final theme = kBoardThemes[index];
+                final isSelected = _selectedIndex == index;
+
+                return _BoardThemeGridItem(
+                  theme: theme,
+                  isSelected: isSelected,
+                  onTap: () {
+                    setState(() => _selectedIndex = index);
+                    widget.onThemeSelected(index);
+                  },
+                );
+              },
+            ),
+          ),
+          SizedBox(height: bottomPadding + 16.sp),
+        ],
+      ),
+    );
+  }
+}
+
+/// Individual board theme grid item
+class _BoardThemeGridItem extends StatelessWidget {
+  const _BoardThemeGridItem({
     required this.theme,
     required this.isSelected,
     required this.onTap,
@@ -521,100 +717,402 @@ class _BoardThemeOption extends StatelessWidget {
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onTap,
-      child: Column(
-        children: [
-          // Mini board preview showing light/dark squares
-          Container(
-            width: 48.w,
-            height: 48.h,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(6.br),
-              border: Border.all(
-                color: isSelected ? kPrimaryColor : Colors.transparent,
-                width: 2,
-              ),
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(4.br),
-              child: CustomPaint(
-                painter: _BoardThemePreviewPainter(
-                  lightColor: theme.colorScheme.lightSquare,
-                  darkColor: theme.colorScheme.darkSquare,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOutCubic,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12.br),
+          border: Border.all(
+            color: isSelected ? kPrimaryColor : Colors.transparent,
+            width: 2,
+          ),
+          boxShadow: isSelected
+              ? [
+                  BoxShadow(
+                    color: kPrimaryColor.withValues(alpha: 0.3),
+                    blurRadius: 12,
+                    spreadRadius: 0,
+                  ),
+                ]
+              : null,
+        ),
+        child: Column(
+          children: [
+            // Board preview (4x4 checkerboard)
+            Expanded(
+              child: Container(
+                margin: EdgeInsets.all(4.sp),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(8.br),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.2),
+                      blurRadius: 4,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(8.br),
+                  child: CustomPaint(
+                    painter: _BoardThemePreviewPainter(
+                      lightColor: theme.colorScheme.lightSquare,
+                      darkColor: theme.colorScheme.darkSquare,
+                      gridSize: 4,
+                    ),
+                  ),
                 ),
               ),
             ),
-          ),
-          SizedBox(height: 6.h),
-          SizedBox(
-            width: 56.w,
-            child: Text(
-              theme.name,
-              style: AppTypography.textXsRegular.copyWith(
-                color: isSelected ? kPrimaryColor : kWhiteColor,
-                fontSize: 10.f,
+            // Theme name
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: 4.sp, vertical: 6.sp),
+              child: Text(
+                theme.name,
+                style: AppTypography.textXsRegular.copyWith(
+                  color: isSelected ? kPrimaryColor : kWhiteColor,
+                  fontSize: 10.f,
+                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+                ),
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
-              textAlign: TextAlign.center,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
             ),
-          ),
-          SizedBox(height: 4.h),
-          // Selection indicator
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Custom painter for board theme preview (configurable grid size)
+class _BoardThemePreviewPainter extends CustomPainter {
+  const _BoardThemePreviewPainter({
+    required this.lightColor,
+    required this.darkColor,
+    this.gridSize = 2,
+  });
+
+  final Color lightColor;
+  final Color darkColor;
+  final int gridSize;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final cellWidth = size.width / gridSize;
+    final cellHeight = size.height / gridSize;
+
+    final lightPaint = Paint()..color = lightColor;
+    final darkPaint = Paint()..color = darkColor;
+
+    for (int row = 0; row < gridSize; row++) {
+      for (int col = 0; col < gridSize; col++) {
+        final isLight = (row + col) % 2 == 0;
+        final paint = isLight ? lightPaint : darkPaint;
+        canvas.drawRect(
+          Rect.fromLTWH(col * cellWidth, row * cellHeight, cellWidth, cellHeight),
+          paint,
+        );
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _BoardThemePreviewPainter oldDelegate) {
+    return oldDelegate.lightColor != lightColor ||
+           oldDelegate.darkColor != darkColor ||
+           oldDelegate.gridSize != gridSize;
+  }
+}
+
+/// Piece Set Picker Card - Shows current selection and opens gallery on tap
+class _PieceSetPickerCard extends StatelessWidget {
+  const _PieceSetPickerCard({
+    required this.currentIndex,
+    required this.onPieceSetSelected,
+  });
+
+  final int currentIndex;
+  final ValueChanged<int> onPieceSetSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final currentPieceSet = getPieceSetByIndex(currentIndex);
+
+    return _SettingCard(
+      child: InkWell(
+        onTap: () => _showPieceSetGallery(context),
+        borderRadius: BorderRadius.circular(12.br),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Piece Set',
+                        style: AppTypography.textMdMedium.copyWith(
+                          color: kWhiteColor,
+                          fontSize: 13.f,
+                        ),
+                      ),
+                      SizedBox(height: 4.h),
+                      Text(
+                        'Choose from ${kPieceSets.length} unique piece styles',
+                        style: AppTypography.textSmRegular.copyWith(
+                          color: kWhiteColor70,
+                          fontSize: 11.f,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                // Count badge
+                Container(
+                  padding: EdgeInsets.symmetric(horizontal: 10.sp, vertical: 4.sp),
+                  decoration: BoxDecoration(
+                    color: kPrimaryColor.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(12.br),
+                    border: Border.all(color: kPrimaryColor.withValues(alpha: 0.3)),
+                  ),
+                  child: Text(
+                    '${kPieceSets.length}',
+                    style: AppTypography.textSmMedium.copyWith(
+                      color: kPrimaryColor,
+                      fontSize: 12.f,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: 16.h),
+            // Current selection preview
+            Container(
+              padding: EdgeInsets.all(12.sp),
+              decoration: BoxDecoration(
+                color: kBlack2Color,
+                borderRadius: BorderRadius.circular(12.br),
+                border: Border.all(color: kPrimaryColor.withValues(alpha: 0.4)),
+              ),
+              child: Row(
+                children: [
+                  // Piece preview (King and Queen)
+                  Container(
+                    width: 56.w,
+                    height: 56.h,
+                    decoration: BoxDecoration(
+                      color: kBlack3Color,
+                      borderRadius: BorderRadius.circular(8.br),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.3),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Expanded(
+                          child: Padding(
+                            padding: EdgeInsets.all(4.sp),
+                            child: Image(
+                              image: currentPieceSet.assets[PieceKind.whiteKing]!,
+                              fit: BoxFit.contain,
+                            ),
+                          ),
+                        ),
+                        Expanded(
+                          child: Padding(
+                            padding: EdgeInsets.all(4.sp),
+                            child: Image(
+                              image: currentPieceSet.assets[PieceKind.blackQueen]!,
+                              fit: BoxFit.contain,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  SizedBox(width: 16.w),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          currentPieceSet.label,
+                          style: AppTypography.textMdMedium.copyWith(
+                            color: kWhiteColor,
+                            fontSize: 14.f,
+                          ),
+                        ),
+                        SizedBox(height: 4.h),
+                        Text(
+                          'Tap to browse all pieces',
+                          style: AppTypography.textSmRegular.copyWith(
+                            color: kSecondaryTextColor,
+                            fontSize: 11.f,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Icon(
+                    Icons.chevron_right_rounded,
+                    color: kSecondaryTextColor,
+                    size: 24.ic,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showPieceSetGallery(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => _PieceSetGallerySheet(
+        currentIndex: currentIndex,
+        onPieceSetSelected: (index) {
+          onPieceSetSelected(index);
+          Navigator.pop(context);
+        },
+      ),
+    );
+  }
+}
+
+/// Piece Set Gallery Bottom Sheet
+class _PieceSetGallerySheet extends StatefulWidget {
+  const _PieceSetGallerySheet({
+    required this.currentIndex,
+    required this.onPieceSetSelected,
+  });
+
+  final int currentIndex;
+  final ValueChanged<int> onPieceSetSelected;
+
+  @override
+  State<_PieceSetGallerySheet> createState() => _PieceSetGallerySheetState();
+}
+
+class _PieceSetGallerySheetState extends State<_PieceSetGallerySheet> {
+  late int _selectedIndex;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedIndex = widget.currentIndex;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomPadding = MediaQuery.of(context).viewPadding.bottom;
+
+    return Container(
+      height: MediaQuery.of(context).size.height * 0.8,
+      decoration: BoxDecoration(
+        color: kBlack2Color,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24.br)),
+      ),
+      child: Column(
+        children: [
+          // Handle bar
           Container(
-            width: 16,
-            height: 16,
+            margin: EdgeInsets.only(top: 12.sp),
+            width: 40.w,
+            height: 4.h,
             decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              border: Border.all(
-                color: isSelected ? kPrimaryColor : kSecondaryTextColor,
-                width: 2,
-              ),
-              color: isSelected ? kPrimaryColor : Colors.transparent,
+              color: kDividerColor,
+              borderRadius: BorderRadius.circular(2.br),
             ),
-            child: isSelected
-                ? const Icon(Icons.check, color: Colors.white, size: 10)
-                : null,
           ),
+          // Header
+          Padding(
+            padding: EdgeInsets.all(20.sp),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Piece Sets',
+                        style: AppTypography.textLgMedium.copyWith(
+                          color: kWhiteColor,
+                          fontSize: 18.f,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      SizedBox(height: 4.h),
+                      Text(
+                        '${kPieceSets.length} styles available',
+                        style: AppTypography.textSmRegular.copyWith(
+                          color: kSecondaryTextColor,
+                          fontSize: 12.f,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                // Close button
+                IconButton(
+                  onPressed: () => Navigator.pop(context),
+                  icon: Icon(Icons.close_rounded, color: kSecondaryTextColor, size: 24.ic),
+                  style: IconButton.styleFrom(
+                    backgroundColor: kBlack3Color,
+                    padding: EdgeInsets.all(8.sp),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          // Grid of piece sets
+          Expanded(
+            child: GridView.builder(
+              padding: EdgeInsets.symmetric(horizontal: 16.sp),
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 4,
+                mainAxisSpacing: 16.sp,
+                crossAxisSpacing: 12.sp,
+                childAspectRatio: 0.72,
+              ),
+              itemCount: kPieceSets.length,
+              itemBuilder: (context, index) {
+                final pieceSet = kPieceSets[index];
+                final isSelected = _selectedIndex == index;
+
+                return _PieceSetGridItem(
+                  pieceSet: pieceSet,
+                  isSelected: isSelected,
+                  onTap: () {
+                    setState(() => _selectedIndex = index);
+                    widget.onPieceSetSelected(index);
+                  },
+                );
+              },
+            ),
+          ),
+          SizedBox(height: bottomPadding + 16.sp),
         ],
       ),
     );
   }
 }
 
-/// Custom painter for board theme preview (2x2 checkerboard)
-class _BoardThemePreviewPainter extends CustomPainter {
-  const _BoardThemePreviewPainter({
-    required this.lightColor,
-    required this.darkColor,
-  });
-
-  final Color lightColor;
-  final Color darkColor;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final halfWidth = size.width / 2;
-    final halfHeight = size.height / 2;
-
-    final lightPaint = Paint()..color = lightColor;
-    final darkPaint = Paint()..color = darkColor;
-
-    // Draw 2x2 checkerboard pattern
-    canvas.drawRect(Rect.fromLTWH(0, 0, halfWidth, halfHeight), lightPaint);
-    canvas.drawRect(Rect.fromLTWH(halfWidth, 0, halfWidth, halfHeight), darkPaint);
-    canvas.drawRect(Rect.fromLTWH(0, halfHeight, halfWidth, halfHeight), darkPaint);
-    canvas.drawRect(Rect.fromLTWH(halfWidth, halfHeight, halfWidth, halfHeight), lightPaint);
-  }
-
-  @override
-  bool shouldRepaint(covariant _BoardThemePreviewPainter oldDelegate) {
-    return oldDelegate.lightColor != lightColor || oldDelegate.darkColor != darkColor;
-  }
-}
-
-/// Piece set option widget showing a preview of the king piece
-class _PieceSetOption extends StatelessWidget {
-  const _PieceSetOption({
+/// Individual piece set grid item
+class _PieceSetGridItem extends StatelessWidget {
+  const _PieceSetGridItem({
     required this.pieceSet,
     required this.isSelected,
     required this.onTap,
@@ -628,60 +1126,89 @@ class _PieceSetOption extends StatelessWidget {
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onTap,
-      child: Column(
-        children: [
-          // Piece preview showing white king
-          Container(
-            width: 48.w,
-            height: 48.h,
-            decoration: BoxDecoration(
-              color: kBlack3Color,
-              borderRadius: BorderRadius.circular(6.br),
-              border: Border.all(
-                color: isSelected ? kPrimaryColor : Colors.transparent,
-                width: 2,
-              ),
-            ),
-            child: Padding(
-              padding: EdgeInsets.all(4.sp),
-              child: Image(
-                image: pieceSet.assets[PieceKind.whiteKing]!,
-                fit: BoxFit.contain,
-              ),
-            ),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOutCubic,
+        decoration: BoxDecoration(
+          color: kBlack3Color,
+          borderRadius: BorderRadius.circular(12.br),
+          border: Border.all(
+            color: isSelected ? kPrimaryColor : Colors.transparent,
+            width: 2,
           ),
-          SizedBox(height: 6.h),
-          SizedBox(
-            width: 56.w,
-            child: Text(
-              pieceSet.label,
-              style: AppTypography.textXsRegular.copyWith(
-                color: isSelected ? kPrimaryColor : kWhiteColor,
-                fontSize: 10.f,
+          boxShadow: isSelected
+              ? [
+                  BoxShadow(
+                    color: kPrimaryColor.withValues(alpha: 0.3),
+                    blurRadius: 12,
+                    spreadRadius: 0,
+                  ),
+                ]
+              : null,
+        ),
+        child: Column(
+          children: [
+            // Pieces preview (King on top row, Queen + Knight on bottom)
+            Expanded(
+              child: Padding(
+                padding: EdgeInsets.all(6.sp),
+                child: Column(
+                  children: [
+                    // Top: White King (larger)
+                    Expanded(
+                      flex: 3,
+                      child: Image(
+                        image: pieceSet.assets[PieceKind.whiteKing]!,
+                        fit: BoxFit.contain,
+                      ),
+                    ),
+                    SizedBox(height: 2.h),
+                    // Bottom: Black Queen + Knight (smaller)
+                    Expanded(
+                      flex: 2,
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Image(
+                              image: pieceSet.assets[PieceKind.blackQueen]!,
+                              fit: BoxFit.contain,
+                            ),
+                          ),
+                          Expanded(
+                            child: Image(
+                              image: pieceSet.assets[PieceKind.whiteKnight]!,
+                              fit: BoxFit.contain,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
               ),
-              textAlign: TextAlign.center,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
             ),
-          ),
-          SizedBox(height: 4.h),
-          // Selection indicator
-          Container(
-            width: 16,
-            height: 16,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              border: Border.all(
-                color: isSelected ? kPrimaryColor : kSecondaryTextColor,
-                width: 2,
+            // Piece set name
+            Container(
+              width: double.infinity,
+              padding: EdgeInsets.symmetric(horizontal: 4.sp, vertical: 6.sp),
+              decoration: BoxDecoration(
+                color: isSelected ? kPrimaryColor.withValues(alpha: 0.1) : Colors.transparent,
+                borderRadius: BorderRadius.vertical(bottom: Radius.circular(10.br)),
               ),
-              color: isSelected ? kPrimaryColor : Colors.transparent,
+              child: Text(
+                pieceSet.label,
+                style: AppTypography.textXsRegular.copyWith(
+                  color: isSelected ? kPrimaryColor : kWhiteColor,
+                  fontSize: 9.f,
+                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+                ),
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
-            child: isSelected
-                ? const Icon(Icons.check, color: Colors.white, size: 10)
-                : null,
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
