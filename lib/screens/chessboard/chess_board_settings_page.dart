@@ -1,11 +1,10 @@
 import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/providers/board_settings_provider_new.dart';
-import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/board_customization_utils.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
-import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
+import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 import 'package:chessground/chessground.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:flutter/material.dart';
@@ -434,7 +433,7 @@ class _ChessBoardSettingsPageState extends ConsumerState<ChessBoardSettingsPage>
 }
 
 /// Board Theme Picker Card - Shows current selection and opens gallery on tap
-class _BoardThemePickerCard extends ConsumerWidget {
+class _BoardThemePickerCard extends StatelessWidget {
   const _BoardThemePickerCard({
     required this.currentIndex,
     required this.onThemeSelected,
@@ -444,14 +443,12 @@ class _BoardThemePickerCard extends ConsumerWidget {
   final ValueChanged<int> onThemeSelected;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final currentTheme = getBoardThemeByIndex(currentIndex);
-    final subscriptionState = ref.watch(subscriptionProvider);
-    final isPremium = subscriptionState.isSubscribed;
 
     return _SettingCard(
       child: InkWell(
-        onTap: () => _showBoardThemeGallery(context, isPremium),
+        onTap: () => _showBoardThemeGallery(context),
         borderRadius: BorderRadius.circular(12.br),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -480,52 +477,21 @@ class _BoardThemePickerCard extends ConsumerWidget {
                     ],
                   ),
                 ),
-                // Premium badge + Count
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (!isPremium)
-                      Container(
-                        margin: EdgeInsets.only(right: 8.sp),
-                        padding: EdgeInsets.symmetric(horizontal: 8.sp, vertical: 4.sp),
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            colors: [Color(0xFFFFD700), Color(0xFFFFA500)],
-                          ),
-                          borderRadius: BorderRadius.circular(10.br),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.workspace_premium, size: 12.ic, color: Colors.white),
-                            SizedBox(width: 4.w),
-                            Text(
-                              'PRO',
-                              style: AppTypography.textXsMedium.copyWith(
-                                color: Colors.white,
-                                fontSize: 10.f,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    Container(
-                      padding: EdgeInsets.symmetric(horizontal: 10.sp, vertical: 4.sp),
-                      decoration: BoxDecoration(
-                        color: kPrimaryColor.withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(12.br),
-                        border: Border.all(color: kPrimaryColor.withValues(alpha: 0.3)),
-                      ),
-                      child: Text(
-                        '${kBoardThemes.length}',
-                        style: AppTypography.textSmMedium.copyWith(
-                          color: kPrimaryColor,
-                          fontSize: 12.f,
-                        ),
-                      ),
+                // Count badge
+                Container(
+                  padding: EdgeInsets.symmetric(horizontal: 10.sp, vertical: 4.sp),
+                  decoration: BoxDecoration(
+                    color: kPrimaryColor.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(12.br),
+                    border: Border.all(color: kPrimaryColor.withValues(alpha: 0.3)),
+                  ),
+                  child: Text(
+                    '${kBoardThemes.length}',
+                    style: AppTypography.textSmMedium.copyWith(
+                      color: kPrimaryColor,
+                      fontSize: 12.f,
                     ),
-                  ],
+                  ),
                 ),
               ],
             ),
@@ -536,7 +502,7 @@ class _BoardThemePickerCard extends ConsumerWidget {
               decoration: BoxDecoration(
                 color: kBlack2Color,
                 borderRadius: BorderRadius.circular(12.br),
-                border: Border.all(color: isPremium ? kPrimaryColor.withValues(alpha: 0.4) : Color(0xFFFFD700).withValues(alpha: 0.4)),
+                border: Border.all(color: kPrimaryColor.withValues(alpha: 0.4)),
               ),
               child: Row(
                 children: [
@@ -604,14 +570,10 @@ class _BoardThemePickerCard extends ConsumerWidget {
     );
   }
 
-  void _showBoardThemeGallery(BuildContext context, bool isPremium) async {
-    // Check if user is premium, show paywall if not
-    if (!isPremium) {
-      final didSubscribe = await showPremiumPaywallSheet(context: context);
-      if (!didSubscribe || !context.mounted) return;
-    }
-
-    if (!context.mounted) return;
+  void _showBoardThemeGallery(BuildContext context) async {
+    // Check if user is authenticated (not anonymous), show auth sheet if not
+    final isAuthenticated = await requireFullAuthGuard(context);
+    if (!isAuthenticated || !context.mounted) return;
 
     showModalBottomSheet(
       context: context,
@@ -888,7 +850,7 @@ class _BoardThemePreviewPainter extends CustomPainter {
 }
 
 /// Piece Set Picker Card - Shows current selection and opens gallery on tap
-class _PieceSetPickerCard extends ConsumerWidget {
+class _PieceSetPickerCard extends StatelessWidget {
   const _PieceSetPickerCard({
     required this.currentIndex,
     required this.onPieceSetSelected,
@@ -898,14 +860,12 @@ class _PieceSetPickerCard extends ConsumerWidget {
   final ValueChanged<int> onPieceSetSelected;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final currentPieceSet = getPieceSetByIndex(currentIndex);
-    final subscriptionState = ref.watch(subscriptionProvider);
-    final isPremium = subscriptionState.isSubscribed;
 
     return _SettingCard(
       child: InkWell(
-        onTap: () => _showPieceSetGallery(context, isPremium),
+        onTap: () => _showPieceSetGallery(context),
         borderRadius: BorderRadius.circular(12.br),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -934,52 +894,21 @@ class _PieceSetPickerCard extends ConsumerWidget {
                     ],
                   ),
                 ),
-                // Premium badge + Count
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (!isPremium)
-                      Container(
-                        margin: EdgeInsets.only(right: 8.sp),
-                        padding: EdgeInsets.symmetric(horizontal: 8.sp, vertical: 4.sp),
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            colors: [Color(0xFFFFD700), Color(0xFFFFA500)],
-                          ),
-                          borderRadius: BorderRadius.circular(10.br),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.workspace_premium, size: 12.ic, color: Colors.white),
-                            SizedBox(width: 4.w),
-                            Text(
-                              'PRO',
-                              style: AppTypography.textXsMedium.copyWith(
-                                color: Colors.white,
-                                fontSize: 10.f,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    Container(
-                      padding: EdgeInsets.symmetric(horizontal: 10.sp, vertical: 4.sp),
-                      decoration: BoxDecoration(
-                        color: kPrimaryColor.withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(12.br),
-                        border: Border.all(color: kPrimaryColor.withValues(alpha: 0.3)),
-                      ),
-                      child: Text(
-                        '${kPieceSets.length}',
-                        style: AppTypography.textSmMedium.copyWith(
-                          color: kPrimaryColor,
-                          fontSize: 12.f,
-                        ),
-                      ),
+                // Count badge
+                Container(
+                  padding: EdgeInsets.symmetric(horizontal: 10.sp, vertical: 4.sp),
+                  decoration: BoxDecoration(
+                    color: kPrimaryColor.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(12.br),
+                    border: Border.all(color: kPrimaryColor.withValues(alpha: 0.3)),
+                  ),
+                  child: Text(
+                    '${kPieceSets.length}',
+                    style: AppTypography.textSmMedium.copyWith(
+                      color: kPrimaryColor,
+                      fontSize: 12.f,
                     ),
-                  ],
+                  ),
                 ),
               ],
             ),
@@ -990,7 +919,7 @@ class _PieceSetPickerCard extends ConsumerWidget {
               decoration: BoxDecoration(
                 color: kBlack2Color,
                 borderRadius: BorderRadius.circular(12.br),
-                border: Border.all(color: isPremium ? kPrimaryColor.withValues(alpha: 0.4) : Color(0xFFFFD700).withValues(alpha: 0.4)),
+                border: Border.all(color: kPrimaryColor.withValues(alpha: 0.4)),
               ),
               child: Row(
                 children: [
@@ -1070,14 +999,10 @@ class _PieceSetPickerCard extends ConsumerWidget {
     );
   }
 
-  void _showPieceSetGallery(BuildContext context, bool isPremium) async {
-    // Check if user is premium, show paywall if not
-    if (!isPremium) {
-      final didSubscribe = await showPremiumPaywallSheet(context: context);
-      if (!didSubscribe || !context.mounted) return;
-    }
-
-    if (!context.mounted) return;
+  void _showPieceSetGallery(BuildContext context) async {
+    // Check if user is authenticated (not anonymous), show auth sheet if not
+    final isAuthenticated = await requireFullAuthGuard(context);
+    if (!isAuthenticated || !context.mounted) return;
 
     showModalBottomSheet(
       context: context,
