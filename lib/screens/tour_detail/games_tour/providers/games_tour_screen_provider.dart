@@ -361,6 +361,34 @@ class GamesTourScreenProvider
     }
   }
 
+  Future<void> enableAutoPin() async {
+    if (aboutTourModel == null) return;
+    try {
+      await ref
+          .read(gamesPinprovider(aboutTourModel!.id).notifier)
+          .enableAutoPin();
+      // Immediate UI update with new pins
+      final pins = ref.read(gamesPinprovider(aboutTourModel!.id)).allPins;
+      await _recompute(pinnedIdsOverride: pins);
+    } catch (e, st) {
+      if (mounted) state = AsyncValue.error(e, st);
+    }
+  }
+
+  Future<void> disableAutoPin() async {
+    if (aboutTourModel == null) return;
+    try {
+      await ref
+          .read(gamesPinprovider(aboutTourModel!.id).notifier)
+          .disableAutoPin();
+      // Immediate UI update with updated pins (manual pins only)
+      final pins = ref.read(gamesPinprovider(aboutTourModel!.id)).allPins;
+      await _recompute(pinnedIdsOverride: pins);
+    } catch (e, st) {
+      if (mounted) state = AsyncValue.error(e, st);
+    }
+  }
+
   Future<void> toggleFinishedGames() async {
     final currentMode = state.valueOrNull?.gameDisplayMode;
 

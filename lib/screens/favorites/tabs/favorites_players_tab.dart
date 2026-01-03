@@ -560,6 +560,7 @@ class _FavoritesPlayersTabState extends ConsumerState<FavoritesPlayersTab>
             return _PlayerCard(
               player: player,
               isFavorite: isFavorite,
+              rank: index + 1,
               onTap: () => _navigateToPlayerDetail(player),
               onToggleFavorite: () => _toggleFavorite(player, isFavorite),
             );
@@ -756,12 +757,14 @@ class _FavoritesPlayersTabState extends ConsumerState<FavoritesPlayersTab>
 class _PlayerCard extends ConsumerWidget {
   final PlayerStandingModel player;
   final bool isFavorite;
+  final int rank;
   final VoidCallback onTap;
   final VoidCallback onToggleFavorite;
 
   const _PlayerCard({
     required this.player,
     required this.isFavorite,
+    required this.rank,
     required this.onTap,
     required this.onToggleFavorite,
   });
@@ -798,6 +801,18 @@ class _PlayerCard extends ConsumerWidget {
           ),
           child: Row(
             children: [
+              // Rank number
+              SizedBox(
+                width: 28.w,
+                child: Text(
+                  rank.toString(),
+                  style: AppTypography.textSmMedium.copyWith(
+                    color: const Color(0xFF71717A),
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+              SizedBox(width: 4.w),
               // Player photo
               ClipRRect(
                 borderRadius: BorderRadius.circular(8.br),

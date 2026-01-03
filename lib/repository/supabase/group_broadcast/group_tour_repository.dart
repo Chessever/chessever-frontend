@@ -388,6 +388,133 @@ class GroupBroadcastRepository extends BaseRepository {
     });
   }
 
+  /// Get group broadcasts by country location.
+  /// Queries tours table for location match, then fetches corresponding group_broadcasts.
+  /// Returns results sorted with current+upcoming events first, then past events by date.
+  Future<List<GroupBroadcast>> getGroupBroadcastsByCountry({
+    required String countryName,
+    String? searchQuery,
+    int limit = 30,
+    int offset = 0,
+  }) async {
+    return handleApiCall(() async {
+      // Step 1: Query tours with country location filter to get group_broadcast_ids
+      var tourQuery = supabase
+          .from('tours')
+          .select('id, group_broadcast_id, name, slug, info, dates, avg_elo, search, created_at')
+          .ilike('info->>location', '%$countryName%');
+
+      // Add search filter if provided
+      if (searchQuery != null && searchQuery.trim().isNotEmpty) {
+        tourQuery = tourQuery.ilike('name', '%${searchQuery.trim()}%');
+      }
+
+      final tourResponse = await tourQuery;
+
+      if ((tourResponse as List).isEmpty) {
+        return <GroupBroadcast>[];
+      }
+
+      // Step 2: Collect unique group_broadcast_ids and tour data for fallback
+      final groupBroadcastIds = <String>{};
+      final tourDataById = <String, Map<String, dynamic>>{};
+
+      for (final tour in tourResponse) {
+        final groupId = tour['group_broadcast_id'] as String?;
+        final tourId = tour['id'] as String;
+        tourDataById[tourId] = tour;
+
+        if (groupId != null && groupId.isNotEmpty) {
+          groupBroadcastIds.add(groupId);
+        }
+      }
+
+      // Step 3: Fetch actual group_broadcasts for those that have group_broadcast_id
+      Map<String, GroupBroadcast> groupBroadcastsMap = {};
+      if (groupBroadcastIds.isNotEmpty) {
+        groupBroadcastsMap = await getGroupBroadcastsWithElo(groupBroadcastIds.toList());
+      }
+
+      // Step 4: Build result list - use group_broadcast if available, otherwise create from tour
+      final seenIds = <String>{};
+      final results = <GroupBroadcast>[];
+
+      for (final tour in tourResponse) {
+        final groupId = tour['group_broadcast_id'] as String?;
+        final tourId = tour['id'] as String;
+
+        GroupBroadcast? broadcast;
+
+        if (groupId != null && groupId.isNotEmpty && groupBroadcastsMap.containsKey(groupId)) {
+          // Use the actual group_broadcast
+          if (!seenIds.contains(groupId)) {
+            broadcast = groupBroadcastsMap[groupId];
+            seenIds.add(groupId);
+          }
+        } else {
+          // Create synthetic GroupBroadcast from tour data
+          if (!seenIds.contains(tourId)) {
+            broadcast = _mapTourRowToGroupBroadcast(tour);
+            seenIds.add(tourId);
+          }
+        }
+
+        if (broadcast != null) {
+          results.add(broadcast);
+        }
+      }
+
+      // Step 5: Sort with current+upcoming first, then past events
+      final now = DateTime.now();
+      results.sort((a, b) {
+        final aIsCurrent = _isCurrentOrUpcoming(a, now);
+        final bIsCurrent = _isCurrentOrUpcoming(b, now);
+
+        // Current/upcoming events come first
+        if (aIsCurrent && !bIsCurrent) return -1;
+        if (!aIsCurrent && bIsCurrent) return 1;
+
+        // Within same category, sort by start date (most recent first for past, soonest first for upcoming)
+        final aDate = a.dateStart ?? a.dateEnd ?? a.createdAt;
+        final bDate = b.dateStart ?? b.dateEnd ?? b.createdAt;
+
+        if (aIsCurrent) {
+          // For current/upcoming: soonest first
+          return aDate.compareTo(bDate);
+        } else {
+          // For past: most recent first
+          return bDate.compareTo(aDate);
+        }
+      });
+
+      // Step 6: Apply pagination
+      final paginatedResults = results.skip(offset).take(limit).toList();
+
+      return paginatedResults;
+    });
+  }
+
+  /// Check if event is current or upcoming (not past)
+  bool _isCurrentOrUpcoming(GroupBroadcast broadcast, DateTime now) {
+    final endDate = broadcast.dateEnd;
+    final startDate = broadcast.dateStart;
+
+    // If we have end date and it's in the past, it's completed
+    if (endDate != null && now.isAfter(endDate)) {
+      return false;
+    }
+
+    // If we only have start date and it's more than a week in the past, consider it past
+    if (endDate == null && startDate != null) {
+      final weekAfterStart = startDate.add(const Duration(days: 7));
+      if (now.isAfter(weekAfterStart)) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
   GroupBroadcast _mapTourRowToGroupBroadcast(
     Map<String, dynamic> tourRow, {
     String? overrideGroupBroadcastId,

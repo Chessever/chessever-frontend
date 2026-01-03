@@ -8,17 +8,37 @@ final tourRepositoryProvider = AutoDisposeProvider<TourRepository>((ref) {
 });
 
 class TourRepository extends BaseRepository {
-  // Fetch tour by ID
+  /// Fetch tours by group_broadcast_id or tour id.
+  /// First tries matching by group_broadcast_id.
+  /// If no results, falls back to matching by tour id directly.
+  /// This handles cases where the passed ID is a raw tour_id (For You tab fallback).
   Future<List<Tour>> getTourByGroupId(String groupId) async {
     return handleApiCall(() async {
-      var query = supabase
+      // First try matching by group_broadcast_id
+      final byGroupResponse = await supabase
           .from('tours')
           .select()
           .eq('group_broadcast_id', groupId)
           .order('avg_elo', ascending: false);
 
-      final response = await query;
-      return (response as List).map((json) => Tour.fromJson(json)).toList();
+      final byGroupTours = (byGroupResponse as List)
+          .map((json) => Tour.fromJson(json))
+          .toList();
+
+      if (byGroupTours.isNotEmpty) {
+        return byGroupTours;
+      }
+
+      // Fallback: the passed ID might be a raw tour_id
+      // (happens when For You tab uses tour_id as event ID)
+      final byIdResponse = await supabase
+          .from('tours')
+          .select()
+          .eq('id', groupId);
+
+      return (byIdResponse as List)
+          .map((json) => Tour.fromJson(json))
+          .toList();
     });
   }
 

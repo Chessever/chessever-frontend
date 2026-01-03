@@ -68,7 +68,7 @@ ChessboardColorScheme getColorSchemeByIndex(int index) {
 }
 
 /// Apply our custom colors to a color scheme
-/// - lastMove: kLastMoveHighlightColor (#CFCDAF)
+/// - lastMove: kPrimaryColor (teal)
 /// - selected: kPrimaryColor (teal)
 /// - validMoves: kPrimaryColor (teal)
 /// - validPremoves: kPrimaryColor (teal)
@@ -79,7 +79,7 @@ ChessboardColorScheme _applyCustomColors(ChessboardColorScheme scheme) {
     background: scheme.background,
     whiteCoordBackground: scheme.whiteCoordBackground,
     blackCoordBackground: scheme.blackCoordBackground,
-    lastMove: HighlightDetails(solidColor: kLastMoveHighlightColor),
+    lastMove: const HighlightDetails(solidColor: kPrimaryColor),
     selected: const HighlightDetails(solidColor: kPrimaryColor),
     validMoves: kPrimaryColor,
     validPremoves: kPrimaryColor,

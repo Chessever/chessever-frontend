@@ -1,14 +1,16 @@
 import 'dart:async';
 
 import 'package:chessever2/providers/country_dropdown_provider.dart';
+import 'package:chessever2/screens/group_event/providers/live_group_broadcast_id_provider.dart';
+import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
-import 'package:chessever2/repository/supabase/tour/tour.dart';
-import 'package:chessever2/repository/supabase/tour/tour_repository.dart';
+import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/event_card/event_card.dart';
 import 'package:chessever2/widgets/scroll_to_top_button.dart';
 import 'package:chessever2/widgets/search/gameSearch/enhanced_game_search_widget.dart';
 import 'package:flutter/material.dart';
@@ -24,7 +26,7 @@ final countrymenEventsProvider = StateNotifierProvider.autoDispose<
 );
 
 class CountrymenEventsState {
-  final List<Tour> events;
+  final List<GroupBroadcast> events;
   final bool isLoading;
   final bool hasMore;
   final int offset;
@@ -43,7 +45,7 @@ class CountrymenEventsState {
   bool get isSearching => searchQuery.isNotEmpty;
 
   CountrymenEventsState copyWith({
-    List<Tour>? events,
+    List<GroupBroadcast>? events,
     bool? isLoading,
     bool? hasMore,
     int? offset,
@@ -97,21 +99,17 @@ class CountrymenEventsNotifier extends StateNotifier<CountrymenEventsState> {
     state = state.copyWith(isLoading: true);
 
     try {
-      final repo = _ref.read(tourRepositoryProvider);
+      final repo = _ref.read(groupBroadcastRepositoryProvider);
       final offset = isInitial ? 0 : state.offset;
 
-      final events = state.isSearching
-          ? await repo.searchTours(
-              query: state.searchQuery,
-              countryName: country.name,
-              limit: _pageSize,
-              offset: offset,
-            )
-          : await repo.getToursByCountryLocation(
-              countryName: country.name,
-              limit: _pageSize,
-              offset: offset,
-            );
+      // Use the new comprehensive query that fetches GroupBroadcast with images
+      // and prioritizes current+upcoming events
+      final events = await repo.getGroupBroadcastsByCountry(
+        countryName: country.name,
+        searchQuery: state.isSearching ? state.searchQuery : null,
+        limit: _pageSize,
+        offset: offset,
+      );
 
       final allEvents = isInitial ? events : [...state.events, ...events];
 
@@ -319,6 +317,9 @@ class _CountrymenEventsTabState extends ConsumerState<CountrymenEventsTab>
     final showLoadingIndicator =
         (state.hasMore || state.isLoading) && events.isNotEmpty;
 
+    // Get live event IDs for status indicators
+    final liveEventIds = ref.watch(liveGroupBroadcastIdsProvider).valueOrNull ?? [];
+
     return SliverPadding(
       padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
       sliver: SliverList(
@@ -362,15 +363,30 @@ class _CountrymenEventsTabState extends ConsumerState<CountrymenEventsTab>
             }
 
             final event = events[index];
+            // Convert GroupBroadcast to GroupEventCardModel for EventCard widget
+            final cardModel = GroupEventCardModel.fromGroupBroadcast(
+              event,
+              liveEventIds,
+            );
+
             return Padding(
-              padding: EdgeInsets.only(bottom: 12.h),
-              child: _EventCard(event: event),
+              padding: EdgeInsets.only(bottom: 8.h),
+              child: EventCard(
+                tourEventCardModel: cardModel,
+                heroTagSuffix: 'countrymen-events-$index',
+                onTap: () => _onEventTap(event),
+              ),
             );
           },
           childCount: events.length + (showLoadingIndicator ? 1 : 0),
         ),
       ),
     );
+  }
+
+  void _onEventTap(GroupBroadcast event) {
+    ref.read(selectedBroadcastModelProvider.notifier).state = event;
+    Navigator.pushNamed(context, '/tournament_detail_screen');
   }
 
   Widget _buildLoadingState() {
@@ -533,129 +549,3 @@ class _CountrymenEventsTabState extends ConsumerState<CountrymenEventsTab>
   }
 }
 
-class _EventCard extends ConsumerWidget {
-  final Tour event;
-
-  const _EventCard({required this.event});
-
-  Future<void> _onTap(BuildContext context, WidgetRef ref) async {
-    try {
-      final broadcast = await ref
-          .read(groupBroadcastRepositoryProvider)
-          .getGroupBroadcastById(event.id);
-      ref.read(selectedBroadcastModelProvider.notifier).state = broadcast;
-
-      if (!context.mounted) return;
-      if (ref.read(selectedBroadcastModelProvider) != null) {
-        Navigator.pushNamed(context, '/tournament_detail_screen');
-      }
-    } catch (_) {
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Unable to open event')),
-      );
-    }
-  }
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return GestureDetector(
-      onTap: () => _onTap(context, ref),
-      child: Container(
-        padding: EdgeInsets.all(16.sp),
-        decoration: BoxDecoration(
-          color: kBlack2Color,
-          borderRadius: BorderRadius.circular(12.br),
-          border: Border.all(
-            color: const Color(0xFF27272A),
-            width: 1,
-          ),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Event name
-            Text(
-              event.name,
-              style: AppTypography.textMdMedium.copyWith(
-                color: kWhiteColor,
-              ),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            ),
-            SizedBox(height: 8.h),
-            // Date and location row
-            Row(
-              children: [
-                Icon(
-                  Icons.calendar_today_outlined,
-                  size: 14.ic,
-                  color: const Color(0xFFA1A1AA),
-                ),
-                SizedBox(width: 6.w),
-                Text(
-                  event.dateRangeFormatted,
-                  style: AppTypography.textXsRegular.copyWith(
-                    color: const Color(0xFFA1A1AA),
-                  ),
-                ),
-                if (event.info.location != null) ...[
-                  SizedBox(width: 12.w),
-                  Icon(
-                    Icons.location_on_outlined,
-                    size: 14.ic,
-                    color: const Color(0xFFA1A1AA),
-                  ),
-                  SizedBox(width: 4.w),
-                  Expanded(
-                    child: Text(
-                      event.info.location!,
-                      style: AppTypography.textXsRegular.copyWith(
-                        color: const Color(0xFFA1A1AA),
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ],
-              ],
-            ),
-            if (event.avgElo != null || event.totalPlayers > 0) ...[
-              SizedBox(height: 8.h),
-              Row(
-                children: [
-                  if (event.avgElo != null) ...[
-                    Container(
-                      padding: EdgeInsets.symmetric(
-                        horizontal: 8.w,
-                        vertical: 4.h,
-                      ),
-                      decoration: BoxDecoration(
-                        color: kPrimaryColor.withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(4.br),
-                      ),
-                      child: Text(
-                        'Avg ${event.avgElo}',
-                        style: AppTypography.textXsMedium.copyWith(
-                          color: kPrimaryColor,
-                        ),
-                      ),
-                    ),
-                    SizedBox(width: 8.w),
-                  ],
-                  if (event.totalPlayers > 0)
-                    Text(
-                      '${event.totalPlayers} players',
-                      style: AppTypography.textXsRegular.copyWith(
-                        color: const Color(0xFF71717A),
-                      ),
-                    ),
-                ],
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-}

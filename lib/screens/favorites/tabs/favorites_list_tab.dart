@@ -158,6 +158,17 @@ class _FavoritesListTabState extends ConsumerState<FavoritesListTab>
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
+                      // Rank header
+                      SizedBox(
+                        width: 28.w,
+                        child: Text(
+                          '#',
+                          style: AppTypography.textSmMedium.copyWith(
+                            color: kWhiteColor,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
                       Expanded(
                         child: Row(
                           children: [
@@ -202,6 +213,7 @@ class _FavoritesListTabState extends ConsumerState<FavoritesListTab>
               scoreChange: player.scoreChange,
               matchScore: player.matchScore,
               index: playerIndex,
+              rank: playerIndex + 1,
               isFirst: playerIndex == 0,
               isLast: playerIndex == sortedPlayers.length - 1,
               onTap: () {

@@ -126,6 +126,18 @@ final groupedForYouGamesProvider = Provider.autoDispose<
   // Hard limit: maximum 4 games per event card in For You tab
   const maxGamesPerEvent = 4;
 
+  // FIRST: Check which groups have favorite players (check ALL games, not just top 4)
+  final groupsWithFavoritePlayers = <String>{};
+  for (final groupKey in groupOrder) {
+    final allGroupGames = grouped[groupKey]!;
+    for (final game in allGroupGames) {
+      if (_gameHasFavoritePlayer(game, favoritedFideIds, favoritedNames)) {
+        groupsWithFavoritePlayers.add(groupKey);
+        break;
+      }
+    }
+  }
+
   // Process each group to select top 4 games from the last round
   // Priority: favorite players first, then by ELO
   final result = <GroupedTournamentGames>[];
@@ -153,14 +165,9 @@ final groupedForYouGamesProvider = Provider.autoDispose<
     ));
   }
 
-  // Helper to check if an event has favorited player games
+  // Helper to check if an event has favorited player games (uses pre-computed set)
   bool eventHasFavoritePlayer(GroupedTournamentGames group) {
-    for (final game in group.games) {
-      if (_gameHasFavoritePlayer(game, favoritedFideIds, favoritedNames)) {
-        return true;
-      }
-    }
-    return false;
+    return groupsWithFavoritePlayers.contains(group.groupKey);
   }
 
   int getEventRecency(GroupedTournamentGames group) {
@@ -227,24 +234,11 @@ final groupedForYouGamesProvider = Provider.autoDispose<
     return bRecency.compareTo(aRecency);
   });
 
-  // Sort regular events: ELO first, live as tiebreaker within similar ELO
+  // Sort regular events by ELO only (higher first) - simple approach like Current tab
   regularEvents.sort((a, b) {
     final aMaxElo = getEventMaxElo(a);
     final bMaxElo = getEventMaxElo(b);
-
-    // Primary: Higher ELO first
-    if (aMaxElo != bMaxElo) {
-      return bMaxElo.compareTo(aMaxElo);
-    }
-
-    // Tiebreaker: Live games (only when ELO is equal)
-    if (a.hasLiveGames && !b.hasLiveGames) return -1;
-    if (!a.hasLiveGames && b.hasLiveGames) return 1;
-
-    // Final tiebreaker: recency
-    final aRecency = getEventRecency(a);
-    final bRecency = getEventRecency(b);
-    return bRecency.compareTo(aRecency);
+    return bMaxElo.compareTo(aMaxElo);
   });
 
   // Return: starred first, then hearted, then regular (like Current tab)
@@ -267,8 +261,7 @@ int _extractRoundNumber(String roundSlug) {
 /// PRIORITY ORDER:
 /// 1. Latest round factor (favorites' latest round first if any)
 /// 2. Favorite players (within a round)
-/// 3. Live games (within a round)
-/// 4. Higher ELO (within a round)
+/// 3. Higher ELO (within a round)
 ///
 /// CONSISTENCY: Always tries to return exactly [maxGames] (4) games.
 List<Games> _selectTopGamesFromLastRound(
@@ -279,19 +272,11 @@ List<Games> _selectTopGamesFromLastRound(
 ) {
   if (allGames.isEmpty) return [];
 
-  int compareByLiveThenElo(Games a, Games b) {
-    final aIsLive = a.status == '*';
-    final bIsLive = b.status == '*';
-    if (aIsLive && !bIsLive) return -1;
-    if (!aIsLive && bIsLive) return 1;
-
+  // Sort by ELO only (higher first) - simple approach
+  int compareByElo(Games a, Games b) {
     final aMaxElo = _getGameMaxElo(a);
     final bMaxElo = _getGameMaxElo(b);
-    if (aMaxElo != bMaxElo) {
-      return bMaxElo.compareTo(aMaxElo);
-    }
-
-    return 0;
+    return bMaxElo.compareTo(aMaxElo);
   }
 
   final gamesByRound = <String, List<Games>>{};
@@ -365,14 +350,14 @@ List<Games> _selectTopGamesFromLastRound(
         }
       }
 
-      favorites.sort(compareByLiveThenElo);
-      nonFavorites.sort(compareByLiveThenElo);
+      favorites.sort(compareByElo);
+      nonFavorites.sort(compareByElo);
 
       addGames(favorites);
       addGames(nonFavorites);
     } else {
       final sortedRoundGames = List<Games>.from(roundGames)
-        ..sort(compareByLiveThenElo);
+        ..sort(compareByElo);
       addGames(sortedRoundGames);
     }
   }
@@ -427,8 +412,8 @@ final forYouAnimatedGameIds = <String>{};
 ///
 /// Three-tier categorization (matching Current tab approach):
 /// Tier 1: Starred events (user explicitly starred) - sorted by recency
-/// Tier 2: Events with favorite players (hearted) - sorted by ELO, then recency
-/// Tier 3: Regular events - sorted by ELO first, live as tiebreaker
+/// Tier 2: Events with favorite players (hearted) - sorted by ELO
+/// Tier 3: Regular events - sorted by ELO only
 ///
 /// STANDARD: Each tournament displays exactly 4 games. If there aren't enough
 /// personalized games, we fill up with top board games (highest ELO players).
@@ -761,8 +746,13 @@ class ForYouGamesNotifier extends StateNotifier<AsyncValue<List<Games>>> {
     final heartedGames = <Games>[];
     final regularGames = <Games>[];
 
+    // Get current tour → group_broadcast mapping to check favorites correctly
+    final tourToGroupMapping = _ref.read(tourToGroupBroadcastMappingProvider);
+
     for (final game in _allGames) {
-      final isFromFavoriteEvent = favoriteEventIds.contains(game.tourId);
+      // Use mapped group_broadcast_id if available, otherwise fallback to tourId
+      final effectiveEventId = tourToGroupMapping[game.tourId] ?? game.tourId;
+      final isFromFavoriteEvent = favoriteEventIds.contains(effectiveEventId);
       final hasFavoritePlayer = _hasFavoritedPlayer(
         game,
         favoritedFideIds,
@@ -799,24 +789,11 @@ class ForYouGamesNotifier extends StateNotifier<AsyncValue<List<Games>>> {
       return getRecency(b).compareTo(getRecency(a));
     });
 
-    // Sort regular games: ELO first, live as tiebreaker
+    // Sort regular games by ELO only (higher first) - simple approach like Current tab
     regularGames.sort((a, b) {
       final aMaxElo = _getMaxElo(a);
       final bMaxElo = _getMaxElo(b);
-
-      // Primary: Higher ELO first
-      if (aMaxElo != bMaxElo) {
-        return bMaxElo.compareTo(aMaxElo);
-      }
-
-      // Tiebreaker: Live games (only when ELO is equal)
-      final aIsLive = a.status == '*';
-      final bIsLive = b.status == '*';
-      if (aIsLive && !bIsLive) return -1;
-      if (!aIsLive && bIsLive) return 1;
-
-      // Final tiebreaker: recency
-      return getRecency(b).compareTo(getRecency(a));
+      return bMaxElo.compareTo(aMaxElo);
     });
 
     // Combine: starred first, then hearted, then regular
