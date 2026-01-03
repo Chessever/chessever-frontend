@@ -745,29 +745,36 @@ class _BoardThemeGridItem extends StatelessWidget {
           children: [
             // Board preview (4x4 checkerboard)
             Expanded(
-              child: Container(
-                margin: EdgeInsets.all(4.sp),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(8.br),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.2),
-                      blurRadius: 4,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(8.br),
-                  child: SizedBox.expand(
-                    child: CustomPaint(
-                      painter: _BoardThemePreviewPainter(
-                        lightColor: theme.colorScheme.lightSquare,
-                        darkColor: theme.colorScheme.darkSquare,
-                        gridSize: 4,
+              child: Padding(
+                padding: EdgeInsets.all(4.sp),
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    return Container(
+                      width: constraints.maxWidth,
+                      height: constraints.maxHeight,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(8.br),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.2),
+                            blurRadius: 4,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
                       ),
-                    ),
-                  ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(8.br),
+                        child: CustomPaint(
+                          size: Size(constraints.maxWidth, constraints.maxHeight),
+                          painter: _BoardThemePreviewPainter(
+                            lightColor: theme.colorScheme.lightSquare,
+                            darkColor: theme.colorScheme.darkSquare,
+                            gridSize: 4,
+                          ),
+                        ),
+                      ),
+                    );
+                  },
                 ),
               ),
             ),
