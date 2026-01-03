@@ -328,11 +328,15 @@ class GroupBroadcastRepository extends BaseRepository {
   }
 
   Future<Map<String, dynamic>?> _getTourRowByGroupId(String id) async {
-    return supabase
+    // Use limit(1) instead of maybeSingle() because events with categories
+    // (U17, U19, Open, etc.) have multiple tours with the same group_broadcast_id
+    final response = await supabase
         .from('tours')
         .select()
         .eq('group_broadcast_id', id)
-        .maybeSingle();
+        .limit(1);
+    if (response.isEmpty) return null;
+    return response.first;
   }
 
   /// Get mapping from tour_id to group_broadcast_id for given tour IDs
@@ -410,10 +414,13 @@ class GroupBroadcastRepository extends BaseRepository {
       tourRow['id'] as String?,
     ].whereType<String>().where((e) => e.isNotEmpty).toList();
 
+    // Get group_broadcast_id, treating empty string as null
+    final groupBroadcastIdFromRow = tourRow['group_broadcast_id'] as String?;
+    final effectiveGroupBroadcastId =
+        (groupBroadcastIdFromRow?.isNotEmpty == true) ? groupBroadcastIdFromRow : null;
+
     return GroupBroadcast(
-      id: overrideGroupBroadcastId ??
-          (tourRow['group_broadcast_id'] as String?) ??
-          tourRow['id'] as String,
+      id: overrideGroupBroadcastId ?? effectiveGroupBroadcastId ?? tourRow['id'] as String,
       createdAt:
           tourRow['created_at'] != null
               ? DateTime.tryParse(tourRow['created_at'] as String) ??
