@@ -104,10 +104,17 @@ class _TourDetailScreenNotifier
       final updatedTourModels =
           currentState.tours.map((tourModel) {
             final tour = tourModel.tour;
-            final startDate =
-                tour.dates.isNotEmpty ? tour.dates.first : DateTime.now();
-            final endDate =
-                tour.dates.isNotEmpty ? tour.dates.last : DateTime.now();
+
+            // Handle tours with empty dates (common for TCEC, CCC, and some imports)
+            if (tour.dates.isEmpty) {
+              final newRoundStatus = newLiveTourIds.contains(tour.id)
+                  ? RoundStatus.live
+                  : RoundStatus.completed;
+              return TourModel(tour: tour, roundStatus: newRoundStatus);
+            }
+
+            final startDate = tour.dates.first;
+            final endDate = tour.dates.last;
             final newRoundStatus = calculateRoundStatus(
               tour.id,
               now,
@@ -257,9 +264,15 @@ class _TourDetailScreenNotifier
     DateTime now,
     List<String> liveTourIds,
   ) {
+    // Handle tours with empty dates - still show them with a computed status
+    // This is common for computer chess events (TCEC, CCC) and some imports
     if (tour.dates.isEmpty) {
-      logWarning('Tour ${tour.id} has empty dates, skipping');
-      return null;
+      logWarning('Tour ${tour.id} has empty dates, using fallback status');
+      // Check if it's live first, otherwise mark as completed (most likely scenario)
+      final roundStatus = liveTourIds.contains(tour.id)
+          ? RoundStatus.live
+          : RoundStatus.completed;
+      return TourModel(tour: tour, roundStatus: roundStatus);
     }
 
     final startDate = tour.dates.first;
@@ -321,9 +334,12 @@ class _TourDetailScreenNotifier
     if (liveModels.isNotEmpty) {
       // If *all* are live, pick the one that started most recently
       if (liveModels.length == tourModels.length) {
-        liveModels.sort(
-          (a, b) => b.tour.dates.first.compareTo(a.tour.dates.first),
-        );
+        liveModels.sort((a, b) {
+          // Handle tours with empty dates (use epoch as fallback)
+          final aDate = a.tour.dates.isNotEmpty ? a.tour.dates.first : DateTime(1970);
+          final bDate = b.tour.dates.isNotEmpty ? b.tour.dates.first : DateTime(1970);
+          return bDate.compareTo(aDate);
+        });
         return liveModels.first.tour;
       }
 
@@ -336,7 +352,12 @@ class _TourDetailScreenNotifier
         tourModels
             .where((model) => model.roundStatus == RoundStatus.completed)
             .toList()
-          ..sort((a, b) => b.tour.dates.last.compareTo(a.tour.dates.last));
+          ..sort((a, b) {
+            // Handle tours with empty dates (use epoch as fallback)
+            final aDate = a.tour.dates.isNotEmpty ? a.tour.dates.last : DateTime(1970);
+            final bDate = b.tour.dates.isNotEmpty ? b.tour.dates.last : DateTime(1970);
+            return bDate.compareTo(aDate);
+          });
 
     if (completedTours.isNotEmpty) {
       return completedTours.first.tour;

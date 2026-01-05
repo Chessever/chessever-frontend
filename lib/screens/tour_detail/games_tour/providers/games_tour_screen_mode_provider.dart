@@ -67,14 +67,12 @@ class _GamesTourScreenModeNotifier
     }
 
     // PRIORITY 2: Check for team-based group events
-    final hasAllTeams =
-        tourDetail.aboutTourModel.players
-            .where((e) => e.team != null)
-            .toList()
-            .length ==
-        tourDetail.aboutTourModel.players.length;
+    // Must have at least one player AND all players must have teams
+    final players = tourDetail.aboutTourModel.players;
+    final hasAllTeams = players.isNotEmpty &&
+        players.where((e) => e.team != null).length == players.length;
 
-    print('👥 All players have teams: $hasAllTeams');
+    print('👥 Players count: ${players.length}, All have teams: $hasAllTeams');
 
     if (hasAllTeams) {
       print('📋 Setting mode to: groupEvent');
