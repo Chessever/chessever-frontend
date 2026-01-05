@@ -396,7 +396,11 @@ final convertedForYouGamesProvider = Provider.autoDispose<List<GamesTourModel>>(
     ref.keepAlive(); // Keep alive to match main provider
     final games = ref.watch(forYouGamesProvider).valueOrNull ?? [];
 
-    return games.map((game) => GamesTourModel.fromGame(game)).toList();
+    // Filter out games with missing/incomplete player data to prevent crashes
+    return games
+        .where((game) => game.players != null && game.players!.length >= 2)
+        .map((game) => GamesTourModel.fromGame(game))
+        .toList();
   },
 );
 
