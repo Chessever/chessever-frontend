@@ -47,6 +47,8 @@ class _LanguageRepository {
   final Ref ref;
   static const String _languageKey = 'app_language';
 
+  SharedPreferences get _prefs => SharedPreferencesService.instance.prefs;
+
   SupportedLanguage getLanguageFromLocale(Locale locale) {
     for (final language in SupportedLanguage.values) {
       if (language.locale.languageCode == locale.languageCode) {
@@ -59,59 +61,21 @@ class _LanguageRepository {
 
   Future<void> saveLanguage(Locale locale) async {
     try {
-      final prefs = ref.read(sharedPreferencesRepository);
       final language = getLanguageFromLocale(locale);
 
       // Store the language index in preferences
-      await prefs.setString(_languageKey, language.index.toString());
-
-      // Double-check that the value was stored
-      final storedValue = await prefs.getString(_languageKey);
-      if (storedValue != language.index.toString()) {
-        print(
-          'Warning: Language preference might not have been saved correctly.',
-        );
-        print('Expected: ${language.index}, Actual: $storedValue');
-
-        // Fallback: try storing directly
-        final directPrefs = await SharedPreferences.getInstance();
-        await directPrefs.setString(_languageKey, language.index.toString());
-      }
+      await _prefs.setString(_languageKey, language.index.toString());
     } catch (error, _) {
       print('Error saving language: $error');
-
-      // Fallback: try storing directly
-      try {
-        final directPrefs = await SharedPreferences.getInstance();
-        final language = getLanguageFromLocale(locale);
-        await directPrefs.setString(_languageKey, language.index.toString());
-      } catch (e) {
-        print('Fallback also failed: $e');
-      }
-
       rethrow;
     }
   }
 
   Future<Locale> loadLanguage() async {
     try {
-      final prefs = ref.read(sharedPreferencesRepository);
-      final indexString = await prefs.getString(_languageKey);
+      final indexString = _prefs.getString(_languageKey);
 
       if (indexString == null) {
-        // Try direct access as fallback
-        final directPrefs = await SharedPreferences.getInstance();
-        final directValue = directPrefs.getString(_languageKey);
-
-        if (directValue != null) {
-          final index = int.tryParse(directValue);
-          if (index != null &&
-              index >= 0 &&
-              index < SupportedLanguage.values.length) {
-            return SupportedLanguage.values[index].locale;
-          }
-        }
-
         // Default to English if no language preference is saved
         return SupportedLanguage.english.locale;
       }
@@ -127,23 +91,6 @@ class _LanguageRepository {
       }
     } catch (error, _) {
       print('Error loading language: $error');
-
-      // Try direct access as fallback
-      try {
-        final directPrefs = await SharedPreferences.getInstance();
-        final directValue = directPrefs.getString(_languageKey);
-
-        if (directValue != null) {
-          final index = int.tryParse(directValue);
-          if (index != null &&
-              index >= 0 &&
-              index < SupportedLanguage.values.length) {
-            return SupportedLanguage.values[index].locale;
-          }
-        }
-      } catch (e) {
-        print('Fallback also failed: $e');
-      }
 
       // Default to English on error
       return SupportedLanguage.english.locale;

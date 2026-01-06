@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -25,6 +26,8 @@ class FavoritesMigration {
   /// This is safe to call multiple times - it only runs once per user
   /// NOTE: Event migration is DISABLED - the old keys (current, upcoming, past)
   /// stored ALL fetched events, not just favorites. Only player favorites are migrated.
+  static SharedPreferences get _prefs => SharedPreferencesService.instance.prefs;
+
   static Future<void> migrateIfNeeded() async {
     try {
       final userId = Supabase.instance.client.auth.currentUser?.id;
@@ -33,7 +36,7 @@ class FavoritesMigration {
         return;
       }
 
-      final prefs = await SharedPreferences.getInstance();
+      final prefs = _prefs;
 
       // User-specific migration flag - v4 to force re-run after disabling event migration
       final userMigrationKey = _migrationKeyForUser(userId);
@@ -175,8 +178,7 @@ class FavoritesMigration {
       debugPrint('[FavoritesMigration] No user logged in, cannot reset');
       return;
     }
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_migrationKeyForUser(userId));
+    await _prefs.remove(_migrationKeyForUser(userId));
     debugPrint('[FavoritesMigration] Migration flag reset for user $userId');
   }
 
@@ -191,7 +193,7 @@ class FavoritesMigration {
         return;
       }
 
-      final prefs = await SharedPreferences.getInstance();
+      final prefs = _prefs;
       final cleanupKey = 'favorites_cleanup_v1_$userId';
       final cleanupDone = prefs.getBool(cleanupKey) ?? false;
 
@@ -244,7 +246,7 @@ class FavoritesMigration {
         return;
       }
 
-      final prefs = await SharedPreferences.getInstance();
+      final prefs = _prefs;
       // v1: Initial cleanup for double-sync duplicate issue
       final cleanupKey = 'favorites_cache_cleanup_v1_$userId';
       final cleanupDone = prefs.getBool(cleanupKey) ?? false;

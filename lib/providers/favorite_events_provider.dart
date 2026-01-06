@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:chessever2/repository/favorites/models/favorite_event.dart';
+import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
 import 'package:chessever2/services/analytics/analytics_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -223,12 +224,13 @@ class FavoriteEventsNotifier extends AsyncNotifier<List<FavoriteEvent>> {
     }
   }
 
+  SharedPreferences get _prefs => SharedPreferencesService.instance.prefs;
+
   // Cache management
   Future<void> _cacheEvents(List<FavoriteEvent> events) async {
     try {
-      final prefs = await SharedPreferences.getInstance();
       final json = jsonEncode(events.map((e) => e.toSupabase()).toList());
-      await prefs.setString(_cacheKey, json);
+      await _prefs.setString(_cacheKey, json);
       debugPrint('[FavoriteEvents] Cached ${events.length} events locally');
     } catch (e) {
       debugPrint('[FavoriteEvents] Error caching events: $e');
@@ -237,8 +239,7 @@ class FavoriteEventsNotifier extends AsyncNotifier<List<FavoriteEvent>> {
 
   Future<List<FavoriteEvent>> _getCachedEvents() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final json = prefs.getString(_cacheKey);
+      final json = _prefs.getString(_cacheKey);
       if (json == null) return [];
 
       final list = jsonDecode(json) as List;
@@ -252,8 +253,7 @@ class FavoriteEventsNotifier extends AsyncNotifier<List<FavoriteEvent>> {
   /// Clear cache (useful on sign out)
   Future<void> clearCache() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.remove(_cacheKey);
+      await _prefs.remove(_cacheKey);
       debugPrint('[FavoriteEvents] Cleared cache');
     } catch (e) {
       debugPrint('[FavoriteEvents] Error clearing cache: $e');

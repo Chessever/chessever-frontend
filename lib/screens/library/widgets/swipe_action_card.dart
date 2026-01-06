@@ -1,10 +1,10 @@
+import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:motor/motor.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 /// Behavior after swipe action is triggered.
 enum SwipeActionBehavior {
@@ -80,7 +80,7 @@ class _SwipeActionCardState extends State<SwipeActionCard>
   }
 
   Future<void> _maybeShowSwipeHint() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = SharedPreferencesService.instance.prefs;
     final key = 'swipe_hint_shown_${widget.swipeHintKey}';
     final alreadyShown = prefs.getBool(key) ?? false;
 

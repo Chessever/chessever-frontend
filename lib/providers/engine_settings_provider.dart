@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:chessever2/repository/engine_settings/models/engine_settings_model.dart';
+import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
 import 'package:chessever2/screens/chessboard/provider/stockfish_singleton.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -618,9 +619,10 @@ class EngineSettingsNotifierNew extends AsyncNotifier<EngineSettings> {
     }
   }
 
+  SharedPreferences get _prefs => SharedPreferencesService.instance.prefs;
+
   Future<void> _cacheSettings(EngineSettings settings) async {
     try {
-      final prefs = await SharedPreferences.getInstance();
       final json = jsonEncode({
         'showEngineGauge': settings.showEngineGauge,
         'showDepthOverlay': settings.showDepthOverlay,
@@ -630,7 +632,7 @@ class EngineSettingsNotifierNew extends AsyncNotifier<EngineSettings> {
         'principalVariationIndex': settings.principalVariationIndex,
         'maxArrowsOnBoard': settings.maxArrowsOnBoard,
       });
-      await prefs.setString(_cacheKey, json);
+      await _prefs.setString(_cacheKey, json);
       debugPrint('[EngineSettings] Cached settings locally');
     } catch (e) {
       debugPrint('[EngineSettings] Error caching settings: $e');
@@ -639,8 +641,7 @@ class EngineSettingsNotifierNew extends AsyncNotifier<EngineSettings> {
 
   Future<EngineSettings> _getCachedSettings() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final json = prefs.getString(_cacheKey);
+      final json = _prefs.getString(_cacheKey);
       if (json == null) {
         debugPrint('[EngineSettings] No cached settings, using defaults');
         return const EngineSettings();
@@ -652,7 +653,7 @@ class EngineSettingsNotifierNew extends AsyncNotifier<EngineSettings> {
       // and we should return defaults (which triggers fresh Supabase fetch)
       if (!map.containsKey('maxArrowsOnBoard')) {
         debugPrint('[EngineSettings] Cache is stale (missing fields), clearing and using defaults');
-        await prefs.remove(_cacheKey);
+        await _prefs.remove(_cacheKey);
         return const EngineSettings();
       }
 
@@ -676,8 +677,7 @@ class EngineSettingsNotifierNew extends AsyncNotifier<EngineSettings> {
   /// Clear cache (useful on sign out)
   Future<void> clearCache() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.remove(_cacheKey);
+      await _prefs.remove(_cacheKey);
       debugPrint('[EngineSettings] Cleared cache');
     } catch (e) {
       debugPrint('[EngineSettings] Error clearing cache: $e');
