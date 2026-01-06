@@ -1,4 +1,3 @@
-import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/png_asset.dart';
 import 'package:flutter/material.dart';
 
@@ -8,7 +7,7 @@ class LogoPatternFallback extends StatelessWidget {
   const LogoPatternFallback({
     super.key,
     this.logoSize = 32.0,
-    this.opacity = 0.12,
+    this.opacity = 1.0,
     this.borderRadius,
   });
 
@@ -38,13 +37,9 @@ class LogoPatternFallback extends StatelessWidget {
           decoration: BoxDecoration(
             borderRadius: borderRadius,
             image: DecorationImage(
-              image: const AssetImage(PngAsset.newAppLogo),
+              image: const AssetImage(PngAsset.premium2Icon),
               repeat: ImageRepeat.repeat,
-              scale: 4.0 / (logoSize / 32.0), // Adjust scale based on desired logo size
-              colorFilter: const ColorFilter.mode(
-                kWhiteColor,
-                BlendMode.srcIn,
-              ),
+              scale: 4.0 / (logoSize / 32.0),
             ),
           ),
           child: const SizedBox.expand(),

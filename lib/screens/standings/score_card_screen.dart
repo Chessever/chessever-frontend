@@ -267,7 +267,9 @@ class ScoreCardScreen extends ConsumerWidget {
     }
 
     final playerUtils = ref.read(playerUtilsProvider);
-    final playerGames =
+
+    // Filter games for the selected player
+    final filteredGames =
         allGames.where((game) {
           // Use fideId matching when available (more reliable), fall back to name matching
           return playerUtils.isSamePlayerWithFideId(
@@ -283,6 +285,53 @@ class ScoreCardScreen extends ConsumerWidget {
                 fideId2: player.fideId,
               );
         }).toList();
+
+    // Deduplicate games by gameId, preferring entries with more complete data
+    // This handles cases where the same game appears multiple times with different
+    // data quality (e.g., one with rating=0 and one with actual rating)
+    final gameById = <String, GamesTourModel>{};
+    for (final game in filteredGames) {
+      final existing = gameById[game.gameId];
+      if (existing == null) {
+        gameById[game.gameId] = game;
+      } else {
+        // Prefer the game with more complete opponent data
+        final isWhite = game.whitePlayer.name == player.name ||
+            playerUtils.isSamePlayerWithFideId(
+              game.whitePlayer.name,
+              player.name,
+              fideId1: game.whitePlayer.fideId,
+              fideId2: player.fideId,
+            );
+        final opponent = isWhite ? game.blackPlayer : game.whitePlayer;
+        final existingIsWhite = existing.whitePlayer.name == player.name ||
+            playerUtils.isSamePlayerWithFideId(
+              existing.whitePlayer.name,
+              player.name,
+              fideId1: existing.whitePlayer.fideId,
+              fideId2: player.fideId,
+            );
+        final existingOpponent = existingIsWhite ? existing.blackPlayer : existing.whitePlayer;
+
+        // Calculate data quality score: rating > 0, federation not empty, title not empty
+        int newScore = 0;
+        int existingScore = 0;
+
+        if (opponent.rating > 0) newScore += 2;
+        if (opponent.countryCode.isNotEmpty) newScore += 1;
+        if (opponent.title.isNotEmpty) newScore += 1;
+
+        if (existingOpponent.rating > 0) existingScore += 2;
+        if (existingOpponent.countryCode.isNotEmpty) existingScore += 1;
+        if (existingOpponent.title.isNotEmpty) existingScore += 1;
+
+        // Keep the entry with higher quality data
+        if (newScore > existingScore) {
+          gameById[game.gameId] = game;
+        }
+      }
+    }
+    final playerGames = gameById.values.toList();
     // Sort games based on context:
     // - With event context: by round number ascending (Round 1, 2, 3...)
     // - Without event context: by date descending (most recent first)
@@ -420,7 +469,7 @@ class ScoreCardScreen extends ConsumerWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    SizedBox(height: 14.h),
+                    SizedBox(height: 10.h),
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -469,7 +518,7 @@ class ScoreCardScreen extends ConsumerWidget {
                         ),
                       ],
                     ),
-                    SizedBox(height: 16.h),
+                    SizedBox(height: 12.h),
                     PerformanceStatsRow(
                       performanceRating: performanceRating,
                       score: eventScore,
@@ -484,7 +533,7 @@ class ScoreCardScreen extends ConsumerWidget {
               ),
             ),
             SliverToBoxAdapter(
-              child: SizedBox(height: 16.h),
+              child: SizedBox(height: 12.h),
             ),
             if (isLoadingGames)
               const SliverFillRemaining(
@@ -498,25 +547,25 @@ class ScoreCardScreen extends ConsumerWidget {
                     children: [
                       Icon(
                         Icons.info_outline,
-                        size: 48.ic,
+                        size: 40.ic,
                         color: kWhiteColor.withValues(alpha: 0.5),
                       ),
-                      SizedBox(height: 16.h),
+                      SizedBox(height: 12.h),
                       Text(
                         hasEventContext
                             ? 'No games in this tournament'
                             : 'No games available',
-                        style: AppTypography.textMdMedium.copyWith(
+                        style: AppTypography.textSmMedium.copyWith(
                           color: kWhiteColor.withValues(alpha: 0.7),
                         ),
                       ),
-                      SizedBox(height: 8.h),
+                      SizedBox(height: 6.h),
                       Text(
                         hasEventContext
                             ? 'This player has not played in this tournament yet'
                             : 'Games will appear once they are played',
                         textAlign: TextAlign.center,
-                        style: AppTypography.textSmRegular.copyWith(
+                        style: AppTypography.textXsRegular.copyWith(
                           color: kWhiteColor.withValues(alpha: 0.5),
                         ),
                       ),
@@ -597,7 +646,7 @@ class ScoreCardScreen extends ConsumerWidget {
                   childCount: playerGames.length,
                 ),
               ),
-            SliverPadding(padding: EdgeInsets.only(bottom: 20.h)),
+            SliverPadding(padding: EdgeInsets.only(bottom: 16.h)),
           ],
         ),
       ),
@@ -717,31 +766,31 @@ class _PlayerHeaderRow extends StatelessWidget {
     if (rawCountryCode.toUpperCase() == 'FID') {
       flagWidget = Image.asset(
         PngAsset.fideLogo,
-        height: 18.h,
-        width: 24.w,
+        height: 16.h,
+        width: 22.w,
         fit: BoxFit.cover,
       );
     } else if (countryCode.isNotEmpty) {
       flagWidget = CountryFlag.fromCountryCode(
         countryCode,
-        height: 18.h,
-        width: 24.w,
+        height: 16.h,
+        width: 22.w,
       );
     }
 
     return Row(
       children: [
         flagWidget,
-        SizedBox(width: 10.w),
+        SizedBox(width: 8.w),
         Expanded(
           child: Text(
             '${title != null && title!.isNotEmpty ? '${title!} ' : ''}$name',
-            style: AppTypography.textLgBold.copyWith(color: kWhiteColor),
+            style: AppTypography.textMdBold.copyWith(color: kWhiteColor),
             overflow: TextOverflow.ellipsis,
           ),
         ),
         if (hasTournamentContext)
-          Icon(Icons.keyboard_arrow_down, color: kWhiteColor70, size: 22.ic),
+          Icon(Icons.keyboard_arrow_down, color: kWhiteColor70, size: 20.ic),
       ],
     );
   }
@@ -760,7 +809,7 @@ class _PlayerAvatarTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final avatarSize = 110.w;
+    final avatarSize = 90.w;
 
     return Stack(
       alignment: Alignment.bottomCenter,
@@ -800,12 +849,12 @@ class _PlayerAvatarTile extends StatelessWidget {
             left: 0,
             right: 0,
             child: Container(
-              padding: EdgeInsets.symmetric(horizontal: 4.w, vertical: 2.h),
+              padding: EdgeInsets.symmetric(horizontal: 3.w, vertical: 1.5.h),
               decoration: BoxDecoration(
                 color: kGreenColor.withValues(alpha: 0.9),
                 borderRadius: BorderRadius.only(
-                  bottomLeft: Radius.circular(12.br),
-                  bottomRight: Radius.circular(12.br),
+                  bottomLeft: Radius.circular(10.br),
+                  bottomRight: Radius.circular(10.br),
                 ),
               ),
               child: Text(
@@ -813,7 +862,7 @@ class _PlayerAvatarTile extends StatelessWidget {
                 textAlign: TextAlign.center,
                 style: AppTypography.textXsMedium.copyWith(
                   color: Colors.white,
-                  fontSize: 10.sp,
+                  fontSize: 9.sp,
                   fontWeight: FontWeight.w600,
                 ),
               ),
@@ -990,13 +1039,13 @@ class _AvatarPlaceholder extends StatelessWidget {
       width: size,
       height: size,
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(12.br),
+        borderRadius: BorderRadius.circular(10.br),
         gradient: kProfileInitialsGradient,
       ),
       child: Center(
         child: Text(
           initials,
-          style: AppTypography.textXlBold.copyWith(color: kWhiteColor),
+          style: AppTypography.textLgBold.copyWith(color: kWhiteColor),
         ),
       ),
     );
@@ -1032,36 +1081,36 @@ class _RatingDisplay extends ConsumerWidget {
     final ratingsAsync = ref.watch(allRatingsProvider(ratingsRequest));
 
     return Container(
-      padding: EdgeInsets.symmetric(horizontal: 4.sp, vertical: 10.sp),
+      padding: EdgeInsets.symmetric(horizontal: 3.sp, vertical: 8.sp),
       width: double.infinity,
-      height: 110.w,
+      height: 90.w,
       decoration: BoxDecoration(
         color: kBlack2Color,
-        borderRadius: BorderRadius.circular(10.br),
+        borderRadius: BorderRadius.circular(8.br),
       ),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Image.asset(assetPath, width: 22.w, height: 22.h),
-          SizedBox(height: 6.h),
+          Image.asset(assetPath, width: 18.w, height: 18.h),
+          SizedBox(height: 4.h),
           Text(
             label,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: AppTypography.textXsMedium.copyWith(
               color: kWhiteColor70,
-              fontSize: 11.sp,
+              fontSize: 10.sp,
             ),
             textAlign: TextAlign.center,
           ),
-          SizedBox(height: 6.h),
+          SizedBox(height: 4.h),
           ratingsAsync.when(
             data: (ratings) {
               final rating = ratings.getRating(timeControlType);
               return Text(
                 rating?.toString() ?? '-',
-                style: AppTypography.textLgBold.copyWith(color: kWhiteColor),
+                style: AppTypography.textMdBold.copyWith(color: kWhiteColor),
               );
             },
             loading: () => Skeletonizer(
@@ -1073,12 +1122,12 @@ class _RatingDisplay extends ConsumerWidget {
               ),
               child: Text(
                 '2400',
-                style: AppTypography.textLgBold.copyWith(color: kWhiteColor),
+                style: AppTypography.textMdBold.copyWith(color: kWhiteColor),
               ),
             ),
             error: (_, __) => Text(
               '-',
-              style: AppTypography.textLgBold.copyWith(color: kWhiteColor),
+              style: AppTypography.textMdBold.copyWith(color: kWhiteColor),
             ),
           ),
         ],
@@ -1102,9 +1151,9 @@ class _PlayerSelectionSheet extends ConsumerWidget {
       children: [
         // Handle bar
         Container(
-          margin: EdgeInsets.only(top: 12.h, bottom: 8.h),
-          width: 40.w,
-          height: 4.h,
+          margin: EdgeInsets.only(top: 10.h, bottom: 6.h),
+          width: 36.w,
+          height: 3.h,
           decoration: BoxDecoration(
             color: kWhiteColor.withValues(alpha: 0.3),
             borderRadius: BorderRadius.circular(2.br),
@@ -1112,17 +1161,17 @@ class _PlayerSelectionSheet extends ConsumerWidget {
         ),
         // Title
         Padding(
-          padding: EdgeInsets.symmetric(horizontal: 20.sp, vertical: 12.h),
+          padding: EdgeInsets.symmetric(horizontal: 16.sp, vertical: 10.h),
           child: Row(
             children: [
               Text(
                 'Select Player',
-                style: AppTypography.textLgBold.copyWith(color: kWhiteColor),
+                style: AppTypography.textMdBold.copyWith(color: kWhiteColor),
               ),
               const Spacer(),
               GestureDetector(
                 onTap: () => Navigator.pop(context),
-                child: Icon(Icons.close, color: kWhiteColor70, size: 24.ic),
+                child: Icon(Icons.close, color: kWhiteColor70, size: 20.ic),
               ),
             ],
           ),
@@ -1131,13 +1180,13 @@ class _PlayerSelectionSheet extends ConsumerWidget {
         // Player list
         Expanded(
           child: ListView.separated(
-            padding: EdgeInsets.symmetric(vertical: 8.h),
+            padding: EdgeInsets.symmetric(vertical: 6.h),
             itemCount: players.length,
             separatorBuilder: (_, __) => Divider(
               color: kDarkGreyColor,
               height: 1.h,
-              indent: 20.w,
-              endIndent: 20.w,
+              indent: 16.w,
+              endIndent: 16.w,
             ),
             itemBuilder: (context, index) {
               final player = players[index];
@@ -1152,7 +1201,7 @@ class _PlayerSelectionSheet extends ConsumerWidget {
                   Navigator.pop(context);
                 },
                 child: Container(
-                  padding: EdgeInsets.symmetric(horizontal: 20.sp, vertical: 12.h),
+                  padding: EdgeInsets.symmetric(horizontal: 16.sp, vertical: 10.h),
                   color: isSelected ? kBlack2Color : Colors.transparent,
                   child: Row(
                     children: [
@@ -1160,24 +1209,24 @@ class _PlayerSelectionSheet extends ConsumerWidget {
                       if (player.countryCode.toUpperCase() == 'FID')
                         Image.asset(
                           PngAsset.fideLogo,
-                          height: 16.h,
-                          width: 22.w,
+                          height: 14.h,
+                          width: 20.w,
                           fit: BoxFit.cover,
                         )
                       else if (validCountryCode.isNotEmpty)
                         CountryFlag.fromCountryCode(
                           validCountryCode,
-                          height: 16.h,
-                          width: 22.w,
+                          height: 14.h,
+                          width: 20.w,
                         )
                       else
-                        SizedBox(width: 22.w),
-                      SizedBox(width: 12.w),
+                        SizedBox(width: 20.w),
+                      SizedBox(width: 10.w),
                       // Title and name
                       Expanded(
                         child: Text(
                           '${player.title != null && player.title!.isNotEmpty ? '${player.title} ' : ''}${player.name}',
-                          style: AppTypography.textMdMedium.copyWith(
+                          style: AppTypography.textSmMedium.copyWith(
                             color: isSelected ? kGreenColor : kWhiteColor,
                           ),
                           overflow: TextOverflow.ellipsis,
@@ -1186,14 +1235,14 @@ class _PlayerSelectionSheet extends ConsumerWidget {
                       // Rating
                       Text(
                         player.score.toStringAsFixed(0),
-                        style: AppTypography.textSmMedium.copyWith(
+                        style: AppTypography.textXsMedium.copyWith(
                           color: kWhiteColor70,
                         ),
                       ),
                       // Selected indicator
                       if (isSelected) ...[
-                        SizedBox(width: 8.w),
-                        Icon(Icons.check, color: kGreenColor, size: 20.ic),
+                        SizedBox(width: 6.w),
+                        Icon(Icons.check, color: kGreenColor, size: 18.ic),
                       ],
                     ],
                   ),
