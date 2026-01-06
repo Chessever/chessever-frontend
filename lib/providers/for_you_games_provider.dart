@@ -338,14 +338,16 @@ final groupedForYouGamesProvider = Provider.autoDispose<
   return result;
 });
 
-/// Selects top 4 games for an event card
+/// Selects top 4 games for an event card from the LATEST ROUND only
 ///
-/// PRIORITY ORDER:
-/// 1. Favorite players' games first (sorted by ELO)
-/// 2. Highest ELO boards (to fill remaining slots)
+/// ALGORITHM:
+/// 1. First, identify the latest round (by most recent dateStart/lastMoveTime)
+/// 2. Filter games to only include games from that latest round
+/// 3. Within the latest round, prioritize:
+///    a. Favorite players' games first (sorted by ELO)
+///    b. Highest ELO boards (to fill remaining slots up to maxGames)
 ///
-/// CONSISTENCY: Always tries to return exactly [maxGames] (4) games.
-/// Selects top games from the last round with favorite player priority
+/// This ensures we never show games from different rounds for the same player
 /// Uses INTEGER FIDE IDs for matching (same as Current tab)
 List<Games> _selectTopGamesFromLastRound(
   List<Games> allGames,
@@ -355,11 +357,55 @@ List<Games> _selectTopGamesFromLastRound(
 ) {
   if (allGames.isEmpty) return [];
 
-  // Separate favorite player games from regular games
+  // ============================================================
+  // STEP 1: Group games by roundId and find the latest round
+  // ============================================================
+  final gamesByRound = <String, List<Games>>{};
+  final roundTimestamps = <String, DateTime>{};
+
+  for (final game in allGames) {
+    final roundId = game.roundId;
+    gamesByRound.putIfAbsent(roundId, () => []).add(game);
+
+    // Track the most recent timestamp for each round
+    final gameTimestamp = game.lastMoveTime ?? game.dateStart;
+    if (gameTimestamp != null) {
+      final currentTimestamp = roundTimestamps[roundId];
+      if (currentTimestamp == null || gameTimestamp.isAfter(currentTimestamp)) {
+        roundTimestamps[roundId] = gameTimestamp;
+      }
+    }
+  }
+
+  // Find the latest round (most recent timestamp)
+  String? latestRoundId;
+  DateTime? latestTimestamp;
+  for (final entry in roundTimestamps.entries) {
+    if (latestTimestamp == null || entry.value.isAfter(latestTimestamp)) {
+      latestTimestamp = entry.value;
+      latestRoundId = entry.key;
+    }
+  }
+
+  // Fallback: if no timestamps, use the first round we encountered
+  latestRoundId ??= gamesByRound.keys.first;
+
+  // Get only games from the latest round
+  final latestRoundGames = gamesByRound[latestRoundId] ?? [];
+
+  debugPrint(
+    '[ForYouGames] _selectTopGamesFromLastRound: '
+    '${allGames.length} total games, ${gamesByRound.length} rounds, '
+    'latest round: $latestRoundId (${latestRoundGames.length} games)',
+  );
+
+  // ============================================================
+  // STEP 2: Within the latest round, prioritize favorite players
+  // ============================================================
   final favoriteGames = <Games>[];
   final regularGames = <Games>[];
 
-  for (final game in allGames) {
+  for (final game in latestRoundGames) {
     if (_gameHasFavoritePlayer(game, favoritedFideIds, favoritedNames)) {
       favoriteGames.add(game);
     } else {
@@ -374,7 +420,9 @@ List<Games> _selectTopGamesFromLastRound(
   favoriteGames.sort(compareByElo);
   regularGames.sort(compareByElo);
 
-  // Take favorite games first, then fill with highest ELO regular games
+  // ============================================================
+  // STEP 3: Take favorite games first, then fill with highest ELO
+  // ============================================================
   final selectedGames = <Games>[];
   final selectedIds = <String>{};
 
