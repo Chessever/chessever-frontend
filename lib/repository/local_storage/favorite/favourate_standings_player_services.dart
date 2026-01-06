@@ -1,6 +1,7 @@
 // lib/repository/local_storage/favorite/favourate_standings_player_services.dart
 
 import 'dart:convert';
+import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
@@ -22,6 +23,7 @@ class FavoriteStandingsPlayerService {
   FavoriteStandingsPlayerService(this.ref);
 
   SupabaseClient get _supabase => Supabase.instance.client;
+  SharedPreferences get _prefs => SharedPreferencesService.instance.prefs;
 
   /// Get user-specific cache key to prevent cross-user cache pollution
   String get _cacheKey {
@@ -33,9 +35,8 @@ class FavoriteStandingsPlayerService {
   /// Clean up old global cache that may have cross-user data
   Future<void> _cleanupOldGlobalCache() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      if (prefs.containsKey(_oldGlobalCacheKey)) {
-        await prefs.remove(_oldGlobalCacheKey);
+      if (_prefs.containsKey(_oldGlobalCacheKey)) {
+        await _prefs.remove(_oldGlobalCacheKey);
         debugPrint('[FavoriteStandings] Cleaned up old global cache key');
       }
     } catch (e) {
@@ -183,9 +184,8 @@ class FavoriteStandingsPlayerService {
   /// Cache players locally in SharedPreferences
   Future<void> _cachePlayers(List<PlayerStandingModel> players) async {
     try {
-      final prefs = await SharedPreferences.getInstance();
       final json = jsonEncode(players.map((p) => p.toJson()).toList());
-      await prefs.setString(_cacheKey, json);
+      await _prefs.setString(_cacheKey, json);
       debugPrint('[FavoriteStandings] Cached ${players.length} players locally');
     } catch (e) {
       debugPrint('[FavoriteStandings] Error caching players: $e');
@@ -195,8 +195,7 @@ class FavoriteStandingsPlayerService {
   /// Get cached players from SharedPreferences
   Future<List<PlayerStandingModel>> _getCachedPlayers() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final json = prefs.getString(_cacheKey);
+      final json = _prefs.getString(_cacheKey);
       if (json == null) {
         debugPrint('[FavoriteStandings] No cache found');
         return [];

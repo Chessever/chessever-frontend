@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:chessever2/repository/favorites/models/favorite_player.dart';
+import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
 import 'package:chessever2/services/analytics/analytics_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -201,12 +202,13 @@ class FavoritePlayersNotifierNew extends AsyncNotifier<List<FavoritePlayer>> {
     }
   }
 
+  SharedPreferences get _prefs => SharedPreferencesService.instance.prefs;
+
   // Cache management
   Future<void> _cachePlayers(List<FavoritePlayer> players) async {
     try {
-      final prefs = await SharedPreferences.getInstance();
       final json = jsonEncode(players.map((p) => p.toSupabase()).toList());
-      await prefs.setString(_cacheKey, json);
+      await _prefs.setString(_cacheKey, json);
       debugPrint('[FavoritePlayers] Cached ${players.length} players locally');
     } catch (e) {
       debugPrint('[FavoritePlayers] Error caching players: $e');
@@ -215,8 +217,7 @@ class FavoritePlayersNotifierNew extends AsyncNotifier<List<FavoritePlayer>> {
 
   Future<List<FavoritePlayer>> _getCachedPlayers() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final json = prefs.getString(_cacheKey);
+      final json = _prefs.getString(_cacheKey);
       if (json == null) return [];
 
       final list = jsonDecode(json) as List;
@@ -230,8 +231,7 @@ class FavoritePlayersNotifierNew extends AsyncNotifier<List<FavoritePlayer>> {
   /// Clear cache (useful on sign out)
   Future<void> clearCache() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.remove(_cacheKey);
+      await _prefs.remove(_cacheKey);
       debugPrint('[FavoritePlayers] Cleared cache');
     } catch (e) {
       debugPrint('[FavoritePlayers] Error clearing cache: $e');

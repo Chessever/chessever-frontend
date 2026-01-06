@@ -32,7 +32,7 @@ import 'package:flutter_native_splash/flutter_native_splash.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:worker_manager/worker_manager.dart';
 import 'package:clarity_flutter/clarity_flutter.dart';
@@ -119,6 +119,10 @@ Future<void> main() async {
       WidgetsBinding widgetsBinding = WidgetsFlutterBinding.ensureInitialized();
       FlutterNativeSplash.preserve(widgetsBinding: widgetsBinding);
 
+      // CRITICAL: Initialize SharedPreferences FIRST before anything else
+      // This prevents multiple getInstance() calls that can hang on Android
+      await SharedPreferencesService.instance.initialize();
+
       // Set orientation (non-blocking - not critical to wait for)
       unawaited(
         SystemChrome.setPreferredOrientations([
@@ -204,7 +208,7 @@ Future<void> _clearEvaluationCache() async {
     const String versionKey = 'eval_cache_clear_version';
     const String evalPrefix = 'cloud_eval_';
 
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = SharedPreferencesService.instance.prefs;
     final currentVersion = prefs.getInt(versionKey) ?? 0;
 
     if (currentVersion < cacheVersion) {
@@ -263,7 +267,7 @@ Future<void> _resetFavoritesForMigration() async {
     const int migrationVersion = 4; // v4: Clear non-user-specific cache keys
     const String versionKey = 'favorites_reset_version';
 
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = SharedPreferencesService.instance.prefs;
     final currentVersion = prefs.getInt(versionKey) ?? 0;
 
     if (currentVersion < migrationVersion) {

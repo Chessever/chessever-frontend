@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:chessever2/repository/supabase/players/players_repository.dart';
 
@@ -8,6 +9,8 @@ class PlayerViewModel {
   final PlayersRepository _repo = PlayersRepository();
   final List<Map<String, dynamic>> _players = [];
   bool _isInitialized = false;
+
+  SharedPreferences get _prefs => SharedPreferencesService.instance.prefs;
 
   int _offset = 0;
   final int _pageSize = 20;
@@ -38,8 +41,7 @@ class PlayerViewModel {
   }
 
   Future<void> _loadFavoritePlayerIds() async {
-    final prefs = await SharedPreferences.getInstance();
-    final favoritesJson = prefs.getString(_favoritePlayerIdsKey);
+    final favoritesJson = _prefs.getString(_favoritePlayerIdsKey);
 
     if (favoritesJson != null) {
       final List<dynamic> decoded = jsonDecode(favoritesJson);
@@ -177,9 +179,8 @@ class PlayerViewModel {
 
   Future<void> _saveFavoritePlayerIds() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
       final favoritesJson = jsonEncode(_favoritePlayerIds.toList());
-      await prefs.setString(_favoritePlayerIdsKey, favoritesJson);
+      await _prefs.setString(_favoritePlayerIdsKey, favoritesJson);
     } catch (e) {
       print('Error saving favorite player IDs: $e');
     }

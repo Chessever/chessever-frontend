@@ -1,3 +1,4 @@
+import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -15,6 +16,8 @@ class OnboardingRepository {
   static const String _baseKey = 'has_seen_onboarding_v4';
   static String _userKey(String userId) => '${_baseKey}_$userId';
 
+  SharedPreferences get _prefs => SharedPreferencesService.instance.prefs;
+
   String _resolveKey(String? userId) {
     if (userId != null && userId.isNotEmpty) {
       return _userKey(userId);
@@ -25,20 +28,19 @@ class OnboardingRepository {
   /// Check if onboarding has been shown on this device.
   /// Simple boolean check - no user-specific or legacy logic.
   Future<bool> hasSeenOnboarding({String? userId}) async {
-    final prefs = await SharedPreferences.getInstance();
     final supabaseUserId = userId ?? Supabase.instance.client.auth.currentUser?.id;
 
     // Prefer user-specific flag if available
     final userKey = _resolveKey(supabaseUserId);
-    final userSeen = prefs.getBool(userKey);
+    final userSeen = _prefs.getBool(userKey);
     if (userSeen != null) return userSeen;
 
     // Fallback to device-level flag (pre-auth)
-    final deviceSeen = prefs.getBool(_baseKey);
+    final deviceSeen = _prefs.getBool(_baseKey);
     if (deviceSeen != null) return deviceSeen;
 
     // Fallback to legacy key (v3)
-    return prefs.getBool(_legacyDeviceKey) ?? false;
+    return _prefs.getBool(_legacyDeviceKey) ?? false;
   }
 
   /// Legacy method for backwards compatibility - delegates to hasSeenOnboarding
@@ -48,19 +50,18 @@ class OnboardingRepository {
 
   /// Mark onboarding as seen on this device.
   Future<void> markAsSeen({String? userId}) async {
-    final prefs = await SharedPreferences.getInstance();
     final supabaseUserId = userId ?? Supabase.instance.client.auth.currentUser?.id;
 
     // Always set the device-level flag to avoid repeat onboarding on fresh installs
-    await prefs.setBool(_baseKey, true);
+    await _prefs.setBool(_baseKey, true);
 
     // Also set user-specific flag when we know the user
     if (supabaseUserId != null) {
-      await prefs.setBool(_userKey(supabaseUserId), true);
+      await _prefs.setBool(_userKey(supabaseUserId), true);
     }
 
     // Clean up legacy key to prevent stale state from older versions
-    await prefs.remove(_legacyDeviceKey);
+    await _prefs.remove(_legacyDeviceKey);
   }
 
   /// Legacy method for backwards compatibility - delegates to markAsSeen
@@ -70,12 +71,11 @@ class OnboardingRepository {
 
   /// Reset onboarding (for testing/debugging).
   Future<void> resetOnboarding({String? userId}) async {
-    final prefs = await SharedPreferences.getInstance();
     final supabaseUserId = userId ?? Supabase.instance.client.auth.currentUser?.id;
-    await prefs.remove(_baseKey);
-    await prefs.remove(_legacyDeviceKey);
+    await _prefs.remove(_baseKey);
+    await _prefs.remove(_legacyDeviceKey);
     if (supabaseUserId != null) {
-      await prefs.remove(_userKey(supabaseUserId));
+      await _prefs.remove(_userKey(supabaseUserId));
     }
   }
 }

@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:chessever2/repository/lichess/cloud_eval/cloud_eval.dart';
+import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -13,31 +14,31 @@ class LocalEvalCache {
   static const _currentVersion =
       10; // v10: Enforce persistence thresholds + multiPV tagging
 
+  SharedPreferences get _prefs => SharedPreferencesService.instance.prefs;
+
   Future<void> save(String fen, CloudEval eval, {int? multiPV}) async {
-    final prefs = await SharedPreferences.getInstance();
-    final storedVersion = prefs.getInt(_versionKey) ?? 1;
+    final storedVersion = _prefs.getInt(_versionKey) ?? 1;
     if (storedVersion < _currentVersion) {
-      await _clearWithPrefs(prefs);
+      await _clearWithPrefs(_prefs);
     }
-    await prefs.setInt(_versionKey, _currentVersion);
+    await _prefs.setInt(_versionKey, _currentVersion);
 
     final effectiveMultiPv =
         (multiPV ?? eval.requestedMultiPv ?? eval.pvs.length).clamp(0, 5);
     final key = _buildKey(fen, effectiveMultiPv);
-    await prefs.setString(key, jsonEncode(eval.toJson()));
+    await _prefs.setString(key, jsonEncode(eval.toJson()));
 
     // Also store legacy key so older readers (or callers without multiPV) still benefit
     if (effectiveMultiPv > 0) {
-      await prefs.setString('$_prefix$fen', jsonEncode(eval.toJson()));
+      await _prefs.setString('$_prefix$fen', jsonEncode(eval.toJson()));
     }
   }
 
   Future<CloudEval?> fetch(String fen, {int? multiPV}) async {
-    final prefs = await SharedPreferences.getInstance();
-    final storedVersion = prefs.getInt(_versionKey) ?? 1;
+    final storedVersion = _prefs.getInt(_versionKey) ?? 1;
     if (storedVersion < _currentVersion) {
-      await _clearWithPrefs(prefs);
-      await prefs.setInt(_versionKey, _currentVersion);
+      await _clearWithPrefs(_prefs);
+      await _prefs.setInt(_versionKey, _currentVersion);
       return null;
     }
 
@@ -54,7 +55,7 @@ class LocalEvalCache {
     keysToTry.add('$_prefix$fen');
 
     for (final key in keysToTry) {
-      final raw = prefs.getString(key);
+      final raw = _prefs.getString(key);
       if (raw == null) continue;
       try {
         final eval = CloudEval.fromJson(jsonDecode(raw));
@@ -106,16 +107,15 @@ class LocalEvalCache {
     final result = <String, CloudEval>{};
     if (fens.isEmpty) return result;
 
-    final prefs = await SharedPreferences.getInstance();
-    final storedVersion = prefs.getInt(_versionKey) ?? 1;
+    final storedVersion = _prefs.getInt(_versionKey) ?? 1;
     if (storedVersion < _currentVersion) {
-      await _clearWithPrefs(prefs);
-      await prefs.setInt(_versionKey, _currentVersion);
+      await _clearWithPrefs(_prefs);
+      await _prefs.setInt(_versionKey, _currentVersion);
       return result;
     }
 
     for (final fen in fens) {
-      final raw = prefs.getString(_buildKey(fen, 0));
+      final raw = _prefs.getString(_buildKey(fen, 0));
       if (raw != null) {
         try {
           result[fen] = CloudEval.fromJson(jsonDecode(raw));
@@ -129,9 +129,8 @@ class LocalEvalCache {
   }
 
   Future<void> clear() async {
-    final prefs = await SharedPreferences.getInstance();
-    await _clearWithPrefs(prefs);
-    await prefs.setInt(_versionKey, _currentVersion);
+    await _clearWithPrefs(_prefs);
+    await _prefs.setInt(_versionKey, _currentVersion);
   }
 
   Future<void> _clearWithPrefs(SharedPreferences prefs) async {

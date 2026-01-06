@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:chessever2/providers/country_dropdown_provider.dart';
+import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
 import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/knockout_tournament_state_provider.dart';
@@ -21,6 +22,7 @@ class _AutoPinLogController {
   _AutoPinLogController(this.ref);
 
   final Ref ref;
+  SharedPreferences get _prefs => SharedPreferencesService.instance.prefs;
 
   String _getTournamentKey(String tourId) => '${_autoPinFavKey}_$tourId';
 
@@ -84,8 +86,7 @@ class _AutoPinLogController {
   Future<String?> _resolveCountryCode() async {
     // Get country code directly from SharedPreferences (fast, synchronous)
     // This ensures auto-pin works even while Supabase is syncing
-    final prefs = await SharedPreferences.getInstance();
-    final cachedCountryCode = prefs.getString('selected_country_code');
+    final cachedCountryCode = _prefs.getString('selected_country_code');
 
     if (cachedCountryCode != null && cachedCountryCode.isNotEmpty) {
       // Use cached country code (works immediately, no async wait)
@@ -201,15 +202,13 @@ class _AutoPinLogController {
     required String tourId,
     required bool shouldHide,
   }) async {
-    final prefs = await SharedPreferences.getInstance();
     final key = _getTournamentKey(tourId);
-    await prefs.setBool(key, shouldHide);
+    await _prefs.setBool(key, shouldHide);
   }
 
   Future<bool> _getHidePin(String tourId) async {
-    final prefs = await SharedPreferences.getInstance();
     final key = _getTournamentKey(tourId);
-    return prefs.getBool(key) ?? false;
+    return _prefs.getBool(key) ?? false;
   }
 }
 

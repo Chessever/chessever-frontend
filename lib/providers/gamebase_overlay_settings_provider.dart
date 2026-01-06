@@ -1,8 +1,8 @@
 import 'dart:async';
 
+import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 /// Persisted user preference for showing the Gamebase (book icon) overlay.
 ///
@@ -15,11 +15,12 @@ final gamebaseOverlayEnabledProvider =
 class GamebaseOverlayEnabledNotifier extends AsyncNotifier<bool> {
   static const String _prefsKey = 'gamebase_overlay_enabled';
 
+  SharedPreferences get _prefs => SharedPreferencesService.instance.prefs;
+
   @override
   Future<bool> build() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      return prefs.getBool(_prefsKey) ?? true;
+      return _prefs.getBool(_prefsKey) ?? true;
     } catch (e) {
       debugPrint('[GamebaseOverlay] Failed to load preference: $e');
       return true;
@@ -38,8 +39,7 @@ class GamebaseOverlayEnabledNotifier extends AsyncNotifier<bool> {
 
   Future<void> _persist(bool enabled) async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setBool(_prefsKey, enabled);
+      await _prefs.setBool(_prefsKey, enabled);
     } catch (e) {
       debugPrint('[GamebaseOverlay] Failed to persist preference: $e');
     }
