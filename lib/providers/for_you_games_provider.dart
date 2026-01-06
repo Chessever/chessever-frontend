@@ -1,8 +1,10 @@
 import 'dart:async';
 
 import 'package:chessever2/providers/country_dropdown_provider.dart';
+import 'package:chessever2/providers/event_favorite_players_provider.dart';
 import 'package:chessever2/providers/favorite_events_provider.dart';
-import 'package:chessever2/providers/favorite_players_provider.dart';
+import 'package:chessever2/screens/favorites/favorite_players_provider.dart';
+import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
@@ -27,6 +29,14 @@ final currentTourIdsProvider = FutureProvider.autoDispose<Set<String>>((ref) asy
 /// Used to group games by their parent event (group_broadcast) instead of individual tours
 /// This ensures events with categories (U17, U19, etc.) are grouped together
 final tourToGroupBroadcastMappingProvider = StateProvider<Map<String, String>>((ref) {
+  ref.keepAlive();
+  return {};
+});
+
+/// Provider for event favorite players data in For You tab
+/// This uses the SAME eventFavoritePlayersCacheProvider as Current tab
+/// to ensure consistent hearted event detection
+final forYouEventFavoritePlayersProvider = StateProvider<Map<String, EventFavoritePlayers>>((ref) {
   ref.keepAlive();
   return {};
 });
@@ -56,62 +66,73 @@ final forYouGamesProvider = StateNotifierProvider.autoDispose<
 /// Games are grouped by their parent event (group_broadcast_id) to ensure
 /// events with categories (U17, U19, etc.) appear under one umbrella event card
 ///
-/// KEY BEHAVIOR:
-/// - Games from the same event (group_broadcast_id) are MERGED into one card
-/// - Starred (favorite) events appear at the top
-/// - Each event card shows top 4 boards from the latest round
-/// - Favorite players' games get priority within each event
+/// SORTING: Four-tier priority system:
+/// - Tier 1: Starred events (sorted by recency)
+/// - Tier 2: Hearted events (sorted by favorite player count, then ELO)
+/// - Tier 3: Live events (sorted by ELO) - comes AFTER hearted, BEFORE regular
+/// - Tier 4: Regular events (sorted by ELO)
 ///
-/// REACTIVE: This provider watches favoriteEventsProvider, favoritePlayersProviderNew,
-/// and countryDropdownProvider - so it rebuilds immediately when any preference changes.
+/// CRITICAL: Uses eventFavoritePlayersCacheProvider for hearted detection
+/// This checks ALL players in the event, not just fetched games!
 final groupedForYouGamesProvider = Provider.autoDispose<
   List<GroupedTournamentGames>
 >((ref) {
-  ref.keepAlive(); // Keep alive to match main provider
+  ref.keepAlive();
   final games = ref.watch(forYouGamesProvider).valueOrNull ?? [];
   final tourToGroupMapping = ref.watch(tourToGroupBroadcastMappingProvider);
 
   // ============================================================
-  // WATCH ALL PREFERENCE PROVIDERS FOR REACTIVE UPDATES
-  // When any of these change, this provider rebuilds immediately
+  // WATCH ALL PREFERENCE PROVIDERS (like Current tab)
   // ============================================================
 
-  // Watch favorite events
+  // Watch favorite events (starred)
   final favoriteEventsAsync = ref.watch(favoriteEventsProvider);
-  final favoriteEventIds = favoriteEventsAsync.valueOrNull
-      ?.map((e) => e.eventId)
-      .toSet() ?? <String>{};
+  final favoriteEvents = favoriteEventsAsync.valueOrNull ?? [];
+  final starredFavorites = favoriteEvents
+      .map((e) => e.eventId)
+      .where((id) => id.isNotEmpty)
+      .toList();
 
-  // Watch favorite players
-  final favoritesAsync = ref.watch(favoritePlayersProviderNew);
-  final favorites = favoritesAsync.valueOrNull ?? [];
-  final favoritedFideIds = favorites
-      .where((f) => f.fideId != null && f.fideId!.isNotEmpty)
-      .map((f) => f.fideId!)
+  // Watch favorite players (for game selection within events)
+  final favoritesStateAsync = ref.watch(favoritePlayersNotifierProvider);
+  final favoritesState = favoritesStateAsync.valueOrNull;
+  final favoritePlayers = favoritesState?.players ?? [];
+
+  // Build integer FIDE ID set (same as Current tab)
+  final favoritedFideIds = favoritePlayers
+      .where((p) => p.fideId != null && p.fideId! > 0)
+      .map((p) => p.fideId!)
       .toSet();
-  final favoritedNames = favorites
-      .map((f) => f.playerName.toLowerCase())
+  final favoritedNames = favoritePlayers
+      .map((p) => p.name.toLowerCase())
       .toSet();
 
-  // Watch country selection (for reactive refresh when country changes)
+  // Watch country selection (for reactive refresh)
   ref.watch(countryDropdownProvider);
 
-  // CRITICAL FIX: Group ALL games by group_broadcast_id (event umbrella)
-  // This merges games from same event (e.g., U17, U19 categories) into ONE card
-  // No more duplicate cards for the same event!
+  // ============================================================
+  // CRITICAL: Watch eventFavoritePlayersCacheProvider (SAME AS CURRENT TAB)
+  // This is the KEY to consistent hearted detection!
+  // ============================================================
+  final eventFavoritePlayersCache = ref.watch(eventFavoritePlayersCacheProvider);
+
+  // Also watch For You specific cache (populated by ForYouGamesNotifier)
+  final forYouEventFavoritePlayers = ref.watch(forYouEventFavoritePlayersProvider);
+
+  // ============================================================
+  // STEP 1: Group games by event (group_broadcast_id)
+  // ============================================================
   final grouped = <String, List<Games>>{};
-  final groupOrder = <String>[]; // Track insertion order for stable ordering
-  final groupTourNames = <String, String>{}; // Track tour names (use first seen)
-  final seenGameIds = <String>{}; // Deduplicate games
+  final groupOrder = <String>[];
+  final groupTourNames = <String, String>{};
+  final seenGameIds = <String>{};
 
   for (final game in games) {
-    // Skip duplicate games
     if (seenGameIds.contains(game.id)) continue;
     seenGameIds.add(game.id);
 
     final tourId = game.tourId;
     final tourName = game.tourSlug;
-    // Use group_broadcast_id if available, fallback to tour_id
     final groupKey = tourToGroupMapping[tourId] ?? tourId;
 
     if (!grouped.containsKey(groupKey)) {
@@ -119,34 +140,81 @@ final groupedForYouGamesProvider = Provider.autoDispose<
       groupOrder.add(groupKey);
       groupTourNames[groupKey] = tourName;
     }
-
     grouped[groupKey]!.add(game);
   }
 
-  // Hard limit: maximum 4 games per event card in For You tab
-  const maxGamesPerEvent = 4;
+  // ============================================================
+  // STEP 2: Build eventFavoritePlayerCounts (USING CACHE - LIKE CURRENT TAB)
+  // This uses the SAME cache as Current tab, ensuring consistency!
+  // ============================================================
+  final eventFavoritePlayerCounts = <String, int>{};
 
-  // FIRST: Check which groups have favorite players (check ALL games, not just top 4)
-  final groupsWithFavoritePlayers = <String>{};
   for (final groupKey in groupOrder) {
+    // First check the main cache (shared with Current tab)
+    final cachedData = eventFavoritePlayersCache[groupKey];
+    if (cachedData != null && cachedData.hasFavorites) {
+      eventFavoritePlayerCounts[groupKey] = cachedData.count;
+      continue;
+    }
+
+    // Then check For You specific cache
+    final forYouCachedData = forYouEventFavoritePlayers[groupKey];
+    if (forYouCachedData != null && forYouCachedData.hasFavorites) {
+      eventFavoritePlayerCounts[groupKey] = forYouCachedData.count;
+      continue;
+    }
+
+    // Fallback: scan fetched games (less reliable but better than nothing)
     final allGroupGames = grouped[groupKey]!;
+    final foundFavoriteIds = <int>{};
+    final foundFavoriteNames = <String>{};
+
     for (final game in allGroupGames) {
-      if (_gameHasFavoritePlayer(game, favoritedFideIds, favoritedNames)) {
-        groupsWithFavoritePlayers.add(groupKey);
-        break;
+      if (game.players == null) continue;
+      for (final player in game.players!) {
+        if (player.fideId > 0 && favoritedFideIds.contains(player.fideId)) {
+          foundFavoriteIds.add(player.fideId);
+        }
+        final lowerName = player.name.toLowerCase();
+        if (favoritedNames.contains(lowerName)) {
+          foundFavoriteNames.add(lowerName);
+        }
       }
+    }
+
+    final count = foundFavoriteIds.length + foundFavoriteNames.length;
+    if (count > 0) {
+      eventFavoritePlayerCounts[groupKey] = count;
     }
   }
 
-  // Process each group to select top 4 games from the last round
-  // Priority: favorite players first, then by ELO
-  final result = <GroupedTournamentGames>[];
+  // ============================================================
+  // STEP 3: Build list of starred event IDs (handle mapping)
+  // ============================================================
+  final starredEventSet = starredFavorites.toSet();
+
+  // Build a function to check if groupKey is starred
+  bool isGroupStarred(String groupKey, List<Games> groupGames) {
+    // Direct match
+    if (starredEventSet.contains(groupKey)) return true;
+    // Check via mapping (groupKey might be tour_id, but starred uses group_broadcast_id)
+    for (final game in groupGames) {
+      final mappedId = tourToGroupMapping[game.tourId];
+      if (mappedId != null && starredEventSet.contains(mappedId)) return true;
+    }
+    return false;
+  }
+
+  // ============================================================
+  // STEP 4: Create GroupedTournamentGames objects
+  // ============================================================
+  const maxGamesPerEvent = 4;
+  final allEvents = <GroupedTournamentGames>[];
 
   for (final groupKey in groupOrder) {
     final allGroupGames = grouped[groupKey]!;
     final tourName = groupTourNames[groupKey] ?? '';
 
-    // Select top games from last round with favorite player priority
     final selectedGames = _selectTopGamesFromLastRound(
       allGroupGames,
       maxGamesPerEvent,
@@ -156,20 +224,44 @@ final groupedForYouGamesProvider = Provider.autoDispose<
 
     final hasLiveGames = selectedGames.any((g) => g.status == '*');
 
-    result.add(GroupedTournamentGames(
+    allEvents.add(GroupedTournamentGames(
       groupKey: groupKey,
-      tourId: groupKey, // Use group_broadcast_id for navigation
+      tourId: groupKey,
       tourName: tourName,
       games: selectedGames,
       hasLiveGames: hasLiveGames,
     ));
   }
 
-  // Helper to check if an event has favorited player games (uses pre-computed set)
-  bool eventHasFavoritePlayer(GroupedTournamentGames group) {
-    return groupsWithFavoritePlayers.contains(group.groupKey);
+  // ============================================================
+  // STEP 5: FOUR-TIER SORTING
+  // Priority: Starred → Hearted → Live → Regular
+  // ============================================================
+
+  final starredEvents = <GroupedTournamentGames>[];
+  final heartedEvents = <GroupedTournamentGames>[];
+  final liveEvents = <GroupedTournamentGames>[];
+  final regularEvents = <GroupedTournamentGames>[];
+
+  for (final event in allEvents) {
+    final groupGames = grouped[event.groupKey] ?? [];
+
+    if (isGroupStarred(event.groupKey, groupGames)) {
+      // Priority 1: Starred by user
+      starredEvents.add(event);
+    } else if ((eventFavoritePlayerCounts[event.groupKey] ?? 0) > 0) {
+      // Priority 2: Has favorite players (hearted)
+      heartedEvents.add(event);
+    } else if (event.hasLiveGames) {
+      // Priority 3: Live events (after hearted)
+      liveEvents.add(event);
+    } else {
+      // Priority 4: Regular events
+      regularEvents.add(event);
+    }
   }
 
+  // Helper functions for sorting
   int getEventRecency(GroupedTournamentGames group) {
     DateTime? mostRecent;
     for (final game in group.games) {
@@ -182,7 +274,6 @@ final groupedForYouGamesProvider = Provider.autoDispose<
     return mostRecent?.millisecondsSinceEpoch ?? 0;
   }
 
-  // Get max ELO from event's games for secondary sorting
   int getEventMaxElo(GroupedTournamentGames group) {
     int maxElo = 0;
     for (final game in group.games) {
@@ -192,191 +283,133 @@ final groupedForYouGamesProvider = Provider.autoDispose<
     return maxElo;
   }
 
-  // =============================================================
-  // EVENT SORTING - Three-tier categorization (like Current tab)
-  // =============================================================
-  // Tier 1: Starred events (user explicitly starred)
-  // Tier 2: Events with favorite players (hearted)
-  // Tier 3: Regular events (sorted by ELO, live as tiebreaker)
-  // =============================================================
-
-  // Categorize events into three tiers (matching Current tab approach)
-  final starredEvents = <GroupedTournamentGames>[];
-  final heartedEvents = <GroupedTournamentGames>[];
-  final regularEvents = <GroupedTournamentGames>[];
-
-  for (final event in result) {
-    if (favoriteEventIds.contains(event.tourId)) {
-      starredEvents.add(event);
-    } else if (eventHasFavoritePlayer(event)) {
-      heartedEvents.add(event);
-    } else {
-      regularEvents.add(event);
-    }
-  }
-
-  // Sort starred events by recency (most recent activity first)
+  // Sort starred events by recency (most recent first)
   starredEvents.sort((a, b) {
-    final aRecency = getEventRecency(a);
-    final bRecency = getEventRecency(b);
-    return bRecency.compareTo(aRecency);
+    return getEventRecency(b).compareTo(getEventRecency(a));
   });
 
-  // Sort hearted events by ELO (higher first), then recency
+  // Sort hearted events by favorite player count (descending), then ELO
   heartedEvents.sort((a, b) {
-    final aMaxElo = getEventMaxElo(a);
-    final bMaxElo = getEventMaxElo(b);
-    if (aMaxElo != bMaxElo) {
-      return bMaxElo.compareTo(aMaxElo);
-    }
-    final aRecency = getEventRecency(a);
-    final bRecency = getEventRecency(b);
-    return bRecency.compareTo(aRecency);
+    final countA = eventFavoritePlayerCounts[a.groupKey] ?? 0;
+    final countB = eventFavoritePlayerCounts[b.groupKey] ?? 0;
+    if (countA != countB) return countB.compareTo(countA);
+
+    final eloA = getEventMaxElo(a);
+    final eloB = getEventMaxElo(b);
+    if (eloA != eloB) return eloB.compareTo(eloA);
+
+    return getEventRecency(b).compareTo(getEventRecency(a));
   });
 
-  // Sort regular events by ELO only (higher first) - simple approach like Current tab
+  // Sort live events by ELO (highest first)
+  liveEvents.sort((a, b) {
+    final eloA = getEventMaxElo(a);
+    final eloB = getEventMaxElo(b);
+    return eloB.compareTo(eloA);
+  });
+
+  // Sort regular events by ELO only
   regularEvents.sort((a, b) {
-    final aMaxElo = getEventMaxElo(a);
-    final bMaxElo = getEventMaxElo(b);
-    return bMaxElo.compareTo(aMaxElo);
+    final eloA = getEventMaxElo(a);
+    final eloB = getEventMaxElo(b);
+    return eloB.compareTo(eloA);
   });
 
-  // Return: starred first, then hearted, then regular (like Current tab)
-  return [...starredEvents, ...heartedEvents, ...regularEvents];
-});
+  // ============================================================
+  // STEP 6: RETURN CONCATENATED LIST
+  // Starred → Hearted → Live (by ELO) → Regular (by ELO)
+  // ============================================================
 
-/// Extracts round number from roundSlug (e.g., "round-5" -> 5)
-int _extractRoundNumber(String roundSlug) {
-  // Try to extract number from common patterns like "round-5", "round5", "r5"
-  final regex = RegExp(r'(\d+)');
-  final match = regex.firstMatch(roundSlug);
-  if (match != null) {
-    return int.tryParse(match.group(1) ?? '') ?? 0;
+  debugPrint('[ForYouGames] === Sorting Result ===');
+  debugPrint('[ForYouGames] ${starredEvents.length} starred + ${heartedEvents.length} hearted + ${liveEvents.length} live + ${regularEvents.length} regular');
+  debugPrint('[ForYouGames] favoritePlayerCounts: $eventFavoritePlayerCounts');
+
+  // Log first 5 events with their category
+  final result = [...starredEvents, ...heartedEvents, ...liveEvents, ...regularEvents];
+  for (int i = 0; i < result.length && i < 5; i++) {
+    final e = result[i];
+    final isS = starredEvents.contains(e);
+    final isH = heartedEvents.contains(e);
+    final isL = liveEvents.contains(e);
+    final tier = isS ? 'STARRED' : (isH ? 'HEARTED' : (isL ? 'LIVE' : 'REGULAR'));
+    debugPrint('[ForYouGames] #${i + 1} $tier: ${e.tourName}');
   }
-  return 0;
-}
+
+  return result;
+});
 
 /// Selects top 4 games for an event card
 ///
 /// PRIORITY ORDER:
-/// 1. Latest round factor (favorites' latest round first if any)
-/// 2. Favorite players (within a round)
-/// 3. Higher ELO (within a round)
+/// 1. Favorite players' games first (sorted by ELO)
+/// 2. Highest ELO boards (to fill remaining slots)
 ///
 /// CONSISTENCY: Always tries to return exactly [maxGames] (4) games.
+/// Selects top games from the last round with favorite player priority
+/// Uses INTEGER FIDE IDs for matching (same as Current tab)
 List<Games> _selectTopGamesFromLastRound(
   List<Games> allGames,
   int maxGames,
-  Set<String> favoritedFideIds,
+  Set<int> favoritedFideIds,
   Set<String> favoritedNames,
 ) {
   if (allGames.isEmpty) return [];
 
-  // Sort by ELO only (higher first) - simple approach
-  int compareByElo(Games a, Games b) {
-    final aMaxElo = _getGameMaxElo(a);
-    final bMaxElo = _getGameMaxElo(b);
-    return bMaxElo.compareTo(aMaxElo);
-  }
-
-  final gamesByRound = <String, List<Games>>{};
-  final roundNumbers = <String, int>{};
+  // Separate favorite player games from regular games
+  final favoriteGames = <Games>[];
+  final regularGames = <Games>[];
 
   for (final game in allGames) {
-    final roundId = game.roundId;
-    gamesByRound.putIfAbsent(roundId, () => []).add(game);
-    if (!roundNumbers.containsKey(roundId)) {
-      roundNumbers[roundId] = _extractRoundNumber(game.roundSlug);
+    if (_gameHasFavoritePlayer(game, favoritedFideIds, favoritedNames)) {
+      favoriteGames.add(game);
+    } else {
+      regularGames.add(game);
     }
   }
 
-  final sortedRoundIds = gamesByRound.keys.toList()
-    ..sort((a, b) => (roundNumbers[b] ?? 0).compareTo(roundNumbers[a] ?? 0));
-
-  final hasFavoritesInEvent = allGames.any(
-    (game) => _gameHasFavoritePlayer(game, favoritedFideIds, favoritedNames),
-  );
-
-  String? latestFavoriteRoundId;
-  if (hasFavoritesInEvent) {
-    final favoriteRoundIds = sortedRoundIds
-        .where(
-          (roundId) => gamesByRound[roundId]!.any(
-            (game) =>
-                _gameHasFavoritePlayer(game, favoritedFideIds, favoritedNames),
-          ),
-        )
-        .toList();
-    if (favoriteRoundIds.isNotEmpty) {
-      latestFavoriteRoundId = favoriteRoundIds.first;
-    }
+  // Sort both by ELO (highest first)
+  int compareByElo(Games a, Games b) {
+    return _getGameMaxElo(b).compareTo(_getGameMaxElo(a));
   }
+  favoriteGames.sort(compareByElo);
+  regularGames.sort(compareByElo);
 
-  final orderedRoundIds = <String>[];
-  if (latestFavoriteRoundId != null) {
-    orderedRoundIds.add(latestFavoriteRoundId);
-  }
-  for (final roundId in sortedRoundIds) {
-    if (roundId != latestFavoriteRoundId) {
-      orderedRoundIds.add(roundId);
-    }
-  }
-
+  // Take favorite games first, then fill with highest ELO regular games
   final selectedGames = <Games>[];
   final selectedIds = <String>{};
 
-  void addGames(List<Games> games) {
-    for (final game in games) {
-      if (selectedGames.length >= maxGames) return;
-      if (selectedIds.add(game.id)) {
-        selectedGames.add(game);
-      }
+  void addGame(Games game) {
+    if (selectedGames.length >= maxGames) return;
+    if (selectedIds.add(game.id)) {
+      selectedGames.add(game);
     }
   }
 
-  for (final roundId in orderedRoundIds) {
-    if (selectedGames.length >= maxGames) break;
-    final roundGames = gamesByRound[roundId] ?? [];
-
-    if (hasFavoritesInEvent) {
-      final favorites = <Games>[];
-      final nonFavorites = <Games>[];
-
-      for (final game in roundGames) {
-        if (_gameHasFavoritePlayer(game, favoritedFideIds, favoritedNames)) {
-          favorites.add(game);
-        } else {
-          nonFavorites.add(game);
-        }
-      }
-
-      favorites.sort(compareByElo);
-      nonFavorites.sort(compareByElo);
-
-      addGames(favorites);
-      addGames(nonFavorites);
-    } else {
-      final sortedRoundGames = List<Games>.from(roundGames)
-        ..sort(compareByElo);
-      addGames(sortedRoundGames);
-    }
+  for (final game in favoriteGames) {
+    addGame(game);
+  }
+  for (final game in regularGames) {
+    addGame(game);
   }
 
   return selectedGames;
 }
 
 /// Checks if a game has a favorited player
+/// Uses INTEGER FIDE IDs for matching (same as Current tab)
 bool _gameHasFavoritePlayer(
   Games game,
-  Set<String> favoritedFideIds,
+  Set<int> favoritedFideIds,
   Set<String> favoritedNames,
 ) {
   if (game.players == null) return false;
 
   for (final player in game.players!) {
-    if (player.fideId > 0 && favoritedFideIds.contains(player.fideId.toString())) {
+    // Match by FIDE ID (integer comparison - same as Current tab)
+    if (player.fideId > 0 && favoritedFideIds.contains(player.fideId)) {
       return true;
     }
+    // Fallback: match by name (case-insensitive)
     if (favoritedNames.contains(player.name.toLowerCase())) {
       return true;
     }
@@ -414,10 +447,11 @@ final forYouAnimatedGameIds = <String>{};
 
 /// Notifier for managing For You games state
 ///
-/// Three-tier categorization (matching Current tab approach):
+/// Four-tier categorization:
 /// Tier 1: Starred events (user explicitly starred) - sorted by recency
-/// Tier 2: Events with favorite players (hearted) - sorted by ELO
-/// Tier 3: Regular events - sorted by ELO only
+/// Tier 2: Events with favorite players (hearted) - sorted by count, then ELO
+/// Tier 3: Live events - sorted by ELO (comes AFTER hearted)
+/// Tier 4: Regular events - sorted by ELO
 ///
 /// STANDARD: Each tournament displays exactly 4 games. If there aren't enough
 /// personalized games, we fill up with top board games (highest ELO players).
@@ -456,8 +490,9 @@ class ForYouGamesNotifier extends StateNotifier<AsyncValue<List<Games>>> {
 
   Future<void> _waitForInitialPreferences() async {
     // Wait for favorites/events/country to resolve so first paint is personalized.
+    // Use SAME provider as Current tab (integer FIDE IDs)
     final futures = <Future<void>>[
-      _waitForFuture(() => _ref.read(favoritePlayersProviderNew.future)),
+      _waitForFuture(() => _ref.read(favoritePlayersNotifierProvider.future)),
       _waitForFuture(() => _ref.read(favoriteEventsProvider.future)),
       _waitForCountrySelection(),
     ];
@@ -516,8 +551,9 @@ class ForYouGamesNotifier extends StateNotifier<AsyncValue<List<Games>>> {
       );
     }
 
+    // Use SAME provider as Current tab (integer FIDE IDs)
     _ref.listen(
-      favoritePlayersProviderNew,
+      favoritePlayersNotifierProvider,
       (_, __) => scheduleRefresh(),
       fireImmediately: false,
     );
@@ -554,6 +590,10 @@ class ForYouGamesNotifier extends StateNotifier<AsyncValue<List<Games>>> {
       // This ensures events with categories (U17, U19, etc.) are grouped together
       await _fetchTourToGroupBroadcastMapping();
 
+      // CRITICAL: Fetch favorite player data for all events
+      // This ensures hearted detection works like Current tab
+      await _fetchEventFavoritePlayersData();
+
       state = AsyncValue.data(List<Games>.from(_allGames));
     } catch (e, stack) {
       debugPrint('[ForYouGames] Error loading games: $e');
@@ -573,6 +613,9 @@ class ForYouGamesNotifier extends StateNotifier<AsyncValue<List<Games>>> {
 
       // Update mapping for any new tour IDs
       await _fetchTourToGroupBroadcastMapping();
+
+      // Fetch favorite player data for new events
+      await _fetchEventFavoritePlayersData();
 
       state = AsyncValue.data(List<Games>.from(_allGames));
     } catch (e) {
@@ -610,8 +653,10 @@ class ForYouGamesNotifier extends StateNotifier<AsyncValue<List<Games>>> {
     }
 
     // Get user preferences for prioritization
-    final favoritesAsync = _ref.read(favoritePlayersProviderNew);
-    final favorites = favoritesAsync.valueOrNull ?? [];
+    // Use SAME provider as Current tab (integer FIDE IDs)
+    final favoritesAsync = _ref.read(favoritePlayersNotifierProvider);
+    final favoritesState = favoritesAsync.valueOrNull;
+    final favorites = favoritesState?.players ?? [];
 
     final favoriteEventsAsync = _ref.read(favoriteEventsProvider);
     final favoriteEvents = favoriteEventsAsync.valueOrNull ?? [];
@@ -717,9 +762,9 @@ class ForYouGamesNotifier extends StateNotifier<AsyncValue<List<Games>>> {
   /// Tier order:
   /// 1. Games from starred (favorite) events
   /// 2. Games with favorited players (hearted)
-  /// 3. Regular games (sorted by ELO, live as tiebreaker)
+  /// 3. Regular games (sorted by ELO only - NO live priority)
   void _sortGamesForFeed(
-    List favorites,
+    List<PlayerStandingModel> favorites,
     String? countryCode,
     Set<String> favoriteEventIds,
   ) {
@@ -728,14 +773,15 @@ class ForYouGamesNotifier extends StateNotifier<AsyncValue<List<Games>>> {
     debugPrint('[ForYouGames] Sorting ${_allGames.length} games for feed...');
 
     // Create lookup sets for performance
-    final Set<String> favoritedFideIds = favorites
-        .where((f) => f.fideId != null && f.fideId!.isNotEmpty)
-        .map((f) => f.fideId as String)
+    // Use INTEGER FIDE IDs (same as Current tab)
+    final favoritedFideIds = favorites
+        .where((f) => f.fideId != null && f.fideId! > 0)
+        .map((f) => f.fideId!)
         .toSet();
 
-    final Set<String> favoritedNames = favorites
-        .map((f) => f.playerName as String)
-        .map((name) => name.toLowerCase())
+    // Use .name for PlayerStandingModel (from favoritePlayersNotifierProvider)
+    final favoritedNames = favorites
+        .map((f) => f.name.toLowerCase())
         .toSet();
 
     // =============================================================
@@ -743,7 +789,7 @@ class ForYouGamesNotifier extends StateNotifier<AsyncValue<List<Games>>> {
     // =============================================================
     // Tier 1: Games from starred events
     // Tier 2: Games with favorite players (hearted)
-    // Tier 3: Regular games (sorted by ELO, live as tiebreaker)
+    // Tier 3: Regular games (sorted by ELO only - NO live priority)
     // =============================================================
 
     final starredGames = <Games>[];
@@ -793,7 +839,7 @@ class ForYouGamesNotifier extends StateNotifier<AsyncValue<List<Games>>> {
       return getRecency(b).compareTo(getRecency(a));
     });
 
-    // Sort regular games by ELO only (higher first) - simple approach like Current tab
+    // Sort regular games by ELO only (higher first) - NO LIVE PRIORITY
     regularGames.sort((a, b) {
       final aMaxElo = _getMaxElo(a);
       final bMaxElo = _getMaxElo(b);
@@ -907,18 +953,21 @@ class ForYouGamesNotifier extends StateNotifier<AsyncValue<List<Games>>> {
     return game.status == '*' || game.status == 'ongoing';
   }
 
+  /// Checks if a game has a favorited player
+  /// Uses INTEGER FIDE IDs for matching (same as Current tab)
   bool _hasFavoritedPlayer(
     Games game,
-    Set<String> favoritedFideIds,
+    Set<int> favoritedFideIds,
     Set<String> favoritedNames,
   ) {
     if (game.players == null) return false;
 
     for (final player in game.players!) {
-      if (player.fideId > 0 &&
-          favoritedFideIds.contains(player.fideId.toString())) {
+      // Match by FIDE ID (integer comparison - same as Current tab)
+      if (player.fideId > 0 && favoritedFideIds.contains(player.fideId)) {
         return true;
       }
+      // Fallback: match by name (case-insensitive)
       if (favoritedNames.contains(player.name.toLowerCase())) {
         return true;
       }
@@ -945,8 +994,10 @@ class ForYouGamesNotifier extends StateNotifier<AsyncValue<List<Games>>> {
 
     // Check if preferences are now available but weren't during initial load
     if (!_initialLoadHadPreferences) {
-      final favoritesAsync = _ref.read(favoritePlayersProviderNew);
-      final favorites = favoritesAsync.valueOrNull ?? [];
+      // Use SAME provider as Current tab (integer FIDE IDs)
+      final favoritesAsync = _ref.read(favoritePlayersNotifierProvider);
+      final favoritesState = favoritesAsync.valueOrNull;
+      final favorites = favoritesState?.players ?? [];
 
       final favoriteEventsAsync = _ref.read(favoriteEventsProvider);
       final favoriteEvents = favoriteEventsAsync.valueOrNull ?? [];
@@ -1015,6 +1066,71 @@ class ForYouGamesNotifier extends StateNotifier<AsyncValue<List<Games>>> {
     }
   }
 
+  /// CRITICAL: Fetch favorite player data for all events in the For You feed
+  /// This uses the SAME approach as Current tab's eventFavoritePlayersProvider
+  /// to ensure consistent hearted event detection
+  Future<void> _fetchEventFavoritePlayersData() async {
+    if (_allGames.isEmpty) return;
+
+    try {
+      // Get favorite players
+      final favoritesState = await _ref.read(favoritePlayersNotifierProvider.future);
+      final favoritePlayers = favoritesState.players;
+
+      if (favoritePlayers.isEmpty) {
+        debugPrint('[ForYouGames] No favorite players, skipping event favorite player fetch');
+        return;
+      }
+
+      // Get favorite FIDE IDs
+      final favoriteFideIds = favoritePlayers
+          .where((p) => p.fideId != null && p.fideId! > 0)
+          .map((p) => p.fideId!)
+          .toSet();
+
+      if (favoriteFideIds.isEmpty) {
+        debugPrint('[ForYouGames] No favorite FIDE IDs, skipping event favorite player fetch');
+        return;
+      }
+
+      // Get unique event IDs (group_broadcast_ids)
+      final tourToGroupMapping = _ref.read(tourToGroupBroadcastMappingProvider);
+      final eventIds = <String>{};
+      for (final game in _allGames) {
+        final eventId = tourToGroupMapping[game.tourId] ?? game.tourId;
+        eventIds.add(eventId);
+      }
+
+      debugPrint('[ForYouGames] Checking ${eventIds.length} events for favorite players');
+
+      // For each event, check if it has favorite players using eventFavoritePlayersProvider
+      final forYouCache = <String, EventFavoritePlayers>{};
+
+      for (final eventId in eventIds) {
+        try {
+          // Use the same provider that Current tab uses
+          final eventFavoritePlayers = await _ref.read(
+            eventFavoritePlayersProvider(eventId).future,
+          );
+
+          if (eventFavoritePlayers.hasFavorites) {
+            forYouCache[eventId] = eventFavoritePlayers;
+            debugPrint('[ForYouGames] Event $eventId has ${eventFavoritePlayers.count} favorite players');
+          }
+        } catch (e) {
+          // Silently continue - event might not have tour data
+        }
+      }
+
+      // Update the For You specific cache
+      _ref.read(forYouEventFavoritePlayersProvider.notifier).state = forYouCache;
+
+      debugPrint('[ForYouGames] Found ${forYouCache.length} events with favorite players');
+    } catch (e) {
+      debugPrint('[ForYouGames] Error fetching event favorite players: $e');
+    }
+  }
+
   @override
   void dispose() {
     _preferenceRefreshDebounce?.cancel();
@@ -1042,4 +1158,3 @@ class GroupedTournamentGames {
   final List<Games> games;
   bool hasLiveGames;
 }
-
