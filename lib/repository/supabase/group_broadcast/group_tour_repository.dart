@@ -339,6 +339,23 @@ class GroupBroadcastRepository extends BaseRepository {
     return response.first;
   }
 
+  /// Get tour IDs that belong to a specific group_broadcast
+  /// Used to fetch games for a single event in the For You tab
+  Future<List<String>> getTourIdsForGroupBroadcast(String groupBroadcastId) async {
+    return handleApiCall(() async {
+      final dynamic response = await supabase
+          .from('tours')
+          .select('id')
+          .eq('group_broadcast_id', groupBroadcastId);
+
+      if (response == null) return <String>[];
+
+      return (response as List)
+          .map((row) => row['id'] as String)
+          .toList();
+    });
+  }
+
   /// Get mapping from tour_id to group_broadcast_id for given tour IDs
   /// This is used to group games by their parent event (group_broadcast) in For You tab
   Future<Map<String, String>> getTourToGroupBroadcastMapping(List<String> tourIds) async {

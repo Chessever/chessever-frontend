@@ -1,7 +1,6 @@
 import 'dart:math';
 import 'package:chessever2/providers/event_favorite_players_provider.dart';
 import 'package:chessever2/providers/favorite_events_provider.dart';
-import 'package:chessever2/providers/for_you_games_provider.dart';
 import 'package:chessever2/screens/group_event/widget/search_results_widget.dart' show searchAnimatedEventIds;
 import 'package:chessever2/screens/group_event/widget/all_events_tab_widget.dart';
 import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_provider.dart';
@@ -23,9 +22,6 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/widgets/segmented_switcher.dart';
-import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
-import 'package:chessever2/screens/group_event/widget/appbar_icons_widget.dart';
-import 'package:chessever2/utils/svg_asset.dart';
 
 enum GroupEventCategory { past, current, forYou, search }
 
@@ -127,27 +123,10 @@ class GroupEventScreen extends HookConsumerWidget {
       }
     }
 
-    void onForYouScroll() {
-      if (!context.mounted || selectedTourEvent != GroupEventCategory.forYou) {
-        return;
-      } else {
-        final max = forYouScrollController.position.maxScrollExtent;
-        final current = forYouScrollController.position.pixels;
-        if (max - current <= 200) {
-          ref.read(forYouGamesProvider.notifier).loadMore();
-        }
-      }
-    }
-
     useEffect(() {
       pastScrollController.addListener(onScroll);
       return () => pastScrollController.removeListener(onScroll);
     }, [pastScrollController, selectedTourEvent]);
-
-    useEffect(() {
-      forYouScrollController.addListener(onForYouScroll);
-      return () => forYouScrollController.removeListener(onForYouScroll);
-    }, [forYouScrollController, selectedTourEvent]);
 
     return Material(
       color: kBackgroundColor,
@@ -300,20 +279,6 @@ class GroupEventScreen extends HookConsumerWidget {
                     },
                   ),
                 ),
-                // Layout toggle button - only visible on For You and Search tabs
-                if (selectedTourEvent == GroupEventCategory.forYou ||
-                    selectedTourEvent == GroupEventCategory.search) ...[
-                  SizedBox(width: 12.w),
-                  Semantics(
-                    label: 'Toggle chessboard view',
-                    child: AppBarIcons(
-                      image: SvgAsset.chase_grid,
-                      onTap: () {
-                        ref.read(gamesListViewModeSwitcher).toggleViewMode();
-                      },
-                    ),
-                  ),
-                ],
               ],
             ),
           ),

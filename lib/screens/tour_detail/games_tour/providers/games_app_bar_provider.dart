@@ -1162,7 +1162,7 @@ class _GamesAppBarNotifier
       return;
     }
 
-    // 2) Prefer live round
+    // 2) Prefer live round first (highest priority for real-time viewing)
     final liveModel = _pickRoundModelByStatus(models, counts, RoundStatus.live);
     if (liveModel != null) {
       state = AsyncValue.data(
@@ -1176,28 +1176,36 @@ class _GamesAppBarNotifier
       return;
     }
 
-    GamesAppBarModel? repoModel;
+    // 3) Try to get the latest round by last move activity
+    // This ensures consistency with For You tab which also uses latest round
+    GamesAppBarModel? latestByActivityModel;
     try {
       final repo = ref.read(roundRepositoryProvider);
       final latest = await repo.getLatestRoundByLastMove(tourId);
       if (latest != null &&
           models.any((m) => m.id == latest.id) &&
           _hasGames(latest.id, counts)) {
-        repoModel = models.firstWhere((m) => m.id == latest.id);
+        latestByActivityModel = models.firstWhere((m) => m.id == latest.id);
       }
     } catch (e) {}
 
-    final autoModel = _selectAutoRound(models, counts);
-    GamesAppBarModel? selectedModel = autoModel;
-
-    if ((selectedModel == null ||
-            selectedModel.roundStatus == RoundStatus.completed) &&
-        repoModel != null) {
-      selectedModel = repoModel;
+    // 4) If we have a recent round by activity, prefer it (consistent with For You tab)
+    if (latestByActivityModel != null) {
+      state = AsyncValue.data(
+        GamesAppBarViewModel(
+          gamesAppBarModels: models,
+          selectedId: latestByActivityModel.id,
+          userSelectedId: false,
+        ),
+      );
+      _scrollToRound(latestByActivityModel.id);
+      return;
     }
 
+    // 5) Fall back to auto-select (ongoing → upcoming → completed)
+    final autoModel = _selectAutoRound(models, counts);
     final fallbackId =
-        selectedModel?.id ?? (models.isNotEmpty ? models.first.id : '');
+        autoModel?.id ?? (models.isNotEmpty ? models.first.id : '');
     state = AsyncValue.data(
       GamesAppBarViewModel(
         gamesAppBarModels: models,

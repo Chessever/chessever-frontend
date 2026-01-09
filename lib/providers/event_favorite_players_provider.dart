@@ -35,9 +35,9 @@ class EventFavoritePlayers {
 final eventFavoritePlayersProvider = FutureProvider.autoDispose
     .family<EventFavoritePlayers, String>((ref, eventId) async {
   try {
-    // Watch the favorite players provider to make this reactive
-    // When favorite players change, this provider will automatically rebuild
-    final favoritePlayersState = await ref.watch(favoritePlayersNotifierProvider.future);
+    // Read the favorite players (not watch) to avoid infinite rebuild loops
+    // Reactivity is handled by the parent provider (forYouEventsProvider)
+    final favoritePlayersState = await ref.read(favoritePlayersNotifierProvider.future);
     final favoritePlayers = favoritePlayersState.players;
 
     // If no favorites, return empty
@@ -94,6 +94,11 @@ class EventFavoritePlayersCache extends StateNotifier<Map<String, EventFavoriteP
 
   void updateCache(String eventId, EventFavoritePlayers data) {
     state = {...state, eventId: data};
+  }
+
+  /// Batch update cache with multiple entries at once (single state notification)
+  void updateCacheBatch(Map<String, EventFavoritePlayers> data) {
+    state = {...state, ...data};
   }
 
   EventFavoritePlayers? getCached(String eventId) {

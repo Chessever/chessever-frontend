@@ -806,18 +806,18 @@ class GameRepository extends BaseRepository {
     int limit = 500,
     int offset = 0,
   }) async {
-    return handleApiCall(() async {
-      if (tourIds.isEmpty) {
-        return <Games>[];
-      }
+    if (tourIds.isEmpty) {
+      return <Games>[];
+    }
 
-      debugPrint(
-        '[GameRepository] Fetching games from ${tourIds.length} tour IDs (limit: $limit, offset: $offset)',
-      );
+    debugPrint(
+      '[GameRepository] Fetching games from ${tourIds.length} tour IDs (limit: $limit, offset: $offset)',
+    );
 
+    try {
       // Use inFilter for multiple tour IDs
       // Order by date_start first to group games by day, then by last_move_time
-      final dynamic response = await supabase
+      final response = await supabase
           .from('games')
           .select(_gameListSelectColumns)
           .inFilter('tour_id', tourIds)
@@ -825,15 +825,27 @@ class GameRepository extends BaseRepository {
           .order('last_move_time', ascending: false, nullsFirst: false)
           .range(offset, offset + limit - 1);
 
-      // Handle null response gracefully (can happen with certain RLS/query edge cases)
-      // Using dynamic type to prevent Dart from optimizing away null check
+      // Handle null response gracefully
       if (response == null) {
         debugPrint('[GameRepository] Warning: null response from getGamesFromTourIds query');
         return <Games>[];
       }
 
-      final jsonList =
-          (response as List).map((item) => json.encode(item)).toList();
+      // Safely convert to List
+      final List<dynamic> responseList;
+      if (response is List) {
+        responseList = response;
+      } else {
+        debugPrint('[GameRepository] Warning: response is not a List, got ${response.runtimeType}');
+        return <Games>[];
+      }
+
+      if (responseList.isEmpty) {
+        debugPrint('[GameRepository] Empty response from getGamesFromTourIds query');
+        return <Games>[];
+      }
+
+      final jsonList = responseList.map((item) => json.encode(item)).toList();
 
       final games = await compute(_decodeGamesInIsolate, jsonList);
 
@@ -842,7 +854,10 @@ class GameRepository extends BaseRepository {
       );
 
       return games;
-    });
+    } catch (e) {
+      debugPrint('[GameRepository] Error in getGamesFromTourIds: $e');
+      return <Games>[];
+    }
   }
 
   /// Get top live games globally, ordered by recency.

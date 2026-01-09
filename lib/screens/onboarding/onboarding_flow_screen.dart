@@ -1128,9 +1128,9 @@ class _WelcomeStep extends HookWidget {
         children: [
           const Spacer(flex: 1),
 
-          // App logo from Figma
+          // App logo
           Image.asset(
-            PngAsset.newAppLogo,
+            PngAsset.newAppLogoCircle,
             height: 120.h,
             width: 120.w,
           )
