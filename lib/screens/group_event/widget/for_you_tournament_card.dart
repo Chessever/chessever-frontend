@@ -16,6 +16,7 @@ class ForYouTournamentCard extends ConsumerWidget {
   const ForYouTournamentCard({
     super.key,
     required this.tourId,
+    required this.groupKey,
     required this.tourName,
     required this.hasLiveGames,
     required this.gameCount,
@@ -23,6 +24,7 @@ class ForYouTournamentCard extends ConsumerWidget {
   });
 
   final String tourId;
+  final String groupKey; // The group_broadcast_id (mapped from tourId) - used for favorite detection
   final String tourName; // Fallback name from games
   final bool hasLiveGames;
   final int gameCount;
@@ -30,8 +32,9 @@ class ForYouTournamentCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // Fetch the actual tournament data
-    final tournamentAsync = ref.watch(_tournamentProvider(tourId));
+    // Fetch the actual tournament data using groupKey (the group_broadcast_id)
+    // This ensures we get the correct umbrella event for favorite detection
+    final tournamentAsync = ref.watch(_tournamentProvider(groupKey));
 
     return tournamentAsync.when(
       data: (tournament) => _buildCard(context, ref, tournament),
@@ -75,11 +78,12 @@ class ForYouTournamentCard extends ConsumerWidget {
   }
 
   Widget _buildFallbackCard(BuildContext context, WidgetRef ref) {
+    // Use groupKey as the ID so EventCard can properly look up favorite players
     final fallbackTournament = GroupBroadcast(
-      id: tourId,
+      id: groupKey,
       name: _formatTournamentName(tourName),
       createdAt: DateTime.now(),
-      search: [tourId, tourName],
+      search: [groupKey, tourId, tourName],
       maxAvgElo: null,
       dateStart: null,
       dateEnd: null,
@@ -121,8 +125,8 @@ class ForYouTournamentCard extends ConsumerWidget {
     HapticFeedbackService.cardTap();
 
     try {
-      // Always resolve via repository so we correctly map tour IDs -> group_broadcast_ids
-      final tournament = await ref.read(_tournamentProvider(tourId).future);
+      // Always resolve via repository using groupKey (group_broadcast_id)
+      final tournament = await ref.read(_tournamentProvider(groupKey).future);
 
       // Set the selected tournament
       ref.read(selectedBroadcastModelProvider.notifier).state = tournament;
@@ -134,18 +138,18 @@ class ForYouTournamentCard extends ConsumerWidget {
         Navigator.pushNamed(context, '/tournament_detail_screen');
       }
     } catch (e) {
-      debugPrint('[ForYouTournamentCard] Error navigating to tournament $tourId: $e');
+      debugPrint('[ForYouTournamentCard] Error navigating to tournament $groupKey: $e');
 
       // Tournament couldn't be resolved; fall back to a minimal tournament so
       // the detail screen still opens with available games.
       if (context.mounted) {
         try {
-          // Create a minimal tournament object with just the ID and name
+          // Create a minimal tournament object with groupKey as ID
           final fallbackTournament = GroupBroadcast(
-            id: tourId,
+            id: groupKey,
             name: _formatTournamentName(tourName),
             createdAt: DateTime.now(),
-            search: [tourId, tourName], // Search terms for the tournament
+            search: [groupKey, tourId, tourName], // Search terms for the tournament
             dateStart: hasLiveGames ? DateTime.now() : null,
             maxAvgElo: null,
             dateEnd: null,
