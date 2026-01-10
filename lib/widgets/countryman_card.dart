@@ -1,3 +1,4 @@
+import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/svg.dart';
@@ -22,17 +23,17 @@ class CountrymanCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: 48,
+      height: 48.h,
       decoration: BoxDecoration(
         color: const Color(0xFF1A1A1C),
         borderRadius: BorderRadius.zero,
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: EdgeInsets.symmetric(horizontal: 16.sp, vertical: 8.sp),
       child: Row(
         children: [
           // Rank number
           SizedBox(
-            width: 24,
+            width: 24.w,
             child: Text(
               '$rank.',
               style: AppTypography.textXsMedium.copyWith(color: Colors.white),
@@ -41,7 +42,7 @@ class CountrymanCard extends StatelessWidget {
 
           // Country flag
           Container(
-            margin: const EdgeInsets.only(right: 8),
+            margin: EdgeInsets.only(right: 8.w),
             child: getCountryFlag(countryCode),
           ),
 
@@ -69,7 +70,7 @@ class CountrymanCard extends StatelessWidget {
 
           // ELO rating - exactly matching the header width
           Container(
-            width: 60,
+            width: 60.w,
             child: Text(
               elo.toString(),
               textAlign: TextAlign.center,
@@ -79,7 +80,7 @@ class CountrymanCard extends StatelessWidget {
 
           // Age - exactly matching the header width
           Container(
-            width: 50,
+            width: 50.w,
             child: Text(
               age.toString(),
               textAlign: TextAlign.center,
@@ -105,43 +106,43 @@ Widget getCountryFlag(String countryCode) {
     case 'NO':
       return Image.network(
         'https://flagcdn.com/w20/no.png',
-        width: 20,
-        height: 14,
+        width: 20.w,
+        height: 14.h,
         errorBuilder:
             (context, error, stackTrace) =>
-                Text('🇳🇴', style: TextStyle(fontSize: 16)),
+                Text('🇳🇴', style: TextStyle(fontSize: 16.sp)),
       );
     case 'US':
       return Image.network(
         'https://flagcdn.com/w20/us.png',
-        width: 20,
-        height: 14,
+        width: 20.w,
+        height: 14.h,
         errorBuilder:
             (context, error, stackTrace) =>
-                Text('🇺🇸', style: TextStyle(fontSize: 16)),
+                Text('🇺🇸', style: TextStyle(fontSize: 16.sp)),
       );
     case 'IN':
       return Image.network(
         'https://flagcdn.com/w20/in.png',
-        width: 20,
-        height: 14,
+        width: 20.w,
+        height: 14.h,
         errorBuilder:
             (context, error, stackTrace) =>
-                Text('🇮🇳', style: TextStyle(fontSize: 16)),
+                Text('🇮🇳', style: TextStyle(fontSize: 16.sp)),
       );
     case 'UZ':
       return Image.network(
         'https://flagcdn.com/w20/uz.png',
-        width: 20,
-        height: 14,
+        width: 20.w,
+        height: 14.h,
         errorBuilder:
             (context, error, stackTrace) =>
-                Text('🇺🇿', style: TextStyle(fontSize: 16)),
+                Text('🇺🇿', style: TextStyle(fontSize: 16.sp)),
       );
     default:
       return Text(
         countryCode,
-        style: TextStyle(fontSize: 12, color: Colors.white),
+        style: TextStyle(fontSize: 12.sp, color: Colors.white),
       );
   }
 }

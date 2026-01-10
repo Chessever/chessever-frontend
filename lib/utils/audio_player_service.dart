@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:audio_session/audio_session.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
 
@@ -78,6 +79,9 @@ class AudioPlayerService with WidgetsBindingObserver {
     }
 
     if (!player.isInitialized) {
+      // Configure audio session to allow mixing with other audio (e.g., music)
+      // This prevents our app from pausing the user's music when playing SFX
+      await _configureAudioSession();
       await SoLoud.instance.init();
     }
 
@@ -132,6 +136,28 @@ class AudioPlayerService with WidgetsBindingObserver {
     await Future.delayed(const Duration(milliseconds: 200));
 
     return completer.future;
+  }
+
+  /// Configure audio session to allow mixing with other audio sources.
+  /// Uses 'ambient' category on iOS which mixes with other audio and
+  /// respects the silent switch. On Android, configures for sound effects.
+  Future<void> _configureAudioSession() async {
+    try {
+      final session = await AudioSession.instance;
+      await session.configure(const AudioSessionConfiguration(
+        avAudioSessionCategory: AVAudioSessionCategory.ambient,
+        avAudioSessionCategoryOptions: AVAudioSessionCategoryOptions.mixWithOthers,
+        avAudioSessionMode: AVAudioSessionMode.defaultMode,
+        androidAudioAttributes: AndroidAudioAttributes(
+          contentType: AndroidAudioContentType.sonification,
+          usage: AndroidAudioUsage.assistanceSonification,
+        ),
+        androidAudioFocusGainType: AndroidAudioFocusGainType.gainTransientMayDuck,
+      ));
+      debugPrint('🎧 AudioPlayerService: Audio session configured for mixing');
+    } catch (e) {
+      debugPrint('⚠️ AudioPlayerService: Failed to configure audio session: $e');
+    }
   }
 
   /// Dispose the native engine to avoid stale handles when the app goes

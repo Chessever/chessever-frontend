@@ -119,6 +119,8 @@ class _AboutTourScreenState extends ConsumerState<AboutTourScreen> {
 
     final domain = aboutModel.extractDomain();
 
+    final horizontalPadding = ResponsiveHelper.adaptive(phone: 20.sp, tablet: 32.sp);
+
     return Scaffold(
       bottomNavigationBar: _buildBottomBar(
         context,
@@ -126,8 +128,11 @@ class _AboutTourScreenState extends ConsumerState<AboutTourScreen> {
         isSkeleton,
         aboutModel,
       ),
-      body: Container(
-        margin: EdgeInsets.symmetric(horizontal: 20.sp),
+      body: Center(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxWidth: ResponsiveHelper.contentMaxWidth),
+          child: Container(
+        margin: EdgeInsets.symmetric(horizontal: horizontalPadding),
         child: SingleChildScrollView(
           padding: EdgeInsets.zero,
           child: Column(
@@ -200,6 +205,8 @@ class _AboutTourScreenState extends ConsumerState<AboutTourScreen> {
               ),
             ],
           ),
+        ),
+      ),
         ),
       ),
     );

@@ -30,7 +30,9 @@ const playerProfileTabNames = {
 
 /// Provider for selected tab
 final selectedPlayerProfileTabProvider =
-    StateProvider.autoDispose<PlayerProfileTab>((ref) => PlayerProfileTab.about);
+    StateProvider.autoDispose<PlayerProfileTab>(
+      (ref) => PlayerProfileTab.about,
+    );
 
 /// Player profile screen showing detailed player information
 /// with three tabs: About, Games, and Events.
@@ -163,9 +165,10 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
   @override
   Widget build(BuildContext context) {
     final selectedTab = ref.watch(selectedPlayerProfileTabProvider);
-    final countryCode = widget.federation != null
-        ? CountryUtils.toIso2Code(widget.federation!) ?? ''
-        : '';
+    final countryCode =
+        widget.federation != null
+            ? CountryUtils.toIso2Code(widget.federation!) ?? ''
+            : '';
 
     // Watch favorites to show correct state
     final favoritesAsync = ref.watch(favoritePlayersNotifierProvider);
@@ -176,56 +179,74 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
 
     return Scaffold(
       backgroundColor: kBackgroundColor,
-      body: Column(
-        children: [
-          SizedBox(height: MediaQuery.of(context).viewPadding.top + 4.h),
-
-          // App bar
-          _buildAppBar(context, countryCode, isFavorite),
-
-          SizedBox(height: 8.h),
-
-          // Tab switcher
-          _buildTabSwitcher(selectedTab),
-
-          // Tab content
-          Expanded(
-            child: PageView.builder(
-              controller: _pageController,
-              itemCount: PlayerProfileTab.values.length,
-              onPageChanged: _handlePageChanged,
-              itemBuilder: (context, index) {
-                switch (PlayerProfileTab.values[index]) {
-                  case PlayerProfileTab.about:
-                    return PlayerAboutTab(
-                      fideId: widget.fideId,
-                      playerName: widget.playerName,
-                      title: widget.title,
-                      federation: widget.federation,
-                      fallbackRating: widget.rating,
-                    );
-                  case PlayerProfileTab.games:
-                    return PlayerGamesTab(
-                      fideId: widget.fideId,
-                      playerName: widget.playerName,
-                    );
-                  case PlayerProfileTab.events:
-                    return PlayerEventsTab(
-                      fideId: widget.fideId,
-                      playerName: widget.playerName,
-                    );
-                }
-              },
-            ),
+      body: Center(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth:
+                ResponsiveHelper.isTablet
+                    ? ResponsiveHelper.contentMaxWidth
+                    : double.infinity,
           ),
-        ],
+          child: Column(
+            children: [
+              SizedBox(height: MediaQuery.of(context).viewPadding.top + 4.h),
+
+              // App bar
+              _buildAppBar(context, countryCode, isFavorite),
+
+              SizedBox(height: 8.h),
+
+              // Tab switcher
+              _buildTabSwitcher(selectedTab),
+
+              // Tab content
+              Expanded(
+                child: PageView.builder(
+                  controller: _pageController,
+                  itemCount: PlayerProfileTab.values.length,
+                  onPageChanged: _handlePageChanged,
+                  itemBuilder: (context, index) {
+                    switch (PlayerProfileTab.values[index]) {
+                      case PlayerProfileTab.about:
+                        return PlayerAboutTab(
+                          fideId: widget.fideId,
+                          playerName: widget.playerName,
+                          title: widget.title,
+                          federation: widget.federation,
+                          fallbackRating: widget.rating,
+                        );
+                      case PlayerProfileTab.games:
+                        return PlayerGamesTab(
+                          fideId: widget.fideId,
+                          playerName: widget.playerName,
+                        );
+                      case PlayerProfileTab.events:
+                        return PlayerEventsTab(
+                          fideId: widget.fideId,
+                          playerName: widget.playerName,
+                        );
+                    }
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
 
-  Widget _buildAppBar(BuildContext context, String countryCode, bool isFavorite) {
+  Widget _buildAppBar(
+    BuildContext context,
+    String countryCode,
+    bool isFavorite,
+  ) {
+    final horizontalPadding = ResponsiveHelper.adaptive(
+      phone: 16.w,
+      tablet: 24.w,
+    );
     return Padding(
-      padding: EdgeInsets.symmetric(horizontal: 16.w),
+      padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
       child: Row(
         children: [
           // Back button
@@ -264,14 +285,17 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
                       ),
                     ),
 
-                  if (countryCode.isNotEmpty || widget.federation?.toUpperCase() == 'FID')
+                  if (countryCode.isNotEmpty ||
+                      widget.federation?.toUpperCase() == 'FID')
                     SizedBox(width: 8.w),
 
                   // Title and name
                   Flexible(
                     child: Text(
                       _formatDisplayName(),
-                      style: AppTypography.textLgBold.copyWith(color: kWhiteColor),
+                      style: AppTypography.textLgBold.copyWith(
+                        color: kWhiteColor,
+                      ),
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
@@ -306,8 +330,12 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
   }
 
   Widget _buildTabSwitcher(PlayerProfileTab selectedTab) {
+    final horizontalPadding = ResponsiveHelper.adaptive(
+      phone: 20.sp,
+      tablet: 32.sp,
+    );
     return Padding(
-      padding: EdgeInsets.symmetric(horizontal: 20.sp),
+      padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
       child: SegmentedSwitcher(
         backgroundColor: kPopUpColor,
         selectedBackgroundColor: kPopUpColor,

@@ -85,7 +85,14 @@ class GamesListView extends ConsumerWidget {
       return const SizedBox.shrink();
     }
 
-    return PositionedListScrollbar(
+    // Tablet-optimized horizontal padding
+    final horizontalPadding = ResponsiveHelper.adaptive(
+      phone: 16.sp,
+      tablet: 24.sp,
+    );
+
+    // Wrap in Center + ConstrainedBox for tablet max-width
+    Widget listContent = PositionedListScrollbar(
       itemPositionsListener: itemPositionsListener,
       itemScrollController: itemScrollController,
       itemCount: itemCount,
@@ -172,13 +179,27 @@ class GamesListView extends ConsumerWidget {
           return const SizedBox.shrink();
         },
         padding: EdgeInsets.only(
-          left: 16.sp,
-          right: 16.sp,
+          left: horizontalPadding,
+          right: horizontalPadding,
           top: 16.sp,
           bottom: MediaQuery.of(context).viewPadding.bottom + 8.sp,
         ),
       ),
     );
+
+    // Apply tablet max-width constraint
+    if (ResponsiveHelper.isTablet) {
+      return Center(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: ResponsiveHelper.contentMaxWidth,
+          ),
+          child: listContent,
+        ),
+      );
+    }
+
+    return listContent;
   }
 
   Widget _buildGridRow(

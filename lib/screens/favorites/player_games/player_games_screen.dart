@@ -69,53 +69,69 @@ class _PlayerGamesScreenState extends ConsumerState<PlayerGamesScreen> {
 
     return Scaffold(
       backgroundColor: kBackgroundColor,
-      body: Column(
-        children: [
-          // Header
-          SizedBox(height: MediaQuery.of(context).viewPadding.top + 16.h),
-          _buildHeader(),
-          SizedBox(height: 16.h),
-
-          // Games content
-          Expanded(
-            child: playerGamesAsync.when(
-              data: (playerGamesState) => _buildContent(playerGamesState),
-              loading: () => _buildLoadingState(),
-              error: (error, stack) {
-                debugPrint('===== PlayerGamesScreen AsyncValue error =====');
-                debugPrint('Error type: ${error.runtimeType}');
-                debugPrint('Error: $error');
-                debugPrint('Stack: $stack');
-                return Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const GenericErrorWidget(),
-                      SizedBox(height: 16.h),
-                      Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 32.sp),
-                        child: Text(
-                          'Error: $error',
-                          style: AppTypography.textSmRegular.copyWith(
-                            color: kWhiteColor.withValues(alpha: 0.7),
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
-                      ),
-                    ],
-                  ),
-                );
-              },
-            ),
+      body: Center(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth:
+                ResponsiveHelper.isTablet
+                    ? ResponsiveHelper.contentMaxWidth
+                    : double.infinity,
           ),
-        ],
+          child: Column(
+            children: [
+              // Header
+              SizedBox(height: MediaQuery.of(context).viewPadding.top + 16.h),
+              _buildHeader(),
+              SizedBox(height: 16.h),
+
+              // Games content
+              Expanded(
+                child: playerGamesAsync.when(
+                  data: (playerGamesState) => _buildContent(playerGamesState),
+                  loading: () => _buildLoadingState(),
+                  error: (error, stack) {
+                    debugPrint(
+                      '===== PlayerGamesScreen AsyncValue error =====',
+                    );
+                    debugPrint('Error type: ${error.runtimeType}');
+                    debugPrint('Error: $error');
+                    debugPrint('Stack: $stack');
+                    return Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const GenericErrorWidget(),
+                          SizedBox(height: 16.h),
+                          Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 32.sp),
+                            child: Text(
+                              'Error: $error',
+                              style: AppTypography.textSmRegular.copyWith(
+                                color: kWhiteColor.withValues(alpha: 0.7),
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
 
   Widget _buildHeader() {
+    final horizontalPadding = ResponsiveHelper.adaptive(
+      phone: 20.sp,
+      tablet: 32.sp,
+    );
     return Padding(
-      padding: EdgeInsets.symmetric(horizontal: 20.sp),
+      padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
       child: Row(
         children: [
           IconButton(

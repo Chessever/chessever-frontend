@@ -70,37 +70,42 @@ class _FavoritesTabScreenState extends ConsumerState<FavoritesTabScreen> {
 
     return Scaffold(
       backgroundColor: kBackgroundColor,
-      body: Column(
-        children: [
-          SizedBox(height: MediaQuery.of(context).viewPadding.top + 4.h),
-          _buildAppBar(context, selectedMode),
-          SizedBox(height: 8.h),
-          _buildSegmentedSwitcher(selectedMode),
-          Expanded(
-            child: PageView.builder(
-              controller: _pageController,
-              itemCount: 3,
-              onPageChanged: _handlePageChanged,
-              itemBuilder: (context, index) {
-                switch (index) {
-                  case 0:
-                    return const FavoritesListTab();
-                  case 1:
-                    return const FavoritesGamesTab();
-                  case 2:
-                    return const FavoritesPlayersTab();
-                  default:
-                    return Center(
-                      child: Text(
-                        'Invalid page index: $index',
-                        style: const TextStyle(color: kWhiteColor),
-                      ),
-                    );
-                }
-              },
-            ),
+      body: Center(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxWidth: ResponsiveHelper.contentMaxWidth),
+          child: Column(
+            children: [
+              SizedBox(height: MediaQuery.of(context).viewPadding.top + 4.h),
+              _buildAppBar(context, selectedMode),
+              SizedBox(height: 8.h),
+              _buildSegmentedSwitcher(selectedMode),
+              Expanded(
+                child: PageView.builder(
+                  controller: _pageController,
+                  itemCount: 3,
+                  onPageChanged: _handlePageChanged,
+                  itemBuilder: (context, index) {
+                    switch (index) {
+                      case 0:
+                        return const FavoritesListTab();
+                      case 1:
+                        return const FavoritesGamesTab();
+                      case 2:
+                        return const FavoritesPlayersTab();
+                      default:
+                        return Center(
+                          child: Text(
+                            'Invalid page index: $index',
+                            style: const TextStyle(color: kWhiteColor),
+                          ),
+                        );
+                    }
+                  },
+                ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
@@ -148,8 +153,9 @@ class _FavoritesTabScreenState extends ConsumerState<FavoritesTabScreen> {
   }
 
   Widget _buildSegmentedSwitcher(FavoritesScreenMode selectedMode) {
+    final horizontalPadding = ResponsiveHelper.adaptive(phone: 20.sp, tablet: 32.sp);
     return Padding(
-      padding: EdgeInsets.symmetric(horizontal: 20.sp),
+      padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
       child: SegmentedSwitcher(
         backgroundColor: kPopUpColor,
         selectedBackgroundColor: kPopUpColor,

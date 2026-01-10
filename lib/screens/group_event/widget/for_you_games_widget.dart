@@ -47,29 +47,7 @@ class ForYouGamesWidget extends ConsumerWidget {
           },
           color: kPrimaryColor,
           backgroundColor: kBlack2Color,
-          child: ListView.builder(
-            key: const PageStorageKey<String>('for_you_events_list'),
-            controller: scrollController,
-            padding: EdgeInsets.symmetric(horizontal: 16.sp, vertical: 16.sp),
-            itemCount: events.length + 1, // +1 for premium cards
-            cacheExtent: 1500,
-            physics: const AlwaysScrollableScrollPhysics(
-              parent: BouncingScrollPhysics(),
-            ),
-            itemBuilder: (context, index) {
-              // Premium collection cards at top
-              if (index == 0) {
-                return const PremiumCollectionCards();
-              }
-
-              final event = events[index - 1];
-              return _ForYouEventSection(
-                key: ValueKey('event_${event.id}'),
-                event: event,
-                isFirst: index == 1,
-              );
-            },
-          ),
+          child: _buildEventsList(events),
         );
       },
       loading: () => _buildLoadingState(),
@@ -88,6 +66,85 @@ class ForYouGamesWidget extends ConsumerWidget {
         const PremiumCollectionCards(),
         ...List.generate(3, (index) => _ForYouEventSkeleton(isFirst: index == 0)),
       ],
+    );
+  }
+
+  Widget _buildEventsList(List<GroupEventCardModel> events) {
+    final isTablet = ResponsiveHelper.isTablet;
+    final horizontalPadding = ResponsiveHelper.adaptive(
+      phone: 16.sp,
+      tablet: 24.sp,
+    );
+
+    // For tablets in landscape, use a two-column layout for events
+    if (isTablet && ResponsiveHelper.isLandscape) {
+      return CustomScrollView(
+        key: const PageStorageKey<String>('for_you_events_list'),
+        controller: scrollController,
+        physics: const AlwaysScrollableScrollPhysics(
+          parent: BouncingScrollPhysics(),
+        ),
+        slivers: [
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: EdgeInsets.symmetric(
+                horizontal: horizontalPadding,
+                vertical: 16.sp,
+              ),
+              child: const PremiumCollectionCards(),
+            ),
+          ),
+          SliverPadding(
+            padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
+            sliver: SliverGrid(
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 2,
+                crossAxisSpacing: 16.sp,
+                mainAxisSpacing: 16.sp,
+                // For event sections with games, use a taller aspect ratio
+                childAspectRatio: 0.8,
+              ),
+              delegate: SliverChildBuilderDelegate(
+                (context, index) {
+                  final event = events[index];
+                  return _ForYouEventSection(
+                    key: ValueKey('event_${event.id}'),
+                    event: event,
+                    isFirst: index == 0,
+                    isTabletGrid: true,
+                  );
+                },
+                childCount: events.length,
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
+    // Phone layout or tablet portrait - use list
+    return ListView.builder(
+      key: const PageStorageKey<String>('for_you_events_list'),
+      controller: scrollController,
+      padding: EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: 16.sp),
+      itemCount: events.length + 1, // +1 for premium cards
+      cacheExtent: 1500,
+      physics: const AlwaysScrollableScrollPhysics(
+        parent: BouncingScrollPhysics(),
+      ),
+      itemBuilder: (context, index) {
+        // Premium collection cards at top
+        if (index == 0) {
+          return const PremiumCollectionCards();
+        }
+
+        final event = events[index - 1];
+        return _ForYouEventSection(
+          key: ValueKey('event_${event.id}'),
+          event: event,
+          isFirst: index == 1,
+        );
+      },
     );
   }
 
@@ -115,10 +172,12 @@ class _ForYouEventSection extends ConsumerWidget {
     super.key,
     required this.event,
     required this.isFirst,
+    this.isTabletGrid = false,
   });
 
   final GroupEventCardModel event;
   final bool isFirst;
+  final bool isTabletGrid;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -127,7 +186,23 @@ class _ForYouEventSection extends ConsumerWidget {
       forYouAnimatedEventIds.add(event.id);
     }
 
-    final section = Column(
+    // For tablet grid mode, use a more compact layout
+    final section = isTabletGrid
+        ? _buildTabletGridSection(context, ref)
+        : _buildListSection(context, ref);
+
+    if (shouldAnimate) {
+      return section
+          .animate()
+          .fadeIn(duration: 200.ms)
+          .slideY(begin: 0.02, end: 0, duration: 200.ms);
+    }
+
+    return section;
+  }
+
+  Widget _buildListSection(BuildContext context, WidgetRef ref) {
+    return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // Event card
@@ -149,23 +224,54 @@ class _ForYouEventSection extends ConsumerWidget {
         _ForYouEventGames(eventId: event.id),
       ],
     );
+  }
 
-    if (shouldAnimate) {
-      return section
-          .animate()
-          .fadeIn(duration: 200.ms)
-          .slideY(begin: 0.02, end: 0, duration: 200.ms);
-    }
+  Widget _buildTabletGridSection(BuildContext context, WidgetRef ref) {
+    // In tablet grid mode, show a card-like container with event header
+    return Container(
+      decoration: BoxDecoration(
+        color: kBlack2Color.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(12.br),
+        border: Border.all(color: kDarkGreyColor.withValues(alpha: 0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Compact event card header
+          Padding(
+            padding: EdgeInsets.all(12.sp),
+            child: EventCard(
+              tourEventCardModel: event,
+              heroTagSuffix: '_foryou_grid',
+              onTap: () {
+                ref.read(groupEventScreenProvider.notifier).onSelectTournament(
+                  context: context,
+                  id: event.id,
+                );
+              },
+            ),
+          ),
 
-    return section;
+          // Games for this event
+          Expanded(
+            child: Padding(
+              padding: EdgeInsets.symmetric(horizontal: 12.sp),
+              child: _ForYouEventGames(eventId: event.id, isCompact: true),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 
 /// Games section for one event - loads lazily with shimmer
 class _ForYouEventGames extends ConsumerWidget {
-  const _ForYouEventGames({required this.eventId});
+  const _ForYouEventGames({required this.eventId, this.isCompact = false});
 
   final String eventId;
+  final bool isCompact;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {

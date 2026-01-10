@@ -1,7 +1,8 @@
 import 'dart:math';
 import 'package:chessever2/providers/event_favorite_players_provider.dart';
 import 'package:chessever2/providers/favorite_events_provider.dart';
-import 'package:chessever2/screens/group_event/widget/search_results_widget.dart' show searchAnimatedEventIds;
+import 'package:chessever2/screens/group_event/widget/search_results_widget.dart'
+    show searchAnimatedEventIds;
 import 'package:chessever2/screens/group_event/widget/all_events_tab_widget.dart';
 import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_provider.dart';
 import 'package:chessever2/screens/group_event/widget/filter_popup/group_event_filter_provider.dart';
@@ -50,12 +51,24 @@ class GroupEventScreen extends HookConsumerWidget {
     final hasActiveSearch = searchQuery.trim().isNotEmpty;
 
     // Determine which categories to show (search tab only appears when searching)
-    final visibleCategories = hasActiveSearch
-        ? [GroupEventCategory.forYou, GroupEventCategory.current, GroupEventCategory.past, GroupEventCategory.search]
-        : [GroupEventCategory.forYou, GroupEventCategory.current, GroupEventCategory.past];
+    final visibleCategories =
+        hasActiveSearch
+            ? [
+              GroupEventCategory.forYou,
+              GroupEventCategory.current,
+              GroupEventCategory.past,
+              GroupEventCategory.search,
+            ]
+            : [
+              GroupEventCategory.forYou,
+              GroupEventCategory.current,
+              GroupEventCategory.past,
+            ];
 
     final pageController = usePageController(
-      initialPage: visibleCategories.indexOf(selectedTourEvent).clamp(0, visibleCategories.length - 1),
+      initialPage: visibleCategories
+          .indexOf(selectedTourEvent)
+          .clamp(0, visibleCategories.length - 1),
     );
     final pastScrollController = useScrollController();
     final currentScrollController = useScrollController();
@@ -73,7 +86,8 @@ class GroupEventScreen extends HookConsumerWidget {
 
     useEffect(() {
       final newIndex = visibleCategories.indexOf(selectedTourEvent);
-      if (newIndex >= 0 && pageController.hasClients &&
+      if (newIndex >= 0 &&
+          pageController.hasClients &&
           pageController.page?.round() != newIndex) {
         isAnimating.value = true;
         pageController
@@ -128,311 +142,355 @@ class GroupEventScreen extends HookConsumerWidget {
       return () => pastScrollController.removeListener(onScroll);
     }, [pastScrollController, selectedTourEvent]);
 
+    final horizontalPadding = ResponsiveHelper.adaptive(
+      phone: 20.sp,
+      tablet: 32.sp,
+    );
+
     return Material(
       color: kBackgroundColor,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          SizedBox(height: 24.h + MediaQuery.of(context).viewPadding.top),
-          Padding(
-            padding: EdgeInsets.symmetric(horizontal: 20.sp),
-            child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 300),
-              switchInCurve: Curves.easeOut,
-              switchOutCurve: Curves.easeIn,
-              transitionBuilder:
-                  (Widget child, Animation<double> animation) => FadeTransition(
-                    opacity: animation,
-                    child: SizeTransition(
-                      sizeFactor: animation,
-                      axis: Axis.horizontal,
-                      child: child,
+      child: Center(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: ResponsiveHelper.contentMaxWidth,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(height: 24.h + MediaQuery.of(context).viewPadding.top),
+              Padding(
+                padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 300),
+                  switchInCurve: Curves.easeOut,
+                  switchOutCurve: Curves.easeIn,
+                  transitionBuilder:
+                      (Widget child, Animation<double> animation) =>
+                          FadeTransition(
+                            opacity: animation,
+                            child: SizeTransition(
+                              sizeFactor: animation,
+                              axis: Axis.horizontal,
+                              child: child,
+                            ),
+                          ),
+                  child: SizedBox(
+                    width: double.infinity,
+                    key: const ValueKey('search_bar'),
+                    child: EnhancedRoundedSearchBar(
+                      focusNode: focusNode,
+                      controller: searchController,
+                      hintText: 'Search',
+                      showProfile: !isSearching.value,
+                      onChanged: (value) {
+                        ref
+                            .read(groupEventScreenProvider.notifier)
+                            .searchForTournament(value, selectedTourEvent);
+                        // Update search tab query
+                        final trimmed = value.trim();
+                        final previousQuery = ref.read(searchTabQueryProvider);
+                        ref.read(searchTabQueryProvider.notifier).state =
+                            trimmed;
+                        if (trimmed.isNotEmpty) {
+                          // Switch to search tab immediately when typing
+                          ref
+                              .read(selectedGroupCategoryProvider.notifier)
+                              .state = GroupEventCategory.search;
+                        } else if (previousQuery.isNotEmpty) {
+                          // Only switch tabs when user actively clears a non-empty search
+                          // (not when tapping on an already empty field)
+                          searchAnimatedEventIds.clear();
+                          ref
+                              .read(selectedGroupCategoryProvider.notifier)
+                              .state = GroupEventCategory.current;
+                          // ignore: unused_result
+                          ref.refresh(groupEventScreenProvider);
+                        }
+                      },
+                      onTournamentSelected:
+                          (t) => ref
+                              .read(groupEventScreenProvider.notifier)
+                              .onSelectTournament(context: context, id: t.id),
+                      onPlayerSelected: (player) {
+                        FocusScope.of(context).unfocus();
+                        searchController.text = player.name;
+                        if (context.mounted) {
+                          ref.read(searchQueryProvider.notifier).state =
+                              player.name;
+                          // Set search tab query - tab appears automatically
+                          ref.read(searchTabQueryProvider.notifier).state =
+                              player.name;
+                          // Switch to search tab
+                          ref
+                              .read(selectedGroupCategoryProvider.notifier)
+                              .state = GroupEventCategory.search;
+                        }
+                      },
+                      onFilterTap:
+                          () => showDialog(
+                            context: context,
+                            // ignore: deprecated_member_use
+                            barrierColor: kBlackColor.withOpacity(0.5),
+                            builder:
+                                (cxt) => FilterPopup(
+                                  onApplyFilters: (filterState) async {
+                                    final filtered = await ref
+                                        .read(groupEventFilterProvider)
+                                        .applyAllFilters(
+                                          filters:
+                                              filterState.formatsAndStates
+                                                  .toList(),
+                                          eloRange: filterState.eloRange,
+                                          tournamentCategory: selectedTourEvent,
+                                        );
+
+                                    ref
+                                        .read(groupEventScreenProvider.notifier)
+                                        .setFilteredModels(filtered);
+                                  },
+                                  onResetFilters: () async {
+                                    await ref
+                                        .read(groupEventScreenProvider.notifier)
+                                        .resetFilters();
+                                  },
+                                ),
+                          ),
+                      onProfileTap:
+                          () => Scaffold.maybeOf(context)?.openDrawer(),
+                      onClearSearchField: () {
+                        // ignore: unused_result
+                        ref.refresh(groupEventScreenProvider);
+                        // Clear search tab state and switch back if on search tab
+                        ref.read(searchTabQueryProvider.notifier).state = '';
+                        searchAnimatedEventIds.clear();
+                        if (selectedTourEvent == GroupEventCategory.search) {
+                          ref
+                              .read(selectedGroupCategoryProvider.notifier)
+                              .state = GroupEventCategory.current;
+                        }
+                      },
                     ),
                   ),
-              child: SizedBox(
-                width: double.infinity,
-                key: const ValueKey('search_bar'),
-                child: EnhancedRoundedSearchBar(
-                  focusNode: focusNode,
-                  controller: searchController,
-                  hintText: 'Search',
-                  showProfile: !isSearching.value,
-                  onChanged: (value) {
-                    ref.read(groupEventScreenProvider.notifier)
-                        .searchForTournament(value, selectedTourEvent);
-                    // Update search tab query
-                    final trimmed = value.trim();
-                    final previousQuery = ref.read(searchTabQueryProvider);
-                    ref.read(searchTabQueryProvider.notifier).state = trimmed;
-                    if (trimmed.isNotEmpty) {
-                      // Switch to search tab immediately when typing
-                      ref.read(selectedGroupCategoryProvider.notifier).state = GroupEventCategory.search;
-                    } else if (previousQuery.isNotEmpty) {
-                      // Only switch tabs when user actively clears a non-empty search
-                      // (not when tapping on an already empty field)
-                      searchAnimatedEventIds.clear();
-                      ref.read(selectedGroupCategoryProvider.notifier).state = GroupEventCategory.current;
-                      // ignore: unused_result
-                      ref.refresh(groupEventScreenProvider);
-                    }
-                  },
-                  onTournamentSelected:
-                      (t) => ref
-                          .read(groupEventScreenProvider.notifier)
-                          .onSelectTournament(context: context, id: t.id),
-                  onPlayerSelected: (player) {
-                    FocusScope.of(context).unfocus();
-                    searchController.text = player.name;
-                    if (context.mounted) {
-                      ref.read(searchQueryProvider.notifier).state = player.name;
-                      // Set search tab query - tab appears automatically
-                      ref.read(searchTabQueryProvider.notifier).state = player.name;
-                      // Switch to search tab
-                      ref.read(selectedGroupCategoryProvider.notifier).state = GroupEventCategory.search;
-                    }
-                  },
-                  onFilterTap:
-                      () => showDialog(
-                        context: context,
-                        // ignore: deprecated_member_use
-                        barrierColor: kBlackColor.withOpacity(0.5),
-                        builder:
-                            (cxt) => FilterPopup(
-                              onApplyFilters: (filterState) async {
-                                final filtered = await ref
-                                    .read(groupEventFilterProvider)
-                                    .applyAllFilters(
-                                      filters:
-                                          filterState.formatsAndStates.toList(),
-                                      eloRange: filterState.eloRange,
-                                      tournamentCategory: selectedTourEvent,
-                                    );
+                ),
+              ),
 
+              SizedBox(height: 16.h),
+              Padding(
+                padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: _SegmentedSwitcher(
+                        searchController: searchController,
+                        selectedTourEvent: selectedTourEvent,
+                        visibleCategories: visibleCategories,
+                        onSelectedChanged: (index) {
+                          final newCategory = visibleCategories[index];
+                          final currentCategory = selectedTourEvent;
+
+                          // If tapping the same tab, scroll to top
+                          if (newCategory == currentCategory) {
+                            ScrollController? controller;
+                            if (newCategory == GroupEventCategory.forYou) {
+                              controller = forYouScrollController;
+                            } else if (newCategory == GroupEventCategory.past) {
+                              controller = pastScrollController;
+                            } else if (newCategory ==
+                                GroupEventCategory.current) {
+                              controller = currentScrollController;
+                            } else if (newCategory ==
+                                GroupEventCategory.search) {
+                              controller = searchScrollController;
+                            }
+
+                            if (controller != null && controller.hasClients) {
+                              controller.animateTo(
+                                0,
+                                duration: const Duration(milliseconds: 300),
+                                curve: Curves.easeOutCubic,
+                              );
+                            }
+                            return; // Don't change category
+                          }
+
+                          ref.invalidate(filterPopupProvider);
+                          ref
+                              .read(selectedGroupCategoryProvider.notifier)
+                              .state = newCategory;
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              SizedBox(height: 12.h),
+              Expanded(
+                child: PageView.builder(
+                  controller: pageController,
+                  itemCount: visibleCategories.length,
+                  onPageChanged: (index) {
+                    if (!isAnimating.value &&
+                        index < visibleCategories.length) {
+                      final newCategory = visibleCategories[index];
+                      ref.read(selectedGroupCategoryProvider.notifier).state =
+                          newCategory;
+                    }
+                  },
+                  itemBuilder: (context, index) {
+                    if (index >= visibleCategories.length) {
+                      return const SizedBox.shrink();
+                    }
+                    final currentCategory = visibleCategories[index];
+                    final isPast = currentCategory == GroupEventCategory.past;
+                    final isCurrent =
+                        currentCategory == GroupEventCategory.current;
+                    final isForYou =
+                        currentCategory == GroupEventCategory.forYou;
+                    final isSearch =
+                        currentCategory == GroupEventCategory.search;
+                    final scrollController =
+                        isPast
+                            ? pastScrollController
+                            : isCurrent
+                            ? currentScrollController
+                            : isForYou
+                            ? forYouScrollController
+                            : isSearch
+                            ? searchScrollController
+                            : null;
+
+                    // Only load data for the currently selected tab
+                    if (currentCategory != selectedTourEvent) {
+                      return const SizedBox.shrink();
+                    }
+
+                    // Special handling for "Search" tab - show search results
+                    if (isSearch) {
+                      return SearchResultsWidget(
+                        scrollController: searchScrollController,
+                        searchQuery: searchQuery,
+                      );
+                    }
+
+                    // Special handling for "For You" tab - show games instead of events
+                    if (isForYou) {
+                      return ForYouGamesWidget(
+                        scrollController: forYouScrollController,
+                      );
+                    }
+
+                    return ref
+                        .watch(groupEventScreenProvider)
+                        .when(
+                          data: (filteredEvents) {
+                            final isLoadingMore =
+                                isPast &&
                                 ref
                                     .read(groupEventScreenProvider.notifier)
-                                    .setFilteredModels(filtered);
-                              },
-                              onResetFilters: () async {
-                                await ref
-                                    .read(groupEventScreenProvider.notifier)
-                                    .resetFilters();
-                              },
-                            ),
-                      ),
-                  onProfileTap: () => Scaffold.maybeOf(context)?.openDrawer(),
-                  onClearSearchField: () {
-                    // ignore: unused_result
-                    ref.refresh(groupEventScreenProvider);
-                    // Clear search tab state and switch back if on search tab
-                    ref.read(searchTabQueryProvider.notifier).state = '';
-                    searchAnimatedEventIds.clear();
-                    if (selectedTourEvent == GroupEventCategory.search) {
-                      ref.read(selectedGroupCategoryProvider.notifier).state = GroupEventCategory.current;
-                    }
+                                    .isFetchingMore;
+
+                            // Get favorites from unified favorites system (Supabase + local cache)
+                            final favoritesAsync = ref.watch(
+                              favoriteEventsProvider,
+                            );
+                            final favoriteEvents =
+                                favoritesAsync.valueOrNull ?? [];
+
+                            // Extract event IDs from favorites
+                            final allFavorites =
+                                favoriteEvents
+                                    .map((e) => e.eventId)
+                                    .where((id) => id.isNotEmpty)
+                                    .toList();
+
+                            // Build timestamp map for sorting within groups
+                            final favoriteTimestamps = <String, DateTime>{};
+                            for (final fav in favoriteEvents) {
+                              favoriteTimestamps[fav.eventId] = fav.createdAt;
+                            }
+
+                            final isSearching =
+                                searchController.text.trim().isNotEmpty;
+
+                            // Get cached favorite player data (populated by event cards as they render)
+                            final cachedEventFavoritePlayers = ref.watch(
+                              eventFavoritePlayersCacheProvider,
+                            );
+
+                            // Disable favorite prioritization for past events
+                            final shouldApplyFavoriteSorting =
+                                currentCategory != GroupEventCategory.past;
+
+                            final finalEvents =
+                                isSearching || !shouldApplyFavoriteSorting
+                                    ? filteredEvents
+                                    : ref
+                                        .read(tournamentSortingServiceProvider)
+                                        .sortBasedOnFavorite(
+                                          tours: filteredEvents,
+                                          favorites: allFavorites,
+                                          eventFavoritePlayersMap:
+                                              cachedEventFavoritePlayers,
+                                          favoriteTimestamps:
+                                              favoriteTimestamps,
+                                        );
+
+                            return RefreshIndicator(
+                              onRefresh:
+                                  ref.read(homeScreenProvider).onPullRefresh,
+                              color: kWhiteColor70,
+                              backgroundColor: kDarkGreyColor,
+                              displacement: 60.h,
+                              strokeWidth: 3.w,
+                              child: AllEventsTabWidget(
+                                filteredEvents: finalEvents,
+                                onSelect:
+                                    (tourEventCardModel) => ref
+                                        .read(groupEventScreenProvider.notifier)
+                                        .onSelectTournament(
+                                          context: context,
+                                          id: tourEventCardModel.id,
+                                        ),
+                                isLoadingMore: isLoadingMore,
+                                scrollController: scrollController,
+                              ),
+                            );
+                          },
+                          loading:
+                              () => SkeletonWidget(
+                                child: AllEventsTabWidget(
+                                  onSelect: (_) {},
+                                  filteredEvents: List.generate(
+                                    10,
+                                    (index) => GroupEventCardModel(
+                                      id: 'tour_001',
+                                      title: 'World Chess Championship 2025',
+                                      dates: 'Mar 15 - 25,2025',
+                                      timeUntilStart: 'Starts in 8 months',
+                                      tourEventCategory:
+                                          TourEventCategory.values[Random()
+                                              .nextInt(
+                                                TourEventCategory.values.length,
+                                              )],
+                                      maxAvgElo: 0,
+                                      timeControl: 'Standard',
+                                      endDate: null,
+                                      startDate: null,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                          error:
+                              (error, stackTrace) => const GenericErrorWidget(),
+                        );
                   },
                 ),
               ),
-            ),
+            ],
           ),
-
-          SizedBox(height: 16.h),
-          Padding(
-            padding: EdgeInsets.symmetric(horizontal: 20.sp),
-            child: Row(
-              children: [
-                Expanded(
-                  child: _SegmentedSwitcher(
-                    searchController: searchController,
-                    selectedTourEvent: selectedTourEvent,
-                    visibleCategories: visibleCategories,
-                    onSelectedChanged: (index) {
-                      final newCategory = visibleCategories[index];
-                      final currentCategory = selectedTourEvent;
-
-                      // If tapping the same tab, scroll to top
-                      if (newCategory == currentCategory) {
-                        ScrollController? controller;
-                        if (newCategory == GroupEventCategory.forYou) {
-                          controller = forYouScrollController;
-                        } else if (newCategory == GroupEventCategory.past) {
-                          controller = pastScrollController;
-                        } else if (newCategory == GroupEventCategory.current) {
-                          controller = currentScrollController;
-                        } else if (newCategory == GroupEventCategory.search) {
-                          controller = searchScrollController;
-                        }
-
-                        if (controller != null && controller.hasClients) {
-                          controller.animateTo(
-                            0,
-                            duration: const Duration(milliseconds: 300),
-                            curve: Curves.easeOutCubic,
-                          );
-                        }
-                        return; // Don't change category
-                      }
-
-                      ref.invalidate(filterPopupProvider);
-                      ref.read(selectedGroupCategoryProvider.notifier).state =
-                          newCategory;
-                    },
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          SizedBox(height: 12.h),
-          Expanded(
-            child: PageView.builder(
-              controller: pageController,
-              itemCount: visibleCategories.length,
-              onPageChanged: (index) {
-                if (!isAnimating.value && index < visibleCategories.length) {
-                  final newCategory = visibleCategories[index];
-                  ref.read(selectedGroupCategoryProvider.notifier).state =
-                      newCategory;
-                }
-              },
-              itemBuilder: (context, index) {
-                if (index >= visibleCategories.length) {
-                  return const SizedBox.shrink();
-                }
-                final currentCategory = visibleCategories[index];
-                final isPast = currentCategory == GroupEventCategory.past;
-                final isCurrent = currentCategory == GroupEventCategory.current;
-                final isForYou = currentCategory == GroupEventCategory.forYou;
-                final isSearch = currentCategory == GroupEventCategory.search;
-                final scrollController = isPast
-                    ? pastScrollController
-                    : isCurrent
-                        ? currentScrollController
-                        : isForYou
-                            ? forYouScrollController
-                            : isSearch
-                                ? searchScrollController
-                                : null;
-
-                // Only load data for the currently selected tab
-                if (currentCategory != selectedTourEvent) {
-                  return const SizedBox.shrink();
-                }
-
-                // Special handling for "Search" tab - show search results
-                if (isSearch) {
-                  return SearchResultsWidget(
-                    scrollController: searchScrollController,
-                    searchQuery: searchQuery,
-                  );
-                }
-
-                // Special handling for "For You" tab - show games instead of events
-                if (isForYou) {
-                  return ForYouGamesWidget(
-                    scrollController: forYouScrollController,
-                  );
-                }
-
-                return ref
-                    .watch(groupEventScreenProvider)
-                    .when(
-                      data: (filteredEvents) {
-                        final isLoadingMore =
-                            isPast &&
-                            ref
-                                .read(groupEventScreenProvider.notifier)
-                                .isFetchingMore;
-
-                        // Get favorites from unified favorites system (Supabase + local cache)
-                        final favoritesAsync = ref.watch(favoriteEventsProvider);
-                        final favoriteEvents = favoritesAsync.valueOrNull ?? [];
-
-                        // Extract event IDs from favorites
-                        final allFavorites = favoriteEvents
-                            .map((e) => e.eventId)
-                            .where((id) => id.isNotEmpty)
-                            .toList();
-
-                        // Build timestamp map for sorting within groups
-                        final favoriteTimestamps = <String, DateTime>{};
-                        for (final fav in favoriteEvents) {
-                          favoriteTimestamps[fav.eventId] = fav.createdAt;
-                        }
-
-                        final isSearching =
-                            searchController.text.trim().isNotEmpty;
-
-                        // Get cached favorite player data (populated by event cards as they render)
-                        final cachedEventFavoritePlayers =
-                            ref.watch(eventFavoritePlayersCacheProvider);
-
-                        // Disable favorite prioritization for past events
-                        final shouldApplyFavoriteSorting =
-                            currentCategory != GroupEventCategory.past;
-
-                        final finalEvents =
-                            isSearching || !shouldApplyFavoriteSorting
-                                ? filteredEvents
-                                : ref
-                                    .read(tournamentSortingServiceProvider)
-                                    .sortBasedOnFavorite(
-                                      tours: filteredEvents,
-                                      favorites: allFavorites,
-                                      eventFavoritePlayersMap:
-                                          cachedEventFavoritePlayers,
-                                      favoriteTimestamps: favoriteTimestamps,
-                                    );
-
-                        return RefreshIndicator(
-                          onRefresh: ref.read(homeScreenProvider).onPullRefresh,
-                          color: kWhiteColor70,
-                          backgroundColor: kDarkGreyColor,
-                          displacement: 60.h,
-                          strokeWidth: 3.w,
-                          child: AllEventsTabWidget(
-                            filteredEvents: finalEvents,
-                            onSelect:
-                                (tourEventCardModel) => ref
-                                    .read(groupEventScreenProvider.notifier)
-                                    .onSelectTournament(
-                                      context: context,
-                                      id: tourEventCardModel.id,
-                                    ),
-                            isLoadingMore: isLoadingMore,
-                            scrollController: scrollController,
-                          ),
-                        );
-                      },
-                      loading:
-                          () => SkeletonWidget(
-                            child: AllEventsTabWidget(
-                              onSelect: (_) {},
-                              filteredEvents: List.generate(
-                                10,
-                                (index) => GroupEventCardModel(
-                                  id: 'tour_001',
-                                  title: 'World Chess Championship 2025',
-                                  dates: 'Mar 15 - 25,2025',
-                                  timeUntilStart: 'Starts in 8 months',
-                                  tourEventCategory:
-                                      TourEventCategory.values[Random().nextInt(
-                                        TourEventCategory.values.length,
-                                      )],
-                                  maxAvgElo: 0,
-                                  timeControl: 'Standard',
-                                  endDate: null,
-                                  startDate: null,
-                                ),
-                              ),
-                            ),
-                          ),
-                      error: (error, stackTrace) => const GenericErrorWidget(),
-                    );
-              },
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -460,10 +518,13 @@ class _SegmentedSwitcher extends ConsumerWidget {
     if (query.isEmpty) return query;
 
     // Apply title case: capitalize first letter of each word
-    final titleCased = query.split(' ').map((word) {
-      if (word.isEmpty) return word;
-      return word[0].toUpperCase() + word.substring(1).toLowerCase();
-    }).join(' ');
+    final titleCased = query
+        .split(' ')
+        .map((word) {
+          if (word.isEmpty) return word;
+          return word[0].toUpperCase() + word.substring(1).toLowerCase();
+        })
+        .join(' ');
 
     // If it fits, return as-is
     if (titleCased.length <= maxLength) {
@@ -498,32 +559,38 @@ class _SegmentedSwitcher extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    ref.watch(searchQueryProvider);  // Watch to trigger rebuilds
+    ref.watch(searchQueryProvider); // Watch to trigger rebuilds
     final searchTabQuery = ref.watch(searchTabQueryProvider);
 
-    final options = visibleCategories.map((category) {
-      if (category == GroupEventCategory.search && searchTabQuery.isNotEmpty) {
-        return _formatSearchTabTitle(searchTabQuery);
-      }
-      return _mappedName[category]!;
-    }).toList();
+    final options =
+        visibleCategories.map((category) {
+          if (category == GroupEventCategory.search &&
+              searchTabQuery.isNotEmpty) {
+            return _formatSearchTabTitle(searchTabQuery);
+          }
+          return _mappedName[category]!;
+        }).toList();
 
-    final optionLabels = visibleCategories.map((category) {
-      String baseLabel;
-      if (category == GroupEventCategory.search && searchTabQuery.isNotEmpty) {
-        baseLabel = _formatSearchTabTitle(searchTabQuery);
-      } else {
-        baseLabel = _mappedName[category]!;
-      }
-      return Text(baseLabel);
-    }).toList();
+    final optionLabels =
+        visibleCategories.map((category) {
+          String baseLabel;
+          if (category == GroupEventCategory.search &&
+              searchTabQuery.isNotEmpty) {
+            baseLabel = _formatSearchTabTitle(searchTabQuery);
+          } else {
+            baseLabel = _mappedName[category]!;
+          }
+          return Text(baseLabel);
+        }).toList();
 
     return SegmentedSwitcher(
       backgroundColor: kBlackColor,
       selectedBackgroundColor: kBlackColor,
       options: options,
       optionLabels: optionLabels,
-      currentSelection: visibleCategories.indexOf(selectedTourEvent).clamp(0, visibleCategories.length - 1),
+      currentSelection: visibleCategories
+          .indexOf(selectedTourEvent)
+          .clamp(0, visibleCategories.length - 1),
       onSelectionChanged: onSelectedChanged,
     );
   }

@@ -70,11 +70,27 @@ class OnboardingFlowScreen extends HookConsumerWidget {
             // Progress indicator at top
             Positioned(
               top: topPadding + 16.h,
-              left: 24.w,
-              right: 24.w,
-              child: _PageIndicator(
-                currentPage: currentPage.value,
-                totalPages: totalPages,
+              left: 0,
+              right: 0,
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxWidth:
+                        ResponsiveHelper.isTablet ? 500.0 : double.infinity,
+                  ),
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: ResponsiveHelper.adaptive(
+                        phone: 24.w,
+                        tablet: 32.w,
+                      ),
+                    ),
+                    child: _PageIndicator(
+                      currentPage: currentPage.value,
+                      totalPages: totalPages,
+                    ),
+                  ),
+                ),
               ),
             ),
 
@@ -97,7 +113,9 @@ class OnboardingFlowScreen extends HookConsumerWidget {
                                   Supabase.instance.client.auth.currentUser?.id,
                             );
                         if (kDebugMode) {
-                          debugPrint('[Onboarding] Marked as seen before auth navigation');
+                          debugPrint(
+                            '[Onboarding] Marked as seen before auth navigation',
+                          );
                         }
                       } catch (e) {
                         if (kDebugMode) {
@@ -119,7 +137,11 @@ class OnboardingFlowScreen extends HookConsumerWidget {
                     bottomPadding: bottomPadding,
                   ),
                   Padding(
-                    padding: EdgeInsets.only(top: topPadding + 60.h),
+                    padding: EdgeInsets.only(
+                      top: topPadding + 60.h,
+                      left: ResponsiveHelper.isTablet ? 16.w : 0,
+                      right: ResponsiveHelper.isTablet ? 16.w : 0,
+                    ),
                     child: PlayerSelectionContent(
                       title: 'Pick your favorites',
                       subtitle: 'Follow 3+ players to personalize your feed',
@@ -142,7 +164,9 @@ class OnboardingFlowScreen extends HookConsumerWidget {
                       bottomPadding: bottomPadding,
                       onSignIn: () async {
                         // Request notification permission on last page of onboarding
-                        unawaited(NotificationService.requestPermissionWithDialog());
+                        unawaited(
+                          NotificationService.requestPermissionWithDialog(),
+                        );
 
                         // Mark onboarding as seen BEFORE navigating to auth
                         // This ensures user won't see onboarding again after signing in
@@ -153,21 +177,34 @@ class OnboardingFlowScreen extends HookConsumerWidget {
                               .read(onboardingRepositoryProvider)
                               .markAsSeen(
                                 userId:
-                                    Supabase.instance.client.auth.currentUser?.id,
+                                    Supabase
+                                        .instance
+                                        .client
+                                        .auth
+                                        .currentUser
+                                        ?.id,
                               );
                           if (kDebugMode) {
-                            debugPrint('[Onboarding] Marked as seen before auth navigation');
+                            debugPrint(
+                              '[Onboarding] Marked as seen before auth navigation',
+                            );
                           }
                         } catch (e) {
                           if (kDebugMode) {
-                            debugPrint('[Onboarding] Failed to mark as seen: $e');
+                            debugPrint(
+                              '[Onboarding] Failed to mark as seen: $e',
+                            );
                           }
                         }
                         if (context.mounted) {
-                          Navigator.pushReplacementNamed(context, '/auth_screen');
+                          Navigator.pushReplacementNamed(
+                            context,
+                            '/auth_screen',
+                          );
                         }
                       },
-                      onContinueAsGuest: () => markOnboardingComplete(context, ref),
+                      onContinueAsGuest:
+                          () => markOnboardingComplete(context, ref),
                     ),
                 ],
               ),
@@ -198,132 +235,151 @@ class _AuthStep extends HookWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.fromLTRB(24.w, topPadding + 50.h, 24.w, bottomPadding + 8.h),
-      child: Column(
-        children: [
-          // Top content - scrollable if needed but designed to fit
-          Expanded(
-            child: Column(
-              children: [
-                SizedBox(height: 8.h),
+    // Tablet-specific constraints
+    final horizontalPadding = ResponsiveHelper.adaptive(
+      phone: 24.w,
+      tablet: 32.w,
+    );
+    final maxWidth = ResponsiveHelper.isTablet ? 500.0 : double.infinity;
 
-                // Lock icon with glow - smaller size
-                _UnlockVisual()
-                    .animate()
-                    .fadeIn(duration: 600.ms, curve: _gentleSpring)
-                    .scale(
-                      begin: const Offset(0.8, 0.8),
-                      end: const Offset(1, 1),
-                      duration: 700.ms,
-                      curve: _smoothSpring,
-                    ),
-
-                SizedBox(height: 16.h),
-
-                // Title
-                Text(
-                  'Unlock the full\nexperience',
-                  textAlign: TextAlign.center,
-                  style: AppTypography.displayXsBold.copyWith(
-                    color: kWhiteColor,
-                    height: 1.2,
-                  ),
-                )
-                    .animate(delay: 200.ms)
-                    .fadeIn(duration: 500.ms, curve: _smoothSpring)
-                    .move(begin: const Offset(0, 16), curve: _smoothSpring),
-
-                SizedBox(height: 6.h),
-
-                Text(
-                  'Create an account to access all features',
-                  textAlign: TextAlign.center,
-                  style: AppTypography.textSmRegular.copyWith(
-                    color: kWhiteColor.withValues(alpha: 0.6),
-                  ),
-                )
-                    .animate(delay: 300.ms)
-                    .fadeIn(duration: 500.ms, curve: _smoothSpring),
-
-                SizedBox(height: 16.h),
-
-                // FOMO feature list
-                Expanded(
-                  child: _FeaturesList()
-                      .animate(delay: 400.ms)
-                      .fadeIn(duration: 500.ms, curve: _smoothSpring)
-                      .move(begin: const Offset(0, 20), curve: _smoothSpring),
-                ),
-              ],
-            ),
+    return Center(
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: maxWidth),
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(
+            horizontalPadding,
+            topPadding + 50.h,
+            horizontalPadding,
+            bottomPadding + 8.h,
           ),
-
-          // Bottom buttons - fixed at bottom
-          Column(
-            mainAxisSize: MainAxisSize.min,
+          child: Column(
             children: [
-              SizedBox(height: 12.h),
+              // Top content - scrollable if needed but designed to fit
+              Expanded(
+                child: Column(
+                  children: [
+                    SizedBox(height: 8.h),
 
-              // Sign in button (primary)
-              _PrimaryButton(
-                label: 'Create free account',
-                onTap: onSignIn,
-              )
-                  .animate(delay: 600.ms)
-                  .fadeIn(duration: 400.ms, curve: _smoothSpring)
-                  .move(begin: const Offset(0, 30), curve: _smoothSpring),
+                    // Lock icon with glow - smaller size
+                    _UnlockVisual()
+                        .animate()
+                        .fadeIn(duration: 600.ms, curve: _gentleSpring)
+                        .scale(
+                          begin: const Offset(0.8, 0.8),
+                          end: const Offset(1, 1),
+                          duration: 700.ms,
+                          curve: _smoothSpring,
+                        ),
 
-              SizedBox(height: 10.h),
+                    SizedBox(height: 16.h),
 
-              // Continue as guest (secondary)
-              _SecondaryButton(
-                label: 'Continue without account',
-                onTap: onContinueAsGuest,
-              )
-                  .animate(delay: 700.ms)
-                  .fadeIn(duration: 400.ms, curve: _smoothSpring),
+                    // Title
+                    Text(
+                          'Unlock the full\nexperience',
+                          textAlign: TextAlign.center,
+                          style: AppTypography.displayXsBold.copyWith(
+                            color: kWhiteColor,
+                            height: 1.2,
+                          ),
+                        )
+                        .animate(delay: 200.ms)
+                        .fadeIn(duration: 500.ms, curve: _smoothSpring)
+                        .move(begin: const Offset(0, 16), curve: _smoothSpring),
 
-              SizedBox(height: 10.h),
+                    SizedBox(height: 6.h),
 
-              // Warning note
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.warning_amber_rounded,
-                    size: 14.ic,
-                    color: const Color(0xFFFFAA00).withValues(alpha: 0.7),
-                  ),
-                  SizedBox(width: 6.w),
-                  Text(
-                    'Guest data can\'t be recovered if lost',
-                    style: AppTypography.textXsRegular.copyWith(
-                      color: kWhiteColor.withValues(alpha: 0.5),
+                    Text(
+                          'Create an account to access all features',
+                          textAlign: TextAlign.center,
+                          style: AppTypography.textSmRegular.copyWith(
+                            color: kWhiteColor.withValues(alpha: 0.6),
+                          ),
+                        )
+                        .animate(delay: 300.ms)
+                        .fadeIn(duration: 500.ms, curve: _smoothSpring),
+
+                    SizedBox(height: 16.h),
+
+                    // FOMO feature list
+                    Expanded(
+                      child: _FeaturesList()
+                          .animate(delay: 400.ms)
+                          .fadeIn(duration: 500.ms, curve: _smoothSpring)
+                          .move(
+                            begin: const Offset(0, 20),
+                            curve: _smoothSpring,
+                          ),
                     ),
-                  ),
-                ],
-              )
-                  .animate(delay: 800.ms)
-                  .fadeIn(duration: 400.ms, curve: _smoothSpring),
-
-              SizedBox(height: 12.h),
-
-              // "I have an account" link
-              GestureDetector(
-                onTap: onSignIn,
-                child: Text(
-                  'I already have an account',
-                  style: AppTypography.textSmMedium.copyWith(
-                    color: kPrimaryColor,
-                  ),
+                  ],
                 ),
-              )
-                  .animate(delay: 900.ms)
-                  .fadeIn(duration: 400.ms, curve: _smoothSpring),
+              ),
+
+              // Bottom buttons - fixed at bottom
+              Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SizedBox(height: 12.h),
+
+                  // Sign in button (primary)
+                  _PrimaryButton(label: 'Create free account', onTap: onSignIn)
+                      .animate(delay: 600.ms)
+                      .fadeIn(duration: 400.ms, curve: _smoothSpring)
+                      .move(begin: const Offset(0, 30), curve: _smoothSpring),
+
+                  SizedBox(height: 10.h),
+
+                  // Continue as guest (secondary)
+                  _SecondaryButton(
+                        label: 'Continue without account',
+                        onTap: onContinueAsGuest,
+                      )
+                      .animate(delay: 700.ms)
+                      .fadeIn(duration: 400.ms, curve: _smoothSpring),
+
+                  SizedBox(height: 10.h),
+
+                  // Warning note
+                  Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.warning_amber_rounded,
+                            size: 14.ic,
+                            color: const Color(
+                              0xFFFFAA00,
+                            ).withValues(alpha: 0.7),
+                          ),
+                          SizedBox(width: 6.w),
+                          Text(
+                            'Guest data can\'t be recovered if lost',
+                            style: AppTypography.textXsRegular.copyWith(
+                              color: kWhiteColor.withValues(alpha: 0.5),
+                            ),
+                          ),
+                        ],
+                      )
+                      .animate(delay: 800.ms)
+                      .fadeIn(duration: 400.ms, curve: _smoothSpring),
+
+                  SizedBox(height: 12.h),
+
+                  // "I have an account" link
+                  GestureDetector(
+                        onTap: onSignIn,
+                        child: Text(
+                          'I already have an account',
+                          style: AppTypography.textSmMedium.copyWith(
+                            color: kPrimaryColor,
+                          ),
+                        ),
+                      )
+                      .animate(delay: 900.ms)
+                      .fadeIn(duration: 400.ms, curve: _smoothSpring),
+                ],
+              ),
             ],
           ),
-        ],
+        ),
       ),
     );
   }
@@ -432,9 +488,7 @@ class _FeaturesList extends StatelessWidget {
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(16.br),
         color: kBlack2Color.withValues(alpha: 0.5),
-        border: Border.all(
-          color: kWhiteColor.withValues(alpha: 0.06),
-        ),
+        border: Border.all(color: kWhiteColor.withValues(alpha: 0.06)),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -451,7 +505,9 @@ class _FeaturesList extends StatelessWidget {
             final index = entry.key;
             final feature = entry.value;
             return Padding(
-              padding: EdgeInsets.only(bottom: index < features.length - 1 ? 8.h : 0),
+              padding: EdgeInsets.only(
+                bottom: index < features.length - 1 ? 8.h : 0,
+              ),
               child: feature,
             );
           }),
@@ -486,13 +542,7 @@ class _FeatureItem extends StatelessWidget {
             borderRadius: BorderRadius.circular(8.br),
             color: color.withValues(alpha: 0.15),
           ),
-          child: Center(
-            child: Icon(
-              icon,
-              size: 18.ic,
-              color: color,
-            ),
-          ),
+          child: Center(child: Icon(icon, size: 18.ic, color: color)),
         ),
         SizedBox(width: 10.w),
         // Text
@@ -503,9 +553,7 @@ class _FeatureItem extends StatelessWidget {
             children: [
               Text(
                 title,
-                style: AppTypography.textSmMedium.copyWith(
-                  color: kWhiteColor,
-                ),
+                style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
               ),
               Text(
                 subtitle,
@@ -528,10 +576,7 @@ class _FeatureItem extends StatelessWidget {
 }
 
 class _SecondaryButton extends HookWidget {
-  const _SecondaryButton({
-    required this.label,
-    required this.onTap,
-  });
+  const _SecondaryButton({required this.label, required this.onTap});
 
   final String label;
   final VoidCallback onTap;
@@ -557,9 +602,7 @@ class _SecondaryButton extends HookWidget {
           height: 48.h,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(14.br),
-            border: Border.all(
-              color: kWhiteColor.withValues(alpha: 0.15),
-            ),
+            border: Border.all(color: kWhiteColor.withValues(alpha: 0.15)),
           ),
           child: Center(
             child: Text(
@@ -628,173 +671,204 @@ class _AuthenticatedUserStep extends HookWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.fromLTRB(24.w, topPadding + 60.h, 24.w, 16.h),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          return SingleChildScrollView(
-            physics: const BouncingScrollPhysics(),
-            child: ConstrainedBox(
-              constraints: BoxConstraints(minHeight: constraints.maxHeight),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  // Top content
-                  Column(
+    // Tablet-specific constraints
+    final horizontalPadding = ResponsiveHelper.adaptive(
+      phone: 24.w,
+      tablet: 32.w,
+    );
+    final maxWidth = ResponsiveHelper.isTablet ? 500.0 : double.infinity;
+
+    return Center(
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: maxWidth),
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(
+            horizontalPadding,
+            topPadding + 60.h,
+            horizontalPadding,
+            16.h,
+          ),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              return SingleChildScrollView(
+                physics: const BouncingScrollPhysics(),
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      SizedBox(height: 32.h),
+                      // Top content
+                      Column(
+                        children: [
+                          SizedBox(height: 32.h),
 
-                      // User avatar with glow
-                      _UserAvatarVisual(
-                        avatarUrl: _avatarUrl,
-                        initials: _initials,
-                      )
-                          .animate()
-                          .fadeIn(duration: 600.ms, curve: _gentleSpring)
-                          .scale(
-                            begin: const Offset(0.8, 0.8),
-                            end: const Offset(1, 1),
-                            duration: 700.ms,
-                            curve: _smoothSpring,
-                          ),
-
-                      SizedBox(height: 32.h),
-
-                      // Welcome message
-                      Text(
-                        'Welcome back,',
-                        textAlign: TextAlign.center,
-                        style: AppTypography.textMdRegular.copyWith(
-                          color: kWhiteColor.withValues(alpha: 0.6),
-                        ),
-                      )
-                          .animate(delay: 200.ms)
-                          .fadeIn(duration: 500.ms, curve: _smoothSpring),
-
-                      SizedBox(height: 4.h),
-
-                      Text(
-                        _displayName,
-                        textAlign: TextAlign.center,
-                        style: AppTypography.displayXsBold.copyWith(
-                          color: kWhiteColor,
-                          height: 1.2,
-                        ),
-                      )
-                          .animate(delay: 300.ms)
-                          .fadeIn(duration: 500.ms, curve: _smoothSpring)
-                          .move(begin: const Offset(0, 16), curve: _smoothSpring),
-
-                      SizedBox(height: 24.h),
-
-                      // Confirmation text
-                      Container(
-                        padding: EdgeInsets.symmetric(horizontal: 20.sp, vertical: 16.sp),
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(16.br),
-                          color: kGreenColor.withValues(alpha: 0.08),
-                          border: Border.all(
-                            color: kGreenColor.withValues(alpha: 0.2),
-                          ),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Container(
-                              width: 32.w,
-                              height: 32.h,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: kGreenColor.withValues(alpha: 0.15),
+                          // User avatar with glow
+                          _UserAvatarVisual(
+                                avatarUrl: _avatarUrl,
+                                initials: _initials,
+                              )
+                              .animate()
+                              .fadeIn(duration: 600.ms, curve: _gentleSpring)
+                              .scale(
+                                begin: const Offset(0.8, 0.8),
+                                end: const Offset(1, 1),
+                                duration: 700.ms,
+                                curve: _smoothSpring,
                               ),
-                              child: Icon(
-                                Icons.check_rounded,
-                                size: 18.ic,
-                                color: kGreenColor,
+
+                          SizedBox(height: 32.h),
+
+                          // Welcome message
+                          Text(
+                                'Welcome back,',
+                                textAlign: TextAlign.center,
+                                style: AppTypography.textMdRegular.copyWith(
+                                  color: kWhiteColor.withValues(alpha: 0.6),
+                                ),
+                              )
+                              .animate(delay: 200.ms)
+                              .fadeIn(duration: 500.ms, curve: _smoothSpring),
+
+                          SizedBox(height: 4.h),
+
+                          Text(
+                                _displayName,
+                                textAlign: TextAlign.center,
+                                style: AppTypography.displayXsBold.copyWith(
+                                  color: kWhiteColor,
+                                  height: 1.2,
+                                ),
+                              )
+                              .animate(delay: 300.ms)
+                              .fadeIn(duration: 500.ms, curve: _smoothSpring)
+                              .move(
+                                begin: const Offset(0, 16),
+                                curve: _smoothSpring,
                               ),
-                            ),
-                            SizedBox(width: 12.w),
-                            Flexible(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    'Your preferences are saved',
-                                    style: AppTypography.textSmMedium.copyWith(
-                                      color: kWhiteColor,
-                                    ),
+
+                          SizedBox(height: 24.h),
+
+                          // Confirmation text
+                          Container(
+                                padding: EdgeInsets.symmetric(
+                                  horizontal: 20.sp,
+                                  vertical: 16.sp,
+                                ),
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(16.br),
+                                  color: kGreenColor.withValues(alpha: 0.08),
+                                  border: Border.all(
+                                    color: kGreenColor.withValues(alpha: 0.2),
                                   ),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Container(
+                                      width: 32.w,
+                                      height: 32.h,
+                                      decoration: BoxDecoration(
+                                        shape: BoxShape.circle,
+                                        color: kGreenColor.withValues(
+                                          alpha: 0.15,
+                                        ),
+                                      ),
+                                      child: Icon(
+                                        Icons.check_rounded,
+                                        size: 18.ic,
+                                        color: kGreenColor,
+                                      ),
+                                    ),
+                                    SizedBox(width: 12.w),
+                                    Flexible(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            'Your preferences are saved',
+                                            style: AppTypography.textSmMedium
+                                                .copyWith(color: kWhiteColor),
+                                          ),
+                                          Text(
+                                            'Synced across all your devices',
+                                            style: AppTypography.textXsRegular
+                                                .copyWith(
+                                                  color: kWhiteColor.withValues(
+                                                    alpha: 0.5,
+                                                  ),
+                                                ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              )
+                              .animate(delay: 450.ms)
+                              .fadeIn(duration: 500.ms, curve: _smoothSpring)
+                              .move(
+                                begin: const Offset(0, 20),
+                                curve: _smoothSpring,
+                              ),
+                        ],
+                      ),
+
+                      // Bottom button
+                      Column(
+                        children: [
+                          SizedBox(height: 24.h),
+
+                          // Continue button
+                          _PrimaryButton(
+                                label: 'Continue to Chessever',
+                                onTap: onContinue,
+                              )
+                              .animate(delay: 600.ms)
+                              .fadeIn(duration: 400.ms, curve: _smoothSpring)
+                              .move(
+                                begin: const Offset(0, 30),
+                                curve: _smoothSpring,
+                              ),
+
+                          SizedBox(height: 16.h),
+
+                          // Subtle app branding
+                          Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Image.asset(
+                                    PngAsset.newAppLogoCircle,
+                                    height: 20.h,
+                                    width: 20.w,
+                                  ),
+                                  SizedBox(width: 8.w),
                                   Text(
-                                    'Synced across all your devices',
+                                    'Your chess journey continues',
                                     style: AppTypography.textXsRegular.copyWith(
-                                      color: kWhiteColor.withValues(alpha: 0.5),
+                                      color: kWhiteColor.withValues(alpha: 0.4),
                                     ),
                                   ),
                                 ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      )
-                          .animate(delay: 450.ms)
-                          .fadeIn(duration: 500.ms, curve: _smoothSpring)
-                          .move(begin: const Offset(0, 20), curve: _smoothSpring),
-                    ],
-                  ),
-
-                  // Bottom button
-                  Column(
-                    children: [
-                      SizedBox(height: 24.h),
-
-                      // Continue button
-                      _PrimaryButton(
-                        label: 'Continue to Chessever',
-                        onTap: onContinue,
-                      )
-                          .animate(delay: 600.ms)
-                          .fadeIn(duration: 400.ms, curve: _smoothSpring)
-                          .move(begin: const Offset(0, 30), curve: _smoothSpring),
-
-                      SizedBox(height: 16.h),
-
-                      // Subtle app branding
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Image.asset(
-                            PngAsset.newAppLogoCircle,
-                            height: 20.h,
-                            width: 20.w,
-                          ),
-                          SizedBox(width: 8.w),
-                          Text(
-                            'Your chess journey continues',
-                            style: AppTypography.textXsRegular.copyWith(
-                              color: kWhiteColor.withValues(alpha: 0.4),
-                            ),
-                          ),
+                              )
+                              .animate(delay: 750.ms)
+                              .fadeIn(duration: 400.ms, curve: _smoothSpring),
                         ],
-                      )
-                          .animate(delay: 750.ms)
-                          .fadeIn(duration: 400.ms, curve: _smoothSpring),
+                      ),
                     ],
                   ),
-                ],
-              ),
-            ),
-          );
-        },
+                ),
+              );
+            },
+          ),
+        ),
       ),
     );
   }
 }
 
 class _UserAvatarVisual extends HookWidget {
-  const _UserAvatarVisual({
-    required this.avatarUrl,
-    required this.initials,
-  });
+  const _UserAvatarVisual({required this.avatarUrl, required this.initials});
 
   final String? avatarUrl;
   final String initials;
@@ -866,13 +940,14 @@ class _UserAvatarVisual extends HookWidget {
               ],
             ),
             child: ClipOval(
-              child: avatarUrl != null
-                  ? Image.network(
-                      avatarUrl!,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => _buildInitials(),
-                    )
-                  : _buildInitials(),
+              child:
+                  avatarUrl != null
+                      ? Image.network(
+                        avatarUrl!,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => _buildInitials(),
+                      )
+                      : _buildInitials(),
             ),
           ),
 
@@ -886,10 +961,7 @@ class _UserAvatarVisual extends HookWidget {
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 color: kGreenColor,
-                border: Border.all(
-                  color: kBackgroundColor,
-                  width: 3,
-                ),
+                border: Border.all(color: kBackgroundColor, width: 3),
                 boxShadow: [
                   BoxShadow(
                     color: kGreenColor.withValues(alpha: 0.4),
@@ -897,11 +969,7 @@ class _UserAvatarVisual extends HookWidget {
                   ),
                 ],
               ),
-              child: Icon(
-                Icons.check_rounded,
-                size: 18.ic,
-                color: kWhiteColor,
-              ),
+              child: Icon(Icons.check_rounded, size: 18.ic, color: kWhiteColor),
             ),
           ),
         ],
@@ -953,9 +1021,10 @@ class _AmbientGlowPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     // Primary glow - subtle movement
-    final paint1 = Paint()
-      ..color = kPrimaryColor.withValues(alpha: 0.08 + (animation * 0.04))
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 120);
+    final paint1 =
+        Paint()
+          ..color = kPrimaryColor.withValues(alpha: 0.08 + (animation * 0.04))
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 120);
 
     canvas.drawCircle(
       Offset(
@@ -967,9 +1036,12 @@ class _AmbientGlowPainter extends CustomPainter {
     );
 
     // Secondary glow
-    final paint2 = Paint()
-      ..color = const Color(0xFF08647F).withValues(alpha: 0.06 + (animation * 0.03))
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 100);
+    final paint2 =
+        Paint()
+          ..color = const Color(
+            0xFF08647F,
+          ).withValues(alpha: 0.06 + (animation * 0.03))
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 100);
 
     canvas.drawCircle(
       Offset(
@@ -1027,10 +1099,15 @@ class _ParticlePainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     for (final particle in particles) {
       final y = ((particle.y + animation * particle.speed) % 1.2) - 0.1;
-      final x = particle.x + math.sin(animation * 2 * math.pi + particle.x * 10) * 0.02;
+      final x =
+          particle.x +
+          math.sin(animation * 2 * math.pi + particle.x * 10) * 0.02;
 
-      final paint = Paint()
-        ..color = kWhiteColor.withValues(alpha: particle.opacity * (1 - y.abs() * 0.5));
+      final paint =
+          Paint()
+            ..color = kWhiteColor.withValues(
+              alpha: particle.opacity * (1 - y.abs() * 0.5),
+            );
 
       canvas.drawCircle(
         Offset(x * size.width, y * size.height),
@@ -1062,10 +1139,7 @@ class _Particle {
 // ════════════════════════════════════════════════════════════════════════════
 
 class _PageIndicator extends StatelessWidget {
-  const _PageIndicator({
-    required this.currentPage,
-    required this.totalPages,
-  });
+  const _PageIndicator({required this.currentPage, required this.totalPages});
 
   final int currentPage;
   final int totalPages;
@@ -1083,18 +1157,20 @@ class _PageIndicator extends StatelessWidget {
             height: 4.h,
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(2.br),
-              color: isActive
-                  ? kPrimaryColor
-                  : kWhiteColor.withValues(alpha: 0.12),
-              boxShadow: isActive
-                  ? [
-                      BoxShadow(
-                        color: kPrimaryColor.withValues(alpha: 0.4),
-                        blurRadius: 8,
-                        spreadRadius: 0,
-                      ),
-                    ]
-                  : null,
+              color:
+                  isActive
+                      ? kPrimaryColor
+                      : kWhiteColor.withValues(alpha: 0.12),
+              boxShadow:
+                  isActive
+                      ? [
+                        BoxShadow(
+                          color: kPrimaryColor.withValues(alpha: 0.4),
+                          blurRadius: 8,
+                          spreadRadius: 0,
+                        ),
+                      ]
+                      : null,
             ),
           ),
         );
@@ -1122,83 +1198,97 @@ class _WelcomeStep extends HookWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.fromLTRB(24.w, topPadding + 60.h, 24.w, bottomPadding + 16.h),
-      child: Column(
-        children: [
-          const Spacer(flex: 1),
+    // Tablet-specific constraints
+    final horizontalPadding = ResponsiveHelper.adaptive(
+      phone: 24.w,
+      tablet: 32.w,
+    );
+    final maxWidth = ResponsiveHelper.isTablet ? 500.0 : double.infinity;
 
-          // App logo
-          Image.asset(
-            PngAsset.newAppLogoCircle,
-            height: 120.h,
-            width: 120.w,
-          )
-              .animate()
-              .fadeIn(duration: 600.ms, curve: _gentleSpring)
-              .scale(
-                begin: const Offset(0.8, 0.8),
-                end: const Offset(1, 1),
-                duration: 800.ms,
-                curve: _smoothSpring,
-              ),
+    return Center(
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: maxWidth),
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(
+            horizontalPadding,
+            topPadding + 60.h,
+            horizontalPadding,
+            bottomPadding + 16.h,
+          ),
+          child: Column(
+            children: [
+              const Spacer(flex: 1),
 
-          SizedBox(height: 48.h),
+              // App logo
+              Image.asset(
+                    PngAsset.newAppLogoCircle,
+                    height: 120.h,
+                    width: 120.w,
+                  )
+                  .animate()
+                  .fadeIn(duration: 600.ms, curve: _gentleSpring)
+                  .scale(
+                    begin: const Offset(0.8, 0.8),
+                    end: const Offset(1, 1),
+                    duration: 800.ms,
+                    curve: _smoothSpring,
+                  ),
 
-          // Tagline - minimal text
-          Text(
-            'Your chess.\nYour way.',
-            textAlign: TextAlign.center,
-            style: AppTypography.displayXsBold.copyWith(
-              color: kWhiteColor,
-              height: 1.2,
-            ),
-          )
-              .animate(delay: 300.ms)
-              .fadeIn(duration: 500.ms, curve: _smoothSpring)
-              .move(begin: const Offset(0, 20), curve: _smoothSpring),
+              SizedBox(height: 48.h),
 
-          SizedBox(height: 12.h),
+              // Tagline - minimal text
+              Text(
+                    'Your chess.\nYour way.',
+                    textAlign: TextAlign.center,
+                    style: AppTypography.displayXsBold.copyWith(
+                      color: kWhiteColor,
+                      height: 1.2,
+                    ),
+                  )
+                  .animate(delay: 300.ms)
+                  .fadeIn(duration: 500.ms, curve: _smoothSpring)
+                  .move(begin: const Offset(0, 20), curve: _smoothSpring),
 
-          Text(
-            'Follow players • Track events • Analyze games',
-            textAlign: TextAlign.center,
-            style: AppTypography.textSmRegular.copyWith(
-              color: kWhiteColor.withValues(alpha: 0.6),
-              letterSpacing: 0.3,
-            ),
-          )
-              .animate(delay: 450.ms)
-              .fadeIn(duration: 500.ms, curve: _smoothSpring),
+              SizedBox(height: 12.h),
 
-          const Spacer(flex: 2),
+              Text(
+                    'Follow players • Track events • Analyze games',
+                    textAlign: TextAlign.center,
+                    style: AppTypography.textSmRegular.copyWith(
+                      color: kWhiteColor.withValues(alpha: 0.6),
+                      letterSpacing: 0.3,
+                    ),
+                  )
+                  .animate(delay: 450.ms)
+                  .fadeIn(duration: 500.ms, curve: _smoothSpring),
 
-          // CTA Button
-          _PrimaryButton(
-            label: 'Get started',
-            onTap: onNext,
-          )
-              .animate(delay: 600.ms)
-              .fadeIn(duration: 400.ms, curve: _smoothSpring)
-              .move(begin: const Offset(0, 30), curve: _smoothSpring),
+              const Spacer(flex: 2),
 
-          SizedBox(height: 16.h),
+              // CTA Button
+              _PrimaryButton(label: 'Get started', onTap: onNext)
+                  .animate(delay: 600.ms)
+                  .fadeIn(duration: 400.ms, curve: _smoothSpring)
+                  .move(begin: const Offset(0, 30), curve: _smoothSpring),
 
-          // Sign in link for returning users
-          GestureDetector(
-            onTap: onSignIn,
-            child: Text(
-              'I already have an account',
-              style: AppTypography.textSmMedium.copyWith(
-                color: kPrimaryColor,
-              ),
-            ),
-          )
-              .animate(delay: 700.ms)
-              .fadeIn(duration: 400.ms, curve: _smoothSpring),
+              SizedBox(height: 16.h),
 
-          SizedBox(height: 8.h),
-        ],
+              // Sign in link for returning users
+              GestureDetector(
+                    onTap: onSignIn,
+                    child: Text(
+                      'I already have an account',
+                      style: AppTypography.textSmMedium.copyWith(
+                        color: kPrimaryColor,
+                      ),
+                    ),
+                  )
+                  .animate(delay: 700.ms)
+                  .fadeIn(duration: 400.ms, curve: _smoothSpring),
+
+              SizedBox(height: 8.h),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -1225,75 +1315,92 @@ class _CountryStep extends HookConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return Padding(
-      padding: EdgeInsets.fromLTRB(24.w, topPadding + 60.h, 24.w, bottomPadding + 16.h),
-      child: Column(
-        children: [
-          const Spacer(flex: 1),
+    // Tablet-specific constraints
+    final horizontalPadding = ResponsiveHelper.adaptive(
+      phone: 24.w,
+      tablet: 32.w,
+    );
+    final maxWidth = ResponsiveHelper.isTablet ? 500.0 : double.infinity;
 
-          // Globe visual with flag
-          _GlobeVisual(countryState: countryState)
-              .animate()
-              .fadeIn(duration: 600.ms, curve: _gentleSpring)
-              .scale(
-                begin: const Offset(0.85, 0.85),
-                end: const Offset(1, 1),
-                duration: 700.ms,
-                curve: _smoothSpring,
-              ),
+    return Center(
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: maxWidth),
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(
+            horizontalPadding,
+            topPadding + 60.h,
+            horizontalPadding,
+            bottomPadding + 16.h,
+          ),
+          child: Column(
+            children: [
+              const Spacer(flex: 1),
 
-          SizedBox(height: 40.h),
+              // Globe visual with flag
+              _GlobeVisual(countryState: countryState)
+                  .animate()
+                  .fadeIn(duration: 600.ms, curve: _gentleSpring)
+                  .scale(
+                    begin: const Offset(0.85, 0.85),
+                    end: const Offset(1, 1),
+                    duration: 700.ms,
+                    curve: _smoothSpring,
+                  ),
 
-          // Title
-          Text(
-            'Where are you from?',
-            textAlign: TextAlign.center,
-            style: AppTypography.displayXsBold.copyWith(
-              color: kWhiteColor,
-            ),
-          )
-              .animate(delay: 200.ms)
-              .fadeIn(duration: 500.ms, curve: _smoothSpring)
-              .move(begin: const Offset(0, 16), curve: _smoothSpring),
+              SizedBox(height: 40.h),
 
-          SizedBox(height: 8.h),
+              // Title
+              Text(
+                    'Where are you from?',
+                    textAlign: TextAlign.center,
+                    style: AppTypography.displayXsBold.copyWith(
+                      color: kWhiteColor,
+                    ),
+                  )
+                  .animate(delay: 200.ms)
+                  .fadeIn(duration: 500.ms, curve: _smoothSpring)
+                  .move(begin: const Offset(0, 16), curve: _smoothSpring),
 
-          Text(
-            'We\'ll show you players from your region',
-            textAlign: TextAlign.center,
-            style: AppTypography.textSmRegular.copyWith(
-              color: kWhiteColor.withValues(alpha: 0.6),
-            ),
-          )
-              .animate(delay: 300.ms)
-              .fadeIn(duration: 500.ms, curve: _smoothSpring),
+              SizedBox(height: 8.h),
 
-          SizedBox(height: 32.h),
+              Text(
+                    'We\'ll show you players from your region',
+                    textAlign: TextAlign.center,
+                    style: AppTypography.textSmRegular.copyWith(
+                      color: kWhiteColor.withValues(alpha: 0.6),
+                    ),
+                  )
+                  .animate(delay: 300.ms)
+                  .fadeIn(duration: 500.ms, curve: _smoothSpring),
 
-          // Country selector card
-          _CountryCard(
-            countryState: countryState,
-            onRetry: onRetry,
-            ref: ref,
-          )
-              .animate(delay: 400.ms)
-              .fadeIn(duration: 500.ms, curve: _smoothSpring)
-              .move(begin: const Offset(0, 20), curve: _smoothSpring),
+              SizedBox(height: 32.h),
 
-          const Spacer(flex: 2),
+              // Country selector card
+              _CountryCard(
+                    countryState: countryState,
+                    onRetry: onRetry,
+                    ref: ref,
+                  )
+                  .animate(delay: 400.ms)
+                  .fadeIn(duration: 500.ms, curve: _smoothSpring)
+                  .move(begin: const Offset(0, 20), curve: _smoothSpring),
 
-          // CTA Button
-          _PrimaryButton(
-            label: 'Continue',
-            onTap: countryState.isLoading ? null : onNext,
-            isLoading: countryState.isLoading,
-          )
-              .animate(delay: 550.ms)
-              .fadeIn(duration: 400.ms, curve: _smoothSpring)
-              .move(begin: const Offset(0, 30), curve: _smoothSpring),
+              const Spacer(flex: 2),
 
-          SizedBox(height: 8.h),
-        ],
+              // CTA Button
+              _PrimaryButton(
+                    label: 'Continue',
+                    onTap: countryState.isLoading ? null : onNext,
+                    isLoading: countryState.isLoading,
+                  )
+                  .animate(delay: 550.ms)
+                  .fadeIn(duration: 400.ms, curve: _smoothSpring)
+                  .move(begin: const Offset(0, 30), curve: _smoothSpring),
+
+              SizedBox(height: 8.h),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -1336,12 +1443,16 @@ class _GlobeVisual extends HookWidget {
                   Positioned(
                     top: 0,
                     left: 75.w,
-                    child: _OrbitDot(color: kPrimaryColor.withValues(alpha: 0.6)),
+                    child: _OrbitDot(
+                      color: kPrimaryColor.withValues(alpha: 0.6),
+                    ),
                   ),
                   Positioned(
                     bottom: 20.h,
                     right: 10.w,
-                    child: _OrbitDot(color: kPrimaryColor.withValues(alpha: 0.4)),
+                    child: _OrbitDot(
+                      color: kPrimaryColor.withValues(alpha: 0.4),
+                    ),
                   ),
                 ],
               ),
@@ -1368,27 +1479,30 @@ class _GlobeVisual extends HookWidget {
               ],
             ),
             child: countryState.when(
-              loading: () => Center(
-                child: SizedBox(
-                  width: 24.w,
-                  height: 24.h,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: kPrimaryColor.withValues(alpha: 0.6),
+              loading:
+                  () => Center(
+                    child: SizedBox(
+                      width: 24.w,
+                      height: 24.h,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: kPrimaryColor.withValues(alpha: 0.6),
+                      ),
+                    ),
                   ),
-                ),
-              ),
-              error: (_, __) => Icon(
-                Icons.public,
-                size: 48.ic,
-                color: kWhiteColor.withValues(alpha: 0.5),
-              ),
-              data: (country) => Center(
-                child: Text(
-                  country.flagEmoji,
-                  style: TextStyle(fontSize: 48.f),
-                ),
-              ),
+              error:
+                  (_, __) => Icon(
+                    Icons.public,
+                    size: 48.ic,
+                    color: kWhiteColor.withValues(alpha: 0.5),
+                  ),
+              data:
+                  (country) => Center(
+                    child: Text(
+                      country.flagEmoji,
+                      style: TextStyle(fontSize: 48.f),
+                    ),
+                  ),
             ),
           ),
         ],
@@ -1411,10 +1525,7 @@ class _OrbitDot extends StatelessWidget {
         shape: BoxShape.circle,
         color: color,
         boxShadow: [
-          BoxShadow(
-            color: color.withValues(alpha: 0.5),
-            blurRadius: 6,
-          ),
+          BoxShadow(color: color.withValues(alpha: 0.5), blurRadius: 6),
         ],
       ),
     );
@@ -1439,9 +1550,7 @@ class _CountryCard extends StatelessWidget {
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(20.br),
         color: kBlack2Color.withValues(alpha: 0.6),
-        border: Border.all(
-          color: kWhiteColor.withValues(alpha: 0.08),
-        ),
+        border: Border.all(color: kWhiteColor.withValues(alpha: 0.08)),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.3),
@@ -1451,56 +1560,59 @@ class _CountryCard extends StatelessWidget {
         ],
       ),
       child: countryState.when(
-        loading: () => Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            SizedBox(
-              width: 18.w,
-              height: 18.h,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                color: kWhiteColor.withValues(alpha: 0.5),
-              ),
-            ),
-            SizedBox(width: 12.w),
-            Text(
-              'Finding your location...',
-              style: AppTypography.textSmMedium.copyWith(
-                color: kWhiteColor.withValues(alpha: 0.6),
-              ),
-            ),
-          ],
-        ),
-        error: (_, __) => Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text(
-              'Couldn\'t detect location',
-              style: AppTypography.textSmMedium.copyWith(
-                color: kWhiteColor.withValues(alpha: 0.6),
-              ),
-            ),
-            SizedBox(width: 12.w),
-            GestureDetector(
-              onTap: onRetry,
-              child: Text(
-                'Retry',
-                style: AppTypography.textSmMedium.copyWith(
-                  color: kPrimaryColor,
+        loading:
+            () => Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                SizedBox(
+                  width: 18.w,
+                  height: 18.h,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: kWhiteColor.withValues(alpha: 0.5),
+                  ),
                 ),
-              ),
+                SizedBox(width: 12.w),
+                Text(
+                  'Finding your location...',
+                  style: AppTypography.textSmMedium.copyWith(
+                    color: kWhiteColor.withValues(alpha: 0.6),
+                  ),
+                ),
+              ],
             ),
-          ],
-        ),
-        data: (country) => CountryDropdown(
-          selectedCountryCode: country.countryCode,
-          onChanged: (Country newCountry) {
-            ref
-                .read(countryDropdownProvider.notifier)
-                .selectCountry(newCountry.countryCode);
-          },
-          requireAuthToChange: false,
-        ),
+        error:
+            (_, __) => Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  'Couldn\'t detect location',
+                  style: AppTypography.textSmMedium.copyWith(
+                    color: kWhiteColor.withValues(alpha: 0.6),
+                  ),
+                ),
+                SizedBox(width: 12.w),
+                GestureDetector(
+                  onTap: onRetry,
+                  child: Text(
+                    'Retry',
+                    style: AppTypography.textSmMedium.copyWith(
+                      color: kPrimaryColor,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+        data:
+            (country) => CountryDropdown(
+              selectedCountryCode: country.countryCode,
+              onChanged: (Country newCountry) {
+                ref
+                    .read(countryDropdownProvider.notifier)
+                    .selectCountry(newCountry.countryCode);
+              },
+              requireAuthToChange: false,
+            ),
       ),
     );
   }
@@ -1544,35 +1656,41 @@ class _PrimaryButton extends HookWidget {
           height: 52.h,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(14.br),
-            color: onTap != null ? kWhiteColor : kWhiteColor.withValues(alpha: 0.2),
-            boxShadow: onTap != null
-                ? [
-                    BoxShadow(
-                      color: kWhiteColor.withValues(alpha: 0.15),
-                      blurRadius: 16,
-                      offset: const Offset(0, 6),
-                    ),
-                  ]
-                : null,
+            color:
+                onTap != null
+                    ? kWhiteColor
+                    : kWhiteColor.withValues(alpha: 0.2),
+            boxShadow:
+                onTap != null
+                    ? [
+                      BoxShadow(
+                        color: kWhiteColor.withValues(alpha: 0.15),
+                        blurRadius: 16,
+                        offset: const Offset(0, 6),
+                      ),
+                    ]
+                    : null,
           ),
           child: Center(
-            child: isLoading
-                ? SizedBox(
-                    width: 24.w,
-                    height: 24.h,
-                    child: const CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: kBlackColor,
+            child:
+                isLoading
+                    ? SizedBox(
+                      width: 24.w,
+                      height: 24.h,
+                      child: const CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: kBlackColor,
+                      ),
+                    )
+                    : Text(
+                      label,
+                      style: AppTypography.textMdMedium.copyWith(
+                        color:
+                            onTap != null
+                                ? kBlackColor
+                                : kWhiteColor.withValues(alpha: 0.5),
+                      ),
                     ),
-                  )
-                : Text(
-                    label,
-                    style: AppTypography.textMdMedium.copyWith(
-                      color: onTap != null
-                          ? kBlackColor
-                          : kWhiteColor.withValues(alpha: 0.5),
-                    ),
-                  ),
           ),
         ),
       ),

@@ -200,6 +200,12 @@ class _SearchResultsListView extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     // Check if we have players to show in the cards
     final hasPlayerCards = ref.watch(topSearchedPlayersProvider).isNotEmpty;
+    final isTablet = ResponsiveHelper.isTablet;
+    final crossAxisCount = ResponsiveHelper.getGridCrossAxisCount(phoneCount: 1);
+    final horizontalPadding = ResponsiveHelper.adaptive(
+      phone: 16.sp,
+      tablet: 24.sp,
+    );
 
     return RefreshIndicator(
       onRefresh: () async {
@@ -210,40 +216,105 @@ class _SearchResultsListView extends ConsumerWidget {
       backgroundColor: kBlack2Color,
       displacement: 60.h,
       strokeWidth: 3.w,
-      child: ListView.builder(
-        key: PageStorageKey<String>('search_results_$searchQuery'),
-        controller: scrollController,
-        padding: EdgeInsets.symmetric(horizontal: 16.sp, vertical: 16.sp),
-        // Add 1 to item count if we have player cards to show
-        itemCount: tournaments.length + (hasPlayerCards ? 1 : 0),
-        addAutomaticKeepAlives: true,
-        addRepaintBoundaries: true,
-        cacheExtent: 2000,
-        physics: const AlwaysScrollableScrollPhysics(
-          parent: BouncingScrollPhysics(),
-        ),
-        itemBuilder: (context, index) {
-          // Show player search cards at the top
-          if (hasPlayerCards && index == 0) {
-            return PlayerSearchCards(searchQuery: searchQuery);
-          }
+      child: isTablet && crossAxisCount > 1
+          ? _buildTabletGridLayout(
+              hasPlayerCards,
+              horizontalPadding,
+              crossAxisCount,
+            )
+          : _buildPhoneListLayout(hasPlayerCards, horizontalPadding),
+    );
+  }
 
-          // Adjust index if player cards are present
-          final adjustedIndex = hasPlayerCards ? index - 1 : index;
-          if (adjustedIndex < 0 || adjustedIndex >= tournaments.length) {
-            return const SizedBox.shrink();
-          }
-
-          final tournament = tournaments[adjustedIndex];
-
-          return _SearchEventCard(
-            key: ValueKey('search_event_${tournament.id}'),
-            tournament: tournament,
-            isFirst: adjustedIndex == 0,
-            listIndex: adjustedIndex,
-          );
-        },
+  Widget _buildTabletGridLayout(
+    bool hasPlayerCards,
+    double horizontalPadding,
+    int crossAxisCount,
+  ) {
+    return CustomScrollView(
+      key: PageStorageKey<String>('search_results_$searchQuery'),
+      controller: scrollController,
+      physics: const AlwaysScrollableScrollPhysics(
+        parent: BouncingScrollPhysics(),
       ),
+      slivers: [
+        if (hasPlayerCards)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: EdgeInsets.symmetric(
+                horizontal: horizontalPadding,
+                vertical: 16.sp,
+              ),
+              child: PlayerSearchCards(searchQuery: searchQuery),
+            ),
+          ),
+        SliverPadding(
+          padding: EdgeInsets.symmetric(
+            horizontal: horizontalPadding,
+            vertical: hasPlayerCards ? 0 : 16.sp,
+          ),
+          sliver: SliverGrid(
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: crossAxisCount,
+              crossAxisSpacing: 16.sp,
+              mainAxisSpacing: 16.sp,
+              childAspectRatio: ResponsiveHelper.isLandscape ? 2.2 : 1.8,
+            ),
+            delegate: SliverChildBuilderDelegate(
+              (context, index) {
+                final tournament = tournaments[index];
+                return _SearchEventCard(
+                  key: ValueKey('search_event_${tournament.id}'),
+                  tournament: tournament,
+                  isFirst: index == 0,
+                  listIndex: index,
+                );
+              },
+              childCount: tournaments.length,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPhoneListLayout(bool hasPlayerCards, double horizontalPadding) {
+    return ListView.builder(
+      key: PageStorageKey<String>('search_results_$searchQuery'),
+      controller: scrollController,
+      padding: EdgeInsets.symmetric(
+        horizontal: horizontalPadding,
+        vertical: 16.sp,
+      ),
+      // Add 1 to item count if we have player cards to show
+      itemCount: tournaments.length + (hasPlayerCards ? 1 : 0),
+      addAutomaticKeepAlives: true,
+      addRepaintBoundaries: true,
+      cacheExtent: 2000,
+      physics: const AlwaysScrollableScrollPhysics(
+        parent: BouncingScrollPhysics(),
+      ),
+      itemBuilder: (context, index) {
+        // Show player search cards at the top
+        if (hasPlayerCards && index == 0) {
+          return PlayerSearchCards(searchQuery: searchQuery);
+        }
+
+        // Adjust index if player cards are present
+        final adjustedIndex = hasPlayerCards ? index - 1 : index;
+        if (adjustedIndex < 0 || adjustedIndex >= tournaments.length) {
+          return const SizedBox.shrink();
+        }
+
+        final tournament = tournaments[adjustedIndex];
+
+        return _SearchEventCard(
+          key: ValueKey('search_event_${tournament.id}'),
+          tournament: tournament,
+          isFirst: adjustedIndex == 0,
+          listIndex: adjustedIndex,
+        );
+      },
     );
   }
 }

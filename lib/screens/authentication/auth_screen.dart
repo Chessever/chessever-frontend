@@ -122,13 +122,25 @@ class _AuthButtonWidget extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final isIos = Platform.isIOS;
 
-    return Container(
-      padding: EdgeInsets.only(
-        bottom: MediaQuery.of(context).viewPadding.bottom + 28.sp,
-        left: 28.sp,
-        right: 28.sp,
-      ),
-      child: Column(
+    // Tablet-specific padding
+    final horizontalPadding = ResponsiveHelper.adaptive(
+      phone: 28.sp,
+      tablet: 48.sp,
+    );
+
+    // Constrain max width for tablets
+    final maxWidth = ResponsiveHelper.isTablet ? 400.0 : double.infinity;
+
+    return Center(
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: maxWidth),
+        child: Container(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(context).viewPadding.bottom + 28.sp,
+            left: horizontalPadding,
+            right: horizontalPadding,
+          ),
+          child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           // Show both buttons on iOS, only Google on Android
@@ -177,6 +189,8 @@ class _AuthButtonWidget extends ConsumerWidget {
             ),
           ),
         ],
+          ),
+        ),
       ),
     );
   }

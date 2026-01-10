@@ -1,5 +1,6 @@
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
+import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
 
 class AppBarWithTitle extends StatelessWidget {
@@ -11,14 +12,14 @@ class AppBarWithTitle extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        SizedBox(width: 20),
+        SizedBox(width: 20.w),
         IconButton(
-          iconSize: 24,
+          iconSize: 24.ic,
           padding: EdgeInsets.zero,
           onPressed: () {
             Navigator.of(context).pop();
           },
-          icon: Icon(Icons.arrow_back_ios_new_outlined, size: 24),
+          icon: Icon(Icons.arrow_back_ios_new_outlined, size: 24.ic),
         ),
         Spacer(),
         Text(
@@ -26,7 +27,7 @@ class AppBarWithTitle extends StatelessWidget {
           style: AppTypography.textMdRegular.copyWith(color: kWhiteColor),
         ),
         Spacer(),
-        SizedBox(width: 44),
+        SizedBox(width: 44.w),
       ],
     );
   }

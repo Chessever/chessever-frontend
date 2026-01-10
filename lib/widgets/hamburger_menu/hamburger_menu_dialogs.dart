@@ -15,6 +15,7 @@ void showSettingsDialog(BuildContext context) {
   showModalBottomSheet(
     context: context,
     isScrollControlled: true,
+    constraints: ResponsiveHelper.bottomSheetConstraints,
     // backgroundColor: Colors.transparent,
     builder: (BuildContext bottomSheetContext) {
       final bottomPadding = MediaQuery.of(bottomSheetContext).viewInsets.bottom;

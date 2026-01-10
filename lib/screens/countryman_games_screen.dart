@@ -57,89 +57,115 @@ class CountrymanGamesList extends ConsumerWidget {
               );
             }
 
-            return ListView.builder(
-              padding: EdgeInsets.only(
-                left: 20.sp,
-                right: 20.sp,
-                top: 12.sp,
-                bottom: MediaQuery.of(context).viewPadding.bottom,
-              ),
-              itemCount: data.gamesTourModels.length,
-              itemBuilder: (context, index) {
-                var game = data.gamesTourModels[index];
+            final horizontalPadding = ResponsiveHelper.adaptive(phone: 20.sp, tablet: 32.sp);
+            final isTablet = ResponsiveHelper.isTablet;
+            final bottomPadding = MediaQuery.of(context).viewPadding.bottom;
 
-                // Update game with unified live stream to keep FEN/PGN/clocks in sync
-                if (game.gameStatus == GameStatus.ongoing) {
-                  game = ref.watch(
-                    liveGameCardProvider((
-                      gameId: game.gameId,
-                      baseGame: game,
-                    )),
-                  );
-                }
+            Widget buildGameItem(int index) {
+              var game = data.gamesTourModels[index];
 
-                return Padding(
-                  padding: EdgeInsets.only(bottom: 12.sp),
-                  child:
-                      gamesListViewMode == GamesListViewMode.chessBoard
-                          ? ChessBoardFromFENNew(
-                            pinnedIds: data.pinnedGamedIs,
-
-                            onPinToggle: (gamesTourModel) async {
-                              await ref
-                                  .read(
-                                    countrymanGamesTourScreenProvider.notifier,
-                                  )
-                                  .togglePinGame(gamesTourModel.gameId);
-                            },
-                            onChanged: () {
-                              ref
-                                  .read(chessboardViewFromProviderNew.notifier)
-                                  .state = ChessboardView.countryman;
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder:
-                                      (_) => ChessBoardScreenNew(
-                                        games: data.gamesTourModels,
-                                        currentIndex: index,
-                                      ),
-                                ),
-                              );
-                            },
-                            gamesTourModel: game,
-                          )
-                          : GameCard(
-                            onTap: () {
-                              ref
-                                  .read(chessboardViewFromProviderNew.notifier)
-                                  .state = ChessboardView.countryman;
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder:
-                                      (_) => ChessBoardScreenNew(
-                                        games: data.gamesTourModels,
-                                        currentIndex: index,
-                                      ),
-                                ),
-                              );
-                            },
-                            matchComparison: MatchWithComparison(
-                              game: game,
-                              comparison: MatchComparison.sameOrder,
-                            ),
-                            pinnedIds: data.pinnedGamedIs,
-                            onPinToggle: (gamesTourModel) async {
-                              await ref
-                                  .read(
-                                    countrymanGamesTourScreenProvider.notifier,
-                                  )
-                                  .togglePinGame(gamesTourModel.gameId);
-                            },
-                          ),
+              // Update game with unified live stream to keep FEN/PGN/clocks in sync
+              if (game.gameStatus == GameStatus.ongoing) {
+                game = ref.watch(
+                  liveGameCardProvider((
+                    gameId: game.gameId,
+                    baseGame: game,
+                  )),
                 );
-              },
+              }
+
+              return gamesListViewMode == GamesListViewMode.chessBoard
+                  ? ChessBoardFromFENNew(
+                      pinnedIds: data.pinnedGamedIs,
+                      onPinToggle: (gamesTourModel) async {
+                        await ref
+                            .read(
+                              countrymanGamesTourScreenProvider.notifier,
+                            )
+                            .togglePinGame(gamesTourModel.gameId);
+                      },
+                      onChanged: () {
+                        ref
+                            .read(chessboardViewFromProviderNew.notifier)
+                            .state = ChessboardView.countryman;
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => ChessBoardScreenNew(
+                              games: data.gamesTourModels,
+                              currentIndex: index,
+                            ),
+                          ),
+                        );
+                      },
+                      gamesTourModel: game,
+                    )
+                  : GameCard(
+                      onTap: () {
+                        ref
+                            .read(chessboardViewFromProviderNew.notifier)
+                            .state = ChessboardView.countryman;
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => ChessBoardScreenNew(
+                              games: data.gamesTourModels,
+                              currentIndex: index,
+                            ),
+                          ),
+                        );
+                      },
+                      matchComparison: MatchWithComparison(
+                        game: game,
+                        comparison: MatchComparison.sameOrder,
+                      ),
+                      pinnedIds: data.pinnedGamedIs,
+                      onPinToggle: (gamesTourModel) async {
+                        await ref
+                            .read(
+                              countrymanGamesTourScreenProvider.notifier,
+                            )
+                            .togglePinGame(gamesTourModel.gameId);
+                      },
+                    );
+            }
+
+            return Center(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: ResponsiveHelper.contentMaxWidth),
+                child: isTablet
+                    ? GridView.builder(
+                        padding: EdgeInsets.only(
+                          left: horizontalPadding,
+                          right: horizontalPadding,
+                          top: 12.sp,
+                          bottom: bottomPadding,
+                        ),
+                        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: ResponsiveHelper.tabletGridColumns,
+                          crossAxisSpacing: 16.sp,
+                          mainAxisSpacing: 16.sp,
+                          childAspectRatio: ResponsiveHelper.isLandscape ? 2.2 : 1.8,
+                        ),
+                        itemCount: data.gamesTourModels.length,
+                        itemBuilder: (context, index) => buildGameItem(index),
+                      )
+                    : ListView.builder(
+                        padding: EdgeInsets.only(
+                          left: horizontalPadding,
+                          right: horizontalPadding,
+                          top: 12.sp,
+                          bottom: bottomPadding,
+                        ),
+                        itemCount: data.gamesTourModels.length,
+                        itemBuilder: (context, index) {
+                          return Padding(
+                            padding: EdgeInsets.only(bottom: 12.sp),
+                            child: buildGameItem(index),
+                          );
+                        },
+                      ),
+              ),
             );
           },
           error: (_, __) => GenericErrorWidget(),

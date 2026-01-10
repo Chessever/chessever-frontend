@@ -50,14 +50,14 @@ class BoardColorDialog extends ConsumerWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          SizedBox(height: 10),
+          SizedBox(height: 10.h),
           // Small white bar at the top with adjusted size and spacing
           Container(
-            height: 5,
-            width: 40,
+            height: 5.h,
+            width: 40.w,
             decoration: BoxDecoration(
               color: kWhiteColor,
-              borderRadius: BorderRadius.circular(20),
+              borderRadius: BorderRadius.circular(20.br),
             ),
           ),
           // Gap of 20px between white bar and board color text
@@ -151,20 +151,20 @@ class BoardColorDialog extends ConsumerWidget {
         children: [
           // SVG Board Preview with fixed dimensions - changed to 32x32
           SizedBox(
-            width: 32,
-            height: 32,
+            width: 32.w,
+            height: 32.h,
             child: SvgPicture.asset(svgAsset, fit: BoxFit.contain),
           ),
-          const SizedBox(height: 8),
+          SizedBox(height: 8.h),
           Text(
             label,
             style: AppTypography.textXsRegular.copyWith(color: kWhiteColor),
           ),
-          const SizedBox(height: 8),
+          SizedBox(height: 8.h),
           // Selection indicator - changed to 20x20
           Container(
-            width: 20,
-            height: 20,
+            width: 20.w,
+            height: 20.h,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               border: Border.all(color: Colors.white, width: 2),
@@ -172,10 +172,10 @@ class BoardColorDialog extends ConsumerWidget {
             ),
             child:
                 isSelected
-                    ? const Icon(
+                    ? Icon(
                       Icons.check,
                       color: Colors.white,
-                      size: 14,
+                      size: 14.ic,
                     ) // Smaller icon to match smaller circle
                     : null,
           ),

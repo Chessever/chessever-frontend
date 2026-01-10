@@ -30,17 +30,17 @@ class _FavoriteCardState extends State<FavoriteCard> {
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: 48,
+      height: 48.h,
       decoration: BoxDecoration(
         color: kBlack2Color,
         borderRadius: BorderRadius.zero,
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 14.h),
       child: Row(
         children: [
           // Rank number
           SizedBox(
-            width: 24,
+            width: 24.w,
             child: Text(
               '${widget.rank}.',
               style: AppTypography.textXsMedium.copyWith(color: kWhiteColor),
@@ -100,8 +100,8 @@ class _FavoriteCardState extends State<FavoriteCard> {
               }
             },
             child: SizedBox(
-              width: 30,
-              child: Icon(Icons.favorite, color: kRedColor, size: 20),
+              width: 30.w,
+              child: Icon(Icons.favorite, color: kRedColor, size: 20.ic),
             ),
           ),
         ],
@@ -116,38 +116,38 @@ class _FavoriteCardState extends State<FavoriteCard> {
       case 'NO':
         return Image.network(
           'https://flagcdn.com/w20/no.png',
-          width: 20,
-          height: 14,
+          width: 20.w,
+          height: 14.h,
           errorBuilder:
               (context, error, stackTrace) =>
-                  Text('🇳🇴', style: TextStyle(fontSize: 16)),
+                  Text('🇳🇴', style: TextStyle(fontSize: 16.sp)),
         );
       case 'US':
         return Image.network(
           'https://flagcdn.com/w20/us.png',
-          width: 20,
-          height: 14,
+          width: 20.w,
+          height: 14.h,
           errorBuilder:
               (context, error, stackTrace) =>
-                  Text('🇺🇸', style: TextStyle(fontSize: 16)),
+                  Text('🇺🇸', style: TextStyle(fontSize: 16.sp)),
         );
       case 'IN':
         return Image.network(
           'https://flagcdn.com/w20/in.png',
-          width: 20,
-          height: 14,
+          width: 20.w,
+          height: 14.h,
           errorBuilder:
               (context, error, stackTrace) =>
-                  Text('🇮🇳', style: TextStyle(fontSize: 16)),
+                  Text('🇮🇳', style: TextStyle(fontSize: 16.sp)),
         );
       case 'UZ':
         return Image.network(
           'https://flagcdn.com/w20/uz.png',
-          width: 20,
-          height: 14,
+          width: 20.w,
+          height: 14.h,
           errorBuilder:
               (context, error, stackTrace) =>
-                  Text('🇺🇿', style: TextStyle(fontSize: 16)),
+                  Text('🇺🇿', style: TextStyle(fontSize: 16.sp)),
         );
       default:
         return Text(

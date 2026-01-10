@@ -35,34 +35,41 @@ class _PremiumScreenState extends ConsumerState<PremiumScreen> {
         ),
       );
     }
+    final horizontalPadding = ResponsiveHelper.adaptive(phone: 24.0, tablet: 32.0);
+
     return Stack(
       alignment: Alignment.bottomCenter,
       children: [
         BackDropFilterWidget(),
-        Container(
-          decoration: const BoxDecoration(
+        Center(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: ResponsiveHelper.isTablet ? 500 : double.infinity,
+            ),
+            child: Container(
+          decoration: BoxDecoration(
             color: Colors.black,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24.br)),
           ),
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+          padding: EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: 16.h),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               Container(
-                width: 40,
-                height: 4,
+                width: 40.w,
+                height: 4.h,
                 decoration: BoxDecoration(
                   color: kWhiteColor70,
-                  borderRadius: BorderRadius.circular(2),
+                  borderRadius: BorderRadius.circular(2.br),
                 ),
               ),
-              const SizedBox(height: 16),
+              SizedBox(height: 16.h),
 
               Text(
                 'Premium',
                 style: AppTypography.textLgMedium.copyWith(color: kWhiteColor),
               ),
-              const SizedBox(height: 12),
+              SizedBox(height: 12.h),
 
               Align(
                 alignment: Alignment.topLeft,
@@ -74,7 +81,7 @@ class _PremiumScreenState extends ConsumerState<PremiumScreen> {
                   ),
                 ),
               ),
-              const SizedBox(height: 24),
+              SizedBox(height: 24.h),
 
               // Feature list
               FeatureRow(
@@ -82,19 +89,19 @@ class _PremiumScreenState extends ConsumerState<PremiumScreen> {
                 text: 'Unlock Library & Database features',
                 iconColor: Colors.cyanAccent,
               ),
-              const SizedBox(height: 12),
+              SizedBox(height: 12.h),
               FeatureRow(
                 icon: SvgAsset.tour_list,
                 text: 'Fully customizable tournament list',
                 iconColor: Colors.greenAccent,
               ),
-              const SizedBox(height: 12),
+              SizedBox(height: 12.h),
               FeatureRow(
                 icon: SvgAsset.zero_ads,
                 text: 'Zero Ads',
                 iconColor: Colors.redAccent,
               ),
-              const SizedBox(height: 24),
+              SizedBox(height: 24.h),
 
               // Pricing
               Text(
@@ -114,7 +121,7 @@ class _PremiumScreenState extends ConsumerState<PremiumScreen> {
                 style: AppTypography.textXlRegular.copyWith(color: kWhiteColor),
               ),
 
-              const SizedBox(height: 16),
+              SizedBox(height: 16.h),
 
               ...subscriptionState.products.map(
                 (package) => Card(
@@ -145,7 +152,7 @@ class _PremiumScreenState extends ConsumerState<PremiumScreen> {
               //     ),
               //   ],
               // ),
-              const SizedBox(height: 20),
+              SizedBox(height: 20.h),
 
               // Try for free button
               // SizedBox(
@@ -173,11 +180,11 @@ class _PremiumScreenState extends ConsumerState<PremiumScreen> {
                 onPressed: () {
                   // Handle the button press
                 },
-                height: 48,
+                height: 48.h,
                 width: double.infinity,
-                borderRadius: 12,
+                borderRadius: 12.br,
               ),
-              const SizedBox(height: 12),
+              SizedBox(height: 12.h),
 
               Text(
                 "You'll be billed at the end of your free trial. Feel free to cancel anytime through Google Play.",
@@ -186,8 +193,10 @@ class _PremiumScreenState extends ConsumerState<PremiumScreen> {
                   color: kBoardColorGrey,
                 ),
               ),
-              const SizedBox(height: 16),
+              SizedBox(height: 16.h),
             ],
+          ),
+        ),
           ),
         ),
       ],

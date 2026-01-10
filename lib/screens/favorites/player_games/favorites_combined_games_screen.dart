@@ -56,7 +56,9 @@ class _FavoritesCombinedGamesScreenState
         _scrollController.position.maxScrollExtent - 200) {
       final state = ref.read(favoritesCombinedGamesProvider);
       if (state.isSearching) {
-        ref.read(favoritesCombinedGamesProvider.notifier).loadMoreSearchResults();
+        ref
+            .read(favoritesCombinedGamesProvider.notifier)
+            .loadMoreSearchResults();
       } else {
         ref.read(favoritesCombinedGamesProvider.notifier).loadMoreGames();
       }
@@ -86,44 +88,49 @@ class _FavoritesCombinedGamesScreenState
 
     // Filter by selected players if any are selected
     if (_selectedPlayerIds.isNotEmpty) {
-      final selectedFavorites = favorites
-          .where((f) => _selectedPlayerIds.contains(f.id))
-          .toList();
+      final selectedFavorites =
+          favorites.where((f) => _selectedPlayerIds.contains(f.id)).toList();
 
-      debugPrint('[FilterChips] Selected ${selectedFavorites.length} favorites: ${selectedFavorites.map((f) => '${f.playerName} (fideId: ${f.fideId})').join(', ')}');
+      debugPrint(
+        '[FilterChips] Selected ${selectedFavorites.length} favorites: ${selectedFavorites.map((f) => '${f.playerName} (fideId: ${f.fideId})').join(', ')}',
+      );
       debugPrint('[FilterChips] Total games to filter: ${games.length}');
 
       // Log first 3 games to see their FIDE IDs
       for (var i = 0; i < games.length && i < 3; i++) {
         final g = games[i];
-        debugPrint('[FilterChips] Sample game $i: ${g.whitePlayer.name} (fideId: ${g.whitePlayer.fideId}) vs ${g.blackPlayer.name} (fideId: ${g.blackPlayer.fideId})');
+        debugPrint(
+          '[FilterChips] Sample game $i: ${g.whitePlayer.name} (fideId: ${g.whitePlayer.fideId}) vs ${g.blackPlayer.name} (fideId: ${g.blackPlayer.fideId})',
+        );
       }
 
-      filtered = filtered.where((game) {
-        for (final favorite in selectedFavorites) {
-          // 1. Try FIDE ID match first (most reliable)
-          if (favorite.fideId != null && favorite.fideId!.isNotEmpty) {
-            final favFideId = int.tryParse(favorite.fideId!);
-            if (favFideId != null) {
-              final whiteId = game.whitePlayer.fideId;
-              final blackId = game.blackPlayer.fideId;
-              if (whiteId == favFideId || blackId == favFideId) {
+      filtered =
+          filtered.where((game) {
+            for (final favorite in selectedFavorites) {
+              // 1. Try FIDE ID match first (most reliable)
+              if (favorite.fideId != null && favorite.fideId!.isNotEmpty) {
+                final favFideId = int.tryParse(favorite.fideId!);
+                if (favFideId != null) {
+                  final whiteId = game.whitePlayer.fideId;
+                  final blackId = game.blackPlayer.fideId;
+                  if (whiteId == favFideId || blackId == favFideId) {
+                    return true;
+                  }
+                }
+              }
+
+              // 2. Fall back to name matching
+              final favName = _normalizeNameForMatch(favorite.playerName);
+              final whiteName = _normalizeNameForMatch(game.whitePlayer.name);
+              final blackName = _normalizeNameForMatch(game.blackPlayer.name);
+
+              if (_namesMatch(favName, whiteName) ||
+                  _namesMatch(favName, blackName)) {
                 return true;
               }
             }
-          }
-
-          // 2. Fall back to name matching
-          final favName = _normalizeNameForMatch(favorite.playerName);
-          final whiteName = _normalizeNameForMatch(game.whitePlayer.name);
-          final blackName = _normalizeNameForMatch(game.blackPlayer.name);
-
-          if (_namesMatch(favName, whiteName) || _namesMatch(favName, blackName)) {
-            return true;
-          }
-        }
-        return false;
-      }).toList();
+            return false;
+          }).toList();
 
       debugPrint('[FilterChips] After filter: ${filtered.length} games');
     }
@@ -137,7 +144,10 @@ class _FavoritesCombinedGamesScreenState
     // Remove extra whitespace
     normalized = normalized.replaceAll(RegExp(r'\s+'), ' ');
     // Remove common chess title prefixes (GM, IM, FM, WGM, WIM, WFM, CM, WCM, NM)
-    normalized = normalized.replaceFirst(RegExp(r'^(gm|im|fm|wgm|wim|wfm|cm|wcm|nm)\s+'), '');
+    normalized = normalized.replaceFirst(
+      RegExp(r'^(gm|im|fm|wgm|wim|wfm|cm|wcm|nm)\s+'),
+      '',
+    );
     return normalized;
   }
 
@@ -233,50 +243,64 @@ class _FavoritesCombinedGamesScreenState
 
     return Scaffold(
       backgroundColor: kBackgroundColor,
-      body: RefreshIndicator(
-        onRefresh: () async {
-          HapticFeedbackService.medium();
-          await ref.read(favoritesCombinedGamesProvider.notifier).refreshGames();
-        },
-        color: kWhiteColor,
-        backgroundColor: kBlack2Color,
-        edgeOffset: 120,
-        child: CustomScrollView(
-          controller: _scrollController,
-          physics: const AlwaysScrollableScrollPhysics(
-            parent: BouncingScrollPhysics(),
+      body: Center(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth:
+                ResponsiveHelper.isTablet
+                    ? ResponsiveHelper.contentMaxWidth
+                    : double.infinity,
           ),
-          slivers: [
-            // Pinned app bar that floats
-            _buildPinnedAppBar(context, favoriteCount, state),
-
-            // Pinned search bar
-            SliverPersistentHeader(
-              pinned: true,
-              delegate: _SliverSearchBarDelegate(
-                child: _buildSearchBar(state),
-                height: 68.h,
+          child: RefreshIndicator(
+            onRefresh: () async {
+              HapticFeedbackService.medium();
+              await ref
+                  .read(favoritesCombinedGamesProvider.notifier)
+                  .refreshGames();
+            },
+            color: kWhiteColor,
+            backgroundColor: kBlack2Color,
+            edgeOffset: 120,
+            child: CustomScrollView(
+              controller: _scrollController,
+              physics: const AlwaysScrollableScrollPhysics(
+                parent: BouncingScrollPhysics(),
               ),
+              slivers: [
+                // Pinned app bar that floats
+                _buildPinnedAppBar(context, favoriteCount, state),
+
+                // Pinned search bar
+                SliverPersistentHeader(
+                  pinned: true,
+                  delegate: _SliverSearchBarDelegate(
+                    child: _buildSearchBar(state),
+                    height: 68.h,
+                  ),
+                ),
+
+                // Filter chips (only show when not searching)
+                if (favorites.length > 1 && !state.isSearching)
+                  SliverToBoxAdapter(child: _buildFilterChips(favorites)),
+
+                // Content
+                _buildContentSliver(state, favorites),
+
+                // Bottom padding
+                SliverToBoxAdapter(child: SizedBox(height: 24.h)),
+              ],
             ),
-
-            // Filter chips (only show when not searching)
-            if (favorites.length > 1 && !state.isSearching)
-              SliverToBoxAdapter(
-                child: _buildFilterChips(favorites),
-              ),
-
-            // Content
-            _buildContentSliver(state, favorites),
-
-            // Bottom padding
-            SliverToBoxAdapter(child: SizedBox(height: 24.h)),
-          ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildPinnedAppBar(BuildContext context, int favoriteCount, FavoritesCombinedGamesState state) {
+  Widget _buildPinnedAppBar(
+    BuildContext context,
+    int favoriteCount,
+    FavoritesCombinedGamesState state,
+  ) {
     final hasActiveFilters = state.filter.hasActiveFilters;
     final activeFilterCount = state.filter.activeFilterCount;
 
@@ -371,7 +395,10 @@ class _FavoritesCombinedGamesScreenState
                   Icon(
                     Icons.tune_rounded,
                     size: 22.ic,
-                    color: hasActiveFilters ? kWhiteColor : const Color(0xFFA1A1AA),
+                    color:
+                        hasActiveFilters
+                            ? kWhiteColor
+                            : const Color(0xFFA1A1AA),
                   ),
                   // Badge showing active filter count
                   if (hasActiveFilters)
@@ -432,11 +459,7 @@ class _FavoritesCombinedGamesScreenState
         child: Row(
           children: [
             SizedBox(width: 12.w),
-            Icon(
-              Icons.search,
-              size: 20.sp,
-              color: const Color(0xFFA1A1AA),
-            ),
+            Icon(Icons.search, size: 20.sp, color: const Color(0xFFA1A1AA)),
             SizedBox(width: 8.w),
             Expanded(
               child: TextField(
@@ -508,7 +531,10 @@ class _FavoritesCombinedGamesScreenState
                 child: GestureDetector(
                   onTap: _clearAllFilters,
                   child: Container(
-                    padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
+                    padding: EdgeInsets.symmetric(
+                      horizontal: 12.w,
+                      vertical: 8.h,
+                    ),
                     decoration: BoxDecoration(
                       color: const Color(0xFF27272A),
                       borderRadius: BorderRadius.circular(16.br),
@@ -552,16 +578,21 @@ class _FavoritesCombinedGamesScreenState
                 onTap: () => _togglePlayerFilter(player.id),
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 150),
-                  padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 8.h),
+                  padding: EdgeInsets.symmetric(
+                    horizontal: 10.w,
+                    vertical: 8.h,
+                  ),
                   decoration: BoxDecoration(
-                    color: isSelected
-                        ? const Color(0xFFEF4444)
-                        : const Color(0xFF27272A),
+                    color:
+                        isSelected
+                            ? const Color(0xFFEF4444)
+                            : const Color(0xFF27272A),
                     borderRadius: BorderRadius.circular(16.br),
                     border: Border.all(
-                      color: isSelected
-                          ? const Color(0xFFEF4444)
-                          : const Color(0xFF3F3F46),
+                      color:
+                          isSelected
+                              ? const Color(0xFFEF4444)
+                              : const Color(0xFF3F3F46),
                       width: 1,
                     ),
                   ),
@@ -579,7 +610,8 @@ class _FavoritesCombinedGamesScreenState
                         displayName,
                         style: TextStyle(
                           fontSize: 13.sp,
-                          fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                          fontWeight:
+                              isSelected ? FontWeight.w600 : FontWeight.w500,
                           color: kWhiteColor,
                         ),
                       ),
@@ -626,9 +658,8 @@ class _FavoritesCombinedGamesScreenState
     }
 
     // Apply local favorite player filter when not searching
-    var filteredGames = state.isSearching
-        ? state.games
-        : _filterGames(state.games, favorites);
+    var filteredGames =
+        state.isSearching ? state.games : _filterGames(state.games, favorites);
 
     // Then apply the game filter (result, color, time control, year, rating)
     if (state.filter.hasActiveFilters) {
@@ -651,20 +682,20 @@ class _FavoritesCombinedGamesScreenState
     }
 
     // Show loading indicator when fetching more
-    final showLoadingIndicator = (state.hasMore || state.isLoading) &&
-        filteredGames.isNotEmpty;
+    final showLoadingIndicator =
+        (state.hasMore || state.isLoading) && filteredGames.isNotEmpty;
 
     return SliverPadding(
       padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
       sliver: SliverList(
-        delegate: SliverChildBuilderDelegate(
-          (context, index) {
-            if (index >= filteredGames.length) {
-              return Padding(
-                padding: EdgeInsets.symmetric(vertical: 24.h),
-                child: Center(
-                  child: state.isLoading
-                      ? Column(
+        delegate: SliverChildBuilderDelegate((context, index) {
+          if (index >= filteredGames.length) {
+            return Padding(
+              padding: EdgeInsets.symmetric(vertical: 24.h),
+              child: Center(
+                child:
+                    state.isLoading
+                        ? Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             SizedBox(
@@ -684,33 +715,31 @@ class _FavoritesCombinedGamesScreenState
                             ),
                           ],
                         )
-                      : state.hasMore
-                          ? const SizedBox.shrink()
-                          : Text(
-                              'No more games',
-                              style: AppTypography.textXsRegular.copyWith(
-                                color: const Color(0xFF52525B),
-                              ),
-                            ),
-                ),
-              );
-            }
-
-            final game = filteredGames[index];
-            return Padding(
-              padding: EdgeInsets.only(bottom: 12.h),
-              child: GamebaseSearchGameCard(
-                game: game,
-                allGames: filteredGames,
-                gameIndex: index,
-                animationIndex: index,
-                showRound: true,
-                onAdd: () => _showAddToFolderSheet(context, game),
+                        : state.hasMore
+                        ? const SizedBox.shrink()
+                        : Text(
+                          'No more games',
+                          style: AppTypography.textXsRegular.copyWith(
+                            color: const Color(0xFF52525B),
+                          ),
+                        ),
               ),
             );
-          },
-          childCount: filteredGames.length + (showLoadingIndicator ? 1 : 0),
-        ),
+          }
+
+          final game = filteredGames[index];
+          return Padding(
+            padding: EdgeInsets.only(bottom: 12.h),
+            child: GamebaseSearchGameCard(
+              game: game,
+              allGames: filteredGames,
+              gameIndex: index,
+              animationIndex: index,
+              showRound: true,
+              onAdd: () => _showAddToFolderSheet(context, game),
+            ),
+          );
+        }, childCount: filteredGames.length + (showLoadingIndicator ? 1 : 0)),
       ),
     );
   }
@@ -783,9 +812,11 @@ class _FavoritesCombinedGamesScreenState
           ),
           SizedBox(height: 24.h),
           TextButton(
-            onPressed: () => ref
-                .read(favoritesCombinedGamesProvider.notifier)
-                .refreshGames(),
+            onPressed:
+                () =>
+                    ref
+                        .read(favoritesCombinedGamesProvider.notifier)
+                        .refreshGames(),
             style: TextButton.styleFrom(
               backgroundColor: kWhiteColor.withValues(alpha: 0.1),
               padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 12.h),
@@ -856,9 +887,7 @@ class _FavoritesCombinedGamesScreenState
             ),
             child: Text(
               'Add favorites',
-              style: AppTypography.textSmMedium.copyWith(
-                color: kWhiteColor,
-              ),
+              style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
             ),
           ),
         ],
@@ -935,9 +964,7 @@ class _FavoritesCombinedGamesScreenState
               ),
               child: Text(
                 'Clear Filters',
-                style: AppTypography.textSmMedium.copyWith(
-                  color: kWhiteColor,
-                ),
+                style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
               ),
             ),
           ),
@@ -953,10 +980,7 @@ class _FavoritesCombinedGamesScreenState
 
 /// Delegate for pinned search bar in sliver list
 class _SliverSearchBarDelegate extends SliverPersistentHeaderDelegate {
-  _SliverSearchBarDelegate({
-    required this.child,
-    required this.height,
-  });
+  _SliverSearchBarDelegate({required this.child, required this.height});
 
   final Widget child;
   final double height;
@@ -977,10 +1001,7 @@ class _SliverSearchBarDelegate extends SliverPersistentHeaderDelegate {
     // This prevents layoutExtent from exceeding paintExtent
     return SizedBox(
       height: maxExtent,
-      child: Container(
-        color: kBackgroundColor,
-        child: child,
-      ),
+      child: Container(color: kBackgroundColor, child: child),
     );
   }
 

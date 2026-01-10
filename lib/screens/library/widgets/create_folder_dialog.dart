@@ -96,7 +96,11 @@ class _FolderNameDialogState extends State<_FolderNameDialog> {
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16.br),
       ),
-      child: Padding(
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxWidth: ResponsiveHelper.isTablet ? 400 : double.infinity,
+        ),
+        child: Padding(
         padding: EdgeInsets.all(24.sp),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -220,6 +224,7 @@ class _FolderNameDialogState extends State<_FolderNameDialog> {
               ],
             ),
           ],
+        ),
         ),
       ),
     );

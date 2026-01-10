@@ -32,16 +32,13 @@ const libraryPlayerProfileTabNames = {
 /// Provider for selected tab
 final selectedLibraryPlayerProfileTabProvider =
     StateProvider.autoDispose<LibraryPlayerProfileTab>(
-  (ref) => LibraryPlayerProfileTab.about,
-);
+      (ref) => LibraryPlayerProfileTab.about,
+    );
 
 /// Library player profile screen showing detailed player information
 /// with three tabs: About, Games (combined gamebase+supabase), and Events.
 class LibraryPlayerProfileScreen extends ConsumerStatefulWidget {
-  const LibraryPlayerProfileScreen({
-    super.key,
-    required this.player,
-  });
+  const LibraryPlayerProfileScreen({super.key, required this.player});
 
   final GamebasePlayer player;
 
@@ -59,10 +56,10 @@ class _LibraryPlayerProfileScreenState
 
   /// Get the player profile key for provider lookups
   LibraryPlayerProfileKey get _playerKey => LibraryPlayerProfileKey(
-        fideId: int.tryParse(widget.player.fideId),
-        playerName: widget.player.name,
-        gamebasePlayerId: widget.player.id,
-      );
+    fideId: int.tryParse(widget.player.fideId),
+    playerName: widget.player.name,
+    gamebasePlayerId: widget.player.id,
+  );
 
   int? get _fideIdInt => int.tryParse(widget.player.fideId);
 
@@ -167,46 +164,56 @@ class _LibraryPlayerProfileScreenState
 
     return Scaffold(
       backgroundColor: kBackgroundColor,
-      body: Column(
-        children: [
-          SizedBox(height: MediaQuery.of(context).viewPadding.top + 4.h),
-
-          // App bar
-          _buildAppBar(context, displayTitle, isFavorite),
-
-          SizedBox(height: 8.h),
-
-          // Tab switcher
-          _buildTabSwitcher(selectedTab),
-
-          // Tab content
-          Expanded(
-            child: PageView.builder(
-              controller: _pageController,
-              itemCount: LibraryPlayerProfileTab.values.length,
-              onPageChanged: _handlePageChanged,
-              itemBuilder: (context, index) {
-                switch (LibraryPlayerProfileTab.values[index]) {
-                  case LibraryPlayerProfileTab.about:
-                    return LibraryPlayerAboutTab(
-                      playerKey: _playerKey,
-                      player: widget.player,
-                    );
-                  case LibraryPlayerProfileTab.games:
-                    return LibraryPlayerGamesTab(
-                      playerKey: _playerKey,
-                      player: widget.player,
-                    );
-                  case LibraryPlayerProfileTab.events:
-                    return LibraryPlayerEventsTab(
-                      playerKey: _playerKey,
-                      player: widget.player,
-                    );
-                }
-              },
-            ),
+      body: Center(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth:
+                ResponsiveHelper.isTablet
+                    ? ResponsiveHelper.contentMaxWidth
+                    : double.infinity,
           ),
-        ],
+          child: Column(
+            children: [
+              SizedBox(height: MediaQuery.of(context).viewPadding.top + 4.h),
+
+              // App bar
+              _buildAppBar(context, displayTitle, isFavorite),
+
+              SizedBox(height: 8.h),
+
+              // Tab switcher
+              _buildTabSwitcher(selectedTab),
+
+              // Tab content
+              Expanded(
+                child: PageView.builder(
+                  controller: _pageController,
+                  itemCount: LibraryPlayerProfileTab.values.length,
+                  onPageChanged: _handlePageChanged,
+                  itemBuilder: (context, index) {
+                    switch (LibraryPlayerProfileTab.values[index]) {
+                      case LibraryPlayerProfileTab.about:
+                        return LibraryPlayerAboutTab(
+                          playerKey: _playerKey,
+                          player: widget.player,
+                        );
+                      case LibraryPlayerProfileTab.games:
+                        return LibraryPlayerGamesTab(
+                          playerKey: _playerKey,
+                          player: widget.player,
+                        );
+                      case LibraryPlayerProfileTab.events:
+                        return LibraryPlayerEventsTab(
+                          playerKey: _playerKey,
+                          player: widget.player,
+                        );
+                    }
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -216,8 +223,12 @@ class _LibraryPlayerProfileScreenState
     String displayTitle,
     bool isFavorite,
   ) {
+    final horizontalPadding = ResponsiveHelper.adaptive(
+      phone: 16.w,
+      tablet: 24.w,
+    );
     return Padding(
-      padding: EdgeInsets.symmetric(horizontal: 16.w),
+      padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
       child: Row(
         children: [
           // Back button
@@ -269,7 +280,9 @@ class _LibraryPlayerProfileScreenState
                   Flexible(
                     child: Text(
                       widget.player.name,
-                      style: AppTypography.textLgBold.copyWith(color: kWhiteColor),
+                      style: AppTypography.textLgBold.copyWith(
+                        color: kWhiteColor,
+                      ),
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
@@ -304,8 +317,12 @@ class _LibraryPlayerProfileScreenState
   }
 
   Widget _buildTabSwitcher(LibraryPlayerProfileTab selectedTab) {
+    final horizontalPadding = ResponsiveHelper.adaptive(
+      phone: 20.sp,
+      tablet: 32.sp,
+    );
     return Padding(
-      padding: EdgeInsets.symmetric(horizontal: 20.sp),
+      padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
       child: SegmentedSwitcher(
         backgroundColor: kPopUpColor,
         selectedBackgroundColor: kPopUpColor,

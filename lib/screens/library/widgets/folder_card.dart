@@ -146,6 +146,7 @@ class FolderCard extends ConsumerWidget {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
+      constraints: ResponsiveHelper.bottomSheetConstraints,
       builder: (ctx) => _FolderActionsSheet(
         folder: folder,
         onRename: () async {
@@ -214,39 +215,46 @@ class FolderCard extends ConsumerWidget {
   Future<void> _deleteFolder(BuildContext context, WidgetRef ref) async {
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (_) => AlertDialog(
-        backgroundColor: kBlack2Color,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12.br),
-        ),
-        title: Text(
-          'Delete book?',
-          style: AppTypography.textMdBold.copyWith(color: kWhiteColor),
-        ),
-        content: Text(
-          'This removes the book. Games in it will stay saved but become unassigned.',
-          style: AppTypography.textSmRegular.copyWith(
-            color: kWhiteColor.withValues(alpha: 0.7),
+      builder: (_) => Center(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: ResponsiveHelper.isTablet ? 400 : double.infinity,
           ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: Text(
-              'Cancel',
-              style: AppTypography.textSmMedium.copyWith(
+          child: AlertDialog(
+            backgroundColor: kBlack2Color,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12.br),
+            ),
+            title: Text(
+              'Delete book?',
+              style: AppTypography.textMdBold.copyWith(color: kWhiteColor),
+            ),
+            content: Text(
+              'This removes the book. Games in it will stay saved but become unassigned.',
+              style: AppTypography.textSmRegular.copyWith(
                 color: kWhiteColor.withValues(alpha: 0.7),
               ),
             ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: Text(
+                  'Cancel',
+                  style: AppTypography.textSmMedium.copyWith(
+                    color: kWhiteColor.withValues(alpha: 0.7),
+                  ),
+                ),
+              ),
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                child: Text(
+                  'Delete',
+                  style: AppTypography.textSmMedium.copyWith(color: kRedColor),
+                ),
+              ),
+            ],
           ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: Text(
-              'Delete',
-              style: AppTypography.textSmMedium.copyWith(color: kRedColor),
-            ),
-          ),
-        ],
+        ),
       ),
     );
 

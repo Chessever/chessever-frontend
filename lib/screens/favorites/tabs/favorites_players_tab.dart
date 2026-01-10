@@ -421,45 +421,60 @@ class _FavoritesPlayersTabState extends ConsumerState<FavoritesPlayersTab>
             .toSet() ??
         <int>{};
 
+    // Apply tablet max-width constraint
+    Widget content = RefreshIndicator(
+      onRefresh: () async {
+        HapticFeedbackService.medium();
+        await ref.read(worldPlayersSearchProvider.notifier).refresh();
+      },
+      color: kWhiteColor,
+      backgroundColor: kBlack2Color,
+      child: CustomScrollView(
+        controller: _scrollController,
+        physics: const AlwaysScrollableScrollPhysics(
+          parent: BouncingScrollPhysics(),
+        ),
+        slivers: [
+          // Search bar
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(16.w, 12.h, 16.w, 8.h),
+              child: SearchBarWidget(
+                hintText: 'Search all players',
+                margin: 0.sp,
+                autoFocus: false,
+                controller: _searchController,
+                focusNode: _searchFocusNode,
+                onChanged: _onSearchChanged,
+                onClose: _clearSearch,
+              ),
+            ),
+          ),
+
+          // Content
+          _buildContentSliver(state, favoriteIds),
+
+          // Bottom padding
+          SliverToBoxAdapter(child: SizedBox(height: 24.h)),
+        ],
+      ),
+    );
+
+    // Apply tablet max-width constraint
+    if (ResponsiveHelper.isTablet) {
+      content = Center(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: ResponsiveHelper.contentMaxWidth,
+          ),
+          child: content,
+        ),
+      );
+    }
+
     return Stack(
       children: [
-        RefreshIndicator(
-          onRefresh: () async {
-            HapticFeedbackService.medium();
-            await ref.read(worldPlayersSearchProvider.notifier).refresh();
-          },
-          color: kWhiteColor,
-          backgroundColor: kBlack2Color,
-          child: CustomScrollView(
-            controller: _scrollController,
-            physics: const AlwaysScrollableScrollPhysics(
-              parent: BouncingScrollPhysics(),
-            ),
-            slivers: [
-              // Search bar
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: EdgeInsets.fromLTRB(16.w, 12.h, 16.w, 8.h),
-                  child: SearchBarWidget(
-                    hintText: 'Search all players',
-                    margin: 0.sp,
-                    autoFocus: false,
-                    controller: _searchController,
-                    focusNode: _searchFocusNode,
-                    onChanged: _onSearchChanged,
-                    onClose: _clearSearch,
-                  ),
-                ),
-              ),
-
-              // Content
-              _buildContentSliver(state, favoriteIds),
-
-              // Bottom padding
-              SliverToBoxAdapter(child: SizedBox(height: 24.h)),
-            ],
-          ),
-        ),
+        content,
         // Scroll to top button
         Positioned(
           bottom: 0,

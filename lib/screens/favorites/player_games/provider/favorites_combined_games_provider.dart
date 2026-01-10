@@ -462,14 +462,40 @@ class FavoritesCombinedGamesNotifier
   }
 
   int _compareByDateDesc(GamesTourModel a, GamesTourModel b) {
+    // Primary sort: by date (most recent first)
+    // Use lastMoveTime's date portion, falling back to DateTime(1900) for NULL
     final aDate = a.lastMoveTime ?? DateTime(1900);
     final bDate = b.lastMoveTime ?? DateTime(1900);
-    final dateCmp = bDate.compareTo(aDate);
-    if (dateCmp != 0) return dateCmp;
 
-    // Within same date, sort by max rating
+    // Compare by day only (ignore time for grouping purposes)
+    final aDayOnly = DateTime(aDate.year, aDate.month, aDate.day);
+    final bDayOnly = DateTime(bDate.year, bDate.month, bDate.day);
+    final dayCmp = bDayOnly.compareTo(aDayOnly);
+    if (dayCmp != 0) return dayCmp;
+
+    // Secondary sort: by round number descending (latest round first)
+    final aRound = _extractRoundNumber(a.roundSlug ?? a.roundId);
+    final bRound = _extractRoundNumber(b.roundSlug ?? b.roundId);
+    if (aRound != bRound) return bRound.compareTo(aRound);
+
+    // Tertiary sort: by exact lastMoveTime if both have it
+    if (a.lastMoveTime != null && b.lastMoveTime != null) {
+      final timeCmp = b.lastMoveTime!.compareTo(a.lastMoveTime!);
+      if (timeCmp != 0) return timeCmp;
+    }
+
+    // Final fallback: by max rating
     final aMaxRating = [a.whitePlayer.rating, a.blackPlayer.rating].reduce((a, b) => a > b ? a : b);
     final bMaxRating = [b.whitePlayer.rating, b.blackPlayer.rating].reduce((a, b) => a > b ? a : b);
     return bMaxRating.compareTo(aMaxRating);
+  }
+
+  /// Extracts round number from round slug/id (e.g., "round-11" -> 11, "round7" -> 7)
+  int _extractRoundNumber(String roundSlugOrId) {
+    final match = RegExp(r'round[-_]?(\d+)', caseSensitive: false).firstMatch(roundSlugOrId);
+    if (match != null) {
+      return int.tryParse(match.group(1)!) ?? 0;
+    }
+    return 0;
   }
 }

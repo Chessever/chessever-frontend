@@ -123,13 +123,8 @@ Future<void> main() async {
       // This prevents multiple getInstance() calls that can hang on Android
       await SharedPreferencesService.instance.initialize();
 
-      // Set orientation (non-blocking - not critical to wait for)
-      unawaited(
-        SystemChrome.setPreferredOrientations([
-          DeviceOrientation.portraitUp,
-          DeviceOrientation.portraitDown,
-        ]),
-      );
+      // Orientation is set per-device in MyApp after we know the device type
+      // Tablets get all orientations, phones stay portrait-only
 
       // Load environment variables first (only in debug mode)
       if (kDebugMode) {
@@ -323,6 +318,24 @@ class MyApp extends HookConsumerWidget {
 
     /// Initializing Responsive Unit
     ResponsiveHelper.init(context);
+
+    // Set orientation based on device type - tablets get landscape, phones stay portrait
+    useEffect(() {
+      if (ResponsiveHelper.isTablet) {
+        SystemChrome.setPreferredOrientations([
+          DeviceOrientation.portraitUp,
+          DeviceOrientation.portraitDown,
+          DeviceOrientation.landscapeLeft,
+          DeviceOrientation.landscapeRight,
+        ]);
+      } else {
+        SystemChrome.setPreferredOrientations([
+          DeviceOrientation.portraitUp,
+          DeviceOrientation.portraitDown,
+        ]);
+      }
+      return null;
+    }, const []);
 
     final upgrader = useMemoized(
       () => Upgrader(

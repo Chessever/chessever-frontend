@@ -1593,6 +1593,7 @@ class _AppBarState extends ConsumerState<_AppBar> {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
+      constraints: ResponsiveHelper.bottomSheetConstraints,
       builder: (context) => _EventInfoSheet(game: widget.game, pgn: pgn),
     );
   }
@@ -3420,6 +3421,9 @@ class _AnalysisGameBody extends ConsumerWidget {
         ref.watch(gamebaseOverlayEnabledProvider).valueOrNull ?? true;
     final isGamebaseActive = showGamebaseButton ? gamebaseEnabled : false;
 
+    // Check for tablet landscape mode for side-by-side layout
+    final isTabletLandscape = ResponsiveHelper.isTablet && ResponsiveHelper.isLandscape;
+
     return LayoutBuilder(
       builder: (context, constraints) {
         final isVisiblePage = index == currentPageIndex;
@@ -3429,7 +3433,7 @@ class _AnalysisGameBody extends ConsumerWidget {
                 ? constraints.maxHeight
                 : MediaQuery.sizeOf(context).height;
         final compactThreshold = 620.h;
-        final useCompactLayout = availableHeight < compactThreshold;
+        final useCompactLayout = availableHeight < compactThreshold && !isTabletLandscape;
 
         final pvSection = <Widget>[];
         // Hide standard PV section if Gamebase is active (it has its own)
@@ -3788,6 +3792,33 @@ class _AnalysisGameBody extends ConsumerWidget {
                 SizedBox(height: movesPanelHeight, child: buildAnalysisView()),
               ],
             ),
+          );
+        }
+
+        // Tablet landscape layout: board on left, moves on right
+        if (isTabletLandscape) {
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Left side: Board with players and evaluation
+              Expanded(
+                flex: 5,
+                child: SingleChildScrollView(
+                  padding: EdgeInsets.only(bottom: 12.h),
+                  physics: const ClampingScrollPhysics(),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: headerChildren,
+                  ),
+                ),
+              ),
+              SizedBox(width: 16.sp),
+              // Right side: Moves display and analysis
+              Expanded(
+                flex: 4,
+                child: buildAnalysisView(),
+              ),
+            ],
           );
         }
 

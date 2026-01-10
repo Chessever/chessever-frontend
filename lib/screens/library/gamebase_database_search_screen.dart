@@ -56,62 +56,72 @@ class _GamebaseDatabaseSearchScreenState
           style: AppTypography.textLgBold.copyWith(color: kWhiteColor),
         ),
       ),
-      body: searchAsync.when(
-        loading:
-            () => const Center(
-              child: CircularProgressIndicator(color: kPrimaryColor),
-            ),
-        error: (error, _) => _ErrorState(message: error.toString()),
-        data: (state) {
-          return Column(
-            children: [
-              _SearchBar(
-                controller: _queryController,
-                focusNode: _queryFocusNode,
-                query: state.query,
-                hasActiveFilters: state.hasActiveFilters,
-                onChanged:
-                    (value) => ref
-                        .read(gamebaseDatabaseSearchProvider.notifier)
-                        .setQuery(value),
-                onClear: () {
-                  HapticFeedbackService.light();
-                  _queryController.clear();
-                  ref
-                      .read(gamebaseDatabaseSearchProvider.notifier)
-                      .setQuery('');
-                  _queryFocusNode.unfocus();
-                  setState(() {});
-                },
-                onFilterTap: _openFilters,
-              ),
-              _MetaRow(state: state),
-              Expanded(
-                child: _GamesList(
-                  state: state,
-                  onAdd: (game) => _showAddToFolderSheet(context, game),
+      body: Center(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth:
+                ResponsiveHelper.isTablet
+                    ? ResponsiveHelper.contentMaxWidth
+                    : double.infinity,
+          ),
+          child: searchAsync.when(
+            loading:
+                () => const Center(
+                  child: CircularProgressIndicator(color: kPrimaryColor),
                 ),
-              ),
-              _PaginationBar(
-                canGoPrev: state.canGoPrev,
-                canGoNext: state.canGoNext,
-                pageNumber: state.pagination.pageNumber,
-                pageSize: state.pagination.pageSize,
-                totalCount: state.pagination.totalCount,
-                onPrev:
-                    () =>
-                        ref
+            error: (error, _) => _ErrorState(message: error.toString()),
+            data: (state) {
+              return Column(
+                children: [
+                  _SearchBar(
+                    controller: _queryController,
+                    focusNode: _queryFocusNode,
+                    query: state.query,
+                    hasActiveFilters: state.hasActiveFilters,
+                    onChanged:
+                        (value) => ref
                             .read(gamebaseDatabaseSearchProvider.notifier)
-                            .prevPage(),
-                onNext:
-                    () =>
-                        ref
-                            .read(gamebaseDatabaseSearchProvider.notifier)
-                            .nextPage(),
-              ),
-            ],
-          );
-        },
+                            .setQuery(value),
+                    onClear: () {
+                      HapticFeedbackService.light();
+                      _queryController.clear();
+                      ref
+                          .read(gamebaseDatabaseSearchProvider.notifier)
+                          .setQuery('');
+                      _queryFocusNode.unfocus();
+                      setState(() {});
+                    },
+                    onFilterTap: _openFilters,
+                  ),
+                  _MetaRow(state: state),
+                  Expanded(
+                    child: _GamesList(
+                      state: state,
+                      onAdd: (game) => _showAddToFolderSheet(context, game),
+                    ),
+                  ),
+                  _PaginationBar(
+                    canGoPrev: state.canGoPrev,
+                    canGoNext: state.canGoNext,
+                    pageNumber: state.pagination.pageNumber,
+                    pageSize: state.pagination.pageSize,
+                    totalCount: state.pagination.totalCount,
+                    onPrev:
+                        () =>
+                            ref
+                                .read(gamebaseDatabaseSearchProvider.notifier)
+                                .prevPage(),
+                    onNext:
+                        () =>
+                            ref
+                                .read(gamebaseDatabaseSearchProvider.notifier)
+                                .nextPage(),
+                  ),
+                ],
+              );
+            },
+          ),
+        ),
       ),
     );
   }
@@ -122,6 +132,7 @@ class _GamebaseDatabaseSearchScreenState
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
+      constraints: ResponsiveHelper.bottomSheetConstraints,
       builder: (_) => const LibraryGamebaseFiltersSheet(),
     );
   }

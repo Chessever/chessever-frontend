@@ -3,6 +3,7 @@
 library;
 
 import 'dart:math' as math;
+import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/droplet_dropdown/blob_border_painter.dart';
 import 'package:flutter/material.dart';
 import 'package:motor/motor.dart';
@@ -189,7 +190,7 @@ class _WaterDropletShapeState extends State<_WaterDropletShape>
       builder: (context, child) {
         return Container(
           height: widget.height,
-          margin: const EdgeInsets.symmetric(horizontal: 6),
+          margin: EdgeInsets.symmetric(horizontal: 6.w),
           child: CustomPaint(
             painter: _DropletPainter(
               wobblePhase: _wobbleController.value * 2 * math.pi,

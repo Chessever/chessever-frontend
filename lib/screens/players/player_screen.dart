@@ -77,69 +77,82 @@ class _PlayerScreenState extends ConsumerState<PlayerListScreen> {
   Widget build(BuildContext context) {
     ref.watch(playerInitializationProvider);
 
+    // Tablet-specific padding
+    final horizontalPadding = ResponsiveHelper.adaptive(
+      phone: 16.sp,
+      tablet: 24.sp,
+    );
+
     return Scaffold(
       backgroundColor: kBackgroundColor,
       body: SafeArea(
-        child: Padding(
-          padding: EdgeInsets.symmetric(horizontal: 16.sp),
-          child: Column(
-            children: [
-              Padding(
-                padding: EdgeInsets.symmetric(vertical: 16.sp),
-                child: RoundedSearchBar(
-                  showProfile: false,
-                  controller: _searchController,
-                  hintText: 'Search',
-                  onFilterTap: () {},
-                  onProfileTap: () {},
-                ),
-              ),
-
-              Padding(
-                padding: EdgeInsets.only(bottom: 16.sp, top: 8.sp),
-                child: DefaultTextStyle(
-                  style: AppTypography.textSmMedium.copyWith(
-                    color: kWhiteColor,
+        child: Center(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: ResponsiveHelper.contentMaxWidth,
+            ),
+            child: Padding(
+              padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
+              child: Column(
+                children: [
+                  Padding(
+                    padding: EdgeInsets.symmetric(vertical: 16.sp),
+                    child: RoundedSearchBar(
+                      showProfile: false,
+                      controller: _searchController,
+                      hintText: 'Search',
+                      onFilterTap: () {},
+                      onProfileTap: () {},
+                    ),
                   ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Expanded(
-                        flex: 3,
-                        child: Text(
-                          'Player',
-                          style: AppTypography.textSmMedium,
-                        ),
-                      ),
-                      Expanded(
-                        flex: 1,
-                        child: Text(
-                          'Elo',
-                          style: AppTypography.textSmMedium,
-                          textAlign: TextAlign.center,
-                        ),
-                      ),
-                      Expanded(
-                        flex: 1,
-                        child: Text(
-                          'Age',
-                          style: AppTypography.textSmMedium,
-                          textAlign: TextAlign.center,
-                        ),
-                      ),
-                      SizedBox(width: 30.w),
-                    ],
-                  ),
-                ),
-              ),
 
-              Expanded(
-                child: _PlayerList(
-                  scrollController: _scrollController,
-                  searchController: _searchController,
-                ),
+                  Padding(
+                    padding: EdgeInsets.only(bottom: 16.sp, top: 8.sp),
+                    child: DefaultTextStyle(
+                      style: AppTypography.textSmMedium.copyWith(
+                        color: kWhiteColor,
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Expanded(
+                            flex: 3,
+                            child: Text(
+                              'Player',
+                              style: AppTypography.textSmMedium,
+                            ),
+                          ),
+                          Expanded(
+                            flex: 1,
+                            child: Text(
+                              'Elo',
+                              style: AppTypography.textSmMedium,
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                          Expanded(
+                            flex: 1,
+                            child: Text(
+                              'Age',
+                              style: AppTypography.textSmMedium,
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                          SizedBox(width: 30.w),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                  Expanded(
+                    child: _PlayerList(
+                      scrollController: _scrollController,
+                      searchController: _searchController,
+                    ),
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
         ),
       ),

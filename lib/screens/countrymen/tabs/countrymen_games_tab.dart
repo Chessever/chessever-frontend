@@ -186,39 +186,54 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
 
     final state = ref.watch(countrymenCombinedGamesProvider);
     final viewMode = ref.watch(gamesListViewModeProvider);
+    final horizontalPadding = ResponsiveHelper.adaptive(phone: 16.w, tablet: 24.w);
+
+    Widget content = RefreshIndicator(
+      onRefresh: () async {
+        HapticFeedbackService.medium();
+        await ref.read(countrymenCombinedGamesProvider.notifier).refreshGames();
+      },
+      color: kWhiteColor,
+      backgroundColor: kBlack2Color,
+      child: CustomScrollView(
+        key: PageStorageKey<String>('countrymen_games_list_${viewMode.index}'),
+        controller: _scrollController,
+        physics: const AlwaysScrollableScrollPhysics(
+          parent: BouncingScrollPhysics(),
+        ),
+        slivers: [
+          // Search bar
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(horizontalPadding, 12.h, horizontalPadding, 8.h),
+              child: _buildSearchBar(state),
+            ),
+          ),
+
+          // Content
+          _buildContentSliver(state, viewMode),
+
+          // Bottom padding
+          SliverToBoxAdapter(child: SizedBox(height: 24.h)),
+        ],
+      ),
+    );
+
+    // Apply tablet max-width constraint
+    if (ResponsiveHelper.isTablet) {
+      content = Center(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: ResponsiveHelper.contentMaxWidth,
+          ),
+          child: content,
+        ),
+      );
+    }
 
     return Stack(
       children: [
-        RefreshIndicator(
-          onRefresh: () async {
-            HapticFeedbackService.medium();
-            await ref.read(countrymenCombinedGamesProvider.notifier).refreshGames();
-          },
-          color: kWhiteColor,
-          backgroundColor: kBlack2Color,
-          child: CustomScrollView(
-            key: PageStorageKey<String>('countrymen_games_list_${viewMode.index}'),
-            controller: _scrollController,
-            physics: const AlwaysScrollableScrollPhysics(
-              parent: BouncingScrollPhysics(),
-            ),
-            slivers: [
-              // Search bar
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: EdgeInsets.fromLTRB(16.w, 12.h, 16.w, 8.h),
-                  child: _buildSearchBar(state),
-                ),
-              ),
-
-              // Content
-              _buildContentSliver(state, viewMode),
-
-              // Bottom padding
-              SliverToBoxAdapter(child: SizedBox(height: 24.h)),
-            ],
-          ),
-        ),
+        content,
         // Scroll to top button
         Positioned(
           bottom: 0,
@@ -576,8 +591,9 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
       );
     }
 
+    final horizontalPadding = ResponsiveHelper.adaptive(phone: 16.w, tablet: 24.w);
     return SliverPadding(
-      padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
+      padding: EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: 8.h),
       sliver: SliverList(
         delegate: SliverChildBuilderDelegate(
           (context, index) => items[index],
