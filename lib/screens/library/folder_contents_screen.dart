@@ -106,11 +106,21 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
     return Scaffold(
       backgroundColor: kBackgroundColor,
       body: ScreenWrapper(
-        child: Column(
-          children: [
-            _buildTopArea(context),
-            Expanded(child: _buildSavedGames(analysesAsync, query)),
-          ],
+        child: Center(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth:
+                  ResponsiveHelper.isTablet
+                      ? ResponsiveHelper.contentMaxWidth
+                      : double.infinity,
+            ),
+            child: Column(
+              children: [
+                _buildTopArea(context),
+                Expanded(child: _buildSavedGames(analysesAsync, query)),
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -128,15 +138,22 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
           colors: [kBlackColor, kBackgroundColor],
         ),
       ),
-      child: Column(
-        children: [_buildHeader(context), _buildSearchBar()],
-      ),
+      child: Column(children: [_buildHeader(context), _buildSearchBar()]),
     );
   }
 
   Widget _buildHeader(BuildContext context) {
+    final horizontalPadding = ResponsiveHelper.adaptive(
+      phone: 8.w,
+      tablet: 16.w,
+    );
     return Padding(
-      padding: EdgeInsets.fromLTRB(8.w, 0, 8.w, 8.h),
+      padding: EdgeInsets.fromLTRB(
+        horizontalPadding,
+        0,
+        horizontalPadding,
+        8.h,
+      ),
       child: Stack(
         alignment: Alignment.center,
         children: [
@@ -170,8 +187,17 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
   }
 
   Widget _buildSearchBar() {
+    final horizontalPadding = ResponsiveHelper.adaptive(
+      phone: 16.w,
+      tablet: 24.w,
+    );
     return Padding(
-      padding: EdgeInsets.fromLTRB(16.w, 0, 16.w, 8.h),
+      padding: EdgeInsets.fromLTRB(
+        horizontalPadding,
+        0,
+        horizontalPadding,
+        8.h,
+      ),
       child: Container(
         decoration: BoxDecoration(
           color: const Color(0xFF09090B), // Zinc 950
@@ -265,7 +291,9 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
               return Padding(
                 padding: EdgeInsets.only(bottom: 12.h),
                 child: SwipeActionCard(
-                  dismissKey: ValueKey('book_${widget.folder.id}_${analysis.id}'),
+                  dismissKey: ValueKey(
+                    'book_${widget.folder.id}_${analysis.id}',
+                  ),
                   icon: Icons.delete_outline_rounded,
                   label: 'Remove',
                   backgroundColor: kRedColor,
@@ -276,7 +304,10 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
                   swipeHintKey: 'book_remove',
                   child: BookSavedGameCard(analysis: analysis)
                       .animate()
-                      .fadeIn(duration: 200.ms, delay: Duration(milliseconds: (index % 10) * 30))
+                      .fadeIn(
+                        duration: 200.ms,
+                        delay: Duration(milliseconds: (index % 10) * 30),
+                      )
                       .slideY(
                         begin: 0.05,
                         end: 0,
@@ -335,9 +366,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
                 decoration: BoxDecoration(
                   color: kWhiteColor.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(10.br),
-                  border: Border.all(
-                    color: kWhiteColor.withValues(alpha: 0.2),
-                  ),
+                  border: Border.all(color: kWhiteColor.withValues(alpha: 0.2)),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,

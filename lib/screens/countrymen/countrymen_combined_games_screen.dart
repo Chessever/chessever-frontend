@@ -77,9 +77,14 @@ class _CountrymenCombinedGamesScreenState
   Widget build(BuildContext context) {
     final state = ref.watch(countrymenCombinedGamesProvider);
 
+    final horizontalPadding = ResponsiveHelper.adaptive(phone: 16.w, tablet: 32.w);
+
     return Scaffold(
       backgroundColor: kBackgroundColor,
-      body: RefreshIndicator(
+      body: Center(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxWidth: ResponsiveHelper.contentMaxWidth),
+          child: RefreshIndicator(
         onRefresh: () async {
           HapticFeedbackService.medium();
           await ref.read(countrymenCombinedGamesProvider.notifier).refreshGames();
@@ -108,6 +113,8 @@ class _CountrymenCombinedGamesScreenState
             // Content
             _buildContentSliver(state),
           ],
+        ),
+      ),
         ),
       ),
     );
@@ -246,8 +253,9 @@ class _CountrymenCombinedGamesScreenState
   }
 
   Widget _buildSearchBar() {
+    final horizontalPadding = ResponsiveHelper.adaptive(phone: 16.w, tablet: 32.w);
     return Padding(
-      padding: EdgeInsets.fromLTRB(16.w, 0, 16.w, 12.h),
+      padding: EdgeInsets.fromLTRB(horizontalPadding, 0, horizontalPadding, 12.h),
       child: Container(
         decoration: BoxDecoration(
           color: const Color(0xFF09090B),
@@ -343,8 +351,9 @@ class _CountrymenCombinedGamesScreenState
     final showLoadingIndicator = (state.hasMore || state.isLoading) &&
         games.isNotEmpty;
 
+    final horizontalPadding = ResponsiveHelper.adaptive(phone: 16.w, tablet: 32.w);
     return SliverPadding(
-      padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 4.h),
+      padding: EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: 4.h),
       sliver: SliverList(
         delegate: SliverChildBuilderDelegate(
           (context, index) {

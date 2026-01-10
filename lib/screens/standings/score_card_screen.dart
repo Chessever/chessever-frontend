@@ -457,16 +457,26 @@ class ScoreCardScreen extends ConsumerWidget {
       player.fideId?.toString(),
     );
 
+    final horizontalPadding = ResponsiveHelper.adaptive(
+      phone: 20.sp,
+      tablet: 32.sp,
+    );
+
     return Scaffold(
       backgroundColor: kBackgroundColor,
       body: SafeArea(
-        child: CustomScrollView(
-          slivers: [
-            const _SliverScoreboardAppBar(),
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: EdgeInsets.symmetric(horizontal: 20.sp),
-                child: Column(
+        child: Center(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: ResponsiveHelper.contentMaxWidth,
+            ),
+            child: CustomScrollView(
+              slivers: [
+                const _SliverScoreboardAppBar(),
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
+                    child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     SizedBox(height: 10.h),
@@ -647,7 +657,9 @@ class ScoreCardScreen extends ConsumerWidget {
                 ),
               ),
             SliverPadding(padding: EdgeInsets.only(bottom: 16.h)),
-          ],
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -948,7 +960,10 @@ class _SliverScoreboardAppBarState extends ConsumerState<_SliverScoreboardAppBar
         borderRadius: BorderRadius.vertical(top: Radius.circular(16.br)),
       ),
       isScrollControlled: true,
-      constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.6),
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.6,
+        maxWidth: ResponsiveHelper.bottomSheetMaxWidth,
+      ),
       builder: (context) => _PlayerSelectionSheet(players: players),
     );
   }

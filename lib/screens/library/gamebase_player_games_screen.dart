@@ -112,7 +112,17 @@ class _GamebasePlayerGamesScreenState
         ),
         centerTitle: false,
       ),
-      body: _buildBody(state),
+      body: Center(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth:
+                ResponsiveHelper.isTablet
+                    ? ResponsiveHelper.contentMaxWidth
+                    : double.infinity,
+          ),
+          child: _buildBody(state),
+        ),
+      ),
     );
   }
 
@@ -188,7 +198,10 @@ class _GamebasePlayerGamesScreenState
       backgroundColor: kBlack2Color,
       child: ListView.builder(
         controller: _scrollController,
-        padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
+        padding: EdgeInsets.symmetric(
+          horizontal: ResponsiveHelper.adaptive(phone: 16.w, tablet: 24.w),
+          vertical: 12.h,
+        ),
         itemCount: state.games.length + (state.hasMore ? 1 : 0),
         itemBuilder: (context, index) {
           if (index >= state.games.length) {

@@ -65,7 +65,9 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
   @override
   void didPushNext() {
     Future.microtask(() {
-      print('🔥 TournamentDetail: didPushNext - disabling streaming while off-screen');
+      print(
+        '🔥 TournamentDetail: didPushNext - disabling streaming while off-screen',
+      );
       // Disable streaming when navigating to sub-screens (e.g., chessboard)
       // to prevent unnecessary periodic fetches and logs.
       ref.read(shouldStreamProvider.notifier).state = false;
@@ -168,39 +170,52 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
       ],
       child: ScreenWrapper(
         child: Scaffold(
-          body: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              SizedBox(height: MediaQuery.of(context).viewPadding.top + 4.h),
-              tourDetailAsync.when(
-                data: (data) => _buildSuccessAppBar(data, selectedTourMode),
-                error: (error, stackTrace) => _buildErrorAppBar(error),
-                loading: () => const _LoadingAppBarWithTitle(title: "Chessever"),
+          body: Center(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxWidth:
+                    ResponsiveHelper.isTablet
+                        ? ResponsiveHelper.contentMaxWidth
+                        : double.infinity,
               ),
-              Expanded(
-                child: PageView.builder(
-                  controller: pageController,
-                  itemCount: 3,
-                  onPageChanged: _handlePageChanged,
-                  itemBuilder: (context, index) {
-                    if (index == 0) {
-                      return AboutTourScreen();
-                    } else if (index == 1) {
-                      return GamesTourScreen();
-                    } else if (index == 2) {
-                      return PlayerTourScreen();
-                    } else {
-                      return Center(
-                        child: Text(
-                          'Invalid page index: $index',
-                          style: TextStyle(color: kWhiteColor),
-                        ),
-                      );
-                    }
-                  },
-                ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SizedBox(
+                    height: MediaQuery.of(context).viewPadding.top + 4.h,
+                  ),
+                  tourDetailAsync.when(
+                    data: (data) => _buildSuccessAppBar(data, selectedTourMode),
+                    error: (error, stackTrace) => _buildErrorAppBar(error),
+                    loading:
+                        () => const _LoadingAppBarWithTitle(title: "Chessever"),
+                  ),
+                  Expanded(
+                    child: PageView.builder(
+                      controller: pageController,
+                      itemCount: 3,
+                      onPageChanged: _handlePageChanged,
+                      itemBuilder: (context, index) {
+                        if (index == 0) {
+                          return AboutTourScreen();
+                        } else if (index == 1) {
+                          return GamesTourScreen();
+                        } else if (index == 2) {
+                          return PlayerTourScreen();
+                        } else {
+                          return Center(
+                            child: Text(
+                              'Invalid page index: $index',
+                              style: TextStyle(color: kWhiteColor),
+                            ),
+                          );
+                        }
+                      },
+                    ),
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
         ),
       ),
@@ -245,8 +260,12 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
     TournamentDetailScreenMode selectedTourMode,
     ValueChanged<int> onChanged,
   ) {
+    final horizontalPadding = ResponsiveHelper.adaptive(
+      phone: 20.sp,
+      tablet: 32.sp,
+    );
     return Padding(
-      padding: EdgeInsets.symmetric(horizontal: 20.sp),
+      padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
       child: SegmentedSwitcher(
         key: UniqueKey(),
         backgroundColor: kPopUpColor,
@@ -306,8 +325,13 @@ class _TourDetailDropDownAppBar extends ConsumerWidget {
       return _buildErrorAppBar(context, 'No tournaments available');
     }
 
+    final horizontalPadding = ResponsiveHelper.adaptive(
+      phone: 16.w,
+      tablet: 24.w,
+    );
+
     return Padding(
-      padding: EdgeInsets.symmetric(horizontal: 16.w),
+      padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
       child: Row(
         children: [
           IconButton(
@@ -317,9 +341,7 @@ class _TourDetailDropDownAppBar extends ConsumerWidget {
             icon: Icon(Icons.arrow_back_ios_new_outlined, size: 24.ic),
           ),
           Expanded(
-            child: Center(
-              child: CategoryDropdown(constrainWidth: false),
-            ),
+            child: Center(child: CategoryDropdown(constrainWidth: false)),
           ),
           // Placeholder for symmetry with back button
           SizedBox(width: 48.w),

@@ -95,9 +95,20 @@ class _ChessBoardSettingsPageState extends ConsumerState<ChessBoardSettingsPage>
     final notifier = ref.read(engineSettingsProviderNew.notifier);
     final boardNotifier = ref.read(boardSettingsProviderNew.notifier);
 
-    return ListView(
-      padding: EdgeInsets.symmetric(horizontal: 20.sp, vertical: 16.sp),
-      children: [
+    // Tablet-specific horizontal padding
+    final horizontalPadding = ResponsiveHelper.adaptive(
+      phone: 20.sp,
+      tablet: 32.sp,
+    );
+
+    return Center(
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxWidth: ResponsiveHelper.contentMaxWidth,
+        ),
+        child: ListView(
+          padding: EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: 16.sp),
+          children: [
         _SectionLabel(title: 'Engine Experience'),
         SizedBox(height: 12.h),
         _SettingCard(
@@ -426,8 +437,57 @@ class _ChessBoardSettingsPageState extends ConsumerState<ChessBoardSettingsPage>
             _trackPersist(boardNotifier.setPieceSetIndex(index));
           },
         ),
+        SizedBox(height: 18.h),
 
-      ],
+        // Sound Effects Toggle
+        _SettingCard(
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Sound Effects',
+                      style: AppTypography.textMdMedium.copyWith(
+                        color: kWhiteColor,
+                        fontSize: 13.f,
+                      ),
+                    ),
+                    SizedBox(height: 4.h),
+                    Text(
+                      'Play sounds for moves, captures, and game events.',
+                      style: AppTypography.textSmRegular.copyWith(
+                        color: kWhiteColor70,
+                        fontSize: 11.f,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Switch.adaptive(
+                value: boardSettings.soundEnabled,
+                thumbColor: WidgetStateProperty.resolveWith(
+                  (states) => states.contains(WidgetState.selected)
+                      ? kPrimaryColor
+                      : kWhiteColor.withValues(alpha: 0.6),
+                ),
+                trackColor: WidgetStateProperty.resolveWith(
+                  (states) => states.contains(WidgetState.selected)
+                      ? kPrimaryColor.withValues(alpha: 0.35)
+                      : kDividerColor.withValues(alpha: 0.5),
+                ),
+                onChanged: (value) {
+                  _trackPersist(boardNotifier.toggleSound(value));
+                },
+              ),
+            ],
+          ),
+        ),
+
+        ],
+        ),
+      ),
     );
   }
 }
@@ -579,6 +639,7 @@ class _BoardThemePickerCard extends StatelessWidget {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
+      constraints: ResponsiveHelper.bottomSheetConstraints,
       builder: (context) => _BoardThemeGallerySheet(
         currentIndex: currentIndex,
         onThemeSelected: (index) {
@@ -1008,6 +1069,7 @@ class _PieceSetPickerCard extends StatelessWidget {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
+      constraints: ResponsiveHelper.bottomSheetConstraints,
       builder: (context) => _PieceSetGallerySheet(
         currentIndex: currentIndex,
         onPieceSetSelected: (index) {

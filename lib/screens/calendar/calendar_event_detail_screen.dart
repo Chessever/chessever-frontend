@@ -90,11 +90,18 @@ class CalendarEventDetailScreen extends StatelessWidget {
         iconTheme: const IconThemeData(color: kWhiteColor),
       ),
       bottomNavigationBar: _buildBottomBar(context, domain),
-      body: Container(
-        margin: EdgeInsets.symmetric(horizontal: 20.sp),
-        child: SingleChildScrollView(
-          padding: EdgeInsets.zero,
-          child: Column(
+      body: Center(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: ResponsiveHelper.contentMaxWidth,
+          ),
+          child: Container(
+            margin: EdgeInsets.symmetric(
+              horizontal: ResponsiveHelper.adaptive(phone: 20.sp, tablet: 32.sp),
+            ),
+            child: SingleChildScrollView(
+              padding: EdgeInsets.zero,
+              child: Column(
             mainAxisAlignment: MainAxisAlignment.start,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -150,6 +157,8 @@ class CalendarEventDetailScreen extends StatelessWidget {
               SizedBox(height: MediaQuery.of(context).viewPadding.bottom),
             ],
           ),
+          ),
+        ),
         ),
       ),
     );
@@ -178,8 +187,8 @@ class CalendarEventDetailScreen extends StatelessWidget {
         color: kLightBlack,
         alignment: Alignment.center,
         child: SizedBox(
-          width: 120,
-          height: 80,
+          width: 120.w,
+          height: 80.h,
           child: CountryFlag.fromCountryCode(
             event.countryCode!,
             shape: const RoundedRectangle(12),
@@ -273,7 +282,7 @@ class _CountryFlag extends StatelessWidget {
           title,
           style: AppTypography.textXsMedium.copyWith(color: kWhiteColor70),
         ),
-        SizedBox(height: 8.w),
+        SizedBox(height: 8.h),
         Row(
           mainAxisAlignment: MainAxisAlignment.start,
           children: [

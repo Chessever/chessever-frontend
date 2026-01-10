@@ -33,48 +33,55 @@ class _GamebaseExplorerScreenState
       child: Scaffold(
         backgroundColor: kBlack2Color,
         appBar: _buildAppBar(context),
-        body: Column(
-          children: [
-            // Chess board section
-            Padding(
-              padding: EdgeInsets.all(24.sp),
-              child: _GamebaseChessBoard(
-                fen: state.currentFen,
-                boardSize: boardSize,
-              ),
+        body: Center(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: ResponsiveHelper.contentMaxWidth,
             ),
-
-            // Navigation controls
-            _NavigationControls(
-              canGoBack: state.canGoBack,
-              canGoForward: state.canGoForward,
-              onGoToStart:
-                  () => ref.read(gamebaseExplorerProvider.notifier).goToStart(),
-              onGoBack:
-                  () => ref.read(gamebaseExplorerProvider.notifier).goBack(),
-              onGoForward:
-                  () => ref.read(gamebaseExplorerProvider.notifier).goForward(),
-              onGoToEnd:
-                  () => ref.read(gamebaseExplorerProvider.notifier).goToEnd(),
-              onReset:
-                  () => ref.read(gamebaseExplorerProvider.notifier).reset(),
-            ),
-
-            SizedBox(height: 8.sp),
-
-            // Move statistics panel
-            Expanded(
-              child: Container(
-                decoration: BoxDecoration(
-                  color: kBlack3Color,
-                  borderRadius: BorderRadius.vertical(
-                    top: Radius.circular(16.br),
+            child: Column(
+              children: [
+                // Chess board section
+                Padding(
+                  padding: EdgeInsets.all(24.sp),
+                  child: _GamebaseChessBoard(
+                    fen: state.currentFen,
+                    boardSize: boardSize,
                   ),
                 ),
-                child: const MoveStatisticsPanel(),
-              ),
+
+                // Navigation controls
+                _NavigationControls(
+                  canGoBack: state.canGoBack,
+                  canGoForward: state.canGoForward,
+                  onGoToStart:
+                      () => ref.read(gamebaseExplorerProvider.notifier).goToStart(),
+                  onGoBack:
+                      () => ref.read(gamebaseExplorerProvider.notifier).goBack(),
+                  onGoForward:
+                      () => ref.read(gamebaseExplorerProvider.notifier).goForward(),
+                  onGoToEnd:
+                      () => ref.read(gamebaseExplorerProvider.notifier).goToEnd(),
+                  onReset:
+                      () => ref.read(gamebaseExplorerProvider.notifier).reset(),
+                ),
+
+                SizedBox(height: 8.sp),
+
+                // Move statistics panel
+                Expanded(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: kBlack3Color,
+                      borderRadius: BorderRadius.vertical(
+                        top: Radius.circular(16.br),
+                      ),
+                    ),
+                    child: const MoveStatisticsPanel(),
+                  ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );
@@ -123,6 +130,7 @@ class _GamebaseExplorerScreenState
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16.br)),
       ),
+      constraints: ResponsiveHelper.bottomSheetConstraints,
       builder: (context) => const _FilterSheet(),
     );
   }

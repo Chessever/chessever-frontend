@@ -88,9 +88,16 @@ class _SmoothDialogWrapperState extends ConsumerState<SmoothDialogWrapper> {
   }
 
   Widget _buildDialogContent(BuildContext context) {
-    final child = Material(
-      color: Colors.transparent,
-      child: widget.builder(context),
+    final child = Center(
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxWidth: ResponsiveHelper.isTablet ? 500.0 : double.infinity,
+        ),
+        child: Material(
+          color: Colors.transparent,
+          child: widget.builder(context),
+        ),
+      ),
     );
 
     if (!widget.anchorToBottom) {

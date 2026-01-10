@@ -1,3 +1,4 @@
+import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/divider_widget.dart';
 import 'package:flutter/material.dart';
 
@@ -15,6 +16,7 @@ class CompletedEventMenu extends StatelessWidget {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
+      constraints: ResponsiveHelper.bottomSheetConstraints,
       builder:
           (context) => Container(
             decoration: const BoxDecoration(

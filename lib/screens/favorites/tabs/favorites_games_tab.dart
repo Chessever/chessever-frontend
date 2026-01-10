@@ -265,16 +265,15 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
       }
     });
 
-    return Stack(
-      children: [
-        RefreshIndicator(
-          onRefresh: () async {
-            HapticFeedbackService.medium();
-            await ref.read(favoritesCombinedGamesProvider.notifier).refreshGames();
-          },
-          color: kWhiteColor,
-          backgroundColor: kBlack2Color,
-          child: CustomScrollView(
+    // Apply tablet max-width constraint
+    Widget content = RefreshIndicator(
+      onRefresh: () async {
+        HapticFeedbackService.medium();
+        await ref.read(favoritesCombinedGamesProvider.notifier).refreshGames();
+      },
+      color: kWhiteColor,
+      backgroundColor: kBlack2Color,
+      child: CustomScrollView(
             key: PageStorageKey<String>('favorites_games_list_${viewMode.index}'),
             controller: _scrollController,
             physics: const AlwaysScrollableScrollPhysics(
@@ -302,7 +301,23 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
               SliverToBoxAdapter(child: SizedBox(height: 24.h)),
             ],
           ),
+    );
+
+    // Apply tablet max-width constraint
+    if (ResponsiveHelper.isTablet) {
+      content = Center(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: ResponsiveHelper.contentMaxWidth,
+          ),
+          child: content,
         ),
+      );
+    }
+
+    return Stack(
+      children: [
+        content,
         // Scroll to top button
         Positioned(
           bottom: 0,

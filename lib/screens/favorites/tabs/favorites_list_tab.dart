@@ -75,7 +75,12 @@ class _FavoritesListTabState extends ConsumerState<FavoritesListTab>
   }
 
   Widget _buildContent(List<PlayerStandingModel> filteredPlayers) {
-    return RefreshIndicator(
+    return Center(
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxWidth: ResponsiveHelper.contentMaxWidth,
+        ),
+        child: RefreshIndicator(
       onRefresh: () async {
         HapticFeedbackService.medium();
         await ref
@@ -118,6 +123,8 @@ class _FavoritesListTabState extends ConsumerState<FavoritesListTab>
           SliverToBoxAdapter(child: SizedBox(height: 24.h)),
         ],
       ),
+      ),
+      ),
     );
   }
 
@@ -144,8 +151,14 @@ class _FavoritesListTabState extends ConsumerState<FavoritesListTab>
     final sortedPlayers = [...players]
       ..sort((a, b) => b.score.compareTo(a.score));
 
+    // Tablet-specific padding
+    final horizontalPadding = ResponsiveHelper.adaptive(
+      phone: 20.sp,
+      tablet: 24.sp,
+    );
+
     return SliverPadding(
-      padding: EdgeInsets.symmetric(horizontal: 20.sp),
+      padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
       sliver: SliverList(
         delegate: SliverChildBuilderDelegate(
           (context, index) {

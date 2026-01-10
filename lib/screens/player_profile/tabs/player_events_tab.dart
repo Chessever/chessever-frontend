@@ -44,7 +44,7 @@ class _PlayerEventsTabState extends ConsumerState<PlayerEventsTab>
 
     final eventsAsync = ref.watch(playerEventsKeyProvider(_playerKey));
 
-    return RefreshIndicator(
+    Widget content = RefreshIndicator(
       onRefresh: () async {
         HapticFeedbackService.medium();
         ref.invalidate(playerEventsKeyProvider(_playerKey));
@@ -77,6 +77,20 @@ class _PlayerEventsTabState extends ConsumerState<PlayerEventsTab>
         error: (error, _) => _buildErrorState(error.toString()),
       ),
     );
+
+    // Apply tablet max-width constraint
+    if (ResponsiveHelper.isTablet) {
+      content = Center(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: ResponsiveHelper.contentMaxWidth,
+          ),
+          child: content,
+        ),
+      );
+    }
+
+    return content;
   }
 
   Widget _buildEmptyState() {
@@ -248,11 +262,12 @@ class _EventsListContent extends ConsumerWidget {
         ? ref.watch(playerEventCardsProvider(fideId!))
         : const AsyncValue<Map<String, GroupEventCardModel>>.data({});
 
+    final horizontalPadding = ResponsiveHelper.adaptive(phone: 16.w, tablet: 24.w);
     return ListView.builder(
       physics: const AlwaysScrollableScrollPhysics(
         parent: BouncingScrollPhysics(),
       ),
-      padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 16.h),
+      padding: EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: 16.h),
       itemCount: events.length + 1, // +1 for header section
       itemBuilder: (context, index) {
         if (index == 0) {

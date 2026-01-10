@@ -66,28 +66,62 @@ class _PremiumGamesScreenState extends ConsumerState<PremiumGamesScreen> {
             return _EmptyState(type: widget.type);
           }
 
+          final isTablet = ResponsiveHelper.isTablet;
+          final horizontalPadding = ResponsiveHelper.adaptive(phone: 16.sp, tablet: 24.sp);
+          final itemCount = state.games.length + (state.isLoadingMore ? 1 : 0);
+
           return RefreshIndicator(
             color: kPrimaryColor,
             backgroundColor: kBlackColor,
             onRefresh: () =>
                 ref.read(premiumGamesProvider(widget.type).notifier).refresh(),
-            child: ListView.builder(
-              controller: _scrollController,
-              padding: EdgeInsets.all(16.sp),
-              itemCount: state.games.length + (state.isLoadingMore ? 1 : 0),
-              itemBuilder: (context, index) {
-                if (index == state.games.length) {
-                  return _LoadingMoreIndicator();
-                }
+            child: Center(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: ResponsiveHelper.contentMaxWidth),
+                child: isTablet
+                    ? GridView.builder(
+                        controller: _scrollController,
+                        padding: EdgeInsets.all(horizontalPadding),
+                        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: ResponsiveHelper.tabletGridColumns,
+                          crossAxisSpacing: 16.sp,
+                          mainAxisSpacing: 16.sp,
+                          childAspectRatio: ResponsiveHelper.isLandscape ? 2.2 : 1.8,
+                        ),
+                        itemCount: itemCount,
+                        itemBuilder: (context, index) {
+                          if (index == state.games.length) {
+                            return _LoadingMoreIndicator();
+                          }
 
-                final game = state.games[index];
-                return TwicGameCard(
-                  game: game,
-                  allGames: state.games,
-                  gameIndex: index,
-                  animationIndex: index,
-                );
-              },
+                          final game = state.games[index];
+                          return TwicGameCard(
+                            game: game,
+                            allGames: state.games,
+                            gameIndex: index,
+                            animationIndex: index,
+                          );
+                        },
+                      )
+                    : ListView.builder(
+                        controller: _scrollController,
+                        padding: EdgeInsets.all(horizontalPadding),
+                        itemCount: itemCount,
+                        itemBuilder: (context, index) {
+                          if (index == state.games.length) {
+                            return _LoadingMoreIndicator();
+                          }
+
+                          final game = state.games[index];
+                          return TwicGameCard(
+                            game: game,
+                            allGames: state.games,
+                            gameIndex: index,
+                            animationIndex: index,
+                          );
+                        },
+                      ),
+              ),
             ),
           );
         },

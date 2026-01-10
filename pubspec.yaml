@@ -111,6 +111,7 @@ dependencies:
   dartchess: ^0.11.1
   fast_immutable_collections: ^11.0.4
   flutter_soloud: ^3.3.6
+  audio_session: ^0.1.21
 
   scrollable_positioned_list: ^0.3.8
   worker_manager: ^7.2.7
@@ -174,7 +175,7 @@ flutter:
     - assets/sfx/
     - assets/launch.jpg
     - assets/app_icon.png
-    # - .env
+    - .env
     # - .env.dev
     - shorebird.yaml
 

@@ -3,12 +3,15 @@ import 'package:chessever2/screens/authentication/auth_screen_provider.dart';
 import 'package:chessever2/screens/calendar/calendar_screen.dart';
 import 'package:chessever2/screens/library/library_screen.dart';
 import 'package:chessever2/screens/premium/premium_screen.dart';
+import 'package:chessever2/theme/app_theme.dart';
+import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/hamburger_menu/hamburger_menu.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../group_event/group_event_screen.dart';
 import 'widget/bottom_nav_bar.dart';
+import 'widget/tablet_nav_rail.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -20,74 +23,87 @@ class HomeScreen extends ConsumerStatefulWidget {
 class _HomeScreenState extends ConsumerState<HomeScreen> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
 
+  HamburgerMenuCallbacks get _menuCallbacks => HamburgerMenuCallbacks(
+    onPlayersPressed: () {
+      // Navigate to players screen
+      Navigator.pushNamed(context, '/player_list_screen');
+    },
+    onAnalysisBoardPressed: () {},
+    onSupportPressed: () {
+      // Handle support action
+    },
+    onPremiumPressed: () {
+      showModalBottomSheet(
+        context: context,
+        backgroundColor: Colors.transparent,
+        isScrollControlled: true,
+        constraints: ResponsiveHelper.bottomSheetConstraints,
+        builder: (_) => const PremiumScreen(),
+      );
+    },
+    onLogoutPressed: () async {
+      final user = Supabase.instance.client.auth.currentUser;
+      final isAnonymous = user?.isAnonymous == true;
+
+      // Anonymous users: navigate to auth screen WITHOUT signing out
+      if (isAnonymous) {
+        Navigator.of(context).pop(); // Close drawer
+        ref.read(authScreenProvider.notifier).reset();
+        Navigator.of(context).pushNamed('/auth_screen');
+        return;
+      }
+
+      // Fully authenticated users: show logout confirmation
+      await showDialog<void>(
+        context: context,
+        builder:
+            (dialogContext) => AlertDialog(
+              title: const Text('Logout'),
+              content: const Text('Are you sure you want to log out?'),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('Cancel'),
+                ),
+                TextButton(
+                  onPressed: () async {
+                    Navigator.of(dialogContext).pop();
+                    await ref.read(authStateProvider.notifier).signOut();
+                  },
+                  child: const Text('Logout'),
+                ),
+              ],
+            ),
+      );
+    },
+  );
+
   @override
   Widget build(BuildContext context) {
+    // Tablet layout: NavigationRail on the side
+    if (ResponsiveHelper.isTablet) {
+      return Scaffold(
+        key: _scaffoldKey,
+        resizeToAvoidBottomInset: false,
+        drawer: HamburgerMenu(callbacks: _menuCallbacks),
+        body: Row(
+          children: [
+            // Navigation rail for tablets
+            TabletNavRail(scaffoldKey: _scaffoldKey),
+            // Vertical divider
+            Container(width: 1, color: kDarkGreyColor),
+            // Main content
+            Expanded(child: BottomNavBarView()),
+          ],
+        ),
+      );
+    }
+
+    // Phone layout: Bottom navigation bar
     return Scaffold(
       key: _scaffoldKey,
       resizeToAvoidBottomInset: false,
-      drawer: HamburgerMenu(
-        callbacks: HamburgerMenuCallbacks(
-          onPlayersPressed: () {
-            // Navigate to players screen
-            Navigator.pushNamed(context, '/player_list_screen');
-          },
-          onAnalysisBoardPressed: () {},
-          onSupportPressed: () {
-            // Handle support action
-            // e.g., open support form or chat
-          },
-
-          onPremiumPressed: () {
-            showModalBottomSheet(
-              context: context,
-              backgroundColor: Colors.transparent,
-              isScrollControlled: true,
-              builder: (_) => const PremiumScreen(),
-            );
-          },
-
-          onLogoutPressed: () async {
-            final user = Supabase.instance.client.auth.currentUser;
-            final isAnonymous = user?.isAnonymous == true;
-
-            // Anonymous users: navigate to auth screen WITHOUT signing out
-            // This preserves their data (favorites, countryman) and allows
-            // OAuth linking via linkIdentity when they sign in
-            if (isAnonymous) {
-              Navigator.of(context).pop(); // Close drawer
-              // Reset auth screen state to prevent stale user data from triggering redirect
-              ref.read(authScreenProvider.notifier).reset();
-              Navigator.of(context).pushNamed('/auth_screen');
-              return;
-            }
-
-            // Fully authenticated users: show logout confirmation
-            await showDialog<void>(
-              context: context,
-              builder:
-                  (dialogContext) => AlertDialog(
-                    title: const Text('Logout'),
-                    content: const Text('Are you sure you want to log out?'),
-                    actions: [
-                      TextButton(
-                        onPressed: () => Navigator.of(context).pop(),
-                        child: const Text('Cancel'),
-                      ),
-                      TextButton(
-                        onPressed: () async {
-                          Navigator.of(dialogContext).pop();
-                          await ref
-                              .read(authStateProvider.notifier)
-                              .signOut();
-                        },
-                        child: const Text('Logout'),
-                      ),
-                    ],
-                  ),
-            );
-          },
-        ),
-      ),
+      drawer: HamburgerMenu(callbacks: _menuCallbacks),
       bottomNavigationBar: BottomNavBar(),
       body: BottomNavBarView(),
     );

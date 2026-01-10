@@ -170,8 +170,15 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   @override
   Widget build(BuildContext context) {
     return ScreenWrapper(
-      child: Column(
-        children: [_buildTopBar(), Expanded(child: _buildContent())],
+      child: Center(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: ResponsiveHelper.contentMaxWidth,
+          ),
+          child: Column(
+            children: [_buildTopBar(), Expanded(child: _buildContent())],
+          ),
+        ),
       ),
     );
   }
@@ -534,8 +541,48 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       return _buildSearchEmptyState('No folders match your search');
     }
 
+    final horizontalPadding = ResponsiveHelper.adaptive(
+      phone: 16.w,
+      tablet: 24.w,
+    );
+
+    // Use grid layout for tablets
+    if (ResponsiveHelper.isTablet) {
+      final crossAxisCount = ResponsiveHelper.tabletGridColumns.clamp(2, 3);
+      return SliverPadding(
+        padding: EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: 8.h),
+        sliver: SliverGrid(
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: crossAxisCount,
+            crossAxisSpacing: 16.sp,
+            mainAxisSpacing: 16.sp,
+            childAspectRatio: ResponsiveHelper.isLandscape ? 2.5 : 2.0,
+          ),
+          delegate: SliverChildBuilderDelegate(
+            (context, index) => FolderCard(
+              folder: filteredFolders[index],
+              isExpanded: true,
+              onTap: () async {
+                HapticFeedback.mediumImpact();
+                final shouldFocusSearch = await Navigator.of(context).push<bool>(
+                  MaterialPageRoute(
+                    builder: (_) => FolderContentsScreen(folder: filteredFolders[index]),
+                  ),
+                );
+                if (shouldFocusSearch == true && mounted) {
+                  _searchFocusNode.requestFocus();
+                }
+              },
+            ),
+            childCount: filteredFolders.length,
+          ),
+        ),
+      );
+    }
+
+    // Phone layout: single column list
     return SliverPadding(
-      padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
+      padding: EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: 8.h),
       sliver: SliverList(
         delegate: SliverChildBuilderDelegate(
           (context, index) => Padding(

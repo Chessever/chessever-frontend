@@ -93,7 +93,7 @@ class CountrymenCardWidget extends ConsumerWidget {
     return WidgetSpan(
       alignment: PlaceholderAlignment.middle,
       child: Container(
-        margin: EdgeInsets.symmetric(horizontal: 6),
+        margin: EdgeInsets.symmetric(horizontal: 6.w),
         height: 6.h,
         width: 6.w,
         decoration: BoxDecoration(shape: BoxShape.circle, color: kWhiteColor70),

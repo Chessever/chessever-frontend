@@ -120,7 +120,10 @@ class _CountrymenTabScreenState extends ConsumerState<CountrymenTabScreen> {
 
     return Scaffold(
       backgroundColor: kBackgroundColor,
-      body: Column(
+      body: Center(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxWidth: ResponsiveHelper.contentMaxWidth),
+          child: Column(
         children: [
           SizedBox(height: MediaQuery.of(context).viewPadding.top + 4.h),
           _buildAppBar(context, effectiveCountryAsync, selectedMode),
@@ -151,6 +154,8 @@ class _CountrymenTabScreenState extends ConsumerState<CountrymenTabScreen> {
             ),
           ),
         ],
+      ),
+        ),
       ),
     );
   }
@@ -280,8 +285,9 @@ class _CountrymenTabScreenState extends ConsumerState<CountrymenTabScreen> {
   }
 
   Widget _buildSegmentedSwitcher(CountrymenScreenMode selectedMode) {
+    final horizontalPadding = ResponsiveHelper.adaptive(phone: 20.sp, tablet: 32.sp);
     return Padding(
-      padding: EdgeInsets.symmetric(horizontal: 20.sp),
+      padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
       child: SegmentedSwitcher(
         backgroundColor: kPopUpColor,
         selectedBackgroundColor: kPopUpColor,

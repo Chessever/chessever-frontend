@@ -17,9 +17,20 @@ class PlayerTourScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return Padding(
-      padding: EdgeInsets.symmetric(horizontal: 20.sp),
-      child: Column(
+    // Tablet-specific padding
+    final horizontalPadding = ResponsiveHelper.adaptive(
+      phone: 20.sp,
+      tablet: 24.sp,
+    );
+
+    return Center(
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxWidth: ResponsiveHelper.contentMaxWidth,
+        ),
+        child: Padding(
+          padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
+          child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
@@ -183,7 +194,9 @@ class PlayerTourScreen extends ConsumerWidget {
                   return _StandingScreenLoading();
                 },
               ),
-        ],
+          ],
+          ),
+        ),
       ),
     );
   }

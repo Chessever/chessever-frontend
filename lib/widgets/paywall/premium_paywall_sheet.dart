@@ -21,6 +21,7 @@ Future<bool> showPremiumPaywallSheet({required BuildContext context}) async {
     context: context,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
+    constraints: ResponsiveHelper.bottomSheetConstraints,
     builder: (_) => _PremiumPaywallSheet(hostContext: context),
   );
   return result ?? false;

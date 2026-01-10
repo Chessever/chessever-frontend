@@ -1,4 +1,5 @@
 import 'package:chessever2/utils/app_typography.dart';
+import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:chessever2/theme/app_theme.dart';
 
@@ -19,7 +20,7 @@ class PlayerInfoWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+      padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 8.h),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
@@ -34,7 +35,7 @@ class PlayerInfoWidget extends StatelessWidget {
                     color: kWhiteColor,
                   ),
                 ),
-                SizedBox(width: 2),
+                SizedBox(width: 2.w),
                 Text(
                   rating,
                   style: AppTypography.textXsMedium.copyWith(
@@ -62,11 +63,11 @@ class PlayerInfoWidget extends StatelessWidget {
                     color: kWhiteColor,
                   ),
                 ),
-                SizedBox(width: 2),
+                SizedBox(width: 2.w),
                 Text(
                   rating,
                   style: AppTypography.textXsMedium.copyWith(
-                    color: kWhiteColor.withOpacity(0.7),
+                    color: kWhiteColor.withValues(alpha: 0.7),
                   ),
                 ),
               ],

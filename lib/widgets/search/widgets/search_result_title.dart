@@ -1,4 +1,5 @@
 import 'package:chessever2/widgets/search/search_result_model.dart';
+import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
 
 class SearchResultTile extends StatefulWidget {
@@ -68,12 +69,12 @@ class _SearchResultTileState extends State<SearchResultTile>
                   onTap: widget.onTap,
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 200),
-                    margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                    margin: EdgeInsets.symmetric(horizontal: 4.w, vertical: 4.h),
                     decoration: BoxDecoration(
                       color: _isHovered
-                          ? Colors.white.withOpacity(0.05)
+                          ? Colors.white.withValues(alpha: 0.05)
                           : Colors.transparent,
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(12.br),
                       border: Border.all(
                         color: _isHovered
                             ? Colors.blue.withOpacity(0.3)
@@ -89,9 +90,9 @@ class _SearchResultTileState extends State<SearchResultTile>
         ),
 
         Container(
-          margin: const EdgeInsets.symmetric(vertical: 4),
+          margin: EdgeInsets.symmetric(vertical: 4.h),
           height: 1,
-          color: Colors.white.withOpacity(0.06),
+          color: Colors.white.withValues(alpha: 0.06),
         ),
       ],
     );
@@ -115,7 +116,7 @@ class _SearchResultTileState extends State<SearchResultTile>
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
-              const SizedBox(height: 4),
+              SizedBox(height: 4.h),
               Text(
                 'in ${widget.result.tournament.title}',
                 style: TextStyle(
@@ -147,11 +148,11 @@ class _SearchResultTileState extends State<SearchResultTile>
         ),
 
         if (widget.result.tournament.dates.isNotEmpty) ...[
-          const SizedBox(height: 8),
+          SizedBox(height: 8.h),
           Row(
             children: [
-              Icon(Icons.calendar_today, size: 12, color: Colors.grey[400]),
-              const SizedBox(width: 4),
+              Icon(Icons.calendar_today, size: 12.ic, color: Colors.grey[400]),
+              SizedBox(width: 4.w),
               Expanded(
                 child: Text(
                   widget.result.tournament.dates,

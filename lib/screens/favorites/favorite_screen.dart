@@ -39,66 +39,79 @@ class _FavoriteScreenState extends ConsumerState<FavoriteScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Tablet-specific padding
+    final horizontalPadding = ResponsiveHelper.adaptive(
+      phone: 16.sp,
+      tablet: 24.sp,
+    );
+
     return Scaffold(
       backgroundColor: kBackgroundColor,
       body: SafeArea(
-        child: Column(
-          children: [
-            // Top bar with back button and search
-            Padding(
-              padding: EdgeInsets.symmetric(horizontal: 16.sp, vertical: 8.sp),
-              child: AnimatedBuilder(
-                animation: searchController,
-                builder: (cxt, _) {
-                  return Row(
-                    children: [
-                      IconButton(
-                        iconSize: 24.ic,
-                        padding: EdgeInsets.zero,
-                        onPressed: _handleBackPress,
-                        icon: Icon(
-                          Icons.arrow_back_ios_new_outlined,
-                          size: 24.ic,
-                        ),
-                      ),
-                      SizedBox(width: 12.w),
-                      Expanded(
-                        child: SearchBarWidget(
-                          hintText: 'Search',
-                          margin: 0.sp,
-                          autoFocus: false,
-                          controller: searchController,
-                          focusNode: focusNode,
-                          onChanged: (_) {
-                            setState(() {});
-                          },
-                          onClose: _clearSearch,
-                        ),
-                      ),
-                    ],
-                  );
-                },
-              ),
+        child: Center(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: ResponsiveHelper.contentMaxWidth,
             ),
-
-            SizedBox(height: 8.h),
-            Expanded(
-              child: ref
-                  .watch(favoritePlayersNotifierProvider)
-                  .when(
-                    data: (_) {
-                      final filteredPlayers = ref.read(
-                        filteredFavoritePlayersProvider(searchController.text),
+            child: Column(
+              children: [
+                // Top bar with back button and search
+                Padding(
+                  padding: EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: 8.sp),
+                  child: AnimatedBuilder(
+                    animation: searchController,
+                    builder: (cxt, _) {
+                      return Row(
+                        children: [
+                          IconButton(
+                            iconSize: 24.ic,
+                            padding: EdgeInsets.zero,
+                            onPressed: _handleBackPress,
+                            icon: Icon(
+                              Icons.arrow_back_ios_new_outlined,
+                              size: 24.ic,
+                            ),
+                          ),
+                          SizedBox(width: 12.w),
+                          Expanded(
+                            child: SearchBarWidget(
+                              hintText: 'Search',
+                              margin: 0.sp,
+                              autoFocus: false,
+                              controller: searchController,
+                              focusNode: focusNode,
+                              onChanged: (_) {
+                                setState(() {});
+                              },
+                              onClose: _clearSearch,
+                            ),
+                          ),
+                        ],
                       );
-
-                      return _buildPlayersList(filteredPlayers);
                     },
-                    loading:
-                        () => const Center(child: CircularProgressIndicator()),
-                    error: (error, stack) => _buildErrorState(error.toString()),
                   ),
+                ),
+
+                SizedBox(height: 8.h),
+                Expanded(
+                  child: ref
+                      .watch(favoritePlayersNotifierProvider)
+                      .when(
+                        data: (_) {
+                          final filteredPlayers = ref.read(
+                            filteredFavoritePlayersProvider(searchController.text),
+                          );
+
+                          return _buildPlayersList(filteredPlayers);
+                        },
+                        loading:
+                            () => const Center(child: CircularProgressIndicator()),
+                        error: (error, stack) => _buildErrorState(error.toString()),
+                      ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );
@@ -121,8 +134,13 @@ class _FavoriteScreenState extends ConsumerState<FavoriteScreen> {
     final sortedPlayers = [...players]
       ..sort((a, b) => b.score.compareTo(a.score));
 
+    final horizontalPadding = ResponsiveHelper.adaptive(
+      phone: 20.sp,
+      tablet: 24.sp,
+    );
+
     return Padding(
-      padding: EdgeInsets.symmetric(horizontal: 20.sp),
+      padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
       child: RefreshIndicator(
         onRefresh: () async {
           HapticFeedbackService.medium();

@@ -136,78 +136,90 @@ class _SmoothBottomSheetWrapperState<T>
             builder: (context, opacity, child) {
               return widget.useBlur
                   ? BackdropFilter(
-                      filter: ImageFilter.blur(
-                        sigmaX: 8 * opacity,
-                        sigmaY: 8 * opacity,
-                      ),
-                      child: Container(
-                        color: Colors.black.withValues(alpha: 0.5 * opacity),
-                      ),
-                    )
-                  : Container(
+                    filter: ImageFilter.blur(
+                      sigmaX: 8 * opacity,
+                      sigmaY: 8 * opacity,
+                    ),
+                    child: Container(
                       color: Colors.black.withValues(alpha: 0.5 * opacity),
-                    );
+                    ),
+                  )
+                  : Container(
+                    color: Colors.black.withValues(alpha: 0.5 * opacity),
+                  );
             },
           ),
         ),
 
-        // Bottom sheet content
+        // Bottom sheet content - tablet has max width
         Positioned(
-          left: 0,
-          right: 0,
+          left: ResponsiveHelper.isTablet ? null : 0,
+          right: ResponsiveHelper.isTablet ? null : 0,
           bottom: 0,
-          child: SingleMotionBuilder(
-            motion: _isDragging
-                ? const LinearMotion(Duration(milliseconds: 1))
-                : const CupertinoMotion.bouncy(),
-            value: _slideProgress,
-            builder: (context, progress, child) {
-              final slideOffset =
-                  (1 - progress) * maxSheetHeight + _dragOffset;
+          child: Center(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxWidth: ResponsiveHelper.isTablet ? 500.0 : double.infinity,
+              ),
+              child: SingleMotionBuilder(
+                motion:
+                    _isDragging
+                        ? const LinearMotion(Duration(milliseconds: 1))
+                        : const CupertinoMotion.bouncy(),
+                value: _slideProgress,
+                builder: (context, progress, child) {
+                  final slideOffset =
+                      (1 - progress) * maxSheetHeight + _dragOffset;
 
-              return Transform.translate(
-                offset: Offset(0, slideOffset),
-                child: child,
-              );
-            },
-            child: GestureDetector(
-              onVerticalDragStart: _onDragStart,
-              onVerticalDragUpdate: _onDragUpdate,
-              onVerticalDragEnd: _onDragEnd,
-              child: ConstrainedBox(
-                constraints: BoxConstraints(maxHeight: maxSheetHeight),
-                child: Material(
-                  color: Colors.transparent,
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: widget.backgroundColor ?? kBlack2Color,
-                      borderRadius: BorderRadius.only(
-                        topLeft: Radius.circular(20.br),
-                        topRight: Radius.circular(20.br),
-                      ),
-                    ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        // Drag handle
-                        if (widget.enableDrag)
-                          Padding(
-                            padding: EdgeInsets.only(top: 12.h, bottom: 8.h),
-                            child: Container(
-                              width: 36.w,
-                              height: 4.h,
-                              decoration: BoxDecoration(
-                                color: kWhiteColor.withValues(alpha: 0.3),
-                                borderRadius: BorderRadius.circular(2.br),
-                              ),
-                            ),
+                  return Transform.translate(
+                    offset: Offset(0, slideOffset),
+                    child: child,
+                  );
+                },
+                child: GestureDetector(
+                  onVerticalDragStart: _onDragStart,
+                  onVerticalDragUpdate: _onDragUpdate,
+                  onVerticalDragEnd: _onDragEnd,
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(maxHeight: maxSheetHeight),
+                    child: Material(
+                      color: Colors.transparent,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: widget.backgroundColor ?? kBlack2Color,
+                          borderRadius: BorderRadius.only(
+                            topLeft: Radius.circular(20.br),
+                            topRight: Radius.circular(20.br),
                           ),
-                        // Content
-                        Flexible(child: widget.builder(context)),
-                        // Safe area padding
-                        SizedBox(
-                            height: MediaQuery.of(context).viewPadding.bottom),
-                      ],
+                        ),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            // Drag handle
+                            if (widget.enableDrag)
+                              Padding(
+                                padding: EdgeInsets.only(
+                                  top: 12.h,
+                                  bottom: 8.h,
+                                ),
+                                child: Container(
+                                  width: 36.w,
+                                  height: 4.h,
+                                  decoration: BoxDecoration(
+                                    color: kWhiteColor.withValues(alpha: 0.3),
+                                    borderRadius: BorderRadius.circular(2.br),
+                                  ),
+                                ),
+                              ),
+                            // Content
+                            Flexible(child: widget.builder(context)),
+                            // Safe area padding
+                            SizedBox(
+                              height: MediaQuery.of(context).viewPadding.bottom,
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
                   ),
                 ),

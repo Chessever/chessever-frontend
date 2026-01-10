@@ -54,7 +54,9 @@ class _PlayerAboutTabState extends ConsumerState<PlayerAboutTab>
     // Games can be fetched by name or fideId
     final gamesAsync = ref.watch(playerGamesDataKeyProvider(_playerKey));
 
-    return RefreshIndicator(
+    final horizontalPadding = ResponsiveHelper.adaptive(phone: 20.sp, tablet: 32.sp);
+
+    Widget content = RefreshIndicator(
       onRefresh: () async {
         if (widget.fideId != null) {
           ref.invalidate(playerProfileDataProvider(widget.fideId!));
@@ -67,7 +69,7 @@ class _PlayerAboutTabState extends ConsumerState<PlayerAboutTab>
         physics: const AlwaysScrollableScrollPhysics(
           parent: BouncingScrollPhysics(),
         ),
-        padding: EdgeInsets.symmetric(horizontal: 20.sp, vertical: 16.h),
+        padding: EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: 16.h),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -135,6 +137,20 @@ class _PlayerAboutTabState extends ConsumerState<PlayerAboutTab>
         ),
       ),
     );
+
+    // Apply tablet max-width constraint
+    if (ResponsiveHelper.isTablet) {
+      content = Center(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: ResponsiveHelper.contentMaxWidth,
+          ),
+          child: content,
+        ),
+      );
+    }
+
+    return content;
   }
 
   Widget _buildNoGamesMessage() {

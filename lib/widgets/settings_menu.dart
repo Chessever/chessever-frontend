@@ -31,14 +31,14 @@ class SettingsMenu extends StatelessWidget {
         children: [
           SizedBox(height: 10.h),
           Container(
-            height: 5,
-            width: 40,
+            height: 5.h,
+            width: 40.w,
             decoration: BoxDecoration(
               color: kWhiteColor,
-              borderRadius: BorderRadius.circular(20),
+              borderRadius: BorderRadius.circular(20.br),
             ),
           ),
-          SizedBox(height: 15),
+          SizedBox(height: 15.h),
           Text(
             'Settings',
             style: AppTypography.textLgMedium.copyWith(color: kWhiteColor),
@@ -53,7 +53,7 @@ class SettingsMenu extends StatelessWidget {
                   }
                 : null,
             child: SizedBox(
-              height: 36,
+              height: 36.h,
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.start,
                 crossAxisAlignment: CrossAxisAlignment.center,
@@ -74,7 +74,7 @@ class SettingsMenu extends StatelessWidget {
                     ),
                   ),
                   SizedBox(
-                    width: 36,
+                    width: 36.w,
                     child: SvgPicture.asset(
                       SvgAsset.right_arrow,
                       height: 24.h,
@@ -95,7 +95,7 @@ class SettingsMenu extends StatelessWidget {
                 onDeleteAccountPressed!();
               },
               child: SizedBox(
-                height: 36,
+                height: 36.h,
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.start,
                   crossAxisAlignment: CrossAxisAlignment.center,
@@ -114,7 +114,7 @@ class SettingsMenu extends StatelessWidget {
                       ),
                     ),
                     SizedBox(
-                      width: 36,
+                      width: 36.w,
                       child: SvgPicture.asset(
                         SvgAsset.right_arrow,
                         height: 24.h,

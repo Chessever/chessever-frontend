@@ -73,10 +73,11 @@ class BoardSettingsDialog extends ConsumerWidget {
                       isScrollControlled: true,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.vertical(
-                          top: Radius.circular(20),
+                          top: Radius.circular(20.br),
                         ),
                       ),
                       backgroundColor: Colors.transparent,
+                      constraints: ResponsiveHelper.bottomSheetConstraints,
                       builder: (BuildContext bottomSheetContext) {
                         return Padding(
                           padding: EdgeInsets.only(
@@ -168,7 +169,7 @@ class _MenuItem extends StatelessWidget {
                   size: 20.ic,
                 ),
               SizedBox(
-                width: 36,
+                width: 36.w,
                 child: SvgPicture.asset(
                   SvgAsset.right_arrow,
                   height: 24.h,

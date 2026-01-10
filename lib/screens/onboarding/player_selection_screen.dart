@@ -83,17 +83,22 @@ class PlayerSelectionContent extends HookConsumerWidget {
     final searchQuery = useState('');
     final selectedIds = useState<Set<String>>({});
 
-  final playerState = ref.watch(onboardingPlayerProvider);
-  final existingFavorites = ref.watch(favoritePlayersProviderNew);
-  final countryState = ref.watch(countryDropdownProvider);
+    final playerState = ref.watch(onboardingPlayerProvider);
+    final existingFavorites = ref.watch(favoritePlayersProviderNew);
+    final countryState = ref.watch(countryDropdownProvider);
 
-  final players = playerState.valueOrNull ?? [];
+    final players = playerState.valueOrNull ?? [];
 
-  // Get existing favorite fideIds from Supabase (for existing users)
-  final existingFavoriteIds = existingFavorites.maybeWhen(
-    data: (favs) => favs.map((f) => f.fideId ?? '').where((id) => id.isNotEmpty).toSet(),
-    orElse: () => <String>{},
-  );
+    // Get existing favorite fideIds from Supabase (for existing users)
+    final existingFavoriteIds = existingFavorites.maybeWhen(
+      data:
+          (favs) =>
+              favs
+                  .map((f) => f.fideId ?? '')
+                  .where((id) => id.isNotEmpty)
+                  .toSet(),
+      orElse: () => <String>{},
+    );
     final countryCode = countryState.value?.countryCode ?? 'US';
     final countryName = countryState.value?.name ?? 'your region';
 
@@ -163,11 +168,20 @@ class PlayerSelectionContent extends HookConsumerWidget {
       return () => listController.removeListener(onScroll);
     }, [listController]);
 
-    final recommendedResult =
-        _recommendedPlayers(players, countryCode: countryCode);
+    final recommendedResult = _recommendedPlayers(
+      players,
+      countryCode: countryCode,
+    );
     final isSearching = searchQuery.value.isNotEmpty;
     final isLoading = playerState.isLoading && players.isEmpty;
     final selectedCount = selectedIds.value.length;
+
+    // Tablet-specific constraints
+    final maxWidth = ResponsiveHelper.isTablet ? 600.0 : double.infinity;
+    final horizontalPadding = ResponsiveHelper.adaptive(
+      phone: 20.sp,
+      tablet: 24.sp,
+    );
 
     return Stack(
       children: [
@@ -188,235 +202,261 @@ class PlayerSelectionContent extends HookConsumerWidget {
             ),
           ),
         ),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: EdgeInsets.fromLTRB(20.sp, 18.sp, 20.sp, 4.sp),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (badgeLabel != null) ...[
-                    Container(
-                      padding: EdgeInsets.symmetric(horizontal: 10.sp, vertical: 6.sp),
-                      decoration: BoxDecoration(
-                        color: kWhiteColor.withValues(alpha: 0.08),
-                        borderRadius: BorderRadius.circular(12.br),
-                        border: Border.all(color: kWhiteColor.withValues(alpha: 0.1)),
-                      ),
-                      child: Text(
-                        badgeLabel!,
-                        style: AppTypography.textXsMedium.copyWith(
-                          color: kWhiteColor.withValues(alpha: 0.9),
-                        ),
-                      ),
-                    ),
-                    SizedBox(height: 8.h),
-                  ],
-                  Text(
-                    title,
-                    style: AppTypography.textLgBold.copyWith(
-                      color: kWhiteColor,
-                    ),
-                  ).animate().fadeIn(duration: 300.ms, curve: _springCurve),
-                  SizedBox(height: 6.h),
-                  Text(
-                    subtitle.replaceFirst('{country}', countryName),
-                    style: AppTypography.textSmRegular.copyWith(
-                      color: kWhiteColor.withValues(alpha: 0.7),
-                    ),
-                  ).animate().fadeIn(duration: 320.ms, curve: _springCurve).move(begin: const Offset(0, 6)),
-                  SizedBox(height: 16.h),
-                  Container(
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(16.br),
-                      gradient: LinearGradient(
-                        colors: [
-                          kPrimaryColor.withValues(alpha: 0.18),
-                          kBlack2Color.withValues(alpha: 0.35),
-                        ],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
-                      border: Border.all(
-                        color: kWhiteColor.withValues(alpha: 0.08),
-                      ),
-                    ),
-                    padding: EdgeInsets.symmetric(
-                      horizontal: 12.sp,
-                      vertical: 10.sp,
-                    ),
-                    child: RoundedSearchBar(
-                      showProfile: false,
-                      controller: searchController,
-                      hintText: 'Find any player...',
-                      onFilterTap: () {},
-                      onProfileTap: () {},
-                    ).animate().fadeIn(duration: 360.ms, curve: _springCurve).move(begin: const Offset(0, 8)),
-                  ),
-                  SizedBox(height: 12.h),
-                  Row(
+        Center(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: maxWidth),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: EdgeInsets.fromLTRB(20.sp, 18.sp, 20.sp, 4.sp),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Icon(Icons.auto_awesome, color: kPrimaryColor, size: 18.ic),
-                      SizedBox(width: 8.w),
-                      Expanded(
-                        child: Text(
-                          'Follow at least 3 to personalize faster.',
-                          style: AppTypography.textXsMedium.copyWith(
-                            color: kWhiteColor.withValues(alpha: 0.78),
+                      if (badgeLabel != null) ...[
+                        Container(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: 10.sp,
+                            vertical: 6.sp,
                           ),
-                        ),
-                      ),
-                    ],
-                  ).animate().fadeIn(duration: 340.ms, curve: _springCurve),
-                ],
-              ),
-            ),
-            SizedBox(height: 8.h),
-            Expanded(
-              child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 250),
-                child:
-                    isLoading
-                        ? const Center(
-                          child: CircularProgressIndicator(
-                            color: kWhiteColor,
-                          ),
-                        )
-                        : Padding(
-                          padding: EdgeInsets.symmetric(horizontal: 16.sp),
-                          child: _buildPlayerList(
-                            context,
-                            ref,
-                            controller: listController,
-                            title:
-                                isSearching
-                                    ? 'Search results'
-                                    : recommendedResult.hasCountryMatches
-                                        ? 'Recommended from $countryName'
-                                        : 'Top picks right now',
-                            players:
-                                isSearching ? players : recommendedResult.players,
-                            selectedIds: selectedIds.value,
-                            onToggle: (player) => _toggleFavorite(
-                              context,
-                              ref,
-                              selectedIds,
-                              player,
-                              isOnboarding: true,
+                          decoration: BoxDecoration(
+                            color: kWhiteColor.withValues(alpha: 0.08),
+                            borderRadius: BorderRadius.circular(12.br),
+                            border: Border.all(
+                              color: kWhiteColor.withValues(alpha: 0.1),
                             ),
-                            isSearching: isSearching,
-                            isLoading: isLoading,
-                            hasMore: ref
-                                .read(onboardingPlayerProvider.notifier)
-                                .hasMore,
-                            isFetchingMore: ref
-                                .read(onboardingPlayerProvider.notifier)
-                                .isFetching,
-                            flagCode:
-                                isSearching
-                                    ? null
-                                    : (recommendedResult.hasCountryMatches
-                                        ? countryCode
-                                        : null),
+                          ),
+                          child: Text(
+                            badgeLabel!,
+                            style: AppTypography.textXsMedium.copyWith(
+                              color: kWhiteColor.withValues(alpha: 0.9),
+                            ),
                           ),
                         ),
-              ),
-            ),
-            Container(
-              padding: EdgeInsets.symmetric(
-                horizontal: 20.sp,
-                vertical: 14.sp,
-              ),
-              decoration: BoxDecoration(
-                color: kBlack2Color.withValues(alpha: 0.8),
-                border: Border(
-                  top: BorderSide(
-                    color: kWhiteColor.withValues(alpha: 0.06),
+                        SizedBox(height: 8.h),
+                      ],
+                      Text(
+                        title,
+                        style: AppTypography.textLgBold.copyWith(
+                          color: kWhiteColor,
+                        ),
+                      ).animate().fadeIn(duration: 300.ms, curve: _springCurve),
+                      SizedBox(height: 6.h),
+                      Text(
+                            subtitle.replaceFirst('{country}', countryName),
+                            style: AppTypography.textSmRegular.copyWith(
+                              color: kWhiteColor.withValues(alpha: 0.7),
+                            ),
+                          )
+                          .animate()
+                          .fadeIn(duration: 320.ms, curve: _springCurve)
+                          .move(begin: const Offset(0, 6)),
+                      SizedBox(height: 16.h),
+                      Container(
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(16.br),
+                          gradient: LinearGradient(
+                            colors: [
+                              kPrimaryColor.withValues(alpha: 0.18),
+                              kBlack2Color.withValues(alpha: 0.35),
+                            ],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
+                          border: Border.all(
+                            color: kWhiteColor.withValues(alpha: 0.08),
+                          ),
+                        ),
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 12.sp,
+                          vertical: 10.sp,
+                        ),
+                        child: RoundedSearchBar(
+                              showProfile: false,
+                              controller: searchController,
+                              hintText: 'Find any player...',
+                              onFilterTap: () {},
+                              onProfileTap: () {},
+                            )
+                            .animate()
+                            .fadeIn(duration: 360.ms, curve: _springCurve)
+                            .move(begin: const Offset(0, 8)),
+                      ),
+                      SizedBox(height: 12.h),
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.auto_awesome,
+                            color: kPrimaryColor,
+                            size: 18.ic,
+                          ),
+                          SizedBox(width: 8.w),
+                          Expanded(
+                            child: Text(
+                              'Follow at least 3 to personalize faster.',
+                              style: AppTypography.textXsMedium.copyWith(
+                                color: kWhiteColor.withValues(alpha: 0.78),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ).animate().fadeIn(duration: 340.ms, curve: _springCurve),
+                    ],
                   ),
                 ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.3),
-                    blurRadius: 16,
-                    offset: const Offset(0, -6),
+                SizedBox(height: 8.h),
+                Expanded(
+                  child: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 250),
+                    child:
+                        isLoading
+                            ? const Center(
+                              child: CircularProgressIndicator(
+                                color: kWhiteColor,
+                              ),
+                            )
+                            : Padding(
+                              padding: EdgeInsets.symmetric(horizontal: 16.sp),
+                              child: _buildPlayerList(
+                                context,
+                                ref,
+                                controller: listController,
+                                title:
+                                    isSearching
+                                        ? 'Search results'
+                                        : recommendedResult.hasCountryMatches
+                                        ? 'Recommended from $countryName'
+                                        : 'Top picks right now',
+                                players:
+                                    isSearching
+                                        ? players
+                                        : recommendedResult.players,
+                                selectedIds: selectedIds.value,
+                                onToggle:
+                                    (player) => _toggleFavorite(
+                                      context,
+                                      ref,
+                                      selectedIds,
+                                      player,
+                                      isOnboarding: true,
+                                    ),
+                                isSearching: isSearching,
+                                isLoading: isLoading,
+                                hasMore:
+                                    ref
+                                        .read(onboardingPlayerProvider.notifier)
+                                        .hasMore,
+                                isFetchingMore:
+                                    ref
+                                        .read(onboardingPlayerProvider.notifier)
+                                        .isFetching,
+                                flagCode:
+                                    isSearching
+                                        ? null
+                                        : (recommendedResult.hasCountryMatches
+                                            ? countryCode
+                                            : null),
+                              ),
+                            ),
                   ),
-                ],
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Row(
+                ),
+                Container(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: 20.sp,
+                    vertical: 14.sp,
+                  ),
+                  decoration: BoxDecoration(
+                    color: kBlack2Color.withValues(alpha: 0.8),
+                    border: Border(
+                      top: BorderSide(
+                        color: kWhiteColor.withValues(alpha: 0.06),
+                      ),
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.3),
+                        blurRadius: 16,
+                        offset: const Offset(0, -6),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Selected: $selectedCount of 3',
-                              style: AppTypography.textSmMedium.copyWith(
-                                color:
-                                    selectedCount >= 3
-                                        ? kGreenColor
-                                        : kWhiteColor,
-                              ),
-                            ),
-                            SizedBox(height: 6.h),
-                            ClipRRect(
-                              borderRadius: BorderRadius.circular(12.br),
-                              child: LinearProgressIndicator(
-                                minHeight: 6.h,
-                                value: (selectedCount / 3).clamp(0, 1),
-                                backgroundColor:
-                                    kWhiteColor.withValues(alpha: 0.12),
-                                valueColor: AlwaysStoppedAnimation<Color>(
-                                  selectedCount >= 3
-                                      ? kGreenColor
-                                      : kPrimaryColor,
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Selected: $selectedCount of 3',
+                                  style: AppTypography.textSmMedium.copyWith(
+                                    color:
+                                        selectedCount >= 3
+                                            ? kGreenColor
+                                            : kWhiteColor,
+                                  ),
                                 ),
-                              ),
+                                SizedBox(height: 6.h),
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(12.br),
+                                  child: LinearProgressIndicator(
+                                    minHeight: 6.h,
+                                    value: (selectedCount / 3).clamp(0, 1),
+                                    backgroundColor: kWhiteColor.withValues(
+                                      alpha: 0.12,
+                                    ),
+                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                      selectedCount >= 3
+                                          ? kGreenColor
+                                          : kPrimaryColor,
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
-                          ],
+                          ),
+                        ],
+                      ),
+                      SizedBox(height: 14.h),
+                      SizedBox(
+                        width: double.infinity,
+                        height: 52.h,
+                        child: ElevatedButton(
+                          onPressed:
+                              selectedCount >= 3
+                                  ? () async {
+                                    HapticFeedback.mediumImpact();
+                                    await onComplete();
+                                  }
+                                  : null,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor:
+                                selectedCount >= 3
+                                    ? kWhiteColor
+                                    : kWhiteColor.withValues(alpha: 0.16),
+                            foregroundColor:
+                                selectedCount >= 3
+                                    ? kBlackColor
+                                    : kWhiteColor.withValues(alpha: 0.6),
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14.br),
+                            ),
+                          ),
+                          child: Text(
+                            actionLabel,
+                            style: AppTypography.textMdMedium,
+                          ),
                         ),
                       ),
                     ],
                   ),
-                  SizedBox(height: 14.h),
-                  SizedBox(
-                    width: double.infinity,
-                    height: 52.h,
-                    child: ElevatedButton(
-                      onPressed:
-                          selectedCount >= 3
-                              ? () async {
-                                HapticFeedback.mediumImpact();
-                                await onComplete();
-                              }
-                              : null,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor:
-                            selectedCount >= 3
-                                ? kWhiteColor
-                                : kWhiteColor.withValues(alpha: 0.16),
-                        foregroundColor:
-                            selectedCount >= 3
-                                ? kBlackColor
-                                : kWhiteColor.withValues(alpha: 0.6),
-                        elevation: 0,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14.br),
-                        ),
-                      ),
-                      child: Text(
-                        actionLabel,
-                        style: AppTypography.textMdMedium,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ],
     );
@@ -480,7 +520,9 @@ Future<void> markOnboardingComplete(BuildContext context, WidgetRef ref) async {
     // Now flush any pending favorite selections to Supabase
     // (works for both anonymous and authenticated users)
     try {
-      await ref.read(pendingFavoriteSelectionsProvider.notifier).flushToSupabase();
+      await ref
+          .read(pendingFavoriteSelectionsProvider.notifier)
+          .flushToSupabase();
       if (kDebugMode) {
         debugPrint('[Onboarding] Flushed pending favorites to Supabase');
       }
@@ -533,27 +575,29 @@ RecommendedPlayersResult _recommendedPlayers(
   }
 
   final normalizedCode = countryCode.toUpperCase();
-  final fromCountry = players
-      .where(
-        (player) =>
-            (player['fed']?.toString().toUpperCase() ?? '') == normalizedCode,
-      )
-      .toList();
+  final fromCountry =
+      players
+          .where(
+            (player) =>
+                (player['fed']?.toString().toUpperCase() ?? '') ==
+                normalizedCode,
+          )
+          .toList();
 
   fromCountry.sort((a, b) => (b['rating'] ?? 0).compareTo(a['rating'] ?? 0));
 
-  final others = players
-      .where(
-        (player) =>
-            (player['fed']?.toString().toUpperCase() ?? '') != normalizedCode,
-      )
-      .toList()
-    ..sort((a, b) => (b['rating'] ?? 0).compareTo(a['rating'] ?? 0));
+  final others =
+      players
+          .where(
+            (player) =>
+                (player['fed']?.toString().toUpperCase() ?? '') !=
+                normalizedCode,
+          )
+          .toList()
+        ..sort((a, b) => (b['rating'] ?? 0).compareTo(a['rating'] ?? 0));
 
   final hasCountryMatches = fromCountry.isNotEmpty;
-  final combined = hasCountryMatches
-      ? [...fromCountry, ...others]
-      : others;
+  final combined = hasCountryMatches ? [...fromCountry, ...others] : others;
 
   return RecommendedPlayersResult(
     players: combined, // No limit - allow infinite scroll
@@ -576,11 +620,7 @@ Widget _buildPlayerList(
   String? flagCode,
 }) {
   if (isLoading) {
-    return const Center(
-      child: CircularProgressIndicator(
-        color: kWhiteColor,
-      ),
-    );
+    return const Center(child: CircularProgressIndicator(color: kWhiteColor));
   }
 
   if (players.isEmpty) {
@@ -610,11 +650,16 @@ Widget _buildPlayerList(
             ),
             if (!isSearching && flagCode != null)
               Container(
-                padding: EdgeInsets.symmetric(horizontal: 10.sp, vertical: 6.sp),
+                padding: EdgeInsets.symmetric(
+                  horizontal: 10.sp,
+                  vertical: 6.sp,
+                ),
                 decoration: BoxDecoration(
                   color: kWhiteColor.withValues(alpha: 0.08),
                   borderRadius: BorderRadius.circular(12.br),
-                  border: Border.all(color: kWhiteColor.withValues(alpha: 0.15)),
+                  border: Border.all(
+                    color: kWhiteColor.withValues(alpha: 0.15),
+                  ),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
@@ -773,16 +818,18 @@ void _performToggle(
 
   // Store in pending favorites provider (sync operation)
   // Note: playerName should NOT include title - title is stored separately in metadata
-  ref.read(pendingFavoriteSelectionsProvider.notifier).setSelection(
-    PendingFavoritePlayer(
-      fideId: fideId,
-      playerName: (player['name'] ?? '').toString().trim(),
-      countryCode: player['fed']?.toString(),
-      rating: player['rating'] as int?,
-      title: player['title']?.toString(),
-      isSelected: isSelected,
-    ),
-  );
+  ref
+      .read(pendingFavoriteSelectionsProvider.notifier)
+      .setSelection(
+        PendingFavoritePlayer(
+          fideId: fideId,
+          playerName: (player['name'] ?? '').toString().trim(),
+          countryCode: player['fed']?.toString(),
+          rating: player['rating'] as int?,
+          title: player['title']?.toString(),
+          isSelected: isSelected,
+        ),
+      );
 
   // Background sync to Supabase - fire and forget
   if (isOnboarding) {
@@ -800,29 +847,31 @@ void _performToggle(
   } else {
     // NON-ONBOARDING FLOW: Sync directly to Supabase for authenticated users
     if (isFullyAuthenticated) {
-      unawaited(Future(() async {
-        try {
-          // Note: name should NOT include title - title is stored separately
-          final playerModel = PlayerStandingModel(
-            name: (player['name'] ?? '').toString().trim(),
-            countryCode: player['fed']?.toString() ?? '',
-            score: player['rating'] ?? 0,
-            scoreChange: 0,
-            matchScore: null,
-            fideId: int.tryParse(fideId),
-            title: player['title']?.toString(),
-          );
+      unawaited(
+        Future(() async {
+          try {
+            // Note: name should NOT include title - title is stored separately
+            final playerModel = PlayerStandingModel(
+              name: (player['name'] ?? '').toString().trim(),
+              countryCode: player['fed']?.toString() ?? '',
+              score: player['rating'] ?? 0,
+              scoreChange: 0,
+              matchScore: null,
+              fideId: int.tryParse(fideId),
+              title: player['title']?.toString(),
+            );
 
-          await ref
-              .read(favoriteStandingsPlayerService)
-              .toggleFavorite(playerModel);
-          ref.read(favoritesVersionProvider.notifier).state++;
-        } catch (e) {
-          if (kDebugMode) {
-            debugPrint('Failed to sync favorite: $e');
+            await ref
+                .read(favoriteStandingsPlayerService)
+                .toggleFavorite(playerModel);
+            ref.read(favoritesVersionProvider.notifier).state++;
+          } catch (e) {
+            if (kDebugMode) {
+              debugPrint('Failed to sync favorite: $e');
+            }
           }
-        }
-      }));
+        }),
+      );
     } else if (supabaseUser != null) {
       // User is anonymous outside onboarding - flush pending favorites
       unawaited(
@@ -832,11 +881,7 @@ void _performToggle(
   }
 }
 
-Widget _buildFlag(
-  String countryCode, {
-  double? height,
-  double? width,
-}) {
+Widget _buildFlag(String countryCode, {double? height, double? width}) {
   final normalized = countryCode.toUpperCase();
 
   // Countries that show white/blank flags due to sanctions or restrictions
@@ -849,22 +894,19 @@ Widget _buildFlag(
       height: height,
       width: width,
       fit: BoxFit.contain,
-      errorBuilder: (_, __, ___) => Icon(
-        Icons.flag_rounded,
-        size: height,
-        color: kWhiteColor.withValues(alpha: 0.5),
-      ),
+      errorBuilder:
+          (_, __, ___) => Icon(
+            Icons.flag_rounded,
+            size: height,
+            color: kWhiteColor.withValues(alpha: 0.5),
+          ),
     );
   }
 
   // Convert FIDE 3-letter code to ISO 2-letter code for CountryFlag widget
   final iso2Code = CountryUtils.toIso2Code(normalized);
 
-  return CountryFlag.fromCountryCode(
-    iso2Code,
-    height: height,
-    width: width,
-  );
+  return CountryFlag.fromCountryCode(iso2Code, height: height, width: width);
 }
 
 class _PlayerTile extends HookWidget {
@@ -907,25 +949,28 @@ class _PlayerTile extends HookWidget {
           curve: _springCurve,
           margin: EdgeInsets.only(bottom: 10.sp),
           decoration: BoxDecoration(
-            color: isSelected
-                ? kGreenColor.withValues(alpha: 0.08)
-                : kBlack2Color.withValues(alpha: 0.8),
+            color:
+                isSelected
+                    ? kGreenColor.withValues(alpha: 0.08)
+                    : kBlack2Color.withValues(alpha: 0.8),
             borderRadius: BorderRadius.circular(16.br),
             border: Border.all(
-              color: isSelected
-                  ? kGreenColor.withValues(alpha: 0.5)
-                  : kWhiteColor.withValues(alpha: 0.04),
+              color:
+                  isSelected
+                      ? kGreenColor.withValues(alpha: 0.5)
+                      : kWhiteColor.withValues(alpha: 0.04),
               width: isSelected ? 1.5 : 1,
             ),
-            boxShadow: isSelected
-                ? [
-                    BoxShadow(
-                      color: kGreenColor.withValues(alpha: 0.12),
-                      blurRadius: 16,
-                      offset: const Offset(0, 4),
-                    ),
-                  ]
-                : null,
+            boxShadow:
+                isSelected
+                    ? [
+                      BoxShadow(
+                        color: kGreenColor.withValues(alpha: 0.12),
+                        blurRadius: 16,
+                        offset: const Offset(0, 4),
+                      ),
+                    ]
+                    : null,
           ),
           child: Padding(
             padding: EdgeInsets.symmetric(horizontal: 14.sp, vertical: 12.sp),
@@ -982,31 +1027,34 @@ class _PlayerTile extends HookWidget {
                   height: 38.h,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: isSelected
-                        ? kGreenColor
-                        : kWhiteColor.withValues(alpha: 0.05),
+                    color:
+                        isSelected
+                            ? kGreenColor
+                            : kWhiteColor.withValues(alpha: 0.05),
                     border: Border.all(
-                      color: isSelected
-                          ? kGreenColor
-                          : kWhiteColor.withValues(alpha: 0.15),
+                      color:
+                          isSelected
+                              ? kGreenColor
+                              : kWhiteColor.withValues(alpha: 0.15),
                       width: 1.5,
                     ),
                   ),
                   child: AnimatedSwitcher(
                     duration: const Duration(milliseconds: 150),
-                    child: isSelected
-                        ? Icon(
-                            Icons.check,
-                            key: const ValueKey('check'),
-                            size: 18.ic,
-                            color: kWhiteColor,
-                          )
-                        : Icon(
-                            Icons.add,
-                            key: const ValueKey('add'),
-                            size: 18.ic,
-                            color: kWhiteColor.withValues(alpha: 0.5),
-                          ),
+                    child:
+                        isSelected
+                            ? Icon(
+                              Icons.check,
+                              key: const ValueKey('check'),
+                              size: 18.ic,
+                              color: kWhiteColor,
+                            )
+                            : Icon(
+                              Icons.add,
+                              key: const ValueKey('add'),
+                              size: 18.ic,
+                              color: kWhiteColor.withValues(alpha: 0.5),
+                            ),
                   ),
                 ),
               ],

@@ -51,13 +51,18 @@ class _CalendarDetailsScreenState extends ConsumerState<CalendarDetailsScreen> {
       ),
     );
 
+    final horizontalPadding = ResponsiveHelper.adaptive(phone: 20.sp, tablet: 32.sp);
+
     return GestureDetector(
       onTap: FocusScope.of(context).unfocus,
       child: Scaffold(
-        body: Column(
+        body: Center(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: ResponsiveHelper.contentMaxWidth),
+            child: Column(
           children: [
             Padding(
-              padding: EdgeInsets.symmetric(horizontal: 20.sp),
+              padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -243,6 +248,8 @@ class _CalendarDetailsScreenState extends ConsumerState<CalendarDetailsScreen> {
               error: (error, stackTrace) => const GenericErrorWidget(),
             ),
           ],
+        ),
+          ),
         ),
       ),
     );

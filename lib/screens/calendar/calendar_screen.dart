@@ -471,6 +471,13 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
       );
     }
 
+    final isTablet = ResponsiveHelper.isTablet;
+    final crossAxisCount = ResponsiveHelper.getGridCrossAxisCount(phoneCount: 1);
+    final horizontalPadding = ResponsiveHelper.adaptive(
+      phone: 16.sp,
+      tablet: 24.sp,
+    );
+
     return RefreshIndicator(
       onRefresh: () async {
         HapticFeedbackService.medium();
@@ -487,7 +494,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                   parent: BouncingScrollPhysics(),
                 ),
                 padding: EdgeInsets.symmetric(
-                  horizontal: 16.sp,
+                  horizontal: horizontalPadding,
                   vertical: 24.h,
                 ),
                 children: [
@@ -501,27 +508,53 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                   ),
                 ],
               )
-              : ListView.builder(
-                physics: const AlwaysScrollableScrollPhysics(
-                  parent: BouncingScrollPhysics(),
-                ),
-                padding: EdgeInsets.symmetric(
-                  horizontal: 16.sp,
-                  vertical: 12.h,
-                ),
-                itemCount: sortedEvents.length,
-                itemBuilder: (context, index) {
-                  final event = sortedEvents[index];
-                  return Padding(
-                    padding: EdgeInsets.only(bottom: 12.h),
-                    child: EventCard(
-                      tourEventCardModel: event,
-                      heroTagSuffix: 'calendar-list-$index',
-                      onTap: () => _onEventTap(event),
+              // Use grid layout for tablets, list for phones
+              : isTablet && crossAxisCount > 1
+                  ? GridView.builder(
+                      physics: const AlwaysScrollableScrollPhysics(
+                        parent: BouncingScrollPhysics(),
+                      ),
+                      padding: EdgeInsets.symmetric(
+                        horizontal: horizontalPadding,
+                        vertical: 12.h,
+                      ),
+                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: crossAxisCount,
+                        crossAxisSpacing: 16.sp,
+                        mainAxisSpacing: 16.sp,
+                        childAspectRatio: ResponsiveHelper.isLandscape ? 2.2 : 1.8,
+                      ),
+                      itemCount: sortedEvents.length,
+                      itemBuilder: (context, index) {
+                        final event = sortedEvents[index];
+                        return EventCard(
+                          tourEventCardModel: event,
+                          heroTagSuffix: 'calendar-list-$index',
+                          onTap: () => _onEventTap(event),
+                        );
+                      },
+                    )
+                  : ListView.builder(
+                      physics: const AlwaysScrollableScrollPhysics(
+                        parent: BouncingScrollPhysics(),
+                      ),
+                      padding: EdgeInsets.symmetric(
+                        horizontal: horizontalPadding,
+                        vertical: 12.h,
+                      ),
+                      itemCount: sortedEvents.length,
+                      itemBuilder: (context, index) {
+                        final event = sortedEvents[index];
+                        return Padding(
+                          padding: EdgeInsets.only(bottom: 12.h),
+                          child: EventCard(
+                            tourEventCardModel: event,
+                            heroTagSuffix: 'calendar-list-$index',
+                            onTap: () => _onEventTap(event),
+                          ),
+                        );
+                      },
                     ),
-                  );
-                },
-              ),
     );
   }
 

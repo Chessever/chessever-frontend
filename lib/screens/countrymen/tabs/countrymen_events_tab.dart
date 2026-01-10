@@ -233,44 +233,59 @@ class _CountrymenEventsTabState extends ConsumerState<CountrymenEventsTab>
     super.build(context);
 
     final state = ref.watch(countrymenEventsProvider);
+    final horizontalPadding = ResponsiveHelper.adaptive(phone: 16.w, tablet: 24.w);
+
+    Widget content = RefreshIndicator(
+      onRefresh: () async {
+        HapticFeedbackService.medium();
+        await ref.read(countrymenEventsProvider.notifier).refresh();
+      },
+      color: kWhiteColor,
+      backgroundColor: kBlack2Color,
+      child: CustomScrollView(
+        controller: _scrollController,
+        physics: const AlwaysScrollableScrollPhysics(
+          parent: BouncingScrollPhysics(),
+        ),
+        slivers: [
+          // Search bar (scrolls with content)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(horizontalPadding, 12.h, horizontalPadding, 8.h),
+              child: SearchBarWidget(
+                hintText: 'Search events',
+                margin: 0.sp,
+                autoFocus: false,
+                controller: _searchController,
+                focusNode: _searchFocusNode,
+                onChanged: _onSearchChanged,
+                onClose: _clearSearch,
+              ),
+            ),
+          ),
+          // Content
+          _buildContentSliver(state),
+          // Bottom padding
+          SliverToBoxAdapter(child: SizedBox(height: 24.h)),
+        ],
+      ),
+    );
+
+    // Apply tablet max-width constraint
+    if (ResponsiveHelper.isTablet) {
+      content = Center(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: ResponsiveHelper.contentMaxWidth,
+          ),
+          child: content,
+        ),
+      );
+    }
 
     return Stack(
       children: [
-        RefreshIndicator(
-          onRefresh: () async {
-            HapticFeedbackService.medium();
-            await ref.read(countrymenEventsProvider.notifier).refresh();
-          },
-          color: kWhiteColor,
-          backgroundColor: kBlack2Color,
-          child: CustomScrollView(
-            controller: _scrollController,
-            physics: const AlwaysScrollableScrollPhysics(
-              parent: BouncingScrollPhysics(),
-            ),
-            slivers: [
-              // Search bar (scrolls with content)
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: EdgeInsets.fromLTRB(16.w, 12.h, 16.w, 8.h),
-                  child: SearchBarWidget(
-                    hintText: 'Search events',
-                    margin: 0.sp,
-                    autoFocus: false,
-                    controller: _searchController,
-                    focusNode: _searchFocusNode,
-                    onChanged: _onSearchChanged,
-                    onClose: _clearSearch,
-                  ),
-                ),
-              ),
-              // Content
-              _buildContentSliver(state),
-              // Bottom padding
-              SliverToBoxAdapter(child: SizedBox(height: 24.h)),
-            ],
-          ),
-        ),
+        content,
         // Scroll to top button
         Positioned(
           bottom: 0,
@@ -320,8 +335,9 @@ class _CountrymenEventsTabState extends ConsumerState<CountrymenEventsTab>
     // Get live event IDs for status indicators
     final liveEventIds = ref.watch(liveGroupBroadcastIdsProvider).valueOrNull ?? [];
 
+    final horizontalPadding = ResponsiveHelper.adaptive(phone: 16.w, tablet: 24.w);
     return SliverPadding(
-      padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
+      padding: EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: 8.h),
       sliver: SliverList(
         delegate: SliverChildBuilderDelegate(
           (context, index) {
