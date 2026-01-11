@@ -238,42 +238,38 @@ bool _hasStarted(Games game) {
   return isLive || hasMoves || isFinished;
 }
 
-/// Get games from the latest round only
+/// Get the most relevant games for display
+/// Priority: Live games first (across ALL categories), then ALL finished games
+/// sorted by ELO.
+///
+/// IMPORTANT: When no live games exist, we return ALL played games and let
+/// _selectGamesWithFavoritePriority sort by ELO. This ensures higher-rated
+/// categories (e.g., "Blitz Men" with 2700+ ELO) are shown over lower-rated
+/// categories (e.g., "Blitz Women" with 2400 ELO) even if the lower-rated
+/// category finished more recently.
 List<Games> _getLatestRoundGames(List<Games> games) {
   if (games.isEmpty) return [];
 
-  // Group by round and find latest
-  final gamesByRound = <String, List<Games>>{};
-  final roundTimestamps = <String, DateTime>{};
+  // First priority: Get all LIVE games across all categories/rounds
+  final liveGames = games.where((g) => g.status == '*').toList();
 
-  for (final game in games) {
-    final roundId = game.roundId;
-    gamesByRound.putIfAbsent(roundId, () => []).add(game);
-
-    final timestamp = game.lastMoveTime ?? game.dateStart;
-    if (timestamp != null) {
-      final current = roundTimestamps[roundId];
-      if (current == null || timestamp.isAfter(current)) {
-        roundTimestamps[roundId] = timestamp;
-      }
-    }
+  if (liveGames.isNotEmpty) {
+    // Return all live games - sorting by ELO happens in _selectGamesWithFavoritePriority
+    return liveGames;
   }
 
-  // Find latest round
-  String? latestRoundId;
-  DateTime? latestTimestamp;
-  for (final entry in roundTimestamps.entries) {
-    if (latestTimestamp == null || entry.value.isAfter(latestTimestamp)) {
-      latestTimestamp = entry.value;
-      latestRoundId = entry.key;
-    }
-  }
-
-  latestRoundId ??= gamesByRound.keys.first;
-  return gamesByRound[latestRoundId] ?? [];
+  // No live games - return ALL played games
+  // The ELO-based sorting in _selectGamesWithFavoritePriority will ensure
+  // that the highest-rated games are selected, regardless of which category
+  // or round they came from.
+  //
+  // This fixes the "Tata Steel" issue where Blitz Women games were shown
+  // instead of higher-rated Blitz Men games just because Women played later.
+  return games;
 }
 
-/// Select games with favorite player priority, then by board/ELO
+/// Select games with favorite player priority, then by highest ELO
+/// Matches the sorting philosophy of the Games tab where top boards appear first
 List<Games> _selectGamesWithFavoritePriority(
   List<Games> games,
   Set<int> favoriteFideIds,
@@ -293,18 +289,14 @@ List<Games> _selectGamesWithFavoritePriority(
     }
   }
 
-  // Sort favorite games by ELO
+  // Sort favorite games by highest ELO (descending)
   favoriteGames.sort((a, b) => _getMaxElo(b).compareTo(_getMaxElo(a)));
 
-  // Sort regular games by board number, then ELO
-  regularGames.sort((a, b) {
-    final boardA = a.boardNr ?? 9999;
-    final boardB = b.boardNr ?? 9999;
-    if (boardA != boardB) return boardA.compareTo(boardB);
-    return _getMaxElo(b).compareTo(_getMaxElo(a));
-  });
+  // Sort regular games by highest ELO (descending) - top rated games first
+  // This matches the Games tab where board 1 (highest ELO) appears first
+  regularGames.sort((a, b) => _getMaxElo(b).compareTo(_getMaxElo(a)));
 
-  // Take favorite games first, then fill with regular (top boards)
+  // Take favorite games first, then fill with highest ELO regular games
   final result = <Games>[];
   result.addAll(favoriteGames.take(count));
 
