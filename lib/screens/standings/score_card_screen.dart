@@ -457,9 +457,20 @@ class ScoreCardScreen extends ConsumerWidget {
       player.fideId?.toString(),
     );
 
+    // Consistent horizontal padding - matches chessboard screen patterns
     final horizontalPadding = ResponsiveHelper.adaptive(
       phone: 20.sp,
-      tablet: 32.sp,
+      tablet: 24.sp,
+    );
+    // Gap between avatar and rating boxes
+    final avatarRatingGap = ResponsiveHelper.adaptive(
+      phone: 10.w,
+      tablet: 16.sp,
+    );
+    // Gap between rating boxes
+    final ratingBoxGap = ResponsiveHelper.adaptive(
+      phone: 6.w,
+      tablet: 10.sp,
     );
 
     return Scaffold(
@@ -488,7 +499,7 @@ class ScoreCardScreen extends ConsumerWidget {
                           initials: initials,
                           title: player.title,
                         ),
-                        SizedBox(width: 10.w),
+                        SizedBox(width: avatarRatingGap),
                         Expanded(
                           child: IntrinsicHeight(
                             child: Row(
@@ -502,7 +513,7 @@ class ScoreCardScreen extends ConsumerWidget {
                                     assetPath: PngAsset.classicalIcon,
                                   ),
                                 ),
-                                SizedBox(width: 6.w),
+                                SizedBox(width: ratingBoxGap),
                                 Expanded(
                                   child: _RatingDisplay(
                                     label: 'Rapid',
@@ -512,7 +523,7 @@ class ScoreCardScreen extends ConsumerWidget {
                                     assetPath: PngAsset.rapidIcon,
                                   ),
                                 ),
-                                SizedBox(width: 6.w),
+                                SizedBox(width: ratingBoxGap),
                                 Expanded(
                                   child: _RatingDisplay(
                                     label: 'Blitz',
@@ -608,7 +619,7 @@ class ScoreCardScreen extends ConsumerWidget {
                     }
 
                     return Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 20.0.sp),
+                      padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
                       child: ScoreboardCardWidget(
                         roundLabel:
                             hasEventContext ? _buildRoundLabel(game) : null,
@@ -821,7 +832,8 @@ class _PlayerAvatarTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final avatarSize = 90.w;
+    // Bigger avatar for tablets
+    final avatarSize = ResponsiveHelper.isTablet ? 120.sp : 90.w;
 
     return Stack(
       alignment: Alignment.bottomCenter,
@@ -1095,10 +1107,20 @@ class _RatingDisplay extends ConsumerWidget {
     );
     final ratingsAsync = ref.watch(allRatingsProvider(ratingsRequest));
 
+    // Tablet needs to match avatar height (120.sp), mobile stays at 90.w
+    final containerHeight = ResponsiveHelper.isTablet ? 120.sp : 90.w;
+    // Tablet-specific sizing for visual balance
+    final iconSize = ResponsiveHelper.isTablet ? 22.sp : 18.w;
+    final labelFontSize = ResponsiveHelper.isTablet ? 12.sp : 10.sp;
+    final elementSpacing = ResponsiveHelper.isTablet ? 6.h : 4.h;
+
     return Container(
-      padding: EdgeInsets.symmetric(horizontal: 3.sp, vertical: 8.sp),
+      padding: EdgeInsets.symmetric(
+        horizontal: ResponsiveHelper.isTablet ? 6.sp : 3.sp,
+        vertical: ResponsiveHelper.isTablet ? 12.sp : 8.sp,
+      ),
       width: double.infinity,
-      height: 90.w,
+      height: containerHeight,
       decoration: BoxDecoration(
         color: kBlack2Color,
         borderRadius: BorderRadius.circular(8.br),
@@ -1107,25 +1129,27 @@ class _RatingDisplay extends ConsumerWidget {
         mainAxisAlignment: MainAxisAlignment.center,
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Image.asset(assetPath, width: 18.w, height: 18.h),
-          SizedBox(height: 4.h),
+          Image.asset(assetPath, width: iconSize, height: iconSize),
+          SizedBox(height: elementSpacing),
           Text(
             label,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: AppTypography.textXsMedium.copyWith(
               color: kWhiteColor70,
-              fontSize: 10.sp,
+              fontSize: labelFontSize,
             ),
             textAlign: TextAlign.center,
           ),
-          SizedBox(height: 4.h),
+          SizedBox(height: elementSpacing),
           ratingsAsync.when(
             data: (ratings) {
               final rating = ratings.getRating(timeControlType);
               return Text(
                 rating?.toString() ?? '-',
-                style: AppTypography.textMdBold.copyWith(color: kWhiteColor),
+                style: ResponsiveHelper.isTablet
+                    ? AppTypography.textLgBold.copyWith(color: kWhiteColor)
+                    : AppTypography.textMdBold.copyWith(color: kWhiteColor),
               );
             },
             loading: () => Skeletonizer(
@@ -1137,12 +1161,16 @@ class _RatingDisplay extends ConsumerWidget {
               ),
               child: Text(
                 '2400',
-                style: AppTypography.textMdBold.copyWith(color: kWhiteColor),
+                style: ResponsiveHelper.isTablet
+                    ? AppTypography.textLgBold.copyWith(color: kWhiteColor)
+                    : AppTypography.textMdBold.copyWith(color: kWhiteColor),
               ),
             ),
             error: (_, __) => Text(
               '-',
-              style: AppTypography.textMdBold.copyWith(color: kWhiteColor),
+              style: ResponsiveHelper.isTablet
+                  ? AppTypography.textLgBold.copyWith(color: kWhiteColor)
+                  : AppTypography.textMdBold.copyWith(color: kWhiteColor),
             ),
           ),
         ],

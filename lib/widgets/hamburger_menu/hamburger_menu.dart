@@ -40,11 +40,16 @@ class HamburgerMenu extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Use wider drawer on tablet for better readability
+    final drawerWidth = ResponsiveHelper.isTablet ? 320.0 : 260.w;
+
     return SizedBox(
-      width: 260.w, // Set fixed width for hamburger menu
+      width: drawerWidth,
       child: Drawer(
         backgroundColor: kBackgroundColor,
         child: SafeArea(
+          // Ensure bottom safe area is respected on all devices
+          bottom: true,
           child: Column(
             children: [
               Expanded(
@@ -67,58 +72,29 @@ class HamburgerMenu extends StatelessWidget {
                       onPressed: () => showSettingsDialog(context),
                       showChevron: true,
                     ),
-                    // _MenuItem(
-                    //   customIcon: AnalysisBoardIcon(size: 20.ic),
-                    //   title: 'Board',
-                    //   onPressed: () {
-                    //     callbacks.onAnalysisBoardPressed();
-                    //   },
-                    // ),
-                    // SizedBox(height: 12.h),
-                    // _MenuItem(
-                    //   customIcon: SvgWidget(
-                    //     SvgAsset.headsetIcon,
-                    //     semanticsLabel: 'Support Icon',
-                    //     height: 24.h,
-                    //     width: 24.w,
-                    //   ),
-                    //   title: 'Support',
-                    //   onPressed: () {
-                    //     Navigator.pop(context); // Close drawer first
-                    //     callbacks.onSupportPressed();
-                    //   },
-                    // ),
-                    // SizedBox(height: 12.h),
-                    // Container(
-                    //   decoration: BoxDecoration(
-                    //     gradient: LinearGradient(
-                    //       colors: [kgradientEndColors, kgradientStartColors],
-                    //       begin: Alignment.topLeft,
-                    //       end: Alignment.bottomRight,
-                    //     ),
-                    //   ),
-                    //   child: _MenuItem(
-                    //     color: Colors.transparent,
-                    //     customIcon: Image.asset(
-                    //       PngAsset.premiumIcon,
-                    //       width: 28.w,
-                    //       height: 28.h,
-                    //       fit: BoxFit.contain,
-                    //     ),
-                    //     title: 'Try Premium for free',
-                    //     onPressed: () {
-                    //       callbacks.onPremiumPressed();
-                    //     },
-                    //   ),
-                    // ),
                   ],
                 ),
               ),
-              _VersionFooter(),
-              _LogOutButton(
-                onLogoutPressed: () {
-                  callbacks.onLogoutPressed();
-                },
+              // Wrap footer items in a container with minimum constraints
+              // to prevent cutoff on tablet
+              ConstrainedBox(
+                constraints: BoxConstraints(
+                  minHeight: ResponsiveHelper.isTablet ? 280.0 : 0,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _VersionFooter(),
+                    _LogOutButton(
+                      onLogoutPressed: () {
+                        callbacks.onLogoutPressed();
+                      },
+                    ),
+                    // Add extra bottom padding on tablet
+                    if (ResponsiveHelper.isTablet)
+                      SizedBox(height: 16.0),
+                  ],
+                ),
               ),
             ],
           ),

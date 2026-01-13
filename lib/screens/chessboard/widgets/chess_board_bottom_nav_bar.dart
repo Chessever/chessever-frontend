@@ -1,6 +1,8 @@
+import 'dart:math' as math;
 import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_board_bottom_navbar.dart';
 import 'package:chessever2/theme/app_theme.dart';
+import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -48,7 +50,32 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final buttonCount = showGamebaseButton ? 5 : 4;
-    final width = MediaQuery.of(context).size.width / buttonCount;
+    final fullWidth = MediaQuery.of(context).size.width;
+
+    // Tablet-specific layout calculations
+    final isTablet = ResponsiveHelper.isTablet;
+    final isTabletLandscape = isTablet && ResponsiveHelper.isLandscape;
+    final isTabletPortrait = isTablet && !ResponsiveHelper.isLandscape;
+
+    // Calculate content width based on orientation
+    // Portrait: Match the body content width (85% capped at 720)
+    // Landscape: Use full width but with refined max button sizes
+    double contentWidth;
+    if (isTabletPortrait) {
+      contentWidth = math.min(fullWidth * 0.85, 720.0);
+    } else if (isTabletLandscape) {
+      // In landscape, constrain to a comfortable max width
+      contentWidth = math.min(fullWidth, 800.0);
+    } else {
+      contentWidth = fullWidth;
+    }
+
+    // Button sizing with tablet refinements
+    final rawButtonWidth = contentWidth / buttonCount;
+    // On tablets, limit individual button width for better touch targets
+    final buttonWidth = isTablet ? math.min(rawButtonWidth, 140.0) : rawButtonWidth;
+    final barHeight =
+        isTablet ? kBottomNavigationBarHeight + 14.0 : kBottomNavigationBarHeight;
 
     // Watch the centralized engine depth status provider
     final depthSnapshot = ref.watch(engineDepthStatusProvider);
@@ -85,61 +112,96 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
       }
     }
 
+    // Build the navigation buttons row
+    final buttonsRow = Row(
+      mainAxisSize: isTablet ? MainAxisSize.min : MainAxisSize.max,
+      mainAxisAlignment: MainAxisAlignment.center,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // Gamebase Explorer Toggle (only shown when showGamebaseButton is true)
+        if (showGamebaseButton)
+          ChessSvgBottomNavbar(
+            key: ValueKey('gamebase_toggle_$isGamebaseActive'),
+            width: buttonWidth,
+            svgPath: SvgAsset.bookIcon,
+            onPressed: onGamebaseToggle,
+            isActive: isGamebaseActive,
+          ),
+
+        // Computer/Engine Analysis Toggle Button
+        ChessSvgBottomNavbar(
+          width: buttonWidth,
+          svgPath: SvgAsset.laptop,
+          onPressed: toggleEngineVisibility,
+          onLongPress: onEngineSettingsLongPress,
+          isActive: showEngineAnalysis,
+          depthText: showEngineAnalysis ? depthText : null,
+        ),
+
+        // Flip Board Button
+        ChessSvgBottomNavbar(
+          width: buttonWidth,
+          svgPath: SvgAsset.refresh,
+          onPressed: onFlip,
+        ),
+        ChessSvgBottomNavbarWithLongPress(
+          svgPath: SvgAsset.left_arrow,
+          width: buttonWidth,
+          onPressed: canMoveBackward ? onLeftMove : null,
+          onLongPressStart:
+              canMoveBackward ? onLongPressBackwardStart : null,
+          onLongPressEnd: onLongPressBackwardEnd,
+        ),
+
+        ChessSvgBottomNavbarWithLongPress(
+          svgPath: SvgAsset.right_arrow,
+          width: buttonWidth,
+          onPressed: canMoveForward ? onRightMove : null,
+          onLongPressStart:
+              canMoveForward ? onLongPressForwardStart : null,
+          onLongPressEnd: onLongPressForwardEnd,
+          showBadge: showUnseenMoveBadge,
+        ),
+      ],
+    );
+
+    // Tablet-refined container with subtle top border
     return Container(
-      width: MediaQuery.of(context).size.width,
-      decoration: const BoxDecoration(color: kBlackColor),
-      child: SafeArea(
-        top: false, // Allow navbar to extend below app bar
-        child: SizedBox(
-          height: kBottomNavigationBarHeight,
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // Gamebase Explorer Toggle (only shown when showGamebaseButton is true)
-              if (showGamebaseButton)
-                ChessSvgBottomNavbar(
-                  key: ValueKey('gamebase_toggle_$isGamebaseActive'),
-                  width: width,
-                  svgPath: SvgAsset.bookIcon,
-                  onPressed: onGamebaseToggle,
-                  isActive: isGamebaseActive,
+      width: fullWidth,
+      decoration: BoxDecoration(
+        color: kBlackColor,
+        // Add subtle top border for visual separation on tablets
+        border: isTablet
+            ? Border(
+                top: BorderSide(
+                  color: Colors.white.withValues(alpha: 0.06),
+                  width: 1,
                 ),
-
-              // Computer/Engine Analysis Toggle Button
-              ChessSvgBottomNavbar(
-                width: width,
-                svgPath: SvgAsset.laptop,
-                onPressed: toggleEngineVisibility,
-                onLongPress: onEngineSettingsLongPress,
-                isActive: showEngineAnalysis,
-                depthText: showEngineAnalysis ? depthText : null,
-              ),
-
-              // Flip Board Button
-              ChessSvgBottomNavbar(
-                width: width,
-                svgPath: SvgAsset.refresh,
-                onPressed: onFlip,
-              ),
-              ChessSvgBottomNavbarWithLongPress(
-                svgPath: SvgAsset.left_arrow,
-                width: width,
-                onPressed: canMoveBackward ? onLeftMove : null,
-                onLongPressStart:
-                    canMoveBackward ? onLongPressBackwardStart : null,
-                onLongPressEnd: onLongPressBackwardEnd,
-              ),
-
-              ChessSvgBottomNavbarWithLongPress(
-                svgPath: SvgAsset.right_arrow,
-                width: width,
-                onPressed: canMoveForward ? onRightMove : null,
-                onLongPressStart:
-                    canMoveForward ? onLongPressForwardStart : null,
-                onLongPressEnd: onLongPressForwardEnd,
-                showBadge: showUnseenMoveBadge,
-              ),
-            ],
+              )
+            : null,
+      ),
+      child: SafeArea(
+        top: false,
+        child: SizedBox(
+          height: barHeight,
+          child: Center(
+            child: isTablet
+                // Tablet: Container with refined styling
+                ? Container(
+                    height: barHeight - 12,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF0D0D0D),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    margin: EdgeInsets.symmetric(vertical: 4),
+                    padding: EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    child: buttonsRow,
+                  )
+                // Phone: Full width row
+                : SizedBox(
+                    width: contentWidth,
+                    child: buttonsRow,
+                  ),
           ),
         ),
       ),

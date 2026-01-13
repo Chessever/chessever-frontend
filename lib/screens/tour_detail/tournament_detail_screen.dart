@@ -179,7 +179,6 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
                         : double.infinity,
               ),
               child: Column(
-                mainAxisSize: MainAxisSize.min,
                 children: [
                   SizedBox(
                     height: MediaQuery.of(context).viewPadding.top + 4.h,
@@ -281,10 +280,14 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
 
   void _handleTabSelection(int index) {
     try {
-      // Update state after animation starts
-      ref
-          .read(selectedTourModeProvider.notifier)
-          .update((_) => TournamentDetailScreenMode.values[index]);
+      // Schedule the state change to avoid mutating provider state during
+      // layout/semantics passes, which can trigger parentDataDirty assertions.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        ref
+            .read(selectedTourModeProvider.notifier)
+            .update((_) => TournamentDetailScreenMode.values[index]);
+      });
       // Animate to the selected page first
       pageController.animateToPage(
         index,
@@ -304,9 +307,12 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
       );
 
       if (currentModeIndex != index) {
-        ref
-            .read(selectedTourModeProvider.notifier)
-            .update((_) => TournamentDetailScreenMode.values[index]);
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          ref
+              .read(selectedTourModeProvider.notifier)
+              .update((_) => TournamentDetailScreenMode.values[index]);
+        });
       }
     } catch (e) {
       print('Error handling page change: $e');

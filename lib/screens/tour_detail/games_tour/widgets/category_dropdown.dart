@@ -340,8 +340,11 @@ class _CategoryDropdownContent extends HookConsumerWidget {
         return parts.last.trim();
       }
     }
-    if (fullName.length > 18) {
-      return '${fullName.substring(0, 15)}...';
+    // Allow more characters on tablet since we have more space
+    final maxLength = ResponsiveHelper.isTablet ? 35 : 18;
+    final truncateLength = ResponsiveHelper.isTablet ? 32 : 15;
+    if (fullName.length > maxLength) {
+      return '${fullName.substring(0, truncateLength)}...';
     }
     return fullName;
   }
@@ -448,11 +451,14 @@ class _StadiumChipButton extends HookWidget {
       ),
     );
 
+    // Wider chip on tablet for better text visibility
+    final chipMaxWidth = ResponsiveHelper.isTablet ? 280.0 : 160.w;
+
     return GestureDetector(
       onTap: onTap,
       child: constrainWidth
           ? ConstrainedBox(
-              constraints: BoxConstraints(maxWidth: 160.w),
+              constraints: BoxConstraints(maxWidth: chipMaxWidth),
               child: button,
             )
           : button,
@@ -585,7 +591,10 @@ class _DropdownOverlay extends ConsumerWidget {
           )
         : null;
 
-    final dropdownWidth = (screenWidth - 32.w).clamp(280.w, 360.w);
+    // Wider dropdown on tablet for better readability
+    final minWidth = ResponsiveHelper.isTablet ? 360.0 : 280.w;
+    final maxWidth = ResponsiveHelper.isTablet ? 500.0 : 360.w;
+    final dropdownWidth = (screenWidth - 32.w).clamp(minWidth, maxWidth);
     final leftOffset = (screenWidth - dropdownWidth) / 2;
 
     return GestureDetector(

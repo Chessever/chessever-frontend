@@ -204,8 +204,12 @@ final eventGamesProvider = FutureProvider.autoDispose
 
   if (allGames.isEmpty) return [];
 
-  // Filter out future games (no moves yet)
-  final playedGames = allGames.where((g) => _hasStarted(g)).toList();
+  // Filter out future games (no moves yet) and games without valid player data
+  // Must have at least 2 players for a valid chess game card
+  final playedGames = allGames
+      .where((g) => _hasStarted(g))
+      .where((g) => g.players != null && g.players!.length >= 2)
+      .toList();
 
   if (playedGames.isEmpty) return [];
 
@@ -219,7 +223,7 @@ final eventGamesProvider = FutureProvider.autoDispose
     kGamesPerEvent,
   );
 
-  debugPrint('[ForYou] Selected ${selectedGames.length} games for event $eventId');
+  debugPrint('[ForYou] Selected ${selectedGames.length}/$kGamesPerEvent games for event $eventId (from ${playedGames.length} valid games)');
 
   return selectedGames;
 });
@@ -242,34 +246,39 @@ bool _hasStarted(Games game) {
 /// Priority: Live games first (across ALL categories), then ALL finished games
 /// sorted by ELO.
 ///
-/// IMPORTANT: When no live games exist, we return ALL played games and let
-/// _selectGamesWithFavoritePriority sort by ELO. This ensures higher-rated
-/// categories (e.g., "Blitz Men" with 2700+ ELO) are shown over lower-rated
-/// categories (e.g., "Blitz Women" with 2400 ELO) even if the lower-rated
-/// category finished more recently.
+/// IMPORTANT: When live games exist but fewer than kGamesPerEvent, we return
+/// live games PLUS enough finished games to fill up to the limit. This ensures
+/// we always show 4 games while still prioritizing live content.
 List<Games> _getLatestRoundGames(List<Games> games) {
   if (games.isEmpty) return [];
 
   // First priority: Get all LIVE games across all categories/rounds
   final liveGames = games.where((g) => g.status == '*').toList();
 
-  if (liveGames.isNotEmpty) {
-    // Return all live games - sorting by ELO happens in _selectGamesWithFavoritePriority
+  if (liveGames.isEmpty) {
+    // No live games - return ALL played games for ELO-based selection
+    return games;
+  }
+
+  if (liveGames.length >= kGamesPerEvent) {
+    // Enough live games - return only live games
     return liveGames;
   }
 
-  // No live games - return ALL played games
-  // The ELO-based sorting in _selectGamesWithFavoritePriority will ensure
-  // that the highest-rated games are selected, regardless of which category
-  // or round they came from.
-  //
-  // This fixes the "Tata Steel" issue where Blitz Women games were shown
-  // instead of higher-rated Blitz Men games just because Women played later.
-  return games;
+  // Few live games - return live games + finished games to fill up
+  // Live games will be prioritized in _selectGamesWithFavoritePriority
+  final finishedGames = games.where((g) => g.status != '*').toList();
+  return [...liveGames, ...finishedGames];
 }
 
-/// Select games with favorite player priority, then by highest ELO
+/// Select games with priority: Live > Favorite > Highest ELO
 /// Matches the sorting philosophy of the Games tab where top boards appear first
+///
+/// Priority order:
+/// 1. Live games with favorite players (sorted by ELO)
+/// 2. Live games without favorite players (sorted by ELO)
+/// 3. Finished games with favorite players (sorted by ELO)
+/// 4. Finished games without favorite players (sorted by ELO)
 List<Games> _selectGamesWithFavoritePriority(
   List<Games> games,
   Set<int> favoriteFideIds,
@@ -277,40 +286,54 @@ List<Games> _selectGamesWithFavoritePriority(
 ) {
   if (games.isEmpty) return [];
 
-  // Separate games with favorite players
-  final favoriteGames = <Games>[];
-  final regularGames = <Games>[];
+  // Categorize games into 4 priority buckets
+  final liveFavoriteGames = <Games>[];
+  final liveRegularGames = <Games>[];
+  final finishedFavoriteGames = <Games>[];
+  final finishedRegularGames = <Games>[];
 
   for (final game in games) {
-    if (_hasFavoritePlayer(game, favoriteFideIds)) {
-      favoriteGames.add(game);
+    final isLive = game.status == '*' || game.status == 'ongoing';
+    final hasFavorite = _hasFavoritePlayer(game, favoriteFideIds);
+
+    if (isLive && hasFavorite) {
+      liveFavoriteGames.add(game);
+    } else if (isLive) {
+      liveRegularGames.add(game);
+    } else if (hasFavorite) {
+      finishedFavoriteGames.add(game);
     } else {
-      regularGames.add(game);
+      finishedRegularGames.add(game);
     }
   }
 
-  // Sort favorite games by highest ELO (descending)
-  favoriteGames.sort((a, b) => _getMaxElo(b).compareTo(_getMaxElo(a)));
+  // Sort each bucket by highest ELO (descending)
+  int compareByElo(Games a, Games b) => _getMaxElo(b).compareTo(_getMaxElo(a));
+  liveFavoriteGames.sort(compareByElo);
+  liveRegularGames.sort(compareByElo);
+  finishedFavoriteGames.sort(compareByElo);
+  finishedRegularGames.sort(compareByElo);
 
-  // Sort regular games by highest ELO (descending) - top rated games first
-  // This matches the Games tab where board 1 (highest ELO) appears first
-  regularGames.sort((a, b) => _getMaxElo(b).compareTo(_getMaxElo(a)));
-
-  // Take favorite games first, then fill with highest ELO regular games
+  // Build result in priority order, filling up to count
   final result = <Games>[];
-  result.addAll(favoriteGames.take(count));
+  final existingIds = <String>{};
 
-  if (result.length < count) {
-    final existingIds = result.map((g) => g.id).toSet();
-    for (final game in regularGames) {
+  void addGames(List<Games> source) {
+    for (final game in source) {
+      if (result.length >= count) return;
       if (!existingIds.contains(game.id)) {
         result.add(game);
-        if (result.length >= count) break;
+        existingIds.add(game.id);
       }
     }
   }
 
-  return result.take(count).toList();
+  addGames(liveFavoriteGames);
+  addGames(liveRegularGames);
+  addGames(finishedFavoriteGames);
+  addGames(finishedRegularGames);
+
+  return result;
 }
 
 bool _hasFavoritePlayer(Games game, Set<int> favoriteFideIds) {

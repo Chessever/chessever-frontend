@@ -693,25 +693,37 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
       // Games under this date (only if expanded)
       if (!isCollapsed) {
         if (isGrid) {
-          // Grid mode: pair games side by side
-          for (int i = 0; i < dateGames.length; i += 2) {
-            final game1 = dateGames[i];
-            final game2 = i + 1 < dateGames.length ? dateGames[i + 1] : null;
-            final isLast = i + 2 >= dateGames.length;
+          // Grid mode: dynamic columns based on device/orientation
+          // Tablet landscape: 4 columns, Tablet portrait: 2 columns, Phone: 2 columns
+          final int gridColumns = ResponsiveHelper.isTablet && ResponsiveHelper.isLandscape ? 4 : 2;
 
-            // Use reliable index lookup by game ID
-            final gameIndex1 = gameIdToIndex[game1.gameId] ?? 0;
-            final gameIndex2 = game2 != null ? (gameIdToIndex[game2.gameId] ?? 0) : 0;
+          for (int i = 0; i < dateGames.length; i += gridColumns) {
+            final isLast = i + gridColumns >= dateGames.length;
+
+            // Gather games for this row
+            final rowGames = <GamesTourModel>[];
+            for (int j = 0; j < gridColumns && i + j < dateGames.length; j++) {
+              rowGames.add(dateGames[i + j]);
+            }
 
             items.add(
               Padding(
                 padding: EdgeInsets.only(bottom: isLast ? 16.h : 12.h),
                 child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    _buildGridGame(game1, gameIndex1, games, items.length),
-                    if (game2 != null)
-                      _buildGridGame(game2, gameIndex2, games, items.length),
+                    for (int j = 0; j < gridColumns; j++) ...[
+                      if (j > 0) SizedBox(width: 12.sp),
+                      Expanded(
+                        child: j < rowGames.length
+                            ? _buildGridGame(
+                                rowGames[j],
+                                gameIdToIndex[rowGames[j].gameId] ?? 0,
+                                games,
+                                items.length,
+                              )
+                            : const SizedBox.shrink(),
+                      ),
+                    ],
                   ],
                 ),
               ),

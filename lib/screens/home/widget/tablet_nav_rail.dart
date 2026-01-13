@@ -5,8 +5,8 @@ import 'package:chessever2/services/analytics/analytics_service.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
+import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 /// A tablet-optimized navigation rail that replaces the bottom navigation bar.
@@ -19,7 +19,10 @@ class TabletNavRail extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final selectedItem = ref.watch(selectedBottomNavBarItemProvider);
-    final isLandscape = ResponsiveHelper.isLandscape;
+
+    // Get orientation from MediaQuery for reliable updates
+    final orientation = MediaQuery.of(context).orientation;
+    final isLandscape = orientation == Orientation.landscape;
 
     // Wider rail in landscape for better touch targets
     final railWidth = isLandscape ? 110.0 : 90.0;
@@ -32,7 +35,7 @@ class TabletNavRail extends ConsumerWidget {
           children: [
             // Menu button at top
             Padding(
-              padding: EdgeInsets.only(top: 16.sp, bottom: 24.sp),
+              padding: const EdgeInsets.only(top: 16.0, bottom: 24.0),
               child: _MenuButton(
                 onTap: () {
                   scaffoldKey?.currentState?.openDrawer();
@@ -87,16 +90,16 @@ class _MenuButton extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        width: 48.sp,
-        height: 48.sp,
+        width: 48.0,
+        height: 48.0,
         decoration: BoxDecoration(
-          color: kDarkGreyColor.withValues(alpha: 0.3),
-          borderRadius: BorderRadius.circular(12.br),
+          color: kDarkGreyColor.withOpacity(0.3),
+          borderRadius: BorderRadius.circular(12.0),
         ),
-        child: Icon(
+        child: const Icon(
           Icons.menu_rounded,
           color: Colors.white,
-          size: 24.ic,
+          size: 24.0,
         ),
       ),
     );
@@ -118,7 +121,16 @@ class _NavRailItem extends StatelessWidget {
   Widget build(BuildContext context) {
     final iconPath = bottomNavBarIcons[item]!;
     final title = namesBottomNavBarIcons[item]!;
-    final isLandscape = ResponsiveHelper.isLandscape;
+
+    // Get orientation from MediaQuery for reliable updates
+    final orientation = MediaQuery.of(context).orientation;
+    final isLandscape = orientation == Orientation.landscape;
+
+    // Use fixed pixel sizes for tablet to avoid ResponsiveHelper timing issues
+    final iconSize = isLandscape ? 28.0 : 24.0;
+    final iconColor = isSelected ? kPrimaryColor : kWhiteColor70;
+    final verticalPadding = isLandscape ? 16.0 : 12.0;
+    final horizontalIconPadding = isLandscape ? 20.0 : 16.0;
 
     return GestureDetector(
       onTap: onTap,
@@ -126,36 +138,35 @@ class _NavRailItem extends StatelessWidget {
       child: Container(
         width: double.infinity,
         padding: EdgeInsets.symmetric(
-          vertical: isLandscape ? 16.sp : 12.sp,
-          horizontal: 8.sp,
+          vertical: verticalPadding,
+          horizontal: 8.0,
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             // Indicator background for selected item
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
+            Container(
               padding: EdgeInsets.symmetric(
-                horizontal: isLandscape ? 20.sp : 16.sp,
-                vertical: 8.sp,
+                horizontal: horizontalIconPadding,
+                vertical: 8.0,
               ),
               decoration: BoxDecoration(
                 color: isSelected
-                    ? kPrimaryColor.withValues(alpha: 0.15)
+                    ? kPrimaryColor.withOpacity(0.15)
                     : Colors.transparent,
-                borderRadius: BorderRadius.circular(16.br),
+                borderRadius: BorderRadius.circular(16.0),
               ),
-              child: SvgPicture.asset(
+              child: SvgWidget(
                 iconPath,
-                width: 24.ic,
-                height: 24.ic,
+                width: iconSize,
+                height: iconSize,
                 colorFilter: ColorFilter.mode(
-                  isSelected ? kPrimaryColor : Colors.white.withValues(alpha: 0.7),
+                  iconColor,
                   BlendMode.srcIn,
                 ),
               ),
             ),
-            SizedBox(height: 4.sp),
+            const SizedBox(height: 4.0),
             // Label
             Text(
               title,
@@ -163,9 +174,9 @@ class _NavRailItem extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
               textAlign: TextAlign.center,
               style: TextStyle(
-                fontSize: 11.f,
+                fontSize: 11.0,
                 fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
-                color: isSelected ? kPrimaryColor : Colors.white.withValues(alpha: 0.7),
+                color: isSelected ? kPrimaryColor : kWhiteColor70,
               ),
             ),
           ],

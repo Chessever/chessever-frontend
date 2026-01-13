@@ -152,15 +152,15 @@ class ResponsiveHelper {
 
   /// Returns the recommended number of grid columns for tablet layouts
   /// based on current orientation and screen width.
+  /// Max 3 columns to keep content readable
   static int get tabletGridColumns {
     if (!isTablet) return 1;
     if (isLandscape) {
-      if (_screenWidth >= 1200) return 4;
+      // Max 3 columns for readability
       if (_screenWidth >= 900) return 3;
       return 2;
     } else {
-      // Portrait
-      if (_screenWidth >= 900) return 3;
+      // Portrait - max 2 columns
       return 2;
     }
   }
