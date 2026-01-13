@@ -2,7 +2,6 @@ import 'package:chessever2/providers/for_you_games_provider.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/screens/group_event/providers/group_event_screen_provider.dart';
-import 'package:chessever2/widgets/event_card/event_card.dart';
 import 'package:chessever2/screens/group_event/widget/premium_collection_cards.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
@@ -13,6 +12,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrap
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_tour_content_provider.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/event_card/event_card.dart';
 import 'package:chessever2/widgets/generic_error_widget.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:flutter/material.dart';
@@ -59,6 +59,11 @@ class ForYouGamesWidget extends ConsumerWidget {
   }
 
   Widget _buildLoadingState() {
+    // On tablet, show grid skeleton
+    if (ResponsiveHelper.isTablet) {
+      return _buildTabletLoadingSkeleton();
+    }
+
     return ListView(
       padding: EdgeInsets.symmetric(horizontal: 16.sp, vertical: 16.sp),
       physics: const NeverScrollableScrollPhysics(),
@@ -69,60 +74,49 @@ class ForYouGamesWidget extends ConsumerWidget {
     );
   }
 
-  Widget _buildEventsList(List<GroupEventCardModel> events) {
-    final isTablet = ResponsiveHelper.isTablet;
-    final horizontalPadding = ResponsiveHelper.adaptive(
-      phone: 16.sp,
-      tablet: 24.sp,
-    );
+  Widget _buildTabletLoadingSkeleton() {
+    final horizontalPadding = ResponsiveHelper.isLandscape ? 32.sp : 24.sp;
+    final columnSpacing = 16.sp;
+    final eventCardAspectRatio = ResponsiveHelper.isLandscape ? 1.8 : 1.4;
 
-    // For tablets in landscape, use a two-column layout for events
-    if (isTablet && ResponsiveHelper.isLandscape) {
-      return CustomScrollView(
-        key: const PageStorageKey<String>('for_you_events_list'),
-        controller: scrollController,
-        physics: const AlwaysScrollableScrollPhysics(
-          parent: BouncingScrollPhysics(),
-        ),
-        slivers: [
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: EdgeInsets.symmetric(
-                horizontal: horizontalPadding,
-                vertical: 16.sp,
-              ),
-              child: const PremiumCollectionCards(),
+    return ListView(
+      padding: EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: 16.sp),
+      physics: const NeverScrollableScrollPhysics(),
+      children: [
+        const PremiumCollectionCards(),
+        // 2-column skeleton rows (2 event pairs)
+        ...List.generate(2, (rowIndex) {
+          return Padding(
+            padding: EdgeInsets.only(top: rowIndex == 0 ? 0 : 20.sp),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Left column skeleton
+                Expanded(
+                  child: _TabletColumnSkeleton(eventCardAspectRatio: eventCardAspectRatio),
+                ),
+                SizedBox(width: columnSpacing),
+                // Right column skeleton
+                Expanded(
+                  child: _TabletColumnSkeleton(eventCardAspectRatio: eventCardAspectRatio),
+                ),
+              ],
             ),
-          ),
-          SliverPadding(
-            padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
-            sliver: SliverGrid(
-              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 2,
-                crossAxisSpacing: 16.sp,
-                mainAxisSpacing: 16.sp,
-                // For event sections with games, use a taller aspect ratio
-                childAspectRatio: 0.8,
-              ),
-              delegate: SliverChildBuilderDelegate(
-                (context, index) {
-                  final event = events[index];
-                  return _ForYouEventSection(
-                    key: ValueKey('event_${event.id}'),
-                    event: event,
-                    isFirst: index == 0,
-                    isTabletGrid: true,
-                  );
-                },
-                childCount: events.length,
-              ),
-            ),
-          ),
-        ],
-      );
+          );
+        }),
+      ],
+    );
+  }
+
+  Widget _buildEventsList(List<GroupEventCardModel> events) {
+    // On tablet, use a beautiful grid layout
+    if (ResponsiveHelper.isTablet) {
+      return _buildTabletGridLayout(events);
     }
 
-    // Phone layout or tablet portrait - use list
+    // Phone: vertical list layout
+    final horizontalPadding = 16.sp;
+
     return ListView.builder(
       key: const PageStorageKey<String>('for_you_events_list'),
       controller: scrollController,
@@ -148,6 +142,64 @@ class ForYouGamesWidget extends ConsumerWidget {
     );
   }
 
+  /// Tablet: 2-column grid where each column = event card + its games
+  /// Creates a beautiful magazine-style layout that fills tablet width
+  Widget _buildTabletGridLayout(List<GroupEventCardModel> events) {
+    final horizontalPadding = ResponsiveHelper.isLandscape ? 32.sp : 24.sp;
+    final columnSpacing = 16.sp;
+
+    // Build pairs of events for 2-column layout
+    final List<Widget> rows = [];
+
+    // Premium cards row (full width)
+    rows.add(const PremiumCollectionCards());
+
+    // Event pairs - 2 events per row, each with games below
+    for (int i = 0; i < events.length; i += 2) {
+      final event1 = events[i];
+      final event2 = i + 1 < events.length ? events[i + 1] : null;
+
+      rows.add(
+        Padding(
+          padding: EdgeInsets.only(top: i == 0 ? 0 : 20.sp),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Left column: event1 + its games
+              Expanded(
+                child: _ForYouTabletEventColumn(
+                  key: ValueKey('tablet_col_${event1.id}'),
+                  event: event1,
+                ),
+              ),
+              SizedBox(width: columnSpacing),
+              // Right column: event2 + its games (or empty space)
+              Expanded(
+                child: event2 != null
+                    ? _ForYouTabletEventColumn(
+                        key: ValueKey('tablet_col_${event2.id}'),
+                        event: event2,
+                      )
+                    : const SizedBox.shrink(),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return ListView(
+      key: const PageStorageKey<String>('for_you_events_tablet_grid'),
+      controller: scrollController,
+      padding: EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: 16.sp),
+      cacheExtent: 1500,
+      physics: const AlwaysScrollableScrollPhysics(
+        parent: BouncingScrollPhysics(),
+      ),
+      children: rows,
+    );
+  }
+
   Widget _buildEmptyState() {
     return ListView(
       padding: EdgeInsets.symmetric(horizontal: 16.sp, vertical: 16.sp),
@@ -166,18 +218,109 @@ class ForYouGamesWidget extends ConsumerWidget {
   }
 }
 
+/// Skeleton for a single column in the 2-column tablet grid
+class _TabletColumnSkeleton extends StatelessWidget {
+  const _TabletColumnSkeleton({
+    required this.eventCardAspectRatio,
+  });
+
+  final double eventCardAspectRatio;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // Event card skeleton
+        SkeletonWidget(
+          child: AspectRatio(
+            aspectRatio: eventCardAspectRatio,
+            child: Container(
+              decoration: BoxDecoration(
+                color: kBlack2Color,
+                borderRadius: BorderRadius.circular(12.br),
+              ),
+            ),
+          ),
+        ),
+        SizedBox(height: 10.sp),
+        // Game card skeletons (2 rows of 2 = 4 total, matching actual content)
+        ...List.generate(2, (rowIndex) {
+          return Padding(
+            padding: EdgeInsets.only(bottom: 8.sp),
+            child: Row(
+              children: [
+                Expanded(
+                  child: SkeletonWidget(
+                    ignoreContainers: true,
+                    child: Container(
+                      height: 72.sp,
+                      decoration: BoxDecoration(
+                        color: kBlack2Color,
+                        borderRadius: BorderRadius.circular(8.br),
+                      ),
+                    ),
+                  ),
+                ),
+                SizedBox(width: 8.sp),
+                Expanded(
+                  child: SkeletonWidget(
+                    ignoreContainers: true,
+                    child: Container(
+                      height: 72.sp,
+                      decoration: BoxDecoration(
+                        color: kBlack2Color,
+                        borderRadius: BorderRadius.circular(8.br),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        }),
+      ],
+    );
+  }
+}
+
 /// Section for one event: event card + 4 game cards
 class _ForYouEventSection extends ConsumerWidget {
   const _ForYouEventSection({
     super.key,
     required this.event,
     required this.isFirst,
-    this.isTabletGrid = false,
   });
 
   final GroupEventCardModel event;
   final bool isFirst;
-  final bool isTabletGrid;
+
+  /// Builds the EventCard with proper constraints for tablet
+  /// Tablet uses image-as-background layout which needs bounded height
+  Widget _buildEventCard(BuildContext context, WidgetRef ref) {
+    final eventCard = EventCard(
+      tourEventCardModel: event,
+      heroTagSuffix: '_foryou',
+      onTap: () {
+        ref.read(groupEventScreenProvider.notifier).onSelectTournament(
+          context: context,
+          id: event.id,
+        );
+      },
+    );
+
+    // On tablet, wrap in AspectRatio to give the Stack-based layout proper height
+    // This matches the aspect ratio used in CURRENT tab's SliverGrid
+    if (ResponsiveHelper.isTablet) {
+      return AspectRatio(
+        aspectRatio: ResponsiveHelper.isLandscape ? 1.4 : 1.2,
+        child: eventCard,
+      );
+    }
+
+    return eventCard;
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -186,10 +329,19 @@ class _ForYouEventSection extends ConsumerWidget {
       forYouAnimatedEventIds.add(event.id);
     }
 
-    // For tablet grid mode, use a more compact layout
-    final section = isTabletGrid
-        ? _buildTabletGridSection(context, ref)
-        : _buildListSection(context, ref);
+    final section = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Event card
+        Padding(
+          padding: EdgeInsets.only(top: isFirst ? 0 : 16.sp, bottom: 12.sp),
+          child: _buildEventCard(context, ref),
+        ),
+
+        // Games for this event (lazy loaded with shimmer)
+        _ForYouEventGames(eventId: event.id),
+      ],
+    );
 
     if (shouldAnimate) {
       return section
@@ -200,17 +352,40 @@ class _ForYouEventSection extends ConsumerWidget {
 
     return section;
   }
+}
 
-  Widget _buildListSection(BuildContext context, WidgetRef ref) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+/// Single column in the 2-column tablet grid
+/// Contains: event card on top + games stacked below (1 game per row within column)
+class _ForYouTabletEventColumn extends ConsumerWidget {
+  const _ForYouTabletEventColumn({
+    super.key,
+    required this.event,
+  });
+
+  final GroupEventCardModel event;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final shouldAnimate = !forYouAnimatedEventIds.contains(event.id);
+    if (shouldAnimate) {
+      forYouAnimatedEventIds.add(event.id);
+    }
+
+    // Aspect ratio for event card in column layout
+    // Landscape: wider cards since we have 2 columns
+    // Portrait: taller cards for better visual
+    final eventCardAspectRatio = ResponsiveHelper.isLandscape ? 1.8 : 1.4;
+
+    final column = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
       children: [
         // Event card
-        Padding(
-          padding: EdgeInsets.only(top: isFirst ? 0 : 16.sp, bottom: 12.sp),
+        AspectRatio(
+          aspectRatio: eventCardAspectRatio,
           child: EventCard(
             tourEventCardModel: event,
-            heroTagSuffix: '_foryou',
+            heroTagSuffix: '_foryou_tablet_col',
             onTap: () {
               ref.read(groupEventScreenProvider.notifier).onSelectTournament(
                 context: context,
@@ -219,49 +394,180 @@ class _ForYouEventSection extends ConsumerWidget {
             },
           ),
         ),
-
-        // Games for this event (lazy loaded with shimmer)
-        _ForYouEventGames(eventId: event.id),
+        SizedBox(height: 10.sp),
+        // Games for this event (stacked vertically, 1 per row in this column)
+        _ForYouTabletColumnGames(eventId: event.id),
       ],
+    );
+
+    if (shouldAnimate) {
+      return column
+          .animate()
+          .fadeIn(duration: 200.ms)
+          .slideY(begin: 0.02, end: 0, duration: 200.ms);
+    }
+
+    return column;
+  }
+}
+
+/// Games for a single column - shows games in 2-column grid (2 per row)
+class _ForYouTabletColumnGames extends ConsumerWidget {
+  const _ForYouTabletColumnGames({required this.eventId});
+
+  final String eventId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final gamesAsync = ref.watch(eventGamesProvider(eventId));
+
+    return gamesAsync.when(
+      data: (games) {
+        if (games.isEmpty) {
+          return Padding(
+            padding: EdgeInsets.only(bottom: 8.sp),
+            child: Text(
+              'No games available yet',
+              style: TextStyle(color: kWhiteColor70, fontSize: 12.sp),
+            ),
+          );
+        }
+
+        // Convert to GamesTourModel - limit to 4 games (2 rows of 2)
+        final allGameModels = games
+            .where((g) => g.players != null && g.players!.length >= 2)
+            .map((g) => GamesTourModel.fromGame(g))
+            .toList();
+
+        if (allGameModels.isEmpty) {
+          return const SizedBox.shrink();
+        }
+
+        // Take only first 4 games for tablet column view
+        final gameModels = allGameModels.take(4).toList();
+
+        // Build 2-column grid of games (2 per row, max 2 rows = 4 games)
+        final List<Widget> rows = [];
+        for (int i = 0; i < gameModels.length; i += 2) {
+          final game1 = gameModels[i];
+          final game2 = i + 1 < gameModels.length ? gameModels[i + 1] : null;
+
+          rows.add(
+            Padding(
+              padding: EdgeInsets.only(bottom: 8.sp),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: _TabletGameCard(
+                      game: game1,
+                      games: gameModels,
+                      index: i,
+                    ),
+                  ),
+                  SizedBox(width: 8.sp),
+                  Expanded(
+                    child: game2 != null
+                        ? _TabletGameCard(
+                            game: game2,
+                            games: gameModels,
+                            index: i + 1,
+                          )
+                        : const SizedBox.shrink(),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
+
+        return Column(children: rows);
+      },
+      loading: () => _buildColumnShimmer(),
+      error: (error, stack) {
+        debugPrint('[_ForYouTabletColumnGames] Error loading games for $eventId: $error');
+        return Padding(
+          padding: EdgeInsets.only(bottom: 8.sp),
+          child: Text(
+            'Could not load games',
+            style: TextStyle(color: kWhiteColor70, fontSize: 12.sp),
+          ),
+        );
+      },
     );
   }
 
-  Widget _buildTabletGridSection(BuildContext context, WidgetRef ref) {
-    // In tablet grid mode, show a card-like container with event header
-    return Container(
-      decoration: BoxDecoration(
-        color: kBlack2Color.withValues(alpha: 0.5),
-        borderRadius: BorderRadius.circular(12.br),
-        border: Border.all(color: kDarkGreyColor.withValues(alpha: 0.3)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // Compact event card header
-          Padding(
-            padding: EdgeInsets.all(12.sp),
-            child: EventCard(
-              tourEventCardModel: event,
-              heroTagSuffix: '_foryou_grid',
-              onTap: () {
-                ref.read(groupEventScreenProvider.notifier).onSelectTournament(
-                  context: context,
-                  id: event.id,
-                );
-              },
-            ),
+  Widget _buildColumnShimmer() {
+    // Show 2 rows of 2 game cards (4 total) matching actual content
+    return Column(
+      children: List.generate(2, (rowIndex) {
+        return Padding(
+          padding: EdgeInsets.only(bottom: 8.sp),
+          child: Row(
+            children: [
+              Expanded(
+                child: SkeletonWidget(
+                  ignoreContainers: true,
+                  child: Container(
+                    height: 72.sp,
+                    decoration: BoxDecoration(
+                      color: kBlack2Color,
+                      borderRadius: BorderRadius.circular(8.br),
+                    ),
+                  ),
+                ),
+              ),
+              SizedBox(width: 8.sp),
+              Expanded(
+                child: SkeletonWidget(
+                  ignoreContainers: true,
+                  child: Container(
+                    height: 72.sp,
+                    decoration: BoxDecoration(
+                      color: kBlack2Color,
+                      borderRadius: BorderRadius.circular(8.br),
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
+        );
+      }),
+    );
+  }
+}
 
-          // Games for this event
-          Expanded(
-            child: Padding(
-              padding: EdgeInsets.symmetric(horizontal: 12.sp),
-              child: _ForYouEventGames(eventId: event.id, isCompact: true),
-            ),
+/// Clean game card for tablet grid - full game card style, not compact
+class _TabletGameCard extends ConsumerWidget {
+  const _TabletGameCard({
+    required this.game,
+    required this.games,
+    required this.index,
+  });
+
+  final GamesTourModel game;
+  final List<GamesTourModel> games;
+  final int index;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return GridGameCardWrapperWidget(
+      key: ValueKey('tablet_grid_game_${game.gameId}'),
+      game: game,
+      orderedGames: games,
+      gameIndex: index,
+      onChangedWithLiveGames: (updatedGames) => ref
+          .read(gameCardWrapperProvider)
+          .navigateToChessBoard(
+            context: context,
+            orderedGames: updatedGames,
+            gameIndex: index,
+            onReturnFromChessboard: (_) {},
+            viewSource: ChessboardView.forYou,
           ),
-        ],
-      ),
+      pinnedIds: const [],
+      onPinToggle: (_) {},
     );
   }
 }

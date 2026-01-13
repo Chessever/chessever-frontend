@@ -140,8 +140,8 @@ class _AllEventsTabWidgetState extends ConsumerState<AllEventsTabWidget>
               crossAxisCount: crossAxisCount,
               crossAxisSpacing: 16.sp,
               mainAxisSpacing: 16.sp,
-              // Event cards have variable height, so we use a reasonable aspect ratio
-              childAspectRatio: ResponsiveHelper.isLandscape ? 2.2 : 1.8,
+              // Tablet cards use image-as-background, needs taller aspect ratio
+              childAspectRatio: ResponsiveHelper.isLandscape ? 1.4 : 1.2,
             ),
             delegate: SliverChildBuilderDelegate(
               (context, index) {

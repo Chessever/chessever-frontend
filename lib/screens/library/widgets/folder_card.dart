@@ -98,6 +98,10 @@ class FolderCard extends ConsumerWidget {
           border: Border.all(color: const Color(0xFF27272A)), // Zinc 800
         ),
         child: Row(
+          // On tablet, align icon to top so it lines up with the start of folder name
+          crossAxisAlignment: ResponsiveHelper.isTablet
+              ? CrossAxisAlignment.start
+              : CrossAxisAlignment.center,
           children: [
             // Folder icon
             Icon(

@@ -426,30 +426,37 @@ class _LibrarySearchResultsViewState extends ConsumerState<LibrarySearchResultsV
     final isBoard = viewMode == GamesListViewMode.chessBoard;
 
     if (isGrid) {
-      // Grid mode: 2 games per row
+      // Grid mode: dynamic columns based on device/orientation
+      // Tablet landscape: 4 columns, Tablet portrait: 2 columns, Phone: 2 columns
+      final int gridColumns = ResponsiveHelper.isTablet && ResponsiveHelper.isLandscape ? 4 : 2;
       final items = <Widget>[];
-      for (int i = 0; i < games.length; i += 2) {
-        final game1 = games[i];
-        final game2 = i + 1 < games.length ? games[i + 1] : null;
-        final isLast = i + 2 >= games.length;
+
+      for (int i = 0; i < games.length; i += gridColumns) {
+        final isLast = i + gridColumns >= games.length;
+
+        // Gather games for this row
+        final rowGames = <GamesTourModel>[];
+        for (int j = 0; j < gridColumns && i + j < games.length; j++) {
+          rowGames.add(games[i + j]);
+        }
 
         items.add(
           Padding(
             padding: EdgeInsets.only(bottom: isLast ? 0 : 12.h),
             child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                _LibraryGridGame(
-                  game: game1,
-                  gameIndex: i,
-                  allGames: games,
-                ),
-                if (game2 != null)
-                  _LibraryGridGame(
-                    game: game2,
-                    gameIndex: i + 1,
-                    allGames: games,
+                for (int j = 0; j < gridColumns; j++) ...[
+                  if (j > 0) SizedBox(width: 12.sp),
+                  Expanded(
+                    child: j < rowGames.length
+                        ? _LibraryGridGame(
+                            game: rowGames[j],
+                            gameIndex: i + j,
+                            allGames: games,
+                          )
+                        : const SizedBox.shrink(),
                   ),
+                ],
               ],
             ),
           ),

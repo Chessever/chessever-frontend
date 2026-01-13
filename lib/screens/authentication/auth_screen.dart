@@ -38,6 +38,8 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(authScreenProvider);
+    final isTablet = ResponsiveHelper.isTablet;
+    final isLandscape = ResponsiveHelper.isLandscape;
 
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
@@ -69,6 +71,86 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
       Navigator.pushReplacementNamed(context, '/home_screen');
     });
 
+    // Tablet landscape: side-by-side layout
+    if (isTablet && isLandscape) {
+      return ScreenWrapper(
+        child: Scaffold(
+          body: Stack(
+            children: [
+              const Hero(tag: 'blur', child: BlurBackground()),
+              Row(
+                children: [
+                  // Left side: Logo centered
+                  Expanded(
+                    child: Center(
+                      child: Hero(
+                        tag: 'premium-icon',
+                        child: Image(
+                          image: const AssetImage(PngAsset.chesseverIcon),
+                          height: 180.sp,
+                          width: 340.sp,
+                        ),
+                      ),
+                    ),
+                  ),
+                  // Right side: Auth buttons centered
+                  Expanded(
+                    child: Center(
+                      child: state.isLoading
+                          ? SkeletonWidget(
+                              ignoreContainers: true,
+                              child: _AuthButtonWidget(state: state, isTabletLandscape: true),
+                            )
+                          : _AuthButtonWidget(state: state, isTabletLandscape: true),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // Tablet portrait: centered card layout
+    if (isTablet) {
+      return ScreenWrapper(
+        child: Scaffold(
+          body: Stack(
+            children: [
+              const Hero(tag: 'blur', child: BlurBackground()),
+              Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 500),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Hero(
+                        tag: 'premium-icon',
+                        child: Image(
+                          image: const AssetImage(PngAsset.chesseverIcon),
+                          height: 160.sp,
+                          width: 300.sp,
+                        ),
+                      ),
+                      SizedBox(height: 48.sp),
+                      state.isLoading
+                          ? SkeletonWidget(
+                              ignoreContainers: true,
+                              child: _AuthButtonWidget(state: state, isTabletPortrait: true),
+                            )
+                          : _AuthButtonWidget(state: state, isTabletPortrait: true),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // Phone: stacked layout with bottom buttons
     return ScreenWrapper(
       child: Scaffold(
         body: Stack(
@@ -81,10 +163,10 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Hero(
+                  Hero(
                     tag: 'premium-icon',
                     child: Image(
-                      image: AssetImage(PngAsset.chesseverIcon),
+                      image: const AssetImage(PngAsset.chesseverIcon),
                       height: 156,
                       width: 295,
                     ),
@@ -114,81 +196,92 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
 }
 
 class _AuthButtonWidget extends ConsumerWidget {
-  const _AuthButtonWidget({required this.state, super.key});
+  const _AuthButtonWidget({
+    required this.state,
+    this.isTabletLandscape = false,
+    this.isTabletPortrait = false,
+    super.key,
+  });
 
   final AuthScreenState state;
+  final bool isTabletLandscape;
+  final bool isTabletPortrait;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final isIos = Platform.isIOS;
 
-    // Tablet-specific padding
-    final horizontalPadding = ResponsiveHelper.adaptive(
-      phone: 28.sp,
-      tablet: 48.sp,
-    );
+    // For tablet portrait/landscape centered layouts, use consistent padding
+    final horizontalPadding = (isTabletPortrait || isTabletLandscape)
+        ? 24.sp
+        : ResponsiveHelper.adaptive(phone: 28.sp, tablet: 48.sp);
 
     // Constrain max width for tablets
-    final maxWidth = ResponsiveHelper.isTablet ? 400.0 : double.infinity;
+    final maxWidth = ResponsiveHelper.isTablet ? 500.0 : double.infinity;
+
+    // For tablet centered layouts, don't use bottom padding
+    final bottomPadding = (isTabletLandscape || isTabletPortrait)
+        ? 0.0
+        : MediaQuery.of(context).viewPadding.bottom + 28.sp;
 
     return Center(
       child: ConstrainedBox(
         constraints: BoxConstraints(maxWidth: maxWidth),
         child: Container(
           padding: EdgeInsets.only(
-            bottom: MediaQuery.of(context).viewPadding.bottom + 28.sp,
+            bottom: bottomPadding,
             left: horizontalPadding,
             right: horizontalPadding,
           ),
           child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // Show both buttons on iOS, only Google on Android
-          if (isIos) ...[
-            AuthButton(
-              signInTitle: 'Continue with Apple',
-              svgIconPath: SvgAsset.appleIcon,
-              onPressed: () async {
-                await ref.read(authScreenProvider.notifier).signInWithApple();
-              },
-            ),
-            SizedBox(height: 12.h),
-          ],
-          AuthButton(
-            signInTitle: 'Continue with Google',
-            svgIconPath: SvgAsset.googleIcon,
-            onPressed: () async {
-              await ref.read(authScreenProvider.notifier).signInWithGoogle();
-            },
-          ),
-          SizedBox(height: 12.h),
-          TextButton(
-            onPressed: () async {
-              final appUser = await ref.read(authScreenProvider.notifier).signInAsGuest();
-
-              if (!context.mounted || appUser == null || !appUser.isAnonymous) return;
-
-              final onboardingRepo = ref.read(onboardingRepositoryProvider);
-              final hasCompleted = await onboardingRepo.isCompleted(appUser.id);
-              
-              if (!context.mounted) return;
-              Navigator.pushNamedAndRemoveUntil(
-                context,
-                hasCompleted ? '/home_screen' : '/onboarding',
-                (_) => false,
-              );
-              ref.read(authScreenProvider.notifier).reset();
-            },
-            child: Text(
-              'Continue as Guest',
-              style: AppTypography.textSmMedium.copyWith(
-                color: kWhiteColor.withOpacity(0.7),
-                decoration: TextDecoration.underline,
-                decorationColor: kWhiteColor.withOpacity(0.7),
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Show both buttons on iOS, only Google on Android
+              if (isIos) ...[
+                AuthButton(
+                  signInTitle: 'Continue with Apple',
+                  svgIconPath: SvgAsset.appleIcon,
+                  onPressed: () async {
+                    await ref.read(authScreenProvider.notifier).signInWithApple();
+                  },
+                ),
+                SizedBox(height: 12.h),
+              ],
+              AuthButton(
+                signInTitle: 'Continue with Google',
+                svgIconPath: SvgAsset.googleIcon,
+                onPressed: () async {
+                  await ref.read(authScreenProvider.notifier).signInWithGoogle();
+                },
               ),
-            ),
-          ),
-        ],
+              SizedBox(height: 12.h),
+              TextButton(
+                onPressed: () async {
+                  final appUser = await ref.read(authScreenProvider.notifier).signInAsGuest();
+
+                  if (!context.mounted || appUser == null || !appUser.isAnonymous) return;
+
+                  final onboardingRepo = ref.read(onboardingRepositoryProvider);
+                  final hasCompleted = await onboardingRepo.isCompleted(appUser.id);
+
+                  if (!context.mounted) return;
+                  Navigator.pushNamedAndRemoveUntil(
+                    context,
+                    hasCompleted ? '/home_screen' : '/onboarding',
+                    (_) => false,
+                  );
+                  ref.read(authScreenProvider.notifier).reset();
+                },
+                child: Text(
+                  'Continue as Guest',
+                  style: AppTypography.textSmMedium.copyWith(
+                    color: kWhiteColor.withOpacity(0.7),
+                    decoration: TextDecoration.underline,
+                    decorationColor: kWhiteColor.withOpacity(0.7),
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       ),
@@ -251,6 +344,11 @@ class _CountryPickerWidgetState extends ConsumerState<CountryPickerWidget>
   Widget build(BuildContext context) {
     final notifier = ref.read(authScreenProvider.notifier);
     final countryState = ref.watch(countryDropdownProvider);
+    final isTablet = ResponsiveHelper.isTablet;
+    final isLandscape = ResponsiveHelper.isLandscape;
+
+    // Max width for content on tablets
+    const maxContentWidth = 450.0;
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -260,6 +358,47 @@ class _CountryPickerWidgetState extends ConsumerState<CountryPickerWidget>
         child: AnimatedBuilder(
           animation: _controller,
           builder: (context, child) {
+            // Tablet landscape: side-by-side layout
+            if (isTablet && isLandscape) {
+              return Stack(
+                children: [
+                  Opacity(opacity: _fadeAnimation.value, child: BlurBackground()),
+                  FadeTransition(
+                    opacity: _fadeAnimation,
+                    child: SlideTransition(
+                      position: _slideAnimation,
+                      child: Row(
+                        children: [
+                          // Left side: Country selection
+                          Expanded(
+                            child: Center(
+                              child: ConstrainedBox(
+                                constraints: const BoxConstraints(maxWidth: maxContentWidth),
+                                child: _buildCountrySelector(countryState),
+                              ),
+                            ),
+                          ),
+                          // Right side: Continue button
+                          Expanded(
+                            child: Center(
+                              child: ConstrainedBox(
+                                constraints: const BoxConstraints(maxWidth: maxContentWidth),
+                                child: Padding(
+                                  padding: EdgeInsets.symmetric(horizontal: 40.sp),
+                                  child: _buildContinueButton(context, countryState, notifier),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              );
+            }
+
+            // Phone and tablet portrait: stacked layout
             return Stack(
               children: [
                 // Background content with subtle fade
@@ -270,75 +409,16 @@ class _CountryPickerWidgetState extends ConsumerState<CountryPickerWidget>
                   opacity: _fadeAnimation,
                   child: SlideTransition(
                     position: _slideAnimation,
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        // Country selection box (centered)
-                        Container(
-                          margin: EdgeInsets.symmetric(horizontal: 40.sp),
-                          child: Column(
-                            children: [
-                              Container(
-                                width: double.infinity,
-                                padding: EdgeInsets.symmetric(
-                                  horizontal: 10.sp,
-                                ),
-                                child: Text(
-                                  'Select your Country',
-                                  style: AppTypography.textMdBold.copyWith(
-                                    color: kWhiteColor,
-                                  ),
-                                ),
-                              ),
-
-                              // Dropdown
-                              Container(
-                                padding: EdgeInsets.symmetric(
-                                  horizontal: 10.sp,
-                                  vertical: 5.sp,
-                                ),
-                                child: countryState.when(
-                                  loading:
-                                      () => CountryDropdown(
-                                        selectedCountryCode: '',
-                                        onChanged: (_) {},
-                                        hintText: 'Loading country...',
-                                        isLoading: true,
-                                        requireAuthToChange: false,
-                                      ),
-                                  error:
-                                      (err, _) => AppButton(
-                                        padding: EdgeInsets.symmetric(
-                                          horizontal: 16.sp,
-                                        ),
-                                        text: 'Retry Getting Countries',
-                                        onPressed: () {
-                                          ref.invalidate(
-                                            countryDropdownProvider,
-                                          );
-                                        },
-                                      ),
-                                  data: (country) {
-                                    return CountryDropdown(
-                                      selectedCountryCode: country.countryCode,
-                                      onChanged: (Country newCountry) {
-                                        ref
-                                            .read(
-                                              countryDropdownProvider.notifier,
-                                            )
-                                            .selectCountry(
-                                              newCountry.countryCode,
-                                            );
-                                      },
-                                      requireAuthToChange: false,
-                                    );
-                                  },
-                                ),
-                              ),
-                            ],
-                          ),
+                    child: Center(
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: maxContentWidth),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            _buildCountrySelector(countryState),
+                          ],
                         ),
-                      ],
+                      ),
                     ),
                   ),
                 ),
@@ -350,94 +430,21 @@ class _CountryPickerWidgetState extends ConsumerState<CountryPickerWidget>
                   right: 0,
                   child: FadeTransition(
                     opacity: _fadeAnimation,
-                    child: ClipRRect(
-                      borderRadius: const BorderRadius.vertical(
-                        top: Radius.circular(25),
-                      ),
-                      child: Container(
-                        padding: EdgeInsets.fromLTRB(
-                          20.sp,
-                          20.sp,
-                          20.sp,
-                          MediaQuery.of(context).viewPadding.bottom + 28.sp,
-                        ),
-                        child: Container(
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(12),
-                            boxShadow: [
-                              BoxShadow(
-                                color: kWhiteColor.withOpacity(0.8),
-                                blurRadius: 8,
-                                spreadRadius: 2,
-                                offset: const Offset(-1, 0),
-                              ),
-                              BoxShadow(
-                                color: kWhiteColor.withOpacity(0.5),
-                                blurRadius: 20,
-                                spreadRadius: 2,
-                                offset: const Offset(0, 2),
-                              ),
-                              BoxShadow(
-                                color: kWhiteColor.withOpacity(0.3),
-                                blurRadius: 35,
-                                spreadRadius: 2,
-                                offset: const Offset(0, 4),
-                              ),
-                              BoxShadow(
-                                color: kBlackColor.withOpacity(0.2),
-                                blurRadius: 15,
-                                spreadRadius: 1,
-                                offset: const Offset(0, 8),
-                              ),
-                            ],
+                    child: Center(
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: maxContentWidth),
+                        child: ClipRRect(
+                          borderRadius: const BorderRadius.vertical(
+                            top: Radius.circular(25),
                           ),
-                          child: ElevatedButton(
-                            onPressed: countryState.maybeWhen(
-                              loading: () => null,
-                              orElse:
-                                  () => () async {
-                                    await _dismissWithAnimation();
-                                    if (mounted) {
-                                      notifier.hideCountrySelection();
-                                      Navigator.of(context).pop();
-                                      if (!widget.isHamburgerMode) {
-                                        final onboardingRepo =
-                                            ref.read(onboardingRepositoryProvider);
-                                        final userId = Supabase
-                                            .instance.client.auth.currentUser?.id;
-                                        final hasCompleted =
-                                            await onboardingRepo.isCompleted(userId);
-                                        if (!mounted) return;
-                                        final targetRoute =
-                                            hasCompleted
-                                                ? '/home_screen'
-                                                : '/onboarding';
-
-                                        Navigator.pushReplacementNamed(
-                                          context,
-                                          targetRoute,
-                                        );
-                                      }
-                                    }
-                                  },
+                          child: Container(
+                            padding: EdgeInsets.fromLTRB(
+                              20.sp,
+                              20.sp,
+                              20.sp,
+                              MediaQuery.of(context).viewPadding.bottom + 28.sp,
                             ),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: countryState.maybeWhen(
-                                loading: () => kWhiteColor.withOpacity(0.4),
-                                orElse: () => kWhiteColor,
-                              ),
-                              foregroundColor: kBlackColor,
-                              padding: EdgeInsets.symmetric(vertical: 16.sp),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12.br),
-                              ),
-                              elevation: 0,
-                              shadowColor: Colors.transparent,
-                            ),
-                            child: Text(
-                              'Continue',
-                              style: AppTypography.textLgMedium,
-                            ),
+                            child: _buildContinueButton(context, countryState, notifier),
                           ),
                         ),
                       ),
@@ -448,6 +455,119 @@ class _CountryPickerWidgetState extends ConsumerState<CountryPickerWidget>
             );
           },
         ),
+      ),
+    );
+  }
+
+  Widget _buildCountrySelector(AsyncValue<Country> countryState) {
+    return Container(
+      margin: EdgeInsets.symmetric(horizontal: 40.sp),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: double.infinity,
+            padding: EdgeInsets.symmetric(horizontal: 10.sp),
+            child: Text(
+              'Select your Country',
+              style: AppTypography.textMdBold.copyWith(color: kWhiteColor),
+            ),
+          ),
+          Container(
+            padding: EdgeInsets.symmetric(horizontal: 10.sp, vertical: 5.sp),
+            child: countryState.when(
+              loading: () => CountryDropdown(
+                selectedCountryCode: '',
+                onChanged: (_) {},
+                hintText: 'Loading country...',
+                isLoading: true,
+                requireAuthToChange: false,
+              ),
+              error: (err, _) => AppButton(
+                padding: EdgeInsets.symmetric(horizontal: 16.sp),
+                text: 'Retry Getting Countries',
+                onPressed: () => ref.invalidate(countryDropdownProvider),
+              ),
+              data: (country) => CountryDropdown(
+                selectedCountryCode: country.countryCode,
+                onChanged: (Country newCountry) {
+                  ref.read(countryDropdownProvider.notifier).selectCountry(newCountry.countryCode);
+                },
+                requireAuthToChange: false,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildContinueButton(
+    BuildContext context,
+    AsyncValue<Country> countryState,
+    AuthScreenNotifier notifier,
+  ) {
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: kWhiteColor.withOpacity(0.8),
+            blurRadius: 8,
+            spreadRadius: 2,
+            offset: const Offset(-1, 0),
+          ),
+          BoxShadow(
+            color: kWhiteColor.withOpacity(0.5),
+            blurRadius: 20,
+            spreadRadius: 2,
+            offset: const Offset(0, 2),
+          ),
+          BoxShadow(
+            color: kWhiteColor.withOpacity(0.3),
+            blurRadius: 35,
+            spreadRadius: 2,
+            offset: const Offset(0, 4),
+          ),
+          BoxShadow(
+            color: kBlackColor.withOpacity(0.2),
+            blurRadius: 15,
+            spreadRadius: 1,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: ElevatedButton(
+        onPressed: countryState.maybeWhen(
+          loading: () => null,
+          orElse: () => () async {
+            await _dismissWithAnimation();
+            if (mounted) {
+              notifier.hideCountrySelection();
+              Navigator.of(context).pop();
+              if (!widget.isHamburgerMode) {
+                final onboardingRepo = ref.read(onboardingRepositoryProvider);
+                final userId = Supabase.instance.client.auth.currentUser?.id;
+                final hasCompleted = await onboardingRepo.isCompleted(userId);
+                if (!mounted) return;
+                final targetRoute = hasCompleted ? '/home_screen' : '/onboarding';
+                Navigator.pushReplacementNamed(context, targetRoute);
+              }
+            }
+          },
+        ),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: countryState.maybeWhen(
+            loading: () => kWhiteColor.withOpacity(0.4),
+            orElse: () => kWhiteColor,
+          ),
+          foregroundColor: kBlackColor,
+          padding: EdgeInsets.symmetric(vertical: 16.sp),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12.br)),
+          elevation: 0,
+          shadowColor: Colors.transparent,
+        ),
+        child: Text('Continue', style: AppTypography.textLgMedium),
       ),
     );
   }

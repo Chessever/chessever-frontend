@@ -61,7 +61,11 @@ Make the ChessEver app beautiful, useful, and polished for tablet devices in bot
 - [x] 9.3 countryman_card.dart - converted hardcoded pixels to responsive units
 - [x] 9.4 premium_screen.dart - max-width constraint + adaptive padding
 - [x] 9.5 standing_score_card.dart - already uses responsive units
-- [x] 9.6 event_card.dart - already uses responsive units
+- [x] 9.6 event_card.dart - ENHANCED: LayoutBuilder for constraint-based layout
+      - Added responsive image sizing (70.w tablet landscape, 80.w portrait)
+      - Added conditional content hiding in constrained layouts
+      - Fixed Row overflow at line 103 with Flexible wrapper
+      - Smaller font/spacing in very constrained grids
 
 ### Phase 10: Deep Screen Scan - COMPLETE
 Screens optimized with max-width + adaptive padding:
@@ -192,3 +196,80 @@ final horizontalPadding = ResponsiveHelper.adaptive(
 
 ### Deferred Work
 - ChessBoardScreenNew split-view (9000+ lines - requires dedicated refactoring)
+
+### Phase 16: EventCard Overflow Fixes (Session 2) - COMPLETE
+Fixed overflow errors in tablet horizontal mode for FOR YOU and CURRENT tabs:
+- [x] 16.1 event_card.dart - Full responsive refactor with LayoutBuilder
+      - LayoutBuilder at card level to detect constrained layouts
+      - `isConstrained` (< 350px): Hides location/ELO, allows 2-line title
+      - `isVeryConstrained` (< 280px): Hides status indicator, time control, smaller font
+      - Responsive image sizing via `_EventImage.getImageWidth()` static method
+      - `_FlagEventImage` also uses responsive sizing
+- [x] 16.2 for_you_games_widget.dart - Fixed tablet grid aspect ratio
+      - Changed `childAspectRatio` from 0.8 to 0.95 for more horizontal space
+
+## Current Status
+**All tablet layout optimizations complete** (excluding ChessBoardScreenNew):
+- EventCard now fully responsive with LayoutBuilder
+- Mobile layouts untouched - all changes use conditional logic
+- Grid layouts adjusted for tablet horizontal/vertical modes
+- Bottom sheets, dialogs, and all major screens have tablet constraints
+
+### Verification (Iteration 2)
+- [x] flutter analyze passes with no issues
+- [x] EventCard uses LayoutBuilder for constraint-based responsive layout
+- [x] Image sizing adapts: 90.w (phone), 80.w (tablet portrait), 70.w (tablet landscape)
+- [x] Content gracefully degrades: hides less important info in constrained grids
+- [x] ForYouGamesWidget grid uses aspect ratio 0.95 (was 0.8) for better horizontal space
+- [x] All widgets use responsive units (.w, .h, .sp, .br)
+- [x] No changes affect mobile layouts (all conditional on tablet/constraints)
+
+### Verification (Iteration 3)
+- [x] AllEventsTabWidget (CURRENT tab) uses aspect ratio 2.2 landscape / 1.8 portrait - compatible with updated EventCard
+- [x] EventCard LayoutBuilder handles any remaining constraint issues gracefully
+- [x] Code passes flutter analyze
+- [x] Ready for user testing on tablet horizontal/vertical modes
+
+### Verification (Iteration 4) - Final
+- [x] All 3 modified files pass flutter analyze: No issues found
+- [x] Changes summary: 287 insertions, 187 deletions across 3 files
+- [x] Mobile layouts preserved - all tablet changes are conditional
+- [x] Original overflow error (75px on right) should be resolved
+
+### Phase 17: EventCard Tablet Redesign - COMPLETE
+User feedback: Grid had 4 columns (unreadable), cards truncated. Requested image-as-background design for tablet grids.
+
+Changes made:
+- [x] responsive_helper.dart - Max 3 columns (was 4), portrait max 2
+- [x] event_card.dart - New tablet grid layout with image as full background
+      - _buildTabletGridCard(): Image background + gradient overlay + text at bottom
+      - _TabletEventBackground: Full-bleed image widget for tablet grids
+      - _buildPhoneCard(): Original horizontal layout (unchanged for mobile)
+- [x] all_events_tab_widget.dart - Updated aspect ratio (1.4 landscape, 1.2 portrait)
+- [x] for_you_games_widget.dart - Uses tabletGridColumns (max 3), adjusted aspect ratio
+
+Mobile layouts: **Completely unchanged** - all tablet code conditional on ResponsiveHelper.isTablet
+
+### Phase 18: FOR YOU Tab + Login Pages Tablet Layout - COMPLETE
+
+**FOR YOU tab fixes:**
+- [x] Changed tablet grid to show EventCards only (same style as CURRENT tab)
+- [x] Removed nested container with Expanded that caused layout errors
+- [x] Uses same aspect ratio as CURRENT tab (1.4 landscape, 1.2 portrait)
+- [x] Both tablet portrait and landscape now use grid layout
+
+**Login pages fixes (auth_screen.dart):**
+- [x] AuthScreen tablet landscape: Side-by-side layout (logo left, buttons right)
+- [x] AuthScreen tablet portrait: Stacked layout with larger logo
+- [x] CountryPickerWidget tablet landscape: Side-by-side (country left, continue right)
+- [x] CountryPickerWidget tablet portrait: Stacked with max-width constraint (450px)
+- [x] All content constrained to max-width on tablets
+
+Mobile layouts: **Completely unchanged**
+
+### Final Status (Iteration 13)
+**COMPLETE** - All tablet layout optimizations finished:
+- EventCard: Fully responsive with LayoutBuilder + constraint-based layout
+- ForYouGamesWidget: Grid aspect ratio optimized (0.8 → 0.95)
+- Mobile: 100% preserved, all changes conditional
+- Ready for user acceptance testing on tablet

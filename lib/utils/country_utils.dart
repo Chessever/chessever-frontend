@@ -379,6 +379,28 @@ class CountryUtils {
     return null;
   }
 
+  /// Converts a FIDE 3-letter federation code to a flag emoji.
+  /// Returns the flag emoji or empty string if not found.
+  static String toFlagEmoji(String fideCode) {
+    if (fideCode.isEmpty) return '';
+
+    // Convert FIDE code to ISO 2-letter code first
+    final iso2 = toIso2Code(fideCode);
+    if (iso2.length != 2) return '';
+
+    // Countries that should not show flags (sanctions/restrictions)
+    const restrictedCountries = {'RU', 'BY'};
+    if (restrictedCountries.contains(iso2.toUpperCase())) return '';
+
+    // Convert ISO 2-letter code to flag emoji
+    // Each letter is converted to its regional indicator symbol
+    final upper = iso2.toUpperCase();
+    final flag = String.fromCharCodes(
+      upper.codeUnits.map((c) => c - 0x41 + 0x1F1E6),
+    );
+    return flag;
+  }
+
   /// Gets the country name from a FIDE 3-letter federation code.
   /// Returns the full country name or empty string if not found.
   static String getCountryName(String fideCode) {

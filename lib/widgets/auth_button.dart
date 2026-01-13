@@ -98,21 +98,25 @@ class _AuthButtonState extends State<AuthButton>
           onTapUp: onTapUp,
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
             children: [
               SvgWidget(
                 widget.svgIconPath,
                 height: 20.h,
-                width: 29.w,
+                width: ResponsiveHelper.isTablet ? 24 : 29.w,
                 fallback: Icon(
                   Icons.apple,
                   size: 24.ic,
                   color: kBackgroundColor,
                 ),
               ),
-              SizedBox(width: 12.w),
-              Text(
-                widget.signInTitle,
-                style: AppTypography.textLgMedium.copyWith(color: kBlackColor),
+              SizedBox(width: ResponsiveHelper.isTablet ? 8 : 12.w),
+              Flexible(
+                child: Text(
+                  widget.signInTitle,
+                  style: AppTypography.textLgMedium.copyWith(color: kBlackColor),
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
             ],
           ),

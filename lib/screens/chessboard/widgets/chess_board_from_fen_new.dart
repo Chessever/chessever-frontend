@@ -382,58 +382,119 @@ class GridChessBoardFromFENNew extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final showEvalBar = _shouldShowEvalBar(ref);
     final sideBarWidth = showEvalBar ? 10.w : 0.w;
-    final screenWidth = (MediaQuery.of(context).size.width / 2) - 24.sp;
-    final boardSize = screenWidth - sideBarWidth;
-    return GestureDetector(
-      onTap: () {
-        HapticFeedbackService.cardTap();
-        onChanged();
-      },
-      onLongPressStart: (details) {
-        HapticFeedbackService.contextMenu();
-        _showBlurredPopup(
-          context: context,
-          ref: ref,
-          size: boardSize,
-          screenWidth: screenWidth,
-          sideBarWidth: sideBarWidth,
-          showEvalBar: showEvalBar,
-          details: details,
+
+    // On phone, use the original fixed calculation for 2-column grid
+    if (ResponsiveHelper.isPhone) {
+      final screenWidth = (MediaQuery.of(context).size.width / 2) - 24.sp;
+      final boardSize = screenWidth - sideBarWidth;
+      return GestureDetector(
+        onTap: () {
+          HapticFeedbackService.cardTap();
+          onChanged();
+        },
+        onLongPressStart: (details) {
+          HapticFeedbackService.contextMenu();
+          _showBlurredPopup(
+            context: context,
+            ref: ref,
+            size: boardSize,
+            screenWidth: screenWidth,
+            sideBarWidth: sideBarWidth,
+            showEvalBar: showEvalBar,
+            details: details,
+          );
+        },
+        child: SizedBox(
+          width: screenWidth,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _PlayerRow(
+                gamesTourModel: gamesTourModel,
+                isWhitePlayer: false,
+                isCurrentPlayer: gamesTourModel.activePlayer == Side.black,
+                isPinned: isPinned,
+                playerView: PlayerView.gridView,
+              ),
+              SizedBox(height: 4.h),
+              _ChessBoardWithEvaluation(
+                gamesTourModel: gamesTourModel,
+                lastMove: _uciToMove(gamesTourModel.lastMove ?? ''),
+                sideBarWidth: sideBarWidth,
+                boardSize: boardSize,
+                playerView: PlayerView.gridView,
+                showEvalBar: showEvalBar,
+                showCoordinates: false,
+              ),
+              SizedBox(height: 4.h),
+              _PlayerRow(
+                gamesTourModel: gamesTourModel,
+                isWhitePlayer: true,
+                isCurrentPlayer: gamesTourModel.activePlayer == Side.white,
+                isPinned: false,
+                playerView: PlayerView.gridView,
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // On tablet, use LayoutBuilder to adapt to parent constraints
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final availableWidth = constraints.maxWidth;
+        final boardSize = availableWidth - sideBarWidth;
+
+        return GestureDetector(
+          onTap: () {
+            HapticFeedbackService.cardTap();
+            onChanged();
+          },
+          onLongPressStart: (details) {
+            HapticFeedbackService.contextMenu();
+            _showBlurredPopup(
+              context: context,
+              ref: ref,
+              size: boardSize,
+              screenWidth: availableWidth,
+              sideBarWidth: sideBarWidth,
+              showEvalBar: showEvalBar,
+              details: details,
+            );
+          },
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _PlayerRow(
+                gamesTourModel: gamesTourModel,
+                isWhitePlayer: false,
+                isCurrentPlayer: gamesTourModel.activePlayer == Side.black,
+                isPinned: isPinned,
+                playerView: PlayerView.gridView,
+              ),
+              SizedBox(height: 4.h),
+              _ChessBoardWithEvaluation(
+                gamesTourModel: gamesTourModel,
+                lastMove: _uciToMove(gamesTourModel.lastMove ?? ''),
+                sideBarWidth: sideBarWidth,
+                boardSize: boardSize,
+                playerView: PlayerView.gridView,
+                showEvalBar: showEvalBar,
+                showCoordinates: false,
+              ),
+              SizedBox(height: 4.h),
+              _PlayerRow(
+                gamesTourModel: gamesTourModel,
+                isWhitePlayer: true,
+                isCurrentPlayer: gamesTourModel.activePlayer == Side.white,
+                isPinned: false,
+                playerView: PlayerView.gridView,
+              ),
+            ],
+          ),
         );
       },
-      child: SizedBox(
-        width: screenWidth,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _PlayerRow(
-              gamesTourModel: gamesTourModel,
-              isWhitePlayer: false,
-              isCurrentPlayer: gamesTourModel.activePlayer == Side.black,
-              isPinned: isPinned,
-              playerView: PlayerView.gridView,
-            ),
-            SizedBox(height: 4.h),
-            _ChessBoardWithEvaluation(
-              gamesTourModel: gamesTourModel,
-              lastMove: _uciToMove(gamesTourModel.lastMove ?? ''),
-              sideBarWidth: sideBarWidth,
-              boardSize: boardSize,
-              playerView: PlayerView.gridView,
-              showEvalBar: showEvalBar,
-              showCoordinates: false,
-            ),
-            SizedBox(height: 4.h),
-            _PlayerRow(
-              gamesTourModel: gamesTourModel,
-              isWhitePlayer: true,
-              isCurrentPlayer: gamesTourModel.activePlayer == Side.white,
-              isPinned: false,
-              playerView: PlayerView.gridView,
-            ),
-          ],
-        ),
-      ),
     );
   }
 }

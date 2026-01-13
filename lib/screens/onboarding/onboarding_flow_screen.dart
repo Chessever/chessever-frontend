@@ -58,15 +58,9 @@ class OnboardingFlowScreen extends HookConsumerWidget {
 
     return ScreenWrapper(
       child: Scaffold(
-        backgroundColor: kBackgroundColor,
+        backgroundColor: kBlackColor,
         body: Stack(
           children: [
-            // Ambient background glow
-            const Positioned.fill(child: _AmbientGlow()),
-
-            // Floating particles for premium feel
-            const Positioned.fill(child: _FloatingParticles()),
-
             // Progress indicator at top
             Positioned(
               top: topPadding + 16.h,
@@ -143,8 +137,8 @@ class OnboardingFlowScreen extends HookConsumerWidget {
                       right: ResponsiveHelper.isTablet ? 16.w : 0,
                     ),
                     child: PlayerSelectionContent(
-                      title: 'Pick your favorites',
-                      subtitle: 'Follow 3+ players to personalize your feed',
+                      title: 'Follow at least 3 players to get started',
+                      subtitle: 'Follow 3+ players to personalize your feed.',
                       actionLabel: 'Continue',
                       badgeLabel: null,
                       onComplete: () => goToPage(3),
@@ -292,7 +286,7 @@ class _AuthStep extends HookWidget {
                           'Create an account to access all features',
                           textAlign: TextAlign.center,
                           style: AppTypography.textSmRegular.copyWith(
-                            color: kWhiteColor.withValues(alpha: 0.6),
+                            color: kWhiteColor.withOpacity( 0.6),
                           ),
                         )
                         .animate(delay: 300.ms)
@@ -347,13 +341,13 @@ class _AuthStep extends HookWidget {
                             size: 14.ic,
                             color: const Color(
                               0xFFFFAA00,
-                            ).withValues(alpha: 0.7),
+                            ).withOpacity(0.7),
                           ),
                           SizedBox(width: 6.w),
                           Text(
                             'Guest data can\'t be recovered if lost',
                             style: AppTypography.textXsRegular.copyWith(
-                              color: kWhiteColor.withValues(alpha: 0.5),
+                              color: kWhiteColor.withOpacity( 0.5),
                             ),
                           ),
                         ],
@@ -412,8 +406,8 @@ class _UnlockVisual extends HookWidget {
                 shape: BoxShape.circle,
                 gradient: RadialGradient(
                   colors: [
-                    kPrimaryColor.withValues(alpha: 0.2),
-                    kPrimaryColor.withValues(alpha: 0.0),
+                    kPrimaryColor.withOpacity( 0.2),
+                    kPrimaryColor.withOpacity( 0.0),
                   ],
                 ),
               ),
@@ -426,14 +420,14 @@ class _UnlockVisual extends HookWidget {
             height: 72.h,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: kBlack2Color.withValues(alpha: 0.9),
+              color: kBlack2Color.withOpacity( 0.9),
               border: Border.all(
-                color: kPrimaryColor.withValues(alpha: 0.3),
+                color: kPrimaryColor.withOpacity( 0.3),
                 width: 2,
               ),
               boxShadow: [
                 BoxShadow(
-                  color: kPrimaryColor.withValues(alpha: 0.2),
+                  color: kPrimaryColor.withOpacity( 0.2),
                   blurRadius: 20,
                   spreadRadius: 3,
                 ),
@@ -487,8 +481,8 @@ class _FeaturesList extends StatelessWidget {
       padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 12.h),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(16.br),
-        color: kBlack2Color.withValues(alpha: 0.5),
-        border: Border.all(color: kWhiteColor.withValues(alpha: 0.06)),
+        color: kBlack2Color.withOpacity( 0.5),
+        border: Border.all(color: kWhiteColor.withOpacity( 0.06)),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -496,7 +490,7 @@ class _FeaturesList extends StatelessWidget {
           Text(
             'What you\'ll miss as a guest:',
             style: AppTypography.textXsMedium.copyWith(
-              color: kWhiteColor.withValues(alpha: 0.5),
+              color: kWhiteColor.withOpacity( 0.5),
               letterSpacing: 0.5,
             ),
           ),
@@ -540,7 +534,7 @@ class _FeatureItem extends StatelessWidget {
           height: 34.h,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(8.br),
-            color: color.withValues(alpha: 0.15),
+            color: color.withOpacity( 0.15),
           ),
           child: Center(child: Icon(icon, size: 18.ic, color: color)),
         ),
@@ -558,7 +552,7 @@ class _FeatureItem extends StatelessWidget {
               Text(
                 subtitle,
                 style: AppTypography.textXsRegular.copyWith(
-                  color: kWhiteColor.withValues(alpha: 0.5),
+                  color: kWhiteColor.withOpacity( 0.5),
                 ),
               ),
             ],
@@ -568,7 +562,7 @@ class _FeatureItem extends StatelessWidget {
         Icon(
           Icons.lock_outline_rounded,
           size: 14.ic,
-          color: kWhiteColor.withValues(alpha: 0.25),
+          color: kWhiteColor.withOpacity( 0.25),
         ),
       ],
     );
@@ -602,13 +596,13 @@ class _SecondaryButton extends HookWidget {
           height: 48.h,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(14.br),
-            border: Border.all(color: kWhiteColor.withValues(alpha: 0.15)),
+            border: Border.all(color: kWhiteColor.withOpacity( 0.15)),
           ),
           child: Center(
             child: Text(
               label,
               style: AppTypography.textMdMedium.copyWith(
-                color: kWhiteColor.withValues(alpha: 0.7),
+                color: kWhiteColor.withOpacity( 0.7),
               ),
             ),
           ),
@@ -723,7 +717,7 @@ class _AuthenticatedUserStep extends HookWidget {
                                 'Welcome back,',
                                 textAlign: TextAlign.center,
                                 style: AppTypography.textMdRegular.copyWith(
-                                  color: kWhiteColor.withValues(alpha: 0.6),
+                                  color: kWhiteColor.withOpacity( 0.6),
                                 ),
                               )
                               .animate(delay: 200.ms)
@@ -756,9 +750,9 @@ class _AuthenticatedUserStep extends HookWidget {
                                 ),
                                 decoration: BoxDecoration(
                                   borderRadius: BorderRadius.circular(16.br),
-                                  color: kGreenColor.withValues(alpha: 0.08),
+                                  color: kGreenColor.withOpacity( 0.08),
                                   border: Border.all(
-                                    color: kGreenColor.withValues(alpha: 0.2),
+                                    color: kGreenColor.withOpacity( 0.2),
                                   ),
                                 ),
                                 child: Row(
@@ -769,9 +763,7 @@ class _AuthenticatedUserStep extends HookWidget {
                                       height: 32.h,
                                       decoration: BoxDecoration(
                                         shape: BoxShape.circle,
-                                        color: kGreenColor.withValues(
-                                          alpha: 0.15,
-                                        ),
+                                        color: kGreenColor.withOpacity(0.15),
                                       ),
                                       child: Icon(
                                         Icons.check_rounded,
@@ -794,9 +786,7 @@ class _AuthenticatedUserStep extends HookWidget {
                                             'Synced across all your devices',
                                             style: AppTypography.textXsRegular
                                                 .copyWith(
-                                                  color: kWhiteColor.withValues(
-                                                    alpha: 0.5,
-                                                  ),
+                                                  color: kWhiteColor.withOpacity(0.5),
                                                 ),
                                           ),
                                         ],
@@ -846,7 +836,7 @@ class _AuthenticatedUserStep extends HookWidget {
                                   Text(
                                     'Your chess journey continues',
                                     style: AppTypography.textXsRegular.copyWith(
-                                      color: kWhiteColor.withValues(alpha: 0.4),
+                                      color: kWhiteColor.withOpacity( 0.4),
                                     ),
                                   ),
                                 ],
@@ -899,8 +889,8 @@ class _UserAvatarVisual extends HookWidget {
                 shape: BoxShape.circle,
                 gradient: RadialGradient(
                   colors: [
-                    kGreenColor.withValues(alpha: 0.18),
-                    kGreenColor.withValues(alpha: 0.0),
+                    kGreenColor.withOpacity( 0.18),
+                    kGreenColor.withOpacity( 0.0),
                   ],
                 ),
               ),
@@ -914,7 +904,7 @@ class _UserAvatarVisual extends HookWidget {
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               border: Border.all(
-                color: kGreenColor.withValues(alpha: 0.15),
+                color: kGreenColor.withOpacity( 0.15),
                 width: 1,
               ),
             ),
@@ -926,14 +916,14 @@ class _UserAvatarVisual extends HookWidget {
             height: 110.h,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: kBlack2Color.withValues(alpha: 0.9),
+              color: kBlack2Color.withOpacity( 0.9),
               border: Border.all(
-                color: kGreenColor.withValues(alpha: 0.4),
+                color: kGreenColor.withOpacity( 0.4),
                 width: 2.5,
               ),
               boxShadow: [
                 BoxShadow(
-                  color: kGreenColor.withValues(alpha: 0.2),
+                  color: kGreenColor.withOpacity( 0.2),
                   blurRadius: 30,
                   spreadRadius: 5,
                 ),
@@ -964,7 +954,7 @@ class _UserAvatarVisual extends HookWidget {
                 border: Border.all(color: kBackgroundColor, width: 3),
                 boxShadow: [
                   BoxShadow(
-                    color: kGreenColor.withValues(alpha: 0.4),
+                    color: kGreenColor.withOpacity( 0.4),
                     blurRadius: 8,
                   ),
                 ],
@@ -1023,7 +1013,7 @@ class _AmbientGlowPainter extends CustomPainter {
     // Primary glow - subtle movement
     final paint1 =
         Paint()
-          ..color = kPrimaryColor.withValues(alpha: 0.08 + (animation * 0.04))
+          ..color = kPrimaryColor.withOpacity( 0.08 + (animation * 0.04))
           ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 120);
 
     canvas.drawCircle(
@@ -1040,7 +1030,7 @@ class _AmbientGlowPainter extends CustomPainter {
         Paint()
           ..color = const Color(
             0xFF08647F,
-          ).withValues(alpha: 0.06 + (animation * 0.03))
+          ).withOpacity(0.06 + (animation * 0.03))
           ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 100);
 
     canvas.drawCircle(
@@ -1105,8 +1095,8 @@ class _ParticlePainter extends CustomPainter {
 
       final paint =
           Paint()
-            ..color = kWhiteColor.withValues(
-              alpha: particle.opacity * (1 - y.abs() * 0.5),
+            ..color = kWhiteColor.withOpacity(
+              particle.opacity * (1 - y.abs() * 0.5),
             );
 
       canvas.drawCircle(
@@ -1160,17 +1150,7 @@ class _PageIndicator extends StatelessWidget {
               color:
                   isActive
                       ? kPrimaryColor
-                      : kWhiteColor.withValues(alpha: 0.12),
-              boxShadow:
-                  isActive
-                      ? [
-                        BoxShadow(
-                          color: kPrimaryColor.withValues(alpha: 0.4),
-                          blurRadius: 8,
-                          spreadRadius: 0,
-                        ),
-                      ]
-                      : null,
+                      : kWhiteColor.withOpacity( 0.12),
             ),
           ),
         );
@@ -1236,13 +1216,24 @@ class _WelcomeStep extends HookWidget {
 
               SizedBox(height: 48.h),
 
-              // Tagline - minimal text
-              Text(
-                    'Your chess.\nYour way.',
+              // Tagline - "Follow Chess Better."
+              RichText(
                     textAlign: TextAlign.center,
-                    style: AppTypography.displayXsBold.copyWith(
-                      color: kWhiteColor,
-                      height: 1.2,
+                    text: TextSpan(
+                      style: AppTypography.displayXsBold.copyWith(
+                        color: kWhiteColor,
+                        height: 1.2,
+                      ),
+                      children: [
+                        const TextSpan(text: 'Follow Chess '),
+                        TextSpan(
+                          text: 'Better.',
+                          style: AppTypography.displayXsBold.copyWith(
+                            color: kWhiteColor,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ],
                     ),
                   )
                   .animate(delay: 300.ms)
@@ -1252,10 +1243,10 @@ class _WelcomeStep extends HookWidget {
               SizedBox(height: 12.h),
 
               Text(
-                    'Follow players • Track events • Analyze games',
+                    'Follow players, Track Events, Analyze games',
                     textAlign: TextAlign.center,
                     style: AppTypography.textSmRegular.copyWith(
-                      color: kWhiteColor.withValues(alpha: 0.6),
+                      color: kWhiteColor.withOpacity( 0.6),
                       letterSpacing: 0.3,
                     ),
                   )
@@ -1265,7 +1256,7 @@ class _WelcomeStep extends HookWidget {
               const Spacer(flex: 2),
 
               // CTA Button
-              _PrimaryButton(label: 'Get started', onTap: onNext)
+              _PrimaryButton(label: 'Get Started', onTap: onNext)
                   .animate(delay: 600.ms)
                   .fadeIn(duration: 400.ms, curve: _smoothSpring)
                   .move(begin: const Offset(0, 30), curve: _smoothSpring),
@@ -1367,7 +1358,7 @@ class _CountryStep extends HookConsumerWidget {
                     'We\'ll show you players from your region',
                     textAlign: TextAlign.center,
                     style: AppTypography.textSmRegular.copyWith(
-                      color: kWhiteColor.withValues(alpha: 0.6),
+                      color: kWhiteColor.withOpacity( 0.6),
                     ),
                   )
                   .animate(delay: 300.ms)
@@ -1406,127 +1397,45 @@ class _CountryStep extends HookConsumerWidget {
   }
 }
 
-class _GlobeVisual extends HookWidget {
+class _GlobeVisual extends StatelessWidget {
   const _GlobeVisual({required this.countryState});
 
   final AsyncValue<Country> countryState;
 
   @override
   Widget build(BuildContext context) {
-    final rotateController = useAnimationController(
-      duration: const Duration(seconds: 20),
-    )..repeat();
-
-    final rotateAnimation = useAnimation(rotateController);
-
-    return SizedBox(
-      height: 180.h,
-      width: 180.w,
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          // Rotating ring
-          Transform.rotate(
-            angle: rotateAnimation * 2 * math.pi,
-            child: Container(
-              width: 160.w,
-              height: 160.h,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: kPrimaryColor.withValues(alpha: 0.15),
-                  width: 1,
-                ),
-              ),
-              child: Stack(
-                children: [
-                  Positioned(
-                    top: 0,
-                    left: 75.w,
-                    child: _OrbitDot(
-                      color: kPrimaryColor.withValues(alpha: 0.6),
-                    ),
-                  ),
-                  Positioned(
-                    bottom: 20.h,
-                    right: 10.w,
-                    child: _OrbitDot(
-                      color: kPrimaryColor.withValues(alpha: 0.4),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-
-          // Globe icon
-          Container(
-            width: 100.w,
-            height: 100.h,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: kBlack2Color.withValues(alpha: 0.9),
-              border: Border.all(
-                color: kWhiteColor.withValues(alpha: 0.1),
-                width: 1,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: kPrimaryColor.withValues(alpha: 0.15),
-                  blurRadius: 30,
-                  spreadRadius: 5,
-                ),
-              ],
-            ),
-            child: countryState.when(
-              loading:
-                  () => Center(
-                    child: SizedBox(
-                      width: 24.w,
-                      height: 24.h,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: kPrimaryColor.withValues(alpha: 0.6),
-                      ),
-                    ),
-                  ),
-              error:
-                  (_, __) => Icon(
-                    Icons.public,
-                    size: 48.ic,
-                    color: kWhiteColor.withValues(alpha: 0.5),
-                  ),
-              data:
-                  (country) => Center(
-                    child: Text(
-                      country.flagEmoji,
-                      style: TextStyle(fontSize: 48.f),
-                    ),
-                  ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _OrbitDot extends StatelessWidget {
-  const _OrbitDot({required this.color});
-
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
     return Container(
-      width: 6.w,
-      height: 6.h,
+      width: 100.w,
+      height: 100.h,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        color: color,
-        boxShadow: [
-          BoxShadow(color: color.withValues(alpha: 0.5), blurRadius: 6),
-        ],
+        color: kBlack2Color,
+      ),
+      child: countryState.when(
+        loading:
+            () => Center(
+              child: SizedBox(
+                width: 24.w,
+                height: 24.h,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: kWhiteColor.withOpacity( 0.6),
+                ),
+              ),
+            ),
+        error:
+            (_, __) => Icon(
+              Icons.public,
+              size: 48.ic,
+              color: kWhiteColor.withOpacity( 0.5),
+            ),
+        data:
+            (country) => Center(
+              child: Text(
+                country.flagEmoji,
+                style: TextStyle(fontSize: 48.f),
+              ),
+            ),
       ),
     );
   }
@@ -1548,16 +1457,8 @@ class _CountryCard extends StatelessWidget {
     return Container(
       padding: EdgeInsets.all(16.sp),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(20.br),
-        color: kBlack2Color.withValues(alpha: 0.6),
-        border: Border.all(color: kWhiteColor.withValues(alpha: 0.08)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.3),
-            blurRadius: 20,
-            offset: const Offset(0, 10),
-          ),
-        ],
+        borderRadius: BorderRadius.circular(12.br),
+        color: kBlack2Color,
       ),
       child: countryState.when(
         loading:
@@ -1569,14 +1470,14 @@ class _CountryCard extends StatelessWidget {
                   height: 18.h,
                   child: CircularProgressIndicator(
                     strokeWidth: 2,
-                    color: kWhiteColor.withValues(alpha: 0.5),
+                    color: kWhiteColor.withOpacity( 0.5),
                   ),
                 ),
                 SizedBox(width: 12.w),
                 Text(
                   'Finding your location...',
                   style: AppTypography.textSmMedium.copyWith(
-                    color: kWhiteColor.withValues(alpha: 0.6),
+                    color: kWhiteColor.withOpacity( 0.6),
                   ),
                 ),
               ],
@@ -1588,7 +1489,7 @@ class _CountryCard extends StatelessWidget {
                 Text(
                   'Couldn\'t detect location',
                   style: AppTypography.textSmMedium.copyWith(
-                    color: kWhiteColor.withValues(alpha: 0.6),
+                    color: kWhiteColor.withOpacity( 0.6),
                   ),
                 ),
                 SizedBox(width: 12.w),
@@ -1659,17 +1560,7 @@ class _PrimaryButton extends HookWidget {
             color:
                 onTap != null
                     ? kWhiteColor
-                    : kWhiteColor.withValues(alpha: 0.2),
-            boxShadow:
-                onTap != null
-                    ? [
-                      BoxShadow(
-                        color: kWhiteColor.withValues(alpha: 0.15),
-                        blurRadius: 16,
-                        offset: const Offset(0, 6),
-                      ),
-                    ]
-                    : null,
+                    : kWhiteColor.withOpacity( 0.2),
           ),
           child: Center(
             child:
@@ -1688,7 +1579,7 @@ class _PrimaryButton extends HookWidget {
                         color:
                             onTap != null
                                 ? kBlackColor
-                                : kWhiteColor.withValues(alpha: 0.5),
+                                : kWhiteColor.withOpacity( 0.5),
                       ),
                     ),
           ),

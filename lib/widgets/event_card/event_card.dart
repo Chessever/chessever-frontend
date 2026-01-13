@@ -56,117 +56,243 @@ class EventCard extends ConsumerWidget {
   }
 
   Widget _buildCard(BuildContext context, WidgetRef ref) {
-    return Container(
-        decoration: BoxDecoration(
-          color: kBlack2Color,
-          borderRadius: BorderRadius.circular(8.br),
-        ),
-        padding: EdgeInsets.all(6.sp),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            // Event Image on the left
-            _EventImage(event: tourEventCardModel, heroTagSuffix: heroTagSuffix),
-            SizedBox(width: 12.w),
+    // Use LayoutBuilder to make the entire card responsive
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // For tablets, use image-as-background grid layout
+        // For phones, use horizontal row layout
+        if (ResponsiveHelper.isTablet) {
+          return _buildTabletGridCard(context, ref, constraints);
+        }
+        return _buildPhoneCard(context, ref, constraints);
+      },
+    );
+  }
 
-            // Content in the middle
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // Event name with live indicator
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
+  /// Tablet grid layout: Image as background with text overlay
+  Widget _buildTabletGridCard(BuildContext context, WidgetRef ref, BoxConstraints constraints) {
+    return Container(
+      decoration: BoxDecoration(
+        color: kBlack2Color,
+        borderRadius: BorderRadius.circular(12.br),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          // Background image
+          _TabletEventBackground(
+            event: tourEventCardModel,
+            heroTagSuffix: heroTagSuffix,
+          ),
+          // Gradient overlay for text readability
+          Positioned.fill(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    Colors.transparent,
+                    Colors.black.withValues(alpha: 0.3),
+                    Colors.black.withValues(alpha: 0.85),
+                  ],
+                  stops: const [0.0, 0.4, 1.0],
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                ),
+              ),
+            ),
+          ),
+          // Content overlay
+          Positioned(
+            left: 12.sp,
+            right: 12.sp,
+            bottom: 12.sp,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Event name with status indicator
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        tourEventCardModel.title,
+                        style: AppTypography.textSmMedium.copyWith(
+                          color: kWhiteColor,
+                          fontSize: 15.sp,
+                          height: 1.3,
+                          shadows: [
+                            Shadow(
+                              color: Colors.black.withValues(alpha: 0.5),
+                              blurRadius: 4,
+                            ),
+                          ],
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 2,
+                      ),
+                    ),
+                    _StatusIndicator(tourEventCardModel: tourEventCardModel),
+                  ],
+                ),
+                SizedBox(height: 6.h),
+                // Event details row
+                Row(
+                  children: [
+                    Expanded(
+                      child: Row(
+                        children: [
+                          if (tourEventCardModel.dates.trim().isNotEmpty) ...[
+                            Flexible(
+                              child: Text(
+                                tourEventCardModel.dates,
+                                style: AppTypography.textXsMedium.copyWith(
+                                  color: kWhiteColor.withValues(alpha: 0.9),
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                                maxLines: 1,
+                              ),
+                            ),
+                            _buildDotWidget(),
+                          ],
+                          _buildTimeControlIcon(),
+                          if (tourEventCardModel.maxAvgElo > 0) ...[
+                            _buildDotWidget(),
+                            Text(
+                              "Ø ${tourEventCardModel.maxAvgElo}",
+                              style: AppTypography.textXsMedium.copyWith(
+                                color: kWhiteColor.withValues(alpha: 0.9),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                    // Star icon
+                    _StarWidget(tourEventCardModel: tourEventCardModel),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Phone layout: Horizontal row with image on left
+  Widget _buildPhoneCard(BuildContext context, WidgetRef ref, BoxConstraints constraints) {
+    return Container(
+      decoration: BoxDecoration(
+        color: kBlack2Color,
+        borderRadius: BorderRadius.circular(8.br),
+      ),
+      padding: EdgeInsets.all(6.sp),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          // Event Image on the left
+          _EventImage(event: tourEventCardModel, heroTagSuffix: heroTagSuffix),
+          SizedBox(width: 12.w),
+
+          // Content in the middle
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Event name with live indicator
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Flexible(
+                      child: Text(
+                        tourEventCardModel.title,
+                        style: AppTypography.textSmMedium.copyWith(
+                          color: kWhiteColor,
+                          fontSize: 14.sp,
+                          height: 1.2,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 1,
+                      ),
+                    ),
+                    _StatusIndicator(tourEventCardModel: tourEventCardModel),
+                  ],
+                ),
+
+                SizedBox(height: 4.h),
+
+                // Event details (dates, time control, location/ELO)
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (tourEventCardModel.dates.trim().isNotEmpty) ...[
                       Flexible(
                         child: Text(
-                          tourEventCardModel.title,
-                          style: AppTypography.textSmMedium.copyWith(
-                            color: kWhiteColor,
-                            fontSize: 14.sp,
-                            height: 1.2,
+                          tourEventCardModel.dates,
+                          style: AppTypography.textXsMedium.copyWith(
+                            color: kWhiteColor70,
                           ),
                           overflow: TextOverflow.ellipsis,
                           maxLines: 1,
                         ),
                       ),
-                      _StatusIndicator(
-                        tourEventCardModel: tourEventCardModel,
-                      ),
+                      _buildDotWidget(),
                     ],
-                  ),
-
-                  SizedBox(height: 4.h),
-
-                  // Event details (dates, time control, location/ELO)
-                  Row(
-                    children: [
-                      if (tourEventCardModel.dates.trim().isNotEmpty) ...[
+                    _buildTimeControlIcon(),
+                    if (tourEventCardModel.eventSource ==
+                        EventSource.communityEvent) ...[
+                      if (tourEventCardModel.location != null &&
+                          tourEventCardModel.location!.isNotEmpty) ...[
+                        _buildDotWidget(),
                         Flexible(
-                          child: Text(
-                            tourEventCardModel.dates,
-                            style: AppTypography.textXsMedium.copyWith(
-                              color: kWhiteColor70,
-                            ),
-                            overflow: TextOverflow.ellipsis,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.location_on_outlined,
+                                size: 12.sp,
+                                color: kWhiteColor70,
+                              ),
+                              SizedBox(width: 2.w),
+                              Flexible(
+                                child: Text(
+                                  tourEventCardModel.location!,
+                                  style: AppTypography.textXsMedium.copyWith(
+                                    color: kWhiteColor70,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                  maxLines: 1,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                        _buildDotWidget(),
                       ],
-                      _buildTimeControlIcon(),
-                      // Show location for community events, ELO for broadcasts
-                      if (tourEventCardModel.eventSource ==
-                          EventSource.communityEvent) ...[
-                        if (tourEventCardModel.location != null &&
-                            tourEventCardModel.location!.isNotEmpty) ...[
-                          _buildDotWidget(),
-                          Flexible(
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  Icons.location_on_outlined,
-                                  size: 12.sp,
-                                  color: kWhiteColor70,
-                                ),
-                                SizedBox(width: 2.w),
-                                Flexible(
-                                  child: Text(
-                                    tourEventCardModel.location!,
-                                    style: AppTypography.textXsMedium.copyWith(
-                                      color: kWhiteColor70,
-                                    ),
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                              ],
-                            ),
+                    ] else ...[
+                      if (tourEventCardModel.maxAvgElo > 0) ...[
+                        _buildDotWidget(),
+                        Text(
+                          "Ø ${tourEventCardModel.maxAvgElo}",
+                          style: AppTypography.textXsMedium.copyWith(
+                            color: kWhiteColor70,
                           ),
-                        ],
-                      ] else ...[
-                        if (tourEventCardModel.maxAvgElo > 0) ...[
-                          _buildDotWidget(),
-                          Text(
-                            "Ø ${tourEventCardModel.maxAvgElo}",
-                            style: AppTypography.textXsMedium.copyWith(
-                              color: kWhiteColor70,
-                            ),
-                          ),
-                        ],
+                        ),
                       ],
                     ],
-                  ),
-                ],
-              ),
+                  ],
+                ),
+              ],
             ),
+          ),
 
-            SizedBox(width: 8.w),
+          SizedBox(width: 8.w),
 
-            // Star icon on the right
-            _StarWidget(tourEventCardModel: tourEventCardModel),
-          ],
-        ),
+          // Star icon on the right
+          _StarWidget(tourEventCardModel: tourEventCardModel),
+        ],
+      ),
     );
   }
 
@@ -214,6 +340,29 @@ class _EventImage extends ConsumerWidget {
 
   const _EventImage({required this.event, this.heroTagSuffix});
 
+  /// Returns adaptive image width based on device and layout context
+  static double getImageWidth(BoxConstraints? constraints) {
+    // Base width for phones
+    double baseWidth = 90.w;
+
+    // On tablets, use a smaller image if in constrained grid layout
+    if (ResponsiveHelper.isTablet) {
+      // In landscape tablet grid, cards are smaller - use compact image
+      if (ResponsiveHelper.isLandscape) {
+        baseWidth = 70.w; // Smaller for tablet grid
+      } else {
+        baseWidth = 80.w; // Medium for tablet portrait
+      }
+    }
+
+    // If we have constraints and they're very tight, shrink further
+    if (constraints != null && constraints.maxWidth < 250) {
+      baseWidth = baseWidth.clamp(50.0, 65.0);
+    }
+
+    return baseWidth;
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     // Include suffix to prevent duplicate hero tags when same event appears in multiple lists
@@ -235,60 +384,67 @@ class _EventImage extends ConsumerWidget {
 
     final imageAsync = ref.watch(eventImageProvider(event.id));
 
-    final image = SizedBox(
-      width: 90.w, // Give width constraint for AspectRatio to work in Row
-      child: AspectRatio(
-        aspectRatio: 3 / 2, // AspectRatio calculates height from width
-        child: Container(
-          decoration: BoxDecoration(
-            color: kLightBlack,
-            borderRadius: BorderRadius.circular(6.br),
-          ),
-          clipBehavior: Clip.antiAlias,
-          child: imageAsync.when(
-            data: (imageData) {
-              // If we have an image URL, show it
-              if (imageData.hasImage) {
-                return CachedNetworkImage(
-                  imageUrl: imageData.imageUrl!,
-                  fit: BoxFit.cover,
-                  fadeInDuration: const Duration(milliseconds: 300),
-                  fadeOutDuration: const Duration(milliseconds: 200),
-                  placeholder:
-                      (context, url) => Skeletonizer(
-                        enabled: true,
-                        ignoreContainers: true,
-                        effect: const ShimmerEffect(
-                          baseColor: Color(0xFF2A2A2A),
-                          highlightColor: Color(0xFF3A3A3A),
-                          duration: Duration(seconds: 1),
-                        ),
-                        child: Container(color: kLightBlack),
+    // Use LayoutBuilder to get responsive image sizing
+    final image = LayoutBuilder(
+      builder: (context, constraints) {
+        final imageWidth = getImageWidth(constraints);
+
+        return SizedBox(
+          width: imageWidth,
+          child: AspectRatio(
+            aspectRatio: 3 / 2, // AspectRatio calculates height from width
+            child: Container(
+              decoration: BoxDecoration(
+                color: kLightBlack,
+                borderRadius: BorderRadius.circular(6.br),
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: imageAsync.when(
+                data: (imageData) {
+                  // If we have an image URL, show it
+                  if (imageData.hasImage) {
+                    return CachedNetworkImage(
+                      imageUrl: imageData.imageUrl!,
+                      fit: BoxFit.cover,
+                      fadeInDuration: const Duration(milliseconds: 300),
+                      fadeOutDuration: const Duration(milliseconds: 200),
+                      placeholder:
+                          (context, url) => Skeletonizer(
+                            enabled: true,
+                            ignoreContainers: true,
+                            effect: const ShimmerEffect(
+                              baseColor: Color(0xFF2A2A2A),
+                              highlightColor: Color(0xFF3A3A3A),
+                              duration: Duration(seconds: 1),
+                            ),
+                            child: Container(color: kLightBlack),
+                          ),
+                      errorWidget:
+                          (context, url, error) => _buildFallbackFlag(
+                            imageData.fallbackCountryCode,
+                          ),
+                    );
+                  }
+                  // No image - show country flag if available
+                  return _buildFallbackFlag(imageData.fallbackCountryCode);
+                },
+                loading:
+                    () => Skeletonizer(
+                      enabled: true,
+                      ignoreContainers: true,
+                      effect: const ShimmerEffect(
+                        baseColor: Color(0xFF2A2A2A),
+                        highlightColor: Color(0xFF3A3A3A),
+                        duration: Duration(seconds: 1),
                       ),
-                  errorWidget:
-                      (context, url, error) => _buildFallbackFlag(
-                        imageData.fallbackCountryCode,
-                      ),
-                );
-              }
-              // No image - show country flag if available
-              return _buildFallbackFlag(imageData.fallbackCountryCode);
-            },
-            loading:
-                () => Skeletonizer(
-                  enabled: true,
-                  ignoreContainers: true,
-                  effect: const ShimmerEffect(
-                    baseColor: Color(0xFF2A2A2A),
-                    highlightColor: Color(0xFF3A3A3A),
-                    duration: Duration(seconds: 1),
-                  ),
-                  child: Container(color: kLightBlack),
-                ),
-            error: (_, __) => const LogoPatternFallback(),
+                      child: Container(color: kLightBlack),
+                    ),
+                error: (_, __) => const LogoPatternFallback(),
+              ),
+            ),
           ),
-        ),
-      ),
+        );
+      },
     );
 
     if (!shouldUseHero) return image;
@@ -374,50 +530,155 @@ class _FlagEventImage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: 90.w, // Give width constraint for AspectRatio to work in Row
-      child: AspectRatio(
-        aspectRatio: 3 / 2,
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(6.br),
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              Container(
-                decoration: const BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [Color(0xFF1F1C2C), Color(0xFF2C5364)],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                ),
-              ),
-              if (countryCode != null)
-                CountryFlag.fromCountryCode(
-                  countryCode!,
-                  height: double.infinity,
-                  width: double.infinity,
-                ),
-              Positioned.fill(
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [
-                        Colors.black.withValues(alpha: 0.35),
-                        Colors.black.withValues(alpha: 0.6),
-                      ],
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
+    // Use LayoutBuilder for responsive sizing - same logic as _EventImage
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final imageWidth = _EventImage.getImageWidth(constraints);
+
+        return SizedBox(
+          width: imageWidth,
+          child: AspectRatio(
+            aspectRatio: 3 / 2,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(6.br),
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  Container(
+                    decoration: const BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [Color(0xFF1F1C2C), Color(0xFF2C5364)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
                     ),
                   ),
-                ),
+                  if (countryCode != null)
+                    CountryFlag.fromCountryCode(
+                      countryCode!,
+                      height: double.infinity,
+                      width: double.infinity,
+                    ),
+                  Positioned.fill(
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [
+                            Colors.black.withValues(alpha: 0.35),
+                            Colors.black.withValues(alpha: 0.6),
+                          ],
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                        ),
+                      ),
+                    ),
+                  ),
+                  if (countryCode == null) const LogoPatternFallback(),
+                ],
               ),
-              if (countryCode == null) const LogoPatternFallback(),
-            ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// Background image widget for tablet grid layout - fills entire card
+class _TabletEventBackground extends ConsumerWidget {
+  final GroupEventCardModel event;
+  final String? heroTagSuffix;
+
+  const _TabletEventBackground({required this.event, this.heroTagSuffix});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isCommunity = event.eventSource == EventSource.communityEvent;
+
+    if (isCommunity) {
+      final countryCode = _extractCountryCode(ref, event.location);
+      return _buildFlagBackground(countryCode);
+    }
+
+    final imageAsync = ref.watch(eventImageProvider(event.id));
+
+    return imageAsync.when(
+      data: (imageData) {
+        if (imageData.hasImage) {
+          return CachedNetworkImage(
+            imageUrl: imageData.imageUrl!,
+            fit: BoxFit.cover,
+            fadeInDuration: const Duration(milliseconds: 300),
+            fadeOutDuration: const Duration(milliseconds: 200),
+            placeholder: (context, url) => _buildLoadingBackground(),
+            errorWidget: (context, url, error) =>
+                _buildFlagBackground(imageData.fallbackCountryCode),
+          );
+        }
+        return _buildFlagBackground(imageData.fallbackCountryCode);
+      },
+      loading: () => _buildLoadingBackground(),
+      error: (_, __) => const LogoPatternFallback(),
+    );
+  }
+
+  Widget _buildLoadingBackground() {
+    return Skeletonizer(
+      enabled: true,
+      ignoreContainers: true,
+      effect: const ShimmerEffect(
+        baseColor: Color(0xFF2A2A2A),
+        highlightColor: Color(0xFF3A3A3A),
+        duration: Duration(seconds: 1),
+      ),
+      child: Container(color: kLightBlack),
+    );
+  }
+
+  Widget _buildFlagBackground(String? countryCode) {
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        Container(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              colors: [Color(0xFF1F1C2C), Color(0xFF2C5364)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
           ),
         ),
-      ),
+        if (countryCode != null && countryCode.isNotEmpty)
+          CountryFlag.fromCountryCode(
+            countryCode,
+            height: double.infinity,
+            width: double.infinity,
+          ),
+        if (countryCode == null || countryCode.isEmpty)
+          const LogoPatternFallback(),
+      ],
     );
+  }
+
+  String? _extractCountryCode(WidgetRef ref, String? location) {
+    if (location == null || location.trim().isEmpty) return null;
+    final locationService = ref.read(locationServiceProvider);
+
+    final direct = locationService.getValidCountryCode(location.trim());
+    if (direct.isNotEmpty) return direct.toUpperCase();
+
+    for (final part in location.split(RegExp(r'[,|/]'))) {
+      final trimmed = part.trim();
+      if (trimmed.isEmpty) continue;
+
+      final fromCode = locationService.getValidCountryCode(trimmed);
+      if (fromCode.isNotEmpty) return fromCode.toUpperCase();
+
+      final fromName = locationService.getValidCountryCodeFromName(trimmed);
+      if (fromName.isNotEmpty) return fromName.toUpperCase();
+    }
+
+    return null;
   }
 }
 
@@ -476,7 +737,7 @@ class _OngoingIndicator extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // No dot indicator for ongoing - just nothing
-    return SizedBox.shrink();
+    return const SizedBox.shrink();
   }
 }
 

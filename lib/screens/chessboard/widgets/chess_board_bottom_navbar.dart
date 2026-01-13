@@ -34,9 +34,11 @@ class ChessSvgBottomNavbar extends StatelessWidget {
       iconColor = kWhiteColor70; // Use transparent white when inactive
     }
 
+    final isTablet = ResponsiveHelper.isTablet;
+
     final depthStyle = TextStyle(
       color: iconColor,
-      fontSize: 9.f,
+      fontSize: isTablet ? 11.0 : 10.f,
       fontWeight: FontWeight.w600,
       height: 1.0,
       leadingDistribution: TextLeadingDistribution.even,
@@ -50,6 +52,39 @@ class ChessSvgBottomNavbar extends StatelessWidget {
     );
 
     final bool showDepth = depthText != null && depthText!.isNotEmpty;
+
+    // On tablet, use a column layout to avoid overlap
+    // On phone, use the original positioned layout
+    if (isTablet && showDepth) {
+      return GestureDetector(
+        onTap: onPressed != null
+            ? () {
+                HapticFeedbackService.buttonPress();
+                onPressed!();
+              }
+            : null,
+        onLongPress: onLongPress,
+        behavior: HitTestBehavior.opaque,
+        child: SizedBox(
+          width: width,
+          height: double.infinity,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SvgWidget(
+                svgPath,
+                height: 24.h,
+                width: 24.w,
+                colorFilter: ColorFilter.mode(iconColor, BlendMode.srcIn),
+              ),
+              SizedBox(height: 4.h),
+              Text(depthText!, style: depthStyle),
+            ],
+          ),
+        ),
+      );
+    }
 
     return GestureDetector(
       onTap: onPressed != null

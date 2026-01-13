@@ -1111,6 +1111,8 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     );
     // OPTIMIZED: Only watch for updates to games that are currently visible in the PageView
     // This prevents rebuilds when other games in the tournament get updated
+    final isTablet = ResponsiveHelper.isTablet;
+
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, result) {
@@ -1129,9 +1131,15 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
           // REMOVED: RawGestureDetector was blocking PageView swipes
           body: PageView.builder(
             padEnds: true,
-            allowImplicitScrolling: true,
-            // PageView swiping enabled in all modes
-            physics: const PageScrollPhysics(),
+            // On tablets, implicit scrolling caused partial page shifts when tapping
+            // notation/arrow buttons; disable it there but keep for phones.
+            allowImplicitScrolling: !isTablet,
+            dragStartBehavior: DragStartBehavior.down,
+            // Allow swiping on tablet as well; landscape block caused gestures to
+            // feel broken on larger devices. Keep physics simple to avoid half-drags.
+            physics: isTablet
+                ? const PageScrollPhysics(parent: ClampingScrollPhysics())
+                : const PageScrollPhysics(),
             controller: _pageController,
             onPageChanged: _onPageChanged,
             itemCount: syncedGames.length,
@@ -1291,8 +1299,25 @@ class _LoadingScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final sideBarWidth = 20.w;
-    final screenWidth = MediaQuery.sizeOf(context).width;
-    final boardSize = screenWidth - sideBarWidth - 32.w;
+    final fullScreenWidth = MediaQuery.sizeOf(context).width;
+
+    // Tablet layout detection
+    final isTablet = ResponsiveHelper.isTablet;
+    final isTabletLandscape = isTablet && ResponsiveHelper.isLandscape;
+    final isTabletPortrait = isTablet && !ResponsiveHelper.isLandscape;
+
+    // Calculate content width based on device/orientation
+    double contentMaxWidth;
+    if (isTabletPortrait) {
+      contentMaxWidth = math.min(fullScreenWidth * 0.85, 720.0);
+    } else if (isTabletLandscape) {
+      // In landscape, board section takes ~58% of width
+      contentMaxWidth = fullScreenWidth * 0.58;
+    } else {
+      contentMaxWidth = fullScreenWidth;
+    }
+
+    final boardSize = contentMaxWidth - sideBarWidth - 32.w;
 
     final scaffold = Scaffold(
       backgroundColor: Colors.black,
@@ -1306,10 +1331,13 @@ class _LoadingScreen extends StatelessWidget {
         lastViewedIndex: lastViewedIndex,
         hideEventInfo: hideEventInfo,
       ),
-      body: Skeletonizer(
-        enabled: true,
-        child: Column(
-          children: [
+      body: Center(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxWidth: contentMaxWidth),
+          child: Skeletonizer(
+            enabled: true,
+            child: Column(
+              children: [
             // Top player skeleton
             Container(
               margin: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
@@ -1459,7 +1487,9 @@ class _LoadingScreen extends StatelessWidget {
                 ),
               ),
             ),
-          ],
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -3795,30 +3825,182 @@ class _AnalysisGameBody extends ConsumerWidget {
           );
         }
 
-        // Tablet landscape layout: board on left, moves on right
+        // ═══════════════════════════════════════════════════════════════════
+        // TABLET LANDSCAPE LAYOUT - Modern Chess Studio Design
+        // Side-by-side layout: Board section (left) + Analysis section (right)
+        // ═══════════════════════════════════════════════════════════════════
         if (isTabletLandscape) {
-          return Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Left side: Board with players and evaluation
-              Expanded(
-                flex: 5,
-                child: SingleChildScrollView(
-                  padding: EdgeInsets.only(bottom: 12.h),
-                  physics: const ClampingScrollPhysics(),
+          final screenHeight = availableHeight;
+
+          // Calculate optimal board size to fit within available height
+          // Account for: top padding (8) + player card (~56) + spacing (8) +
+          // board + spacing (8) + player card (~56) + bottom padding (8) = ~144 extra
+          final playerCardHeight = 56.sp;
+          final verticalSpacing = 8.sp;
+          final verticalPadding = 8.sp * 2; // top + bottom
+          final totalVerticalExtra = (playerCardHeight * 2) + (verticalSpacing * 2) + verticalPadding;
+
+          // Board size based on height constraint
+          final maxBoardFromHeight = screenHeight - totalVerticalExtra;
+
+          // Eval bar width
+          final evalBarWidth = 20.sp;
+
+          // Board size is the height-constrained value (square board)
+          final optimalBoardSize = math.max(200.0, maxBoardFromHeight);
+
+          return Padding(
+            padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 8.sp),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // ─────────────────────────────────────────────────────────────
+                // LEFT SECTION: Board with players and evaluation
+                // ─────────────────────────────────────────────────────────────
+                SizedBox(
+                  width: optimalBoardSize + evalBarWidth + 24.sp, // board + eval + margins
                   child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: headerChildren,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Top player card
+                      _TabletPlayerCard(
+                        game: game,
+                        isFlipped: state.isBoardFlipped,
+                        blackPlayer: false,
+                        state: state,
+                        showClock: showClock,
+                      ),
+                      SizedBox(height: verticalSpacing),
+                      // Board with evaluation bar
+                      _TabletBoardWithSidebar(
+                        index: index,
+                        currentPageIndex: currentPageIndex,
+                        state: state,
+                        game: game,
+                        boardSize: optimalBoardSize,
+                        evalBarWidth: evalBarWidth,
+                      ),
+                      SizedBox(height: verticalSpacing),
+                      // Bottom player card
+                      _TabletPlayerCard(
+                        game: game,
+                        isFlipped: state.isBoardFlipped,
+                        blackPlayer: true,
+                        state: state,
+                        showClock: showClock,
+                      ),
+                    ],
                   ),
                 ),
+
+                SizedBox(width: 12.sp),
+
+                // ─────────────────────────────────────────────────────────────
+                // RIGHT SECTION: Moves display and analysis
+                // ─────────────────────────────────────────────────────────────
+                Expanded(
+                  child: Container(
+                    height: screenHeight - 16.sp,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1A1A1A),
+                      borderRadius: BorderRadius.circular(12.sp),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.06),
+                        width: 1,
+                      ),
+                    ),
+                    clipBehavior: Clip.antiAlias,
+                    child: buildAnalysisView(),
+                  ),
+                ),
+              ],
+            ),
+          );
+        }
+
+        // ═══════════════════════════════════════════════════════════════════
+        // TABLET PORTRAIT LAYOUT - Elegant Centered Design
+        // Centered content with generous max-width and refined proportions
+        // ═══════════════════════════════════════════════════════════════════
+        if (ResponsiveHelper.isTablet) {
+          final screenWidth = MediaQuery.sizeOf(context).width;
+          // Use 85% of screen width, capped at 720px for optimal readability
+          final contentMaxWidth = math.min(screenWidth * 0.85, 720.0);
+
+          return SizedBox.expand(
+            child: Center(
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(maxWidth: contentMaxWidth),
+                  child: Column(
+                  children: [
+                    SizedBox(height: 4.sp),
+                    // Top player with padding
+                    Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 16.sp),
+                      child: _TabletPlayerCard(
+                        game: game,
+                        isFlipped: state.isBoardFlipped,
+                        blackPlayer: false,
+                        state: state,
+                        showClock: showClock,
+                      ),
+                    ),
+                    SizedBox(height: 4.sp),
+                    // Board with evaluation
+                    _BoardWithSidebar(
+                      index: index,
+                      currentPageIndex: currentPageIndex,
+                      state: state,
+                      game: game,
+                    ),
+                    SizedBox(height: 4.sp),
+                    // Bottom player with padding
+                    Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 16.sp),
+                      child: _TabletPlayerCard(
+                        game: game,
+                        isFlipped: state.isBoardFlipped,
+                        blackPlayer: true,
+                        state: state,
+                        showClock: showClock,
+                      ),
+                    ),
+                    // PV section
+                    ...pvSection,
+                    SizedBox(height: 4.sp),
+                    // Moves panel with elegant container
+                    Expanded(
+                      child: Container(
+                        margin: EdgeInsets.symmetric(horizontal: 16.sp),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF1A1A1A),
+                          borderRadius: BorderRadius.only(
+                            topLeft: Radius.circular(12.sp),
+                            topRight: Radius.circular(12.sp),
+                          ),
+                          border: Border(
+                            top: BorderSide(
+                              color: Colors.white.withValues(alpha: 0.06),
+                              width: 1,
+                            ),
+                            left: BorderSide(
+                              color: Colors.white.withValues(alpha: 0.06),
+                              width: 1,
+                            ),
+                            right: BorderSide(
+                              color: Colors.white.withValues(alpha: 0.06),
+                              width: 1,
+                            ),
+                          ),
+                        ),
+                        clipBehavior: Clip.antiAlias,
+                        child: buildAnalysisView(),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-              SizedBox(width: 16.sp),
-              // Right side: Moves display and analysis
-              Expanded(
-                flex: 4,
-                child: buildAnalysisView(),
-              ),
-            ],
+            ),
           );
         }
 
@@ -3892,6 +4074,139 @@ class _PlayerWidget extends StatelessWidget {
   }
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// TABLET-SPECIFIC WIDGETS
+// Refined components optimized for tablet displays with elegant styling
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Tablet-optimized player card with refined visual design
+/// Features subtle background, better spacing, and enhanced typography
+class _TabletPlayerCard extends StatelessWidget {
+  final GamesTourModel game;
+  final bool isFlipped;
+  final bool blackPlayer;
+  final ChessBoardStateNew state;
+  final bool showClock;
+
+  const _TabletPlayerCard({
+    required this.game,
+    required this.isFlipped,
+    required this.blackPlayer,
+    required this.state,
+    this.showClock = true,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    // Determine if this is the white player
+    final isWhitePlayer =
+        (blackPlayer && !isFlipped) || (!blackPlayer && isFlipped);
+
+    final currentPosition =
+        state.isAnalysisMode ? state.analysisState.position : state.position;
+
+    // Check whose turn it is currently
+    final currentTurn = currentPosition?.turn ?? Side.white;
+    final isCurrentPlayer =
+        (isWhitePlayer && currentTurn == Side.white) ||
+        (!isWhitePlayer && currentTurn == Side.black);
+
+    // For tablet, wrap in a refined container (no horizontal margin - parent controls spacing)
+    return Container(
+      decoration: BoxDecoration(
+        color: isCurrentPlayer
+            ? const Color(0xFF1E1E1E)
+            : const Color(0xFF141414),
+        borderRadius: BorderRadius.circular(10.sp),
+        border: Border.all(
+          color: isCurrentPlayer
+              ? Colors.white.withValues(alpha: 0.12)
+              : Colors.white.withValues(alpha: 0.04),
+          width: 1,
+        ),
+      ),
+      child: PlayerFirstRowDetailWidget(
+        isCurrentPlayer: isCurrentPlayer,
+        isWhitePlayer: isWhitePlayer,
+        playerView: PlayerView.boardView,
+        gamesTourModel: game,
+        chessBoardState: state,
+        showClock: showClock,
+      ),
+    );
+  }
+}
+
+/// Tablet landscape board with sidebar - uses pre-calculated sizes
+/// Optimized for side-by-side layout with moves panel
+class _TabletBoardWithSidebar extends ConsumerWidget {
+  final int index;
+  final ChessBoardStateNew state;
+  final int currentPageIndex;
+  final GamesTourModel game;
+  final double boardSize;
+  final double evalBarWidth;
+
+  const _TabletBoardWithSidebar({
+    required this.index,
+    required this.state,
+    required this.currentPageIndex,
+    required this.game,
+    required this.boardSize,
+    required this.evalBarWidth,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    // Read engine settings to control visibility
+    final engineSettings = ref.watch(engineSettingsProviderNew).valueOrNull;
+    final showEngineGauge = engineSettings?.showEngineGauge ?? true;
+
+    final effectiveEvalWidth = showEngineGauge ? evalBarWidth : 0.0;
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // Evaluation bar
+        if (showEngineGauge)
+          SizedBox(
+            width: effectiveEvalWidth,
+            height: boardSize,
+            child: Builder(
+              builder: (context) {
+                final activePosition =
+                    state.isAnalysisMode
+                        ? state.analysisState.position
+                        : state.position;
+                final bool isWhiteToMove =
+                    activePosition?.turn != Side.black;
+
+                return EvaluationBarWidget(
+                  width: effectiveEvalWidth,
+                  height: boardSize,
+                  evaluation: state.evaluation,
+                  mate: state.mate,
+                  isEvaluating: state.isEvaluating,
+                  isFlipped: state.isBoardFlipped,
+                  isWhiteToMove: isWhiteToMove,
+                  positionKey: activePosition?.fen,
+                );
+              },
+            ),
+          ),
+        // Chess board
+        _AnalysisBoard(
+          size: boardSize,
+          chessBoardState: state,
+          isFlipped: state.isBoardFlipped,
+          index: index,
+          game: state.game,
+        ),
+      ],
+    );
+  }
+}
+
 class _BoardWithSidebar extends ConsumerWidget {
   final int index;
   final ChessBoardStateNew state;
@@ -3924,9 +4239,12 @@ class _BoardWithSidebar extends ConsumerWidget {
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final sideBarWidth = showEngineGauge ? 20.w : 0.w;
-        final screenWidth = MediaQuery.sizeOf(context).width;
-        final boardSize = screenWidth - sideBarWidth - 32.w;
+        // Use consistent .sp units for all sizing
+        final sideBarWidth = showEngineGauge ? 20.sp : 0.0;
+        final horizontalMargin = 16.sp * 2; // Matches Container margin below
+        // Use constraints.maxWidth to respect parent constraints (e.g. tablet max width)
+        final screenWidth = constraints.maxWidth;
+        final boardSize = screenWidth - sideBarWidth - horizontalMargin;
 
         // Analysis mode is always active, always use analysis state
         // DISABLED: currentIndex only used for move impact analysis
@@ -6703,7 +7021,7 @@ class _PrincipalVariationListState
                 showEndOfGame
                     ? Center(
                       child: Container(
-                        width: MediaQuery.sizeOf(context).width - 40.sp,
+                        width: double.infinity,
                         margin: EdgeInsets.symmetric(horizontal: 2.sp),
                         decoration: BoxDecoration(
                           border: Border.all(
