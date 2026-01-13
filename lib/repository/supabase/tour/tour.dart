@@ -31,12 +31,12 @@ class TournamentPlayer {
       federation: json['fed'] as String?,
       name: json['name'] as String? ?? '',
       title: json['title'] as String?,
-      fideId: json['fideId'] as int?,
-      played: json['played'] as int? ?? 0,
-      rating: json['rating'] as int?,
-      ratingDiff: json['ratingDiff'] as int?,
+      fideId: _parseInt(json['fideId']),
+      played: _parseInt(json['played']) ?? 0,
+      rating: _parseInt(json['rating']),
+      ratingDiff: _parseInt(json['ratingDiff']),
       score: _parseScore(json['score']), // Handle both int and double
-      performance: json['performance'] as int?,
+      performance: _parseInt(json['performance']),
     );
   }
 
@@ -209,6 +209,14 @@ List<TournamentPlayer> parsePlayersFromJson(List<dynamic> jsonList) {
   return jsonList
       .map((json) => TournamentPlayer.fromJson(json as Map<String, dynamic>))
       .toList();
+}
+
+int? _parseInt(dynamic value) {
+  if (value == null) return null;
+  if (value is int) return value;
+  if (value is num) return value.toInt();
+  if (value is String) return int.tryParse(value);
+  return null;
 }
 
 /// Filters players by minimum rating
@@ -385,6 +393,9 @@ class Tour {
   });
 
   factory Tour.fromJson(Map<String, dynamic> json) {
+    final playersRaw = json['players'];
+    final playersList = playersRaw is List ? playersRaw : const <dynamic>[];
+
     return Tour(
       id: json['id'] as String,
       name: json['name'] as String,
@@ -392,16 +403,16 @@ class Tour {
       info: _TourInfo.fromJson(json['info'] as Map<String, dynamic>),
       createdAt: DateTime.parse(json['created_at'] as String),
       url: json['url'] as String,
-      tier: json['tier'] as int,
+      tier: _parseInt(json['tier']) ?? 0,
       dates:
           (json['dates'] as List)
               .map((date) => DateTime.parse(date as String))
               .toList(),
       image: json['image'] as String?,
-      players: parsePlayersFromJson(json['players'] as List? ?? []),
+      players: parsePlayersFromJson(playersList),
       search: (json['search'] as List?)?.map((e) => e as String).toList(),
       groupBroadcastId: json['group_broadcast_id'] as String?,
-      avgElo: json['avg_elo'] as int?,
+      avgElo: _parseInt(json['avg_elo']),
     );
   }
 
