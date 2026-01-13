@@ -109,14 +109,18 @@ class GroupEventCardModel extends Equatable {
     required DateTime? endDate,
     required List<String> liveGroupIds,
   }) {
+    final now = DateTime.now();
+
     // Check if it's a live event first (highest priority)
     // Settings may store either IDs or names, so check both
     if (liveGroupIds.contains(groupId) ||
         (groupName != null && liveGroupIds.contains(groupName))) {
-      return TourEventCategory.live;
+      final withinStart = startDate == null || !now.isBefore(startDate);
+      final withinEnd = endDate == null || !now.isAfter(endDate);
+      if (withinStart && withinEnd) {
+        return TourEventCategory.live;
+      }
     }
-
-    final now = DateTime.now();
 
     // If we have both start and end dates
     if (startDate != null && endDate != null) {

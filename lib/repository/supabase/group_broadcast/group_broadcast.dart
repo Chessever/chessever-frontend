@@ -24,8 +24,8 @@ class GroupBroadcast {
     id: json['id'] as String,
     createdAt: DateTime.parse(json['created_at'] as String),
     name: json['name'] as String,
-    search: List<String>.from(json['search'] as List),
-    maxAvgElo: json['max_avg_elo'] as int?,
+    search: _parseStringList(json['search']),
+    maxAvgElo: _parseInt(json['max_avg_elo']),
     dateStart:
         json['date_start'] == null
             ? null
@@ -52,4 +52,19 @@ class GroupBroadcast {
   @override
   String toString() =>
       'GroupBroadcast($id, $name, search:$search, elo:$maxAvgElo)';
+}
+
+int? _parseInt(dynamic value) {
+  if (value == null) return null;
+  if (value is int) return value;
+  if (value is num) return value.toInt();
+  if (value is String) return int.tryParse(value);
+  return null;
+}
+
+List<String> _parseStringList(dynamic value) {
+  if (value is List) {
+    return value.map((item) => item.toString()).toList();
+  }
+  return <String>[];
 }

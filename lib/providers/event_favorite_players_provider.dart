@@ -1,4 +1,6 @@
 import 'package:chessever2/repository/local_storage/tournament/tour_local_storage.dart';
+import 'package:chessever2/repository/supabase/game/game_repository.dart';
+import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
 import 'package:chessever2/screens/favorites/favorite_players_provider.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -69,6 +71,39 @@ final eventFavoritePlayersProvider = FutureProvider.autoDispose
       for (final player in tour.players) {
         if (player.fideId != null && player.fideId! > 0) {
           eventPlayerFideIds.add(player.fideId!);
+        }
+      }
+    }
+
+    // Fallback: if tours have no players (stale or missing), derive from games
+    if (eventPlayerFideIds.isEmpty) {
+      final groupBroadcastRepo = ref.read(groupBroadcastRepositoryProvider);
+      final gameRepo = ref.read(gameRepositoryProvider);
+
+      List<String> tourIds;
+      try {
+        tourIds = await groupBroadcastRepo.getTourIdsForGroupBroadcast(eventId);
+      } catch (_) {
+        tourIds = <String>[];
+      }
+
+      if (tourIds.isEmpty) {
+        tourIds = [eventId];
+      }
+
+      final games = await gameRepo.getGamesFromTourIds(
+        tourIds: tourIds,
+        limit: 200,
+        offset: 0,
+      );
+
+      for (final game in games) {
+        final players = game.players;
+        if (players == null || players.isEmpty) continue;
+        for (final player in players) {
+          if (player.fideId > 0) {
+            eventPlayerFideIds.add(player.fideId);
+          }
         }
       }
     }
