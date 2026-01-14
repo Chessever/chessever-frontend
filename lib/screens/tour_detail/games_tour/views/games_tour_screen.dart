@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:chessever2/screens/group_event/widget/tour_loading_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_mode_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/knockout_tournament_state_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_tour_content_body.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
@@ -64,6 +65,21 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
                 );
               }
             }
+            // TABLET-ONLY: Check if rounds contain knockout-stage IDs.
+            // GroupEventGamesTourContentBody can't handle knockout-stage rounds
+            // (it matches game.roundId == round.id which fails for knockout stages).
+            // Force normal mode rendering for knockout tournaments on tablet.
+            final effectiveMode = mode;
+            final bool useNormalMode;
+            if (ResponsiveHelper.isTablet && effectiveMode == GamesTourScreenMode.groupEvent) {
+              final gamesAppBar = ref.watch(gamesAppBarProvider);
+              final hasKnockoutRounds = gamesAppBar.valueOrNull?.gamesAppBarModels
+                  .any((r) => r.id.startsWith('$kKnockoutStagePrefix-')) ?? false;
+              useNormalMode = hasKnockoutRounds;
+            } else {
+              useNormalMode = effectiveMode == GamesTourScreenMode.normal;
+            }
+
             return RefreshIndicator(
               onRefresh: _handleRefresh,
               color: kWhiteColor70,
@@ -71,7 +87,7 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
               displacement: 60.h,
               strokeWidth: 3.w,
               child:
-                  mode == GamesTourScreenMode.normal
+                  useNormalMode
                       ? GamesTourContentBody(
                         gamesScreenModel: data,
                         gamesListViewMode: gamesListViewMode,

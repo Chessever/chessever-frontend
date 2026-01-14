@@ -452,7 +452,7 @@ class _StadiumChipButton extends HookWidget {
     );
 
     // Wider chip on tablet for better text visibility
-    final chipMaxWidth = ResponsiveHelper.isTablet ? 280.0 : 160.w;
+    final chipMaxWidth = ResponsiveHelper.isTablet ? 450.0 : 160.w;
 
     return GestureDetector(
       onTap: onTap,

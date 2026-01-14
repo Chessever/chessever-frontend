@@ -2204,7 +2204,7 @@ class _GameDropdownOverlay extends StatelessWidget {
   final List<GamesTourModel> games;
   final int currentGameIndex;
   final bool isLoading;
-  final ValueChanged<int> onSelect; // Provides the tapped game index directly
+  final ValueChanged<int> onSelect;
   final VoidCallback onDismiss;
 
   const _GameDropdownOverlay({
@@ -2223,9 +2223,7 @@ class _GameDropdownOverlay extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Calculate dropdown width - much wider for player names
     final dropdownWidth = (screenWidth - 32.w).clamp(280.w, 340.w);
-    // Center the dropdown below the trigger
     final leftOffset = (screenWidth - dropdownWidth) / 2;
 
     return GestureDetector(
@@ -2249,29 +2247,34 @@ class _GameDropdownOverlay extends StatelessWidget {
                     child: Opacity(opacity: progress, child: child),
                   );
                 },
-                child: Container(
-                  width: dropdownWidth,
-                  constraints: BoxConstraints(
-                    maxHeight: availableHeight.clamp(180.0, 380.0),
-                  ),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF1A1A1A),
-                    borderRadius: BorderRadius.circular(16.br),
-                    border: Border.all(
-                      color: kWhiteColor.withValues(alpha: 0.08),
-                      width: 1.0,
+                child: GestureDetector(
+                  // Block taps from reaching the dismiss handler
+                  onTap: () {},
+                  behavior: HitTestBehavior.opaque,
+                  child: Container(
+                    width: dropdownWidth,
+                    constraints: BoxConstraints(
+                      maxHeight: availableHeight.clamp(180.0, 380.0),
                     ),
-                  ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(16.br),
-                    child: _GameDropdownContent(
-                      dropdownWidth: dropdownWidth,
-                      availableHeight: availableHeight,
-                      animation: animation,
-                      games: games,
-                      currentGameIndex: currentGameIndex,
-                      isLoading: isLoading,
-                      onSelect: onSelect,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1A1A1A),
+                      borderRadius: BorderRadius.circular(16.br),
+                      border: Border.all(
+                        color: kWhiteColor.withValues(alpha: 0.08),
+                        width: 1.0,
+                      ),
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(16.br),
+                      child: _GameDropdownContent(
+                        dropdownWidth: dropdownWidth,
+                        availableHeight: availableHeight,
+                        animation: animation,
+                        games: games,
+                        currentGameIndex: currentGameIndex,
+                        isLoading: isLoading,
+                        onSelect: onSelect,
+                      ),
                     ),
                   ),
                 ),
