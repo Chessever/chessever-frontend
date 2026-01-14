@@ -90,10 +90,27 @@ class _PositionedListScrollbarState extends State<PositionedListScrollbar> {
     }
 
     // Calculate scroll progress based on the first visible item
-    final firstItem = positions
-        .where((position) => position.itemLeadingEdge >= 0)
-        .reduce((current, next) =>
-            current.index < next.index ? current : next);
+    final visibleItems = positions
+        .where((position) => position.itemLeadingEdge >= 0);
+
+    // Guard against empty filtered collection (tablet layout edge case)
+    if (visibleItems.isEmpty) {
+      // Fallback: use any position if available
+      if (positions.isEmpty) return;
+      final fallbackItem = positions.reduce((current, next) =>
+          current.index < next.index ? current : next);
+      final fallbackProgress = fallbackItem.index / (widget.itemCount - 1).clamp(1, double.infinity);
+      if (mounted) {
+        setState(() {
+          _scrollProgress = fallbackProgress.clamp(0.0, 1.0);
+          _isVisible = widget.itemCount > 0;
+        });
+      }
+      return;
+    }
+
+    final firstItem = visibleItems.reduce((current, next) =>
+        current.index < next.index ? current : next);
 
     final progress = firstItem.index / (widget.itemCount - 1).clamp(1, double.infinity);
 

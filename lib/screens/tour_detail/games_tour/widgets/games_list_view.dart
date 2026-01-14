@@ -101,12 +101,22 @@ class GamesListView extends ConsumerWidget {
         top: 16.sp,
         bottom: MediaQuery.of(context).viewPadding.bottom + 8.sp,
       ),
-      child: ScrollablePositionedList.builder(
-        itemScrollController: itemScrollController,
-        itemPositionsListener: itemPositionsListener,
-        itemCount: itemCount,
-        itemBuilder: (context, index) {
-          final lookup = _lookupItem(
+      child: LayoutBuilder(
+        builder: (context, outerConstraints) {
+          // TABLET FIX: Capture the available width from LayoutBuilder
+          // and pass it to items to ensure they have bounded width.
+          // ScrollablePositionedList can give unbounded width to items,
+          // which breaks nested Expanded widgets.
+          final itemWidth = ResponsiveHelper.isTablet
+              ? outerConstraints.maxWidth
+              : null;
+
+          return ScrollablePositionedList.builder(
+            itemScrollController: itemScrollController,
+            itemPositionsListener: itemPositionsListener,
+            itemCount: itemCount,
+            itemBuilder: (context, index) {
+              final lookup = _lookupItem(
             index: index,
             rounds: rounds,
             gamesByRound: gamesByRound,
@@ -165,7 +175,7 @@ class GamesListView extends ConsumerWidget {
           }
 
           if (lookup is _GameRowData) {
-            return Padding(
+            Widget rowContent = Padding(
               padding: EdgeInsets.only(
                 bottom: lookup.isLastInSection ? 20.sp : 12.sp,
               ),
@@ -174,31 +184,29 @@ class GamesListView extends ConsumerWidget {
                       ? _buildGridRow(context, ref, lookup, orderedGamesList, matchGroupsByRound)
                       : _buildCardRow(context, ref, lookup, orderedGamesList, matchGroupsByRound),
             );
+            // TABLET: Wrap with SizedBox to provide bounded width
+            if (itemWidth != null) {
+              rowContent = SizedBox(width: itemWidth, child: rowContent);
+            }
+            return rowContent;
           }
 
           return const SizedBox.shrink();
+            },
+            padding: EdgeInsets.only(
+              left: horizontalPadding,
+              right: horizontalPadding,
+              top: 16.sp,
+              bottom: MediaQuery.of(context).viewPadding.bottom + 8.sp,
+            ),
+          );
         },
-        padding: EdgeInsets.only(
-          left: horizontalPadding,
-          right: horizontalPadding,
-          top: 16.sp,
-          bottom: MediaQuery.of(context).viewPadding.bottom + 8.sp,
-        ),
       ),
     );
 
-    // Apply tablet max-width constraint
-    if (ResponsiveHelper.isTablet) {
-      return Center(
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-            maxWidth: ResponsiveHelper.contentMaxWidth,
-          ),
-          child: listContent,
-        ),
-      );
-    }
-
+    // Note: Tablet max-width constraint is applied by parent TournamentDetailScreen
+    // Applying it here would create nested Center > ConstrainedBox which can cause
+    // layout issues on tablet landscape with PageView animations.
     return listContent;
   }
 
@@ -209,26 +217,47 @@ class GamesListView extends ConsumerWidget {
     List<GamesTourModel> orderedGamesList,
     Map<String, Map<String, List<GamesTourModel>>> matchGroupsByRound,
   ) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        _buildGridGame(
-          context,
-          ref,
-          item.game1,
-          item.globalIndex1,
-          orderedGamesList,
-          matchGroupsByRound,
-        ),
-        if (item.game2 != null)
-          _buildGridGame(
+    final game1Widget = _buildGridGame(
+      context,
+      ref,
+      item.game1,
+      item.globalIndex1,
+      orderedGamesList,
+      matchGroupsByRound,
+    );
+
+    final game2Widget = item.game2 != null
+        ? _buildGridGame(
             context,
             ref,
             item.game2!,
             item.globalIndex2!,
             orderedGamesList,
             matchGroupsByRound,
-          ),
+          )
+        : null;
+
+    // On tablet, use Expanded to give children bounded width constraints.
+    // Without this, Row with spaceBetween gives children unbounded width,
+    // which breaks nested Expanded widgets in PlayerFirstRowDetailWidget.
+    if (ResponsiveHelper.isTablet) {
+      return Row(
+        children: [
+          Expanded(child: game1Widget),
+          if (game2Widget != null) ...[
+            SizedBox(width: 16.sp),
+            Expanded(child: game2Widget),
+          ],
+        ],
+      );
+    }
+
+    // On phone, keep original spaceBetween layout
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        game1Widget,
+        if (game2Widget != null) game2Widget,
       ],
     );
   }

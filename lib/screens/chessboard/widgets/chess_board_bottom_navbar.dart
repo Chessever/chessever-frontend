@@ -52,6 +52,7 @@ class ChessSvgBottomNavbar extends StatelessWidget {
     );
 
     final bool showDepth = depthText != null && depthText!.isNotEmpty;
+    final isTabletLandscape = isTablet && ResponsiveHelper.isLandscape;
 
     // On tablet, use a column layout to avoid overlap
     // On phone, use the original positioned layout
@@ -64,23 +65,33 @@ class ChessSvgBottomNavbar extends StatelessWidget {
               }
             : null,
         onLongPress: onLongPress,
+        // Absorb horizontal drags on tablet landscape to prevent PageView interference
+        onHorizontalDragStart: isTabletLandscape ? (_) {} : null,
+        onHorizontalDragUpdate: isTabletLandscape ? (_) {} : null,
+        onHorizontalDragEnd: isTabletLandscape ? (_) {} : null,
         behavior: HitTestBehavior.opaque,
         child: SizedBox(
           width: width,
           height: double.infinity,
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              SvgWidget(
-                svgPath,
-                height: 24.h,
-                width: 24.w,
-                colorFilter: ColorFilter.mode(iconColor, BlendMode.srcIn),
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Padding(
+              padding: EdgeInsets.symmetric(vertical: 2.0),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SvgWidget(
+                    svgPath,
+                    height: 24.h,
+                    width: 24.w,
+                    colorFilter: ColorFilter.mode(iconColor, BlendMode.srcIn),
+                  ),
+                  SizedBox(height: 2.h),
+                  Text(depthText!, style: depthStyle),
+                ],
               ),
-              SizedBox(height: 4.h),
-              Text(depthText!, style: depthStyle),
-            ],
+            ),
           ),
         ),
       );
@@ -94,6 +105,10 @@ class ChessSvgBottomNavbar extends StatelessWidget {
             }
           : null,
       onLongPress: onLongPress,
+      // Absorb horizontal drags on tablet landscape to prevent PageView interference
+      onHorizontalDragStart: isTabletLandscape ? (_) {} : null,
+      onHorizontalDragUpdate: isTabletLandscape ? (_) {} : null,
+      onHorizontalDragEnd: isTabletLandscape ? (_) {} : null,
       behavior: HitTestBehavior.opaque,
       child: SizedBox(
         width: width,
@@ -148,6 +163,10 @@ class ChessSvgBottomNavbarWithLongPress extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // On tablet landscape, absorb horizontal drags to prevent them from
+    // triggering the PageView half-swipe bug when tapping buttons.
+    final isTabletLandscape = ResponsiveHelper.isTablet && ResponsiveHelper.isLandscape;
+
     return GestureDetector(
       onTap: onPressed != null
           ? () {
@@ -158,6 +177,10 @@ class ChessSvgBottomNavbarWithLongPress extends StatelessWidget {
       onLongPressStart: onLongPressStart != null ? (_) => onLongPressStart!() : null,
       onLongPressEnd: onLongPressEnd != null ? (_) => onLongPressEnd!() : null,
       onLongPressCancel: onLongPressEnd,
+      // Absorb horizontal drags on tablet landscape to prevent PageView interference
+      onHorizontalDragStart: isTabletLandscape ? (_) {} : null,
+      onHorizontalDragUpdate: isTabletLandscape ? (_) {} : null,
+      onHorizontalDragEnd: isTabletLandscape ? (_) {} : null,
       behavior: HitTestBehavior.opaque,
       child: SizedBox(
         width: width,

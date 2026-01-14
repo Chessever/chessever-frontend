@@ -166,7 +166,7 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
     );
 
     // Tablet-refined container with subtle top border
-    return Container(
+    final bar = Container(
       width: fullWidth,
       decoration: BoxDecoration(
         color: kBlackColor,
@@ -205,6 +205,20 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
           ),
         ),
       ),
+    );
+
+    if (!isTabletLandscape) {
+      return bar;
+    }
+
+    return GestureDetector(
+      // Absorb horizontal drags so taps in the bottom bar don't trigger
+      // the parent PageView on tablet landscape.
+      onHorizontalDragStart: (_) {},
+      onHorizontalDragUpdate: (_) {},
+      onHorizontalDragEnd: (_) {},
+      behavior: HitTestBehavior.opaque,
+      child: bar,
     );
   }
 }

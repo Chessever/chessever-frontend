@@ -141,7 +141,7 @@ class _AutoPinLogController {
 
     // Check if this is a multi-stage knockout tournament
     final tourDetail = ref.read(tourDetailScreenProvider).valueOrNull;
-    if (tourDetail == null) return allGames;
+    if (tourDetail == null || tourDetail.tours.isEmpty) return allGames;
 
     // Find the current tour to get its groupBroadcastId
     final currentTour = tourDetail.tours
