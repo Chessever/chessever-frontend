@@ -447,6 +447,22 @@ class ChessBoardScreenNew extends ConsumerStatefulWidget {
   ConsumerState<ChessBoardScreenNew> createState() => _ChessBoardScreenState();
 }
 
+/// Global flag to track when any dropdown/popup is open on the chess board screen.
+/// Used to defer rebuilds that would close popups unexpectedly on tablets.
+class _ChessBoardPopupState {
+  static bool isAnyPopupOpen = false;
+
+  /// Call when opening a popup (dropdown, menu, etc.)
+  static void markOpen() {
+    isAnyPopupOpen = true;
+  }
+
+  /// Call when closing a popup
+  static void markClosed() {
+    isAnyPopupOpen = false;
+  }
+}
+
 class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     with WidgetsBindingObserver {
   late PageController _pageController;
@@ -1170,6 +1186,11 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
                       if (chessBoardState.isAnalysisMode != analysisMode) {
                         WidgetsBinding.instance.addPostFrameCallback((_) {
                           if (_pageController.hasClients) {
+                            // On tablets, skip setState if popup is open to prevent
+                            // rebuilds that would close dropdowns/menus unexpectedly
+                            if (ResponsiveHelper.isTablet && _ChessBoardPopupState.isAnyPopupOpen) {
+                              return;
+                            }
                             setState(() {
                               analysisMode = chessBoardState.isAnalysisMode;
                             });
@@ -1812,25 +1833,82 @@ class _AppBarState extends ConsumerState<_AppBar> {
 /// Wrapper widget that absorbs horizontal drag gestures on tablets to prevent
 /// PageView interference from closing popup menus prematurely.
 /// On mobile, this is a pass-through (returns child directly).
-class _TabletPopupMenuWrapper extends StatelessWidget {
+/// Also tracks popup open/close state globally to defer rebuilds.
+class _TabletPopupMenuWrapper extends StatefulWidget {
   final Widget child;
 
   const _TabletPopupMenuWrapper({required this.child});
 
   @override
+  State<_TabletPopupMenuWrapper> createState() => _TabletPopupMenuWrapperState();
+}
+
+class _TabletPopupMenuWrapperState extends State<_TabletPopupMenuWrapper>
+    with WidgetsBindingObserver {
+  bool _wasPopupOpen = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (ResponsiveHelper.isTablet) {
+      WidgetsBinding.instance.addObserver(this);
+    }
+  }
+
+  @override
+  void dispose() {
+    if (ResponsiveHelper.isTablet) {
+      WidgetsBinding.instance.removeObserver(this);
+      // Clean up if we had marked a popup as open
+      if (_wasPopupOpen) {
+        _ChessBoardPopupState.markClosed();
+      }
+    }
+    super.dispose();
+  }
+
+  @override
+  void didChangeMetrics() {
+    // Popup routes can change metrics; this helps track popup state
+  }
+
+  @override
   Widget build(BuildContext context) {
     if (!ResponsiveHelper.isTablet) {
-      return child;
+      return widget.child;
     }
 
-    // On tablets, wrap in gesture detector that absorbs horizontal drags
-    // to prevent PageView from competing for gestures
-    return GestureDetector(
-      onHorizontalDragStart: (_) {},
-      onHorizontalDragUpdate: (_) {},
-      onHorizontalDragEnd: (_) {},
+    // On tablets, wrap in:
+    // 1. Listener to track taps without consuming them
+    // 2. GestureDetector to absorb horizontal drags
+    return Listener(
+      onPointerDown: (_) {
+        // When pointer goes down, mark that a popup might be opening
+        // This helps protect against immediate rebuilds
+        _ChessBoardPopupState.markOpen();
+        _wasPopupOpen = true;
+
+        // Schedule cleanup after a delay - gives time for popup to actually open
+        Future.delayed(const Duration(milliseconds: 800), () {
+          if (mounted && _wasPopupOpen) {
+            // Check if there's still an open popup route
+            final navigator = Navigator.of(context, rootNavigator: true);
+            final hasPopupRoute = navigator.canPop();
+            if (!hasPopupRoute) {
+              _wasPopupOpen = false;
+              _ChessBoardPopupState.markClosed();
+            }
+          }
+        });
+      },
       behavior: HitTestBehavior.translucent,
-      child: child,
+      child: GestureDetector(
+        onHorizontalDragStart: (_) {},
+        onHorizontalDragUpdate: (_) {},
+        onHorizontalDragEnd: (_) {},
+        behavior: HitTestBehavior.translucent,
+        child: widget.child,
+      ),
     );
   }
 }
@@ -1862,6 +1940,13 @@ class _GameSelectionDropdownState extends State<_GameSelectionDropdown>
   bool _isOpen = false;
   OverlayEntry? _overlayEntry;
 
+  // Timestamp when dropdown was opened - used to prevent immediate dismissal
+  // on tablets where gesture/rebuild timing can cause unwanted closes
+  DateTime? _openedAt;
+
+  // Minimum time dropdown must stay open before allowing dismissal (tablet only)
+  static const _minOpenDuration = Duration(milliseconds: 300);
+
   @override
   void initState() {
     super.initState();
@@ -1888,6 +1973,15 @@ class _GameSelectionDropdownState extends State<_GameSelectionDropdown>
       _overlayEntry?.remove();
     } catch (_) {}
     _overlayEntry = null;
+  }
+
+  /// Check if enough time has passed since opening to allow dismissal.
+  /// On tablets, we need this guard to prevent rebuilds from causing
+  /// immediate unwanted dismissals.
+  bool _canDismiss() {
+    if (!ResponsiveHelper.isTablet) return true;
+    if (_openedAt == null) return true;
+    return DateTime.now().difference(_openedAt!) >= _minOpenDuration;
   }
 
   String _formatName(String fullName, {double? maxWidth}) {
@@ -1962,14 +2056,25 @@ class _GameSelectionDropdownState extends State<_GameSelectionDropdown>
     if (widget.games.length <= 1 || widget.isLoading || _isOpen) return;
 
     HapticFeedback.selectionClick();
+    _openedAt = DateTime.now(); // Track when opened for dismiss protection
+    _ChessBoardPopupState.markOpen(); // Mark globally that a popup is open
     setState(() => _isOpen = true);
     _showOverlay();
     _animationController.forward();
   }
 
-  void _closeDropdown() {
+  void _closeDropdown({bool force = false}) {
     if (!_isOpen) return;
 
+    // On tablets, prevent immediate dismissal to guard against
+    // gesture/rebuild timing issues causing unwanted closes
+    if (!force && !_canDismiss()) {
+      debugPrint('🛡️ Dropdown dismiss blocked - opened too recently');
+      return;
+    }
+
+    _openedAt = null;
+    _ChessBoardPopupState.markClosed(); // Mark globally that popup is closed
     _animationController.reverse().then((_) {
       if (mounted) {
         setState(() => _isOpen = false);
@@ -2018,9 +2123,9 @@ class _GameSelectionDropdownState extends State<_GameSelectionDropdown>
                   '🎯 Skipping navigation - same game or invalid index',
                 );
               }
-              _closeDropdown();
+              _closeDropdown(force: true); // User intentionally selected
             },
-            onDismiss: _closeDropdown,
+            onDismiss: _closeDropdown, // Guarded by _canDismiss()
           ),
     );
 
@@ -2045,7 +2150,7 @@ class _GameSelectionDropdownState extends State<_GameSelectionDropdown>
         showChevron: widget.games.length > 1,
         onTap: () {
           if (_isOpen) {
-            _closeDropdown();
+            _closeDropdown(force: true); // User intentionally tapped to close
           } else {
             _openDropdown();
           }
