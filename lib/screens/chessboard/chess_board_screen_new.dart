@@ -1666,6 +1666,11 @@ class _AppBarState extends ConsumerState<_AppBar> {
     final state = boardState.valueOrNull;
     final infoSheetPgn = state?.pgnData ?? widget.game.pgn;
 
+    // Debug: Log when AppBar rebuilds on tablets while popup is open
+    if (ResponsiveHelper.isTablet && _ChessBoardPopupState.isAnyPopupOpen) {
+      debugPrint('⚠️ TABLET APPBAR REBUILD while popup open: gameIndex=${widget.currentGameIndex}');
+    }
+
     return AppBar(
       elevation: 0,
       backgroundColor: Colors.black,
@@ -1889,14 +1894,17 @@ class _TabletPopupMenuWrapperState extends State<_TabletPopupMenuWrapper>
         _wasPopupOpen = true;
 
         // Schedule cleanup after a delay - gives time for popup to actually open
-        Future.delayed(const Duration(milliseconds: 800), () {
+        Future.delayed(const Duration(milliseconds: 1500), () {
           if (mounted && _wasPopupOpen) {
             // Check if there's still an open popup route
             final navigator = Navigator.of(context, rootNavigator: true);
             final hasPopupRoute = navigator.canPop();
-            if (!hasPopupRoute) {
+            debugPrint('🕐 TABLET WRAPPER CLEANUP: hasPopupRoute=$hasPopupRoute, isAnyPopupOpen=${_ChessBoardPopupState.isAnyPopupOpen}');
+            if (!hasPopupRoute && !_ChessBoardPopupState.isAnyPopupOpen) {
+              debugPrint('🕐 TABLET WRAPPER: Resetting popup state');
               _wasPopupOpen = false;
-              _ChessBoardPopupState.markClosed();
+              // Don't reset global state here - let the dropdown/popup handle it
+              // _ChessBoardPopupState.markClosed();
             }
           }
         });
@@ -1945,7 +1953,10 @@ class _GameSelectionDropdownState extends State<_GameSelectionDropdown>
   DateTime? _openedAt;
 
   // Minimum time dropdown must stay open before allowing dismissal (tablet only)
-  static const _minOpenDuration = Duration(milliseconds: 300);
+  static const _minOpenDuration = Duration(milliseconds: 500);
+
+  // Track unique open ID to detect stale close attempts
+  int _openId = 0;
 
   @override
   void initState() {
@@ -1962,13 +1973,32 @@ class _GameSelectionDropdownState extends State<_GameSelectionDropdown>
   }
 
   @override
+  void deactivate() {
+    // Called when widget is removed from tree (before dispose)
+    if (_isOpen && ResponsiveHelper.isTablet) {
+      debugPrint('🚨 TABLET DROPDOWN: deactivate() called while open! Stack trace:');
+      debugPrint(StackTrace.current.toString().split('\n').take(10).join('\n'));
+    }
+    super.deactivate();
+  }
+
+  @override
   void dispose() {
+    // Log when dispose is called while dropdown is open - this is the likely culprit
+    if (_isOpen && ResponsiveHelper.isTablet) {
+      debugPrint('🚨 TABLET DROPDOWN: dispose() called while open! This is likely the bug.');
+      debugPrint('🚨 Stack trace:');
+      debugPrint(StackTrace.current.toString().split('\n').take(15).join('\n'));
+    }
     _removeOverlay();
     _animationController.dispose();
     super.dispose();
   }
 
   void _removeOverlay() {
+    if (_isOpen && ResponsiveHelper.isTablet) {
+      debugPrint('🔴 TABLET: _removeOverlay() called while _isOpen=true');
+    }
     try {
       _overlayEntry?.remove();
     } catch (_) {}
@@ -1981,7 +2011,12 @@ class _GameSelectionDropdownState extends State<_GameSelectionDropdown>
   bool _canDismiss() {
     if (!ResponsiveHelper.isTablet) return true;
     if (_openedAt == null) return true;
-    return DateTime.now().difference(_openedAt!) >= _minOpenDuration;
+    final elapsed = DateTime.now().difference(_openedAt!);
+    final canDismiss = elapsed >= _minOpenDuration;
+    if (!canDismiss) {
+      debugPrint('🛡️ TABLET: _canDismiss() returning false, elapsed=${elapsed.inMilliseconds}ms');
+    }
+    return canDismiss;
   }
 
   String _formatName(String fullName, {double? maxWidth}) {
@@ -2056,8 +2091,15 @@ class _GameSelectionDropdownState extends State<_GameSelectionDropdown>
     if (widget.games.length <= 1 || widget.isLoading || _isOpen) return;
 
     HapticFeedback.selectionClick();
+    _openId++; // Increment to invalidate any pending close attempts
+    final currentOpenId = _openId;
     _openedAt = DateTime.now(); // Track when opened for dismiss protection
     _ChessBoardPopupState.markOpen(); // Mark globally that a popup is open
+
+    if (ResponsiveHelper.isTablet) {
+      debugPrint('📂 TABLET DROPDOWN OPENED: openId=$currentOpenId, time=${_openedAt}');
+    }
+
     setState(() => _isOpen = true);
     _showOverlay();
     _animationController.forward();
@@ -2066,11 +2108,23 @@ class _GameSelectionDropdownState extends State<_GameSelectionDropdown>
   void _closeDropdown({bool force = false}) {
     if (!_isOpen) return;
 
+    final elapsed = _openedAt != null ? DateTime.now().difference(_openedAt!) : Duration.zero;
+
+    if (ResponsiveHelper.isTablet) {
+      debugPrint('📕 TABLET DROPDOWN _closeDropdown called: force=$force, elapsed=${elapsed.inMilliseconds}ms, openId=$_openId');
+      debugPrint('📕 Stack trace (first 8 lines):');
+      debugPrint(StackTrace.current.toString().split('\n').take(8).join('\n'));
+    }
+
     // On tablets, prevent immediate dismissal to guard against
     // gesture/rebuild timing issues causing unwanted closes
     if (!force && !_canDismiss()) {
-      debugPrint('🛡️ Dropdown dismiss blocked - opened too recently');
+      debugPrint('🛡️ Dropdown dismiss blocked - opened too recently (${elapsed.inMilliseconds}ms < ${_minOpenDuration.inMilliseconds}ms)');
       return;
+    }
+
+    if (ResponsiveHelper.isTablet) {
+      debugPrint('📕 TABLET DROPDOWN CLOSING: proceeding with close');
     }
 
     _openedAt = null;
@@ -2135,6 +2189,11 @@ class _GameSelectionDropdownState extends State<_GameSelectionDropdown>
   @override
   Widget build(BuildContext context) {
     if (widget.games.isEmpty) return const SizedBox.shrink();
+
+    // Debug: Log when dropdown widget rebuilds while open
+    if (ResponsiveHelper.isTablet && _isOpen) {
+      debugPrint('🔄 TABLET DROPDOWN REBUILD while open: _isOpen=$_isOpen, openId=$_openId');
+    }
 
     final currentGame = widget.games[widget.currentGameIndex];
     final displayText =
@@ -2377,17 +2436,24 @@ class _GameDropdownOverlay extends StatelessWidget {
     // to dismiss unexpectedly. We use a more robust barrier approach.
     Widget buildBarrier() {
       if (isTablet) {
-        // On tablets, use GestureDetector with deferToChild behavior and
-        // absorb horizontal drags to prevent PageView interference.
+        // On tablets, use opaque behavior to ensure we catch ALL taps on the barrier.
+        // The deferToChild behavior was allowing taps to pass through the transparent
+        // container, potentially causing unexpected dismissals.
+        // Also absorb horizontal drags to prevent PageView from competing for gestures.
         return GestureDetector(
-          behavior: HitTestBehavior.deferToChild,
-          onTap: onDismiss,
+          behavior: HitTestBehavior.opaque,
+          onTap: () {
+            debugPrint('🔲 TABLET BARRIER TAP: calling onDismiss');
+            onDismiss();
+          },
           // Absorb horizontal drags on tablets to prevent PageView from
           // competing for gestures, which can cause premature dismissal.
-          onHorizontalDragStart: (_) {},
+          onHorizontalDragStart: (_) {
+            debugPrint('🔲 TABLET BARRIER: horizontal drag absorbed');
+          },
           onHorizontalDragUpdate: (_) {},
           onHorizontalDragEnd: (_) {},
-          child: Container(color: Colors.transparent),
+          child: Container(color: Colors.black.withOpacity(0.01)), // Slightly visible for hit testing
         );
       }
       // On mobile, simple transparent barrier works fine
