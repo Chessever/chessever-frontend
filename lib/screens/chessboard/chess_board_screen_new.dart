@@ -1646,20 +1646,25 @@ class _AppBarState extends ConsumerState<_AppBar> {
   }
 
   void _showEventInfoSheet(BuildContext context, WidgetRef ref, String? pgn) {
-    // On tablets, disable barrier tap dismissal to prevent phantom tap dismissals.
-    // Users can still close by dragging down. The phantom taps that plague tablets
-    // hit the barrier and would otherwise close the sheet immediately.
+    // On tablets, use custom barrier with timing guard to prevent phantom tap dismissals
+    // while still allowing intentional taps to dismiss after a delay.
     if (ResponsiveHelper.isTablet) {
       _ChessBoardPopupState.markOpen();
-      debugPrint('📂 TABLET INFO SHEET: showing with isDismissible=false');
+      final openedAt = DateTime.now();
+      const minOpenDuration = Duration(milliseconds: 600);
+
       showModalBottomSheet(
         context: context,
         isScrollControlled: true,
         backgroundColor: Colors.transparent,
         constraints: ResponsiveHelper.bottomSheetConstraints,
-        isDismissible: false, // Disable barrier tap on tablets to prevent phantom dismissals
-        enableDrag: true, // Keep drag-to-dismiss working
-        builder: (context) => _EventInfoSheet(game: widget.game, pgn: pgn),
+        isDismissible: false, // We handle dismissal ourselves with timing guard
+        enableDrag: true,
+        builder: (sheetContext) => _TabletSafeBottomSheet(
+          openedAt: openedAt,
+          minOpenDuration: minOpenDuration,
+          child: _EventInfoSheet(game: widget.game, pgn: pgn),
+        ),
       ).then((_) {
         _ChessBoardPopupState.markClosed();
       });
@@ -2153,6 +2158,53 @@ class _TabletSafePopupMenuState<T> extends State<_TabletSafePopupMenu<T>>
         icon: widget.icon,
         onPressed: widget.enabled ? _openMenu : null,
       ),
+    );
+  }
+}
+
+/// Wrapper for bottom sheets on tablets that adds a timing-guarded barrier.
+/// This prevents phantom tap dismissals while still allowing intentional taps
+/// to dismiss the sheet after a delay.
+class _TabletSafeBottomSheet extends StatelessWidget {
+  final Widget child;
+  final DateTime openedAt;
+  final Duration minOpenDuration;
+
+  const _TabletSafeBottomSheet({
+    required this.child,
+    required this.openedAt,
+    required this.minOpenDuration,
+  });
+
+  bool _canDismiss() {
+    final elapsed = DateTime.now().difference(openedAt);
+    return elapsed >= minOpenDuration;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      children: [
+        // Custom barrier with timing guard - positioned behind the sheet
+        Positioned.fill(
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () {
+              if (_canDismiss()) {
+                Navigator.of(context).pop();
+              } else {
+                debugPrint('🛡️ TABLET SHEET: barrier tap blocked - opened too recently');
+              }
+            },
+            child: Container(color: Colors.transparent),
+          ),
+        ),
+        // The actual bottom sheet content
+        Align(
+          alignment: Alignment.bottomCenter,
+          child: child,
+        ),
+      ],
     );
   }
 }
