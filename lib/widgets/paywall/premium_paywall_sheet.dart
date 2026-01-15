@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 import 'package:chessever2/revenue_cat_service/revenue_cat_service.dart';
 import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/theme/app_theme.dart';
@@ -29,7 +30,12 @@ Future<bool> showPremiumPaywallSheet({required BuildContext context}) async {
 
 /// Guard that checks subscription and shows paywall if needed.
 /// Returns true if user has premium or just subscribed.
+/// Note: Requires authentication first - shows auth upgrade sheet if user is anonymous.
 Future<bool> requirePremiumGuard(BuildContext context, WidgetRef ref) async {
+  // First ensure user is authenticated (not anonymous)
+  final isAuthenticated = await requireFullAuthGuard(context);
+  if (!isAuthenticated) return false;
+
   final subscriptionState = ref.read(subscriptionProvider);
   if (subscriptionState.isSubscribed) return true;
 

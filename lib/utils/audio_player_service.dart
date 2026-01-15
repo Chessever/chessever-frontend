@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:io';
+import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
 
@@ -27,6 +29,29 @@ class AudioPlayerService with WidgetsBindingObserver {
   bool _initialized = false;
   bool _assetsLoaded = false;
   Future<void>? _initializing;
+  bool _audioSessionConfigured = false;
+
+  /// Configure iOS audio session to use ambient mode (doesn't interrupt other audio)
+  Future<void> _configureAudioSession() async {
+    if (_audioSessionConfigured) return;
+
+    if (Platform.isIOS) {
+      try {
+        // Configure iOS AVAudioSession to ambient mode which:
+        // - Doesn't interrupt other audio (music, podcasts, etc.)
+        // - Mixes with other audio
+        // - Respects the silent switch
+        const channel = MethodChannel('com.chessever/audio_session');
+        await channel.invokeMethod('configureAmbientSession');
+        debugPrint('🎧 AudioPlayerService: iOS audio session configured for ambient mode');
+      } catch (e) {
+        // If the channel doesn't exist yet, we'll configure via native code
+        debugPrint('🎧 AudioPlayerService: iOS audio session configuration via MethodChannel not available, using native defaults');
+      }
+    }
+
+    _audioSessionConfigured = true;
+  }
 
   Future<void> initializeAndLoadAllAssets({bool force = false}) {
     // Always reuse the in-flight initialization to avoid racing init/deinit.
@@ -76,6 +101,10 @@ class AudioPlayerService with WidgetsBindingObserver {
       _initialized = false;
       _assetsLoaded = false;
     }
+
+    // Configure audio session BEFORE initializing SoLoud
+    // This ensures our app doesn't steal audio focus from other apps
+    await _configureAudioSession();
 
     if (!player.isInitialized) {
       await SoLoud.instance.init();

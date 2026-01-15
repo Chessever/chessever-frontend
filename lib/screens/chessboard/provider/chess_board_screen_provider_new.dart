@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:math' as math;
+import 'package:chessever2/providers/board_settings_provider_new.dart';
 import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/repository/lichess/cloud_eval/cloud_eval.dart';
 import 'package:chessever2/repository/local_storage/local_eval/local_eval_cache.dart';
@@ -3735,6 +3736,12 @@ class ChessBoardScreenNotifierNew
   }
 
   void _playSoundForSan(String san) {
+    // Check if sound is enabled in user settings
+    final boardSettings = ref.read(boardSettingsProviderNew).valueOrNull;
+    if (boardSettings?.soundEnabled != true) {
+      return; // Sound disabled, skip playing
+    }
+
     final audio = AudioPlayerService.instance;
     if (san.contains('#')) {
       audio.playSound(audio.pieceCheckmateSfx);

@@ -1041,6 +1041,12 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
             return;
           }
 
+          // Check if sound is enabled in user settings
+          final boardSettings = ref.read(boardSettingsProviderNew).valueOrNull;
+          if (boardSettings?.soundEnabled != true) {
+            return; // Sound disabled, skip playing
+          }
+
           final audioService = AudioPlayerService.instance;
 
           // Determine if we're going forward or backward
@@ -1668,129 +1674,163 @@ class _AppBarState extends ConsumerState<_AppBar> {
       actions: [
         SizedBox(width: 4.sp),
         // Event info button (hidden when navigating from library for position analysis)
+        // Wrapped in gesture absorber on tablets to prevent PageView interference
         if (!widget.hideEventInfo)
-          IconButton(
-            icon: Icon(
-              Icons.info_outline_rounded,
-              color: kWhiteColor,
-              size: 20.sp,
+          _TabletPopupMenuWrapper(
+            child: IconButton(
+              icon: Icon(
+                Icons.info_outline_rounded,
+                color: kWhiteColor,
+                size: 20.sp,
+              ),
+              tooltip: 'Event info',
+              onPressed:
+                  widget.isLoading
+                      ? null
+                      : () => _showEventInfoSheet(context, ref, infoSheetPgn),
             ),
-            tooltip: 'Event info',
-            onPressed:
-                widget.isLoading
-                    ? null
-                    : () => _showEventInfoSheet(context, ref, infoSheetPgn),
           ),
-        // Save Analysis button
-        IconButton(
-          icon: Icon(Icons.save_outlined, color: kWhiteColor, size: 20.sp),
-          tooltip: 'Save analysis',
-          onPressed: widget.isLoading ? null : _showSaveAnalysisDialog,
+        // Save Analysis button - wrapped on tablets
+        _TabletPopupMenuWrapper(
+          child: IconButton(
+            icon: Icon(Icons.save_outlined, color: kWhiteColor, size: 20.sp),
+            tooltip: 'Save analysis',
+            onPressed: widget.isLoading ? null : _showSaveAnalysisDialog,
+          ),
         ),
-        // 3-dot menu
-        PopupMenuButton<String>(
-          icon: Icon(Icons.more_vert, color: kWhiteColor, size: 22.sp),
-          enabled: !widget.isLoading,
-          onSelected: (value) async {
-            if (value == 'share') {
-              shareGameBtnClicked();
-            } else if (value == 'board_settings') {
-              final allowed = await requireFullAuthGuard(context);
-              if (!allowed) return;
-              if (!context.mounted) return;
-              Navigator.of(context).push(ChessBoardSettingsPage.route());
-            } else if (value == 'clear_analysis') {
-              final params = ChessBoardProviderParams(
-                game: widget.game,
-                index: widget.currentGameIndex,
-              );
-              final boardState = ref.read(chessBoardScreenProviderNew(params));
-              final analysisGame = boardState.valueOrNull?.analysisState.game;
-              final hasCustomAnalysis = _gameHasCustomVariations(analysisGame);
-
-              if (!hasCustomAnalysis) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('No custom analysis to clear'),
-                    backgroundColor: Colors.orange,
-                    behavior: SnackBarBehavior.floating,
-                  ),
+        // 3-dot menu - wrapped in gesture absorber on tablets to prevent
+        // PageView gesture interference from closing the popup menu
+        _TabletPopupMenuWrapper(
+          child: PopupMenuButton<String>(
+            icon: Icon(Icons.more_vert, color: kWhiteColor, size: 22.sp),
+            enabled: !widget.isLoading,
+            onSelected: (value) async {
+              if (value == 'share') {
+                shareGameBtnClicked();
+              } else if (value == 'board_settings') {
+                final allowed = await requireFullAuthGuard(context);
+                if (!allowed) return;
+                if (!context.mounted) return;
+                Navigator.of(context).push(ChessBoardSettingsPage.route());
+              } else if (value == 'clear_analysis') {
+                final params = ChessBoardProviderParams(
+                  game: widget.game,
+                  index: widget.currentGameIndex,
                 );
-                return;
-              }
+                final boardState = ref.read(chessBoardScreenProviderNew(params));
+                final analysisGame = boardState.valueOrNull?.analysisState.game;
+                final hasCustomAnalysis = _gameHasCustomVariations(analysisGame);
 
-              HapticFeedback.selectionClick();
-              final confirmed =
-                  await _showAnalysisConfirmationDialog(
-                    context: context,
-                    title: 'Clear analysis?',
-                    message:
-                        'This will remove every custom branch, including nested subvariants. This action cannot be undone.',
-                    confirmLabel: 'Clear',
-                    confirmColor: kRedColor,
-                  ) ??
-                  false;
-              if (!confirmed) return;
-              HapticFeedback.heavyImpact();
-              final notifier = ref.read(
-                chessBoardScreenProviderNew(params).notifier,
-              );
-              await notifier.clearUserAnalysis();
-            }
-          },
-          itemBuilder:
-              (context) => [
-                PopupMenuItem(
-                  value: 'board_settings',
-                  child: Row(
-                    children: [
-                      Icon(Icons.settings, color: kWhiteColor),
-                      SizedBox(width: 8.w),
-                      const Text('Board Settings'),
-                    ],
+                if (!hasCustomAnalysis) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('No custom analysis to clear'),
+                      backgroundColor: Colors.orange,
+                      behavior: SnackBarBehavior.floating,
+                    ),
+                  );
+                  return;
+                }
+
+                HapticFeedback.selectionClick();
+                final confirmed =
+                    await _showAnalysisConfirmationDialog(
+                      context: context,
+                      title: 'Clear analysis?',
+                      message:
+                          'This will remove every custom branch, including nested subvariants. This action cannot be undone.',
+                      confirmLabel: 'Clear',
+                      confirmColor: kRedColor,
+                    ) ??
+                    false;
+                if (!confirmed) return;
+                HapticFeedback.heavyImpact();
+                final notifier = ref.read(
+                  chessBoardScreenProviderNew(params).notifier,
+                );
+                await notifier.clearUserAnalysis();
+              }
+            },
+            itemBuilder:
+                (context) => [
+                  PopupMenuItem(
+                    value: 'board_settings',
+                    child: Row(
+                      children: [
+                        Icon(Icons.settings, color: kWhiteColor),
+                        SizedBox(width: 8.w),
+                        const Text('Board Settings'),
+                      ],
+                    ),
                   ),
-                ),
-                PopupMenuItem(
-                  value: 'share',
-                  child: Row(
-                    children: [
-                      Icon(Icons.share, color: kWhiteColor),
-                      SizedBox(width: 8.w),
-                      const Text('Share Game'),
-                    ],
+                  PopupMenuItem(
+                    value: 'share',
+                    child: Row(
+                      children: [
+                        Icon(Icons.share, color: kWhiteColor),
+                        SizedBox(width: 8.w),
+                        const Text('Share Game'),
+                      ],
+                    ),
                   ),
-                ),
-                PopupMenuItem(
-                  onTap: () {
-                    copyPgnBtnClicked();
-                  },
-                  value: 'copy_pgn',
-                  child: Row(
-                    children: [
-                      Icon(Icons.copy, color: kWhiteColor),
-                      SizedBox(width: 8.w),
-                      const Text('Copy PGN'),
-                    ],
+                  PopupMenuItem(
+                    onTap: () {
+                      copyPgnBtnClicked();
+                    },
+                    value: 'copy_pgn',
+                    child: Row(
+                      children: [
+                        Icon(Icons.copy, color: kWhiteColor),
+                        SizedBox(width: 8.w),
+                        const Text('Copy PGN'),
+                      ],
+                    ),
                   ),
-                ),
-                const PopupMenuDivider(),
-                PopupMenuItem(
-                  value: 'clear_analysis',
-                  child: Row(
-                    children: [
-                      Icon(Icons.auto_delete_outlined, color: kRedColor),
-                      SizedBox(width: 8.w),
-                      const Text(
-                        'Clear Analysis',
-                        style: TextStyle(color: kRedColor),
-                      ),
-                    ],
+                  const PopupMenuDivider(),
+                  PopupMenuItem(
+                    value: 'clear_analysis',
+                    child: Row(
+                      children: [
+                        Icon(Icons.auto_delete_outlined, color: kRedColor),
+                        SizedBox(width: 8.w),
+                        const Text(
+                          'Clear Analysis',
+                          style: TextStyle(color: kRedColor),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-              ],
+                ],
+          ),
         ),
         SizedBox(width: 4.sp),
       ],
+    );
+  }
+}
+
+/// Wrapper widget that absorbs horizontal drag gestures on tablets to prevent
+/// PageView interference from closing popup menus prematurely.
+/// On mobile, this is a pass-through (returns child directly).
+class _TabletPopupMenuWrapper extends StatelessWidget {
+  final Widget child;
+
+  const _TabletPopupMenuWrapper({required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    if (!ResponsiveHelper.isTablet) {
+      return child;
+    }
+
+    // On tablets, wrap in gesture detector that absorbs horizontal drags
+    // to prevent PageView from competing for gestures
+    return GestureDetector(
+      onHorizontalDragStart: (_) {},
+      onHorizontalDragUpdate: (_) {},
+      onHorizontalDragEnd: (_) {},
+      behavior: HitTestBehavior.translucent,
+      child: child,
     );
   }
 }
@@ -2225,64 +2265,92 @@ class _GameDropdownOverlay extends StatelessWidget {
   Widget build(BuildContext context) {
     final dropdownWidth = (screenWidth - 32.w).clamp(280.w, 340.w);
     final leftOffset = (screenWidth - dropdownWidth) / 2;
+    final isTablet = ResponsiveHelper.isTablet;
 
-    return GestureDetector(
-      behavior: HitTestBehavior.translucent,
-      onTap: onDismiss,
-      child: Stack(
-        children: [
-          Positioned.fill(child: Container(color: Colors.transparent)),
-          Positioned(
-            left: leftOffset,
-            top: triggerOffset.dy + triggerSize.height + 8.sp,
-            child: Material(
-              type: MaterialType.transparency,
-              child: AnimatedBuilder(
-                animation: animation,
-                builder: (context, child) {
-                  final progress = animation.value.clamp(0.0, 1.0);
-                  return Transform.scale(
-                    scale: 0.92 + (progress * 0.08),
-                    alignment: Alignment.topCenter,
-                    child: Opacity(opacity: progress, child: child),
-                  );
-                },
-                child: GestureDetector(
-                  // Block taps from reaching the dismiss handler
-                  onTap: () {},
-                  behavior: HitTestBehavior.opaque,
-                  child: Container(
-                    width: dropdownWidth,
-                    constraints: BoxConstraints(
-                      maxHeight: availableHeight.clamp(180.0, 380.0),
+    // On tablets, we need to be more careful about gesture handling.
+    // The PageView underneath can compete for gestures, causing the dropdown
+    // to dismiss unexpectedly. We use a more robust barrier approach.
+    Widget buildBarrier() {
+      if (isTablet) {
+        // On tablets, use GestureDetector with deferToChild behavior and
+        // absorb horizontal drags to prevent PageView interference.
+        return GestureDetector(
+          behavior: HitTestBehavior.deferToChild,
+          onTap: onDismiss,
+          // Absorb horizontal drags on tablets to prevent PageView from
+          // competing for gestures, which can cause premature dismissal.
+          onHorizontalDragStart: (_) {},
+          onHorizontalDragUpdate: (_) {},
+          onHorizontalDragEnd: (_) {},
+          child: Container(color: Colors.transparent),
+        );
+      }
+      // On mobile, simple transparent barrier works fine
+      return GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onDismiss,
+        child: Container(color: Colors.transparent),
+      );
+    }
+
+    return Stack(
+      children: [
+        Positioned.fill(child: buildBarrier()),
+        Positioned(
+          left: leftOffset,
+          top: triggerOffset.dy + triggerSize.height + 8.sp,
+          child: Material(
+            type: MaterialType.transparency,
+            child: AnimatedBuilder(
+              animation: animation,
+              builder: (context, child) {
+                final progress = animation.value.clamp(0.0, 1.0);
+                return Transform.scale(
+                  scale: 0.92 + (progress * 0.08),
+                  alignment: Alignment.topCenter,
+                  child: Opacity(opacity: progress, child: child),
+                );
+              },
+              child: GestureDetector(
+                // Block taps from reaching the dismiss handler
+                onTap: () {},
+                // Also absorb horizontal drags on tablets to prevent any
+                // gesture leakage to the PageView
+                onHorizontalDragStart: isTablet ? (_) {} : null,
+                onHorizontalDragUpdate: isTablet ? (_) {} : null,
+                onHorizontalDragEnd: isTablet ? (_) {} : null,
+                behavior: HitTestBehavior.opaque,
+                child: Container(
+                  width: dropdownWidth,
+                  constraints: BoxConstraints(
+                    maxHeight: availableHeight.clamp(180.0, 380.0),
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1A1A1A),
+                    borderRadius: BorderRadius.circular(16.br),
+                    border: Border.all(
+                      color: kWhiteColor.withValues(alpha: 0.08),
+                      width: 1.0,
                     ),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF1A1A1A),
-                      borderRadius: BorderRadius.circular(16.br),
-                      border: Border.all(
-                        color: kWhiteColor.withValues(alpha: 0.08),
-                        width: 1.0,
-                      ),
-                    ),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(16.br),
-                      child: _GameDropdownContent(
-                        dropdownWidth: dropdownWidth,
-                        availableHeight: availableHeight,
-                        animation: animation,
-                        games: games,
-                        currentGameIndex: currentGameIndex,
-                        isLoading: isLoading,
-                        onSelect: onSelect,
-                      ),
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(16.br),
+                    child: _GameDropdownContent(
+                      dropdownWidth: dropdownWidth,
+                      availableHeight: availableHeight,
+                      animation: animation,
+                      games: games,
+                      currentGameIndex: currentGameIndex,
+                      isLoading: isLoading,
+                      onSelect: onSelect,
                     ),
                   ),
                 ),
               ),
             ),
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
@@ -4616,7 +4684,11 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       ),
     );
 
-    return Container(
+    // On tablet landscape, wrap in a gesture detector that absorbs horizontal
+    // drags to prevent them from reaching the parent PageView.
+    final isTabletLandscape = ResponsiveHelper.isTablet && ResponsiveHelper.isLandscape;
+
+    Widget content = Container(
       decoration: BoxDecoration(
         color: kDarkGreyColor.withValues(alpha: 0.3),
         borderRadius: BorderRadius.only(
@@ -4868,6 +4940,20 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
         ],
       ),
     );
+
+    // On tablet landscape, wrap in gesture detector to absorb horizontal
+    // drags and prevent them from triggering PageView scroll.
+    if (isTabletLandscape) {
+      return GestureDetector(
+        onHorizontalDragStart: (_) {},
+        onHorizontalDragUpdate: (_) {},
+        onHorizontalDragEnd: (_) {},
+        behavior: HitTestBehavior.translucent,
+        child: content,
+      );
+    }
+
+    return content;
   }
 
   Widget _buildMoveChip(
@@ -5630,20 +5716,91 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     }
 
     final targetContext = context;
+    final isTablet = ResponsiveHelper.isTablet;
+
     Future.microtask(() {
       if (!mounted) return;
       if (!targetContext.mounted) return;
-      Scrollable.ensureVisible(
-        targetContext,
-        duration:
-            isInitialScroll
-                ? const Duration(milliseconds: 1)
-                : const Duration(milliseconds: 250),
-        curve: Curves.easeInOut,
-        alignment: alignment,
-      );
+
+      // On tablets, use direct scroll controller manipulation to prevent
+      // Scrollable.ensureVisible from propagating to the parent PageView,
+      // which causes the "halfway scroll and snap back" bug.
+      if (isTablet) {
+        _scrollToTargetOnTablet(
+          targetContext,
+          alignment: alignment,
+          animate: !isInitialScroll,
+        );
+      } else {
+        // On mobile, Scrollable.ensureVisible works fine
+        Scrollable.ensureVisible(
+          targetContext,
+          duration:
+              isInitialScroll
+                  ? const Duration(milliseconds: 1)
+                  : const Duration(milliseconds: 250),
+          curve: Curves.easeInOut,
+          alignment: alignment,
+        );
+      }
       _hasInitiallyScrolled = true;
     });
+  }
+
+  /// Tablet-specific scroll implementation that uses direct controller
+  /// manipulation instead of Scrollable.ensureVisible to prevent
+  /// the scroll from propagating to parent scrollables (PageView).
+  void _scrollToTargetOnTablet(
+    BuildContext targetContext, {
+    double alignment = 0.5,
+    bool animate = true,
+  }) {
+    if (!_scrollController.hasClients) return;
+
+    final targetRenderObject = targetContext.findRenderObject();
+    if (targetRenderObject == null) return;
+
+    final scrollableState = Scrollable.maybeOf(targetContext);
+    if (scrollableState == null) return;
+
+    final scrollableRenderObject = scrollableState.context.findRenderObject();
+    if (scrollableRenderObject == null) return;
+
+    // Get the target's position relative to the scrollable viewport
+    final targetBox = targetRenderObject as RenderBox;
+    final scrollableBox = scrollableRenderObject as RenderBox;
+
+    // Get the target's position in the scrollable's coordinate space
+    final targetOffset = targetBox.localToGlobal(
+      Offset.zero,
+      ancestor: scrollableBox,
+    );
+
+    // Calculate viewport dimensions
+    final viewportHeight = _scrollController.position.viewportDimension;
+    final targetHeight = targetBox.size.height;
+
+    // Calculate where we want the target to be positioned (based on alignment)
+    // alignment 0.0 = top of viewport, 0.5 = center, 1.0 = bottom
+    final desiredPosition = viewportHeight * alignment - targetHeight * alignment;
+
+    // Calculate the scroll offset needed
+    final currentScroll = _scrollController.offset;
+    final targetScrollOffset = currentScroll + targetOffset.dy - desiredPosition;
+
+    // Clamp to valid scroll range
+    final maxScroll = _scrollController.position.maxScrollExtent;
+    final clampedOffset = targetScrollOffset.clamp(0.0, maxScroll);
+
+    if (animate) {
+      _scrollController.animateTo(
+        clampedOffset,
+        duration: const Duration(milliseconds: 250),
+        curve: Curves.easeInOut,
+      );
+    } else {
+      _scrollController.jumpTo(clampedOffset);
+    }
   }
 
   bool _collectVariationAncestors(
@@ -6517,16 +6674,68 @@ class _PrincipalVariationListState
     }
 
     final targetContext = context;
+    final isTablet = ResponsiveHelper.isTablet;
+
     Future.microtask(() {
       if (!mounted) return;
       if (!targetContext.mounted) return;
-      Scrollable.ensureVisible(
-        targetContext,
-        duration: const Duration(milliseconds: 250),
-        curve: Curves.easeInOut,
-        alignment: 0.5, // Center the move in the viewport
-      );
+
+      // On tablets, use direct scroll controller manipulation to prevent
+      // Scrollable.ensureVisible from propagating to the parent PageView.
+      if (isTablet) {
+        _scrollToPreviewMoveOnTablet(targetContext);
+      } else {
+        Scrollable.ensureVisible(
+          targetContext,
+          duration: const Duration(milliseconds: 250),
+          curve: Curves.easeInOut,
+          alignment: 0.5, // Center the move in the viewport
+        );
+      }
     });
+  }
+
+  /// Tablet-specific scroll for preview moves that uses direct controller
+  /// manipulation instead of Scrollable.ensureVisible.
+  void _scrollToPreviewMoveOnTablet(BuildContext targetContext) {
+    if (!_previewScrollController.hasClients) return;
+
+    final targetRenderObject = targetContext.findRenderObject();
+    if (targetRenderObject == null) return;
+
+    final scrollableState = Scrollable.maybeOf(targetContext);
+    if (scrollableState == null) return;
+
+    final scrollableRenderObject = scrollableState.context.findRenderObject();
+    if (scrollableRenderObject == null) return;
+
+    final targetBox = targetRenderObject as RenderBox;
+    final scrollableBox = scrollableRenderObject as RenderBox;
+
+    final targetOffset = targetBox.localToGlobal(
+      Offset.zero,
+      ancestor: scrollableBox,
+    );
+
+    // For horizontal scroll, use width instead of height
+    final viewportWidth = _previewScrollController.position.viewportDimension;
+    final targetWidth = targetBox.size.width;
+
+    // Center the target (alignment 0.5)
+    const alignment = 0.5;
+    final desiredPosition = viewportWidth * alignment - targetWidth * alignment;
+
+    final currentScroll = _previewScrollController.offset;
+    final targetScrollOffset = currentScroll + targetOffset.dx - desiredPosition;
+
+    final maxScroll = _previewScrollController.position.maxScrollExtent;
+    final clampedOffset = targetScrollOffset.clamp(0.0, maxScroll);
+
+    _previewScrollController.animateTo(
+      clampedOffset,
+      duration: const Duration(milliseconds: 250),
+      curve: Curves.easeInOut,
+    );
   }
 
   @override

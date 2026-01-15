@@ -1,6 +1,5 @@
 import 'dart:math' as math;
 
-import 'package:chessever2/screens/chessboard/widgets/smooth_sheet_config.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -8,20 +7,20 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:motor/motor.dart';
-import 'package:smooth_sheets/smooth_sheets.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-/// Show a smooth sheet that mirrors the final onboarding auth upsell.
+/// Show the auth upgrade sheet.
 /// Returns `true` if the user ends up authenticated (non-anonymous) after closing.
 Future<bool> showAuthUpgradeSheet({
   required BuildContext context,
 }) async {
-  final route = ChessSheetRoutes.preview(
+  await showModalBottomSheet<void>(
     context: context,
+    isScrollControlled: true,
+    backgroundColor: Colors.transparent,
+    constraints: ResponsiveHelper.bottomSheetConstraints,
     builder: (_) => _AuthUpgradeSheet(hostContext: context),
   );
-
-  await Navigator.of(context).push(route);
 
   final user = Supabase.instance.client.auth.currentUser;
   return user != null && user.isAnonymous != true;
@@ -54,45 +53,37 @@ class _AuthUpgradeSheet extends HookWidget {
 
   @override
   Widget build(BuildContext context) {
-    final navigator = Navigator(
-      onGenerateInitialRoutes: (_, __) => [
-        SpringPagedSheetRoute(
-          scrollConfiguration: const SheetScrollConfiguration(),
-          dragConfiguration: ChessSheetConfigs.commentEditor,
-          initialOffset: const SheetOffset.proportionalToViewport(0.9),
-          snapGrid: SheetSnapGrid(
-            snaps: const [
-              SheetOffset.proportionalToViewport(0.7),
-              SheetOffset.proportionalToViewport(0.95),
-            ],
-            minFlingSpeed: 600.0,
+    return DraggableScrollableSheet(
+      initialChildSize: 0.9,
+      minChildSize: 0.7,
+      maxChildSize: 0.95,
+      builder: (BuildContext context, ScrollController scrollController) {
+        return Container(
+          decoration: BoxDecoration(
+            color: kBlack2Color.withValues(alpha: 0.98),
+            borderRadius: BorderRadius.vertical(top: Radius.circular(28.sp)),
           ),
-          builder: (_) => _AuthUpgradePage(hostContext: hostContext),
-        ),
-      ],
-    );
-
-    return SheetKeyboardDismissible(
-      dismissBehavior:
-          const DragDownSheetKeyboardDismissBehavior(isContentScrollAware: true),
-      child: PagedSheet(
-        decoration: ChessSheetDecoration.dark(alpha: 0.97, borderRadius: 28.sp),
-        shrinkChildToAvoidDynamicOverlap: true,
-        navigator: navigator,
-      ),
+          child: _AuthUpgradePage(
+            hostContext: hostContext,
+            scrollController: scrollController,
+          ),
+        );
+      },
     );
   }
 }
 
 class _AuthUpgradePage extends HookWidget {
-  const _AuthUpgradePage({required this.hostContext});
+  const _AuthUpgradePage({
+    required this.hostContext,
+    this.scrollController,
+  });
 
   final BuildContext hostContext;
+  final ScrollController? scrollController;
 
   @override
   Widget build(BuildContext context) {
-    final topPadding = MediaQuery.of(context).padding.top;
-
     Future<void> startAuthFlow() async {
       Navigator.of(hostContext).pop(); // Close sheet first
       // Use host context so navigation happens on app navigator
@@ -103,27 +94,42 @@ class _AuthUpgradePage extends HookWidget {
       children: [
         const Positioned.fill(child: _AmbientGlow()),
         const Positioned.fill(child: _FloatingParticles()),
-        MediaQuery.removePadding(
-          context: context,
-          removeBottom: true, // Let the sheet paint into the unsafe area
-          child: Padding(
-            padding: EdgeInsets.fromLTRB(24.w, topPadding + 28.h, 24.w, 20.h),
-            child: SingleChildScrollView(
-              physics: const BouncingScrollPhysics(),
-              child: Column(
+        Padding(
+          padding: EdgeInsets.fromLTRB(20.w, 12.h, 20.w, 20.h),
+          child: SingleChildScrollView(
+            controller: scrollController,
+            physics: const BouncingScrollPhysics(),
+            child: Column(
                 children: [
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: IconButton(
-                      icon: Icon(Icons.close_rounded, color: kWhiteColor.withValues(alpha: 0.7)),
-                      onPressed: () => Navigator.of(hostContext).pop(),
-                    ),
+                  // Handle bar + close button row
+                  Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      Container(
+                        width: 36.w,
+                        height: 4.h,
+                        decoration: BoxDecoration(
+                          color: kWhiteColor.withValues(alpha: 0.2),
+                          borderRadius: BorderRadius.circular(2.br),
+                        ),
+                      ),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: IconButton(
+                          icon: Icon(Icons.close_rounded, color: kWhiteColor.withValues(alpha: 0.7), size: 22.ic),
+                          onPressed: () => Navigator.of(hostContext).pop(),
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
+                        ),
+                      ),
+                    ],
                   ),
+                  SizedBox(height: 8.h),
                   _UnlockVisual()
                       .animate()
                       .fadeIn(duration: 600.ms, curve: Motion.smoothSpring().toCurve)
                       .scale(begin: const Offset(0.85, 0.85), end: const Offset(1, 1)),
-                  SizedBox(height: 24.h),
+                  SizedBox(height: 16.h),
                   Text(
                     'Unlock the full\nexperience',
                     textAlign: TextAlign.center,
@@ -175,7 +181,6 @@ class _AuthUpgradePage extends HookWidget {
               ),
             ),
           ),
-        ),
       ],
     );
   }
