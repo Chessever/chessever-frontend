@@ -19,6 +19,7 @@ import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
+import 'package:chessever2/utils/tablet_safe_menu.dart';
 import 'package:chessever2/widgets/search/gameSearch/enhanced_game_search_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -374,7 +375,7 @@ class _GamesAppBarWidgetState extends ConsumerState<GamesAppBarWidget>
                                   final Offset offset = renderBox.localToGlobal(
                                     Offset.zero,
                                   );
-                                  showMenu(
+                                  showTabletSafeMenu(
                                     context: context,
                                     position: RelativeRect.fromLTRB(
                                       offset.dx,

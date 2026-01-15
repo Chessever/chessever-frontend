@@ -4,6 +4,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import '../../../utils/app_typography.dart';
 import '../../../theme/app_theme.dart';
 import '../../../utils/responsive_helper.dart';
+import '../../../utils/tablet_safe_menu.dart';
 import '../../../screens/tour_detail/provider/tour_detail_mode_provider.dart';
 import '../../../repository/supabase/group_broadcast/group_broadcast.dart';
 import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
@@ -207,7 +208,7 @@ class EventFavoriteCard extends ConsumerWidget {
   void _showContextMenu(BuildContext context, Offset position, String eventTitle) {
     final RenderBox overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
 
-    showMenu(
+    showTabletSafeMenu(
       context: context,
       position: RelativeRect.fromRect(
         position & const Size(40, 40),

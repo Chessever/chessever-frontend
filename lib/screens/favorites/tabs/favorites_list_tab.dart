@@ -6,6 +6,7 @@ import 'package:chessever2/screens/standings/score_card_screen.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
+import 'package:chessever2/utils/tablet_safe_menu.dart';
 import 'package:chessever2/widgets/scroll_to_top_button.dart';
 import 'package:chessever2/widgets/search/gameSearch/enhanced_game_search_widget.dart';
 import 'package:chessever2/widgets/standing_score_card.dart';
@@ -344,7 +345,7 @@ class _FavoritesListTabState extends ConsumerState<FavoritesListTab>
     final RenderBox overlay =
         Overlay.of(context).context.findRenderObject() as RenderBox;
 
-    final value = await showMenu(
+    final value = await showTabletSafeMenu(
       context: context,
       position: RelativeRect.fromRect(
         position & const Size(40, 40),
