@@ -17,6 +17,7 @@ import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
+import 'package:chessever2/utils/tablet_safe_menu.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -350,7 +351,7 @@ class _GamesAppBarWidgetState extends ConsumerState<CountrymanGamesAppBar> {
                             Offset.zero,
                           );
 
-                          showMenu(
+                          showTabletSafeMenu(
                             context: context,
                             position: RelativeRect.fromLTRB(
                               offset.dx,

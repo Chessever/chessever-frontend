@@ -17,6 +17,9 @@ class CompletedEventMenu extends StatelessWidget {
       context: context,
       backgroundColor: Colors.transparent,
       constraints: ResponsiveHelper.bottomSheetConstraints,
+      // On tablets, disable barrier tap to prevent phantom tap dismissals
+      isDismissible: !ResponsiveHelper.isTablet,
+      enableDrag: true,
       builder:
           (context) => Container(
             decoration: const BoxDecoration(
