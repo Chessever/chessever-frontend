@@ -1646,13 +1646,33 @@ class _AppBarState extends ConsumerState<_AppBar> {
   }
 
   void _showEventInfoSheet(BuildContext context, WidgetRef ref, String? pgn) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      constraints: ResponsiveHelper.bottomSheetConstraints,
-      builder: (context) => _EventInfoSheet(game: widget.game, pgn: pgn),
-    );
+    // On tablets, delay showing the bottom sheet to avoid phantom tap dismissals.
+    // The phantom taps typically happen within 300-400ms of a button press.
+    if (ResponsiveHelper.isTablet) {
+      _ChessBoardPopupState.markOpen();
+      debugPrint('📂 TABLET INFO SHEET: scheduling with delay');
+      Future.delayed(const Duration(milliseconds: 100), () {
+        if (!mounted) return;
+        debugPrint('📂 TABLET INFO SHEET: showing now');
+        showModalBottomSheet(
+          context: context,
+          isScrollControlled: true,
+          backgroundColor: Colors.transparent,
+          constraints: ResponsiveHelper.bottomSheetConstraints,
+          builder: (context) => _EventInfoSheet(game: widget.game, pgn: pgn),
+        ).then((_) {
+          _ChessBoardPopupState.markClosed();
+        });
+      });
+    } else {
+      showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        constraints: ResponsiveHelper.bottomSheetConstraints,
+        builder: (context) => _EventInfoSheet(game: widget.game, pgn: pgn),
+      );
+    }
   }
 
   @override
@@ -1700,34 +1720,132 @@ class _AppBarState extends ConsumerState<_AppBar> {
       actions: [
         SizedBox(width: 4.sp),
         // Event info button (hidden when navigating from library for position analysis)
-        // Wrapped in gesture absorber on tablets to prevent PageView interference
+        // Uses delayed show on tablets to prevent phantom tap dismissals
         if (!widget.hideEventInfo)
-          _TabletPopupMenuWrapper(
-            child: IconButton(
-              icon: Icon(
-                Icons.info_outline_rounded,
-                color: kWhiteColor,
-                size: 20.sp,
-              ),
-              tooltip: 'Event info',
-              onPressed:
-                  widget.isLoading
-                      ? null
-                      : () => _showEventInfoSheet(context, ref, infoSheetPgn),
+          IconButton(
+            icon: Icon(
+              Icons.info_outline_rounded,
+              color: kWhiteColor,
+              size: 20.sp,
             ),
+            tooltip: 'Event info',
+            onPressed:
+                widget.isLoading
+                    ? null
+                    : () => _showEventInfoSheet(context, ref, infoSheetPgn),
           ),
-        // Save Analysis button - wrapped on tablets
-        _TabletPopupMenuWrapper(
-          child: IconButton(
-            icon: Icon(Icons.save_outlined, color: kWhiteColor, size: 20.sp),
-            tooltip: 'Save analysis',
-            onPressed: widget.isLoading ? null : _showSaveAnalysisDialog,
-          ),
+        // Save Analysis button
+        IconButton(
+          icon: Icon(Icons.save_outlined, color: kWhiteColor, size: 20.sp),
+          tooltip: 'Save analysis',
+          onPressed: widget.isLoading ? null : _showSaveAnalysisDialog,
         ),
-        // 3-dot menu - wrapped in gesture absorber on tablets to prevent
-        // PageView gesture interference from closing the popup menu
-        _TabletPopupMenuWrapper(
-          child: PopupMenuButton<String>(
+        // 3-dot menu - use tablet-safe overlay popup on tablets to prevent
+        // phantom tap dismissals, use standard PopupMenuButton on mobile
+        if (ResponsiveHelper.isTablet)
+          _TabletSafePopupMenu<String>(
+            icon: Icon(Icons.more_vert, color: kWhiteColor, size: 22.sp),
+            enabled: !widget.isLoading,
+            onSelected: (value) async {
+              if (value == 'share') {
+                shareGameBtnClicked();
+              } else if (value == 'board_settings') {
+                final allowed = await requireFullAuthGuard(context);
+                if (!allowed) return;
+                if (!context.mounted) return;
+                Navigator.of(context).push(ChessBoardSettingsPage.route());
+              } else if (value == 'clear_analysis') {
+                final params = ChessBoardProviderParams(
+                  game: widget.game,
+                  index: widget.currentGameIndex,
+                );
+                final boardState = ref.read(chessBoardScreenProviderNew(params));
+                final analysisGame = boardState.valueOrNull?.analysisState.game;
+                final hasCustomAnalysis = _gameHasCustomVariations(analysisGame);
+
+                if (!hasCustomAnalysis) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('No custom analysis to clear'),
+                      backgroundColor: Colors.orange,
+                      behavior: SnackBarBehavior.floating,
+                    ),
+                  );
+                  return;
+                }
+
+                HapticFeedback.selectionClick();
+                final confirmed =
+                    await _showAnalysisConfirmationDialog(
+                      context: context,
+                      title: 'Clear analysis?',
+                      message:
+                          'This will remove every custom branch, including nested subvariants. This action cannot be undone.',
+                      confirmLabel: 'Clear',
+                      confirmColor: kRedColor,
+                    ) ??
+                    false;
+                if (!confirmed) return;
+                HapticFeedback.heavyImpact();
+                final notifier = ref.read(
+                  chessBoardScreenProviderNew(params).notifier,
+                );
+                await notifier.clearUserAnalysis();
+              }
+            },
+            itemBuilder:
+                (context) => [
+                  PopupMenuItem(
+                    value: 'board_settings',
+                    child: Row(
+                      children: [
+                        Icon(Icons.settings, color: kWhiteColor),
+                        SizedBox(width: 8.w),
+                        const Text('Board Settings'),
+                      ],
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'share',
+                    child: Row(
+                      children: [
+                        Icon(Icons.share, color: kWhiteColor),
+                        SizedBox(width: 8.w),
+                        const Text('Share Game'),
+                      ],
+                    ),
+                  ),
+                  PopupMenuItem(
+                    onTap: () {
+                      copyPgnBtnClicked();
+                    },
+                    value: 'copy_pgn',
+                    child: Row(
+                      children: [
+                        Icon(Icons.copy, color: kWhiteColor),
+                        SizedBox(width: 8.w),
+                        const Text('Copy PGN'),
+                      ],
+                    ),
+                  ),
+                  const PopupMenuDivider(),
+                  PopupMenuItem(
+                    value: 'clear_analysis',
+                    child: Row(
+                      children: [
+                        Icon(Icons.auto_delete_outlined, color: kRedColor),
+                        SizedBox(width: 8.w),
+                        const Text(
+                          'Clear Analysis',
+                          style: TextStyle(color: kRedColor),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+          )
+        else
+          PopupMenuButton<String>(
             icon: Icon(Icons.more_vert, color: kWhiteColor, size: 22.sp),
             enabled: !widget.isLoading,
             onSelected: (value) async {
@@ -1828,9 +1946,214 @@ class _AppBarState extends ConsumerState<_AppBar> {
                   ),
                 ],
           ),
-        ),
         SizedBox(width: 4.sp),
       ],
+    );
+  }
+}
+
+/// Tablet-safe popup menu that uses an overlay instead of Flutter's route-based
+/// popup to prevent phantom tap dismissals on tablets.
+/// This provides the same timing guard protection as _GameSelectionDropdown.
+class _TabletSafePopupMenu<T> extends StatefulWidget {
+  final Widget icon;
+  final List<PopupMenuEntry<T>> Function(BuildContext) itemBuilder;
+  final void Function(T)? onSelected;
+  final bool enabled;
+
+  const _TabletSafePopupMenu({
+    required this.icon,
+    required this.itemBuilder,
+    this.onSelected,
+    this.enabled = true,
+  });
+
+  @override
+  State<_TabletSafePopupMenu<T>> createState() => _TabletSafePopupMenuState<T>();
+}
+
+class _TabletSafePopupMenuState<T> extends State<_TabletSafePopupMenu<T>>
+    with SingleTickerProviderStateMixin {
+  final LayerLink _layerLink = LayerLink();
+  late AnimationController _animationController;
+  late Animation<double> _animation;
+  bool _isOpen = false;
+  OverlayEntry? _overlayEntry;
+  DateTime? _openedAt;
+  static const _minOpenDuration = Duration(milliseconds: 600);
+
+  @override
+  void initState() {
+    super.initState();
+    _animationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 200),
+    );
+    _animation = CurvedAnimation(
+      parent: _animationController,
+      curve: Curves.easeOutCubic,
+      reverseCurve: Curves.easeInCubic,
+    );
+  }
+
+  @override
+  void dispose() {
+    _removeOverlay();
+    _animationController.dispose();
+    super.dispose();
+  }
+
+  void _removeOverlay() {
+    try {
+      _overlayEntry?.remove();
+    } catch (_) {}
+    _overlayEntry = null;
+  }
+
+  bool _canDismiss() {
+    if (_openedAt == null) return true;
+    final elapsed = DateTime.now().difference(_openedAt!);
+    if (elapsed < _minOpenDuration) {
+      debugPrint('🛡️ TABLET POPUP: _canDismiss() returning false, elapsed=${elapsed.inMilliseconds}ms');
+      return false;
+    }
+    return true;
+  }
+
+  void _openMenu() {
+    if (!widget.enabled || _isOpen) return;
+
+    HapticFeedback.selectionClick();
+    _openedAt = DateTime.now();
+    _ChessBoardPopupState.markOpen();
+
+    debugPrint('📂 TABLET POPUP OPENED: time=${_openedAt}');
+
+    setState(() => _isOpen = true);
+    _showOverlay();
+    _animationController.forward();
+  }
+
+  void _closeMenu({bool force = false}) {
+    if (!_isOpen) return;
+
+    final elapsed = _openedAt != null ? DateTime.now().difference(_openedAt!) : Duration.zero;
+    debugPrint('📕 TABLET POPUP _closeMenu called: force=$force, elapsed=${elapsed.inMilliseconds}ms');
+
+    if (!force && !_canDismiss()) {
+      debugPrint('🛡️ TABLET POPUP dismiss blocked - opened too recently');
+      return;
+    }
+
+    debugPrint('📕 TABLET POPUP CLOSING: proceeding with close');
+
+    _openedAt = null;
+    _ChessBoardPopupState.markClosed();
+    _animationController.reverse().then((_) {
+      if (mounted) {
+        setState(() => _isOpen = false);
+        _removeOverlay();
+      }
+    });
+  }
+
+  void _showOverlay() {
+    final overlay = Overlay.of(context);
+    final renderBox = context.findRenderObject() as RenderBox?;
+    if (renderBox == null) return;
+
+    final size = renderBox.size;
+    final offset = renderBox.localToGlobal(Offset.zero);
+    final screenWidth = MediaQuery.of(context).size.width;
+
+    // Build menu items
+    final items = widget.itemBuilder(context);
+
+    _overlayEntry = OverlayEntry(
+      builder: (context) => Stack(
+        children: [
+          // Barrier with timing guard
+          Positioned.fill(
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () {
+                debugPrint('🔲 TABLET POPUP BARRIER TAP: calling _closeMenu');
+                _closeMenu();
+              },
+              onHorizontalDragStart: (_) {},
+              onHorizontalDragUpdate: (_) {},
+              onHorizontalDragEnd: (_) {},
+              child: Container(color: Colors.black.withValues(alpha: 0.01)),
+            ),
+          ),
+          // Menu positioned near the trigger
+          Positioned(
+            // Position to the left of the button, aligned to top
+            right: screenWidth - offset.dx - size.width,
+            top: offset.dy + size.height + 4,
+            child: AnimatedBuilder(
+              animation: _animation,
+              builder: (context, child) {
+                final progress = _animation.value.clamp(0.0, 1.0);
+                return Transform.scale(
+                  scale: 0.92 + (progress * 0.08),
+                  alignment: Alignment.topRight,
+                  child: Opacity(opacity: progress, child: child),
+                );
+              },
+              child: Material(
+                elevation: 8,
+                borderRadius: BorderRadius.circular(12),
+                color: const Color(0xFF2A2A2A),
+                child: IntrinsicWidth(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: items.map((item) {
+                      if (item is PopupMenuItem<T>) {
+                        return InkWell(
+                          onTap: () {
+                            _closeMenu(force: true);
+                            if (item.onTap != null) {
+                              item.onTap!();
+                            }
+                            if (item.value != null && widget.onSelected != null) {
+                              widget.onSelected!(item.value as T);
+                            }
+                          },
+                          child: Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
+                            child: item.child,
+                          ),
+                        );
+                      } else if (item is PopupMenuDivider) {
+                        return Divider(
+                          height: 1,
+                          color: kWhiteColor.withValues(alpha: 0.1),
+                        );
+                      }
+                      return const SizedBox.shrink();
+                    }).toList(),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    overlay.insert(_overlayEntry!);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return CompositedTransformTarget(
+      link: _layerLink,
+      child: IconButton(
+        icon: widget.icon,
+        onPressed: widget.enabled ? _openMenu : null,
+      ),
     );
   }
 }
