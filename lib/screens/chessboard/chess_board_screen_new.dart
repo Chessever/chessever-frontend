@@ -1646,23 +1646,22 @@ class _AppBarState extends ConsumerState<_AppBar> {
   }
 
   void _showEventInfoSheet(BuildContext context, WidgetRef ref, String? pgn) {
-    // On tablets, delay showing the bottom sheet to avoid phantom tap dismissals.
-    // The phantom taps typically happen within 300-400ms of a button press.
+    // On tablets, disable barrier tap dismissal to prevent phantom tap dismissals.
+    // Users can still close by dragging down. The phantom taps that plague tablets
+    // hit the barrier and would otherwise close the sheet immediately.
     if (ResponsiveHelper.isTablet) {
       _ChessBoardPopupState.markOpen();
-      debugPrint('📂 TABLET INFO SHEET: scheduling with delay');
-      Future.delayed(const Duration(milliseconds: 100), () {
-        if (!mounted) return;
-        debugPrint('📂 TABLET INFO SHEET: showing now');
-        showModalBottomSheet(
-          context: context,
-          isScrollControlled: true,
-          backgroundColor: Colors.transparent,
-          constraints: ResponsiveHelper.bottomSheetConstraints,
-          builder: (context) => _EventInfoSheet(game: widget.game, pgn: pgn),
-        ).then((_) {
-          _ChessBoardPopupState.markClosed();
-        });
+      debugPrint('📂 TABLET INFO SHEET: showing with isDismissible=false');
+      showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        constraints: ResponsiveHelper.bottomSheetConstraints,
+        isDismissible: false, // Disable barrier tap on tablets to prevent phantom dismissals
+        enableDrag: true, // Keep drag-to-dismiss working
+        builder: (context) => _EventInfoSheet(game: widget.game, pgn: pgn),
+      ).then((_) {
+        _ChessBoardPopupState.markClosed();
       });
     } else {
       showModalBottomSheet(
