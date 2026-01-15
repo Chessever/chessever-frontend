@@ -271,14 +271,13 @@ List<Games> _getLatestRoundGames(List<Games> games) {
   return [...liveGames, ...finishedGames];
 }
 
-/// Select games with priority: Live > Favorite > Highest ELO
+/// Select games with priority: Live (by ELO) > Favorite > Highest ELO
 /// Matches the sorting philosophy of the Games tab where top boards appear first
 ///
 /// Priority order:
-/// 1. Live games with favorite players (sorted by ELO)
-/// 2. Live games without favorite players (sorted by ELO)
-/// 3. Finished games with favorite players (sorted by ELO)
-/// 4. Finished games without favorite players (sorted by ELO)
+/// 1. Live games (sorted by ELO - highest ELO live games always first)
+/// 2. Finished games with favorite players (sorted by ELO)
+/// 3. Finished games without favorite players (sorted by ELO)
 List<Games> _selectGamesWithFavoritePriority(
   List<Games> games,
   Set<int> favoriteFideIds,
@@ -286,31 +285,32 @@ List<Games> _selectGamesWithFavoritePriority(
 ) {
   if (games.isEmpty) return [];
 
-  // Categorize games into 4 priority buckets
-  final liveFavoriteGames = <Games>[];
-  final liveRegularGames = <Games>[];
+  // Categorize games into 3 priority buckets
+  // Live games get top priority regardless of favorite status
+  final liveGames = <Games>[];
   final finishedFavoriteGames = <Games>[];
   final finishedRegularGames = <Games>[];
 
   for (final game in games) {
     final isLive = game.status == '*' || game.status == 'ongoing';
-    final hasFavorite = _hasFavoritePlayer(game, favoriteFideIds);
 
-    if (isLive && hasFavorite) {
-      liveFavoriteGames.add(game);
-    } else if (isLive) {
-      liveRegularGames.add(game);
-    } else if (hasFavorite) {
-      finishedFavoriteGames.add(game);
+    if (isLive) {
+      // All live games go to top priority bucket
+      liveGames.add(game);
     } else {
-      finishedRegularGames.add(game);
+      // Finished games: favorites get secondary priority
+      final hasFavorite = _hasFavoritePlayer(game, favoriteFideIds);
+      if (hasFavorite) {
+        finishedFavoriteGames.add(game);
+      } else {
+        finishedRegularGames.add(game);
+      }
     }
   }
 
   // Sort each bucket by highest ELO (descending)
   int compareByElo(Games a, Games b) => _getMaxElo(b).compareTo(_getMaxElo(a));
-  liveFavoriteGames.sort(compareByElo);
-  liveRegularGames.sort(compareByElo);
+  liveGames.sort(compareByElo);
   finishedFavoriteGames.sort(compareByElo);
   finishedRegularGames.sort(compareByElo);
 
@@ -328,8 +328,8 @@ List<Games> _selectGamesWithFavoritePriority(
     }
   }
 
-  addGames(liveFavoriteGames);
-  addGames(liveRegularGames);
+  // Live games first (sorted purely by ELO), then favorites, then regular
+  addGames(liveGames);
   addGames(finishedFavoriteGames);
   addGames(finishedRegularGames);
 

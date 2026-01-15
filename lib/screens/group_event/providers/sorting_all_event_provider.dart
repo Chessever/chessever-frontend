@@ -249,7 +249,17 @@ class TournamentSortingService {
     });
 
     // Sort hearted events by favorite player count (descending), then by ELO average, then by event date
+    // High ELO events (>3200, typically engine/AI events) are pushed to bottom of this group
     heartedEvents.sort((a, b) {
+      final eloA = a.maxAvgElo;
+      final eloB = b.maxAvgElo;
+      final isHighEloA = eloA > 3200;
+      final isHighEloB = eloB > 3200;
+
+      // First: push high ELO events (engine/AI) to the bottom
+      if (isHighEloA && !isHighEloB) return 1;
+      if (!isHighEloA && isHighEloB) return -1;
+
       final countA = eventFavoritePlayerCounts[a.id] ?? 0;
       final countB = eventFavoritePlayerCounts[b.id] ?? 0;
 
@@ -259,8 +269,6 @@ class TournamentSortingService {
       }
 
       // Secondary sort: by max average ELO (higher ELO first when heart counts are equal)
-      final eloA = a.maxAvgElo;
-      final eloB = b.maxAvgElo;
       if (eloA != eloB) {
         return eloB.compareTo(eloA); // Higher ELO first
       }
@@ -285,6 +293,26 @@ class TournamentSortingService {
       if (dateB != null) return 1;
 
       return 0;
+    });
+
+    // Sort regular events: push high ELO events (>3200, engine/AI) to bottom, then sort by ELO descending
+    regularEvents.sort((a, b) {
+      final eloA = a.maxAvgElo;
+      final eloB = b.maxAvgElo;
+      final isHighEloA = eloA > 3200;
+      final isHighEloB = eloB > 3200;
+
+      // First: push high ELO events (engine/AI) to the bottom
+      if (isHighEloA && !isHighEloB) return 1;
+      if (!isHighEloA && isHighEloB) return -1;
+
+      // Then sort by ELO descending
+      if (eloA != eloB) {
+        return eloB.compareTo(eloA);
+      }
+
+      // Finally by title
+      return a.title.toLowerCase().compareTo(b.title.toLowerCase());
     });
 
     // Return: starred first, then hearted (sorted by count), then regular

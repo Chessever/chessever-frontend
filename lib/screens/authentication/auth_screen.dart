@@ -112,7 +112,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
       );
     }
 
-    // Tablet portrait: centered card layout
+    // Tablet portrait: same structure as phone but with tablet sizing
     if (isTablet) {
       return ScreenWrapper(
         child: Scaffold(
@@ -120,29 +120,28 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
             children: [
               const Hero(tag: 'blur', child: BlurBackground()),
               Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 500),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Hero(
-                        tag: 'premium-icon',
-                        child: Image(
-                          image: const AssetImage(PngAsset.chesseverIcon),
-                          height: 160.sp,
-                          width: 300.sp,
-                        ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Hero(
+                      tag: 'premium-icon',
+                      child: Image(
+                        image: const AssetImage(PngAsset.chesseverIcon),
+                        height: 160.sp,
+                        width: 300.sp,
                       ),
-                      SizedBox(height: 48.sp),
-                      state.isLoading
-                          ? SkeletonWidget(
-                              ignoreContainers: true,
-                              child: _AuthButtonWidget(state: state, isTabletPortrait: true),
-                            )
-                          : _AuthButtonWidget(state: state, isTabletPortrait: true),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
+              ),
+              Align(
+                alignment: Alignment.bottomCenter,
+                child: state.isLoading
+                    ? SkeletonWidget(
+                        ignoreContainers: true,
+                        child: _AuthButtonWidget(state: state, isTabletPortrait: true),
+                      )
+                    : _AuthButtonWidget(state: state, isTabletPortrait: true),
               ),
             ],
           ),
@@ -211,79 +210,96 @@ class _AuthButtonWidget extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final isIos = Platform.isIOS;
 
-    // For tablet portrait/landscape centered layouts, use consistent padding
-    final horizontalPadding = (isTabletPortrait || isTabletLandscape)
-        ? 24.sp
-        : ResponsiveHelper.adaptive(phone: 28.sp, tablet: 48.sp);
+    // Tablet landscape: centered in its container (parent handles centering)
+    // Tablet portrait & phone: positioned at bottom via Align(bottomCenter)
+    final horizontalPadding = (isTabletLandscape || isTabletPortrait) ? 24.sp : 28.sp;
+    final maxWidth = (isTabletLandscape || isTabletPortrait) ? 500.0 : double.infinity;
 
-    // Constrain max width for tablets
-    final maxWidth = ResponsiveHelper.isTablet ? 500.0 : double.infinity;
-
-    // For tablet centered layouts, don't use bottom padding
-    final bottomPadding = (isTabletLandscape || isTabletPortrait)
+    // Bottom padding for layouts that use Align(bottomCenter) - phone and tablet portrait
+    final bottomPadding = isTabletLandscape
         ? 0.0
         : MediaQuery.of(context).viewPadding.bottom + 28.sp;
 
-    return Center(
-      child: ConstrainedBox(
-        constraints: BoxConstraints(maxWidth: maxWidth),
-        child: Container(
-          padding: EdgeInsets.only(
-            bottom: bottomPadding,
-            left: horizontalPadding,
-            right: horizontalPadding,
+    final buttonColumn = Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // Show both buttons on iOS, only Google on Android
+        if (isIos) ...[
+          AuthButton(
+            signInTitle: 'Continue with Apple',
+            svgIconPath: SvgAsset.appleIcon,
+            onPressed: () async {
+              await ref.read(authScreenProvider.notifier).signInWithApple();
+            },
           ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Show both buttons on iOS, only Google on Android
-              if (isIos) ...[
-                AuthButton(
-                  signInTitle: 'Continue with Apple',
-                  svgIconPath: SvgAsset.appleIcon,
-                  onPressed: () async {
-                    await ref.read(authScreenProvider.notifier).signInWithApple();
-                  },
-                ),
-                SizedBox(height: 12.h),
-              ],
-              AuthButton(
-                signInTitle: 'Continue with Google',
-                svgIconPath: SvgAsset.googleIcon,
-                onPressed: () async {
-                  await ref.read(authScreenProvider.notifier).signInWithGoogle();
-                },
-              ),
-              SizedBox(height: 12.h),
-              TextButton(
-                onPressed: () async {
-                  final appUser = await ref.read(authScreenProvider.notifier).signInAsGuest();
+          SizedBox(height: 12.h),
+        ],
+        AuthButton(
+          signInTitle: 'Continue with Google',
+          svgIconPath: SvgAsset.googleIcon,
+          onPressed: () async {
+            await ref.read(authScreenProvider.notifier).signInWithGoogle();
+          },
+        ),
+        SizedBox(height: 12.h),
+        TextButton(
+          onPressed: () async {
+            final appUser = await ref.read(authScreenProvider.notifier).signInAsGuest();
 
-                  if (!context.mounted || appUser == null || !appUser.isAnonymous) return;
+            if (!context.mounted || appUser == null || !appUser.isAnonymous) return;
 
-                  final onboardingRepo = ref.read(onboardingRepositoryProvider);
-                  final hasCompleted = await onboardingRepo.isCompleted(appUser.id);
+            final onboardingRepo = ref.read(onboardingRepositoryProvider);
+            final hasCompleted = await onboardingRepo.isCompleted(appUser.id);
 
-                  if (!context.mounted) return;
-                  Navigator.pushNamedAndRemoveUntil(
-                    context,
-                    hasCompleted ? '/home_screen' : '/onboarding',
-                    (_) => false,
-                  );
-                  ref.read(authScreenProvider.notifier).reset();
-                },
-                child: Text(
-                  'Continue as Guest',
-                  style: AppTypography.textSmMedium.copyWith(
-                    color: kWhiteColor.withOpacity(0.7),
-                    decoration: TextDecoration.underline,
-                    decorationColor: kWhiteColor.withOpacity(0.7),
-                  ),
-                ),
-              ),
-            ],
+            if (!context.mounted) return;
+            Navigator.pushNamedAndRemoveUntil(
+              context,
+              hasCompleted ? '/home_screen' : '/onboarding',
+              (_) => false,
+            );
+            ref.read(authScreenProvider.notifier).reset();
+          },
+          child: Text(
+            'Continue as Guest',
+            style: AppTypography.textSmMedium.copyWith(
+              color: kWhiteColor.withOpacity(0.7),
+              decoration: TextDecoration.underline,
+              decorationColor: kWhiteColor.withOpacity(0.7),
+            ),
           ),
         ),
+      ],
+    );
+
+    // Tablet landscape: use Center (parent is Center in Row)
+    if (isTabletLandscape) {
+      return Center(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxWidth: maxWidth),
+          child: Padding(
+            padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
+            child: buttonColumn,
+          ),
+        ),
+      );
+    }
+
+    // Tablet portrait & phone: stay at bottom with Align(bottomCenter)
+    // Use Row to center horizontally while respecting max width constraint
+    return Padding(
+      padding: EdgeInsets.only(
+        bottom: bottomPadding,
+        left: horizontalPadding,
+        right: horizontalPadding,
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: maxWidth - (horizontalPadding * 2)),
+            child: buttonColumn,
+          ),
+        ],
       ),
     );
   }
