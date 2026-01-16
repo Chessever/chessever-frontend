@@ -473,16 +473,14 @@ class FavoritesCombinedGamesNotifier
     final dayCmp = bDayOnly.compareTo(aDayOnly);
     if (dayCmp != 0) return dayCmp;
 
-    // Secondary sort: by round number descending (latest round first)
+    // Secondary sort: by exact lastMoveTime (hours/minutes) within the same day
+    final timeCmp = bDate.compareTo(aDate);
+    if (timeCmp != 0) return timeCmp;
+
+    // Tertiary sort: by round number descending (latest round first)
     final aRound = _extractRoundNumber(a.roundSlug ?? a.roundId);
     final bRound = _extractRoundNumber(b.roundSlug ?? b.roundId);
     if (aRound != bRound) return bRound.compareTo(aRound);
-
-    // Tertiary sort: by exact lastMoveTime if both have it
-    if (a.lastMoveTime != null && b.lastMoveTime != null) {
-      final timeCmp = b.lastMoveTime!.compareTo(a.lastMoveTime!);
-      if (timeCmp != 0) return timeCmp;
-    }
 
     // Final fallback: by max rating
     final aMaxRating = [a.whitePlayer.rating, a.blackPlayer.rating].reduce((a, b) => a > b ? a : b);

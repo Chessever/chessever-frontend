@@ -9,6 +9,7 @@ import 'package:chessever2/screens/group_event/group_event_screen.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/screens/group_event/providers/live_group_broadcast_id_provider.dart';
 import 'package:chessever2/screens/group_event/providers/sorting_all_event_provider.dart';
+import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -159,6 +160,84 @@ final forYouEventsProvider = FutureProvider.autoDispose<List<GroupEventCardModel
   }
 
   return sortedModels;
+});
+
+// ============================================================================
+// FILTERED FOR YOU EVENTS PROVIDER - APPLIES FILTERS ON TOP OF BASE PROVIDER
+// ============================================================================
+
+/// Filtered version of forYouEventsProvider that applies user filters
+/// This is a separate provider to avoid ref dependency issues in the base provider
+final filteredForYouEventsProvider = Provider.autoDispose<AsyncValue<List<GroupEventCardModel>>>((ref) {
+  // Watch the base provider
+  final baseEventsAsync = ref.watch(forYouEventsProvider);
+
+  // Watch filters
+  final appliedFilters = ref.watch(forYouAppliedFilterProvider);
+
+  // Watch live IDs for status filtering
+  final liveIds = ref.watch(liveGroupBroadcastIdsProvider).valueOrNull ?? [];
+
+  // Check if any filters are active
+  final hasFormatFilter = appliedFilters.formatsAndStates.any(
+    (f) => ['blitz', 'rapid', 'standard'].contains(f.toLowerCase()),
+  );
+  final hasStatusFilter = appliedFilters.formatsAndStates.any(
+    (f) => ['live', 'completed'].contains(f.toLowerCase()),
+  );
+  final hasEloFilter =
+      appliedFilters.eloRange.start > defaultFilterPopupState.eloRange.start ||
+      appliedFilters.eloRange.end < defaultFilterPopupState.eloRange.end;
+
+  final hasActiveFilters = hasFormatFilter || hasStatusFilter || hasEloFilter;
+
+  // If no filters, return base provider as-is
+  if (!hasActiveFilters) {
+    return baseEventsAsync;
+  }
+
+  // Apply filters to the data
+  return baseEventsAsync.whenData((events) {
+    return events.where((event) {
+      // Format filter
+      if (hasFormatFilter) {
+        final eventFormat = event.timeControl?.trim().toLowerCase();
+        final formatFilters = appliedFilters.formatsAndStates
+            .where((f) => ['blitz', 'rapid', 'standard'].contains(f.toLowerCase()))
+            .map((f) => f.toLowerCase())
+            .toSet();
+        if (eventFormat == null || !formatFilters.contains(eventFormat)) {
+          return false;
+        }
+      }
+
+      // Status filter (live/completed)
+      if (hasStatusFilter) {
+        final isLive = liveIds.contains(event.id);
+        final statusFilters = appliedFilters.formatsAndStates
+            .where((f) => ['live', 'completed'].contains(f.toLowerCase()))
+            .map((f) => f.toLowerCase())
+            .toSet();
+        final matchesStatus =
+            (statusFilters.contains('live') && isLive) ||
+            (statusFilters.contains('completed') && !isLive);
+        if (!matchesStatus) return false;
+      }
+
+      // ELO filter
+      if (hasEloFilter) {
+        final minElo = appliedFilters.eloRange.start.round();
+        final maxElo = appliedFilters.eloRange.end.round();
+        if (event.maxAvgElo != null) {
+          if (event.maxAvgElo! < minElo || event.maxAvgElo! > maxElo) {
+            return false;
+          }
+        }
+      }
+
+      return true;
+    }).toList();
+  });
 });
 
 // ============================================================================

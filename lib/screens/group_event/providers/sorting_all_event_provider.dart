@@ -115,6 +115,7 @@ class TournamentSortingService {
     List<GroupEventCardModel> tours, {
     bool ascending = false,
     Map<String, EventFavoritePlayers>? eventFavoritePlayersMap,
+    bool prioritizeFavorites = true,
   }) {
     var sortedTours = <GroupEventCardModel>[];
     sortedTours = tours;
@@ -141,6 +142,10 @@ class TournamentSortingService {
         return ascending ? startComparison : -startComparison;
       }
     });
+
+    if (!prioritizeFavorites) {
+      return sortedTours;
+    }
 
     // Apply favorite sorting (favorited events on top)
     return _applyFavoriteSorting(

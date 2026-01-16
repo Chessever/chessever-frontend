@@ -15,6 +15,7 @@ class SimpleSearchBar extends StatelessWidget {
     this.hintText = '',
     this.autofocus = false,
     this.onChanged,
+    this.filterBadgeCount = 0,
   });
 
   final TextEditingController controller;
@@ -24,6 +25,7 @@ class SimpleSearchBar extends StatelessWidget {
   final String hintText;
   final bool autofocus;
   final ValueChanged<String>? onChanged;
+  final int filterBadgeCount;
 
   @override
   Widget build(BuildContext context) {
@@ -89,14 +91,48 @@ class SimpleSearchBar extends StatelessWidget {
                   color: kDarkGreyColor.withOpacity(0.5),
                   borderRadius: BorderRadius.circular(8.br),
                 ),
-                child: SvgWidget(
-                  SvgAsset.listFilterIcon,
-                  height: 20.h,
-                  width: 20.w,
-                  colorFilter: ColorFilter.mode(
-                    focusNode.hasFocus ? kPrimaryColor : Colors.grey[400]!,
-                    BlendMode.srcIn,
-                  ),
+                child: Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    SvgWidget(
+                      SvgAsset.listFilterIcon,
+                      height: 20.h,
+                      width: 20.w,
+                      colorFilter: ColorFilter.mode(
+                        filterBadgeCount > 0
+                            ? kWhiteColor
+                            : focusNode.hasFocus
+                            ? kPrimaryColor
+                            : Colors.grey[400]!,
+                        BlendMode.srcIn,
+                      ),
+                    ),
+                    if (filterBadgeCount > 0)
+                      Positioned(
+                        right: -4.w,
+                        top: -4.h,
+                        child: Container(
+                          padding: EdgeInsets.all(4.w),
+                          decoration: const BoxDecoration(
+                            color: Color(0xFFEF4444),
+                            shape: BoxShape.circle,
+                          ),
+                          constraints: BoxConstraints(
+                            minWidth: 16.w,
+                            minHeight: 16.h,
+                          ),
+                          child: Text(
+                            '$filterBadgeCount',
+                            style: AppTypography.textXsBold.copyWith(
+                              color: kWhiteColor,
+                              fontSize: 10.sp,
+                              height: 1,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
               ),
             ),

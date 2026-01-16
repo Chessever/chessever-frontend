@@ -32,9 +32,16 @@ class CountryDropdown extends ConsumerStatefulWidget {
 }
 
 class _CountryDropdownState extends ConsumerState<CountryDropdown> {
+  final GlobalKey<DropdownButton2State<String>> _dropdownKey =
+      GlobalKey<DropdownButton2State<String>>();
   var isDropDownOpen = false;
   var selectedCountryCode = 'US';
   final TextEditingController _searchController = TextEditingController();
+  DateTime? _openedAt;
+  bool _reopenAttempted = false;
+  bool _isReopening = false;
+  // Tablet phantom-tap guard: keep menu open briefly before allowing dismiss.
+  static const _minOpenDuration = Duration(milliseconds: 600);
 
   @override
   void initState() {
@@ -96,6 +103,7 @@ class _CountryDropdownState extends ConsumerState<CountryDropdown> {
         ),
         child: DropdownButtonHideUnderline(
           child: DropdownButton2<String>(
+            key: _dropdownKey,
             isExpanded: true,
             customButton: Container(
               height: buttonHeight,
@@ -238,6 +246,27 @@ class _CountryDropdownState extends ConsumerState<CountryDropdown> {
                     },
 
             onMenuStateChange: (isOpen) {
+              if (isOpen) {
+                _openedAt = DateTime.now();
+                if (_isReopening) {
+                  _isReopening = false;
+                } else {
+                  _reopenAttempted = false;
+                }
+              } else if (ResponsiveHelper.isTablet && _openedAt != null) {
+                final elapsed = DateTime.now().difference(_openedAt!);
+                if (elapsed < _minOpenDuration && !_reopenAttempted) {
+                  _reopenAttempted = true;
+                  _isReopening = true;
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    if (mounted) {
+                      _dropdownKey.currentState?.callTap();
+                    }
+                  });
+                  return;
+                }
+              }
+
               isDropDownOpen = isOpen;
               if (!isOpen) {
                 _searchController.clear();

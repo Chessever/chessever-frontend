@@ -231,59 +231,61 @@ class FilterPopup extends ConsumerWidget {
                       Padding(
                         padding: EdgeInsets.all(20.sp),
                         child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            SizedBox(
-                              width: 116.w,
-                              height: 40.h,
-                              child: OutlinedButton(
-                                onPressed: () {
-                                  onResetFilters();
-                                  ref
-                                      .read(filterPopupProvider.notifier)
-                                      .resetFilters(context);
-                                },
-                                style: OutlinedButton.styleFrom(
-                                  foregroundColor: kWhiteColor,
-                                  backgroundColor: kBlack2Color,
-                                  side: BorderSide.none,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(4.br),
+                            Expanded(
+                              child: SizedBox(
+                                height: 40.h,
+                                child: OutlinedButton(
+                                  onPressed: () {
+                                    onResetFilters();
+                                    ref
+                                        .read(filterPopupProvider.notifier)
+                                        .resetFilters(context);
+                                  },
+                                  style: OutlinedButton.styleFrom(
+                                    foregroundColor: kWhiteColor,
+                                    backgroundColor: kBlack2Color,
+                                    side: BorderSide.none,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(4.br),
+                                    ),
+                                    padding: EdgeInsets.zero,
                                   ),
-                                  padding: EdgeInsets.zero,
-                                ),
-                                child: Text(
-                                  'Reset',
-                                  style: AppTypography.textSmMedium.copyWith(
-                                    color: kWhiteColor,
+                                  child: Text(
+                                    'Reset',
+                                    style: AppTypography.textSmMedium.copyWith(
+                                      color: kWhiteColor,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
                                   ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.visible,
                                 ),
                               ),
                             ),
-                            SizedBox(
-                              width: 116.w,
-                              height: 40.h,
-                              child: ElevatedButton(
-                                onPressed: () async {
-                                  onApplyFilters(filterState);
-                                  Navigator.of(context).pop();
-                                },
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: kPrimaryColor,
-                                  foregroundColor: kBlackColor,
-                                  elevation: 0,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(4.br),
+                            SizedBox(width: 12.w),
+                            Expanded(
+                              child: SizedBox(
+                                height: 40.h,
+                                child: ElevatedButton(
+                                  onPressed: () async {
+                                    onApplyFilters(filterState);
+                                    Navigator.of(context).pop();
+                                  },
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: kPrimaryColor,
+                                    foregroundColor: kBlackColor,
+                                    elevation: 0,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(4.br),
+                                    ),
+                                    padding: EdgeInsets.zero,
                                   ),
-                                  padding: EdgeInsets.zero,
-                                ),
-                                child: Text(
-                                  'Apply Filters',
-                                  style: AppTypography.textSmMedium,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.visible,
+                                  child: Text(
+                                    'Apply Filters',
+                                    style: AppTypography.textSmMedium,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
                                 ),
                               ),
                             ),

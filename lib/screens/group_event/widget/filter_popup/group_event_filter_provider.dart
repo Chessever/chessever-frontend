@@ -56,10 +56,28 @@ class _GroupEventFilterController {
             .read(groupBroadcastLocalStorage(tournamentCategory))
             .getGroupBroadcasts();
 
+    // Fetch live IDs once (avoid per-item await)
+    final liveIds = await ref.read(liveGroupBroadcastIdsProvider.future);
+
+    return applyFiltersToBroadcasts(
+      broadcasts: groupBroadcast,
+      filters: filters,
+      eloRange: eloRange,
+      liveIds: liveIds,
+    );
+  }
+
+  List<GroupBroadcast> applyFiltersToBroadcasts({
+    required List<GroupBroadcast> broadcasts,
+    List<String>? filters,
+    required RangeValues eloRange,
+    required List<String> liveIds,
+  }) {
     // Normalize filters
     final filterSet =
         (filters ?? const <String>[])
             .map((f) => f.trim().toLowerCase())
+            .where((f) => f.isNotEmpty)
             .toSet();
 
     // Separate status vs format filters
@@ -70,46 +88,37 @@ class _GroupEventFilterController {
 
     final requestedFormats = filterSet.difference(requestedStatuses);
 
-    // Fetch live IDs once (avoid per-item await)
-    final liveIds = await ref.read(liveGroupBroadcastIdsProvider.future);
+    return broadcasts.where((tour) {
+      // Status filter: handle live and completed
+      if (requestedStatuses.isNotEmpty) {
+        final isLive = liveIds.contains(tour.id);
+        final isCompleted = !isLive;
 
-    final filteredTours = await Future.wait(
-      groupBroadcast.map((tour) async {
-        // Status filter: handle live and completed
-        bool matchesStatus = true;
-        if (requestedStatuses.isNotEmpty) {
-          final isLive = liveIds.contains(tour.id);
-          final isCompleted = !isLive;
+        final matchesStatus =
+            (requestedStatuses.contains(EventStatus.live.name) && isLive) ||
+            (requestedStatuses.contains(EventStatus.completed.name) &&
+                isCompleted);
+        if (!matchesStatus) return false;
+      }
 
-          matchesStatus =
-              (requestedStatuses.contains(EventStatus.live.name) && isLive) ||
-              (requestedStatuses.contains(EventStatus.completed.name) &&
-                  isCompleted);
-          if (!matchesStatus) return null;
+      // Format filter: blitz/rapid/standard
+      if (requestedFormats.isNotEmpty) {
+        final tourFormat = tour.timeControl?.trim().toLowerCase();
+        final matchesFormat =
+            tourFormat != null && requestedFormats.contains(tourFormat);
+        if (!matchesFormat) return false;
+      }
+
+      // Elo filter (inclusive)
+      final minElo = eloRange.start.round();
+      final maxElo = eloRange.end.round();
+      if (tour.maxAvgElo != null) {
+        if (tour.maxAvgElo! < minElo || tour.maxAvgElo! > maxElo) {
+          return false;
         }
+      }
 
-        // Format filter: blitz/rapid/standard
-        bool matchesFormat = true;
-        if (requestedFormats.isNotEmpty) {
-          final tourFormat = tour.timeControl?.trim().toLowerCase();
-          matchesFormat =
-              tourFormat != null && requestedFormats.contains(tourFormat);
-          if (!matchesFormat) return null;
-        }
-
-        // Elo filter (inclusive)
-        final minElo = eloRange.start.round();
-        final maxElo = eloRange.end.round();
-        if (tour.maxAvgElo != null) {
-          if (tour.maxAvgElo! < minElo || tour.maxAvgElo! > maxElo) {
-            return null;
-          }
-        }
-
-        return tour;
-      }),
-    );
-
-    return filteredTours.whereType<GroupBroadcast>().toList();
+      return true;
+    }).toList();
   }
 }

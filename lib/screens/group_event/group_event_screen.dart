@@ -15,6 +15,8 @@ import 'package:chessever2/screens/group_event/providers/sorting_all_event_provi
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup.dart';
+import 'package:chessever2/providers/for_you_games_provider.dart';
+import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_state.dart';
 import 'package:chessever2/widgets/generic_error_widget.dart';
 import 'package:chessever2/widgets/search/enhanced_rounded_search_bar.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
@@ -49,6 +51,23 @@ class GroupEventScreen extends HookConsumerWidget {
     final selectedTourEvent = ref.watch(selectedGroupCategoryProvider);
     final searchQuery = ref.watch(searchTabQueryProvider);
     final hasActiveSearch = searchQuery.trim().isNotEmpty;
+    final filterPopupState = ref.watch(filterPopupProvider);
+    final forYouFilterState = ref.watch(forYouAppliedFilterProvider);
+
+    int activeFilterCount(FilterPopupState state) {
+      final rangeChanged =
+          state.eloRange.start > defaultFilterPopupState.eloRange.start ||
+          state.eloRange.end < defaultFilterPopupState.eloRange.end;
+      return state.formatsAndStates.length + (rangeChanged ? 1 : 0);
+    }
+
+    final filterBadgeCount =
+        selectedTourEvent == GroupEventCategory.forYou
+            ? activeFilterCount(forYouFilterState)
+            : selectedTourEvent == GroupEventCategory.current ||
+                selectedTourEvent == GroupEventCategory.past
+            ? activeFilterCount(filterPopupState)
+            : 0;
 
     // Determine which categories to show (search tab only appears when searching)
     final visibleCategories =
@@ -183,6 +202,7 @@ class GroupEventScreen extends HookConsumerWidget {
                       controller: searchController,
                       hintText: 'Search',
                       showProfile: !isSearching.value,
+                      filterBadgeCount: filterBadgeCount,
                       onChanged: (value) {
                         ref
                             .read(groupEventScreenProvider.notifier)
@@ -227,35 +247,64 @@ class GroupEventScreen extends HookConsumerWidget {
                               .state = GroupEventCategory.search;
                         }
                       },
-                      onFilterTap:
-                          () => showDialog(
-                            context: context,
-                            // ignore: deprecated_member_use
-                            barrierColor: kBlackColor.withOpacity(0.5),
-                            builder:
-                                (cxt) => FilterPopup(
-                                  onApplyFilters: (filterState) async {
-                                    final filtered = await ref
-                                        .read(groupEventFilterProvider)
-                                        .applyAllFilters(
-                                          filters:
-                                              filterState.formatsAndStates
-                                                  .toList(),
-                                          eloRange: filterState.eloRange,
-                                          tournamentCategory: selectedTourEvent,
-                                        );
+                      onFilterTap: () {
+                        if (selectedTourEvent == GroupEventCategory.forYou) {
+                          ref
+                              .read(filterPopupProvider.notifier)
+                              .setState(forYouFilterState);
+                        }
 
+                        showDialog(
+                          context: context,
+                          // ignore: deprecated_member_use
+                          barrierColor: kBlackColor.withOpacity(0.5),
+                          builder:
+                              (cxt) => FilterPopup(
+                                onApplyFilters: (filterState) async {
+                                  if (selectedTourEvent ==
+                                      GroupEventCategory.forYou) {
                                     ref
-                                        .read(groupEventScreenProvider.notifier)
-                                        .setFilteredModels(filtered);
-                                  },
-                                  onResetFilters: () async {
-                                    await ref
-                                        .read(groupEventScreenProvider.notifier)
-                                        .resetFilters();
-                                  },
-                                ),
-                          ),
+                                        .read(
+                                          forYouAppliedFilterProvider.notifier,
+                                        )
+                                        .state = filterState;
+                                    ref.invalidate(forYouEventsProvider);
+                                    return;
+                                  }
+
+                                  final filtered = await ref
+                                      .read(groupEventFilterProvider)
+                                      .applyAllFilters(
+                                        filters:
+                                            filterState.formatsAndStates
+                                                .toList(),
+                                        eloRange: filterState.eloRange,
+                                        tournamentCategory: selectedTourEvent,
+                                      );
+
+                                  ref
+                                      .read(groupEventScreenProvider.notifier)
+                                      .setFilteredModels(filtered);
+                                },
+                                onResetFilters: () async {
+                                  if (selectedTourEvent ==
+                                      GroupEventCategory.forYou) {
+                                    ref
+                                        .read(
+                                          forYouAppliedFilterProvider.notifier,
+                                        )
+                                        .state = defaultFilterPopupState;
+                                    ref.invalidate(forYouEventsProvider);
+                                    return;
+                                  }
+
+                                  await ref
+                                      .read(groupEventScreenProvider.notifier)
+                                      .resetFilters();
+                                },
+                              ),
+                        );
+                      },
                       onProfileTap:
                           () => Scaffold.maybeOf(context)?.openDrawer(),
                       onClearSearchField: () {
@@ -315,6 +364,8 @@ class GroupEventScreen extends HookConsumerWidget {
                           }
 
                           ref.invalidate(filterPopupProvider);
+                          ref.read(forYouAppliedFilterProvider.notifier).state =
+                              defaultFilterPopupState;
                           ref
                               .read(selectedGroupCategoryProvider.notifier)
                               .state = newCategory;

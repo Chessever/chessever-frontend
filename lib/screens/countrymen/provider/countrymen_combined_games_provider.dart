@@ -494,14 +494,14 @@ class CountrymenCombinedGamesNotifier
       return dayCompare;
     }
 
-    final eloCompare = b.cardElo.compareTo(a.cardElo);
-    if (eloCompare != 0) {
-      return eloCompare;
-    }
-
     final aTime = a.lastMoveTime ?? DateTime(1900);
     final bTime = b.lastMoveTime ?? DateTime(1900);
-    return bTime.compareTo(aTime);
+    final timeCompare = bTime.compareTo(aTime);
+    if (timeCompare != 0) {
+      return timeCompare;
+    }
+
+    return b.cardElo.compareTo(a.cardElo);
   }
 
   String _dayKeyForGame(GamesTourModel game) {

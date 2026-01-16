@@ -71,7 +71,7 @@ class GroupBroadcastLocalStorage {
         case GroupEventCategory.past:
           final events = await ref
               .read(groupBroadcastRepositoryProvider)
-              .getPastGroupBroadcasts(limit: 50);
+              .getPastGroupBroadcasts(limit: 300);
           broadcasts = await _ensureStarredEventsIncluded(events);
           break;
       }

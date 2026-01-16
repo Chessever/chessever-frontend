@@ -79,8 +79,28 @@ Future<T?> _showTabletOverlayMenu<T>({
 
   final overlay = Overlay.of(context);
 
-  // Calculate menu position
-  final left = position.left;
+  // Calculate menu position with bounds checking for tablets
+  final screenWidth = MediaQuery.of(context).size.width;
+  const menuWidth = 240.0; // Approximate menu width (200 content + padding)
+  const horizontalPadding = 16.0;
+
+  // Calculate the right edge of where the menu would be if left-aligned to button
+  final menuRightEdge = position.left + menuWidth;
+
+  // Track if we're aligning from the right (for animation alignment)
+  bool isRightAligned = false;
+
+  // If menu would extend beyond screen, align menu's right edge with button's right edge
+  double left;
+  if (menuRightEdge > screenWidth - horizontalPadding) {
+    // position.right in RelativeRect.fromLTRB is the x-coordinate of the button's right edge
+    // So menu's left = button's right edge - menu width
+    left = (position.right - menuWidth).clamp(horizontalPadding, screenWidth - menuWidth - horizontalPadding);
+    isRightAligned = true;
+  } else {
+    left = position.left;
+  }
+
   final top = position.top;
 
   TabletPopupState.markOpen();
@@ -165,7 +185,8 @@ Future<T?> _showTabletOverlayMenu<T>({
                 final progress = animation.value.clamp(0.0, 1.0);
                 return Transform.scale(
                   scale: 0.92 + (progress * 0.08),
-                  alignment: Alignment.topLeft,
+                  // Align animation to the side the menu is anchored to
+                  alignment: isRightAligned ? Alignment.topRight : Alignment.topLeft,
                   child: Opacity(opacity: progress, child: child),
                 );
               },

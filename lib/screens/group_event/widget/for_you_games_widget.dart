@@ -33,7 +33,8 @@ class ForYouGamesWidget extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final eventsAsync = ref.watch(forYouEventsProvider);
+    // Use filtered provider which applies user filters on top of base data
+    final eventsAsync = ref.watch(filteredForYouEventsProvider);
 
     return eventsAsync.when(
       data: (events) {
@@ -69,7 +70,10 @@ class ForYouGamesWidget extends ConsumerWidget {
       physics: const NeverScrollableScrollPhysics(),
       children: [
         const PremiumCollectionCards(),
-        ...List.generate(3, (index) => _ForYouEventSkeleton(isFirst: index == 0)),
+        ...List.generate(
+          3,
+          (index) => _ForYouEventSkeleton(isFirst: index == 0),
+        ),
       ],
     );
   }
@@ -80,7 +84,10 @@ class ForYouGamesWidget extends ConsumerWidget {
     final eventCardAspectRatio = ResponsiveHelper.isLandscape ? 1.8 : 1.4;
 
     return ListView(
-      padding: EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: 16.sp),
+      padding: EdgeInsets.symmetric(
+        horizontal: horizontalPadding,
+        vertical: 16.sp,
+      ),
       physics: const NeverScrollableScrollPhysics(),
       children: [
         const PremiumCollectionCards(),
@@ -93,12 +100,16 @@ class ForYouGamesWidget extends ConsumerWidget {
               children: [
                 // Left column skeleton
                 Expanded(
-                  child: _TabletColumnSkeleton(eventCardAspectRatio: eventCardAspectRatio),
+                  child: _TabletColumnSkeleton(
+                    eventCardAspectRatio: eventCardAspectRatio,
+                  ),
                 ),
                 SizedBox(width: columnSpacing),
                 // Right column skeleton
                 Expanded(
-                  child: _TabletColumnSkeleton(eventCardAspectRatio: eventCardAspectRatio),
+                  child: _TabletColumnSkeleton(
+                    eventCardAspectRatio: eventCardAspectRatio,
+                  ),
                 ),
               ],
             ),
@@ -120,7 +131,10 @@ class ForYouGamesWidget extends ConsumerWidget {
     return ListView.builder(
       key: const PageStorageKey<String>('for_you_events_list'),
       controller: scrollController,
-      padding: EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: 16.sp),
+      padding: EdgeInsets.symmetric(
+        horizontal: horizontalPadding,
+        vertical: 16.sp,
+      ),
       itemCount: events.length + 1, // +1 for premium cards
       cacheExtent: 1500,
       physics: const AlwaysScrollableScrollPhysics(
@@ -175,12 +189,13 @@ class ForYouGamesWidget extends ConsumerWidget {
               SizedBox(width: columnSpacing),
               // Right column: event2 + its games (or empty space)
               Expanded(
-                child: event2 != null
-                    ? _ForYouTabletEventColumn(
-                        key: ValueKey('tablet_col_${event2.id}'),
-                        event: event2,
-                      )
-                    : const SizedBox.shrink(),
+                child:
+                    event2 != null
+                        ? _ForYouTabletEventColumn(
+                          key: ValueKey('tablet_col_${event2.id}'),
+                          event: event2,
+                        )
+                        : const SizedBox.shrink(),
               ),
             ],
           ),
@@ -191,7 +206,10 @@ class ForYouGamesWidget extends ConsumerWidget {
     return ListView(
       key: const PageStorageKey<String>('for_you_events_tablet_grid'),
       controller: scrollController,
-      padding: EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: 16.sp),
+      padding: EdgeInsets.symmetric(
+        horizontal: horizontalPadding,
+        vertical: 16.sp,
+      ),
       cacheExtent: 1500,
       physics: const AlwaysScrollableScrollPhysics(
         parent: BouncingScrollPhysics(),
@@ -220,9 +238,7 @@ class ForYouGamesWidget extends ConsumerWidget {
 
 /// Skeleton for a single column in the 2-column tablet grid
 class _TabletColumnSkeleton extends StatelessWidget {
-  const _TabletColumnSkeleton({
-    required this.eventCardAspectRatio,
-  });
+  const _TabletColumnSkeleton({required this.eventCardAspectRatio});
 
   final double eventCardAspectRatio;
 
@@ -303,10 +319,9 @@ class _ForYouEventSection extends ConsumerWidget {
       tourEventCardModel: event,
       heroTagSuffix: '_foryou',
       onTap: () {
-        ref.read(groupEventScreenProvider.notifier).onSelectTournament(
-          context: context,
-          id: event.id,
-        );
+        ref
+            .read(groupEventScreenProvider.notifier)
+            .onSelectTournament(context: context, id: event.id);
       },
     );
 
@@ -357,10 +372,7 @@ class _ForYouEventSection extends ConsumerWidget {
 /// Single column in the 2-column tablet grid
 /// Contains: event card on top + games stacked below (1 game per row within column)
 class _ForYouTabletEventColumn extends ConsumerWidget {
-  const _ForYouTabletEventColumn({
-    super.key,
-    required this.event,
-  });
+  const _ForYouTabletEventColumn({super.key, required this.event});
 
   final GroupEventCardModel event;
 
@@ -387,10 +399,9 @@ class _ForYouTabletEventColumn extends ConsumerWidget {
             tourEventCardModel: event,
             heroTagSuffix: '_foryou_tablet_col',
             onTap: () {
-              ref.read(groupEventScreenProvider.notifier).onSelectTournament(
-                context: context,
-                id: event.id,
-              );
+              ref
+                  .read(groupEventScreenProvider.notifier)
+                  .onSelectTournament(context: context, id: event.id);
             },
           ),
         ),
@@ -434,10 +445,11 @@ class _ForYouTabletColumnGames extends ConsumerWidget {
         }
 
         // Convert to GamesTourModel - limit to 4 games (2 rows of 2)
-        final allGameModels = games
-            .where((g) => g.players != null && g.players!.length >= 2)
-            .map((g) => GamesTourModel.fromGame(g))
-            .toList();
+        final allGameModels =
+            games
+                .where((g) => g.players != null && g.players!.length >= 2)
+                .map((g) => GamesTourModel.fromGame(g))
+                .toList();
 
         if (allGameModels.isEmpty) {
           return const SizedBox.shrink();
@@ -467,13 +479,14 @@ class _ForYouTabletColumnGames extends ConsumerWidget {
                   ),
                   SizedBox(width: 8.sp),
                   Expanded(
-                    child: game2 != null
-                        ? _TabletGameCard(
-                            game: game2,
-                            games: gameModels,
-                            index: i + 1,
-                          )
-                        : const SizedBox.shrink(),
+                    child:
+                        game2 != null
+                            ? _TabletGameCard(
+                              game: game2,
+                              games: gameModels,
+                              index: i + 1,
+                            )
+                            : const SizedBox.shrink(),
                   ),
                 ],
               ),
@@ -485,7 +498,9 @@ class _ForYouTabletColumnGames extends ConsumerWidget {
       },
       loading: () => _buildColumnShimmer(),
       error: (error, stack) {
-        debugPrint('[_ForYouTabletColumnGames] Error loading games for $eventId: $error');
+        debugPrint(
+          '[_ForYouTabletColumnGames] Error loading games for $eventId: $error',
+        );
         return Padding(
           padding: EdgeInsets.only(bottom: 8.sp),
           child: Text(
@@ -557,15 +572,16 @@ class _TabletGameCard extends ConsumerWidget {
       game: game,
       orderedGames: games,
       gameIndex: index,
-      onChangedWithLiveGames: (updatedGames) => ref
-          .read(gameCardWrapperProvider)
-          .navigateToChessBoard(
-            context: context,
-            orderedGames: updatedGames,
-            gameIndex: index,
-            onReturnFromChessboard: (_) {},
-            viewSource: ChessboardView.forYou,
-          ),
+      onChangedWithLiveGames:
+          (updatedGames) => ref
+              .read(gameCardWrapperProvider)
+              .navigateToChessBoard(
+                context: context,
+                orderedGames: updatedGames,
+                gameIndex: index,
+                onReturnFromChessboard: (_) {},
+                viewSource: ChessboardView.forYou,
+              ),
       pinnedIds: const [],
       onPinToggle: (_) {},
     );
@@ -597,10 +613,11 @@ class _ForYouEventGames extends ConsumerWidget {
         }
 
         // Convert to GamesTourModel
-        final gameModels = games
-            .where((g) => g.players != null && g.players!.length >= 2)
-            .map((g) => GamesTourModel.fromGame(g))
-            .toList();
+        final gameModels =
+            games
+                .where((g) => g.players != null && g.players!.length >= 2)
+                .map((g) => GamesTourModel.fromGame(g))
+                .toList();
 
         if (gameModels.isEmpty) {
           return const SizedBox.shrink();
@@ -633,7 +650,9 @@ class _ForYouEventGames extends ConsumerWidget {
       },
       loading: () => _buildGameShimmers(viewMode),
       error: (error, stack) {
-        debugPrint('[ForYouEventGames] Error loading games for $eventId: $error');
+        debugPrint(
+          '[ForYouEventGames] Error loading games for $eventId: $error',
+        );
         return Padding(
           padding: EdgeInsets.only(bottom: 8.sp),
           child: Text(
@@ -667,40 +686,43 @@ class _ForYouEventGames extends ConsumerWidget {
                   game: game1,
                   orderedGames: games,
                   gameIndex: i,
-                  onChangedWithLiveGames: (updatedGames) => ref
-                      .read(gameCardWrapperProvider)
-                      .navigateToChessBoard(
-                        context: context,
-                        orderedGames: updatedGames,
-                        gameIndex: i,
-                        onReturnFromChessboard: (_) {},
-                        viewSource: ChessboardView.forYou,
-                      ),
+                  onChangedWithLiveGames:
+                      (updatedGames) => ref
+                          .read(gameCardWrapperProvider)
+                          .navigateToChessBoard(
+                            context: context,
+                            orderedGames: updatedGames,
+                            gameIndex: i,
+                            onReturnFromChessboard: (_) {},
+                            viewSource: ChessboardView.forYou,
+                          ),
                   pinnedIds: const [],
                   onPinToggle: (_) {},
                 ),
               ),
               SizedBox(width: 12.sp),
               Expanded(
-                child: game2 != null
-                    ? GridGameCardWrapperWidget(
-                        key: ValueKey('grid_game_${game2.gameId}'),
-                        game: game2,
-                        orderedGames: games,
-                        gameIndex: i + 1,
-                        onChangedWithLiveGames: (updatedGames) => ref
-                            .read(gameCardWrapperProvider)
-                            .navigateToChessBoard(
-                              context: context,
-                              orderedGames: updatedGames,
-                              gameIndex: i + 1,
-                              onReturnFromChessboard: (_) {},
-                              viewSource: ChessboardView.forYou,
-                            ),
-                        pinnedIds: const [],
-                        onPinToggle: (_) {},
-                      )
-                    : const SizedBox.shrink(),
+                child:
+                    game2 != null
+                        ? GridGameCardWrapperWidget(
+                          key: ValueKey('grid_game_${game2.gameId}'),
+                          game: game2,
+                          orderedGames: games,
+                          gameIndex: i + 1,
+                          onChangedWithLiveGames:
+                              (updatedGames) => ref
+                                  .read(gameCardWrapperProvider)
+                                  .navigateToChessBoard(
+                                    context: context,
+                                    orderedGames: updatedGames,
+                                    gameIndex: i + 1,
+                                    onReturnFromChessboard: (_) {},
+                                    viewSource: ChessboardView.forYou,
+                                  ),
+                          pinnedIds: const [],
+                          onPinToggle: (_) {},
+                        )
+                        : const SizedBox.shrink(),
               ),
             ],
           ),
@@ -829,7 +851,10 @@ class _ForYouGameCard extends ConsumerWidget {
     if (shouldAnimate) {
       return card
           .animate()
-          .fadeIn(duration: 150.ms, delay: Duration(milliseconds: gameIndex * 50))
+          .fadeIn(
+            duration: 150.ms,
+            delay: Duration(milliseconds: gameIndex * 50),
+          )
           .slideY(begin: 0.03, end: 0, duration: 150.ms);
     }
 

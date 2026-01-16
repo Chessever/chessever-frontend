@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:chessever2/repository/supabase/base_repository.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -91,17 +92,34 @@ class GroupBroadcastRepository extends BaseRepository {
     });
   }
 
-  /// Fetch all group broadcasts with optional pagination and sorting
+  /// Fetch all group broadcasts with optional pagination, sorting, and filters
   Future<List<GroupBroadcast>> getCurrentGroupBroadcasts({
     int? limit,
     int? offset,
     String orderBy = 'max_avg_elo',
     bool ascending = false,
+    List<String>? timeControlFilters,
+    int? minElo,
+    int? maxElo,
   }) async {
     return handleApiCall(() async {
-      PostgrestTransformBuilder<PostgrestList> query =
+      PostgrestFilterBuilder<PostgrestList> filterQuery =
           supabase.from('group_broadcasts_current').select();
 
+      // Apply time control filter (blitz, rapid, standard)
+      if (timeControlFilters != null && timeControlFilters.isNotEmpty) {
+        filterQuery = filterQuery.inFilter('time_control', timeControlFilters);
+      }
+
+      // Apply ELO range filters
+      if (minElo != null) {
+        filterQuery = filterQuery.gte('max_avg_elo', minElo);
+      }
+      if (maxElo != null) {
+        filterQuery = filterQuery.lte('max_avg_elo', maxElo);
+      }
+
+      PostgrestTransformBuilder<PostgrestList> query = filterQuery;
       query = query.order(orderBy, ascending: ascending);
 
       if (limit != null) {
@@ -270,16 +288,82 @@ class GroupBroadcastRepository extends BaseRepository {
   Future<List<GroupBroadcast>> searchGroupBroadcastsFromSupabase(
     String query,
   ) async {
-    if (query.trim().isEmpty) return [];
+    final trimmedQuery = query.trim();
+    if (trimmedQuery.isEmpty) return [];
 
-    return handleApiCall(() async {
-      final res = await supabase.rpc(
-        'search_group_broadcasts',
-        params: {'search_query': query.trim()},
-      );
+    try {
+      final tokens = _extractSearchTokens(trimmedQuery);
+      final orFilters = <String>[
+        'name.ilike.%$trimmedQuery%',
+        for (final token in tokens) 'name.ilike.%$token%',
+      ];
+      final orFilter = orFilters.join(',');
 
-      return (res as List).map((e) => GroupBroadcast.fromJson(e)).toList();
-    });
+      final resultsById = <String, GroupBroadcast>{};
+
+      // Use direct query instead of slow RPC function.
+      // Search by name with token OR matching, ordered by ELO (best events first).
+      final res = await supabase
+          .from('group_broadcasts')
+          .select('id, created_at, name, search, max_avg_elo, date_start, date_end, time_control')
+          .or(orFilter)
+          .order('max_avg_elo', ascending: false, nullsFirst: false)
+          .limit(80);
+
+      final resList = res as List?;
+      debugPrint('[Search] Direct query results: ${resList?.length ?? 0}');
+
+      if (resList != null) {
+        for (final row in resList) {
+          final broadcast = GroupBroadcast.fromJson(row);
+          resultsById[broadcast.id] = broadcast;
+        }
+      }
+
+      // Also search tours by name, then map to group_broadcasts.
+      final tours = await supabase
+          .from('tours')
+          .select('id, group_broadcast_id, name, slug, info, dates, avg_elo, search, created_at')
+          .or(orFilter)
+          .limit(80);
+
+      final tourRows = tours as List?;
+      if (tourRows != null && tourRows.isNotEmpty) {
+        final groupIds = <String>{};
+        final toursById = <String, Map<String, dynamic>>{};
+
+        for (final tour in tourRows) {
+          final groupId = tour['group_broadcast_id'] as String?;
+          final tourId = tour['id'] as String?;
+          if (tourId != null) {
+            toursById[tourId] = tour;
+          }
+          if (groupId != null && groupId.isNotEmpty) {
+            groupIds.add(groupId);
+          }
+        }
+
+        if (groupIds.isNotEmpty) {
+          final groupBroadcasts = await getGroupBroadcastsWithElo(groupIds.toList());
+          for (final broadcast in groupBroadcasts.values) {
+            resultsById.putIfAbsent(broadcast.id, () => broadcast);
+          }
+        }
+
+        for (final tour in toursById.values) {
+          final groupId = tour['group_broadcast_id'] as String?;
+          if (groupId == null || groupId.isEmpty || !resultsById.containsKey(groupId)) {
+            final synthetic = _mapTourRowToGroupBroadcast(tour);
+            resultsById.putIfAbsent(synthetic.id, () => synthetic);
+          }
+        }
+      }
+
+      return resultsById.values.toList();
+    } catch (e) {
+      debugPrint('[Search] Error: $e');
+      return [];
+    }
   }
 
   Future<List<GroupBroadcast>> getGroupBroadcastsForYear({
@@ -337,6 +421,40 @@ class GroupBroadcastRepository extends BaseRepository {
         .limit(1);
     if (response.isEmpty) return null;
     return response.first;
+  }
+
+  static const Set<String> _searchStopWords = {
+    'chess',
+    'championship',
+    'championships',
+    'tournament',
+    'festival',
+    'open',
+    'classic',
+    'cup',
+    'final',
+    'finals',
+    'men',
+    'women',
+    'girls',
+    'boys',
+    'team',
+    'teams',
+    'event',
+  };
+
+  List<String> _extractSearchTokens(String query) {
+    final normalized = query
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9]+'), ' ')
+        .trim();
+    if (normalized.isEmpty) return const [];
+    final tokens = normalized
+        .split(RegExp(r'\s+'))
+        .where((t) => t.isNotEmpty && !_searchStopWords.contains(t))
+        .toSet()
+        .toList();
+    return tokens;
   }
 
   /// Get tour IDs that belong to a specific group_broadcast
