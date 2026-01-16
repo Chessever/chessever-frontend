@@ -29,11 +29,11 @@ final supabaseCombinedSearchProvider =
         final fideCountryCode = detectedFideCode;
         final normalizedCountryKey = fideCountryCode?.toUpperCase();
 
-        // Supabase RPC search can get slow on very short queries (e.g. "az").
-        // For country-style queries we skip the RPC entirely to stay snappy and lean on
-        // local cache + direct player fetch.
+        // Always search Supabase RPC for events (searches all: current, past, upcoming)
+        // Only skip for very short queries (2-3 char country codes) for performance
+        final isShortCountryCode = isCountrySearch && trimmedQuery.length <= 3;
         List<GroupBroadcast> broadcasts = [];
-        if (!isCountrySearch) {
+        if (!isShortCountryCode) {
           try {
             broadcasts = await ref
                 .read(groupBroadcastRepositoryProvider)
@@ -93,10 +93,18 @@ final supabaseCombinedSearchProvider =
         final allPlayers = <SearchPlayer>[];
         final liveIds = ref.read(liveBroadcastIdsProvider);
 
-        // Fallback/local cache search to stay resilient when Supabase returns little/slow
-        final localSearch = await ref
-            .read(groupBroadcastLocalStorage(GroupEventCategory.current))
-            .searchWithScoring(trimmedQuery, liveIds);
+        // Fallback/local cache search across ALL categories (current, past, upcoming)
+        // Run in parallel for efficiency
+        final localSearchFutures = await Future.wait([
+          ref
+              .read(groupBroadcastLocalStorage(GroupEventCategory.current))
+              .searchWithScoring(trimmedQuery, liveIds),
+          ref
+              .read(groupBroadcastLocalStorage(GroupEventCategory.past))
+              .searchWithScoring(trimmedQuery, liveIds),
+        ]);
+        final localSearchCurrent = localSearchFutures[0];
+        final localSearchPast = localSearchFutures[1];
 
         for (final gb in broadcasts) {
           final tourEventModel = GroupEventCardModel.fromGroupBroadcast(
@@ -285,37 +293,42 @@ final supabaseCombinedSearchProvider =
             ..addAll(byName.values);
         }
 
-        // Merge resilient local-search results (helps short/typo queries)
-        if (localSearch.tournamentResults.isNotEmpty) {
-          final existingIds = {for (final r in tournamentResults) r.tournament.id};
-          for (final t in localSearch.tournamentResults) {
-            if (!existingIds.contains(t.tournament.id)) {
-              tournamentResults.add(t);
-            }
-          }
-        }
-
-        if (localSearch.playerResults.isNotEmpty) {
-          final byName = <String, SearchResult>{
-            for (final r in playerResults)
-              (r.player?.name.toLowerCase() ?? r.matchedText.toLowerCase()): r,
-          };
-          for (final r in localSearch.playerResults) {
-            final keyName = r.player?.name.toLowerCase() ?? r.matchedText.toLowerCase();
-            final existing = byName[keyName];
-            if (existing == null) {
-              byName[keyName] = r;
-            } else {
-              final existingElo = existing.player?.rating ?? 0;
-              final newElo = r.player?.rating ?? 0;
-              if (newElo > existingElo) {
-                byName[keyName] = r;
+        // Merge resilient local-search results from ALL categories (current + past)
+        // This ensures we find events even if Supabase RPC is slow or returns limited results
+        final allLocalSearches = [localSearchCurrent, localSearchPast];
+        for (final localSearch in allLocalSearches) {
+          if (localSearch.tournamentResults.isNotEmpty) {
+            final existingIds = {for (final r in tournamentResults) r.tournament.id};
+            for (final t in localSearch.tournamentResults) {
+              if (!existingIds.contains(t.tournament.id)) {
+                tournamentResults.add(t);
+                existingIds.add(t.tournament.id);
               }
             }
           }
-          playerResults
-            ..clear()
-            ..addAll(byName.values);
+
+          if (localSearch.playerResults.isNotEmpty) {
+            final byName = <String, SearchResult>{
+              for (final r in playerResults)
+                (r.player?.name.toLowerCase() ?? r.matchedText.toLowerCase()): r,
+            };
+            for (final r in localSearch.playerResults) {
+              final keyName = r.player?.name.toLowerCase() ?? r.matchedText.toLowerCase();
+              final existing = byName[keyName];
+              if (existing == null) {
+                byName[keyName] = r;
+              } else {
+                final existingElo = existing.player?.rating ?? 0;
+                final newElo = r.player?.rating ?? 0;
+                if (newElo > existingElo) {
+                  byName[keyName] = r;
+                }
+              }
+            }
+            playerResults
+              ..clear()
+              ..addAll(byName.values);
+          }
         }
 
         // Score how well a player name matches the query

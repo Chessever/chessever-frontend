@@ -644,22 +644,18 @@ class ScoreCardScreen extends ConsumerWidget {
                                 .state = ChessboardView.tour;
                           }
 
-                          final gameIndex = allGames.indexWhere(
-                            (g) => g.gameId == game.gameId,
+                          // Pass playerGames (filtered for this player) instead of allGames
+                          // so swiping in chessboard only shows this player's games
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder:
+                                  (_) => ChessBoardScreenNew(
+                                    games: playerGames,
+                                    currentIndex: index,
+                                  ),
+                            ),
                           );
-
-                          if (gameIndex != -1) {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder:
-                                    (_) => ChessBoardScreenNew(
-                                      games: allGames,
-                                      currentIndex: gameIndex,
-                                    ),
-                              ),
-                            );
-                          }
                         },
                       ),
                     );

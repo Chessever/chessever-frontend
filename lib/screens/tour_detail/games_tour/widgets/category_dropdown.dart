@@ -10,6 +10,7 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/droplet_animation_curves.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/utils/tablet_safe_menu.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
@@ -252,6 +253,12 @@ class _CategoryDropdownContent extends HookConsumerWidget {
   }) {
     OverlayEntry? overlayEntry;
 
+    // Track when opened for tablet phantom tap protection
+    final openedAt = DateTime.now();
+    if (ResponsiveHelper.isTablet) {
+      TabletPopupState.markOpen();
+    }
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!context.mounted) {
         isOpen.value = false;
@@ -280,10 +287,14 @@ class _CategoryDropdownContent extends HookConsumerWidget {
           availableHeight: availableHeight,
           animation: animation,
           categories: categories,
+          openedAt: openedAt,
           onCategorySelect: (category) {
             HapticFeedbackService.selection();
             onCategoryChanged(category);
             // Close immediately after selection
+            if (ResponsiveHelper.isTablet) {
+              TabletPopupState.markClosed();
+            }
             animationController.reverse().then((_) {
               isOpen.value = false;
             });
@@ -299,11 +310,17 @@ class _CategoryDropdownContent extends HookConsumerWidget {
             HapticFeedbackService.selection();
             onRoundChanged(round);
             // Close immediately after selection
+            if (ResponsiveHelper.isTablet) {
+              TabletPopupState.markClosed();
+            }
             animationController.reverse().then((_) {
               isOpen.value = false;
             });
           },
           onDismiss: () {
+            if (ResponsiveHelper.isTablet) {
+              TabletPopupState.markClosed();
+            }
             animationController.reverse().then((_) {
               isOpen.value = false;
             });
@@ -315,6 +332,9 @@ class _CategoryDropdownContent extends HookConsumerWidget {
 
       void removeOverlay() {
         try {
+          if (ResponsiveHelper.isTablet) {
+            TabletPopupState.markClosed();
+          }
           if (overlayEntry?.mounted == true) {
             overlayEntry?.remove();
           }
@@ -549,6 +569,7 @@ class _DropdownOverlay extends ConsumerWidget {
   final double availableHeight;
   final Animation<double> animation;
   final List<TourModel> categories;
+  final DateTime openedAt;
   final ValueChanged<TourModel> onCategorySelect;
   final ValueChanged<TourModel> onCategoryChange; // Select without closing
   final ValueChanged<GamesAppBarModel> onRoundSelect;
@@ -562,11 +583,20 @@ class _DropdownOverlay extends ConsumerWidget {
     required this.availableHeight,
     required this.animation,
     required this.categories,
+    required this.openedAt,
     required this.onCategorySelect,
     required this.onCategoryChange,
     required this.onRoundSelect,
     required this.onDismiss,
   });
+
+  /// Check if enough time has passed to allow dismissal (tablet phantom tap protection)
+  bool _canDismiss() {
+    if (!ResponsiveHelper.isTablet) return true;
+    const minOpenDuration = Duration(milliseconds: 600);
+    final elapsed = DateTime.now().difference(openedAt);
+    return elapsed >= minOpenDuration;
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -599,7 +629,14 @@ class _DropdownOverlay extends ConsumerWidget {
 
     return GestureDetector(
       behavior: HitTestBehavior.translucent,
-      onTap: onDismiss,
+      onTap: () {
+        // Tablet phantom tap protection - ignore taps that come too soon after opening
+        if (!_canDismiss()) {
+          debugPrint('🛡️ CATEGORY DROPDOWN: dismiss blocked - opened too recently');
+          return;
+        }
+        onDismiss();
+      },
       child: Stack(
         children: [
           Positioned.fill(child: Container(color: Colors.transparent)),
