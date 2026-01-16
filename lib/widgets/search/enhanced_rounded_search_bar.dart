@@ -23,6 +23,7 @@ class EnhancedRoundedSearchBar extends ConsumerStatefulWidget {
   final bool showFilter;
   final FocusNode? focusNode;
   final VoidCallback? onClearSearchField;
+  final int filterBadgeCount;
 
   const EnhancedRoundedSearchBar({
     super.key,
@@ -38,6 +39,7 @@ class EnhancedRoundedSearchBar extends ConsumerStatefulWidget {
     this.showFilter = true,
     this.focusNode,
     this.onClearSearchField,
+    this.filterBadgeCount = 0,
   });
 
   @override
@@ -268,6 +270,7 @@ class _EnhancedRoundedSearchBarState
               focusNode: _effectiveNode,
               onCloseTap: _clearSearchAndHide,
               onOpenFilter: widget.onFilterTap,
+              filterBadgeCount: widget.filterBadgeCount,
             ),
           ),
         ),
@@ -276,9 +279,6 @@ class _EnhancedRoundedSearchBarState
   }
 
   Widget _buildProfileAvatar() {
-    return UserAvatar(
-      size: 44,
-      onTap: widget.onProfileTap,
-    );
+    return UserAvatar(size: 44, onTap: widget.onProfileTap);
   }
 }

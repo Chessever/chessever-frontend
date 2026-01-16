@@ -16,6 +16,7 @@ final favoriteStandingsPlayerService = Provider<FavoriteStandingsPlayerService>(
 
 class FavoriteStandingsPlayerService {
   static const String _cacheKeyPrefix = 'cached_favorite_players_full_';
+  static const String _lastUserIdKey = 'favorite_players_last_user_id';
   // Old global cache key that may contain cross-user data pollution
   static const String _oldGlobalCacheKey = 'cached_favorite_players_full';
   final Ref ref;
@@ -28,8 +29,13 @@ class FavoriteStandingsPlayerService {
   /// Get user-specific cache key to prevent cross-user cache pollution
   String get _cacheKey {
     final userId = _supabase.auth.currentUser?.id;
-    if (userId == null) return '${_cacheKeyPrefix}anonymous';
-    return '$_cacheKeyPrefix$userId';
+    if (userId != null) return '$_cacheKeyPrefix$userId';
+
+    final lastUserId = _prefs.getString(_lastUserIdKey);
+    if (lastUserId != null && lastUserId.isNotEmpty) {
+      return '$_cacheKeyPrefix$lastUserId';
+    }
+    return '${_cacheKeyPrefix}anonymous';
   }
 
   /// Clean up old global cache that may have cross-user data
@@ -49,6 +55,25 @@ class FavoriteStandingsPlayerService {
     // Clean up old global cache on first call
     await _cleanupOldGlobalCache();
 
+    final cached = await _getCachedPlayers();
+    if (cached.isNotEmpty) {
+      return cached;
+    }
+
+    return _fetchFavoritePlayersFromSupabase();
+  }
+
+  Future<List<PlayerStandingModel>> getCachedFavoritePlayers() async {
+    await _cleanupOldGlobalCache();
+    return _getCachedPlayers();
+  }
+
+  Future<List<PlayerStandingModel>> fetchFavoritePlayersFromSupabase() async {
+    await _cleanupOldGlobalCache();
+    return _fetchFavoritePlayersFromSupabase();
+  }
+
+  Future<List<PlayerStandingModel>> _fetchFavoritePlayersFromSupabase() async {
     try {
       final userId = _supabase.auth.currentUser?.id;
       if (userId == null) {
@@ -70,8 +95,11 @@ class FavoriteStandingsPlayerService {
 
       // Cache locally
       await _cachePlayers(players);
+      await _prefs.setString(_lastUserIdKey, userId);
 
-      debugPrint('[FavoriteStandings] Fetched ${players.length} players from Supabase');
+      debugPrint(
+        '[FavoriteStandings] Fetched ${players.length} players from Supabase',
+      );
       return players;
     } catch (e, stack) {
       debugPrint('[FavoriteStandings] Error fetching from Supabase: $e');

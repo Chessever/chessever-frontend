@@ -41,7 +41,8 @@ class HamburgerMenu extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // Use wider drawer on tablet for better readability
-    final drawerWidth = ResponsiveHelper.isTablet ? 320.0 : 260.w;
+    final isTablet = ResponsiveHelper.isTablet;
+    final drawerWidth = isTablet ? 320.0 : 260.w;
 
     return SizedBox(
       width: drawerWidth,
@@ -56,7 +57,39 @@ class HamburgerMenu extends StatelessWidget {
                 child: ListView(
                   padding: EdgeInsets.zero,
                   children: [
-                    SizedBox(height: 16.h),
+                    if (isTablet)
+                      Padding(
+                        padding: EdgeInsets.only(
+                          left: 8.sp,
+                          top: 8.h,
+                          bottom: 8.h,
+                        ),
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: InkWell(
+                            onTap: () {
+                              HapticFeedbackService.buttonPress();
+                              Navigator.of(context).pop();
+                            },
+                            borderRadius: BorderRadius.circular(12.br),
+                            child: Container(
+                              width: 44.w,
+                              height: 44.h,
+                              decoration: BoxDecoration(
+                                color: kDarkGreyColor.withOpacity(0.3),
+                                borderRadius: BorderRadius.circular(12.br),
+                              ),
+                              child: const Icon(
+                                Icons.menu_rounded,
+                                color: Colors.white,
+                                size: 24.0,
+                              ),
+                            ),
+                          ),
+                        ),
+                      )
+                    else
+                      SizedBox(height: 16.h),
                     // Subscription tier header
                     const _SubscriptionTierHeader(),
                     SizedBox(height: 16.h),
@@ -91,8 +124,7 @@ class HamburgerMenu extends StatelessWidget {
                       },
                     ),
                     // Add extra bottom padding on tablet
-                    if (ResponsiveHelper.isTablet)
-                      SizedBox(height: 16.0),
+                    if (ResponsiveHelper.isTablet) SizedBox(height: 16.0),
                   ],
                 ),
               ),
@@ -113,7 +145,11 @@ class _SubscriptionTierHeader extends ConsumerWidget {
     return DateFormat('MMM d, yyyy').format(date);
   }
 
-  Future<void> _handleTap(BuildContext context, WidgetRef ref, bool isPremium) async {
+  Future<void> _handleTap(
+    BuildContext context,
+    WidgetRef ref,
+    bool isPremium,
+  ) async {
     HapticFeedbackService.buttonPress();
 
     if (isPremium) {
@@ -133,9 +169,7 @@ class _SubscriptionTierHeader extends ConsumerWidget {
 
     // If subscription will auto-renew, show "Renews"
     // Otherwise user has cancelled, show "Expires"
-    return willRenew
-        ? 'Renews $formattedDate'
-        : 'Expires $formattedDate';
+    return willRenew ? 'Renews $formattedDate' : 'Expires $formattedDate';
   }
 
   @override
@@ -158,9 +192,10 @@ class _SubscriptionTierHeader extends ConsumerWidget {
                 color: kWhiteColor.withValues(alpha: 0.04),
                 borderRadius: BorderRadius.circular(10.br),
                 border: Border.all(
-                  color: isPremium
-                      ? kPrimaryColor.withValues(alpha: 0.25)
-                      : kWhiteColor.withValues(alpha: 0.08),
+                  color:
+                      isPremium
+                          ? kPrimaryColor.withValues(alpha: 0.25)
+                          : kWhiteColor.withValues(alpha: 0.08),
                   width: 1,
                 ),
               ),
@@ -171,9 +206,10 @@ class _SubscriptionTierHeader extends ConsumerWidget {
                     width: 36.w,
                     height: 36.h,
                     decoration: BoxDecoration(
-                      color: isPremium
-                          ? kPrimaryColor.withValues(alpha: 0.15)
-                          : kWhiteColor.withValues(alpha: 0.08),
+                      color:
+                          isPremium
+                              ? kPrimaryColor.withValues(alpha: 0.15)
+                              : kWhiteColor.withValues(alpha: 0.08),
                       borderRadius: BorderRadius.circular(8.br),
                     ),
                     child: Icon(
@@ -199,7 +235,10 @@ class _SubscriptionTierHeader extends ConsumerWidget {
                         SizedBox(height: 2.h),
                         Text(
                           isPremium
-                              ? _getSubscriptionStatusText(expirationDate, willRenew)
+                              ? _getSubscriptionStatusText(
+                                expirationDate,
+                                willRenew,
+                              )
                               : 'Unlock all features',
                           style: AppTypography.textXsRegular.copyWith(
                             color: kWhiteColor.withValues(alpha: 0.5),
@@ -212,7 +251,7 @@ class _SubscriptionTierHeader extends ConsumerWidget {
                   if (!isPremium)
                     Icon(
                       Icons.arrow_forward_ios_rounded,
-                      color: kPrimaryColor,
+                      color: kWhiteColor.withValues(alpha: 0.7),
                       size: 16.ic,
                     )
                   else
@@ -228,10 +267,7 @@ class _SubscriptionTierHeader extends ConsumerWidget {
           SizedBox(height: 12.h),
         ],
       ),
-    )
-        .animate()
-        .fadeIn(duration: 300.ms)
-        .slideX(begin: -0.1, end: 0);
+    ).animate().fadeIn(duration: 300.ms).slideX(begin: -0.1, end: 0);
   }
 }
 
@@ -243,12 +279,13 @@ class _LogOutButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return InkWell(
-      onTap: onLogoutPressed != null
-          ? () {
-              HapticFeedbackService.buttonPress();
-              onLogoutPressed!();
-            }
-          : null,
+      onTap:
+          onLogoutPressed != null
+              ? () {
+                HapticFeedbackService.buttonPress();
+                onLogoutPressed!();
+              }
+              : null,
       child: Container(
         padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 12.sp),
         height: 48.h,
@@ -290,12 +327,13 @@ class _MenuItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return InkWell(
-      onTap: onPressed != null
-          ? () {
-              HapticFeedbackService.navigation();
-              onPressed!();
-            }
-          : null,
+      onTap:
+          onPressed != null
+              ? () {
+                HapticFeedbackService.navigation();
+                onPressed!();
+              }
+              : null,
       child: Container(
         color: color,
         padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 8.sp),
@@ -332,10 +370,7 @@ class _VersionFooter extends ConsumerWidget {
   const _VersionFooter({super.key});
 
   Future<void> _launchEmail() async {
-    final Uri emailUri = Uri(
-      scheme: 'mailto',
-      path: 'info@chessever.com',
-    );
+    final Uri emailUri = Uri(scheme: 'mailto', path: 'info@chessever.com');
     if (await canLaunchUrl(emailUri)) {
       await launchUrl(emailUri);
     }
@@ -368,172 +403,182 @@ class _VersionFooter extends ConsumerWidget {
             // Divider
             Padding(
               padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 12.sp),
-              child: Container(
-                height: 1,
-                color: kWhiteColor.withOpacity(0.1),
-              ),
-            )
-                .animate()
-                .fadeIn(duration: 400.ms)
-                .slideX(begin: -0.2, end: 0),
+              child: Container(height: 1, color: kWhiteColor.withOpacity(0.1)),
+            ).animate().fadeIn(duration: 400.ms).slideX(begin: -0.2, end: 0),
 
             // Email - Now tappable
             InkWell(
-              onTap: () {
-                HapticFeedbackService.buttonPress();
-                _launchEmail();
-              },
-              child: Container(
-                padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 8.sp),
-                height: 40.h,
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.email_outlined,
-                      size: 18.ic,
-                      color: kWhiteColor.withOpacity(0.7),
+                  onTap: () {
+                    HapticFeedbackService.buttonPress();
+                    _launchEmail();
+                  },
+                  child: Container(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: 12.sp,
+                      vertical: 8.sp,
                     ),
-                    SizedBox(width: 8.w),
-                    Text(
-                      'info@chessever.com',
-                      style: AppTypography.textSmRegular.copyWith(
-                        color: kWhiteColor.withOpacity(0.7),
-                        decoration: TextDecoration.underline,
-                        decorationColor: kWhiteColor.withOpacity(0.3),
-                      ),
+                    height: 40.h,
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.email_outlined,
+                          size: 18.ic,
+                          color: kWhiteColor.withOpacity(0.7),
+                        ),
+                        SizedBox(width: 8.w),
+                        Text(
+                          'info@chessever.com',
+                          style: AppTypography.textSmRegular.copyWith(
+                            color: kWhiteColor.withOpacity(0.7),
+                            decoration: TextDecoration.underline,
+                            decorationColor: kWhiteColor.withOpacity(0.3),
+                          ),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
-              ),
-            )
+                  ),
+                )
                 .animate()
                 .fadeIn(delay: 100.ms, duration: 400.ms)
                 .slideX(begin: -0.2, end: 0),
 
             // Version - Now tappable
             InkWell(
-              onTap: () {
-                HapticFeedbackService.buttonPress();
-                _showAboutDialog(context, versionString);
-              },
-              child: Container(
-                padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 8.sp),
-                height: 40.h,
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.info_outline,
-                      size: 18.ic,
-                      color: kWhiteColor.withOpacity(0.5),
+                  onTap: () {
+                    HapticFeedbackService.buttonPress();
+                    _showAboutDialog(context, versionString);
+                  },
+                  child: Container(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: 12.sp,
+                      vertical: 8.sp,
                     ),
-                    SizedBox(width: 8.w),
-                    Text(
-                      'Version $versionString',
-                      style: AppTypography.textSmRegular.copyWith(
-                        color: kWhiteColor.withOpacity(0.5),
-                      ),
+                    height: 40.h,
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.info_outline,
+                          size: 18.ic,
+                          color: kWhiteColor.withOpacity(0.5),
+                        ),
+                        SizedBox(width: 8.w),
+                        Text(
+                          'Version $versionString',
+                          style: AppTypography.textSmRegular.copyWith(
+                            color: kWhiteColor.withOpacity(0.5),
+                          ),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
-              ),
-            )
+                  ),
+                )
                 .animate()
                 .fadeIn(delay: 200.ms, duration: 400.ms)
                 .slideX(begin: -0.2, end: 0),
 
             // Privacy Policy Button
             InkWell(
-              onTap: () {
-                HapticFeedbackService.buttonPress();
-                _launchPrivacyPolicy();
-              },
-              child: Container(
-                padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 8.sp),
-                height: 40.h,
-                child: Row(
-                  children: [
-                    Container(
-                      width: 20.w,
-                      height: 20.h,
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [
-                            kGreenColor.withOpacity(0.6),
-                            kGreenColor.withOpacity(0.4),
-                          ],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
+                  onTap: () {
+                    HapticFeedbackService.buttonPress();
+                    _launchPrivacyPolicy();
+                  },
+                  child: Container(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: 12.sp,
+                      vertical: 8.sp,
+                    ),
+                    height: 40.h,
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 20.w,
+                          height: 20.h,
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: [
+                                kGreenColor.withOpacity(0.6),
+                                kGreenColor.withOpacity(0.4),
+                              ],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Icon(
+                            Icons.privacy_tip_outlined,
+                            size: 14.ic,
+                            color: kWhiteColor,
+                          ),
                         ),
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: Icon(
-                        Icons.privacy_tip_outlined,
-                        size: 14.ic,
-                        color: kWhiteColor,
-                      ),
+                        SizedBox(width: 8.w),
+                        Text(
+                          'Privacy Policy',
+                          style: AppTypography.textSmRegular.copyWith(
+                            color: kWhiteColor.withOpacity(0.7),
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        Spacer(),
+                        Icon(
+                          Icons.open_in_new,
+                          size: 14.ic,
+                          color: kWhiteColor.withOpacity(0.4),
+                        ),
+                      ],
                     ),
-                    SizedBox(width: 8.w),
-                    Text(
-                      'Privacy Policy',
-                      style: AppTypography.textSmRegular.copyWith(
-                        color: kWhiteColor.withOpacity(0.7),
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                    Spacer(),
-                    Icon(
-                      Icons.open_in_new,
-                      size: 14.ic,
-                      color: kWhiteColor.withOpacity(0.4),
-                    ),
-                  ],
-                ),
-              ),
-            )
+                  ),
+                )
                 .animate()
                 .fadeIn(delay: 300.ms, duration: 400.ms)
                 .slideX(begin: -0.2, end: 0),
 
             // Restore Purchases Button
             InkWell(
-              onTap: () async {
-                HapticFeedbackService.buttonPress();
-                final success = await ref.read(subscriptionProvider.notifier).restorePurchases();
+                  onTap: () async {
+                    HapticFeedbackService.buttonPress();
+                    final success =
+                        await ref
+                            .read(subscriptionProvider.notifier)
+                            .restorePurchases();
 
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        success
-                          ? 'Purchases restored successfully!'
-                          : 'No purchases found to restore',
-                      ),
-                      backgroundColor: success ? kGreenColor : kDarkGreyColor,
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            success
+                                ? 'Purchases restored successfully!'
+                                : 'No purchases found to restore',
+                          ),
+                          backgroundColor:
+                              success ? kGreenColor : kDarkGreyColor,
+                        ),
+                      );
+                    }
+                  },
+                  child: Container(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: 12.sp,
+                      vertical: 8.sp,
                     ),
-                  );
-                }
-              },
-              child: Container(
-                padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 8.sp),
-                height: 40.h,
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.restore_rounded,
-                      size: 18.ic,
-                      color: kWhiteColor.withValues(alpha: 0.7),
+                    height: 40.h,
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.restore_rounded,
+                          size: 18.ic,
+                          color: kWhiteColor.withValues(alpha: 0.7),
+                        ),
+                        SizedBox(width: 8.w),
+                        Text(
+                          'Restore Purchases',
+                          style: AppTypography.textSmRegular.copyWith(
+                            color: kWhiteColor.withValues(alpha: 0.7),
+                          ),
+                        ),
+                      ],
                     ),
-                    SizedBox(width: 8.w),
-                    Text(
-                      'Restore Purchases',
-                      style: AppTypography.textSmRegular.copyWith(
-                        color: kWhiteColor.withValues(alpha: 0.7),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            )
+                  ),
+                )
                 .animate()
                 .fadeIn(delay: 350.ms, duration: 400.ms)
                 .slideX(begin: -0.2, end: 0),
@@ -566,165 +611,162 @@ class _AboutDialog extends StatelessWidget {
     return Dialog(
       backgroundColor: Colors.transparent,
       child: Container(
-        constraints: BoxConstraints(maxWidth: 340.w),
-        decoration: BoxDecoration(
-          color: kBackgroundColor,
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(
-            color: kWhiteColor.withOpacity(0.1),
-            width: 1,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.3),
-              blurRadius: 24,
-              offset: Offset(0, 12),
+            constraints: BoxConstraints(maxWidth: 340.w),
+            decoration: BoxDecoration(
+              color: kBackgroundColor,
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: kWhiteColor.withOpacity(0.1), width: 1),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.3),
+                  blurRadius: 24,
+                  offset: Offset(0, 12),
+                ),
+              ],
             ),
-          ],
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Header with chess piece accent
-            Container(
-              width: double.infinity,
-              padding: EdgeInsets.all(24.sp),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    kWhiteColor.withOpacity(0.05),
-                    kWhiteColor.withOpacity(0.02),
-                  ],
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Header with chess piece accent
+                Container(
+                  width: double.infinity,
+                  padding: EdgeInsets.all(24.sp),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        kWhiteColor.withOpacity(0.05),
+                        kWhiteColor.withOpacity(0.02),
+                      ],
+                    ),
+                    borderRadius: BorderRadius.only(
+                      topLeft: Radius.circular(24),
+                      topRight: Radius.circular(24),
+                    ),
+                  ),
+                  child: Column(
+                    children: [
+                      // App icon
+                      Container(
+                            width: 56.w,
+                            height: 56.h,
+                            decoration: BoxDecoration(
+                              color: kWhiteColor.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(
+                                color: kWhiteColor.withOpacity(0.2),
+                                width: 1,
+                              ),
+                            ),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(15),
+                              child: Image.asset(
+                                'assets/app_icon.png',
+                                width: 56.w,
+                                height: 56.h,
+                                fit: BoxFit.cover,
+                              ),
+                            ),
+                          )
+                          .animate()
+                          .scale(
+                            delay: 100.ms,
+                            duration: 600.ms,
+                            curve: Curves.elasticOut,
+                          )
+                          .fadeIn(duration: 300.ms),
+                      SizedBox(height: 16.h),
+                      Text(
+                            'ChessEver',
+                            style: AppTypography.textXlBold.copyWith(
+                              color: kWhiteColor,
+                              letterSpacing: 0.5,
+                            ),
+                          )
+                          .animate()
+                          .fadeIn(delay: 200.ms, duration: 400.ms)
+                          .slideY(begin: 0.3, end: 0),
+                      SizedBox(height: 8.h),
+                      Text(
+                        'Version $version',
+                        style: AppTypography.textSmRegular.copyWith(
+                          color: kWhiteColor.withOpacity(0.5),
+                        ),
+                      ).animate().fadeIn(delay: 300.ms, duration: 400.ms),
+                    ],
+                  ),
                 ),
-                borderRadius: BorderRadius.only(
-                  topLeft: Radius.circular(24),
-                  topRight: Radius.circular(24),
-                ),
-              ),
-              child: Column(
-                children: [
-                  // App icon
-                  Container(
-                    width: 56.w,
-                    height: 56.h,
-                    decoration: BoxDecoration(
-                      color: kWhiteColor.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(
-                        color: kWhiteColor.withOpacity(0.2),
-                        width: 1,
+
+                // Links section
+                Padding(
+                  padding: EdgeInsets.all(20.sp),
+                  child: Column(
+                    children: [
+                      // Social Media Link
+                      _LinkButton(
+                        icon: Icons.language,
+                        label: 'Follow us on X',
+                        subtitle: '@chesseverapp',
+                        onTap: () {
+                          HapticFeedbackService.buttonPress();
+                          _launchUrl('https://x.com/chesseverapp');
+                        },
+                        delay: 400,
                       ),
-                    ),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(15),
-                      child: Image.asset(
-                        'assets/app_icon.png',
-                        width: 56.w,
-                        height: 56.h,
-                        fit: BoxFit.cover,
+                      SizedBox(height: 12.h),
+
+                      // Privacy Policy Link
+                      _LinkButton(
+                        icon: Icons.privacy_tip_outlined,
+                        label: 'Privacy Policy',
+                        subtitle: 'How we protect your data',
+                        onTap: () {
+                          HapticFeedbackService.buttonPress();
+                          _launchUrl('https://chessever.com/privacy-policy');
+                        },
+                        delay: 500,
                       ),
-                    ),
-                  )
-                      .animate()
-                      .scale(
-                        delay: 100.ms,
-                        duration: 600.ms,
-                        curve: Curves.elasticOut,
-                      )
-                      .fadeIn(duration: 300.ms),
-                  SizedBox(height: 16.h),
-                  Text(
-                    'ChessEver',
-                    style: AppTypography.textXlBold.copyWith(
-                      color: kWhiteColor,
-                      letterSpacing: 0.5,
-                    ),
-                  )
-                      .animate()
-                      .fadeIn(delay: 200.ms, duration: 400.ms)
-                      .slideY(begin: 0.3, end: 0),
-                  SizedBox(height: 8.h),
-                  Text(
-                    'Version $version',
-                    style: AppTypography.textSmRegular.copyWith(
-                      color: kWhiteColor.withOpacity(0.5),
-                    ),
-                  )
-                      .animate()
-                      .fadeIn(delay: 300.ms, duration: 400.ms),
-                ],
-              ),
-            ),
-
-            // Links section
-            Padding(
-              padding: EdgeInsets.all(20.sp),
-              child: Column(
-                children: [
-                  // Social Media Link
-                  _LinkButton(
-                    icon: Icons.language,
-                    label: 'Follow us on X',
-                    subtitle: '@chesseverapp',
-                    onTap: () {
-                      HapticFeedbackService.buttonPress();
-                      _launchUrl('https://x.com/chesseverapp');
-                    },
-                    delay: 400,
-                  ),
-                  SizedBox(height: 12.h),
-
-                  // Privacy Policy Link
-                  _LinkButton(
-                    icon: Icons.privacy_tip_outlined,
-                    label: 'Privacy Policy',
-                    subtitle: 'How we protect your data',
-                    onTap: () {
-                      HapticFeedbackService.buttonPress();
-                      _launchUrl(
-                        'https://chessever.com/privacy-policy',
-                      );
-                    },
-                    delay: 500,
-                  ),
-                ],
-              ),
-            ),
-
-            // Close button
-            Padding(
-              padding: EdgeInsets.only(bottom: 20.sp, left: 20.sp, right: 20.sp),
-              child: SizedBox(
-                width: double.infinity,
-                child: TextButton(
-                  onPressed: () {
-                    HapticFeedbackService.buttonPress();
-                    Navigator.of(context).pop();
-                  },
-                  style: TextButton.styleFrom(
-                    padding: EdgeInsets.symmetric(vertical: 14.h),
-                    backgroundColor: kWhiteColor.withOpacity(0.05),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                  child: Text(
-                    'Close',
-                    style: AppTypography.textSmMedium.copyWith(
-                      color: kWhiteColor.withOpacity(0.7),
-                    ),
+                    ],
                   ),
                 ),
-              ),
-            )
-                .animate()
-                .fadeIn(delay: 600.ms, duration: 400.ms)
-                .slideY(begin: 0.3, end: 0),
-          ],
-        ),
-      )
+
+                // Close button
+                Padding(
+                      padding: EdgeInsets.only(
+                        bottom: 20.sp,
+                        left: 20.sp,
+                        right: 20.sp,
+                      ),
+                      child: SizedBox(
+                        width: double.infinity,
+                        child: TextButton(
+                          onPressed: () {
+                            HapticFeedbackService.buttonPress();
+                            Navigator.of(context).pop();
+                          },
+                          style: TextButton.styleFrom(
+                            padding: EdgeInsets.symmetric(vertical: 14.h),
+                            backgroundColor: kWhiteColor.withOpacity(0.05),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          child: Text(
+                            'Close',
+                            style: AppTypography.textSmMedium.copyWith(
+                              color: kWhiteColor.withOpacity(0.7),
+                            ),
+                          ),
+                        ),
+                      ),
+                    )
+                    .animate()
+                    .fadeIn(delay: 600.ms, duration: 400.ms)
+                    .slideY(begin: 0.3, end: 0),
+              ],
+            ),
+          )
           .animate()
           .scale(
             begin: Offset(0.8, 0.8),
@@ -755,63 +797,63 @@ class _LinkButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        padding: EdgeInsets.all(16.sp),
-        decoration: BoxDecoration(
-          color: kWhiteColor.withOpacity(0.03),
+          onTap: onTap,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: kWhiteColor.withOpacity(0.08),
-            width: 1,
-          ),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 40.w,
-              height: 40.h,
-              decoration: BoxDecoration(
+          child: Container(
+            padding: EdgeInsets.all(16.sp),
+            decoration: BoxDecoration(
+              color: kWhiteColor.withOpacity(0.03),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
                 color: kWhiteColor.withOpacity(0.08),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Icon(
-                icon,
-                size: 20.ic,
-                color: kWhiteColor.withOpacity(0.8),
+                width: 1,
               ),
             ),
-            SizedBox(width: 12.w),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    label,
-                    style: AppTypography.textSmMedium.copyWith(
-                      color: kWhiteColor.withOpacity(0.9),
-                    ),
+            child: Row(
+              children: [
+                Container(
+                  width: 40.w,
+                  height: 40.h,
+                  decoration: BoxDecoration(
+                    color: kWhiteColor.withOpacity(0.08),
+                    borderRadius: BorderRadius.circular(10),
                   ),
-                  SizedBox(height: 2.h),
-                  Text(
-                    subtitle,
-                    style: AppTypography.textXsRegular.copyWith(
-                      color: kWhiteColor.withOpacity(0.5),
-                    ),
+                  child: Icon(
+                    icon,
+                    size: 20.ic,
+                    color: kWhiteColor.withOpacity(0.8),
                   ),
-                ],
-              ),
+                ),
+                SizedBox(width: 12.w),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        label,
+                        style: AppTypography.textSmMedium.copyWith(
+                          color: kWhiteColor.withOpacity(0.9),
+                        ),
+                      ),
+                      SizedBox(height: 2.h),
+                      Text(
+                        subtitle,
+                        style: AppTypography.textXsRegular.copyWith(
+                          color: kWhiteColor.withOpacity(0.5),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Icon(
+                  Icons.arrow_forward_ios,
+                  size: 14.ic,
+                  color: kWhiteColor.withOpacity(0.4),
+                ),
+              ],
             ),
-            Icon(
-              Icons.arrow_forward_ios,
-              size: 14.ic,
-              color: kWhiteColor.withOpacity(0.4),
-            ),
-          ],
-        ),
-      ),
-    )
+          ),
+        )
         .animate()
         .fadeIn(delay: delay.ms, duration: 400.ms)
         .slideX(begin: 0.2, end: 0);

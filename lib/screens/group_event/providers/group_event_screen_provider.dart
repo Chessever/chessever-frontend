@@ -108,6 +108,7 @@ class _GroupEventScreenController
                 ? sortingService.sortPastTours(
                     currentModels,
                     eventFavoritePlayersMap: eventFavoritePlayersMap,
+                    prioritizeFavorites: false,
                   )
                 : sortingService.sortAllTours(
                     currentModels,
@@ -191,9 +192,12 @@ class _GroupEventScreenController
       final sortedTours =
           tourEventCategory == GroupEventCategory.forYou
               ? sortingService.sortUpcomingTours(tourEventCardModel)
-              : tourEventCategory == GroupEventCategory.past
-              ? sortingService.sortPastTours(tourEventCardModel)
-              : sortingService.sortAllTours(tourEventCardModel);
+          : tourEventCategory == GroupEventCategory.past
+          ? sortingService.sortPastTours(
+              tourEventCardModel,
+              prioritizeFavorites: false,
+            )
+          : sortingService.sortAllTours(tourEventCardModel);
 
       state = AsyncValue.data(sortedTours);
     } catch (error, _) {}
@@ -227,7 +231,7 @@ class _GroupEventScreenController
 
       final sortedEvents = ref
           .read(tournamentSortingServiceProvider)
-          .sortPastTours(totalEvents);
+          .sortPastTours(totalEvents, prioritizeFavorites: false);
 
       state = AsyncValue.data(sortedEvents);
 
@@ -274,9 +278,12 @@ class _GroupEventScreenController
       final sortedTours =
           tourEventCategory == GroupEventCategory.forYou
               ? sortingService.sortUpcomingTours(tourEventCardModel)
-              : tourEventCategory == GroupEventCategory.past
-              ? sortingService.sortPastTours(tourEventCardModel)
-              : sortingService.sortAllTours(tourEventCardModel);
+          : tourEventCategory == GroupEventCategory.past
+          ? sortingService.sortPastTours(
+              tourEventCardModel,
+              prioritizeFavorites: false,
+            )
+          : sortingService.sortAllTours(tourEventCardModel);
 
       state = AsyncValue.data(sortedTours);
     } catch (err, stk) {

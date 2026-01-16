@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:chessever2/screens/group_event/providers/group_event_screen_provider.dart';
 import 'package:chessever2/screens/group_event/group_event_screen.dart';
 import 'package:chessever2/utils/country_utils.dart';
@@ -30,19 +31,18 @@ final supabaseCombinedSearchProvider =
         final normalizedCountryKey = fideCountryCode?.toUpperCase();
 
         // Always search Supabase RPC for events (searches all: current, past, upcoming)
-        // Only skip for very short queries (2-3 char country codes) for performance
-        final isShortCountryCode = isCountrySearch && trimmedQuery.length <= 3;
+        // RPC handles country-related searches well and is fast enough
         List<GroupBroadcast> broadcasts = [];
-        if (!isShortCountryCode) {
-          try {
-            broadcasts = await ref
-                .read(groupBroadcastRepositoryProvider)
-                .searchGroupBroadcastsFromSupabase(trimmedQuery)
-                .timeout(const Duration(seconds: 6), onTimeout: () => []);
-          } catch (_) {
-            broadcasts = [];
-          }
+        try {
+          broadcasts = await ref
+              .read(groupBroadcastRepositoryProvider)
+              .searchGroupBroadcastsFromSupabase(trimmedQuery)
+              .timeout(const Duration(seconds: 6), onTimeout: () => []);
+        } catch (e) {
+          debugPrint('[Search] RPC error: $e');
+          broadcasts = [];
         }
+        debugPrint('[Search] Query: "$trimmedQuery", RPC results: ${broadcasts.length}');
 
         // Country-aware player fetch (directly from chess_players)
         final countryPlayerResults =
@@ -93,18 +93,26 @@ final supabaseCombinedSearchProvider =
         final allPlayers = <SearchPlayer>[];
         final liveIds = ref.read(liveBroadcastIdsProvider);
 
-        // Fallback/local cache search across ALL categories (current, past, upcoming)
-        // Run in parallel for efficiency
-        final localSearchFutures = await Future.wait([
-          ref
-              .read(groupBroadcastLocalStorage(GroupEventCategory.current))
-              .searchWithScoring(trimmedQuery, liveIds),
-          ref
-              .read(groupBroadcastLocalStorage(GroupEventCategory.past))
-              .searchWithScoring(trimmedQuery, liveIds),
-        ]);
-        final localSearchCurrent = localSearchFutures[0];
-        final localSearchPast = localSearchFutures[1];
+        // Fallback/local cache search across ALL categories (current, past)
+        // Run in parallel for efficiency, with error handling for each
+        EnhancedSearchResult localSearchCurrent = EnhancedSearchResult.empty();
+        EnhancedSearchResult localSearchPast = EnhancedSearchResult.empty();
+        try {
+          final results = await Future.wait([
+            ref
+                .read(groupBroadcastLocalStorage(GroupEventCategory.current))
+                .searchWithScoring(trimmedQuery, liveIds)
+                .catchError((_) => EnhancedSearchResult.empty()),
+            ref
+                .read(groupBroadcastLocalStorage(GroupEventCategory.past))
+                .searchWithScoring(trimmedQuery, liveIds)
+                .catchError((_) => EnhancedSearchResult.empty()),
+          ]);
+          localSearchCurrent = results[0];
+          localSearchPast = results[1];
+        } catch (_) {
+          // If Future.wait fails, continue with empty local results
+        }
 
         for (final gb in broadcasts) {
           final tourEventModel = GroupEventCardModel.fromGroupBroadcast(

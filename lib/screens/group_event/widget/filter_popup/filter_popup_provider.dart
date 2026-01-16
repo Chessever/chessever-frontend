@@ -2,19 +2,22 @@ import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
+const defaultFilterPopupState = FilterPopupState(
+  formatsAndStates: <String>{},
+  eloRange: RangeValues(800, 3200),
+);
+
 final filterPopupProvider =
     StateNotifierProvider<_FilterPopupController, FilterPopupState>(
       (ref) => _FilterPopupController(ref),
     );
 
+final forYouAppliedFilterProvider = StateProvider<FilterPopupState>(
+  (ref) => defaultFilterPopupState,
+);
+
 class _FilterPopupController extends StateNotifier<FilterPopupState> {
-  _FilterPopupController(this.ref)
-    : super(
-        const FilterPopupState(
-          formatsAndStates: <String>{},
-          eloRange: RangeValues(800, 3200),
-        ),
-      );
+  _FilterPopupController(this.ref) : super(defaultFilterPopupState);
 
   final Ref ref;
 
@@ -32,11 +35,12 @@ class _FilterPopupController extends StateNotifier<FilterPopupState> {
     state = state.copyWith(eloRange: newRange);
   }
 
+  void setState(FilterPopupState newState) {
+    state = newState;
+  }
+
   void resetFilters(BuildContext context) {
     Navigator.of(context).pop();
-    state = const FilterPopupState(
-      formatsAndStates: <String>{},
-      eloRange: RangeValues(800, 3200),
-    );
+    state = defaultFilterPopupState;
   }
 }

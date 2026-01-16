@@ -42,12 +42,33 @@ class FavoritePlayersNotifier
 
   Future<FavoritePlayersState> _loadFavorites() async {
     try {
-      final favoritePlayers = await _favoritesService.getFavoritePlayers();
+      final cached = await _favoritesService.getCachedFavoritePlayers();
+      if (cached.isNotEmpty) {
+        unawaited(_refreshFromSupabase());
+        return FavoritePlayersState(players: cached, isLoading: false);
+      }
+
+      final favoritePlayers =
+          await _favoritesService.fetchFavoritePlayersFromSupabase();
       return FavoritePlayersState(players: favoritePlayers, isLoading: false);
     } catch (e, stack) {
       debugPrint('Error: $e');
       debugPrint('Stack: $stack');
       rethrow;
+    }
+  }
+
+  Future<void> _refreshFromSupabase() async {
+    try {
+      final favoritePlayers =
+          await _favoritesService.fetchFavoritePlayersFromSupabase();
+      state = AsyncValue.data(
+        FavoritePlayersState(players: favoritePlayers, isLoading: false),
+      );
+    } catch (e, stack) {
+      // Catches errors including if notifier was disposed after async gap
+      debugPrint('[FavoritePlayers] Refresh error: $e');
+      debugPrint('[FavoritePlayers] Stack: $stack');
     }
   }
 
