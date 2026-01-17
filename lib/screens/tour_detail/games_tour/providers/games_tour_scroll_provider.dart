@@ -17,6 +17,10 @@ import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provi
 /// without sharing the same ScrollablePositionedList controller.
 final gamesTourScrollScopeProvider = Provider<String>((_) => 'global_scroll_scope');
 
+/// Track whether we already performed the initial auto-scroll for a given scope.
+final gamesTourAutoScrollProvider =
+    StateProvider.autoDispose.family<bool, String>((ref, scopeId) => false);
+
 final gamesTourScrollProvider =
     StateNotifierProvider.autoDispose.family<_GamesTourScrollProvider, ItemScrollController, String>(
       (ref, scopeId) => _GamesTourScrollProvider(ref, scopeId),

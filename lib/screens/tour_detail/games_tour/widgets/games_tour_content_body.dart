@@ -11,6 +11,7 @@ import 'package:chessever2/screens/group_event/widget/tour_loading_widget.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 
 class GamesTourContentBody extends ConsumerWidget {
   final GamesScreenModel gamesScreenModel;
@@ -347,6 +348,43 @@ class GamesTourContentBody extends ConsumerWidget {
       return round.roundStatus != RoundStatus.upcoming;
     }).toList();
 
+    final scopeId = ref.watch(gamesTourScrollScopeProvider);
+    final autoScrollDone = ref.watch(gamesTourAutoScrollProvider(scopeId));
+    if (!autoScrollDone &&
+        !isSearchMode &&
+        visibleRounds.isNotEmpty &&
+        !userSelected &&
+        _allRoundsUpcoming(visibleRounds)) {
+      final targetRoundId = _pickUpcomingRoundId(
+        visibleRounds,
+        selectedRoundId,
+      );
+      if (targetRoundId != null) {
+        final itemIndex = ref
+            .read(gamesAppBarProvider.notifier)
+            .calculateRoundIndex(targetRoundId);
+        if (itemIndex >= 0) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (ref.read(gamesTourAutoScrollProvider(scopeId))) {
+              return;
+            }
+            ref.read(gamesTourAutoScrollProvider(scopeId).notifier).state = true;
+            final scrollNotifier =
+                ref.read(gamesTourScrollProvider(scopeId).notifier);
+            final controller = scrollNotifier.scrollController;
+            scrollNotifier.startProgrammaticScroll(targetRoundId: targetRoundId);
+            _attemptScrollToRound(
+              controller,
+              scrollNotifier,
+              itemIndex,
+              targetRoundId,
+              0,
+            );
+          });
+        }
+      }
+    }
+
     // Create a properly ordered flat list that matches the ListView display order
     final orderedGamesForChessBoard = <GamesTourModel>[];
     for (final round in visibleRounds) {
@@ -358,7 +396,6 @@ class GamesTourContentBody extends ConsumerWidget {
       gamesTourModels: orderedGamesForChessBoard,
     );
 
-    final scopeId = ref.watch(gamesTourScrollScopeProvider);
     print('📜 GamesTourContentBody - scopeId: $scopeId');
     final itemScrollController = ref.watch(gamesTourScrollProvider(scopeId));
     print('📜 GamesTourContentBody - controller attached: ${itemScrollController.isAttached}');
@@ -381,6 +418,74 @@ class GamesTourContentBody extends ConsumerWidget {
         // This callback can be used for additional logic if needed
       },
     );
+  }
+}
+
+bool _allRoundsUpcoming(List<GamesAppBarModel> rounds) {
+  return rounds.isNotEmpty &&
+      rounds.every((round) => round.roundStatus == RoundStatus.upcoming);
+}
+
+String? _pickUpcomingRoundId(
+  List<GamesAppBarModel> rounds,
+  String? selectedRoundId,
+) {
+  if (selectedRoundId != null &&
+      rounds.any((round) => round.id == selectedRoundId)) {
+    return selectedRoundId;
+  }
+
+  final upcomingRounds =
+      rounds.where((round) => round.roundStatus == RoundStatus.upcoming).toList();
+  if (upcomingRounds.isEmpty) {
+    return null;
+  }
+
+  upcomingRounds.sort((a, b) {
+    final aStart = a.startsAt;
+    final bStart = b.startsAt;
+    if (aStart == null && bStart == null) {
+      return a.name.compareTo(b.name);
+    }
+    if (aStart == null) return 1;
+    if (bStart == null) return -1;
+    final cmp = aStart.compareTo(bStart);
+    return cmp != 0 ? cmp : a.name.compareTo(b.name);
+  });
+
+  return upcomingRounds.first.id;
+}
+
+void _attemptScrollToRound(
+  ItemScrollController controller,
+  dynamic scrollNotifier,
+  int itemIndex,
+  String roundId,
+  int attempt,
+) {
+  const maxAttempts = 5;
+  const retryDelay = Duration(milliseconds: 100);
+
+  if (controller.isAttached) {
+    try {
+      controller.jumpTo(index: itemIndex, alignment: 0.0);
+    } catch (e) {
+      debugPrint('❌ Auto-scroll jumpTo failed for $roundId: $e');
+    }
+    scrollNotifier.endProgrammaticScroll();
+  } else if (attempt < maxAttempts) {
+    Future.delayed(retryDelay, () {
+      _attemptScrollToRound(
+        controller,
+        scrollNotifier,
+        itemIndex,
+        roundId,
+        attempt + 1,
+      );
+    });
+  } else {
+    debugPrint('❌ Auto-scroll gave up for $roundId after $maxAttempts attempts');
+    scrollNotifier.endProgrammaticScroll();
   }
 }
 
