@@ -860,6 +860,106 @@ class GameRepository extends BaseRepository {
     }
   }
 
+  /// Get games for "For You" event cards
+  /// Current round = round with live games, or latest started round (fallback: most recently played)
+  Future<List<Games>> getForYouEventGames({
+    required List<String> tourIds,
+    int neededCount = 4,
+  }) async {
+    if (tourIds.isEmpty) return <Games>[];
+
+    try {
+      // Step 1: Check for live games first - their round is the "current" round
+      final liveResponse = await supabase
+          .from('games')
+          .select('round_id, last_move_time, date_start')
+          .inFilter('tour_id', tourIds)
+          .inFilter('status', ['*', 'ongoing'])
+          .order('last_move_time', ascending: false, nullsFirst: false)
+          .order('date_start', ascending: false, nullsFirst: false)
+          .limit(1);
+
+      Set<String> currentRoundIds = {};
+
+      if (liveResponse is List && liveResponse.isNotEmpty) {
+        // Live games exist - use the most recently active live round
+        final liveRoundId = liveResponse.first['round_id'];
+        if (liveRoundId is String && liveRoundId.isNotEmpty) {
+          currentRoundIds = {liveRoundId};
+          debugPrint('[GameRepository] ForYou: Found live round: $currentRoundIds');
+        }
+      }
+
+      if (currentRoundIds.isEmpty) {
+        // No live games - find most recently started round (by starts_at)
+        final nowIso = DateTime.now().toUtc().toIso8601String();
+        List<dynamic>? roundResponse;
+        try {
+          roundResponse = await supabase
+              .from('rounds')
+              .select('id, starts_at')
+              .inFilter('tour_id', tourIds)
+              .not('starts_at', 'is', null)
+              .lte('starts_at', nowIso)
+              .order('starts_at', ascending: false)
+              .limit(1);
+        } catch (e) {
+          debugPrint('[GameRepository] ForYou: Failed to load rounds, falling back ($e)');
+        }
+
+        if (roundResponse is List && roundResponse.isNotEmpty) {
+          final roundId = roundResponse.first['id'];
+          if (roundId is String && roundId.isNotEmpty) {
+            currentRoundIds.add(roundId);
+            debugPrint('[GameRepository] ForYou: Latest started round: $currentRoundIds');
+          }
+        } else {
+          // Fallback: most recently played round (by last_move_time)
+          final recentResponse = await supabase
+              .from('games')
+              .select('round_id')
+              .inFilter('tour_id', tourIds)
+              .not('last_move_time', 'is', null)
+              .order('last_move_time', ascending: false)
+              .limit(1);
+
+          if (recentResponse is List && recentResponse.isNotEmpty) {
+            currentRoundIds.add(recentResponse.first['round_id'] as String);
+            debugPrint('[GameRepository] ForYou: Most recent round: $currentRoundIds');
+          }
+        }
+      }
+
+      if (currentRoundIds.isEmpty) return <Games>[];
+
+      // Step 2: Fetch games from current round(s), ordered by ELO
+      final gamesResponse = await supabase
+          .from('games')
+          .select(_gameListSelectColumns)
+          .inFilter('round_id', currentRoundIds.toList())
+          .order('player_max_rating', ascending: false, nullsFirst: false)
+          .limit(neededCount + 4);
+
+      final games = <Games>[];
+      if (gamesResponse is List && gamesResponse.isNotEmpty) {
+        final jsonList = gamesResponse.map((item) => json.encode(item)).toList();
+        games.addAll(await compute(_decodeGamesInIsolate, jsonList));
+      }
+
+      return games;
+    } catch (e) {
+      debugPrint('[GameRepository] Error in getForYouEventGames: $e');
+      return <Games>[];
+    }
+  }
+
+  static int _extractRoundNumberStatic(String? roundSlug) {
+    if (roundSlug == null || roundSlug.isEmpty) return 0;
+    final match = RegExp(r'round-?(\d+)', caseSensitive: false).firstMatch(roundSlug) ??
+                  RegExp(r'(\d+)').firstMatch(roundSlug);
+    return int.tryParse(match?.group(1) ?? '0') ?? 0;
+  }
+
   /// Get top live games globally, ordered by recency.
   Future<List<Games>> getTopLiveGames({int limit = 200}) async {
     return handleApiCall(() async {

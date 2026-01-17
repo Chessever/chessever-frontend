@@ -80,7 +80,7 @@ class _AuthButtonState extends State<AuthButton>
       },
       child: Container(
         height: widget.height.h,
-        width: widget.width ?? MediaQuery.of(context).size.width,
+        width: widget.width,
         padding: widget.padding,
         decoration: BoxDecoration(
           color: kWhiteColor, // Pure white background

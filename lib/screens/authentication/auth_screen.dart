@@ -222,6 +222,7 @@ class _AuthButtonWidget extends ConsumerWidget {
 
     final buttonColumn = Column(
       mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         // Show both buttons on iOS, only Google on Android
         if (isIos) ...[
@@ -284,8 +285,19 @@ class _AuthButtonWidget extends ConsumerWidget {
       );
     }
 
-    // Tablet portrait & phone: stay at bottom with Align(bottomCenter)
-    // Use Row to center horizontally while respecting max width constraint
+    // Phone: simple padding, buttons stretch to fill width
+    if (!isTabletPortrait) {
+      return Padding(
+        padding: EdgeInsets.only(
+          bottom: bottomPadding,
+          left: horizontalPadding,
+          right: horizontalPadding,
+        ),
+        child: buttonColumn,
+      );
+    }
+
+    // Tablet portrait: use Row to center with max width constraint
     return Padding(
       padding: EdgeInsets.only(
         bottom: bottomPadding,
