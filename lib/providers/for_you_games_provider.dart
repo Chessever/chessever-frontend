@@ -231,10 +231,10 @@ final eventGamesProvider = FutureProvider.autoDispose
     tourIds = [eventId];
   }
 
-  final allGames = await repository.getGamesFromTourIds(
+  // Fetches only from the latest played round (no fallback to previous rounds)
+  final allGames = await repository.getForYouEventGames(
     tourIds: tourIds,
-    limit: 50,
-    offset: 0,
+    neededCount: kGamesPerEvent,
   );
 
   if (allGames.isEmpty) return [];
@@ -261,7 +261,12 @@ bool _hasStarted(Games game) {
   return isLive || hasMoves || isFinished;
 }
 
+/// Select top games with priority: live > favorites > regular (all sorted by ELO)
+/// Games are already from latest round (filtered in repository)
 List<Games> _selectTopGames(List<Games> games, Set<int> favoriteFideIds, int count) {
+  if (games.isEmpty) return [];
+
+  // Categorize: live > favorites > regular
   final liveGames = <Games>[];
   final favoriteGames = <Games>[];
   final regularGames = <Games>[];
@@ -277,16 +282,19 @@ List<Games> _selectTopGames(List<Games> games, Set<int> favoriteFideIds, int cou
     }
   }
 
+  // Sort by ELO descending (already sorted from DB but re-sort for priority categories)
   int compareByElo(Games a, Games b) => _getMaxElo(b).compareTo(_getMaxElo(a));
   liveGames.sort(compareByElo);
   favoriteGames.sort(compareByElo);
   regularGames.sort(compareByElo);
 
+  // Build result: live > favorites > regular
   final result = <Games>[];
   for (final game in [...liveGames, ...favoriteGames, ...regularGames]) {
     if (result.length >= count) break;
     result.add(game);
   }
+
   return result;
 }
 

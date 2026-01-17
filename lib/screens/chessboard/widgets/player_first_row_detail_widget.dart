@@ -312,21 +312,30 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
             }
             break;
           case ChessboardView.forYou:
-            // For "For You" view, filter games by the current game's tournament
-            // This ensures ScoreCardScreen shows only games from that specific event
+            // For "For You" view, use current game's tourId so ScoreCardScreen
+            // can fetch all event games. Don't rely on convertedForYouGamesProvider
+            // since it may not contain the current game (ChessBoardScreenNew receives
+            // resolved full event games from gameCardWrapperProvider).
             ref.read(selectedBroadcastModelProvider.notifier).state = null;
-            final allForYouGames = ref.read(convertedForYouGamesProvider);
-            final currentTourId = gamesTourModel.tourId;
-            if (currentTourId.isNotEmpty) {
-              gamesContext = allForYouGames
-                  .where((g) => g.tourId == currentTourId)
-                  .toList();
-              hasEventContext = true; // Filtered to specific event
+            if (gamesTourModel.tourId.isNotEmpty) {
+              // Pass current game - ScoreCardScreen will fetch all event games via tourId
+              gamesContext = [gamesTourModel];
+              hasEventContext = true;
             } else {
-              gamesContext = allForYouGames;
-              hasEventContext = false; // No specific event
+              // No tourId - can't determine event context
+              gamesContext = null;
+              hasEventContext = false;
             }
             break;
+        }
+
+        // Fallback: ensure event context is set when we have a valid tourId
+        // This handles cases where:
+        // - view might not match expected case
+        // - gamesContext filter returned empty (e.g., For You only has few games from event)
+        if ((gamesContext == null || gamesContext!.isEmpty) && gamesTourModel.tourId.isNotEmpty) {
+          gamesContext = [gamesTourModel];
+          hasEventContext = true;
         }
 
         // Set the games context and event context flag for ScoreCardScreen
