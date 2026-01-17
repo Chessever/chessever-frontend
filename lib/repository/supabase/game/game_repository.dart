@@ -861,7 +861,8 @@ class GameRepository extends BaseRepository {
   }
 
   /// Get games for "For You" event cards
-  /// Current round = round with live games, or latest started round (fallback: most recently played)
+  /// Current round = live games with moves, else most recently played,
+  /// else earliest upcoming round when nothing has started yet.
   Future<List<Games>> getForYouEventGames({
     required List<String> tourIds,
     int neededCount = 4,
@@ -875,6 +876,7 @@ class GameRepository extends BaseRepository {
           .select('round_id, last_move_time, date_start')
           .inFilter('tour_id', tourIds)
           .inFilter('status', ['*', 'ongoing'])
+          .not('last_move_time', 'is', null)
           .order('last_move_time', ascending: false, nullsFirst: false)
           .order('date_start', ascending: false, nullsFirst: false)
           .limit(1);
@@ -891,7 +893,23 @@ class GameRepository extends BaseRepository {
       }
 
       if (currentRoundIds.isEmpty) {
-        // No live games - find most recently started round (by starts_at)
+        // No live games - find most recently played round (by last_move_time)
+        final recentResponse = await supabase
+            .from('games')
+            .select('round_id')
+            .inFilter('tour_id', tourIds)
+            .not('last_move_time', 'is', null)
+            .order('last_move_time', ascending: false)
+            .limit(1);
+
+        if (recentResponse is List && recentResponse.isNotEmpty) {
+          currentRoundIds.add(recentResponse.first['round_id'] as String);
+          debugPrint('[GameRepository] ForYou: Most recent round: $currentRoundIds');
+        }
+      }
+
+      if (currentRoundIds.isEmpty) {
+        // No games played yet - use the earliest upcoming round (by starts_at)
         final nowIso = DateTime.now().toUtc().toIso8601String();
         List<dynamic>? roundResponse;
         try {
@@ -900,32 +918,18 @@ class GameRepository extends BaseRepository {
               .select('id, starts_at')
               .inFilter('tour_id', tourIds)
               .not('starts_at', 'is', null)
-              .lte('starts_at', nowIso)
-              .order('starts_at', ascending: false)
+              .gte('starts_at', nowIso)
+              .order('starts_at', ascending: true)
               .limit(1);
         } catch (e) {
-          debugPrint('[GameRepository] ForYou: Failed to load rounds, falling back ($e)');
+          debugPrint('[GameRepository] ForYou: Failed to load upcoming rounds ($e)');
         }
 
         if (roundResponse is List && roundResponse.isNotEmpty) {
           final roundId = roundResponse.first['id'];
           if (roundId is String && roundId.isNotEmpty) {
             currentRoundIds.add(roundId);
-            debugPrint('[GameRepository] ForYou: Latest started round: $currentRoundIds');
-          }
-        } else {
-          // Fallback: most recently played round (by last_move_time)
-          final recentResponse = await supabase
-              .from('games')
-              .select('round_id')
-              .inFilter('tour_id', tourIds)
-              .not('last_move_time', 'is', null)
-              .order('last_move_time', ascending: false)
-              .limit(1);
-
-          if (recentResponse is List && recentResponse.isNotEmpty) {
-            currentRoundIds.add(recentResponse.first['round_id'] as String);
-            debugPrint('[GameRepository] ForYou: Most recent round: $currentRoundIds');
+            debugPrint('[GameRepository] ForYou: Earliest upcoming round: $currentRoundIds');
           }
         }
       }
@@ -1014,8 +1018,9 @@ class GameRepository extends BaseRepository {
         }
       }
 
-      debugPrint('[GameRepository] getDistinctDatesForFavorites: found ${dates.length} dates');
-      return dates;
+      final filteredDates = _filterOutFutureDates(dates);
+      debugPrint('[GameRepository] getDistinctDatesForFavorites: found ${filteredDates.length} dates');
+      return filteredDates;
     });
   }
 
@@ -1090,9 +1095,20 @@ class GameRepository extends BaseRepository {
         }
       }
 
-      debugPrint('[GameRepository] getDistinctDatesForCountry: found ${dates.length} dates');
-      return dates;
+      final filteredDates = _filterOutFutureDates(dates);
+      debugPrint('[GameRepository] getDistinctDatesForCountry: found ${filteredDates.length} dates');
+      return filteredDates;
     });
+  }
+
+  List<DateTime> _filterOutFutureDates(List<DateTime> dates) {
+    if (dates.isEmpty) return dates;
+    final nowUtc = DateTime.now().toUtc();
+    final todayUtc = DateTime.utc(nowUtc.year, nowUtc.month, nowUtc.day);
+    return dates.where((date) {
+      final dateUtc = DateTime.utc(date.year, date.month, date.day);
+      return !dateUtc.isAfter(todayUtc);
+    }).toList();
   }
 
   /// Get games by country for a specific date.
