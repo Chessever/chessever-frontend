@@ -50,6 +50,19 @@ final liveGameCardProvider =
       }
 
       // Merge streamed data with base game
+      final streamedWhiteClock =
+          (gameData['last_clock_white'] as num?)?.round();
+      final streamedBlackClock =
+          (gameData['last_clock_black'] as num?)?.round();
+      final normalizedWhiteClock = GamesTourModel.normalizeClockSeconds(
+        clockSeconds: streamedWhiteClock,
+        clockCentiseconds: baseGame.whiteClockCentiseconds,
+      );
+      final normalizedBlackClock = GamesTourModel.normalizeClockSeconds(
+        clockSeconds: streamedBlackClock,
+        clockCentiseconds: baseGame.blackClockCentiseconds,
+      );
+
       return baseGame.copyWith(
         pgn: gameData['pgn'] as String? ?? baseGame.pgn,
         fen: gameData['fen'] as String? ?? baseGame.fen,
@@ -57,10 +70,8 @@ final liveGameCardProvider =
         lastMoveTime: gameData['last_move_time'] != null
             ? DateTime.tryParse(gameData['last_move_time'] as String)
             : baseGame.lastMoveTime,
-        whiteClockSeconds: (gameData['last_clock_white'] as num?)?.round() ??
-            baseGame.whiteClockSeconds,
-        blackClockSeconds: (gameData['last_clock_black'] as num?)?.round() ??
-            baseGame.blackClockSeconds,
+        whiteClockSeconds: normalizedWhiteClock ?? baseGame.whiteClockSeconds,
+        blackClockSeconds: normalizedBlackClock ?? baseGame.blackClockSeconds,
         gameStatus: parseGameStatus(gameData['status'] as String?),
       );
     },
