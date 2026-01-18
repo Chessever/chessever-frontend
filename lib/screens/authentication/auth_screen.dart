@@ -307,9 +307,11 @@ class _AuthButtonWidget extends ConsumerWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          ConstrainedBox(
-            constraints: BoxConstraints(maxWidth: maxWidth - (horizontalPadding * 2)),
-            child: buttonColumn,
+          Flexible(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: maxWidth - (horizontalPadding * 2)),
+              child: buttonColumn,
+            ),
           ),
         ],
       ),
