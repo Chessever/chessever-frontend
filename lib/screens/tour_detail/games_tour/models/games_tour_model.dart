@@ -179,17 +179,38 @@ class GamesTourModel {
       int? blackClockSecondsToUse;
 
       if (gameHasStarted) {
-        // Game has started - use actual clock values
+        // Game has started - prefer last_clock values, then player clock, then PGN clocks
+        final pgnClocks = _extractClockSecondsFromPgn(game.pgn);
+
+        whiteClockSecondsToUse =
+            normalizeClockSeconds(
+              clockSeconds: game.lastClockWhite,
+              clockCentiseconds: white.clock,
+            ) ??
+            pgnClocks.whiteSeconds;
+        blackClockSecondsToUse =
+            normalizeClockSeconds(
+              clockSeconds: game.lastClockBlack,
+              clockCentiseconds: black.clock,
+            ) ??
+            pgnClocks.blackSeconds;
+
         whiteTimeDisplay =
-            game.lastClockWhite != null
+            (game.lastClockWhite != null && game.lastClockWhite! > 0)
                 ? _formatTimeFromSeconds(game.lastClockWhite!)
-                : _formatTime(white.clock);
+                : (white.clock > 0
+                    ? _formatTime(white.clock)
+                    : (pgnClocks.whiteSeconds != null
+                        ? _formatTimeFromSeconds(pgnClocks.whiteSeconds!)
+                        : '--:--'));
         blackTimeDisplay =
-            game.lastClockBlack != null
+            (game.lastClockBlack != null && game.lastClockBlack! > 0)
                 ? _formatTimeFromSeconds(game.lastClockBlack!)
-                : _formatTime(black.clock);
-        whiteClockSecondsToUse = game.lastClockWhite;
-        blackClockSecondsToUse = game.lastClockBlack;
+                : (black.clock > 0
+                    ? _formatTime(black.clock)
+                    : (pgnClocks.blackSeconds != null
+                        ? _formatTimeFromSeconds(pgnClocks.blackSeconds!)
+                        : '--:--'));
       } else {
         final hasInitialClock = white.clock > 0 || black.clock > 0;
 
@@ -245,6 +266,72 @@ class GamesTourModel {
   static int? _centisecondsToSeconds(int? value) {
     if (value == null || value <= 0) return null;
     return (value / 100).round();
+  }
+
+  static int? normalizeClockSeconds({
+    required int? clockSeconds,
+    required int? clockCentiseconds,
+  }) {
+    if (clockSeconds != null && clockSeconds > 0) {
+      return clockSeconds;
+    }
+    return _centisecondsToSeconds(clockCentiseconds);
+  }
+
+  static ({int? whiteSeconds, int? blackSeconds}) _extractClockSecondsFromPgn(
+    String? pgn,
+  ) {
+    if (pgn == null || pgn.isEmpty) {
+      return (whiteSeconds: null, blackSeconds: null);
+    }
+
+    final regex = RegExp(r'\[%clk (\d+:\d{2}:\d{2})\]');
+    final matches = regex.allMatches(pgn);
+
+    int? lastWhite;
+    int? lastBlack;
+    var index = 0;
+
+    for (final match in matches) {
+      final timeString = match.group(1);
+      if (timeString == null) {
+        index++;
+        continue;
+      }
+      final seconds = _parseClockStringToSeconds(timeString);
+      if (seconds != null) {
+        if (index.isEven) {
+          lastWhite = seconds;
+        } else {
+          lastBlack = seconds;
+        }
+      }
+      index++;
+    }
+
+    return (whiteSeconds: lastWhite, blackSeconds: lastBlack);
+  }
+
+  static int? _parseClockStringToSeconds(String timeString) {
+    final parts = timeString.split(':');
+    if (parts.length == 3) {
+      final hours = int.tryParse(parts[0]);
+      final minutes = int.tryParse(parts[1]);
+      final seconds = int.tryParse(parts[2]);
+      if (hours == null || minutes == null || seconds == null) {
+        return null;
+      }
+      return (hours * 3600) + (minutes * 60) + seconds;
+    }
+    if (parts.length == 2) {
+      final minutes = int.tryParse(parts[0]);
+      final seconds = int.tryParse(parts[1]);
+      if (minutes == null || seconds == null) {
+        return null;
+      }
+      return (minutes * 60) + seconds;
+    }
+    return null;
   }
 
   static String _formatTime(int? clockTimeCentiseconds) {

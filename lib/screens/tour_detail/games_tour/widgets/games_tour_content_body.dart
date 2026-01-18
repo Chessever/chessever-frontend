@@ -336,11 +336,15 @@ class GamesTourContentBody extends ConsumerWidget {
 
       // If only completed rounds exist, show completed + first upcoming
       if (hasCompleted && round.roundStatus == RoundStatus.upcoming) {
-        // Find the first upcoming round and only show that one
-      final upcomingRounds = sourceRounds.where((r) =>
-        r.roundStatus == RoundStatus.upcoming &&
-        (gamesByRound[r.id]?.isNotEmpty ?? false)
-      ).toList();
+        final upcomingRounds = _sortRoundsByStartAsc(
+          sourceRounds
+              .where(
+                (r) =>
+                    r.roundStatus == RoundStatus.upcoming &&
+                    (gamesByRound[r.id]?.isNotEmpty ?? false),
+              )
+              .toList(),
+        );
         return upcomingRounds.isNotEmpty && upcomingRounds.first.id == round.id;
       }
 
@@ -501,4 +505,19 @@ bool _shouldIncludeGame(
     case GameDisplayMode.all:
       return true;
   }
+}
+
+List<GamesAppBarModel> _sortRoundsByStartAsc(List<GamesAppBarModel> rounds) {
+  rounds.sort((a, b) {
+    final aStart = a.startsAt;
+    final bStart = b.startsAt;
+    if (aStart == null && bStart == null) {
+      return a.name.compareTo(b.name);
+    }
+    if (aStart == null) return 1;
+    if (bStart == null) return -1;
+    final cmp = aStart.compareTo(bStart);
+    return cmp == 0 ? a.name.compareTo(b.name) : cmp;
+  });
+  return rounds;
 }

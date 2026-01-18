@@ -190,7 +190,8 @@ class _GamesAppBarNotifier
                   r.roundStatus == RoundStatus.upcoming &&
                   (gamesByRound[r.id] ?? 0) > 0,
             )
-            .toList();
+            .toList()
+          ..sort((a, b) => _compareByStart(a, b, true));
         return upcomingRounds.isNotEmpty && upcomingRounds.first.id == round.id;
       }
 
@@ -361,7 +362,8 @@ class _GamesAppBarNotifier
                           r.roundStatus == RoundStatus.upcoming &&
                           (gamesByRound[r.id] ?? 0) > 0,
                     )
-                    .toList();
+                    .toList()
+                  ..sort((a, b) => _compareByStart(a, b, true));
             return upcomingRounds.isNotEmpty &&
                 upcomingRounds.first.id == round.id;
           }
