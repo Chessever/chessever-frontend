@@ -6,6 +6,7 @@ import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
+import 'package:chessever2/repository/supabase/tour/tour_repository.dart';
 import 'package:chessever2/screens/favorites/favorite_players_provider.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/screens/group_event/providers/live_group_broadcast_id_provider.dart';
@@ -215,6 +216,7 @@ final eventGamesProvider = FutureProvider.autoDispose
 
   final repository = ref.read(gameRepositoryProvider);
   final groupBroadcastRepo = ref.read(groupBroadcastRepositoryProvider);
+  final tourRepository = ref.read(tourRepositoryProvider);
 
   final favoritesState = ref.read(favoritePlayersNotifierProvider).valueOrNull;
   final favoritePlayers = favoritesState?.players ?? [];
@@ -223,30 +225,57 @@ final eventGamesProvider = FutureProvider.autoDispose
       .map((p) => p.fideId!)
       .toSet();
 
-  List<String> tourIds;
+  List<String> tourIds = [];
   try {
-    tourIds = await groupBroadcastRepo.getTourIdsForGroupBroadcast(eventId);
-    if (tourIds.isEmpty) tourIds = [eventId];
+    final tours = await tourRepository.getTourByGroupId(eventId);
+    if (tours.isNotEmpty) {
+      tourIds = tours.map((tour) => tour.id).toList();
+    }
   } catch (e) {
-    tourIds = [eventId];
+    tourIds = [];
   }
 
-  // Fetches only from the latest played round (no fallback to previous rounds)
-  final allGames = await repository.getForYouEventGames(
-    tourIds: tourIds,
-    neededCount: kGamesPerEvent,
-  );
+  if (tourIds.isEmpty) {
+    try {
+      tourIds = await groupBroadcastRepo.getTourIdsForGroupBroadcast(eventId);
+    } catch (e) {
+      tourIds = [];
+    }
+  }
 
-  if (allGames.isEmpty) return [];
+  if (tourIds.isEmpty) tourIds = [eventId];
 
-  final playedGames = allGames
-      .where((g) => _hasStarted(g))
-      .where((g) => g.players != null && g.players!.length >= 2)
-      .toList();
+  final selectedGames = <Games>[];
+  final seenGameIds = <String>{};
 
-  if (playedGames.isEmpty) return [];
+  for (final tourId in tourIds) {
+    if (selectedGames.length >= kGamesPerEvent) break;
 
-  return _selectTopGames(playedGames, favoriteFideIds, kGamesPerEvent);
+    final neededCount = kGamesPerEvent - selectedGames.length;
+    final allGames = await repository.getForYouEventGames(
+      tourIds: [tourId],
+      neededCount: neededCount,
+    );
+
+    if (allGames.isEmpty) continue;
+
+    final playedGames = allGames
+        .where((g) => _hasStarted(g))
+        .where((g) => g.players != null && g.players!.length >= 2)
+        .toList();
+
+    if (playedGames.isEmpty) continue;
+
+    final topGames = _selectTopGames(playedGames, favoriteFideIds, neededCount);
+    for (final game in topGames) {
+      if (selectedGames.length >= kGamesPerEvent) break;
+      if (seenGameIds.add(game.id)) {
+        selectedGames.add(game);
+      }
+    }
+  }
+
+  return selectedGames;
 });
 
 bool _hasStarted(Games game) {

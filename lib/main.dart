@@ -127,9 +127,9 @@ Future<void> main() async {
       // Tablets get all orientations, phones stay portrait-only
 
       // Load environment variables first (only in debug mode)
-      if (kDebugMode) {
-        await dotenv.load(fileName: ".env");
-      }
+      // if (kDebugMode) {
+      //   await dotenv.load(fileName: ".env");
+      // }
 
       // Add lifecycle observer
       WidgetsBinding.instance.addObserver(
@@ -151,6 +151,9 @@ Future<void> main() async {
         ),
       );
 
+      // Clear evaluation cache in background (don't block startup)
+      unawaited(_clearEvaluationCache());
+
       // Parallelize all critical initialization tasks
       await Future.wait([
         // Critical: Required before app starts
@@ -165,8 +168,6 @@ Future<void> main() async {
           workerManager.init(isolatesCount: 6)
         else
           Future.value(),
-        // Clear evaluation cache
-        _clearEvaluationCache(),
         // Reset favorites for Supabase migration (one-time for beta users)
         _resetFavoritesForMigration(),
         // Initialize Amplitude (with error handling)
