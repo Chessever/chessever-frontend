@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:chessever2/repository/authentication/auth_repository.dart';
 import 'package:chessever2/screens/authentication/auth_screen_provider.dart';
 import 'package:chessever2/screens/calendar/calendar_screen.dart';
@@ -6,8 +7,11 @@ import 'package:chessever2/screens/premium/premium_screen.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/hamburger_menu/hamburger_menu.dart';
+import 'package:chessever2/widgets/shorebird_update_dialog.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:shorebird_code_push/shorebird_code_push.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../group_event/group_event_screen.dart';
 import 'widget/bottom_nav_bar.dart';
@@ -22,6 +26,51 @@ class HomeScreen extends ConsumerStatefulWidget {
 
 class _HomeScreenState extends ConsumerState<HomeScreen> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkForShorebirdUpdate();
+    });
+  }
+
+  Future<void> _checkForShorebirdUpdate() async {
+    // Simulate update in Debug Mode
+    if (kDebugMode) {
+      if (mounted) {
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder:
+              (context) =>
+                  const ShorebirdUpdateDialog(initialStatus: UpdateStatus.outdated),
+        );
+      }
+      return;
+    }
+
+    // Shorebird is only supported on Android and iOS
+    if (!(Platform.isAndroid || Platform.isIOS)) return;
+
+    try {
+      final updater = ShorebirdUpdater();
+      final status = await updater.checkForUpdate();
+
+      if (status == UpdateStatus.outdated ||
+          status == UpdateStatus.restartRequired) {
+        if (mounted) {
+          showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (context) => ShorebirdUpdateDialog(initialStatus: status),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('Shorebird update check failed: $e');
+    }
+  }
 
   HamburgerMenuCallbacks get _menuCallbacks => HamburgerMenuCallbacks(
     onPlayersPressed: () {
