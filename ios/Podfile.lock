@@ -94,6 +94,8 @@ PODS:
     - FlutterMacOS
   - stockfish (1.7.1):
     - Flutter
+  - terminate_restart (1.0.9):
+    - Flutter
   - url_launcher_ios (0.0.1):
     - Flutter
 
@@ -119,6 +121,7 @@ DEPENDENCIES:
   - sign_in_with_apple (from `.symlinks/plugins/sign_in_with_apple/ios`)
   - sqflite_darwin (from `.symlinks/plugins/sqflite_darwin/darwin`)
   - stockfish (from `.symlinks/plugins/stockfish/ios`)
+  - terminate_restart (from `.symlinks/plugins/terminate_restart/ios`)
   - url_launcher_ios (from `.symlinks/plugins/url_launcher_ios/ios`)
 
 SPEC REPOS:
@@ -180,6 +183,8 @@ EXTERNAL SOURCES:
     :path: ".symlinks/plugins/sqflite_darwin/darwin"
   stockfish:
     :path: ".symlinks/plugins/stockfish/ios"
+  terminate_restart:
+    :path: ".symlinks/plugins/terminate_restart/ios"
   url_launcher_ios:
     :path: ".symlinks/plugins/url_launcher_ios/ios"
 
@@ -218,6 +223,7 @@ SPEC CHECKSUMS:
   sign_in_with_apple: c5dcc141574c8c54d5ac99dd2163c0c72ad22418
   sqflite_darwin: 20b2a3a3b70e43edae938624ce550a3cbf66a3d0
   stockfish: 67f9bf4f28fa261dee264b35be80c9ac11b391b6
+  terminate_restart: 7afc8cc5b5afc86871cdb1206a584c43262702ac
   url_launcher_ios: 694010445543906933d732453a59da0a173ae33d
 
 PODFILE CHECKSUM: f179fcf14223536ae4e29de1097c68d7f8445563

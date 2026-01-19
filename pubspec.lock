@@ -1309,6 +1309,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "3.0.0"
+  shorebird_code_push:
+    dependency: "direct main"
+    description:
+      name: shorebird_code_push
+      sha256: "82203f39a66c78548da944dbe4079c2aa2a60fa5bc1105ed707b144c94f04349"
+      url: "https://pub.dev"
+    source: hosted
+    version: "2.0.5"
   sign_in_with_apple:
     dependency: "direct main"
     description:
@@ -1523,6 +1531,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.2.2"
+  terminate_restart:
+    dependency: "direct main"
+    description:
+      name: terminate_restart
+      sha256: "82c27b35fb838fa1669123c3cc3f32040489a753d079a74ed217965d2cd7b2e2"
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.0.11"
   test_api:
     dependency: transitive
     description:

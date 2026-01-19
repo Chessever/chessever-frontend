@@ -34,6 +34,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:terminate_restart/terminate_restart.dart';
 import 'package:worker_manager/worker_manager.dart';
 import 'package:clarity_flutter/clarity_flutter.dart';
 import 'package:heroine/heroine.dart';
@@ -127,9 +128,9 @@ Future<void> main() async {
       // Tablets get all orientations, phones stay portrait-only
 
       // Load environment variables first (only in debug mode)
-      // if (kDebugMode) {
-      //   await dotenv.load(fileName: ".env");
-      // }
+      if (kDebugMode) {
+        await dotenv.load(fileName: ".env");
+      }
 
       // Add lifecycle observer
       WidgetsBinding.instance.addObserver(
@@ -177,6 +178,9 @@ Future<void> main() async {
         // Initialize RevenueCat for subscriptions
         _initializeRevenueCat(),
       ]);
+
+      // Initialize TerminateRestart
+      TerminateRestart.instance.initialize();
 
       // Non-critical: Load audio assets in background (don't block app startup)
       unawaited(AudioPlayerService.instance.initializeAndLoadAllAssets());
