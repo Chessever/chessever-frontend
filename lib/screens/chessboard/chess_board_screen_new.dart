@@ -654,39 +654,6 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     unawaited(_handlePageChange(newIndex));
   }
 
-  Future<bool> _confirmLeaveAnalysisIfNeeded(int pageIndex) async {
-    if (!mounted) return true;
-    if (pageIndex < 0 || pageIndex >= widget.games.length) {
-      return true;
-    }
-
-    final game = _resolveGameForIndex(pageIndex);
-    final params = _createParams(game, pageIndex);
-    final state = ref.read(chessBoardScreenProviderNew(params)).valueOrNull;
-    final analysisGame = state?.analysisState.game;
-
-    if (analysisGame == null) {
-      return true;
-    }
-
-    final hasCustomAnalysis = _gameHasCustomVariations(analysisGame);
-    if (!hasCustomAnalysis) {
-      return true;
-    }
-
-    final confirmed =
-        await _showAnalysisConfirmationDialog(
-          context: context,
-          title: 'Leave analysis?',
-          message:
-              'You have local analysis variations for this game. Leaving now will discard your move tree progress.',
-          confirmLabel: 'Leave',
-          confirmColor: kRedColor,
-        ) ??
-        false;
-    return confirmed;
-  }
-
   Future<void> _handlePageChange(int newIndex) async {
     if (_isRevertingPage) {
       _isRevertingPage = false;
@@ -696,18 +663,6 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     if (_currentPageIndex == newIndex) return;
 
     final previousIndex = _currentPageIndex;
-    final canLeave = await _confirmLeaveAnalysisIfNeeded(previousIndex);
-    if (!mounted) return;
-
-    if (!canLeave) {
-      _isRevertingPage = true;
-      _pageController.animateToPage(
-        previousIndex,
-        duration: const Duration(milliseconds: 280),
-        curve: Curves.easeOut,
-      );
-      return;
-    }
 
     _lastViewedIndex = newIndex;
 

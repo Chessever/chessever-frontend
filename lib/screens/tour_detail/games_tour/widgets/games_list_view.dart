@@ -186,7 +186,20 @@ class GamesListView extends ConsumerWidget {
             );
             // TABLET: Wrap with SizedBox to provide bounded width
             if (itemWidth != null) {
-              rowContent = SizedBox(width: itemWidth, child: rowContent);
+              if (gamesListViewMode != GamesListViewMode.chessBoardGrid && ResponsiveHelper.isTablet) {
+                // Compact List View for Tablet
+                rowContent = SizedBox(
+                  width: itemWidth,
+                  child: Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 600.0),
+                      child: rowContent,
+                    ),
+                  ),
+                );
+              } else {
+                rowContent = SizedBox(width: itemWidth, child: rowContent);
+              }
             }
             return rowContent;
           }
@@ -242,12 +255,11 @@ class GamesListView extends ConsumerWidget {
     // which breaks nested Expanded widgets in PlayerFirstRowDetailWidget.
     if (ResponsiveHelper.isTablet) {
       return Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Expanded(child: game1Widget),
-          if (game2Widget != null) ...[
-            SizedBox(width: 16.sp),
-            Expanded(child: game2Widget),
-          ],
+          SizedBox(width: 16.sp),
+          Expanded(child: game2Widget ?? const SizedBox()),
         ],
       );
     }
