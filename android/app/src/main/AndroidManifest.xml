@@ -116,6 +116,11 @@
        <intent>
            <action android:name="android.support.customtabs.action.CustomTabsService" />
        </intent>
+       <!-- Required for opening email apps -->
+       <intent>
+           <action android:name="android.intent.action.VIEW" />
+           <data android:scheme="mailto" />
+       </intent>
    </queries>
     <!-- Provide required visibility configuration for API level 30 and above -->
 </manifest>

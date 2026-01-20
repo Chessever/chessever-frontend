@@ -59,6 +59,7 @@
 		<array>
 			<string>sms</string>
 			<string>tel</string>
+			<string>mailto</string>
 		</array>
 		<key>LSRequiresIPhoneOS</key>
 		<true />
