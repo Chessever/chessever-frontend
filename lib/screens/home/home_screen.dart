@@ -5,6 +5,10 @@ import 'package:chessever2/screens/authentication/auth_screen_provider.dart';
 import 'package:chessever2/screens/calendar/calendar_screen.dart';
 import 'package:chessever2/screens/library/library_screen.dart';
 import 'package:chessever2/screens/premium/premium_screen.dart';
+import 'package:chessever2/providers/favorite_events_provider.dart';
+import 'package:chessever2/providers/favorite_players_provider.dart';
+import 'package:chessever2/repository/favorites/models/favorite_event.dart';
+import 'package:chessever2/repository/favorites/models/favorite_player.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/hamburger_menu/hamburger_menu.dart';
@@ -28,6 +32,7 @@ class HomeScreen extends ConsumerStatefulWidget {
 
 class _HomeScreenState extends ConsumerState<HomeScreen> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
+  static const int _favoritePromptThreshold = 5;
 
   @override
   void initState() {
@@ -82,6 +87,44 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     } catch (e) {
       debugPrint('Shorebird update check failed: $e');
     }
+  }
+
+  void _listenForFavoriteSignals() {
+    ref.listen<AsyncValue<List<FavoriteEvent>>>(favoriteEventsProvider, (
+      previous,
+      next,
+    ) {
+      final prevCount = previous?.valueOrNull?.length ?? 0;
+      final nextCount = next.valueOrNull?.length ?? 0;
+      if (prevCount < _favoritePromptThreshold &&
+          nextCount >= _favoritePromptThreshold) {
+        if (!mounted) return;
+        unawaited(
+          ReviewPromptService.instance.maybePrompt(
+            context: context,
+            trigger: ReviewPromptTrigger.favoriteEvent,
+          ),
+        );
+      }
+    });
+
+    ref.listen<AsyncValue<List<FavoritePlayer>>>(favoritePlayersProviderNew, (
+      previous,
+      next,
+    ) {
+      final prevCount = previous?.valueOrNull?.length ?? 0;
+      final nextCount = next.valueOrNull?.length ?? 0;
+      if (prevCount < _favoritePromptThreshold &&
+          nextCount >= _favoritePromptThreshold) {
+        if (!mounted) return;
+        unawaited(
+          ReviewPromptService.instance.maybePrompt(
+            context: context,
+            trigger: ReviewPromptTrigger.favoritePlayer,
+          ),
+        );
+      }
+    });
   }
 
   HamburgerMenuCallbacks get _menuCallbacks => HamburgerMenuCallbacks(
@@ -141,6 +184,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Listen for favorite signals (must be in build method)
+    _listenForFavoriteSignals();
+
     // Tablet layout: NavigationRail on the side
     if (ResponsiveHelper.isTablet) {
       return Scaffold(

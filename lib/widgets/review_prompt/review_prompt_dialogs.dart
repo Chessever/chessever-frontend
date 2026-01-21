@@ -144,19 +144,50 @@ Future<int?> showAppRatingDialog(BuildContext context) {
   );
 }
 
+/// Feature suggestions for the survey - users can quick-tap these
+const List<String> _featureSuggestions = [
+  'Offline mode',
+  'Opening preparation',
+  'Advanced analysis',
+  'Player tracking',
+];
+
 Future<String?> showAppFeedbackDialog(
   BuildContext context, {
   required int rating,
 }) {
+  final isHighRating = rating >= 4;
+
   return showDialog<String?>(
     context: context,
     barrierDismissible: true,
     builder: (context) {
       final controller = TextEditingController();
       bool canSubmit = false;
+      final selectedFeatures = <String>{};
 
       return StatefulBuilder(
         builder: (context, setState) {
+          // Update canSubmit based on text or selected features
+          void updateCanSubmit() {
+            setState(() {
+              canSubmit = controller.text.trim().isNotEmpty ||
+                  selectedFeatures.isNotEmpty;
+            });
+          }
+
+          // Build the feedback string from selections + text
+          String buildFeedback() {
+            final parts = <String>[];
+            if (selectedFeatures.isNotEmpty) {
+              parts.add('Interested in: ${selectedFeatures.join(', ')}');
+            }
+            if (controller.text.trim().isNotEmpty) {
+              parts.add(controller.text.trim());
+            }
+            return parts.join('\n\n');
+          }
+
           return Dialog(
             backgroundColor: Colors.transparent,
             child: Container(
@@ -181,20 +212,24 @@ Future<String?> showAppFeedbackDialog(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // Rating-aware header
                   Text(
-                    'Thanks for the rating',
+                    isHighRating ? 'Thanks for the love!' : 'Thanks for the feedback',
                     style: AppTypography.textLgBold.copyWith(
                       color: kWhiteColor,
                     ),
                   ),
                   SizedBox(height: 4.sp),
                   Text(
-                    'What could we improve?',
+                    isHighRating
+                        ? 'What premium feature would you love to see?'
+                        : 'What can we do better?',
                     style: AppTypography.textSmRegular.copyWith(
                       color: kWhiteColor.withValues(alpha: 0.6),
                     ),
                   ),
                   SizedBox(height: 12.sp),
+                  // Star rating display
                   Row(
                     children: List.generate(5, (index) {
                       final isActive = index < rating;
@@ -210,23 +245,79 @@ Future<String?> showAppFeedbackDialog(
                       );
                     }),
                   ),
-                  SizedBox(height: 12.sp),
+                  SizedBox(height: 16.sp),
+                  // Quick-tap feature suggestions (only for high ratings)
+                  if (isHighRating) ...[
+                    Text(
+                      'Quick picks (tap to select)',
+                      style: AppTypography.textXsRegular.copyWith(
+                        color: kWhiteColor.withValues(alpha: 0.5),
+                      ),
+                    ),
+                    SizedBox(height: 8.sp),
+                    Wrap(
+                      spacing: 8.sp,
+                      runSpacing: 8.sp,
+                      children: _featureSuggestions.map((feature) {
+                        final isSelected = selectedFeatures.contains(feature);
+                        return GestureDetector(
+                          onTap: () {
+                            HapticFeedbackService.selection();
+                            setState(() {
+                              if (isSelected) {
+                                selectedFeatures.remove(feature);
+                              } else {
+                                selectedFeatures.add(feature);
+                              }
+                            });
+                            updateCanSubmit();
+                          },
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 200),
+                            padding: EdgeInsets.symmetric(
+                              horizontal: 12.sp,
+                              vertical: 8.sp,
+                            ),
+                            decoration: BoxDecoration(
+                              color: isSelected
+                                  ? kPrimaryColor.withValues(alpha: 0.15)
+                                  : kWhiteColor.withValues(alpha: 0.05),
+                              borderRadius: BorderRadius.circular(20.br),
+                              border: Border.all(
+                                color: isSelected
+                                    ? kPrimaryColor.withValues(alpha: 0.5)
+                                    : kWhiteColor.withValues(alpha: 0.1),
+                                width: 1,
+                              ),
+                            ),
+                            child: Text(
+                              feature,
+                              style: AppTypography.textXsMedium.copyWith(
+                                color: isSelected
+                                    ? kPrimaryColor
+                                    : kWhiteColor.withValues(alpha: 0.7),
+                              ),
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                    SizedBox(height: 12.sp),
+                  ],
+                  // Text input
                   TextField(
                     controller: controller,
-                    onChanged: (value) {
-                      final trimmed = value.trim();
-                      setState(() {
-                        canSubmit = trimmed.isNotEmpty;
-                      });
-                    },
-                    maxLines: 5,
-                    minLines: 3,
+                    onChanged: (_) => updateCanSubmit(),
+                    maxLines: isHighRating ? 3 : 5,
+                    minLines: isHighRating ? 2 : 3,
                     maxLength: 500,
                     style: AppTypography.textSmRegular.copyWith(
                       color: kWhiteColor,
                     ),
                     decoration: InputDecoration(
-                      hintText: 'Tell us what went wrong or what’s missing',
+                      hintText: isHighRating
+                          ? 'Or share your own feature idea...'
+                          : 'Tell us what went wrong or what we can improve...',
                       hintStyle: AppTypography.textSmRegular.copyWith(
                         color: kWhiteColor.withValues(alpha: 0.35),
                       ),
@@ -254,6 +345,7 @@ Future<String?> showAppFeedbackDialog(
                     ),
                   ),
                   SizedBox(height: 12.sp),
+                  // Action buttons
                   Row(
                     children: [
                       Expanded(
@@ -269,7 +361,7 @@ Future<String?> showAppFeedbackDialog(
                             ),
                           ),
                           child: Text(
-                            'Cancel',
+                            'Skip',
                             style: AppTypography.textSmMedium.copyWith(
                               color: kWhiteColor.withValues(alpha: 0.7),
                             ),
@@ -283,9 +375,7 @@ Future<String?> showAppFeedbackDialog(
                               canSubmit
                                   ? () {
                                     HapticFeedbackService.buttonPress();
-                                    Navigator.of(context).pop(
-                                      controller.text.trim(),
-                                    );
+                                    Navigator.of(context).pop(buildFeedback());
                                   }
                                   : null,
                           style: TextButton.styleFrom(
