@@ -266,6 +266,11 @@ class _CenterContent extends ConsumerWidget {
       );
     }
 
+    // If game hasn't started yet, show "VS" instead of eval bar
+    if (!matchWithComparison.game.hasStarted) {
+      return Center(child: StatusText(status: 'VS', color: kBlack2Color));
+    }
+
     // If engine gauge is disabled, show "LIVE" indicator instead of progress bar
     if (!showEngineGauge) {
       return Center(
@@ -302,8 +307,8 @@ class _BottomSection extends ConsumerWidget {
       ),
     );
 
-    // When clocks are hidden, just show the last move centered
-    if (!showClock) {
+    // When clocks are hidden or game hasn't started, handle accordingly
+    if (!showClock || !matchComparison.game.hasStarted) {
       return Container(
         height: 24.h,
         padding: EdgeInsets.symmetric(horizontal: 16.sp),
@@ -333,7 +338,7 @@ class _BottomSection extends ConsumerWidget {
             matchComparison.comparison == MatchComparison.sameOrder
                 ? [
                   SizedBox(
-                    width: 50.w, // Fixed width for clock
+                    width: 60.w, // Fixed width for clock
                     child: _TimerWidget(
                       turn: matchComparison.game.activePlayer == Side.white,
                       time: matchComparison.game.whiteTimeDisplay,
@@ -343,7 +348,7 @@ class _BottomSection extends ConsumerWidget {
                   ),
                   lastMoveWidget,
                   SizedBox(
-                    width: 50.w, // Fixed width for clock
+                    width: 60.w, // Fixed width for clock
                     child: _TimerWidget(
                       turn: matchComparison.game.activePlayer == Side.black,
                       time: matchComparison.game.blackTimeDisplay,
@@ -354,7 +359,7 @@ class _BottomSection extends ConsumerWidget {
                 ]
                 : [
                   SizedBox(
-                    width: 50.w, // Fixed width for clock
+                    width: 60.w, // Fixed width for clock
                     child: _TimerWidget(
                       turn: matchComparison.game.activePlayer == Side.black,
                       time: matchComparison.game.blackTimeDisplay,
@@ -364,7 +369,7 @@ class _BottomSection extends ConsumerWidget {
                   ),
                   lastMoveWidget,
                   SizedBox(
-                    width: 50.w, // Fixed width for clock
+                    width: 60.w, // Fixed width for clock
                     child: _TimerWidget(
                       turn: matchComparison.game.activePlayer == Side.white,
                       time: matchComparison.game.whiteTimeDisplay,

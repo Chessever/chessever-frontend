@@ -10,6 +10,7 @@ import 'package:chessever2/widgets/paywall/premium_celebration_overlay.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
+import 'package:chessever2/services/review_prompt_service.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -103,6 +104,19 @@ class HamburgerMenu extends StatelessWidget {
                       ),
                       title: 'Settings',
                       onPressed: () => showSettingsDialog(context),
+                      showChevron: true,
+                    ),
+                    _MenuItem(
+                      icon: Icons.rate_review_outlined,
+                      title: 'Leave feedback',
+                      onPressed: () {
+                        Navigator.of(context).pop();
+                        ReviewPromptService.instance.maybePrompt(
+                          context: context,
+                          trigger: ReviewPromptTrigger.sidebar,
+                          force: true,
+                        );
+                      },
                       showChevron: true,
                     ),
                   ],

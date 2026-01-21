@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'package:app_settings/app_settings.dart';
+import 'package:chessever2/services/review_prompt_service.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
@@ -27,6 +29,15 @@ Future<void> showPremiumCelebration(BuildContext context, {String? managementUrl
       );
     },
   );
+
+  if (context.mounted) {
+    unawaited(
+      ReviewPromptService.instance.maybePrompt(
+        context: context,
+        trigger: ReviewPromptTrigger.premium,
+      ),
+    );
+  }
 }
 
 class _PremiumCelebrationOverlay extends StatefulWidget {

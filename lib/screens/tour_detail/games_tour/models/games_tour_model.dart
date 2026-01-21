@@ -392,6 +392,8 @@ class GamesTourModel {
     );
   }
 
+  bool get hasStarted => lastMove != null && lastMove!.isNotEmpty;
+
   Side? get activePlayer {
     if (fen == null || fen!.isEmpty) return Side.white; // Default to white
 

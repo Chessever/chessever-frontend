@@ -199,7 +199,7 @@ class ChessBoardFromFENNew extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final showEvalBar = _shouldShowEvalBar(ref);
+    final showEvalBar = _shouldShowEvalBar(ref) && gamesTourModel.hasStarted;
     final sideBarWidth = showEvalBar ? 20.w : 0.w;
 
     return Padding(
@@ -380,7 +380,7 @@ class GridChessBoardFromFENNew extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final showEvalBar = _shouldShowEvalBar(ref);
+    final showEvalBar = _shouldShowEvalBar(ref) && gamesTourModel.hasStarted;
     final sideBarWidth = showEvalBar ? 10.w : 0.w;
 
     // On phone, use the original fixed calculation for 2-column grid
@@ -577,7 +577,7 @@ class _ChessBoardContent extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final showEvalBar = _shouldShowEvalBar(ref);
+    final showEvalBar = _shouldShowEvalBar(ref) && gamesTourModel.hasStarted;
     final sideBarWidth = showEvalBar ? 20.w : 0.w;
 
     return SizedBox(
@@ -651,6 +651,7 @@ class _PlayerRow extends StatelessWidget {
       isCurrentPlayer: isCurrentPlayer,
       playerView: playerView,
       isPinned: isPinned,
+      showClock: gamesTourModel.hasStarted,
     );
   }
 }
@@ -676,7 +677,7 @@ class _ChessBoardWithEvaluation extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (!showEvalBar) {
+    if (!showEvalBar || !gamesTourModel.hasStarted) {
       return _ChessBoardWidget(
         fen: gamesTourModel.fen ?? '',
         lastMove: lastMove,

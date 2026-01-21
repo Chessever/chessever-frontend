@@ -38,6 +38,17 @@ class StockfishSingleton {
   final Map<String, _EvalJob> _pendingJobs = {}; // Keyed by cacheKey
   bool _isProcessing = false; // Flag to prevent concurrent processing
   static const int _maxQueueSize = 60; // Soft cap to avoid backlog
+  static const int _maxCacheEntries = 80; // Cap cache size to avoid memory bloat
+
+  void _touchCacheEntry(String key, EnhancedCloudEval value) {
+    if (_evaluationCache.containsKey(key)) {
+      _evaluationCache.remove(key);
+    }
+    _evaluationCache[key] = value;
+    while (_evaluationCache.length > _maxCacheEntries) {
+      _evaluationCache.remove(_evaluationCache.keys.first);
+    }
+  }
 
   Future<EnhancedCloudEval> evaluatePosition(
     String fen, {
@@ -70,9 +81,11 @@ class StockfishSingleton {
             : 'depth_$depth';
     final cacheKey = '${fen}_${searchMode}_pv${multiPV}_$sideToMove';
 
-    if (allowCache && _evaluationCache.containsKey(cacheKey)) {
+    final cached = allowCache ? _evaluationCache[cacheKey] : null;
+    if (cached != null) {
       debugPrint('📦 CACHE HIT for $fen');
-      return _evaluationCache[cacheKey]!;
+      _touchCacheEntry(cacheKey, cached);
+      return cached;
     }
 
     // Deduplicate: if same job is current or pending, attach to it
@@ -181,7 +194,7 @@ class StockfishSingleton {
         !result.isCancelled &&
         result.pvs.isNotEmpty &&
         result.pvs.first.moves.isNotEmpty) {
-      _evaluationCache[cacheKey] = result;
+      _touchCacheEntry(cacheKey, result);
       debugPrint(
         '✅ CACHED: Stockfish eval for $fen (depth=${result.depth}, cp=${result.pvs.first.cp})',
       );
