@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:chessever2/providers/for_you_games_provider.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
@@ -36,17 +38,30 @@ class ForYouGamesWidget extends ConsumerStatefulWidget {
   ConsumerState<ForYouGamesWidget> createState() => _ForYouGamesWidgetState();
 }
 
-class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget> {
+class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
+    with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     widget.scrollController.addListener(_onScroll);
   }
 
   @override
   void dispose() {
     widget.scrollController.removeListener(_onScroll);
+    WidgetsBinding.instance.removeObserver(this);
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    if (state == AppLifecycleState.resumed) {
+      unawaited(
+        ref.read(forYouEventsProvider.notifier).refreshIfStale(),
+      );
+    }
   }
 
   void _onScroll() {

@@ -69,6 +69,9 @@ import 'package:chessever2/screens/gamebase/providers/gamebase_providers.dart';
 import 'package:chessever2/screens/library/utils/gamebase_pgn_builder.dart';
 import 'package:chessever2/screens/library/utils/gamebase_game_to_games_tour_model.dart';
 import 'package:chessever2/utils/chess_title_utils.dart';
+import 'package:showcaseview/showcaseview.dart';
+import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
+import 'package:flutter/foundation.dart';
 
 /// Spring-based curve that mimics iOS snappy motion
 /// Quick, precise animation with subtle natural settling
@@ -127,11 +130,18 @@ class CachedMoveImpact {
 class MoveImpactCacheNotifier
     extends StateNotifier<Map<String, CachedMoveImpact>> {
   MoveImpactCacheNotifier() : super(<String, CachedMoveImpact>{});
+  static const int _maxEntries = 12;
 
   CachedMoveImpact? lookup(String gameId) => state[gameId];
 
   void store(String gameId, CachedMoveImpact cached) {
-    state = {...state, gameId: cached};
+    final next = Map<String, CachedMoveImpact>.from(state);
+    next.remove(gameId);
+    next[gameId] = cached;
+    while (next.length > _maxEntries) {
+      next.remove(next.keys.first);
+    }
+    state = next;
   }
 
   void invalidate(String gameId) {
@@ -464,7 +474,7 @@ class _ChessBoardPopupState {
 }
 
 class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
-    with WidgetsBindingObserver {
+    with WidgetsBindingObserver, TickerProviderStateMixin {
   late PageController _pageController;
   bool analysisMode = false;
   int? _lastViewedIndex;
@@ -473,6 +483,128 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
   bool _isRevertingPage = false;
   ProviderSubscription<AsyncValue<ChessBoardStateNew>>? _boardKeepAliveSub;
   ChessBoardProviderParams? _keepAliveParams;
+  Timer? _pageSettleTimer;
+  int _pageSettleGeneration = 0;
+
+  final GlobalKey _oneKey = GlobalKey();
+  bool _hasCheckedWalkthrough = false;
+  late AnimationController _swipeController;
+  late Animation<double> _swipeMoveAnimation;
+  late Animation<double> _swipeFadeAnimation;
+  late Animation<double> _swipeScaleAnimation;
+
+  static const String _kWalkthroughShownDateKey = 'swipable_walkthrough_shown_date';
+  static const String _kWalkthroughDontShowKey = 'swipable_walkthrough_dont_show';
+
+  @override
+  void initState() {
+    super.initState();
+    // Defensive: Ensure currentIndex is within bounds of games list
+    final safeIndex = widget.currentIndex.clamp(0, widget.games.length - 1);
+    _pageController = PageController(initialPage: safeIndex);
+    _currentPageIndex = safeIndex;
+    _keepBoardProviderAlive(_currentPageIndex);
+
+    // Note: We'll enable streaming in didChangeDependencies when ref is available
+    WidgetsBinding.instance.addObserver(this);
+    _setupSwipeAnimation();
+  }
+
+  void _setupSwipeAnimation() {
+    _swipeController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2500),
+    );
+
+    // Fade In/Out: 0-10% In, 90-100% Out
+    _swipeFadeAnimation = TweenSequence<double>([
+      TweenSequenceItem(tween: Tween(begin: 0.0, end: 1.0), weight: 10),
+      TweenSequenceItem(tween: ConstantTween(1.0), weight: 80),
+      TweenSequenceItem(tween: Tween(begin: 1.0, end: 0.0), weight: 10),
+    ]).animate(_swipeController);
+
+    // Scale (Press effect): 10-20% Scale Down, 80-90% Scale Up
+    _swipeScaleAnimation = TweenSequence<double>([
+      TweenSequenceItem(tween: ConstantTween(1.0), weight: 10),
+      TweenSequenceItem(tween: Tween(begin: 1.0, end: 0.8), weight: 10),
+      TweenSequenceItem(tween: ConstantTween(0.8), weight: 60),
+      TweenSequenceItem(tween: Tween(begin: 0.8, end: 1.0), weight: 10),
+      TweenSequenceItem(tween: ConstantTween(1.0), weight: 10),
+    ]).animate(_swipeController);
+
+    // Move: Pause at start, Move Out, Pause, Move Back, Pause
+    _swipeMoveAnimation = TweenSequence<double>([
+      TweenSequenceItem(tween: ConstantTween(0.0), weight: 15),
+      TweenSequenceItem(
+        tween: Tween(begin: 0.0, end: 1.0).chain(CurveTween(curve: Curves.easeInOutCubic)),
+        weight: 35,
+      ),
+      TweenSequenceItem(tween: ConstantTween(1.0), weight: 10),
+      TweenSequenceItem(
+        tween: Tween(begin: 1.0, end: 0.0).chain(CurveTween(curve: Curves.easeInOutCubic)),
+        weight: 35,
+      ),
+      TweenSequenceItem(tween: ConstantTween(0.0), weight: 5),
+    ]).animate(_swipeController);
+
+    _swipeController.addListener(() {
+      if (!_pageController.hasClients) return;
+      
+      final width = _pageController.position.viewportDimension;
+      final totalItems = widget.games.length;
+      
+      bool canGoNext = _currentPageIndex < totalItems - 1;
+      double direction = canGoNext ? 1.0 : -1.0; 
+      
+      // Swipe about 60% of the screen width
+      double maxDrag = width * 0.6;
+      
+      double delta = _swipeMoveAnimation.value * maxDrag * direction;
+      double baseOffset = _currentPageIndex * width;
+      _pageController.position.jumpTo(baseOffset + delta);
+    });
+  }
+
+  Future<void> _checkAndShowWalkthrough(BuildContext context) async {
+    final prefs = ref.read(sharedPreferencesRepository);
+    final dontShow = await prefs.getBool(_kWalkthroughDontShowKey) ?? false;
+    if (dontShow && !kDebugMode) return;
+
+    final lastShownMs = await prefs.getInt(_kWalkthroughShownDateKey);
+    final now = DateTime.now();
+
+    bool shouldShow = false;
+    if (kDebugMode) {
+      shouldShow = true;
+    } else if (lastShownMs == null) {
+      shouldShow = true;
+    } else {
+      final lastShownDate = DateTime.fromMillisecondsSinceEpoch(lastShownMs);
+      if (now.difference(lastShownDate).inDays >= 7) {
+        shouldShow = true;
+      }
+    }
+
+    if (shouldShow && context.mounted) {
+      // ignore: deprecated_member_use
+      ShowCaseWidget.of(context).startShowCase([_oneKey]);
+      _swipeController.repeat();
+      await prefs.setInt(_kWalkthroughShownDateKey, now.millisecondsSinceEpoch);
+    }
+  }
+
+  void _onWalkthroughFinished() {
+    _swipeController.stop();
+    _swipeController.reset();
+    if (_pageController.hasClients) {
+      _pageController.jumpToPage(_currentPageIndex);
+    }
+  }
+
+  Future<void> _suppressWalkthrough() async {
+    final prefs = ref.read(sharedPreferencesRepository);
+    await prefs.setBool(_kWalkthroughDontShowKey, true);
+  }
 
   GamesTourModel _resolveGameForIndex(int index) {
     if (widget.games.isEmpty) {
@@ -598,18 +730,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     );
   }
 
-  @override
-  void initState() {
-    super.initState();
-    // Defensive: Ensure currentIndex is within bounds of games list
-    final safeIndex = widget.currentIndex.clamp(0, widget.games.length - 1);
-    _pageController = PageController(initialPage: safeIndex);
-    _currentPageIndex = safeIndex;
-    _keepBoardProviderAlive(_currentPageIndex);
 
-    // Note: We'll enable streaming in didChangeDependencies when ref is available
-    WidgetsBinding.instance.addObserver(this);
-  }
 
   @override
   void didUpdateWidget(covariant ChessBoardScreenNew oldWidget) {
@@ -707,22 +828,25 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
       }
     }
 
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        try {
-          final newGame = _resolveGameForIndex(newIndex);
-          final params = _createParams(newGame, newIndex);
-          final notifier = ref.read(
-            chessBoardScreenProviderNew(params).notifier,
-          );
-          unawaited(
-            notifier.parseMoves().whenComplete(
-              () => notifier.onBecameVisible(force: true),
-            ),
-          );
-        } catch (e) {
-          debugPrint('Error parsing moves for new index: $e');
-        }
+    _pageSettleTimer?.cancel();
+    final settleGeneration = ++_pageSettleGeneration;
+    _pageSettleTimer = Timer(const Duration(milliseconds: 220), () {
+      if (!mounted) return;
+      if (_pageSettleGeneration != settleGeneration) return;
+      if (_currentPageIndex != newIndex) return;
+      try {
+        final newGame = _resolveGameForIndex(newIndex);
+        final params = _createParams(newGame, newIndex);
+        final notifier = ref.read(
+          chessBoardScreenProviderNew(params).notifier,
+        );
+        unawaited(
+          notifier.parseMoves().whenComplete(
+            () => notifier.onBecameVisible(force: false),
+          ),
+        );
+      } catch (e) {
+        debugPrint('Error parsing moves for new index: $e');
       }
     });
   }
@@ -770,6 +894,8 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _boardKeepAliveSub?.close();
+    _pageSettleTimer?.cancel();
+    _swipeController.dispose();
     _pageController.dispose();
     super.dispose();
   }
@@ -1102,101 +1228,422 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
           statusBarColor: Colors.black,
           systemNavigationBarColor: Colors.black,
         ),
-        child: Scaffold(
-          backgroundColor: Colors.black,
-          resizeToAvoidBottomInset: false,
-          // REMOVED: RawGestureDetector was blocking PageView swipes
-          body: PageView.builder(
-            padEnds: true,
-            // On tablets, implicit scrolling caused partial page shifts when tapping
-            // notation/arrow buttons; disable it there but keep for phones.
-            allowImplicitScrolling: !isTablet,
-            dragStartBehavior: DragStartBehavior.down,
-            // Allow swiping on tablet as well; landscape block caused gestures to
-            // feel broken on larger devices. Keep physics simple to avoid half-drags.
-            physics: isTablet
-                ? const PageScrollPhysics(parent: ClampingScrollPhysics())
-                : const PageScrollPhysics(),
-            controller: _pageController,
-            onPageChanged: _onPageChanged,
-            itemCount: syncedGames.length,
-            itemBuilder: (context, index) {
-              // Build current page and adjacent pages
-              if (index == _currentPageIndex - 1 ||
-                  index == _currentPageIndex ||
-                  index == _currentPageIndex + 1) {
-                try {
-                  final game = syncedGames[index];
-                  final params = _createParams(game, index);
-                  final stateAsync =
-                      visibleStates[index] ??
-                      ref.watch(chessBoardScreenProviderNew(params));
-                  return stateAsync?.when(
-                    data: (chessBoardState) {
-                      _ensureLatestMoveSelected(
-                        ref: ref,
-                        pageIndex: index,
-                        state: chessBoardState,
-                      );
-                      if (chessBoardState.isAnalysisMode != analysisMode) {
-                        WidgetsBinding.instance.addPostFrameCallback((_) {
-                          if (_pageController.hasClients) {
-                            // On tablets, skip setState if popup is open to prevent
-                            // rebuilds that would close dropdowns/menus unexpectedly
-                            if (ResponsiveHelper.isTablet && _ChessBoardPopupState.isAnyPopupOpen) {
-                              return;
-                            }
-                            setState(() {
-                              analysisMode = chessBoardState.isAnalysisMode;
-                            });
+        child:
+            // ignore: deprecated_member_use
+            ShowCaseWidget(
+          onFinish: _onWalkthroughFinished,
+          builder: (context) {
+            if (!_hasCheckedWalkthrough) {
+              _hasCheckedWalkthrough = true;
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                _checkAndShowWalkthrough(context);
+              });
+            }
+            return Builder(
+              builder: (innerContext) {
+                return Scaffold(
+                  backgroundColor: Colors.black,
+                  resizeToAvoidBottomInset: false,
+                  // REMOVED: RawGestureDetector was blocking PageView swipes
+                  body: Stack(
+                    children: [
+                    PageView.builder(
+                      padEnds: true,
+                      // On tablets, implicit scrolling caused partial page shifts when tapping
+                      // notation/arrow buttons; disable it there but keep for phones.
+                      allowImplicitScrolling: !isTablet,
+                      dragStartBehavior: DragStartBehavior.down,
+                      // Allow swiping on tablet as well; landscape block caused gestures to
+                      // feel broken on larger devices. Keep physics simple to avoid half-drags.
+                      physics: isTablet
+                          ? const PageScrollPhysics(parent: ClampingScrollPhysics())
+                          : const PageScrollPhysics(),
+                      controller: _pageController,
+                      onPageChanged: _onPageChanged,
+                      itemCount: syncedGames.length,
+                      itemBuilder: (context, index) {
+                        // Build current page and adjacent pages
+                        if (index == _currentPageIndex - 1 ||
+                            index == _currentPageIndex ||
+                            index == _currentPageIndex + 1) {
+                          try {
+                            final game = syncedGames[index];
+                            final params = _createParams(game, index);
+                            final stateAsync =
+                                visibleStates[index] ??
+                                ref.watch(chessBoardScreenProviderNew(params));
+                            return stateAsync?.when(
+                              data: (chessBoardState) {
+                                _ensureLatestMoveSelected(
+                                  ref: ref,
+                                  pageIndex: index,
+                                  state: chessBoardState,
+                                );
+                                if (chessBoardState.isAnalysisMode != analysisMode) {
+                                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                                    if (_pageController.hasClients) {
+                                      // On tablets, skip setState if popup is open to prevent
+                                      // rebuilds that would close dropdowns/menus unexpectedly
+                                      if (ResponsiveHelper.isTablet &&
+                                          _ChessBoardPopupState.isAnyPopupOpen) {
+                                        return;
+                                      }
+                                      setState(() {
+                                        analysisMode = chessBoardState.isAnalysisMode;
+                                      });
+                                    }
+                                  });
+                                }
+                                return _GamePage(
+                                  game:
+                                      chessBoardState
+                                          .game, // Use game from state which gets updated by streaming
+                                  state: chessBoardState,
+                                  games: syncedGames,
+                                  currentGameIndex: index,
+                                  currentPageIndex: _currentPageIndex,
+                                  onGameChanged: _navigateToGame,
+                                  lastViewedIndex: _lastViewedIndex,
+                                  hideEventInfo: widget.hideEventInfo,
+                                  onToggleGamebase: _toggleGamebase,
+                                  showGamebaseButton: widget.showGamebaseButton,
+                                  showClock: widget.showClock,
+                                );
+                              },
+                              error: (e, _) => ErrorWidget(e),
+                              loading:
+                                  () => _LoadingScreen(
+                                    games: liveGames,
+                                    currentGameIndex: index,
+                                    onGameChanged: _navigateToGame,
+                                    lastViewedIndex: _lastViewedIndex,
+                                    hideEventInfo: widget.hideEventInfo,
+                                  ),
+                            );
+                          } catch (e) {
+                            // Fallback for when provider isn't ready
+                            return _LoadingScreen(
+                              games: liveGames,
+                              currentGameIndex: index,
+                              onGameChanged: _navigateToGame,
+                              lastViewedIndex: _lastViewedIndex,
+                              hideEventInfo: widget.hideEventInfo,
+                            );
                           }
-                        });
-                      }
-                      return _GamePage(
-                        game:
-                            chessBoardState
-                                .game, // Use game from state which gets updated by streaming
-                        state: chessBoardState,
-                        games: syncedGames,
-                        currentGameIndex: index,
-                        currentPageIndex: _currentPageIndex,
-                        onGameChanged: _navigateToGame,
-                        lastViewedIndex: _lastViewedIndex,
-                        hideEventInfo: widget.hideEventInfo,
-                        onToggleGamebase: _toggleGamebase,
-                        showGamebaseButton: widget.showGamebaseButton,
-                        showClock: widget.showClock,
-                      );
-                    },
-                    error: (e, _) => ErrorWidget(e),
-                    loading:
-                        () => _LoadingScreen(
-                          games: liveGames,
-                          currentGameIndex: index,
-                          onGameChanged: _navigateToGame,
-                          lastViewedIndex: _lastViewedIndex,
-                          hideEventInfo: widget.hideEventInfo,
+                        } else {
+                          return SizedBox.shrink();
+                        }
+                      },
+                    ),
+                    IgnorePointer(
+                      child: AnimatedBuilder(
+                        animation: _swipeController,
+                        builder: (context, child) {
+                          if (!_swipeController.isAnimating) {
+                            return const SizedBox.shrink();
+                          }
+                          
+                          // Visual Logic for Hand
+                          // Direction logic duplicate from listener (could be extracted but fine here)
+                          final width = MediaQuery.sizeOf(context).width;
+                          final totalItems = syncedGames.length;
+                          bool canGoNext = _currentPageIndex < totalItems - 1;
+                          double direction = canGoNext ? 1.0 : -1.0; 
+                          
+                          // If going Next (Direction 1): Offset Increases (Page moves Left). 
+                          // Hand simulates dragging content LEFT. So Hand moves LEFT. 
+                          // Hand X: Center -> Center - delta.
+                          // Wait. Listener logic:
+                          // _pageController.position.jumpTo(baseOffset + delta);
+                          // Delta was POSITIVE for Next.
+                          // Offset increasing means we see the Right page. 
+                          // Visually, Page 0 moves to Left, Page 1 comes from Right.
+                          // So Hand must move LEFT (Negative X translation).
+                          
+                          // Let's re-verify listener logic.
+                          // Delta = _swipeMoveAnimation.value * maxDrag * direction;
+                          // If direction 1 (Next): Delta is POSITIVE. Offset increases. 
+                          // PageView scrolls to RIGHT (offset increases).
+                          // Visually: The content moves LEFT.
+                          // So the hand should move LEFT.
+                          
+                          double maxDrag = width * 0.55;
+                          // If direction is 1 (Next), Hand moves Left (-x). 
+                          // If direction is -1 (Prev), Hand moves Right (+x).
+                          double handTranslation = -1 * _swipeMoveAnimation.value * maxDrag * direction;
+                          
+                          return Opacity(
+                            opacity: _swipeFadeAnimation.value,
+                            child: Transform.translate(
+                              offset: Offset(handTranslation, 0),
+                              child: Transform.scale(
+                                scale: _swipeScaleAnimation.value,
+                                child: Center(
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      color: kWhiteColor.withValues(alpha: 0.2),
+                                      shape: BoxShape.circle,
+                                    ),
+                                    padding: EdgeInsets.all(20.sp),
+                                    child: Icon(
+                                      Icons.touch_app_rounded,
+                                      size: 48.sp,
+                                      color: kWhiteColor,
+                                      shadows: [
+                                        BoxShadow(
+                                          color: Colors.black.withValues(alpha: 0.5),
+                                          blurRadius: 10,
+                                          offset: const Offset(0, 4),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                    Positioned.fill(
+                      child: Center(
+                        child:
+                            // ignore: deprecated_member_use
+                            Showcase.withWidget(
+                                                      key: _oneKey,
+                                                      overlayColor: Colors.black,
+                                                      overlayOpacity: 0.85,
+                                                      disableMovingAnimation: true,
+                                                      container: _SwipeTutorialOverlay(                            animationController: _swipeController,
+                            moveAnimation: _swipeMoveAnimation,
+                            fadeAnimation: _swipeFadeAnimation,
+                            scaleAnimation: _swipeScaleAnimation,
+                            currentPageIndex: _currentPageIndex,
+                            totalItems: syncedGames.length,
+                            onDismiss: () {
+                              _onWalkthroughFinished();
+                              // ignore: deprecated_member_use
+                              ShowCaseWidget.of(innerContext).dismiss();
+                            },
+                            onDontShowAgain: () async {
+                              await _suppressWalkthrough();
+                              _onWalkthroughFinished();
+                              if (innerContext.mounted) {
+                                // ignore: deprecated_member_use
+                                ShowCaseWidget.of(innerContext).dismiss();
+                              }
+                            },
+                          ),
+                          child: const SizedBox.shrink(),
                         ),
-                  );
-                } catch (e) {
-                  // Fallback for when provider isn't ready
-                  return _LoadingScreen(
-                    games: liveGames,
-                    currentGameIndex: index,
-                    onGameChanged: _navigateToGame,
-                    lastViewedIndex: _lastViewedIndex,
-                    hideEventInfo: widget.hideEventInfo,
-                  );
-                }
-              } else {
-                return SizedBox.shrink();
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            });
+          }),
+        ),
+      );
+  }
+}
+
+
+
+class _SwipeTutorialOverlay extends StatelessWidget {
+  final VoidCallback onDismiss;
+  final VoidCallback onDontShowAgain;
+  final AnimationController animationController;
+  final Animation<double> moveAnimation;
+  final Animation<double> fadeAnimation;
+  final Animation<double> scaleAnimation;
+  final int currentPageIndex;
+  final int totalItems;
+
+  const _SwipeTutorialOverlay({
+    required this.onDismiss,
+    required this.onDontShowAgain,
+    required this.animationController,
+    required this.moveAnimation,
+    required this.fadeAnimation,
+    required this.scaleAnimation,
+    required this.currentPageIndex,
+    required this.totalItems,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: MediaQuery.sizeOf(context).height,
+      width: MediaQuery.sizeOf(context).width,
+      child: Stack(
+        children: [
+          // Hand Animation
+          AnimatedBuilder(
+            animation: animationController,
+            builder: (context, child) {
+              if (!animationController.isAnimating) {
+                return const SizedBox.shrink();
               }
+              
+              final width = MediaQuery.sizeOf(context).width;
+              bool canGoNext = currentPageIndex < totalItems - 1;
+              double direction = canGoNext ? 1.0 : -1.0; 
+              
+              double maxDrag = width * 0.6;
+              double handTranslation = -1 * moveAnimation.value * maxDrag * direction;
+              
+              return Positioned(
+                top: MediaQuery.sizeOf(context).height * 0.45, // Center vertically roughly
+                left: 0,
+                right: 0,
+                child: Opacity(
+                  opacity: fadeAnimation.value,
+                  child: Transform.translate(
+                    offset: Offset(handTranslation, 0),
+                    child: Transform.scale(
+                      scale: scaleAnimation.value,
+                      child: Center(
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: kWhiteColor.withValues(alpha: 0.15),
+                            shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.3),
+                                blurRadius: 20,
+                                spreadRadius: 5,
+                              )
+                            ]
+                          ),
+                          padding: EdgeInsets.all(24.sp),
+                          child: Icon(
+                            Icons.touch_app_rounded,
+                            size: 52.sp,
+                            color: kWhiteColor,
+                            shadows: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.5),
+                                blurRadius: 10,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              );
             },
           ),
-        ),
+
+          // Speech Bubble - Positioned above the hand
+          Positioned(
+            top: MediaQuery.sizeOf(context).height * 0.32,
+            left: 0,
+            right: 0,
+            child: Center(
+              child: CustomPaint(
+                painter: _SpeechBubblePainter(color: kWhiteColor),
+                child: Container(
+                  padding: EdgeInsets.fromLTRB(24.w, 16.h, 24.w, 24.h),
+                  constraints: BoxConstraints(maxWidth: 260.w),
+                  child: Text(
+                    'Swipe horizontally to browse games',
+                    style: AppTypography.textMdBold.copyWith(
+                      color: kBlackColor,
+                      height: 1.3,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              ),
+            ),
+          ),
+          
+          // Control Buttons - Pinned to bottom safe area
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: MediaQuery.paddingOf(context).bottom + 32.h,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                TextButton(
+                  onPressed: onDontShowAgain,
+                  style: TextButton.styleFrom(
+                    foregroundColor: kWhiteColor.withValues(alpha: 0.6),
+                  ),
+                  child: Text(
+                    "Don't show again",
+                    style: AppTypography.textSmMedium,
+                  ),
+                ),
+                SizedBox(width: 32.w),
+                TextButton(
+                  onPressed: onDismiss,
+                  style: TextButton.styleFrom(
+                    foregroundColor: kWhiteColor,
+                    backgroundColor: kWhiteColor.withValues(alpha: 0.1),
+                    padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 12.h),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(30.br),
+                    ),
+                  ),
+                  child: Text(
+                    'Got it',
+                    style: AppTypography.textSmBold,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
+}
+
+class _SpeechBubblePainter extends CustomPainter {
+  final Color color;
+
+  _SpeechBubblePainter({required this.color});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.fill;
+
+    final path = Path();
+    final r = 16.0; // Corner radius
+    final tailW = 20.0;
+    final tailH = 12.0;
+    
+    // Bubble body
+    path.addRRect(RRect.fromRectAndRadius(
+      Rect.fromLTWH(0, 0, size.width, size.height - tailH + 2), // Slight overlap
+      Radius.circular(r),
+    ));
+
+    // Tail pointing down
+    final tailPath = Path();
+    tailPath.moveTo(size.width / 2 - tailW / 2, size.height - tailH);
+    tailPath.quadraticBezierTo(
+      size.width / 2, size.height + 2, // Control point for curve
+      size.width / 2, size.height      // Tip
+    );
+    tailPath.lineTo(size.width / 2 + tailW / 2, size.height - tailH);
+    tailPath.close();
+
+    path.addPath(tailPath, Offset.zero);
+
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
 class _GamePage extends StatelessWidget {
@@ -8339,10 +8786,8 @@ class _ShareGameScreen extends ConsumerWidget {
         background: baseColorScheme.background,
         whiteCoordBackground: baseColorScheme.whiteCoordBackground,
         blackCoordBackground: baseColorScheme.blackCoordBackground,
-        // Hide all highlights for clean screenshots
-        lastMove: HighlightDetails(
-          solidColor: baseColorScheme.lightSquare.withValues(alpha: 0),
-        ),
+        // Hide most highlights for clean screenshots, but show last move
+        lastMove: baseColorScheme.lastMove,
         selected: HighlightDetails(
           solidColor: baseColorScheme.lightSquare.withValues(alpha: 0),
         ),

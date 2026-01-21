@@ -421,6 +421,38 @@ class _ChessBoardSettingsPageState extends ConsumerState<ChessBoardSettingsPage>
         _SectionLabel(title: 'Board Settings'),
         SizedBox(height: 12.h),
 
+        _SettingCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Games View Mode',
+                style: AppTypography.textMdMedium.copyWith(
+                  color: kWhiteColor,
+                  fontSize: 13.f,
+                ),
+              ),
+              SizedBox(height: 4.h),
+              Text(
+                'Choose how games are displayed in tournament lists.',
+                style: AppTypography.textSmRegular.copyWith(
+                  color: kWhiteColor70,
+                  fontSize: 11.f,
+                ),
+              ),
+              SizedBox(height: 14.h),
+              _ViewModeSelector(
+                selectedIndex: boardSettings.gamesListViewModeIndex,
+                onModeSelected: (index) {
+                  debugPrint('🎛️  Settings UI: Games view mode changed to index=$index');
+                  _trackPersist(boardNotifier.setGamesListViewModeIndex(index));
+                },
+              ),
+            ],
+          ),
+        ),
+        SizedBox(height: 18.h),
+
         // Board Theme Selector - Tap to open gallery
         _BoardThemePickerCard(
           currentIndex: boardSettings.boardThemeIndex,
@@ -1347,8 +1379,6 @@ class _SettingCard extends StatelessWidget {
 }
 
 
-
-
 class _DiscreteSlider extends StatelessWidget {
   const _DiscreteSlider({
     required this.value,
@@ -1384,6 +1414,90 @@ class _DiscreteSlider extends StatelessWidget {
         divisions: divisions,
         label: labels[labelIndex],
         onChanged: onChanged,
+      ),
+    );
+  }
+}
+
+class _ViewModeSelector extends StatelessWidget {
+  const _ViewModeSelector({
+    required this.selectedIndex,
+    required this.onModeSelected,
+  });
+
+  final int selectedIndex;
+  final ValueChanged<int> onModeSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.all(4.sp),
+      decoration: BoxDecoration(
+        color: kBlack3Color,
+        borderRadius: BorderRadius.circular(12.br),
+      ),
+      child: Row(
+        children: [
+          _buildOption(
+            context,
+            index: 0,
+            icon: Icons.view_headline_rounded,
+            label: 'List',
+          ),
+          SizedBox(width: 4.w),
+          _buildOption(
+            context,
+            index: 1,
+            icon: Icons.grid_view_rounded,
+            label: 'Grid',
+          ),
+          SizedBox(width: 4.w),
+          _buildOption(
+            context,
+            index: 2,
+            icon: Icons.crop_square_rounded,
+            label: 'Board',
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildOption(
+    BuildContext context, {
+    required int index,
+    required IconData icon,
+    required String label,
+  }) {
+    final isSelected = selectedIndex == index;
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => onModeSelected(index),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: EdgeInsets.symmetric(vertical: 8.sp),
+          decoration: BoxDecoration(
+            color: isSelected ? kPrimaryColor : Colors.transparent,
+            borderRadius: BorderRadius.circular(8.br),
+          ),
+          child: Column(
+            children: [
+              Icon(
+                icon,
+                color: isSelected ? kWhiteColor : kSecondaryTextColor,
+                size: 20.ic,
+              ),
+              SizedBox(height: 4.h),
+              Text(
+                label,
+                style: AppTypography.textXsMedium.copyWith(
+                  color: isSelected ? kWhiteColor : kSecondaryTextColor,
+                  fontSize: 10.f,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

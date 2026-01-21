@@ -12,11 +12,18 @@ class CachedNotationTree {
 class NotationTreeCacheNotifier
     extends StateNotifier<Map<String, CachedNotationTree>> {
   NotationTreeCacheNotifier() : super(const {});
+  static const int _maxEntries = 12;
 
   CachedNotationTree? lookup(String gameId) => state[gameId];
 
   void store(String gameId, CachedNotationTree cache) {
-    state = {...state, gameId: cache};
+    final next = Map<String, CachedNotationTree>.from(state);
+    next.remove(gameId);
+    next[gameId] = cache;
+    while (next.length > _maxEntries) {
+      next.remove(next.keys.first);
+    }
+    state = next;
   }
 }
 

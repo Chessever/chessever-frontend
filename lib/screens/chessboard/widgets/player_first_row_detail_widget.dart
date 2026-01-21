@@ -1,3 +1,4 @@
+import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/providers/for_you_games_provider.dart';
 import 'package:chessever2/screens/chessboard/view_model/chess_board_state_new.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
@@ -235,8 +236,27 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
 
     final endPadding = boardMargin; // Right margin matches left margin
 
-    // Eval bar width - matches the actual evaluation bar widget width
-    final engineGaugeWidth = playerView == PlayerView.gridView ? 10.w : 20.w;
+    final engineGaugeWidth = useMemoized(() {
+      // Check if engine gauge is enabled in settings
+      final settings = ref.watch(engineSettingsProviderNew).valueOrNull;
+      final showEvalBarInSettings =
+          (settings?.showEngineAnalysis ?? true) &&
+          (settings?.showEngineGauge ?? true);
+
+      // We only show the gauge area if:
+      // 1. The game is finished (to show 1, 0, or 1/2)
+      // 2. The game is ongoing AND started AND gauge is enabled in settings
+      final isFinished = gamesTourModel.gameStatus.isFinished;
+      final effectivelyShowingEvalBar =
+          showEvalBarInSettings &&
+          gamesTourModel.hasStarted &&
+          gamesTourModel.gameStatus.isOngoing;
+
+      if (isFinished || effectivelyShowingEvalBar) {
+        return playerView == PlayerView.gridView ? 10.w : 20.w;
+      }
+      return 0.0;
+    }, [ref.watch(engineSettingsProviderNew), gamesTourModel, playerView]);
 
     // Clock padding - zero for list/board view to sit exactly at edge
     final clockPadding = playerView == PlayerView.gridView ? 2.sp : 0.sp;

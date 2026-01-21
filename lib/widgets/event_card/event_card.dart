@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:chessever2/providers/event_favorite_players_provider.dart';
 import 'package:chessever2/providers/favorite_events_provider.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/services/analytics/analytics_service.dart';
+import 'package:chessever2/services/review_prompt_service.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
@@ -881,6 +884,14 @@ class _StarWidget extends ConsumerWidget {
                     'max_avg_elo': tourEventCardModel.maxAvgElo,
                 },
               );
+              if (isFavorited) {
+                unawaited(
+                  ReviewPromptService.instance.maybePrompt(
+                    context: context,
+                    trigger: ReviewPromptTrigger.favoriteEvent,
+                  ),
+                );
+              }
               return isFavorited;
             })
             .catchError((e) {

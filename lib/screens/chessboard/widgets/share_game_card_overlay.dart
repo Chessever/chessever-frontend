@@ -1,5 +1,4 @@
 import 'dart:io' as io;
-import 'dart:typed_data';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -127,7 +126,7 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
       // Use minimal rect instead of calculating from context
       await Share.shareXFiles(
         [XFile(file.path)],
-        text: 'Check out this chess game on ChessEver!\n$_gameUrl',
+        text: _gameUrl,
         sharePositionOrigin: const Rect.fromLTWH(0, 0, 1, 1),
       );
     } catch (e) {
@@ -562,7 +561,6 @@ class _ShareCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     // Use the actual moveSans from analysis state instead of parsing PGN
-    final moves = moveSans;
 
     final whiteCountry =
         whitePlayerCountry != null
@@ -596,16 +594,6 @@ class _ShareCard extends ConsumerWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           SizedBox(height: 12.h),
-          Image.asset('assets/pngs/premium2.png', height: 30.h),
-          SizedBox(height: 6.h),
-          Text(
-            'ChessEver',
-            style: TextStyle(
-              color: kPrimaryColor,
-              fontSize: 14.sp,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
           if (tournamentName != null) ...[
             SizedBox(height: 6.h),
             Padding(
@@ -825,102 +813,6 @@ class _ShareCard extends ConsumerWidget {
               ],
             ),
           ),
-          if (moves.isNotEmpty) ...[
-            SizedBox(height: 16.h),
-            // Show current position as the LAST move + previous 20 full moves (40 individual moves)
-            // Keep ACTUAL move numbers from the game - don't renumber from 1
-            Builder(
-              builder: (context) {
-                // Show 20 full moves BEFORE the current position + the current position
-                // So if current position is move 50, show moves 11-50 (40 moves total)
-                const fullMovesToShowBefore =
-                    20; // 20 full moves = 40 individual half-moves
-                const totalIndividualMoves =
-                    fullMovesToShowBefore * 2; // 40 individual half-moves
-
-                int startIndex;
-                int endIndex;
-
-                if (moves.length <= totalIndividualMoves) {
-                  // Show all moves if less than or equal to 40
-                  startIndex = 0;
-                  endIndex = moves.length;
-                } else {
-                  // Show current move as the LAST one + 39 moves before it (total 40)
-                  endIndex = currentMoveIndex + 1; // Include current move
-                  startIndex = (endIndex - totalIndividualMoves).clamp(
-                    0,
-                    moves.length,
-                  );
-
-                  // If we can't get 40 moves before current (because current is near start),
-                  // extend to include more moves after current
-                  if (startIndex == 0 && endIndex < totalIndividualMoves) {
-                    endIndex = totalIndividualMoves.clamp(0, moves.length);
-                  }
-                }
-
-                final displayMoves = moves.sublist(startIndex, endIndex);
-
-                return Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 16.w),
-                  child: Wrap(
-                    spacing: 2.sp,
-                    runSpacing: 2.sp,
-                    children: [
-                      ...displayMoves.asMap().entries.map((entry) {
-                        final moveIndex = startIndex + entry.key;
-                        final move = entry.value;
-                        final isCurrentMove = moveIndex == currentMoveIndex;
-
-                        // USE ACTUAL MOVE NUMBERS FROM THE GAME - DON'T RENUMBER
-                        final fullMoveNumber = (moveIndex / 2).floor() + 1;
-                        final isWhiteMove = moveIndex % 2 == 0;
-
-                        // EXACT same formatting as chess board screen
-                        final displayText =
-                            isWhiteMove ? '$fullMoveNumber. $move' : move;
-
-                        return Container(
-                          padding: EdgeInsets.symmetric(
-                            horizontal: 6.sp,
-                            vertical: 2.sp,
-                          ),
-                          decoration: BoxDecoration(
-                            color:
-                                isCurrentMove
-                                    ? kWhiteColor70.withValues(alpha: 0.4)
-                                    : Colors.transparent,
-                            borderRadius: BorderRadius.circular(4.sp),
-                            border: Border.all(
-                              color:
-                                  isCurrentMove
-                                      ? kWhiteColor
-                                      : Colors.transparent,
-                              width: 0.5,
-                            ),
-                          ),
-                          child: Text(
-                            displayText,
-                            style: TextStyle(
-                              color:
-                                  isCurrentMove ? kWhiteColor : kWhiteColor70,
-                              fontSize: 8.5.sp,
-                              fontFamily: 'monospace',
-                              fontWeight:
-                                  isCurrentMove
-                                      ? FontWeight.bold
-                                      : FontWeight.normal,
-                            ),
-                          ),
-                        );
-                      }),
-                    ],
-                  ),
-                );
-              },
-            ),
-          ],
           SizedBox(height: 16.h),
         ],
       ),

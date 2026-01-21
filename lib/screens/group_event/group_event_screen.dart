@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math';
 import 'package:chessever2/providers/event_favorite_players_provider.dart';
 import 'package:chessever2/providers/favorite_events_provider.dart';
@@ -136,6 +137,11 @@ class GroupEventScreen extends HookConsumerWidget {
             ref.read(searchQueryProvider.notifier).state = '';
             ref.read(searchTabQueryProvider.notifier).state = '';
             searchController.clear();
+          }
+          if (next == GroupEventCategory.forYou) {
+            unawaited(
+              ref.read(forYouEventsProvider.notifier).refreshIfStale(),
+            );
           }
           FocusScope.of(context).unfocus();
           // ignore: unused_result

@@ -19,6 +19,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 const int kGamesPerEvent = 4;
 const int _kPageSize = 20;
+const Duration _kForYouStaleThreshold = Duration(minutes: 5);
 
 // ============================================================================
 // FOR YOU EVENTS - PAGINATED WITH SUPABASE QUERIES
@@ -56,6 +57,7 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
   final Ref ref;
   int _offset = 0;
   bool _isFetching = false;
+  DateTime? _lastRefreshAt;
 
   ForYouNotifier(this.ref) : super(const ForYouState(isLoading: true)) {
     _loadInitial();
@@ -68,7 +70,17 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
   Future<void> refresh() async {
     _offset = 0;
     state = const ForYouState(isLoading: true);
+    ref.invalidate(eventGamesProvider);
     await _fetchPage(isInitial: true);
+  }
+
+  Future<void> refreshIfStale({Duration maxAge = _kForYouStaleThreshold}) async {
+    if (_isFetching || state.isLoading) return;
+    final lastRefreshAt = _lastRefreshAt;
+    if (lastRefreshAt == null ||
+        DateTime.now().difference(lastRefreshAt) >= maxAge) {
+      await refresh();
+    }
   }
 
   Future<void> loadMore() async {
@@ -144,6 +156,7 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
           isLoading: false,
           hasMore: broadcasts.length >= _kPageSize,
         );
+        _lastRefreshAt = DateTime.now();
       } else {
         state = state.copyWith(
           events: [...state.events, ...sortedModels],

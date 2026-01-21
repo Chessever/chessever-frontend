@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:chessever2/repository/authentication/auth_repository.dart';
 import 'package:chessever2/screens/authentication/auth_screen_provider.dart';
@@ -8,6 +9,7 @@ import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/hamburger_menu/hamburger_menu.dart';
 import 'package:chessever2/widgets/shorebird_update_dialog.dart';
+import 'package:chessever2/services/review_prompt_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -30,8 +32,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    unawaited(ReviewPromptService.instance.recordSession());
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _checkForShorebirdUpdate();
+      Future.delayed(const Duration(seconds: 8), () {
+        if (!mounted) return;
+        unawaited(
+          ReviewPromptService.instance.maybePrompt(
+            context: context,
+            trigger: ReviewPromptTrigger.session,
+          ),
+        );
+      });
     });
   }
 
