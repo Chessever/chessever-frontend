@@ -8,7 +8,7 @@ import 'package:in_app_review/in_app_review.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-enum ReviewPromptTrigger { session, premium, favoriteEvent, sidebar }
+enum ReviewPromptTrigger { session, premium, favoriteEvent, favoritePlayer, sidebar }
 
 class ReviewPromptService {
   ReviewPromptService._();
@@ -18,11 +18,14 @@ class ReviewPromptService {
   static const Duration _sessionGap = Duration(hours: 6);
   static const Duration _minTimeSinceInstall = Duration(days: 2);
   static const Duration _cooldown = Duration(days: 45);
+  static const Duration _activityWindow = Duration(days: 45);
   static const int _minSessions = 3;
+  static const int _minActiveDays = 7;
 
   static const String _keyInstallAt = 'review_prompt_install_at_ms';
   static const String _keyLastSessionAt = 'review_prompt_last_session_at_ms';
   static const String _keySessionCount = 'review_prompt_session_count';
+  static const String _keyActiveDays = 'review_prompt_active_days';
   static const String _keyLastPromptAt = 'review_prompt_last_prompt_at_ms';
   static const String _keyLastPromptVersion = 'review_prompt_last_version';
   static const String _keyHasRatedHigh = 'review_prompt_has_rated_high';
@@ -43,6 +46,8 @@ class ReviewPromptService {
       await _prefs.setInt(_keyInstallAt, now.millisecondsSinceEpoch);
     }
 
+    await _recordActiveDay(now);
+
     if (lastSessionAtMs == null ||
         now.difference(
               DateTime.fromMillisecondsSinceEpoch(lastSessionAtMs),
@@ -55,10 +60,26 @@ class ReviewPromptService {
     await _prefs.setInt(_keyLastSessionAt, now.millisecondsSinceEpoch);
   }
 
+  /// Shows the review/feedback flow.
+  ///
+  /// Flow for HIGH ratings (4-5 stars):
+  /// 1. Show rating dialog
+  /// 2. Show feature survey dialog (captures what users would pay for)
+  /// 3. Trigger native app store review
+  /// 4. Mark as rated high (won't prompt again)
+  ///
+  /// Flow for LOW ratings (1-3 stars):
+  /// 1. Show rating dialog
+  /// 2. Show feedback dialog (captures complaints/improvement suggestions)
+  /// 3. No native review triggered
+  ///
+  /// [skipSurveyForHighRating] - If true, skips the survey for high raters
+  /// and goes directly to native review. Default is false (always show survey).
   Future<void> maybePrompt({
     required BuildContext context,
     required ReviewPromptTrigger trigger,
     bool force = false,
+    bool skipSurveyForHighRating = false,
   }) async {
     if (_promptActive) return;
     if (!context.mounted) return;
@@ -66,6 +87,7 @@ class ReviewPromptService {
 
     _promptActive = true;
     try {
+      // Step 1: Show rating dialog
       final rating = await showAppRatingDialog(context);
       if (!context.mounted) return;
       await _recordPromptShown();
@@ -75,11 +97,31 @@ class ReviewPromptService {
       await _prefs.setInt(_keyLastRating, rating);
 
       if (rating >= 4) {
+        // HIGH RATING FLOW: Survey first, then native review
+        // This captures valuable "what would you pay for" data before
+        // potentially losing the user to the app store review flow
+
+        if (!skipSurveyForHighRating) {
+          final feedback = await showAppFeedbackDialog(context, rating: rating);
+          if (!context.mounted) return;
+
+          if (feedback != null && feedback.trim().isNotEmpty) {
+            await _submitFeedback(
+              rating: rating,
+              feedback: feedback.trim(),
+              trigger: trigger,
+            );
+            _showThanksSnackBar(context);
+          }
+        }
+
+        // Native review comes AFTER survey (user already gave us the good stuff)
         await _requestNativeReview();
         await _prefs.setBool(_keyHasRatedHigh, true);
         return;
       }
 
+      // LOW RATING FLOW: Just feedback, no native review
       final feedback = await showAppFeedbackDialog(context, rating: rating);
       if (!context.mounted) return;
       if (feedback == null || feedback.trim().isEmpty) return;
@@ -89,6 +131,7 @@ class ReviewPromptService {
         feedback: feedback.trim(),
         trigger: trigger,
       );
+      _showThanksSnackBar(context);
     } finally {
       _promptActive = false;
     }
@@ -141,7 +184,43 @@ class ReviewPromptService {
     final sessions = _prefs.getInt(_keySessionCount) ?? 0;
     if (sessions < _minSessions) return false;
 
+    if (trigger != ReviewPromptTrigger.premium) {
+      final activeDays = _getActiveDaysCount(DateTime.now());
+      if (activeDays < _minActiveDays) return false;
+    }
+
     return true;
+  }
+
+  Future<void> _recordActiveDay(DateTime now) async {
+    final todayKey = _dayKey(now);
+    final stored = _prefs.getStringList(_keyActiveDays) ?? [];
+    final days = stored.map(int.parse).toSet();
+
+    days.add(todayKey);
+
+    final cutoff = _dayKey(now.subtract(_activityWindow));
+    days.removeWhere((day) => day < cutoff);
+
+    await _prefs.setStringList(
+      _keyActiveDays,
+      days.map((day) => day.toString()).toList(),
+    );
+  }
+
+  int _getActiveDaysCount(DateTime now) {
+    final stored = _prefs.getStringList(_keyActiveDays) ?? [];
+    if (stored.isEmpty) return 0;
+
+    final cutoff = _dayKey(now.subtract(_activityWindow));
+    final days = stored.map(int.parse).where((day) => day >= cutoff).toSet();
+    return days.length;
+  }
+
+  int _dayKey(DateTime date) {
+    final utc = date.toUtc();
+    return DateTime.utc(utc.year, utc.month, utc.day)
+        .millisecondsSinceEpoch;
   }
 
   Future<void> _requestNativeReview() async {
@@ -187,5 +266,15 @@ class ReviewPromptService {
   static bool get _isMobilePlatform {
     if (kIsWeb) return false;
     return Platform.isAndroid || Platform.isIOS;
+  }
+
+  void _showThanksSnackBar(BuildContext context) {
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Text('Thanks for the feedback!'),
+        backgroundColor: Colors.black87,
+      ),
+    );
   }
 }

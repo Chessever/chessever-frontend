@@ -107,6 +107,7 @@ class ChessBoardScreenNotifierNew
   Timer? _longPressTimer;
   bool _hasParsedMoves = false;
   bool _isProcessingMove = false;
+  bool _isAnalysisNavigating = false;
   bool _isLongPressing = false;
   bool _cancelEvaluation = false;
   String? _pendingEvalFen;
@@ -2653,7 +2654,7 @@ class ChessBoardScreenNotifierNew
     }
 
     if (currentState.isAnalysisMode) {
-      analysisStepForward();
+      await analysisStepForward();
       return;
     }
 
@@ -2685,7 +2686,7 @@ class ChessBoardScreenNotifierNew
     }
 
     if (currentState.isAnalysisMode) {
-      analysisStepBackward();
+      await analysisStepBackward();
       return;
     }
 
@@ -3109,132 +3110,146 @@ class ChessBoardScreenNotifierNew
   }
 
   /// Navigate forward in analysis mode (through main line when no variant selected)
-  void analysisStepForward() {
+  Future<void> analysisStepForward() async {
     _releaseLog('🎯 ANALYSIS STEP FORWARD called');
 
-    final currentState = state.value;
-    if (currentState == null) return;
+    if (_isAnalysisNavigating) return;
+    _isAnalysisNavigating = true;
 
-    // If preview mode is active, navigate within preview instead of exiting
-    if (currentState.isPvPreviewActive) {
-      _releaseLog(
-        '🎯 ANALYSIS STEP FORWARD: Preview mode active, navigating in preview',
-      );
-      final currentNavIndex = currentState.lockedPvNavigationIndex ?? -1;
-      final pvLength = currentState.lockedPvLine?.moves.length ?? 0;
-      if (pvLength == 0) {
+    try {
+      final currentState = state.value;
+      if (currentState == null) return;
+
+      // If preview mode is active, navigate within preview instead of exiting
+      if (currentState.isPvPreviewActive) {
+        _releaseLog(
+          '🎯 ANALYSIS STEP FORWARD: Preview mode active, navigating in preview',
+        );
+        final currentNavIndex = currentState.lockedPvNavigationIndex ?? -1;
+        final pvLength = currentState.lockedPvLine?.moves.length ?? 0;
+        if (pvLength == 0) {
+          return;
+        }
+        final nextIndex = currentNavIndex < 0 ? 0 : currentNavIndex + 1;
+        if (nextIndex < pvLength) {
+          _navigateToLockedPvIndex(nextIndex);
+        }
         return;
       }
-      final nextIndex = currentNavIndex < 0 ? 0 : currentNavIndex + 1;
-      if (nextIndex < pvLength) {
-        _navigateToLockedPvIndex(nextIndex);
+
+      _exitPvPreviewIfActive();
+      if (state.value?.isAnalysisMode != true) {
+        _releaseLog('🎯 ANALYSIS STEP FORWARD: Not in analysis mode');
+        return;
       }
-      return;
-    }
+      if (_analysisGame == null) {
+        _releaseLog('🎯 ANALYSIS STEP FORWARD: ERROR - _analysisGame is null');
+        return;
+      }
+      if (_analysisNavigator == null) {
+        _releaseLog(
+          '🎯 ANALYSIS STEP FORWARD: ERROR - _analysisNavigator is null',
+        );
+        return;
+      }
 
-    _exitPvPreviewIfActive();
-    if (state.value?.isAnalysisMode != true) {
-      _releaseLog('🎯 ANALYSIS STEP FORWARD: Not in analysis mode');
-      return;
-    }
-    if (_analysisGame == null) {
-      _releaseLog('🎯 ANALYSIS STEP FORWARD: ERROR - _analysisGame is null');
-      return;
-    }
-    if (_analysisNavigator == null) {
+      if (currentState.selectedVariantIndex != null ||
+          currentState.variantMovePointer.isNotEmpty) {
+        state = AsyncValue.data(_clearVariantSelection(currentState));
+      }
+
+      // CRITICAL: Reset cancellation flag before navigation to ensure evaluation happens
+      _cancelEvaluation = false;
+
+      final navigatorState = ref.read(chessGameNavigatorProvider(_analysisGame!));
       _releaseLog(
-        '🎯 ANALYSIS STEP FORWARD: ERROR - _analysisNavigator is null',
+        '🎯 ANALYSIS STEP FORWARD: Current movePointer=${navigatorState.movePointer}',
       );
-      return;
+      _releaseLog(
+        '🎯 ANALYSIS STEP FORWARD: Current FEN=${navigatorState.currentFen}',
+      );
+      _releaseLog('🎯 ANALYSIS STEP FORWARD: Calling goToNextMove on navigator');
+      _analysisNavigator?.goToNextMove();
+
+      // CRITICAL: Manually sync state after navigation to ensure board updates immediately.
+      // The ref.listen callback may not fire synchronously, causing the notation to update
+      // (it watches navigator directly) while the board state lags behind.
+      final updatedState = ref.read(chessGameNavigatorProvider(_analysisGame!));
+      _syncAnalysisFromNavigator(updatedState);
+    } finally {
+      _isAnalysisNavigating = false;
     }
-
-    if (currentState.selectedVariantIndex != null ||
-        currentState.variantMovePointer.isNotEmpty) {
-      state = AsyncValue.data(_clearVariantSelection(currentState));
-    }
-
-    // CRITICAL: Reset cancellation flag before navigation to ensure evaluation happens
-    _cancelEvaluation = false;
-
-    final navigatorState = ref.read(chessGameNavigatorProvider(_analysisGame!));
-    _releaseLog(
-      '🎯 ANALYSIS STEP FORWARD: Current movePointer=${navigatorState.movePointer}',
-    );
-    _releaseLog(
-      '🎯 ANALYSIS STEP FORWARD: Current FEN=${navigatorState.currentFen}',
-    );
-    _releaseLog('🎯 ANALYSIS STEP FORWARD: Calling goToNextMove on navigator');
-    _analysisNavigator?.goToNextMove();
-
-    // CRITICAL: Manually sync state after navigation to ensure board updates immediately.
-    // The ref.listen callback may not fire synchronously, causing the notation to update
-    // (it watches navigator directly) while the board state lags behind.
-    final updatedState = ref.read(chessGameNavigatorProvider(_analysisGame!));
-    _syncAnalysisFromNavigator(updatedState);
   }
 
   /// Navigate backward in analysis mode (through main line when no variant selected)
-  void analysisStepBackward() {
+  Future<void> analysisStepBackward() async {
     _releaseLog('🎯 ANALYSIS STEP BACKWARD called');
 
-    final currentState = state.value;
-    if (currentState == null) return;
+    if (_isAnalysisNavigating) return;
+    _isAnalysisNavigating = true;
 
-    // If preview mode is active, navigate within preview instead of exiting
-    if (currentState.isPvPreviewActive) {
-      _releaseLog(
-        '🎯 ANALYSIS STEP BACKWARD: Preview mode active, navigating in preview',
-      );
-      final currentNavIndex = currentState.lockedPvNavigationIndex ?? -1;
-      if (currentNavIndex > 0) {
-        _navigateToLockedPvIndex(currentNavIndex - 1);
-      } else if (currentNavIndex == -1) {
-        _navigateToLockedPvIndex(0);
+    try {
+      final currentState = state.value;
+      if (currentState == null) return;
+
+      // If preview mode is active, navigate within preview instead of exiting
+      if (currentState.isPvPreviewActive) {
+        _releaseLog(
+          '🎯 ANALYSIS STEP BACKWARD: Preview mode active, navigating in preview',
+        );
+        final currentNavIndex = currentState.lockedPvNavigationIndex ?? -1;
+        if (currentNavIndex > 0) {
+          _navigateToLockedPvIndex(currentNavIndex - 1);
+        } else if (currentNavIndex == -1) {
+          _navigateToLockedPvIndex(0);
+        }
+        return;
       }
-      return;
-    }
 
-    _exitPvPreviewIfActive();
-    if (state.value?.isAnalysisMode != true) {
-      _releaseLog('🎯 ANALYSIS STEP BACKWARD: Not in analysis mode');
-      return;
-    }
-    if (_analysisGame == null) {
-      _releaseLog('🎯 ANALYSIS STEP BACKWARD: ERROR - _analysisGame is null');
-      return;
-    }
-    if (_analysisNavigator == null) {
+      _exitPvPreviewIfActive();
+      if (state.value?.isAnalysisMode != true) {
+        _releaseLog('🎯 ANALYSIS STEP BACKWARD: Not in analysis mode');
+        return;
+      }
+      if (_analysisGame == null) {
+        _releaseLog('🎯 ANALYSIS STEP BACKWARD: ERROR - _analysisGame is null');
+        return;
+      }
+      if (_analysisNavigator == null) {
+        _releaseLog(
+          '🎯 ANALYSIS STEP BACKWARD: ERROR - _analysisNavigator is null',
+        );
+        return;
+      }
+
+      if (currentState.selectedVariantIndex != null ||
+          currentState.variantMovePointer.isNotEmpty) {
+        state = AsyncValue.data(_clearVariantSelection(currentState));
+      }
+
+      // CRITICAL: Reset cancellation flag before navigation to ensure evaluation happens
+      _cancelEvaluation = false;
+
+      final navigatorState = ref.read(chessGameNavigatorProvider(_analysisGame!));
       _releaseLog(
-        '🎯 ANALYSIS STEP BACKWARD: ERROR - _analysisNavigator is null',
+        '🎯 ANALYSIS STEP BACKWARD: Current movePointer=${navigatorState.movePointer}',
       );
-      return;
+      _releaseLog(
+        '🎯 ANALYSIS STEP BACKWARD: Current FEN=${navigatorState.currentFen}',
+      );
+      _releaseLog(
+        '🎯 ANALYSIS STEP BACKWARD: Calling goToPreviousMove on navigator',
+      );
+      _analysisNavigator?.goToPreviousMove();
+
+      // CRITICAL: Manually sync state after navigation to ensure board updates immediately.
+      // The ref.listen callback may not fire synchronously, causing the notation to update
+      // (it watches navigator directly) while the board state lags behind.
+      final updatedState = ref.read(chessGameNavigatorProvider(_analysisGame!));
+      _syncAnalysisFromNavigator(updatedState);
+    } finally {
+      _isAnalysisNavigating = false;
     }
-
-    if (currentState.selectedVariantIndex != null ||
-        currentState.variantMovePointer.isNotEmpty) {
-      state = AsyncValue.data(_clearVariantSelection(currentState));
-    }
-
-    // CRITICAL: Reset cancellation flag before navigation to ensure evaluation happens
-    _cancelEvaluation = false;
-
-    final navigatorState = ref.read(chessGameNavigatorProvider(_analysisGame!));
-    _releaseLog(
-      '🎯 ANALYSIS STEP BACKWARD: Current movePointer=${navigatorState.movePointer}',
-    );
-    _releaseLog(
-      '🎯 ANALYSIS STEP BACKWARD: Current FEN=${navigatorState.currentFen}',
-    );
-    _releaseLog(
-      '🎯 ANALYSIS STEP BACKWARD: Calling goToPreviousMove on navigator',
-    );
-    _analysisNavigator?.goToPreviousMove();
-
-    // CRITICAL: Manually sync state after navigation to ensure board updates immediately.
-    // The ref.listen callback may not fire synchronously, causing the notation to update
-    // (it watches navigator directly) while the board state lags behind.
-    final updatedState = ref.read(chessGameNavigatorProvider(_analysisGame!));
-    _syncAnalysisFromNavigator(updatedState);
   }
 
   void jumpToStart() {
@@ -5271,6 +5286,24 @@ class ChessBoardScreenNotifierNew
     final current = state.value;
     if (current == null) {
       return;
+    }
+
+    // Check for staleness against the latest navigator state
+    // This prevents race conditions where a delayed listener event overrides a newer manual sync
+    if (_analysisGame != null) {
+      final latestNavigatorState = ref.read(
+        chessGameNavigatorProvider(_analysisGame!),
+      );
+      const pointerEquality = ListEquality<int>();
+      if (!pointerEquality.equals(
+        navigatorState.movePointer,
+        latestNavigatorState.movePointer,
+      )) {
+        _releaseLog(
+          '🎯 SYNC SKIPPED: Stale navigator state detected (Arg: ${navigatorState.movePointer} vs Latest: ${latestNavigatorState.movePointer})',
+        );
+        return;
+      }
     }
 
     // CRITICAL FIX: Prevent duplicate sync when board is already at target position.

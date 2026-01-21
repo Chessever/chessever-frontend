@@ -486,12 +486,13 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
   Timer? _pageSettleTimer;
   int _pageSettleGeneration = 0;
 
-  final GlobalKey _oneKey = GlobalKey();
   bool _hasCheckedWalkthrough = false;
+  bool _showTutorialOverlay = false;
   late AnimationController _swipeController;
-  late Animation<double> _swipeMoveAnimation;
   late Animation<double> _swipeFadeAnimation;
   late Animation<double> _swipeScaleAnimation;
+  late Animation<double> _swipeMoveAnimation;
+  final GlobalKey<_SwipeTutorialOverlayState> _tutorialOverlayKey = GlobalKey();
 
   static const String _kWalkthroughShownDateKey = 'swipable_walkthrough_shown_date';
   static const String _kWalkthroughDontShowKey = 'swipable_walkthrough_dont_show';
@@ -549,18 +550,22 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
 
     _swipeController.addListener(() {
       if (!_pageController.hasClients) return;
-      
+
       final width = _pageController.position.viewportDimension;
       final totalItems = widget.games.length;
-      
+
+      // Logic must match _SwipeTutorialOverlay to stay in sync
       bool canGoNext = _currentPageIndex < totalItems - 1;
-      double direction = canGoNext ? 1.0 : -1.0; 
-      
-      // Swipe about 60% of the screen width
-      double maxDrag = width * 0.6;
-      
+      double direction = canGoNext ? 1.0 : -1.0;
+
+      // Sync with overlay's maxDrag (width * 0.5)
+      double maxDrag = width * 0.5;
+
+      // Positive delta = Scroll Right = Content moves Left (matching hand moving Left)
       double delta = _swipeMoveAnimation.value * maxDrag * direction;
       double baseOffset = _currentPageIndex * width;
+      
+      // Use jumpTo to follow animation frame-by-frame without physics interference
       _pageController.position.jumpTo(baseOffset + delta);
     });
   }
@@ -586,14 +591,40 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     }
 
     if (shouldShow && context.mounted) {
-      // ignore: deprecated_member_use
-      ShowCaseWidget.of(context).startShowCase([_oneKey]);
-      _swipeController.repeat();
+      // Trigger local overlay instead of ShowcaseView
+      setState(() {
+        _showTutorialOverlay = true;
+      });
+
+      // Play animation 1 time
+      int count = 0;
+      void statusListener(AnimationStatus status) {
+        if (status == AnimationStatus.completed) {
+          count++;
+          if (count < 1) {
+            _swipeController.forward(from: 0.0);
+          } else {
+            _swipeController.removeStatusListener(statusListener);
+            // Stop animation but keep overlay until user dismisses
+            // Reset page position so it stops wiggling
+            if (_pageController.hasClients) {
+              _pageController.jumpToPage(_currentPageIndex);
+            }
+          }
+        }
+      }
+
+      _swipeController.addStatusListener(statusListener);
+      _swipeController.forward();
+
       await prefs.setInt(_kWalkthroughShownDateKey, now.millisecondsSinceEpoch);
     }
   }
 
   void _onWalkthroughFinished() {
+    setState(() {
+      _showTutorialOverlay = false;
+    });
     _swipeController.stop();
     _swipeController.reset();
     if (_pageController.hasClients) {
@@ -1335,109 +1366,24 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
                         }
                       },
                     ),
-                    IgnorePointer(
-                      child: AnimatedBuilder(
-                        animation: _swipeController,
-                        builder: (context, child) {
-                          if (!_swipeController.isAnimating) {
-                            return const SizedBox.shrink();
-                          }
-                          
-                          // Visual Logic for Hand
-                          // Direction logic duplicate from listener (could be extracted but fine here)
-                          final width = MediaQuery.sizeOf(context).width;
-                          final totalItems = syncedGames.length;
-                          bool canGoNext = _currentPageIndex < totalItems - 1;
-                          double direction = canGoNext ? 1.0 : -1.0; 
-                          
-                          // If going Next (Direction 1): Offset Increases (Page moves Left). 
-                          // Hand simulates dragging content LEFT. So Hand moves LEFT. 
-                          // Hand X: Center -> Center - delta.
-                          // Wait. Listener logic:
-                          // _pageController.position.jumpTo(baseOffset + delta);
-                          // Delta was POSITIVE for Next.
-                          // Offset increasing means we see the Right page. 
-                          // Visually, Page 0 moves to Left, Page 1 comes from Right.
-                          // So Hand must move LEFT (Negative X translation).
-                          
-                          // Let's re-verify listener logic.
-                          // Delta = _swipeMoveAnimation.value * maxDrag * direction;
-                          // If direction 1 (Next): Delta is POSITIVE. Offset increases. 
-                          // PageView scrolls to RIGHT (offset increases).
-                          // Visually: The content moves LEFT.
-                          // So the hand should move LEFT.
-                          
-                          double maxDrag = width * 0.55;
-                          // If direction is 1 (Next), Hand moves Left (-x). 
-                          // If direction is -1 (Prev), Hand moves Right (+x).
-                          double handTranslation = -1 * _swipeMoveAnimation.value * maxDrag * direction;
-                          
-                          return Opacity(
-                            opacity: _swipeFadeAnimation.value,
-                            child: Transform.translate(
-                              offset: Offset(handTranslation, 0),
-                              child: Transform.scale(
-                                scale: _swipeScaleAnimation.value,
-                                child: Center(
-                                  child: Container(
-                                    decoration: BoxDecoration(
-                                      color: kWhiteColor.withValues(alpha: 0.2),
-                                      shape: BoxShape.circle,
-                                    ),
-                                    padding: EdgeInsets.all(20.sp),
-                                    child: Icon(
-                                      Icons.touch_app_rounded,
-                                      size: 48.sp,
-                                      color: kWhiteColor,
-                                      shadows: [
-                                        BoxShadow(
-                                          color: Colors.black.withValues(alpha: 0.5),
-                                          blurRadius: 10,
-                                          offset: const Offset(0, 4),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                    Positioned.fill(
-                      child: Center(
-                        child:
-                            // ignore: deprecated_member_use
-                            Showcase.withWidget(
-                                                      key: _oneKey,
-                                                      overlayColor: Colors.black,
-                                                      overlayOpacity: 0.85,
-                                                      disableMovingAnimation: true,
-                                                      container: _SwipeTutorialOverlay(                            animationController: _swipeController,
-                            moveAnimation: _swipeMoveAnimation,
-                            fadeAnimation: _swipeFadeAnimation,
-                            scaleAnimation: _swipeScaleAnimation,
-                            currentPageIndex: _currentPageIndex,
-                            totalItems: syncedGames.length,
-                            onDismiss: () {
-                              _onWalkthroughFinished();
-                              // ignore: deprecated_member_use
-                              ShowCaseWidget.of(innerContext).dismiss();
-                            },
-                            onDontShowAgain: () async {
-                              await _suppressWalkthrough();
-                              _onWalkthroughFinished();
-                              if (innerContext.mounted) {
-                                // ignore: deprecated_member_use
-                                ShowCaseWidget.of(innerContext).dismiss();
-                              }
-                            },
-                          ),
-                          child: const SizedBox.shrink(),
+                    // Removed redundant IgnorePointer/AnimatedBuilder that was here
+                    if (_showTutorialOverlay)
+                      Positioned.fill(
+                        child: _SwipeTutorialOverlay(
+                          key: _tutorialOverlayKey,
+                          animationController: _swipeController,
+                          moveAnimation: _swipeMoveAnimation,
+                          fadeAnimation: _swipeFadeAnimation,
+                          scaleAnimation: _swipeScaleAnimation,
+                          currentPageIndex: _currentPageIndex,
+                          totalItems: syncedGames.length,
+                          onDismiss: _onWalkthroughFinished,
+                          onDontShowAgain: () async {
+                            await _suppressWalkthrough();
+                            _onWalkthroughFinished();
+                          },
                         ),
                       ),
-                    ),
                   ],
                 ),
               );
@@ -1450,7 +1396,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
 
 
 
-class _SwipeTutorialOverlay extends StatelessWidget {
+class _SwipeTutorialOverlay extends StatefulWidget {
   final VoidCallback onDismiss;
   final VoidCallback onDontShowAgain;
   final AnimationController animationController;
@@ -1461,6 +1407,7 @@ class _SwipeTutorialOverlay extends StatelessWidget {
   final int totalItems;
 
   const _SwipeTutorialOverlay({
+    super.key,
     required this.onDismiss,
     required this.onDontShowAgain,
     required this.animationController,
@@ -1472,178 +1419,367 @@ class _SwipeTutorialOverlay extends StatelessWidget {
   });
 
   @override
+  State<_SwipeTutorialOverlay> createState() => _SwipeTutorialOverlayState();
+}
+
+class _SwipeTutorialOverlayState extends State<_SwipeTutorialOverlay>
+    with SingleTickerProviderStateMixin {
+  double _opacityTarget = 0.0;
+  bool _isExiting = false;
+  late AnimationController _timerController;
+
+  @override
+  void initState() {
+    super.initState();
+    _timerController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 8),
+    );
+
+    // Start entry animation and timer
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        setState(() {
+          _opacityTarget = 1.0;
+        });
+        _timerController.forward();
+      }
+    });
+
+    _timerController.addStatusListener((status) {
+      if (status == AnimationStatus.completed) {
+        animateOut();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _timerController.dispose();
+    super.dispose();
+  }
+
+  Future<void> animateOut() async {
+    if (_isExiting) return;
+    _timerController.stop(); // Stop the visual timer if manual dismiss
+    setState(() {
+      _isExiting = true;
+      _opacityTarget = 0.0;
+    });
+    // Wait for animation to finish (approximate for spring)
+    await Future.delayed(const Duration(milliseconds: 500));
+    if (mounted) {
+      widget.onDismiss();
+    }
+  }
+
+  void _handleDontShowAgain() async {
+    if (_isExiting) return;
+    _timerController.stop();
+    setState(() {
+      _isExiting = true;
+      _opacityTarget = 0.0;
+    });
+    await Future.delayed(const Duration(milliseconds: 500));
+    if (mounted) {
+      widget.onDontShowAgain();
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return Container(
-      height: MediaQuery.sizeOf(context).height,
-      width: MediaQuery.sizeOf(context).width,
-      child: Stack(
-        children: [
-          // Hand Animation
-          AnimatedBuilder(
-            animation: animationController,
-            builder: (context, child) {
-              if (!animationController.isAnimating) {
-                return const SizedBox.shrink();
-              }
-              
-              final width = MediaQuery.sizeOf(context).width;
-              bool canGoNext = currentPageIndex < totalItems - 1;
-              double direction = canGoNext ? 1.0 : -1.0; 
-              
-              double maxDrag = width * 0.6;
-              double handTranslation = -1 * moveAnimation.value * maxDrag * direction;
-              
-              return Positioned(
-                top: MediaQuery.sizeOf(context).height * 0.45, // Center vertically roughly
-                left: 0,
-                right: 0,
-                child: Opacity(
-                  opacity: fadeAnimation.value,
-                  child: Transform.translate(
-                    offset: Offset(handTranslation, 0),
-                    child: Transform.scale(
-                      scale: scaleAnimation.value,
-                      child: Center(
-                        child: Container(
-                          decoration: BoxDecoration(
-                            color: kWhiteColor.withValues(alpha: 0.15),
-                            shape: BoxShape.circle,
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.3),
-                                blurRadius: 20,
-                                spreadRadius: 5,
-                              )
-                            ]
-                          ),
-                          padding: EdgeInsets.all(24.sp),
-                          child: Icon(
-                            Icons.touch_app_rounded,
-                            size: 52.sp,
-                            color: kWhiteColor,
-                            shadows: [
-                              BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.5),
-                                blurRadius: 10,
-                                offset: const Offset(0, 4),
+    return SingleMotionBuilder(
+      motion: const CupertinoMotion.snappy(),
+      value: _opacityTarget,
+      builder: (context, opacity, child) {
+        return Opacity(
+          opacity: opacity.clamp(0.0, 1.0),
+          child: GestureDetector(
+            onTap: animateOut,
+            behavior: HitTestBehavior.opaque,
+            child: Container(
+              height: MediaQuery.sizeOf(context).height,
+              width: MediaQuery.sizeOf(context).width,
+              color: kBlackColor.withValues(alpha: 0.8), // Restored background for overlay
+              child: Stack(
+                children: [
+                  // Main Content: Bubble + Hand (Centered together)
+                  Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        // Modern Message Bubble (Floating Card) with Timer Border
+                        SizedBox(
+                          width: 280.w,
+                          child: Stack(
+                            clipBehavior: Clip.none,
+                            alignment: Alignment.topCenter,
+                            children: [
+                              // Card Background with Progress Border
+                              AnimatedBuilder(
+                                animation: _timerController,
+                                builder: (context, child) {
+                                  return CustomPaint(
+                                    foregroundPainter: _BorderProgressPainter(
+                                      progress: _timerController.value,
+                                      color: kPrimaryColor,
+                                      strokeWidth: 3.0,
+                                      borderRadius: 28.br,
+                                    ),
+                                    child: Container(
+                                      padding: EdgeInsets.fromLTRB(
+                                          24.w, 36.h, 24.w, 24.h),
+                                      decoration: BoxDecoration(
+                                        color: kWhiteColor,
+                                        borderRadius:
+                                            BorderRadius.circular(28.br),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: Colors.black
+                                                .withValues(alpha: 0.3),
+                                            blurRadius: 30,
+                                            offset: const Offset(0, 12),
+                                            spreadRadius: 0,
+                                          ),
+                                        ],
+                                      ),
+                                      child: Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Text(
+                                            'Swipe to Browse',
+                                            style: AppTypography.textLgBold
+                                                .copyWith(
+                                              color: kBlackColor,
+                                              height: 1.2,
+                                              letterSpacing: -0.5,
+                                            ),
+                                            textAlign: TextAlign.center,
+                                          ),
+                                          SizedBox(height: 8.h),
+                                          Text(
+                                            'Explore other games in this tournament by swiping horizontally.',
+                                            style: AppTypography.textSmMedium
+                                                .copyWith(
+                                              color: kBlackColor
+                                                  .withValues(alpha: 0.6),
+                                              height: 1.4,
+                                            ),
+                                            textAlign: TextAlign.center,
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
+                              // Floating Playful Icon
+                              Positioned(
+                                top: -20.h,
+                                child: Container(
+                                  padding: EdgeInsets.all(10.sp),
+                                  decoration: BoxDecoration(
+                                    color: kPrimaryColor,
+                                    shape: BoxShape.circle,
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: kPrimaryColor
+                                            .withValues(alpha: 0.4),
+                                        blurRadius: 12,
+                                        offset: const Offset(0, 6),
+                                      )
+                                    ],
+                                    border: Border.all(
+                                      color: kWhiteColor,
+                                      width: 3,
+                                    ),
+                                  ),
+                                  child: Icon(
+                                    Icons.view_carousel_rounded,
+                                    color: kWhiteColor,
+                                    size: 22.sp,
+                                  ),
+                                ),
                               ),
                             ],
                           ),
                         ),
-                      ),
-                    ),
-                  ),
-                ),
-              );
-            },
-          ),
+                        SizedBox(height: 48.h), // Gap between bubble and hand
+                        // Hand Animation
+                        SizedBox(
+                          height: 120.h, // Reserve space for hand movement vertically
+                          width: double.infinity,
+                          child: AnimatedBuilder(
+                            animation: widget.animationController,
+                            builder: (context, child) {
+                              if (!widget.animationController.isAnimating) {
+                                return const SizedBox.shrink();
+                              }
 
-          // Speech Bubble - Positioned above the hand
-          Positioned(
-            top: MediaQuery.sizeOf(context).height * 0.32,
-            left: 0,
-            right: 0,
-            child: Center(
-              child: CustomPaint(
-                painter: _SpeechBubblePainter(color: kWhiteColor),
-                child: Container(
-                  padding: EdgeInsets.fromLTRB(24.w, 16.h, 24.w, 24.h),
-                  constraints: BoxConstraints(maxWidth: 260.w),
-                  child: Text(
-                    'Swipe horizontally to browse games',
-                    style: AppTypography.textMdBold.copyWith(
-                      color: kBlackColor,
-                      height: 1.3,
+                              final width = MediaQuery.sizeOf(context).width;
+                              bool canGoNext = widget.currentPageIndex < widget.totalItems - 1;
+                              double direction = canGoNext ? 1.0 : -1.0;
+
+                              // Reduce drag distance slightly for better visual within column
+                              double maxDrag = width * 0.5;
+                              double handTranslation =
+                                  -1 * widget.moveAnimation.value * maxDrag * direction;
+
+                              return Opacity(
+                                opacity: widget.fadeAnimation.value,
+                                child: Transform.translate(
+                                  offset: Offset(handTranslation, 0),
+                                  child: Transform.scale(
+                                    scale: widget.scaleAnimation.value,
+                                    child: Center(
+                                      child: Container(
+                                        decoration: BoxDecoration(
+                                            color:
+                                                kWhiteColor.withValues(alpha: 0.15),
+                                            shape: BoxShape.circle,
+                                            boxShadow: [
+                                              BoxShadow(
+                                                color: Colors.black
+                                                    .withValues(alpha: 0.3),
+                                                blurRadius: 20,
+                                                spreadRadius: 5,
+                                              )
+                                            ]),
+                                        padding: EdgeInsets.all(24.sp),
+                                        child: Icon(
+                                          Icons.touch_app_rounded,
+                                          size: 52.sp,
+                                          color: kWhiteColor,
+                                          shadows: [
+                                            BoxShadow(
+                                              color:
+                                                  Colors.black.withValues(alpha: 0.5),
+                                              blurRadius: 10,
+                                              offset: const Offset(0, 4),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                        SizedBox(height: 48.h), // Gap before control buttons
+                        // Control Buttons - Now inside the centered column
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            TextButton(
+                              onPressed: _handleDontShowAgain,
+                              style: TextButton.styleFrom(
+                                foregroundColor: kWhiteColor.withValues(alpha: 0.6),
+                              ),
+                              child: Text(
+                                "Don't show again",
+                                style: AppTypography.textSmMedium,
+                              ),
+                            ),
+                            SizedBox(width: 24.w),
+                            TextButton(
+                              onPressed: animateOut,
+                              style: TextButton.styleFrom(
+                                foregroundColor: kWhiteColor,
+                                backgroundColor: kWhiteColor.withValues(alpha: 0.1),
+                                padding: EdgeInsets.symmetric(
+                                    horizontal: 24.w, vertical: 12.h),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(30.br),
+                                ),
+                              ),
+                              child: Text(
+                                'Got it',
+                                style: AppTypography.textSmBold,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
                     ),
-                    textAlign: TextAlign.center,
                   ),
-                ),
+                ],
               ),
             ),
           ),
-          
-          // Control Buttons - Pinned to bottom safe area
-          Positioned(
-            left: 0,
-            right: 0,
-            bottom: MediaQuery.paddingOf(context).bottom + 32.h,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                TextButton(
-                  onPressed: onDontShowAgain,
-                  style: TextButton.styleFrom(
-                    foregroundColor: kWhiteColor.withValues(alpha: 0.6),
-                  ),
-                  child: Text(
-                    "Don't show again",
-                    style: AppTypography.textSmMedium,
-                  ),
-                ),
-                SizedBox(width: 32.w),
-                TextButton(
-                  onPressed: onDismiss,
-                  style: TextButton.styleFrom(
-                    foregroundColor: kWhiteColor,
-                    backgroundColor: kWhiteColor.withValues(alpha: 0.1),
-                    padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 12.h),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(30.br),
-                    ),
-                  ),
-                  child: Text(
-                    'Got it',
-                    style: AppTypography.textSmBold,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 }
 
-class _SpeechBubblePainter extends CustomPainter {
+class _BorderProgressPainter extends CustomPainter {
+  final double progress;
   final Color color;
+  final double strokeWidth;
+  final double borderRadius;
 
-  _SpeechBubblePainter({required this.color});
+  _BorderProgressPainter({
+    required this.progress,
+    required this.color,
+    required this.strokeWidth,
+    required this.borderRadius,
+  });
 
   @override
   void paint(Canvas canvas, Size size) {
+    if (progress <= 0) return;
+
     final paint = Paint()
       ..color = color
-      ..style = PaintingStyle.fill;
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = strokeWidth
+      ..strokeCap = StrokeCap.round;
 
-    final path = Path();
-    final r = 16.0; // Corner radius
-    final tailW = 20.0;
-    final tailH = 12.0;
-    
-    // Bubble body
-    path.addRRect(RRect.fromRectAndRadius(
-      Rect.fromLTWH(0, 0, size.width, size.height - tailH + 2), // Slight overlap
-      Radius.circular(r),
-    ));
+    final w = size.width;
+    final h = size.height;
+    final r = borderRadius;
+    final topCenter = w / 2;
+    final bottomCenter = w / 2;
 
-    // Tail pointing down
-    final tailPath = Path();
-    tailPath.moveTo(size.width / 2 - tailW / 2, size.height - tailH);
-    tailPath.quadraticBezierTo(
-      size.width / 2, size.height + 2, // Control point for curve
-      size.width / 2, size.height      // Tip
-    );
-    tailPath.lineTo(size.width / 2 + tailW / 2, size.height - tailH);
-    tailPath.close();
+    // Right Path (Clockwise: Top-Center -> Top-Right -> Right -> Bottom-Right -> Bottom-Center)
+    final rightPath = Path()
+      ..moveTo(topCenter, 0)
+      ..lineTo(w - r, 0)
+      ..arcToPoint(Offset(w, r), radius: Radius.circular(r))
+      ..lineTo(w, h - r)
+      ..arcToPoint(Offset(w - r, h), radius: Radius.circular(r))
+      ..lineTo(bottomCenter, h);
 
-    path.addPath(tailPath, Offset.zero);
+    // Left Path (Counter-Clockwise: Top-Center -> Top-Left -> Left -> Bottom-Left -> Bottom-Center)
+    final leftPath = Path()
+      ..moveTo(topCenter, 0)
+      ..lineTo(r, 0)
+      ..arcToPoint(Offset(0, r), radius: Radius.circular(r), clockwise: false)
+      ..lineTo(0, h - r)
+      ..arcToPoint(Offset(r, h), radius: Radius.circular(r), clockwise: false)
+      ..lineTo(bottomCenter, h);
 
-    canvas.drawPath(path, paint);
+    // Draw Right Segment
+    final rightMetric = rightPath.computeMetrics().first;
+    final rightExtract = rightMetric.extractPath(0, rightMetric.length * progress);
+    canvas.drawPath(rightExtract, paint);
+
+    // Draw Left Segment
+    final leftMetric = leftPath.computeMetrics().first;
+    final leftExtract = leftMetric.extractPath(0, leftMetric.length * progress);
+    canvas.drawPath(leftExtract, paint);
   }
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+  bool shouldRepaint(covariant _BorderProgressPainter oldDelegate) {
+    return oldDelegate.progress != progress ||
+           oldDelegate.color != color ||
+           oldDelegate.strokeWidth != strokeWidth ||
+           oldDelegate.borderRadius != borderRadius;
+  }
 }
 
 class _GamePage extends StatelessWidget {
