@@ -755,16 +755,10 @@ class StockfishSingleton {
     } catch (e) {
       debugPrint('⚠️ STOCKFISH STOP FAILED: $e');
     }
-    try {
-      _engine!.stdin = 'ucinewgame';
-    } catch (e) {
-      debugPrint('⚠️ STOCKFISH ucinewgame FAILED: $e');
-    }
-    try {
-      _engine!.stdin = 'setoption name Clear Hash';
-    } catch (e) {
-      debugPrint('⚠️ STOCKFISH Clear Hash FAILED: $e');
-    }
+    // PERF: Removed 'ucinewgame' and 'Clear Hash' commands
+    // These commands clear the transposition tables before EVERY position,
+    // killing engine performance. Stockfish handles position changes efficiently
+    // without needing to clear hash between evaluations.
     await _waitForReadyOk();
   }
 

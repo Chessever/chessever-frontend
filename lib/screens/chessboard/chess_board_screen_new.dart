@@ -861,7 +861,10 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
 
     _pageSettleTimer?.cancel();
     final settleGeneration = ++_pageSettleGeneration;
-    _pageSettleTimer = Timer(const Duration(milliseconds: 220), () {
+    // PERF: Increased from 220ms to 350ms to reduce jank during rapid swiping
+    // This gives more time for the user to settle on a page before triggering
+    // expensive evaluation and parsing operations
+    _pageSettleTimer = Timer(const Duration(milliseconds: 350), () {
       if (!mounted) return;
       if (_pageSettleGeneration != settleGeneration) return;
       if (_currentPageIndex != newIndex) return;
@@ -4468,9 +4471,10 @@ class _BottomNavBar extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // Watch the provider directly to ensure rebuilds when gamebase toggle changes
-    final gamebaseEnabled =
-        ref.watch(gamebaseOverlayEnabledProvider).valueOrNull ?? true;
+    // PERF: Use .select() to only rebuild when the enabled state changes
+    final gamebaseEnabled = ref.watch(
+      gamebaseOverlayEnabledProvider.select((s) => s.valueOrNull ?? true),
+    );
     final isGamebaseActive = showGamebaseButton ? gamebaseEnabled : false;
 
     final params = ChessBoardProviderParams(game: game, index: index);
@@ -4600,9 +4604,10 @@ class _AnalysisGameBody extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // Watch the provider directly to ensure rebuilds when gamebase toggle changes
-    final gamebaseEnabled =
-        ref.watch(gamebaseOverlayEnabledProvider).valueOrNull ?? true;
+    // PERF: Use .select() to only rebuild when the enabled state changes
+    final gamebaseEnabled = ref.watch(
+      gamebaseOverlayEnabledProvider.select((s) => s.valueOrNull ?? true),
+    );
     final isGamebaseActive = showGamebaseButton ? gamebaseEnabled : false;
 
     // Check for tablet landscape mode for side-by-side layout
@@ -5312,9 +5317,10 @@ class _TabletBoardWithSidebar extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // Read engine settings to control visibility
-    final engineSettings = ref.watch(engineSettingsProviderNew).valueOrNull;
-    final showEngineGauge = engineSettings?.showEngineGauge ?? true;
+    // PERF: Use .select() to only rebuild when showEngineGauge changes
+    final showEngineGauge = ref.watch(
+      engineSettingsProviderNew.select((s) => s.valueOrNull?.showEngineGauge ?? true),
+    );
 
     final effectiveEvalWidth = showEngineGauge ? evalBarWidth : 0.0;
 
@@ -5387,9 +5393,10 @@ class _BoardWithSidebar extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // Read engine settings to control visibility
-    final engineSettings = ref.watch(engineSettingsProviderNew).valueOrNull;
-    final showEngineGauge = engineSettings?.showEngineGauge ?? true;
+    // PERF: Use .select() to only rebuild when showEngineGauge changes
+    final showEngineGauge = ref.watch(
+      engineSettingsProviderNew.select((s) => s.valueOrNull?.showEngineGauge ?? true),
+    );
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -5505,55 +5512,68 @@ class _AnalysisBoard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final boardSettingsAsync = ref.watch(boardSettingsProviderNew);
-    final boardSettings =
-        boardSettingsAsync.valueOrNull ?? const BoardSettingsNew();
+    // PERF: Use .select() to only rebuild when specific properties change
+    final colorScheme = ref.watch(
+      boardSettingsProviderNew.select(
+        (s) => s.valueOrNull?.colorScheme ?? const BoardSettingsNew().colorScheme,
+      ),
+    );
+    final pieceAssets = ref.watch(
+      boardSettingsProviderNew.select(
+        (s) => s.valueOrNull?.pieceAssets ?? const BoardSettingsNew().pieceAssets,
+      ),
+    );
     final params = ChessBoardProviderParams(game: game, index: index);
     final notifier = ref.read(chessBoardScreenProviderNew(params).notifier);
 
-    // Read engine settings to control PV arrows visibility
-    final engineSettings = ref.watch(engineSettingsProviderNew).valueOrNull;
-    final showPvArrows = engineSettings?.showPvArrows ?? true;
+    // PERF: Use .select() to only rebuild when showPvArrows changes
+    final showPvArrows = ref.watch(
+      engineSettingsProviderNew.select((s) => s.valueOrNull?.showPvArrows ?? true),
+    );
 
-    return Chessboard(
-      size: size,
-      settings: ChessboardSettings(
-        enableCoordinates: true,
-        animationDuration: const Duration(milliseconds: 200),
-        dragFeedbackScale: 1,
-        dragTargetKind: DragTargetKind.none,
-        pieceShiftMethod: PieceShiftMethod.tapTwoSquares,
-        autoQueenPromotionOnPremove: false,
-        pieceOrientationBehavior: PieceOrientationBehavior.facingUser,
-        // Use theme colors from settings with our custom app colors
-        colorScheme: boardSettings.colorScheme,
-        // Use piece set from settings
-        pieceAssets: boardSettings.pieceAssets,
-      ),
-      orientation: isFlipped ? Side.black : Side.white,
-      fen: chessBoardState.analysisState.position.fen,
-      lastMove: chessBoardState.analysisState.lastMove,
-      // Only show shapes (arrows) when ALL conditions are met:
-      // 1. Engine analysis is enabled (master toggle)
-      // 2. Principal variations are enabled in board state
-      // 3. PV arrows are enabled in engine settings
-      shapes:
-          (chessBoardState.showEngineAnalysis &&
-                  chessBoardState.showPrincipalVariations &&
-                  showPvArrows)
-              ? chessBoardState.shapes
-              : const ISet.empty(),
-      game: GameData(
-        playerSide:
-            chessBoardState.analysisState.position.turn == Side.white
-                ? PlayerSide.white
-                : PlayerSide.black,
-        validMoves: chessBoardState.analysisState.validMoves,
-        sideToMove: chessBoardState.analysisState.position.turn,
-        isCheck: chessBoardState.analysisState.position.isCheck,
-        promotionMove: chessBoardState.analysisState.promotionMove,
-        onMove: notifier.onAnalysisMove,
-        onPromotionSelection: notifier.onAnalysisPromotionSelection,
+    // PERF: RepaintBoundary isolates chessboard repaints from propagating
+    // to parent widgets during piece animations and drag operations
+    return RepaintBoundary(
+      child: Chessboard(
+        size: size,
+        settings: ChessboardSettings(
+          enableCoordinates: true,
+          animationDuration: const Duration(milliseconds: 200),
+          dragFeedbackScale: 1,
+          dragTargetKind: DragTargetKind.none,
+          pieceShiftMethod: PieceShiftMethod.tapTwoSquares,
+          autoQueenPromotionOnPremove: false,
+          pieceOrientationBehavior: PieceOrientationBehavior.facingUser,
+          // Use theme colors from settings with our custom app colors
+          colorScheme: colorScheme,
+          // Use piece set from settings
+          pieceAssets: pieceAssets,
+        ),
+        orientation: isFlipped ? Side.black : Side.white,
+        fen: chessBoardState.analysisState.position.fen,
+        lastMove: chessBoardState.analysisState.lastMove,
+        // Only show shapes (arrows) when ALL conditions are met:
+        // 1. Engine analysis is enabled (master toggle)
+        // 2. Principal variations are enabled in board state
+        // 3. PV arrows are enabled in engine settings
+        shapes:
+            (chessBoardState.showEngineAnalysis &&
+                    chessBoardState.showPrincipalVariations &&
+                    showPvArrows)
+                ? chessBoardState.shapes
+                : const ISet.empty(),
+        game: GameData(
+          playerSide:
+              chessBoardState.analysisState.position.turn == Side.white
+                  ? PlayerSide.white
+                  : PlayerSide.black,
+          validMoves: chessBoardState.analysisState.validMoves,
+          sideToMove: chessBoardState.analysisState.position.turn,
+          isCheck: chessBoardState.analysisState.position.isCheck,
+          promotionMove: chessBoardState.analysisState.promotionMove,
+          onMove: notifier.onAnalysisMove,
+          onPromotionSelection: notifier.onAnalysisPromotionSelection,
+        ),
       ),
     );
   }
