@@ -17,7 +17,8 @@ class ReviewPromptService {
 
   static const Duration _sessionGap = Duration(hours: 6);
   static const Duration _minTimeSinceInstall = Duration(days: 2);
-  static const Duration _cooldown = Duration(days: 45);
+  // Align with iOS limit of 3 times per year (365 / 3 ~= 121.6 days)
+  static const Duration _cooldown = Duration(days: 122);
   static const Duration _activityWindow = Duration(days: 45);
   static const int _minSessions = 3;
   static const int _minActiveDays = 7;
@@ -227,8 +228,6 @@ class ReviewPromptService {
       final available = await _inAppReview.isAvailable();
       if (available) {
         await _inAppReview.requestReview();
-      } else if (Platform.isAndroid) {
-        await _inAppReview.openStoreListing();
       }
     } catch (_) {
       // Ignore review request errors silently.
