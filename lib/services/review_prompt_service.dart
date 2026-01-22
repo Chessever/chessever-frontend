@@ -101,11 +101,22 @@ class ReviewPromptService {
 
       await _prefs.setInt(_keyLastRating, result.rating);
 
-      // Submit feedback if provided
+      // Combine feedback and feature request
+      final parts = <String>[];
       if (result.feedback != null && result.feedback!.trim().isNotEmpty) {
+        parts.add('Feedback: ${result.feedback!.trim()}');
+      }
+      if (result.featureRequest != null && result.featureRequest!.trim().isNotEmpty) {
+        parts.add('Feature Request: ${result.featureRequest!.trim()}');
+      }
+
+      final combinedFeedback = parts.join('\n\n');
+
+      // Submit if there's any text
+      if (combinedFeedback.isNotEmpty) {
         await _submitFeedback(
           rating: result.rating,
-          feedback: result.feedback!.trim(),
+          feedback: combinedFeedback,
           trigger: trigger,
         );
         if (context.mounted) {

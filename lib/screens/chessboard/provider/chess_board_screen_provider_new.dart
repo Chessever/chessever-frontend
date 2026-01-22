@@ -105,10 +105,18 @@ class ChessBoardScreenNotifierNew
   /// Optional saved analysis data to restore full state
   final SavedAnalysisData? savedAnalysisData;
   Timer? _longPressTimer;
+  Timer? _initTimer;
   bool _hasParsedMoves = false;
   bool _isProcessingMove = false;
   bool _isAnalysisNavigating = false;
   bool _isLongPressing = false;
+
+  /// Throttle rapid single taps on navigation buttons to prevent UI freeze
+  DateTime? _lastNavigationTime;
+  static const _navigationThrottleMs = 50;
+
+  /// Timer to defer legal moves calculation after rapid navigation settles
+  Timer? _deferredLegalMovesTimer;
   bool _cancelEvaluation = false;
   String? _pendingEvalFen;
   Timer? _evalWatchdogTimer;
@@ -174,7 +182,12 @@ class ChessBoardScreenNotifierNew
         ), // Restore comments
       ),
     );
-    parseMoves();
+    // Debounce heavy PGN parsing to prevent jank during rapid swiping
+    _initTimer = Timer(const Duration(milliseconds: 150), () {
+      if (mounted) {
+        parseMoves();
+      }
+    });
 
     // Listen for engine settings changes and clear cache to force re-evaluation
     ref.listen<AsyncValue<EngineSettings>>(engineSettingsProviderNew, (
@@ -2627,7 +2640,26 @@ class ChessBoardScreenNotifierNew
     selectVariant(targetIndex);
   }
 
+  /// Throttle check for rapid single tap navigation.
+  /// Returns true if navigation should be skipped (too soon after last navigation).
+  /// Long press bypasses throttle since it has its own interval.
+  bool _shouldThrottleNavigation() {
+    if (_isLongPressing) return false; // Long press has its own 150ms interval
+    final now = DateTime.now();
+    if (_lastNavigationTime != null) {
+      final elapsed = now.difference(_lastNavigationTime!).inMilliseconds;
+      if (elapsed < _navigationThrottleMs) {
+        return true;
+      }
+    }
+    _lastNavigationTime = now;
+    return false;
+  }
+
   Future<void> moveForward() async {
+    // Throttle rapid single taps to prevent UI freeze
+    if (_shouldThrottleNavigation()) return;
+
     final currentState = state.value;
 
     // If in preview mode with locked PV, navigate within locked PV
@@ -2662,6 +2694,9 @@ class ChessBoardScreenNotifierNew
   }
 
   Future<void> moveBackward() async {
+    // Throttle rapid single taps to prevent UI freeze
+    if (_shouldThrottleNavigation()) return;
+
     final currentState = state.value;
 
     // If in preview mode with locked PV, navigate within locked PV
@@ -5373,11 +5408,23 @@ class ChessBoardScreenNotifierNew
               .toList() ??
           const <Move>[];
 
+      // Optimization: Defer legal moves calculation during rapid navigation
+      // (long press or rapid taps) since user can't interact with board anyway.
+      // This significantly reduces CPU load during fast navigation.
+      _deferredLegalMovesTimer?.cancel();
+      final IMap<Square, ISet<Square>> validMoves;
+      if (_isLongPressing) {
+        // During long press, reuse previous valid moves to avoid expensive calculation
+        validMoves = current.analysisState.validMoves;
+      } else {
+        validMoves = makeLegalMoves(position);
+      }
+
       final nextState = current.copyWith(
         analysisState: current.analysisState.copyWith(
           game: navigatorState.game,
           position: position,
-          validMoves: makeLegalMoves(position),
+          validMoves: validMoves,
           lastMove: lastMove,
           moveSans:
               navigatorState.currentLine?.map((move) => move.san).toList() ??
@@ -5807,17 +5854,63 @@ class ChessBoardScreenNotifierNew
     if (_isLongPressing) {
       _isLongPressing = false;
       _cancelEvaluation = false;
+      // Refresh valid moves that were deferred during long press navigation
+      _refreshValidMovesAfterNavigation();
       _updateEvaluation();
+    }
+  }
+
+  /// Recalculate valid moves after rapid navigation ends.
+  /// This is deferred during long press to improve performance.
+  void _refreshValidMovesAfterNavigation() {
+    final current = state.value;
+    if (current == null) return;
+    final position = current.analysisState.position;
+    final freshValidMoves = makeLegalMoves(position);
+    // Only update if valid moves actually changed
+    if (freshValidMoves != current.analysisState.validMoves) {
+      state = AsyncValue.data(
+        current.copyWith(
+          analysisState: current.analysisState.copyWith(
+            validMoves: freshValidMoves,
+          ),
+        ),
+      );
     }
   }
 
   @override
   void dispose() {
+    // Cancel all timers first to stop any pending operations
+    _initTimer?.cancel();
+    _initTimer = null;
+    _deferredLegalMovesTimer?.cancel();
+    _deferredLegalMovesTimer = null;
+    _cancelEvalWatchdog(resetPending: true);
     stopLongPress();
+
+    // Cancel any pending Stockfish evaluations for this board
+    // This prevents orphaned evaluations from consuming resources
+    _cancelEvaluation = true;
+    _clearActiveEvalState();
+
+    // Persist state before cleanup (fire and forget)
     unawaited(_persistAnalysisState());
+
+    // Clean up subscriptions
     _navigatorSubscription?.close();
     _navigatorSubscription = null;
-    _cancelEvalWatchdog(resetPending: true);
+
+    // Clear maps to release any retained objects
+    _failedEvalTimestamps.clear();
+
+    // Release heavy objects to help GC
+    // These can hold significant memory (game trees, position histories)
+    _analysisGame = null;
+    _analysisStateManager = null;
+    _pvPreviewSnapshot = null;
+    _pendingEvalFen = null;
+
     super.dispose();
   }
 }
