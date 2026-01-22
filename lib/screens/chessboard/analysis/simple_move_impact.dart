@@ -136,7 +136,8 @@ const int _kClassificationBatchSize = 16;
 
 /// Provider that calculates move impacts by analyzing engine alternatives
 /// Uses the cascade eval provider to get multiple PV lines for each position
-final simpleMoveImpactProvider = FutureProvider.family<
+/// PERF: Added autoDispose to prevent memory buildup during rapid page swiping
+final simpleMoveImpactProvider = FutureProvider.family.autoDispose<
   Map<int, MoveImpactAnalysis>,
   SimpleMoveImpactParams
 >((ref, params) async {

@@ -1167,7 +1167,9 @@ class ChessGameNavigator extends StateNotifier<ChessGameNavigatorState> {
       _previousPointer(pointer);
 }
 
-final chessGameNavigatorProvider = StateNotifierProvider.family<
+// PERF: Added autoDispose to prevent memory buildup during rapid page swiping
+// Navigator state is recreated when needed - ChessGame param ensures proper keying
+final chessGameNavigatorProvider = StateNotifierProvider.autoDispose.family<
   ChessGameNavigator,
   ChessGameNavigatorState,
   ChessGame
