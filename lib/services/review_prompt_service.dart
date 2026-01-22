@@ -84,54 +84,40 @@ class ReviewPromptService {
     if (_promptActive) return;
     if (!context.mounted) return;
     if (!force && !await _shouldPrompt(trigger)) return;
+    if (!context.mounted) return;
 
     _promptActive = true;
     try {
-      // Step 1: Show rating dialog
-      final rating = await showAppRatingDialog(context);
+      // Step 1: Show the unified review flow dialog
+      final result = await showReviewFlowDialog(
+        context,
+        skipSurveyForHighRating: skipSurveyForHighRating,
+      );
+      
       if (!context.mounted) return;
       await _recordPromptShown();
 
-      if (rating == null) return;
+      if (result == null) return;
 
-      await _prefs.setInt(_keyLastRating, rating);
+      await _prefs.setInt(_keyLastRating, result.rating);
 
-      if (rating >= 4) {
-        // HIGH RATING FLOW: Survey first, then native review
-        // This captures valuable "what would you pay for" data before
-        // potentially losing the user to the app store review flow
-
-        if (!skipSurveyForHighRating) {
-          final feedback = await showAppFeedbackDialog(context, rating: rating);
-          if (!context.mounted) return;
-
-          if (feedback != null && feedback.trim().isNotEmpty) {
-            await _submitFeedback(
-              rating: rating,
-              feedback: feedback.trim(),
-              trigger: trigger,
-            );
-            _showThanksSnackBar(context);
-          }
+      // Submit feedback if provided
+      if (result.feedback != null && result.feedback!.trim().isNotEmpty) {
+        await _submitFeedback(
+          rating: result.rating,
+          feedback: result.feedback!.trim(),
+          trigger: trigger,
+        );
+        if (context.mounted) {
+          _showThanksSnackBar(context);
         }
-
-        // Native review comes AFTER survey (user already gave us the good stuff)
-        await _requestNativeReview();
-        await _prefs.setBool(_keyHasRatedHigh, true);
-        return;
       }
 
-      // LOW RATING FLOW: Just feedback, no native review
-      final feedback = await showAppFeedbackDialog(context, rating: rating);
-      if (!context.mounted) return;
-      if (feedback == null || feedback.trim().isEmpty) return;
-
-      await _submitFeedback(
-        rating: rating,
-        feedback: feedback.trim(),
-        trigger: trigger,
-      );
-      _showThanksSnackBar(context);
+      // If High Rating, trigger native review
+      if (result.rating >= 4) {
+        await _requestNativeReview();
+        await _prefs.setBool(_keyHasRatedHigh, true);
+      }
     } finally {
       _promptActive = false;
     }
