@@ -1,6 +1,8 @@
 import 'dart:io';
 
 import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
+import 'package:chessever2/theme/app_theme.dart';
+import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/widgets/review_prompt/review_prompt_dialogs.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -268,8 +270,13 @@ class ReviewPromptService {
     if (!context.mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: const Text('Thanks for the feedback!'),
-        backgroundColor: Colors.black87,
+        content: Text(
+          'ChessEver keeps improving thanks to your feedback!',
+          style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+        ),
+        backgroundColor: kBlack2Color.withValues(alpha: 0.95),
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 3),
       ),
     );
   }
