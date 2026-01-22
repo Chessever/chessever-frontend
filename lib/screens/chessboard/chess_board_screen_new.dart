@@ -1292,16 +1292,13 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
                       onPageChanged: _onPageChanged,
                       itemCount: syncedGames.length,
                       itemBuilder: (context, index) {
-                        // Build current page and adjacent pages
-                        if (index == _currentPageIndex - 1 ||
-                            index == _currentPageIndex ||
-                            index == _currentPageIndex + 1) {
+                        // PERF: Only fully build the CURRENT page
+                        // Adjacent pages use lightweight placeholder or read-only state
+                        // This prevents provider churn during rapid swiping
+                        if (index == _currentPageIndex) {
+                          // Current page - use watched state from visibleStates
                           try {
-                            final game = syncedGames[index];
-                            final params = _createParams(game, index);
-                            final stateAsync =
-                                visibleStates[index] ??
-                                ref.watch(chessBoardScreenProviderNew(params));
+                            final stateAsync = visibleStates[index];
                             return stateAsync?.when(
                               data: (chessBoardState) {
                                 _ensureLatestMoveSelected(
@@ -1360,6 +1357,18 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
                               hideEventInfo: widget.hideEventInfo,
                             );
                           }
+                        } else if (index == _currentPageIndex - 1 ||
+                            index == _currentPageIndex + 1) {
+                          // PERF: Adjacent pages - show lightweight loading placeholder only
+                          // NO provider access here - avoids subscription churn during rapid swiping
+                          // The page gets proper state when swipe settles and it becomes current
+                          return _LoadingScreen(
+                            games: liveGames,
+                            currentGameIndex: index,
+                            onGameChanged: _navigateToGame,
+                            lastViewedIndex: _lastViewedIndex,
+                            hideEventInfo: widget.hideEventInfo,
+                          );
                         } else {
                           return SizedBox.shrink();
                         }
