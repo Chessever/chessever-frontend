@@ -67,13 +67,13 @@ final lastSeenMoveCountProvider = StateProvider<Map<String, int>>((ref) {
 });
 
 void _releaseLog(String message) {
+  // PERF: Disabled release logging - was causing main isolate freezes
+  // 263 log calls during rapid swiping blocked the UI thread
   if (kReleaseMode) {
-    // Ensure logs show up when running release builds from IDE.
-    // ignore: avoid_print
-    print(message);
-  } else {
-    debugPrint(message);
+    // NO-OP in release mode for performance
+    return;
   }
+  debugPrint(message);
 }
 
 class _BranchHistory {
