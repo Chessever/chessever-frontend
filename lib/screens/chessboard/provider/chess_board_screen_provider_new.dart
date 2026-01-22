@@ -4,14 +4,16 @@ import 'package:chessever2/providers/board_settings_provider_new.dart';
 import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/repository/lichess/cloud_eval/cloud_eval.dart';
 import 'package:chessever2/repository/local_storage/local_eval/local_eval_cache.dart';
-import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
+// REMOVED: SharedPreferences persistence was causing main isolate perf issues
+// import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
 import 'package:chessever2/repository/api_utils/api_exceptions.dart';
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
 import 'package:chessever2/repository/supabase/evals/persist_cloud_eval.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game_navigator.dart';
-import 'package:chessever2/screens/chessboard/analysis/chess_game_navigator_state_manager.dart';
+// REMOVED: SharedPreferences persistence was causing main isolate perf issues
+// import 'package:chessever2/screens/chessboard/analysis/chess_game_navigator_state_manager.dart';
 import 'package:chessever2/screens/chessboard/provider/current_eval_provider.dart';
 import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
 import 'package:chessever2/screens/chessboard/provider/stockfish_singleton.dart';
@@ -128,7 +130,7 @@ class ChessBoardScreenNotifierNew
   String? _activeEvalKey;
   DateTime? _activeEvalStartTime; // Track when active eval started
   ChessGame? _analysisGame;
-  ChessGameNavigatorStateManager? _analysisStateManager;
+  // REMOVED: _analysisStateManager - SharedPreferences persistence was killing perf
   ProviderSubscription<ChessGameNavigatorState>? _navigatorSubscription;
   bool _isInitialLoad = true;
   ChessBoardStateNew? _pvPreviewSnapshot;
@@ -2760,8 +2762,8 @@ class ChessBoardScreenNotifierNew
       _analysisGame = _createChessGameFromPgn(pgn);
     }
 
-    final storage = ref.read(sharedPreferencesRepository);
-    _analysisStateManager = ChessGameNavigatorStateManager(storage: storage);
+    // REMOVED: SharedPreferences state manager initialization
+    // Was causing main isolate performance issues with frequent I/O
 
     final navigator = ref.read(
       chessGameNavigatorProvider(_analysisGame!).notifier,
@@ -2823,11 +2825,12 @@ class ChessBoardScreenNotifierNew
     });
   }
 
+  // REMOVED: SharedPreferences persistence was causing severe main isolate perf issues
+  // Every action was triggering JSON serialization + I/O writes for full game state
+  // This was particularly bad on Android where SharedPreferences I/O is slower
   Future<void> _persistAnalysisState() async {
-    if (_analysisGame == null || _analysisStateManager == null) return;
-
-    final navigatorState = ref.read(chessGameNavigatorProvider(_analysisGame!));
-    await _analysisStateManager!.saveState(navigatorState);
+    // NO-OP: Persistence disabled for performance
+    return;
   }
 
   ChessGame _createChessGameFromPgn(String pgn) {
@@ -5908,7 +5911,7 @@ class ChessBoardScreenNotifierNew
     // Release heavy objects to help GC
     // These can hold significant memory (game trees, position histories)
     _analysisGame = null;
-    _analysisStateManager = null;
+    // REMOVED: _analysisStateManager = null; (no longer used)
     _pvPreviewSnapshot = null;
     _pendingEvalFen = null;
 
