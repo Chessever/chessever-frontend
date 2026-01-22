@@ -17,8 +17,8 @@ class ReviewPromptService {
 
   static const Duration _sessionGap = Duration(hours: 6);
   static const Duration _minTimeSinceInstall = Duration(days: 2);
-  // Align with iOS limit of 3 times per year (365 / 3 ~= 121.6 days)
-  static const Duration _cooldown = Duration(days: 122);
+  // Cooldown between prompts
+  static const Duration _cooldown = Duration(days: 30);
   static const Duration _activityWindow = Duration(days: 45);
   static const int _minSessions = 3;
   static const int _minActiveDays = 7;
