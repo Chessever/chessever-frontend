@@ -162,7 +162,7 @@ final cascadeEvalProvider = FutureProvider.family.autoDispose<
     return cloud;
   } catch (e, st) {
     debugPrint('❌ cascadeEvalProvider: Cloud sources failed for $fen - $e');
-    debugPrint(st);
+    debugPrint(st.toString());
     if (!params.isCurrentPosition) {
       // Non-visible widgets should not tie up the local engine; surface error quickly.
       return Future.error(e, st);
@@ -238,7 +238,7 @@ final cascadeEvalProvider = FutureProvider.family.autoDispose<
       debugPrint(
         '❌ cascadeEvalProvider: Stockfish fallback failed for $fen: $engineError',
       );
-      debugPrint(engineStack);
+      debugPrint(engineStack.toString());
       // Propagate failure with original stack
       return Future.error(engineError, engineStack);
     }
