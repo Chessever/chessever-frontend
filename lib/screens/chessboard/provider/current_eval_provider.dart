@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/repository/lichess/cloud_eval/cloud_eval.dart';
 import 'package:chessever2/repository/lichess/cloud_eval/lichess_eval_repository.dart';
@@ -23,14 +24,14 @@ class _LichessRateLimitTracker {
 
   static void recordRateLimit() {
     _lastRateLimitTime = DateTime.now();
-    print(
+    debugPrint(
       '⚠️ LICHESS: Rate limited, entering ${_cooldownDuration.inMinutes}min cooldown',
     );
   }
 
   static void reset() {
     _lastRateLimitTime = null;
-    print('✅ LICHESS: Rate limit cooldown cleared');
+    debugPrint('✅ LICHESS: Rate limit cooldown cleared');
   }
 }
 
@@ -96,7 +97,7 @@ final cascadeEvalProvider = FutureProvider.family.autoDispose<
       final fenParts = fen.split(' ');
       final sideToMove = fenParts.length >= 2 ? fenParts[1] : 'w';
       final cp = cached.pvs.isNotEmpty ? cached.pvs.first.cp : 0;
-      print(
+      debugPrint(
         "🔵 EVAL SOURCE (cascadeEval): LOCAL CACHE - fen=$fen, side=$sideToMove, cp=$cp",
       );
       return cached;
@@ -114,7 +115,7 @@ final cascadeEvalProvider = FutureProvider.family.autoDispose<
       final fenParts = fen.split(' ');
       final sideToMove = fenParts.length >= 2 ? fenParts[1] : 'w';
       final cp = cloud.pvs.isNotEmpty ? cloud.pvs.first.cp : 0;
-      print(
+      debugPrint(
         "🟡 EVAL SOURCE (cascadeEval): SUPABASE - fen=$fen, side=$sideToMove, cp=$cp",
       );
       if (_shouldPersistCloudEval(cloud)) {
@@ -127,7 +128,7 @@ final cascadeEvalProvider = FutureProvider.family.autoDispose<
             )
             .catchError((e) => null);
       } else {
-        print(
+        debugPrint(
           '⚠️ CACHE SKIP (Supabase): depth=${cloud.depth}, fullMoves=${cloud.pvs.isNotEmpty ? cloud.pvs.first.fullMoveCount : 0}',
         );
       }
@@ -140,7 +141,7 @@ final cascadeEvalProvider = FutureProvider.family.autoDispose<
     final fenParts = fen.split(' ');
     final sideToMove = fenParts.length >= 2 ? fenParts[1] : 'w';
     final cp = cloud.pvs.isNotEmpty ? cloud.pvs.first.cp : 0;
-    print(
+    debugPrint(
       "🟢 EVAL SOURCE (cascadeEval): LICHESS (${cloud.pvs.length} PVs) - fen=$fen, side=$sideToMove, cp=$cp",
     );
     // OPTIMIZATION: Save to caches in background (unawaited)
@@ -154,14 +155,14 @@ final cascadeEvalProvider = FutureProvider.family.autoDispose<
         ),
       ]).catchError((e) => <void>[]);
     } else {
-      print(
+      debugPrint(
         '⚠️ CACHE SKIP (Lichess): depth=${cloud.depth}, fullMoves=${cloud.pvs.isNotEmpty ? cloud.pvs.first.fullMoveCount : 0}',
       );
     }
     return cloud;
   } catch (e, st) {
-    print('❌ cascadeEvalProvider: Cloud sources failed for $fen - $e');
-    print(st);
+    debugPrint('❌ cascadeEvalProvider: Cloud sources failed for $fen - $e');
+    debugPrint(st);
     if (!params.isCurrentPosition) {
       // Non-visible widgets should not tie up the local engine; surface error quickly.
       return Future.error(e, st);
@@ -187,7 +188,7 @@ final cascadeEvalProvider = FutureProvider.family.autoDispose<
     }
 
     try {
-      print(
+      debugPrint(
         '⚡ cascadeEvalProvider: Falling back to Stockfish (depth=$maxDepthSetting, multiPV=$fallbackMultiPv, duration=${searchDuration?.inSeconds}s)',
       );
       final sfEval = await StockfishSingleton().evaluatePosition(
@@ -221,23 +222,23 @@ final cascadeEvalProvider = FutureProvider.family.autoDispose<
             multiPV: cloudFromSf.requestedMultiPv ?? cloudFromSf.pvs.length,
           ),
         ]).catchError((error) {
-          print(
+          debugPrint(
             '⚠️ cascadeEvalProvider: Background persist failed for $fen: $error',
           );
           return <void>[];
         });
       } else {
-        print(
+        debugPrint(
           '⚠️ PERSIST SKIP (Stockfish fallback): depth=${cloudFromSf.depth}, fullMoves=${cloudFromSf.pvs.first.fullMoveCount}',
         );
       }
 
       return cloudFromSf;
     } catch (engineError, engineStack) {
-      print(
+      debugPrint(
         '❌ cascadeEvalProvider: Stockfish fallback failed for $fen: $engineError',
       );
-      print(engineStack);
+      debugPrint(engineStack);
       // Propagate failure with original stack
       return Future.error(engineError, engineStack);
     }
@@ -287,14 +288,14 @@ final cascadeEvalProviderForBoard = FutureProvider.family.autoDispose<
       final fenParts = fen.split(' ');
       final sideToMove = fenParts.length >= 2 ? fenParts[1] : 'w';
       final cp = cached.pvs.isNotEmpty ? cached.pvs.first.cp : 0;
-      print(
+      debugPrint(
         "🔵 EVAL SOURCE: LOCAL CACHE (instant) - fen=$fen, side=$sideToMove, cp=$cp",
       );
       return cached;
     }
 
     // 2️⃣ Query Supabase FIRST (our database, no rate limits)
-    print('🔍 EVAL: Checking Supabase for $fen');
+    debugPrint('🔍 EVAL: Checking Supabase for $fen');
     try {
       final supabaseEval = await evalsRepo
           .fetchFromSupabase(
@@ -308,7 +309,7 @@ final cascadeEvalProviderForBoard = FutureProvider.family.autoDispose<
           final fenParts = fen.split(' ');
           final sideToMove = fenParts.length >= 2 ? fenParts[1] : 'w';
           final cp = cloud.pvs.isNotEmpty ? cloud.pvs.first.cp : 0;
-          print(
+          debugPrint(
             "🟡 EVAL SOURCE: SUPABASE - fen=$fen, side=$sideToMove, cp=$cp",
           );
           // Background save to local cache when meaningful
@@ -325,11 +326,11 @@ final cascadeEvalProviderForBoard = FutureProvider.family.autoDispose<
         }
       }
     } catch (e) {
-      print('⚠️ Supabase eval failed: $e, continuing to Lichess...');
+      debugPrint('⚠️ Supabase eval failed: $e, continuing to Lichess...');
     }
 
     if (!params.enableLichessFallback) {
-      print('⚠️ cascadeEvalProviderForBoard: Lichess disabled, skipping remote fallback for $fen');
+      debugPrint('⚠️ cascadeEvalProviderForBoard: Lichess disabled, skipping remote fallback for $fen');
       return CloudEval(
         fen: fen,
         knodes: 0,
