@@ -1091,35 +1091,25 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
       );
     }
 
-    final visibleStart = (_currentPageIndex - 1).clamp(
-      0,
-      syncedGames.length - 1,
-    );
-    final visibleEnd = (_currentPageIndex + 1).clamp(0, syncedGames.length - 1);
+    // PERF: Only watch the CURRENT page's provider to minimize subscription churn
+    // during rapid swiping. Adjacent pages will be read on-demand in itemBuilder.
+    // This prevents creating/disposing 3 provider subscriptions on every swipe.
     final Map<int, AsyncValue<ChessBoardStateNew>> visibleStates = {};
-    for (int i = visibleStart; i <= visibleEnd; i++) {
-      // CRITICAL: Provider handles ALL streaming internally via _setupPgnStreamListener()
-      // It watches gameUpdatesStreamProvider, updates game reference, reparses moves, triggers evaluation
-      // Widget should NOT also watch the stream - this causes race conditions and inconsistency
-      // Single source of truth: provider's state.game
 
-      final game = syncedGames[i];
-      final params = _createParams(game, i);
-      visibleStates[i] = ref.watch(chessBoardScreenProviderNew(params));
+    // Only watch current page - this is the only one that needs reactive updates
+    final currentGame = syncedGames[_currentPageIndex];
+    final currentParams = _createParams(currentGame, _currentPageIndex);
+    visibleStates[_currentPageIndex] = ref.watch(chessBoardScreenProviderNew(currentParams));
 
-      // Use state.game as source of truth - provider keeps it updated via streaming
-      final state = visibleStates[i]?.valueOrNull;
-      if (state != null) {
-        syncedGames[i] = state.game;
-      }
+    // Update synced game from provider state (source of truth for streaming updates)
+    final currentState = visibleStates[_currentPageIndex]?.valueOrNull;
+    if (currentState != null) {
+      syncedGames[_currentPageIndex] = currentState.game;
     }
 
-    final currentGame = syncedGames[_currentPageIndex];
-
+    // Use same params as watch to listen to the same provider
     ref.listen(
-      chessBoardScreenProviderNew(
-        _createParams(currentGame, _currentPageIndex),
-      ),
+      chessBoardScreenProviderNew(currentParams),
       (prev, next) {
         final prevState = prev?.valueOrNull;
         final nextState = next.valueOrNull;
@@ -1283,9 +1273,10 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
                     children: [
                     PageView.builder(
                       padEnds: true,
-                      // On tablets, implicit scrolling caused partial page shifts when tapping
-                      // notation/arrow buttons; disable it there but keep for phones.
-                      allowImplicitScrolling: !isTablet,
+                      // PERF: Disabled implicit scrolling entirely - it pre-renders adjacent
+                      // pages for accessibility which is too expensive for complex chess views.
+                      // This significantly reduces memory pressure during rapid swiping.
+                      allowImplicitScrolling: false,
                       dragStartBehavior: DragStartBehavior.down,
                       // Allow swiping on tablet as well; landscape block caused gestures to
                       // feel broken on larger devices. Keep physics simple to avoid half-drags.
