@@ -11,6 +11,7 @@ import 'package:chessever2/screens/chessboard/analysis/move_impact_analyzer.dart
 import 'package:chessever2/screens/chessboard/analysis/simple_move_impact.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game_navigator.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
+import 'package:chessever2/screens/chessboard/provider/stockfish_singleton.dart';
 import 'package:chessever2/screens/chessboard/notation/notation_cache.dart';
 import 'package:chessever2/screens/chessboard/notation/notation_pointer.dart';
 import 'package:chessever2/screens/chessboard/notation/notation_tree.dart';
@@ -813,6 +814,10 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     }
 
     if (_currentPageIndex == newIndex) return;
+
+    // PERF: Cancel ALL pending Stockfish evaluations IMMEDIATELY on page change
+    // This prevents queue buildup during rapid swiping
+    StockfishSingleton().cancelAllEvaluations();
 
     final previousIndex = _currentPageIndex;
 

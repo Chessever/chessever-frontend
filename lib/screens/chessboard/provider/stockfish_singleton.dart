@@ -37,7 +37,8 @@ class StockfishSingleton {
   final List<_EvalJob> _jobQueue = []; // Queue for pending evaluations
   final Map<String, _EvalJob> _pendingJobs = {}; // Keyed by cacheKey
   bool _isProcessing = false; // Flag to prevent concurrent processing
-  static const int _maxQueueSize = 60; // Soft cap to avoid backlog
+  // PERF: Reduced from 60 to 18 - balance between queue responsiveness and background evals
+  static const int _maxQueueSize = 18;
   static const int _maxCacheEntries = 80; // Cap cache size to avoid memory bloat
 
   void _touchCacheEntry(String key, EnhancedCloudEval value) {
@@ -228,12 +229,11 @@ class StockfishSingleton {
 
       _pendingJobs.remove(_currentJob!.key);
 
-      // Send stop command to engine if it's ready
+      // PERF: Send stop command without waiting - engine will process it async
+      // Removed the 50ms delay that was blocking during rapid swiping
       if (_engine != null && _engine!.state.value == StockfishState.ready) {
         try {
           _engine!.stdin = 'stop';
-          // Give the engine a moment to process the stop command
-          await Future.delayed(const Duration(milliseconds: 50));
         } catch (e) {
           // Ignore errors when stopping
           debugPrint('Error sending stop command to Stockfish: $e');
@@ -542,12 +542,13 @@ class StockfishSingleton {
       // Also add a stall detection mechanism
       Timer? stallDetector;
 
-      stallDetector = Timer.periodic(const Duration(seconds: 1), (_) {
+      // PERF: Check stall every 500ms instead of 1 second for faster detection
+      stallDetector = Timer.periodic(const Duration(milliseconds: 500), (_) {
         if (lastInfoReceived != null) {
           final timeSinceLastInfo = DateTime.now().difference(lastInfoReceived!);
-          // If we haven't received any info for 3 seconds, consider it stalled
-          if (timeSinceLastInfo > const Duration(seconds: 3)) {
-            debugPrint('⚠️ STOCKFISH STALL DETECTED: No response for ${timeSinceLastInfo.inSeconds}s');
+          // PERF: Reduced stall detection from 3 seconds to 1.5 seconds
+          if (timeSinceLastInfo > const Duration(milliseconds: 1500)) {
+            debugPrint('⚠️ STOCKFISH STALL DETECTED: No response for ${timeSinceLastInfo.inMilliseconds}ms');
             stallDetector?.cancel();
 
             // Force completion with current best results
@@ -747,19 +748,16 @@ class StockfishSingleton {
 
   Future<void> _softResetEngine() async {
     if (_engine == null) return;
+    // PERF: Only cancel subscription, don't send stop command or wait
+    // The engine will naturally stop when it receives a new position
+    // Removed the 20ms delay and isready wait - they were causing massive
+    // latency during rapid page swiping (up to 1 second per job!)
     await _currentSubscription?.cancel();
     _currentSubscription = null;
-    try {
-      _engine!.stdin = 'stop';
-      await Future.delayed(const Duration(milliseconds: 20));
-    } catch (e) {
-      debugPrint('⚠️ STOCKFISH STOP FAILED: $e');
-    }
-    // PERF: Removed 'ucinewgame' and 'Clear Hash' commands
-    // These commands clear the transposition tables before EVERY position,
+    // PERF: Removed 'ucinewgame', 'Clear Hash', 'stop', and 'isready' commands
+    // These commands clear the transposition tables and add latency before EVERY position,
     // killing engine performance. Stockfish handles position changes efficiently
     // without needing to clear hash between evaluations.
-    await _waitForReadyOk();
   }
 
   Future<void> _waitForReadyOk() async {
@@ -773,7 +771,8 @@ class StockfishSingleton {
     });
     try {
       _engine!.stdin = 'isready';
-      await completer.future.timeout(const Duration(seconds: 1));
+      // PERF: Reduced from 1 second to 200ms - engine should respond quickly
+      await completer.future.timeout(const Duration(milliseconds: 200));
     } catch (e) {
       debugPrint('⚠️ STOCKFISH READY WAIT FAILED: $e');
     } finally {
