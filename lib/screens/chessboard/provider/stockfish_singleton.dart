@@ -264,6 +264,7 @@ class StockfishSingleton {
       _jobQueue.clear();
     }
     _isProcessing = false;
+    _isSearching = false;
     _currentSubscription = null;
     try {
       _engine?.stdin = 'stop';
@@ -422,6 +423,7 @@ class StockfishSingleton {
         // When analysis is complete
         if (line.startsWith('bestmove') && !evaluationComplete) {
           evaluationComplete = true;
+          _isSearching = false; // Mark engine as no longer searching
           final filteredPvs = pvs
               .where((pv) => pv.moves.isNotEmpty)
               .toList(growable: false);
@@ -499,6 +501,7 @@ class StockfishSingleton {
           debugPrint(
             '   → Sending: MultiPV $multiPV, movetime ${moveTimeMs}ms${maxDepth != null ? ", depth $maxDepth" : ""}',
           );
+          _isSearching = true; // Mark engine as searching
           if (maxDepth != null) {
             _engine!.stdin = 'go movetime $moveTimeMs depth $maxDepth';
           } else {
@@ -506,6 +509,7 @@ class StockfishSingleton {
           }
         } else {
           debugPrint('   → Sending: MultiPV $multiPV, depth $depth');
+          _isSearching = true; // Mark engine as searching
           _engine!.stdin = 'go depth $depth';
         }
       } catch (e) {
@@ -746,18 +750,29 @@ class StockfishSingleton {
     }
   }
 
+  bool _isSearching = false; // Track if engine is currently searching
+
   Future<void> _softResetEngine() async {
     if (_engine == null) return;
-    // PERF: Only cancel subscription, don't send stop command or wait
-    // The engine will naturally stop when it receives a new position
-    // Removed the 20ms delay and isready wait - they were causing massive
-    // latency during rapid page swiping (up to 1 second per job!)
+
     await _currentSubscription?.cancel();
     _currentSubscription = null;
-    // PERF: Removed 'ucinewgame', 'Clear Hash', 'stop', and 'isready' commands
-    // These commands clear the transposition tables and add latency before EVERY position,
-    // killing engine performance. Stockfish handles position changes efficiently
-    // without needing to clear hash between evaluations.
+
+    // UCI PROTOCOL: Must send 'stop' before new position if engine is searching
+    // Otherwise behavior is undefined per UCI spec
+    if (_isSearching) {
+      try {
+        _engine!.stdin = 'stop';
+        _isSearching = false;
+        // Brief yield to let stop process - no long wait needed
+        await Future.delayed(const Duration(milliseconds: 10));
+      } catch (e) {
+        debugPrint('⚠️ STOCKFISH STOP FAILED: $e');
+      }
+    }
+    // NOTE: We intentionally skip 'ucinewgame' and 'Clear Hash' - those clear
+    // the transposition table which kills performance. Stockfish handles
+    // position changes efficiently without clearing hash.
   }
 
   Future<void> _waitForReadyOk() async {
@@ -784,6 +799,11 @@ class StockfishSingleton {
     _cancelCurrentEvaluation();
     _jobQueue.clear();
     _isProcessing = false;
+    _isSearching = false;
+    // UCI PROTOCOL: Send 'quit' for clean shutdown before disposing
+    try {
+      _engine?.stdin = 'quit';
+    } catch (_) {}
     _engine?.dispose();
     _engine = null;
     _evaluationCache.clear();
@@ -794,7 +814,11 @@ class StockfishSingleton {
       await _currentSubscription?.cancel();
     } catch (_) {}
     _currentSubscription = null;
+    _isSearching = false;
     if (_engine != null) {
+      try {
+        _engine!.stdin = 'quit'; // UCI: clean shutdown
+      } catch (_) {}
       try {
         _engine!.dispose();
       } catch (_) {}
