@@ -37,6 +37,7 @@
 -dontwarn org.codehaus.mojo.animal_sniffer.IgnoreJRERequirement
 -dontwarn kotlin.**
 -dontwarn com.google.errorprone.annotations.**
+-dontwarn com.google.android.gms.common.annotation.NoNullnessRewrite
 
 ##########################################
 # ✅ Rules from missing_rules.txt
