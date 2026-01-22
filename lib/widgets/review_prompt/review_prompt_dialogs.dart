@@ -7,8 +7,13 @@ import 'package:flutter/material.dart';
 class ReviewResult {
   final int rating;
   final String? feedback;
+  final String? featureRequest;
 
-  ReviewResult({required this.rating, this.feedback});
+  ReviewResult({
+    required this.rating,
+    this.feedback,
+    this.featureRequest,
+  });
 }
 
 Future<ReviewResult?> showReviewFlowDialog(
@@ -35,26 +40,21 @@ class ReviewFlowDialog extends StatefulWidget {
 }
 
 class _ReviewFlowDialogState extends State<ReviewFlowDialog> {
-  final PageController _pageController = PageController();
+  int _step = 1;
   int _rating = 0;
-  
-  // Feedback state
-  final TextEditingController _feedbackController = TextEditingController();
-  final Set<String> _selectedFeatures = {};
-  bool _canSubmitFeedback = false;
 
-  /// Feature suggestions for the survey
-  static const List<String> _featureSuggestions = [
-    'Offline mode',
-    'Opening preparation',
-    'Advanced analysis',
-    'Player tracking',
-  ];
+  // Controllers
+  final TextEditingController _feedbackController = TextEditingController();
+  final TextEditingController _featureController = TextEditingController();
+
+  // State
+  bool _canSubmitFeedback = false;
+  bool _canSubmitFeature = false;
 
   @override
   void dispose() {
-    _pageController.dispose();
     _feedbackController.dispose();
+    _featureController.dispose();
     super.dispose();
   }
 
@@ -65,53 +65,70 @@ class _ReviewFlowDialogState extends State<ReviewFlowDialog> {
     });
   }
 
-  void _goToFeedback() {
-    if (_rating == 0) return;
-    
+  void _goToStep(int step) {
     HapticFeedbackService.buttonPress();
-
-    // If high rating and we're skipping the survey, return immediately
-    if (_rating >= 4 && widget.skipSurveyForHighRating) {
-      Navigator.of(context).pop(ReviewResult(rating: _rating, feedback: null));
-      return;
-    }
-
-    _pageController.nextPage(
-      duration: const Duration(milliseconds: 300),
-      curve: Curves.easeInOut,
-    );
-  }
-
-  void _updateCanSubmitFeedback() {
     setState(() {
-      _canSubmitFeedback = _feedbackController.text.trim().isNotEmpty ||
-          _selectedFeatures.isNotEmpty;
+      _step = step;
     });
   }
 
-  String _buildFeedbackString() {
-    final parts = <String>[];
-    if (_selectedFeatures.isNotEmpty) {
-      parts.add('Interested in: ${_selectedFeatures.join(', ')}');
+  // Step 1 -> Step 2
+  void _onRatingContinue() {
+    if (_rating == 0) return;
+    
+    // If high rating and skipping survey, we might want to skip Step 2 AND 3?
+    // The previous logic was: High Rating -> Survey (if not skipped) -> Native.
+    // Low Rating -> Feedback -> Done.
+    // The new requirement seems to unify this.
+    // For now, I'll follow the unified flow: Rating -> Feedback -> Feature.
+    // If "skipSurveyForHighRating" is true and rating is high, we probably still skip everything?
+    if (_rating >= 4 && widget.skipSurveyForHighRating) {
+      Navigator.of(context).pop(ReviewResult(rating: _rating));
+      return;
     }
-    if (_feedbackController.text.trim().isNotEmpty) {
-      parts.add(_feedbackController.text.trim());
-    }
-    return parts.join('\n\n');
+
+    _goToStep(2);
   }
 
-  void _submit() {
+  // Step 2 -> Step 3
+  void _onFeedbackNext() {
+    // Keep feedback
+    _goToStep(3);
+  }
+
+  void _onFeedbackSkip() {
+    // Clear feedback
+    _feedbackController.clear();
+    _goToStep(3);
+  }
+
+  // Step 3 -> Finish
+  void _onFeatureSend() {
     HapticFeedbackService.buttonPress();
+    _submit();
+  }
+
+  void _onFeatureSkip() {
+    _featureController.clear();
+    // Just submit whatever we have (rating + potentially feedback)
     Navigator.of(context).pop(ReviewResult(
       rating: _rating,
-      feedback: _buildFeedbackString(),
+      feedback: _feedbackController.text.trim().isNotEmpty 
+          ? _feedbackController.text.trim() 
+          : null,
+      featureRequest: null,
     ));
   }
 
-  void _skip() {
+  void _submit() {
     Navigator.of(context).pop(ReviewResult(
       rating: _rating,
-      feedback: null, // Just the rating
+      feedback: _feedbackController.text.trim().isNotEmpty 
+          ? _feedbackController.text.trim() 
+          : null,
+      featureRequest: _featureController.text.trim().isNotEmpty 
+          ? _featureController.text.trim() 
+          : null,
     ));
   }
 
@@ -119,8 +136,9 @@ class _ReviewFlowDialogState extends State<ReviewFlowDialog> {
   Widget build(BuildContext context) {
     return Dialog(
       backgroundColor: Colors.transparent,
+      insetPadding: EdgeInsets.symmetric(horizontal: 16.sp, vertical: 24.sp),
       child: Container(
-        constraints: BoxConstraints(maxWidth: 360.w, maxHeight: 500.h),
+        constraints: BoxConstraints(maxWidth: 360.w),
         decoration: BoxDecoration(
           color: kBackgroundColor,
           borderRadius: BorderRadius.circular(20.br),
@@ -136,21 +154,48 @@ class _ReviewFlowDialogState extends State<ReviewFlowDialog> {
             ),
           ],
         ),
-        // Use a PageView with physics: NeverScrollableScrollPhysics to prevent manual swiping
-        child: PageView(
-          controller: _pageController,
-          physics: const NeverScrollableScrollPhysics(),
-          children: [
-            _buildRatingPage(),
-            _buildFeedbackPage(),
-          ],
+        child: AnimatedSize(
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOutCubic,
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 300),
+            switchInCurve: Curves.easeOut,
+            switchOutCurve: Curves.easeIn,
+            transitionBuilder: (child, animation) {
+              return FadeTransition(
+                opacity: animation,
+                child: SlideTransition(
+                  position: Tween<Offset>(
+                    begin: const Offset(0.1, 0),
+                    end: Offset.zero,
+                  ).animate(animation),
+                  child: child,
+                ),
+              );
+            },
+            child: _buildCurrentStep(),
+          ),
         ),
       ),
     );
   }
 
+  Widget _buildCurrentStep() {
+    switch (_step) {
+      case 1:
+        return _buildRatingPage();
+      case 2:
+        return _buildFeedbackPage();
+      case 3:
+        return _buildFeaturePage();
+      default:
+        return const SizedBox.shrink();
+    }
+  }
+
   Widget _buildRatingPage() {
     return Padding(
+      key: const ValueKey(1),
       padding: EdgeInsets.all(20.sp),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -220,7 +265,7 @@ class _ReviewFlowDialogState extends State<ReviewFlowDialog> {
               SizedBox(width: 10.sp),
               Expanded(
                 child: TextButton(
-                  onPressed: _rating == 0 ? null : _goToFeedback,
+                  onPressed: _rating == 0 ? null : _onRatingContinue,
                   style: TextButton.styleFrom(
                     padding: EdgeInsets.symmetric(vertical: 12.sp),
                     backgroundColor:
@@ -245,194 +290,252 @@ class _ReviewFlowDialogState extends State<ReviewFlowDialog> {
   }
 
   Widget _buildFeedbackPage() {
-    final isHighRating = _rating >= 4;
-
     return SingleChildScrollView(
-      padding: EdgeInsets.all(20.sp),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Header
-          Text(
-            isHighRating ? 'Thanks for the love!' : 'Thanks for the feedback',
-            style: AppTypography.textLgBold.copyWith(
-              color: kWhiteColor,
-            ),
-          ),
-          SizedBox(height: 4.sp),
-          Text(
-            isHighRating
-                ? 'What premium feature would you love to see?'
-                : 'What can we do better?',
-            style: AppTypography.textSmRegular.copyWith(
-              color: kWhiteColor.withValues(alpha: 0.6),
-            ),
-          ),
-          SizedBox(height: 12.sp),
-          
-          // Small star display to remind them of their rating
-          Row(
-            children: List.generate(5, (index) {
-              final isActive = index < _rating;
-              return Icon(
-                isActive ? Icons.star_rounded : Icons.star_border_rounded,
-                color: isActive
-                    ? kPrimaryColor
-                    : kWhiteColor.withValues(alpha: 0.25),
-                size: 18.ic,
-              );
-            }),
-          ),
-          SizedBox(height: 16.sp),
-
-          // Quick-tap suggestions (only for high ratings)
-          if (isHighRating) ...[
+      key: const ValueKey(2),
+      child: Padding(
+        padding: EdgeInsets.all(20.sp),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
             Text(
-              'Quick picks (tap to select)',
-              style: AppTypography.textXsRegular.copyWith(
-                color: kWhiteColor.withValues(alpha: 0.5),
+              'Your Feedback',
+              style: AppTypography.textLgBold.copyWith(
+                color: kWhiteColor,
               ),
             ),
-            SizedBox(height: 8.sp),
-            Wrap(
-              spacing: 8.sp,
-              runSpacing: 8.sp,
-              children: _featureSuggestions.map((feature) {
-                final isSelected = _selectedFeatures.contains(feature);
-                return GestureDetector(
-                  onTap: () {
-                    HapticFeedbackService.selection();
-                    setState(() {
-                      if (isSelected) {
-                        _selectedFeatures.remove(feature);
-                      } else {
-                        _selectedFeatures.add(feature);
-                      }
-                    });
-                    _updateCanSubmitFeedback();
-                  },
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 200),
-                    padding: EdgeInsets.symmetric(
-                      horizontal: 12.sp,
-                      vertical: 8.sp,
-                    ),
-                    decoration: BoxDecoration(
-                      color: isSelected
-                          ? kPrimaryColor.withValues(alpha: 0.15)
-                          : kWhiteColor.withValues(alpha: 0.05),
-                      borderRadius: BorderRadius.circular(20.br),
-                      border: Border.all(
-                        color: isSelected
-                            ? kPrimaryColor.withValues(alpha: 0.5)
-                            : kWhiteColor.withValues(alpha: 0.1),
-                        width: 1,
+            SizedBox(height: 4.sp),
+            Text(
+              'Tell us what went wrong or what we can improve...',
+              style: AppTypography.textSmRegular.copyWith(
+                color: kWhiteColor.withValues(alpha: 0.6),
+              ),
+            ),
+            SizedBox(height: 12.sp),
+            
+            // Small star display
+            Row(
+              children: List.generate(5, (index) {
+                final isActive = index < _rating;
+                return Icon(
+                  isActive ? Icons.star_rounded : Icons.star_border_rounded,
+                  color: isActive
+                      ? kPrimaryColor
+                      : kWhiteColor.withValues(alpha: 0.25),
+                  size: 18.ic,
+                );
+              }),
+            ),
+            SizedBox(height: 16.sp),
+
+            TextField(
+              controller: _feedbackController,
+              onChanged: (val) {
+                setState(() {
+                  _canSubmitFeedback = val.trim().isNotEmpty;
+                });
+              },
+              textInputAction: TextInputAction.next,
+              onSubmitted: (_) => _onFeedbackNext(),
+              maxLines: 4,
+              minLines: 3,
+              maxLength: 500,
+              style: AppTypography.textSmRegular.copyWith(
+                color: kWhiteColor,
+              ),
+              decoration: InputDecoration(
+                hintText: 'Type your feedback here...',
+                hintStyle: AppTypography.textSmRegular.copyWith(
+                  color: kWhiteColor.withValues(alpha: 0.35),
+                ),
+                filled: true,
+                fillColor: kBlack2Color,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12.br),
+                  borderSide: BorderSide(
+                    color: kWhiteColor.withValues(alpha: 0.08),
+                  ),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12.br),
+                  borderSide: BorderSide(
+                    color: kWhiteColor.withValues(alpha: 0.08),
+                  ),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12.br),
+                  borderSide: const BorderSide(color: kPrimaryColor),
+                ),
+                counterStyle: AppTypography.textXsRegular.copyWith(
+                  color: kWhiteColor.withValues(alpha: 0.35),
+                ),
+              ),
+            ),
+            SizedBox(height: 12.sp),
+
+            Row(
+              children: [
+                Expanded(
+                  child: TextButton(
+                    onPressed: _onFeedbackSkip,
+                    style: TextButton.styleFrom(
+                      padding: EdgeInsets.symmetric(vertical: 12.sp),
+                      backgroundColor: kWhiteColor.withValues(alpha: 0.04),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12.br),
                       ),
                     ),
                     child: Text(
-                      feature,
-                      style: AppTypography.textXsMedium.copyWith(
-                        color: isSelected
-                            ? kPrimaryColor
-                            : kWhiteColor.withValues(alpha: 0.7),
+                      'Skip',
+                      style: AppTypography.textSmMedium.copyWith(
+                        color: kWhiteColor.withValues(alpha: 0.7),
                       ),
                     ),
                   ),
-                );
-              }).toList(),
+                ),
+                SizedBox(width: 10.sp),
+                Expanded(
+                  child: TextButton(
+                    onPressed: _canSubmitFeedback ? _onFeedbackNext : null,
+                    style: TextButton.styleFrom(
+                      padding: EdgeInsets.symmetric(vertical: 12.sp),
+                      backgroundColor:
+                          _canSubmitFeedback ? kPrimaryColor : kDarkGreyColor,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12.br),
+                      ),
+                    ),
+                    child: Text(
+                      'Next',
+                      style: AppTypography.textSmMedium.copyWith(
+                        color: kBlackColor,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFeaturePage() {
+    return SingleChildScrollView(
+      key: const ValueKey(3),
+      child: Padding(
+        padding: EdgeInsets.all(20.sp),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Feature Request',
+              style: AppTypography.textLgBold.copyWith(
+                color: kWhiteColor,
+              ),
+            ),
+            SizedBox(height: 4.sp),
+            Text(
+              'What premium feature would you love to see?',
+              style: AppTypography.textSmRegular.copyWith(
+                color: kWhiteColor.withValues(alpha: 0.6),
+              ),
+            ),
+            SizedBox(height: 16.sp),
+
+            TextField(
+              controller: _featureController,
+              onChanged: (val) {
+                setState(() {
+                  _canSubmitFeature = val.trim().isNotEmpty;
+                });
+              },
+              textInputAction: TextInputAction.send,
+              onSubmitted: (_) {
+                if (_canSubmitFeature) _onFeatureSend();
+              },
+              maxLines: 3,
+              minLines: 2,
+              maxLength: 200,
+              style: AppTypography.textSmRegular.copyWith(
+                color: kWhiteColor,
+              ),
+              decoration: InputDecoration(
+                hintText: 'e.g. Offline Mode, More statistics...',
+                hintStyle: AppTypography.textSmRegular.copyWith(
+                  color: kWhiteColor.withValues(alpha: 0.35),
+                ),
+                filled: true,
+                fillColor: kBlack2Color,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12.br),
+                  borderSide: BorderSide(
+                    color: kWhiteColor.withValues(alpha: 0.08),
+                  ),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12.br),
+                  borderSide: BorderSide(
+                    color: kWhiteColor.withValues(alpha: 0.08),
+                  ),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12.br),
+                  borderSide: const BorderSide(color: kPrimaryColor),
+                ),
+                counterStyle: AppTypography.textXsRegular.copyWith(
+                  color: kWhiteColor.withValues(alpha: 0.35),
+                ),
+              ),
             ),
             SizedBox(height: 12.sp),
+
+            Row(
+              children: [
+                Expanded(
+                  child: TextButton(
+                    onPressed: _onFeatureSkip,
+                    style: TextButton.styleFrom(
+                      padding: EdgeInsets.symmetric(vertical: 12.sp),
+                      backgroundColor: kWhiteColor.withValues(alpha: 0.04),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12.br),
+                      ),
+                    ),
+                    child: Text(
+                      'Skip',
+                      style: AppTypography.textSmMedium.copyWith(
+                        color: kWhiteColor.withValues(alpha: 0.7),
+                      ),
+                    ),
+                  ),
+                ),
+                SizedBox(width: 10.sp),
+                Expanded(
+                  child: TextButton(
+                    onPressed: _canSubmitFeature ? _onFeatureSend : null,
+                    style: TextButton.styleFrom(
+                      padding: EdgeInsets.symmetric(vertical: 12.sp),
+                      backgroundColor:
+                          _canSubmitFeature ? kPrimaryColor : kDarkGreyColor,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12.br),
+                      ),
+                    ),
+                    child: Text(
+                      'Send',
+                      style: AppTypography.textSmMedium.copyWith(
+                        color: kBlackColor,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ],
-
-          // Text Input
-          TextField(
-            controller: _feedbackController,
-            onChanged: (_) => _updateCanSubmitFeedback(),
-            maxLines: isHighRating ? 3 : 5,
-            minLines: isHighRating ? 2 : 3,
-            maxLength: 500,
-            style: AppTypography.textSmRegular.copyWith(
-              color: kWhiteColor,
-            ),
-            decoration: InputDecoration(
-              hintText: isHighRating
-                  ? 'Or share your own feature idea...'
-                  : 'Tell us what went wrong or what we can improve...',
-              hintStyle: AppTypography.textSmRegular.copyWith(
-                color: kWhiteColor.withValues(alpha: 0.35),
-              ),
-              filled: true,
-              fillColor: kBlack2Color,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12.br),
-                borderSide: BorderSide(
-                  color: kWhiteColor.withValues(alpha: 0.08),
-                ),
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12.br),
-                borderSide: BorderSide(
-                  color: kWhiteColor.withValues(alpha: 0.08),
-                ),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12.br),
-                borderSide: const BorderSide(color: kPrimaryColor),
-              ),
-              counterStyle: AppTypography.textXsRegular.copyWith(
-                color: kWhiteColor.withValues(alpha: 0.35),
-              ),
-            ),
-          ),
-          SizedBox(height: 12.sp),
-
-          // Buttons
-          Row(
-            children: [
-              Expanded(
-                child: TextButton(
-                  onPressed: _skip,
-                  style: TextButton.styleFrom(
-                    padding: EdgeInsets.symmetric(vertical: 12.sp),
-                    backgroundColor: kWhiteColor.withValues(alpha: 0.04),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12.br),
-                    ),
-                  ),
-                  child: Text(
-                    // If high rating, "Skip" implies "Skip survey" but still allows native review
-                    // If low rating, "Skip" implies "Close"
-                    'Skip',
-                    style: AppTypography.textSmMedium.copyWith(
-                      color: kWhiteColor.withValues(alpha: 0.7),
-                    ),
-                  ),
-                ),
-              ),
-              SizedBox(width: 10.sp),
-              Expanded(
-                child: TextButton(
-                  onPressed: _canSubmitFeedback ? _submit : null,
-                  style: TextButton.styleFrom(
-                    padding: EdgeInsets.symmetric(vertical: 12.sp),
-                    backgroundColor:
-                        _canSubmitFeedback ? kPrimaryColor : kDarkGreyColor,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12.br),
-                    ),
-                  ),
-                  child: Text(
-                    'Send',
-                    style: AppTypography.textSmMedium.copyWith(
-                      color: kBlackColor,
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ],
+        ),
       ),
     );
   }

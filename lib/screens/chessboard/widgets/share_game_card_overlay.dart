@@ -576,6 +576,23 @@ class _ShareCard extends ConsumerWidget {
             : '';
     final boardOrientation = isFlipped ? Side.black : Side.white;
 
+    // Determine which player info to show at top and bottom based on isFlipped
+    // When not flipped: black at top, white at bottom (normal view)
+    // When flipped: white at top, black at bottom (reversed view)
+    final topPlayerName = isFlipped ? whitePlayerName : blackPlayerName;
+    final topPlayerCountry = isFlipped ? whiteCountry : blackCountry;
+    final topPlayerElo = isFlipped ? whitePlayerElo : blackPlayerElo;
+    final topPlayerTitle = isFlipped ? whitePlayerTitle : blackPlayerTitle;
+    final topPlayerClock = isFlipped ? whitePlayerClock : blackPlayerClock;
+    final topIsWhitePlayer = isFlipped;
+
+    final bottomPlayerName = isFlipped ? blackPlayerName : whitePlayerName;
+    final bottomPlayerCountry = isFlipped ? blackCountry : whiteCountry;
+    final bottomPlayerElo = isFlipped ? blackPlayerElo : whitePlayerElo;
+    final bottomPlayerTitle = isFlipped ? blackPlayerTitle : whitePlayerTitle;
+    final bottomPlayerClock = isFlipped ? blackPlayerClock : whitePlayerClock;
+    final bottomIsWhitePlayer = !isFlipped;
+
     final cardContent = Container(
       width: 370.w,
       decoration: BoxDecoration(
@@ -624,20 +641,20 @@ class _ShareCard extends ConsumerWidget {
                 // Display end score for finished games (aligned with eval bar position)
                 SizedBox(
                   width: 20.w,
-                  child: _buildEndScoreWidget(isWhitePlayer: false),
+                  child: _buildEndScoreWidget(isWhitePlayer: topIsWhitePlayer),
                 ),
                 SizedBox(width: 8.w),
-                if (blackCountry.isNotEmpty) ...[
+                if (topPlayerCountry.isNotEmpty) ...[
                   CountryFlag.fromCountryCode(
-                    blackCountry,
+                    topPlayerCountry,
                     height: 12.h,
                     width: 16.w,
                   ),
                   SizedBox(width: 8.w),
                 ],
-                if (blackPlayerTitle != null) ...[
+                if (topPlayerTitle != null) ...[
                   Text(
-                    blackPlayerTitle!,
+                    topPlayerTitle,
                     style: TextStyle(
                       color: kPrimaryColor,
                       fontSize: 10.sp,
@@ -648,7 +665,7 @@ class _ShareCard extends ConsumerWidget {
                 ],
                 Expanded(
                   child: Text(
-                    blackPlayerName,
+                    topPlayerName,
                     style: TextStyle(
                       color: kWhiteColor,
                       fontSize: 11.sp,
@@ -658,16 +675,16 @@ class _ShareCard extends ConsumerWidget {
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
-                if (blackPlayerElo != null)
+                if (topPlayerElo != null)
                   Text(
-                    blackPlayerElo!,
+                    topPlayerElo,
                     style: TextStyle(
                       color: kLightYellowColor,
                       fontSize: 10.sp,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
-                if (blackPlayerClock != null) ...[
+                if (topPlayerClock != null) ...[
                   SizedBox(width: 8.w),
                   Container(
                     padding: EdgeInsets.symmetric(
@@ -679,7 +696,7 @@ class _ShareCard extends ConsumerWidget {
                       borderRadius: BorderRadius.circular(4.br),
                     ),
                     child: Text(
-                      blackPlayerClock!,
+                      topPlayerClock,
                       style: TextStyle(
                         color: kWhiteColor,
                         fontSize: 9.sp,
@@ -746,20 +763,20 @@ class _ShareCard extends ConsumerWidget {
                 // Display end score for finished games (aligned with eval bar position)
                 SizedBox(
                   width: 20.w,
-                  child: _buildEndScoreWidget(isWhitePlayer: true),
+                  child: _buildEndScoreWidget(isWhitePlayer: bottomIsWhitePlayer),
                 ),
                 SizedBox(width: 8.w),
-                if (whiteCountry.isNotEmpty) ...[
+                if (bottomPlayerCountry.isNotEmpty) ...[
                   CountryFlag.fromCountryCode(
-                    whiteCountry,
+                    bottomPlayerCountry,
                     height: 12.h,
                     width: 16.w,
                   ),
                   SizedBox(width: 8.w),
                 ],
-                if (whitePlayerTitle != null) ...[
+                if (bottomPlayerTitle != null) ...[
                   Text(
-                    whitePlayerTitle!,
+                    bottomPlayerTitle,
                     style: TextStyle(
                       color: kPrimaryColor,
                       fontSize: 10.sp,
@@ -770,7 +787,7 @@ class _ShareCard extends ConsumerWidget {
                 ],
                 Expanded(
                   child: Text(
-                    whitePlayerName,
+                    bottomPlayerName,
                     style: TextStyle(
                       color: kWhiteColor,
                       fontSize: 11.sp,
@@ -780,16 +797,16 @@ class _ShareCard extends ConsumerWidget {
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
-                if (whitePlayerElo != null)
+                if (bottomPlayerElo != null)
                   Text(
-                    whitePlayerElo!,
+                    bottomPlayerElo,
                     style: TextStyle(
                       color: kLightYellowColor,
                       fontSize: 10.sp,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
-                if (whitePlayerClock != null) ...[
+                if (bottomPlayerClock != null) ...[
                   SizedBox(width: 8.w),
                   Container(
                     padding: EdgeInsets.symmetric(
@@ -801,7 +818,7 @@ class _ShareCard extends ConsumerWidget {
                       borderRadius: BorderRadius.circular(4.br),
                     ),
                     child: Text(
-                      whitePlayerClock!,
+                      bottomPlayerClock,
                       style: TextStyle(
                         color: kWhiteColor,
                         fontSize: 9.sp,
