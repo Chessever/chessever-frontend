@@ -5772,10 +5772,11 @@ class ChessBoardScreenNotifierNew
     if (force) {
       scheduleEvaluation();
     } else {
-      // Debounce rapid navigation so we only evaluate after the user settles on a move
+      // PERF: Increased debounce from 120ms to 200ms to reduce redundant
+      // evaluations during rapid navigation while maintaining responsiveness
       EasyDebounce.debounce(
         'evaluation-$index',
-        const Duration(milliseconds: 120),
+        const Duration(milliseconds: 200),
         scheduleEvaluation,
       );
     }
