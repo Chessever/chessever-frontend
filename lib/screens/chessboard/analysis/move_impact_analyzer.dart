@@ -805,7 +805,8 @@ MoveImpactAnalysis? _calculateMoveImpactFromEvals({
 
 /// Memoized provider to generate position FENs from game state
 /// Prevents rebuild loop by calculating FENs once and caching
-final positionFensProvider = Provider.family<List<String>, PositionFensParams>((ref, params) {
+/// PERF: Added autoDispose to prevent memory buildup during rapid page swiping
+final positionFensProvider = Provider.family.autoDispose<List<String>, PositionFensParams>((ref, params) {
   final List<String> positionFens = [];
   Position currentPos = params.startingPosition ?? Chess.initial;
   positionFens.add(currentPos.fen); // Starting position
@@ -845,8 +846,8 @@ class PositionFensParams {
 /// Provider for FULL position evaluation including all top moves
 /// Returns complete CloudEval with multiple PVs (top 5 moves)
 /// Uses cascade evaluation: cloud → Supabase → Lichess → Stockfish
-/// NOT auto-disposed - keeps evaluations cached for immediate display
-final fullPositionEvalProvider = FutureProvider.family<CloudEval?, String>((ref, fen) async {
+/// PERF: Added autoDispose to prevent memory buildup during rapid page swiping
+final fullPositionEvalProvider = FutureProvider.family.autoDispose<CloudEval?, String>((ref, fen) async {
   try {
     // Use the cascade eval provider for this position
     // Request 3 PVs for move impact analysis
@@ -874,8 +875,8 @@ final gameMoveImpactsProvider = FutureProvider.family.autoDispose<Map<int, MoveI
 /// NEW: Fallback provider that evaluates all positions using FULL CloudEval (top moves comparison)
 /// Compares player's move vs best alternatives from engine
 /// Uses cascade eval in PARALLEL with 75 isolates
-/// NOT auto-disposed - keeps calculations cached while on board page
-final allMovesImpactFromPositionsProvider = FutureProvider.family<Map<int, MoveImpactAnalysis>, PositionAnalysisParams>((ref, params) async {
+/// PERF: Added autoDispose to prevent memory buildup during rapid page swiping
+final allMovesImpactFromPositionsProvider = FutureProvider.family.autoDispose<Map<int, MoveImpactAnalysis>, PositionAnalysisParams>((ref, params) async {
   final Map<int, MoveImpactAnalysis> results = {};
 
   try {
@@ -983,8 +984,8 @@ final allMovesImpactFromPositionsProvider = FutureProvider.family<Map<int, MoveI
 
 /// Provider to analyze ALL moves from PGN in parallel using worker isolates
 /// This parses evaluations from PGN comments and calculates move impacts
-/// NOT auto-disposed - keeps calculations cached while on board page
-final allMovesImpactFromPgnProvider = FutureProvider.family<Map<int, MoveImpactAnalysis>, PgnAnalysisParams>((ref, params) async {
+/// PERF: Added autoDispose to prevent memory buildup during rapid page swiping
+final allMovesImpactFromPgnProvider = FutureProvider.family.autoDispose<Map<int, MoveImpactAnalysis>, PgnAnalysisParams>((ref, params) async {
   final Map<int, MoveImpactAnalysis> results = {};
 
   try {
