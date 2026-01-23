@@ -125,7 +125,7 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
               letterSpacing: -0.15,
             )
             : AppTypography.textXsMedium.copyWith(
-              color: kPrimaryColor, // Changed from kLightYellowColor to fix visibility
+              color: kLightYellowColor,
               fontWeight: FontWeight.w700,
               fontSize: 14.f,
               height: 1.2,

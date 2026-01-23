@@ -2,18 +2,18 @@ import 'dart:async';
 
 import 'package:chessever2/providers/event_favorite_players_provider.dart';
 import 'package:chessever2/providers/favorite_events_provider.dart';
-import 'package:chessever2/repository/supabase/game/game_repository.dart';
+import 'package:chessever2/repository/local_storage/tournament/games/games_local_storage.dart';
 import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
 import 'package:chessever2/repository/supabase/tour/tour_repository.dart';
-import 'package:chessever2/screens/favorites/favorite_players_provider.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/screens/group_event/providers/live_group_broadcast_id_provider.dart';
 import 'package:chessever2/screens/group_event/providers/sorting_all_event_provider.dart';
 import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/game_status_stream_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_pin_provider.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -240,23 +240,22 @@ final forYouEventsProvider = StateNotifierProvider.autoDispose<ForYouNotifier, F
 
 // ============================================================================
 // LAZY GAMES PER EVENT PROVIDER
+// Uses the same sorting logic as the Games tab in event detail screen:
+// 1. Pinned games first (manual + auto, preserving pin order)
+// 2. Round number DESCENDING (latest round first)
+// 3. Game number DESCENDING
+// 4. Board number ASCENDING
 // ============================================================================
 
 final eventGamesProvider = FutureProvider.autoDispose
     .family<List<Games>, String>((ref, eventId) async {
   ref.keepAlive();
 
-  final repository = ref.read(gameRepositoryProvider);
   final groupBroadcastRepo = ref.read(groupBroadcastRepositoryProvider);
   final tourRepository = ref.read(tourRepositoryProvider);
+  final gamesStorage = ref.read(gamesLocalStorage);
 
-  final favoritesState = ref.read(favoritePlayersNotifierProvider).valueOrNull;
-  final favoritePlayers = favoritesState?.players ?? [];
-  final favoriteFideIds = favoritePlayers
-      .where((p) => p.fideId != null && p.fideId! > 0)
-      .map((p) => p.fideId!)
-      .toSet();
-
+  // Get all tour IDs for this event
   List<String> tourIds = [];
   try {
     final tours = await tourRepository.getTourByGroupId(eventId);
@@ -277,37 +276,55 @@ final eventGamesProvider = FutureProvider.autoDispose
 
   if (tourIds.isEmpty) tourIds = [eventId];
 
-  final selectedGames = <Games>[];
+  // Collect ALL games from all tours
+  final allGames = <Games>[];
   final seenGameIds = <String>{};
 
   for (final tourId in tourIds) {
-    if (selectedGames.length >= kGamesPerEvent) break;
-
-    final neededCount = kGamesPerEvent - selectedGames.length;
-    final allGames = await repository.getForYouEventGames(
-      tourIds: [tourId],
-      neededCount: neededCount,
-    );
-
-    if (allGames.isEmpty) continue;
-
-    final playedGames = allGames
-        .where((g) => _hasStarted(g))
-        .where((g) => g.players != null && g.players!.length >= 2)
-        .toList();
-
-    if (playedGames.isEmpty) continue;
-
-    final topGames = _selectTopGames(playedGames, favoriteFideIds, neededCount);
-    for (final game in topGames) {
-      if (selectedGames.length >= kGamesPerEvent) break;
-      if (seenGameIds.add(game.id)) {
-        selectedGames.add(game);
+    try {
+      // Use getGames which checks cache first (more efficient than fetchAndSaveGames)
+      final games = await gamesStorage.getGames(tourId);
+      for (final game in games) {
+        if (seenGameIds.add(game.id)) {
+          // Only include games that have started (have moves or are live/finished)
+          if (_hasStarted(game) && game.players != null && game.players!.length >= 2) {
+            allGames.add(game);
+          }
+        }
       }
+    } catch (e) {
+      debugPrint('[ForYou] Error fetching games for tour $tourId: $e');
     }
   }
 
-  return selectedGames;
+  if (allGames.isEmpty) {
+    debugPrint('[ForYou] No games found for event $eventId');
+    return [];
+  }
+
+  // Collect pinned game IDs from all tours (same as games tab)
+  final pinnedIds = <String>[];
+  final seenPinIds = <String>{};
+  for (final tourId in tourIds) {
+    try {
+      final pinState = ref.read(gamesPinprovider(tourId));
+      for (final pinId in pinState.allPins) {
+        if (seenPinIds.add(pinId)) {
+          pinnedIds.add(pinId);
+        }
+      }
+    } catch (e) {
+      // Pin provider might not be initialized, continue without pins
+    }
+  }
+
+  // Sort using the SAME logic as Games tab
+  final sortedGames = _sortGamesLikeGamesTab(allGames, pinnedIds);
+
+  // Return first 4 games
+  final result = sortedGames.take(kGamesPerEvent).toList();
+  debugPrint('[ForYou] Selected ${result.length} games for event $eventId (from ${allGames.length} total)');
+  return result;
 });
 
 bool _hasStarted(Games game) {
@@ -322,51 +339,67 @@ bool _hasStarted(Games game) {
   return isLive || hasMoves || isFinished;
 }
 
-/// Select top games with priority: live > favorites > regular (all sorted by ELO)
-/// Games are already from latest round (filtered in repository)
-List<Games> _selectTopGames(List<Games> games, Set<int> favoriteFideIds, int count) {
+/// Sorts games using the same algorithm as the Games tab:
+/// 1. Pinned games first (preserving pin order)
+/// 2. Round number DESCENDING
+/// 3. Game number DESCENDING
+/// 4. Board number ASCENDING
+List<Games> _sortGamesLikeGamesTab(List<Games> games, List<String> pinnedIds) {
   if (games.isEmpty) return [];
 
-  // Categorize: live > favorites > regular
-  final liveGames = <Games>[];
-  final favoriteGames = <Games>[];
-  final regularGames = <Games>[];
-
+  // Pre-parse round/game numbers to avoid repeated regex during sort
+  final gameInfo = <String, (int, int)>{};
   for (final game in games) {
-    final isLive = game.status == '*' || game.status == 'ongoing';
-    if (isLive) {
-      liveGames.add(game);
-    } else if (_hasFavoritePlayer(game, favoriteFideIds)) {
-      favoriteGames.add(game);
-    } else {
-      regularGames.add(game);
+    gameInfo[game.id] = (
+      _extractRoundNumber(game.roundSlug),
+      _extractGameNumber(game.roundSlug),
+    );
+  }
+
+  final sortedGames = List<Games>.from(games);
+  sortedGames.sort((a, b) {
+    // 1. Pinned games first (preserving pin order)
+    final aPinned = pinnedIds.contains(a.id);
+    final bPinned = pinnedIds.contains(b.id);
+    if (aPinned && !bPinned) return -1;
+    if (!aPinned && bPinned) return 1;
+
+    // If both are pinned, preserve pin order
+    if (aPinned && bPinned) {
+      final aIndex = pinnedIds.indexOf(a.id);
+      final bIndex = pinnedIds.indexOf(b.id);
+      if (aIndex != bIndex) return aIndex.compareTo(bIndex);
     }
-  }
 
-  // Sort by ELO descending (already sorted from DB but re-sort for priority categories)
-  int compareByElo(Games a, Games b) => _getMaxElo(b).compareTo(_getMaxElo(a));
-  liveGames.sort(compareByElo);
-  favoriteGames.sort(compareByElo);
-  regularGames.sort(compareByElo);
+    final (roundA, gameA) = gameInfo[a.id] ?? (0, 0);
+    final (roundB, gameB) = gameInfo[b.id] ?? (0, 0);
 
-  // Build result: live > favorites > regular
-  final result = <Games>[];
-  for (final game in [...liveGames, ...favoriteGames, ...regularGames]) {
-    if (result.length >= count) break;
-    result.add(game);
-  }
+    // 2. Sort by round number DESCENDING (latest round first)
+    if (roundA != roundB) return roundB.compareTo(roundA);
 
-  return result;
+    // 3. Within same round, sort by game number DESCENDING
+    if (gameA != gameB) return gameB.compareTo(gameA);
+
+    // 4. Finally, sort by board number ASCENDING
+    final aBoard = a.boardNr, bBoard = b.boardNr;
+    if (aBoard != null && bBoard != null) return aBoard.compareTo(bBoard);
+    if (aBoard != null) return -1;
+    if (bBoard != null) return 1;
+    return 0;
+  });
+
+  return sortedGames;
 }
 
-bool _hasFavoritePlayer(Games game, Set<int> favoriteFideIds) {
-  if (game.players == null || favoriteFideIds.isEmpty) return false;
-  return game.players!.any((p) => favoriteFideIds.contains(p.fideId));
+int _extractRoundNumber(String roundSlug) {
+  final match = RegExp(r'round-?(\d+)', caseSensitive: false).firstMatch(roundSlug) ??
+                RegExp(r'(\d+)').firstMatch(roundSlug);
+  return int.tryParse(match?.group(1) ?? '0') ?? 0;
 }
 
-int _getMaxElo(Games game) {
-  if (game.players == null || game.players!.isEmpty) return 0;
-  return game.players!.map((p) => p.rating).fold<int>(0, (max, r) => r > max ? r : max);
+int _extractGameNumber(String roundSlug) {
+  final match = RegExp(r'game-?(\d+)', caseSensitive: false).firstMatch(roundSlug);
+  return int.tryParse(match?.group(1) ?? '0') ?? 0;
 }
 
 // ============================================================================
