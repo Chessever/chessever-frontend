@@ -292,131 +292,137 @@ class _ReviewFlowDialogState extends State<ReviewFlowDialog> {
   Widget _buildFeedbackPage() {
     return SingleChildScrollView(
       key: const ValueKey(2),
-      child: Padding(
-        padding: EdgeInsets.all(20.sp),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Your Feedback',
-              style: AppTypography.textLgBold.copyWith(
-                color: kWhiteColor,
-              ),
-            ),
-            SizedBox(height: 4.sp),
-            Text(
-              'Tell us what went wrong or what we can improve...',
-              style: AppTypography.textSmRegular.copyWith(
-                color: kWhiteColor.withValues(alpha: 0.6),
-              ),
-            ),
-            SizedBox(height: 12.sp),
-            
-            // Small star display
-            Row(
-              children: List.generate(5, (index) {
-                final isActive = index < _rating;
-                return Icon(
-                  isActive ? Icons.star_rounded : Icons.star_border_rounded,
-                  color: isActive
-                      ? kPrimaryColor
-                      : kWhiteColor.withValues(alpha: 0.25),
-                  size: 18.ic,
-                );
-              }),
-            ),
-            SizedBox(height: 16.sp),
-
-            TextField(
-              controller: _feedbackController,
-              onChanged: (val) {
-                setState(() {
-                  _canSubmitFeedback = val.trim().isNotEmpty;
-                });
-              },
-              textInputAction: TextInputAction.next,
-              onSubmitted: (_) => _onFeedbackNext(),
-              maxLines: 4,
-              minLines: 3,
-              maxLength: 500,
-              style: AppTypography.textSmRegular.copyWith(
-                color: kWhiteColor,
-              ),
-              decoration: InputDecoration(
-                hintText: 'Type your feedback here...',
-                hintStyle: AppTypography.textSmRegular.copyWith(
-                  color: kWhiteColor.withValues(alpha: 0.35),
-                ),
-                filled: true,
-                fillColor: kBlack2Color,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12.br),
-                  borderSide: BorderSide(
-                    color: kWhiteColor.withValues(alpha: 0.08),
-                  ),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12.br),
-                  borderSide: BorderSide(
-                    color: kWhiteColor.withValues(alpha: 0.08),
-                  ),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12.br),
-                  borderSide: const BorderSide(color: kPrimaryColor),
-                ),
-                counterStyle: AppTypography.textXsRegular.copyWith(
-                  color: kWhiteColor.withValues(alpha: 0.35),
-                ),
-              ),
-            ),
-            SizedBox(height: 12.sp),
-
-            Row(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildFeedbackBanner(),
+          Padding(
+            padding: EdgeInsets.all(20.sp),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  child: TextButton(
-                    onPressed: _onFeedbackSkip,
-                    style: TextButton.styleFrom(
-                      padding: EdgeInsets.symmetric(vertical: 12.sp),
-                      backgroundColor: kWhiteColor.withValues(alpha: 0.04),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12.br),
+                Text(
+                  'Your Feedback',
+                  style: AppTypography.textLgBold.copyWith(
+                    color: kWhiteColor,
+                  ),
+                ),
+                SizedBox(height: 4.sp),
+                Text(
+                  'Tell us what went wrong or what we can improve...',
+                  style: AppTypography.textSmRegular.copyWith(
+                    color: kWhiteColor.withValues(alpha: 0.6),
+                  ),
+                ),
+                SizedBox(height: 12.sp),
+                
+                // Small star display
+                Row(
+                  children: List.generate(5, (index) {
+                    final isActive = index < _rating;
+                    return Icon(
+                      isActive ? Icons.star_rounded : Icons.star_border_rounded,
+                      color: isActive
+                          ? kPrimaryColor
+                          : kWhiteColor.withValues(alpha: 0.25),
+                      size: 18.ic,
+                    );
+                  }),
+                ),
+                SizedBox(height: 16.sp),
+
+                TextField(
+                  controller: _feedbackController,
+                  onChanged: (val) {
+                    setState(() {
+                      _canSubmitFeedback = val.trim().isNotEmpty;
+                    });
+                  },
+                  textInputAction: TextInputAction.next,
+                  onSubmitted: (_) => _onFeedbackNext(),
+                  maxLines: 4,
+                  minLines: 3,
+                  maxLength: 500,
+                  style: AppTypography.textSmRegular.copyWith(
+                    color: kWhiteColor,
+                  ),
+                  decoration: InputDecoration(
+                    hintText: 'Type your feedback here...',
+                    hintStyle: AppTypography.textSmRegular.copyWith(
+                      color: kWhiteColor.withValues(alpha: 0.35),
+                    ),
+                    filled: true,
+                    fillColor: kBlack2Color,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12.br),
+                      borderSide: BorderSide(
+                        color: kWhiteColor.withValues(alpha: 0.08),
                       ),
                     ),
-                    child: Text(
-                      'Skip',
-                      style: AppTypography.textSmMedium.copyWith(
-                        color: kWhiteColor.withValues(alpha: 0.7),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12.br),
+                      borderSide: BorderSide(
+                        color: kWhiteColor.withValues(alpha: 0.08),
                       ),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12.br),
+                      borderSide: const BorderSide(color: kPrimaryColor),
+                    ),
+                    counterStyle: AppTypography.textXsRegular.copyWith(
+                      color: kWhiteColor.withValues(alpha: 0.35),
                     ),
                   ),
                 ),
-                SizedBox(width: 10.sp),
-                Expanded(
-                  child: TextButton(
-                    onPressed: _canSubmitFeedback ? _onFeedbackNext : null,
-                    style: TextButton.styleFrom(
-                      padding: EdgeInsets.symmetric(vertical: 12.sp),
-                      backgroundColor:
-                          _canSubmitFeedback ? kPrimaryColor : kDarkGreyColor,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12.br),
+                SizedBox(height: 12.sp),
+
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextButton(
+                        onPressed: _onFeedbackSkip,
+                        style: TextButton.styleFrom(
+                          padding: EdgeInsets.symmetric(vertical: 12.sp),
+                          backgroundColor: kWhiteColor.withValues(alpha: 0.04),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12.br),
+                          ),
+                        ),
+                        child: Text(
+                          'Skip',
+                          style: AppTypography.textSmMedium.copyWith(
+                            color: kWhiteColor.withValues(alpha: 0.7),
+                          ),
+                        ),
                       ),
                     ),
-                    child: Text(
-                      'Next',
-                      style: AppTypography.textSmMedium.copyWith(
-                        color: kBlackColor,
+                    SizedBox(width: 10.sp),
+                    Expanded(
+                      child: TextButton(
+                        onPressed: _canSubmitFeedback ? _onFeedbackNext : null,
+                        style: TextButton.styleFrom(
+                          padding: EdgeInsets.symmetric(vertical: 12.sp),
+                          backgroundColor:
+                              _canSubmitFeedback ? kPrimaryColor : kDarkGreyColor,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12.br),
+                          ),
+                        ),
+                        child: Text(
+                          'Next',
+                          style: AppTypography.textSmMedium.copyWith(
+                            color: kBlackColor,
+                          ),
+                        ),
                       ),
                     ),
-                  ),
+                  ],
                 ),
               ],
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -424,118 +430,167 @@ class _ReviewFlowDialogState extends State<ReviewFlowDialog> {
   Widget _buildFeaturePage() {
     return SingleChildScrollView(
       key: const ValueKey(3),
-      child: Padding(
-        padding: EdgeInsets.all(20.sp),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Feature Request',
-              style: AppTypography.textLgBold.copyWith(
-                color: kWhiteColor,
-              ),
-            ),
-            SizedBox(height: 4.sp),
-            Text(
-              'What premium feature would you love to see?',
-              style: AppTypography.textSmRegular.copyWith(
-                color: kWhiteColor.withValues(alpha: 0.6),
-              ),
-            ),
-            SizedBox(height: 16.sp),
-
-            TextField(
-              controller: _featureController,
-              onChanged: (val) {
-                setState(() {
-                  _canSubmitFeature = val.trim().isNotEmpty;
-                });
-              },
-              textInputAction: TextInputAction.send,
-              onSubmitted: (_) {
-                if (_canSubmitFeature) _onFeatureSend();
-              },
-              maxLines: 3,
-              minLines: 2,
-              maxLength: 200,
-              style: AppTypography.textSmRegular.copyWith(
-                color: kWhiteColor,
-              ),
-              decoration: InputDecoration(
-                hintText: 'e.g. Offline Mode, More statistics...',
-                hintStyle: AppTypography.textSmRegular.copyWith(
-                  color: kWhiteColor.withValues(alpha: 0.35),
-                ),
-                filled: true,
-                fillColor: kBlack2Color,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12.br),
-                  borderSide: BorderSide(
-                    color: kWhiteColor.withValues(alpha: 0.08),
-                  ),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12.br),
-                  borderSide: BorderSide(
-                    color: kWhiteColor.withValues(alpha: 0.08),
-                  ),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12.br),
-                  borderSide: const BorderSide(color: kPrimaryColor),
-                ),
-                counterStyle: AppTypography.textXsRegular.copyWith(
-                  color: kWhiteColor.withValues(alpha: 0.35),
-                ),
-              ),
-            ),
-            SizedBox(height: 12.sp),
-
-            Row(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildFeedbackBanner(),
+          Padding(
+            padding: EdgeInsets.all(20.sp),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  child: TextButton(
-                    onPressed: _onFeatureSkip,
-                    style: TextButton.styleFrom(
-                      padding: EdgeInsets.symmetric(vertical: 12.sp),
-                      backgroundColor: kWhiteColor.withValues(alpha: 0.04),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12.br),
+                Text(
+                  'Feature Request',
+                  style: AppTypography.textLgBold.copyWith(
+                    color: kWhiteColor,
+                  ),
+                ),
+                SizedBox(height: 4.sp),
+                Text(
+                  'What premium feature would you love to see?',
+                  style: AppTypography.textSmRegular.copyWith(
+                    color: kWhiteColor.withValues(alpha: 0.6),
+                  ),
+                ),
+                SizedBox(height: 16.sp),
+
+                TextField(
+                  controller: _featureController,
+                  onChanged: (val) {
+                    setState(() {
+                      _canSubmitFeature = val.trim().isNotEmpty;
+                    });
+                  },
+                  textInputAction: TextInputAction.send,
+                  onSubmitted: (_) {
+                    if (_canSubmitFeature) _onFeatureSend();
+                  },
+                  maxLines: 3,
+                  minLines: 2,
+                  maxLength: 200,
+                  style: AppTypography.textSmRegular.copyWith(
+                    color: kWhiteColor,
+                  ),
+                  decoration: InputDecoration(
+                    hintText: "I'd happily pay for...",
+                    hintStyle: AppTypography.textSmRegular.copyWith(
+                      color: kWhiteColor.withValues(alpha: 0.35),
+                    ),
+                    filled: true,
+                    fillColor: kBlack2Color,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12.br),
+                      borderSide: BorderSide(
+                        color: kWhiteColor.withValues(alpha: 0.08),
                       ),
                     ),
-                    child: Text(
-                      'Skip',
-                      style: AppTypography.textSmMedium.copyWith(
-                        color: kWhiteColor.withValues(alpha: 0.7),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12.br),
+                      borderSide: BorderSide(
+                        color: kWhiteColor.withValues(alpha: 0.08),
                       ),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12.br),
+                      borderSide: const BorderSide(color: kPrimaryColor),
+                    ),
+                    counterStyle: AppTypography.textXsRegular.copyWith(
+                      color: kWhiteColor.withValues(alpha: 0.35),
                     ),
                   ),
                 ),
-                SizedBox(width: 10.sp),
-                Expanded(
-                  child: TextButton(
-                    onPressed: _canSubmitFeature ? _onFeatureSend : null,
-                    style: TextButton.styleFrom(
-                      padding: EdgeInsets.symmetric(vertical: 12.sp),
-                      backgroundColor:
-                          _canSubmitFeature ? kPrimaryColor : kDarkGreyColor,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12.br),
+                SizedBox(height: 12.sp),
+
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextButton(
+                        onPressed: _onFeatureSkip,
+                        style: TextButton.styleFrom(
+                          padding: EdgeInsets.symmetric(vertical: 12.sp),
+                          backgroundColor: kWhiteColor.withValues(alpha: 0.04),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12.br),
+                          ),
+                        ),
+                        child: Text(
+                          'Skip',
+                          style: AppTypography.textSmMedium.copyWith(
+                            color: kWhiteColor.withValues(alpha: 0.7),
+                          ),
+                        ),
                       ),
                     ),
-                    child: Text(
-                      'Send',
-                      style: AppTypography.textSmMedium.copyWith(
-                        color: kBlackColor,
+                    SizedBox(width: 10.sp),
+                    Expanded(
+                      child: TextButton(
+                        onPressed: _canSubmitFeature ? _onFeatureSend : null,
+                        style: TextButton.styleFrom(
+                          padding: EdgeInsets.symmetric(vertical: 12.sp),
+                          backgroundColor:
+                              _canSubmitFeature ? kPrimaryColor : kDarkGreyColor,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12.br),
+                          ),
+                        ),
+                        child: Text(
+                          'Send',
+                          style: AppTypography.textSmMedium.copyWith(
+                            color: kBlackColor,
+                          ),
+                        ),
                       ),
                     ),
-                  ),
+                  ],
                 ),
               ],
             ),
-          ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFeedbackBanner() {
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.symmetric(horizontal: 20.sp, vertical: 16.sp),
+      decoration: BoxDecoration(
+        color: kPrimaryColor.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20.br)),
+        border: Border(
+          bottom: BorderSide(
+            color: kPrimaryColor.withValues(alpha: 0.2),
+            width: 1,
+          ),
         ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: EdgeInsets.all(8.sp),
+            decoration: BoxDecoration(
+              color: kPrimaryColor.withValues(alpha: 0.15),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              Icons.auto_awesome_rounded,
+              color: kPrimaryColor,
+              size: 20.ic,
+            ),
+          ),
+          SizedBox(width: 12.sp),
+          Expanded(
+            child: Text(
+              'ChessEver grows and improves with your feedback. Thank you!',
+              style: AppTypography.textSmMedium.copyWith(
+                color: kWhiteColor.withValues(alpha: 0.9),
+                height: 1.4,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
