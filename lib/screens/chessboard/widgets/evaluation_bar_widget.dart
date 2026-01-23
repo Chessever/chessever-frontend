@@ -195,7 +195,7 @@ class _EvaluationBarWidgetState extends State<EvaluationBarWidget> {
                     textAlign: TextAlign.center,
                     style: AppTypography.textSmRegular.copyWith(
                       color: Colors.white,
-                      fontSize: 3.5.f,
+                      fontSize: 9.sp, // Reduced to fit 3 chars, .sp avoids 10px clamp
                       fontWeight: FontWeight.w600,
                     ),
                   ),
@@ -371,7 +371,7 @@ class _Bars extends StatelessWidget {
                 textAlign: TextAlign.center,
                 style: AppTypography.textSmRegular.copyWith(
                   color: Colors.white,
-                  fontSize: playerView == PlayerView.gridView ? 0.2.f : 1.5.f,
+                  fontSize: playerView == PlayerView.gridView ? 6.sp : 9.sp, // Scaled sizes that fit container
                   fontWeight:
                       playerView == PlayerView.gridView
                           ? FontWeight.w300

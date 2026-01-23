@@ -52,11 +52,6 @@ final supabaseCombinedSearchProvider =
                     countryIso2: countryIso2!,
                   )
                 : <SearchResult>[];
-        final now = DateTime.now();
-
-        int delta(GroupBroadcast b) =>
-            (b.dateStart?.difference(now).abs().inSeconds ?? 999999).toInt();
-
         String key(String s) => s.toLowerCase().trim();
 
         broadcasts.sort((a, b) {
@@ -83,8 +78,20 @@ final supabaseCombinedSearchProvider =
           if (aContain && !bContain) return -1;
           if (!aContain && bContain) return 1;
           if (aContain && bContain) return keyA.compareTo(keyB);
-          final d = delta(a).compareTo(delta(b));
-          if (d != 0) return d;
+
+          /* 4. most recent first (by start date descending) */
+          final aDate = a.dateStart;
+          final bDate = b.dateStart;
+          if (aDate != null && bDate != null) {
+            final dateCompare = bDate.compareTo(aDate); // descending: newer first
+            if (dateCompare != 0) return dateCompare;
+          } else if (aDate != null) {
+            return -1; // a has date, b doesn't -> a comes first
+          } else if (bDate != null) {
+            return 1; // b has date, a doesn't -> b comes first
+          }
+
+          /* 5. max avg elo as tiebreaker */
           return (b.maxAvgElo ?? 0).compareTo(a.maxAvgElo ?? 0);
         });
 
@@ -154,9 +161,10 @@ final supabaseCombinedSearchProvider =
           for (final b in broadcasts) b.id: b,
         };
 
-        int deltaPlayer(SearchResult r) {
+        /// Returns tournament start date for sorting (null if not found)
+        DateTime? playerTournamentDate(SearchResult r) {
           final b = broadcastById[r.tournament.id];
-          return (b?.dateStart?.difference(now).abs().inSeconds ?? 999999);
+          return b?.dateStart;
         }
 
         final qLower = trimmedQuery.toLowerCase();
@@ -390,9 +398,17 @@ final supabaseCombinedSearchProvider =
           final bElo = b.player?.rating ?? 0;
           if (aElo != bElo) return bElo.compareTo(aElo);
 
-          // 3. nearest tournament date
-          final d = deltaPlayer(a).compareTo(deltaPlayer(b));
-          if (d != 0) return d;
+          // 3. most recent tournament date first
+          final aDate = playerTournamentDate(a);
+          final bDate = playerTournamentDate(b);
+          if (aDate != null && bDate != null) {
+            final dateCompare = bDate.compareTo(aDate); // descending: newer first
+            if (dateCompare != 0) return dateCompare;
+          } else if (aDate != null) {
+            return -1; // a has date, b doesn't -> a comes first
+          } else if (bDate != null) {
+            return 1; // b has date, a doesn't -> b comes first
+          }
 
           // 4. alphabetical
           return a.matchedText.compareTo(b.matchedText);
