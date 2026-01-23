@@ -477,7 +477,7 @@ class _ChessBoardPopupState {
 class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     with WidgetsBindingObserver, TickerProviderStateMixin {
   late PageController _pageController;
-  bool analysisMode = false;
+  // REMOVED: bool analysisMode - was causing useless full rebuilds
   int? _lastViewedIndex;
   int _currentPageIndex = 0;
   final Set<String> _syncedLatestPositions = <String>{};
@@ -647,10 +647,24 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     final fallbackGame = widget.games[safeIndex];
     final view = ref.read(chessboardViewFromProviderNew);
 
-    final AsyncValue<GamesScreenModel> gamesAsync =
-        view == ChessboardView.tour
-            ? ref.read(gamesTourScreenProvider)
-            : ref.read(countrymanGamesTourScreenProvider);
+    final AsyncValue<GamesScreenModel>? gamesAsync;
+    switch (view) {
+      case ChessboardView.tour:
+        gamesAsync = ref.read(gamesTourScreenProvider);
+        break;
+      case ChessboardView.countryman:
+        gamesAsync = ref.read(countrymanGamesTourScreenProvider);
+        break;
+      default:
+        // For 'forYou', 'favScorecard', 'playerProfile':
+        // We use widget.games (fallbackGame) as the primary source or handle logic elsewhere.
+        // Reading countrymanGamesTourScreenProvider here was a bug for non-countryman views.
+        gamesAsync = null;
+    }
+
+    if (gamesAsync == null) {
+      return fallbackGame;
+    }
 
     final liveGames = gamesAsync.valueOrNull?.gamesTourModels;
     if (liveGames == null || liveGames.isEmpty) {
@@ -1096,23 +1110,32 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
       );
     }
 
-    // PERF: Only watch the CURRENT page's provider to minimize subscription churn
-    // during rapid swiping. Adjacent pages will be read on-demand in itemBuilder.
-    // This prevents creating/disposing 3 provider subscriptions on every swipe.
-    final Map<int, AsyncValue<ChessBoardStateNew>> visibleStates = {};
+    final visibleStart = (_currentPageIndex - 1).clamp(
+      0,
+      syncedGames.length - 1,
+    );
+    final visibleEnd = (_currentPageIndex + 1).clamp(0, syncedGames.length - 1);
 
-    // Only watch current page - this is the only one that needs reactive updates
-    final currentGame = syncedGames[_currentPageIndex];
-    final currentParams = _createParams(currentGame, _currentPageIndex);
-    visibleStates[_currentPageIndex] = ref.watch(chessBoardScreenProviderNew(currentParams));
+    // PERFORMANCE FIX: Use select() to only watch the 'game' property, not the entire state.
+    // This prevents rebuilds from evaluation updates, PV changes, depth progress, etc.
+    // Each PageView item will watch its own full provider state via Consumer.
+    for (int i = visibleStart; i <= visibleEnd; i++) {
+      final game = syncedGames[i];
+      final params = _createParams(game, i);
 
-    // Update synced game from provider state (source of truth for streaming updates)
-    final currentState = visibleStates[_currentPageIndex]?.valueOrNull;
-    if (currentState != null) {
-      syncedGames[_currentPageIndex] = currentState.game;
+      // Only watch game changes - this rarely changes compared to eval/PV updates
+      final gameFromProvider = ref.watch(
+        chessBoardScreenProviderNew(params).select(
+          (state) => state.valueOrNull?.game,
+        ),
+      );
+      if (gameFromProvider != null) {
+        syncedGames[i] = gameFromProvider;
+      }
     }
 
     // Use same params as watch to listen to the same provider
+    final currentParams = _createParams(currentGame, _currentPageIndex);
     ref.listen(
       chessBoardScreenProviderNew(currentParams),
       (prev, next) {
@@ -1292,82 +1315,60 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
                       onPageChanged: _onPageChanged,
                       itemCount: syncedGames.length,
                       itemBuilder: (context, index) {
-                        // PERF: Only fully build the CURRENT page
-                        // Adjacent pages use lightweight placeholder or read-only state
-                        // This prevents provider churn during rapid swiping
-                        if (index == _currentPageIndex) {
-                          // Current page - use watched state from visibleStates
-                          try {
-                            final stateAsync = visibleStates[index];
-                            return stateAsync?.when(
-                              data: (chessBoardState) {
-                                _ensureLatestMoveSelected(
-                                  ref: ref,
-                                  pageIndex: index,
-                                  state: chessBoardState,
+                        // Build current page and adjacent pages
+                        if (index == _currentPageIndex - 1 ||
+                            index == _currentPageIndex ||
+                            index == _currentPageIndex + 1) {
+                          final game = syncedGames[index];
+                          final params = _createParams(game, index);
+
+                          // PERFORMANCE FIX: Wrap each page in Consumer to isolate rebuilds.
+                          // This way, evaluation/PV updates only rebuild the affected page,
+                          // not the entire PageView and all siblings.
+                          return Consumer(
+                            builder: (context, ref, _) {
+                              try {
+                                final stateAsync = ref.watch(
+                                  chessBoardScreenProviderNew(params),
                                 );
-                                if (chessBoardState.isAnalysisMode != analysisMode) {
-                                  WidgetsBinding.instance.addPostFrameCallback((_) {
-                                    if (_pageController.hasClients) {
-                                      // On tablets, skip setState if popup is open to prevent
-                                      // rebuilds that would close dropdowns/menus unexpectedly
-                                      if (ResponsiveHelper.isTablet &&
-                                          _ChessBoardPopupState.isAnyPopupOpen) {
-                                        return;
-                                      }
-                                      setState(() {
-                                        analysisMode = chessBoardState.isAnalysisMode;
-                                      });
-                                    }
-                                  });
-                                }
-                                return _GamePage(
-                                  game:
-                                      chessBoardState
-                                          .game, // Use game from state which gets updated by streaming
-                                  state: chessBoardState,
-                                  games: syncedGames,
+                                return stateAsync.when(
+                                  data: (chessBoardState) {
+                                    _ensureLatestMoveSelected(
+                                      ref: ref,
+                                      pageIndex: index,
+                                      state: chessBoardState,
+                                    );
+                                    // PERFORMANCE FIX: Removed useless setState for analysisMode.
+                                    // The variable was tracked but never used for rendering,
+                                    // causing full parent rebuilds on every analysis mode change.
+                                    return _GamePage(
+                                      game: chessBoardState.game,
+                                      state: chessBoardState,
+                                      games: syncedGames,
+                                      currentGameIndex: index,
+                                      currentPageIndex: _currentPageIndex,
+                                      onGameChanged: _navigateToGame,
+                                      lastViewedIndex: _lastViewedIndex,
+                                      hideEventInfo: widget.hideEventInfo,
+                                      onToggleGamebase: _toggleGamebase,
+                                      showGamebaseButton:
+                                          widget.showGamebaseButton,
+                                      showClock: widget.showClock,
+                                    );
+                                  },
+                                  error: (e, _) => ErrorWidget(e),
+                                );
+                              } catch (e) {
+                                // Fallback for when provider isn't ready
+                                return _LoadingScreen(
+                                  games: liveGames,
                                   currentGameIndex: index,
-                                  currentPageIndex: _currentPageIndex,
                                   onGameChanged: _navigateToGame,
                                   lastViewedIndex: _lastViewedIndex,
                                   hideEventInfo: widget.hideEventInfo,
-                                  onToggleGamebase: _toggleGamebase,
-                                  showGamebaseButton: widget.showGamebaseButton,
-                                  showClock: widget.showClock,
                                 );
-                              },
-                              error: (e, _) => ErrorWidget(e),
-                              loading:
-                                  () => _LoadingScreen(
-                                    games: liveGames,
-                                    currentGameIndex: index,
-                                    onGameChanged: _navigateToGame,
-                                    lastViewedIndex: _lastViewedIndex,
-                                    hideEventInfo: widget.hideEventInfo,
-                                  ),
-                            );
-                          } catch (e) {
-                            // Fallback for when provider isn't ready
-                            return _LoadingScreen(
-                              games: liveGames,
-                              currentGameIndex: index,
-                              onGameChanged: _navigateToGame,
-                              lastViewedIndex: _lastViewedIndex,
-                              hideEventInfo: widget.hideEventInfo,
-                            );
-                          }
-                        } else if (index == _currentPageIndex - 1 ||
-                            index == _currentPageIndex + 1) {
-                          // PERF: Adjacent pages - show lightweight loading placeholder only
-                          // NO provider access here - avoids subscription churn during rapid swiping
-                          // The page gets proper state when swipe settles and it becomes current
-                          return _LoadingScreen(
-                            games: liveGames,
-                            currentGameIndex: index,
-                            onGameChanged: _navigateToGame,
-                            lastViewedIndex: _lastViewedIndex,
-                            hideEventInfo: widget.hideEventInfo,
+                              }
+                            },
                           );
                         } else {
                           return SizedBox.shrink();

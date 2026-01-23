@@ -62,6 +62,7 @@ class StockfishSingleton {
     bool isCurrentPosition =
         false, // Priority flag for user's currently viewed position
     bool allowCache = true,
+    String? ownerId, // Owner ID for per-provider cancellation
   }) async {
     // Validate depth range (only if using depth-based search)
     if (searchDuration == null && (depth < 1 || depth > 99)) {
@@ -149,6 +150,7 @@ class StockfishSingleton {
       onPvUpdate: onPvUpdate,
       isCurrentPosition: isCurrentPosition,
       allowCache: allowCache,
+      ownerId: ownerId,
     );
 
     // PRIORITY: Insert high-priority jobs at the front, low-priority at the back
@@ -229,8 +231,8 @@ class StockfishSingleton {
 
       _pendingJobs.remove(_currentJob!.key);
 
-      // PERF: Send stop command without waiting - engine will process it async
-      // Removed the 50ms delay that was blocking during rapid swiping
+      // Send stop command to engine - no delay needed as engine will stop asynchronously
+      // and the next command will naturally override any pending calculation
       if (_engine != null && _engine!.state.value == StockfishState.ready) {
         try {
           _engine!.stdin = 'stop';
@@ -269,6 +271,49 @@ class StockfishSingleton {
     try {
       _engine?.stdin = 'stop';
     } catch (_) {}
+  }
+
+  /// Cancel evaluations only for a specific owner (provider instance).
+  /// This allows providers to cancel their own jobs without affecting others.
+  Future<void> cancelEvaluationsForOwner(String ownerId) async {
+    debugPrint('🛑 STOCKFISH: Cancelling evaluations for owner: $ownerId');
+
+    // Cancel current job if it belongs to this owner
+    if (_currentJob?.ownerId == ownerId) {
+      debugPrint('🛑 STOCKFISH: Cancelling current job for owner: $ownerId');
+      await _cancelCurrentEvaluation();
+    }
+
+    // Remove pending jobs for this owner
+    final jobsToRemove = <_EvalJob>[];
+    for (final job in _jobQueue) {
+      if (job.ownerId == ownerId) {
+        jobsToRemove.add(job);
+        _pendingJobs.remove(job.key);
+        if (!job.completer.isCompleted) {
+          job.completer.complete(
+            EnhancedCloudEval(
+              fen: job.fen,
+              knodes: 0,
+              depth: 0,
+              pvs: [Pv(moves: '', cp: 0, mate: 0)],
+              isCancelled: true,
+              requestedMultiPv: job.multiPV,
+            ),
+          );
+        }
+      }
+    }
+
+    for (final job in jobsToRemove) {
+      _jobQueue.remove(job);
+    }
+
+    if (jobsToRemove.isNotEmpty) {
+      debugPrint(
+        '🛑 STOCKFISH: Removed ${jobsToRemove.length} pending jobs for owner: $ownerId',
+      );
+    }
   }
 
   Future<void> _processQueue() async {
@@ -569,6 +614,10 @@ class StockfishSingleton {
               completer.complete(result);
               debugPrint('⚠️ STOCKFISH: Forced completion due to stall');
 
+              // CRITICAL: Cancel subscription to prevent leak
+              _currentSubscription?.cancel();
+              _currentSubscription = null;
+
               // Try to reset the engine
               try {
                 _engine?.stdin = 'stop';
@@ -585,6 +634,10 @@ class StockfishSingleton {
           onTimeout: () {
             debugPrint('⚠️ STOCKFISH TIMEOUT: Evaluation took too long (${safetyTimeout.inSeconds}s)');
             stallDetector?.cancel();
+
+            // CRITICAL: Cancel subscription to prevent leak
+            _currentSubscription?.cancel();
+            _currentSubscription = null;
 
             // Complete with whatever we have so far
             final filteredPvs = pvs.where((pv) => pv.moves.isNotEmpty).toList(growable: false);
@@ -607,10 +660,16 @@ class StockfishSingleton {
         );
       } finally {
         stallDetector.cancel();
+        // Ensure subscription is always cleaned up
+        _currentSubscription?.cancel();
+        _currentSubscription = null;
       }
     } catch (e, st) {
       debugPrint('❌ STOCKFISH: Failed to process job for $fen: $e');
       debugPrint('$st');
+      // CRITICAL: Cancel subscription on exception to prevent leak
+      _currentSubscription?.cancel();
+      _currentSubscription = null;
       if (!completer.isCompleted) {
         completer.completeError(e, st);
       }
@@ -770,9 +829,10 @@ class StockfishSingleton {
         debugPrint('⚠️ STOCKFISH STOP FAILED: $e');
       }
     }
-    // NOTE: We intentionally skip 'ucinewgame' and 'Clear Hash' - those clear
-    // the transposition table which kills performance. Stockfish handles
-    // position changes efficiently without clearing hash.
+    // PERFORMANCE FIX: Removed 'ucinewgame' and 'Clear Hash' - they clear transposition
+    // tables which kills performance. Stockfish handles position changes fine without
+    // resetting, and preserving hash allows faster analysis of similar positions.
+    await _waitForReadyOk();
   }
 
   Future<void> _waitForReadyOk() async {
@@ -851,6 +911,7 @@ class _EvalJob {
     this.onPvUpdate,
     this.isCurrentPosition = false,
     this.allowCache = true,
+    this.ownerId,
   });
 
   final String fen;
@@ -863,6 +924,7 @@ class _EvalJob {
   final Function(int depth, int knodes)? onDepthUpdate;
   final Function(List<Pv> pvs, int depth)? onPvUpdate;
   final bool
-  isCurrentPosition; // True if this is the user's currently viewed position
+      isCurrentPosition; // True if this is the user's currently viewed position
   final bool allowCache;
+  final String? ownerId; // Owner ID for per-provider cancellation
 }
