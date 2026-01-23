@@ -271,7 +271,7 @@ class ReviewPromptService {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          'ChessEver keeps improving thanks to your feedback!',
+          'ChessEver grows and improves with your feedback. Thank you!',
           style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
         ),
         backgroundColor: kBlack2Color.withValues(alpha: 0.95),
