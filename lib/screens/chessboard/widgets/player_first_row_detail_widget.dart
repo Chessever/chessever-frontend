@@ -20,6 +20,7 @@ import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/utils/svg_asset.dart';
+import 'dart:ui';
 
 enum PlayerView { listView, gridView, boardView }
 
@@ -200,6 +201,7 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
               color: isCurrentPlayer ? kWhiteColor70 : kWhiteColor,
               height: 1.15,
               letterSpacing: 0,
+              fontFeatures: const [FontFeature.tabularFigures()],
             )
             : playerView == PlayerView.gridView
             ? TextStyle(
@@ -208,11 +210,13 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
               color: isCurrentPlayer ? kWhiteColor70 : kWhiteColor,
               height: 1.15,
               letterSpacing: -0.2,
+              fontFeatures: const [FontFeature.tabularFigures()],
             )
             : AppTypography.textXsMedium.copyWith(
               color: isCurrentPlayer ? kWhiteColor70 : kWhiteColor,
               fontSize: 14.f,
               fontWeight: FontWeight.w500,
+              fontFeatures: const [FontFeature.tabularFigures()],
             );
 
     // CRITICAL: Pixel-perfect alignment with board edges
@@ -258,8 +262,8 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
       return 0.0;
     }, [ref.watch(engineSettingsProviderNew), gamesTourModel, playerView]);
 
-    // Clock padding - zero for list/board view to sit exactly at edge
-    final clockPadding = playerView == PlayerView.gridView ? 2.sp : 0.sp;
+    // Clock padding - add small horizontal padding to prevent flickering and provide stability
+    final clockPadding = playerView == PlayerView.gridView ? 4.w : 6.w;
 
     return GestureDetector(
       onTap: () {
