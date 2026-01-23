@@ -12,6 +12,45 @@ final gamesLocalStorage = AutoDisposeProvider<GamesLocalStorage>((ref) {
 
 enum _GameSaver { tourId }
 
+class _SearchArguments {
+  final List<Games> games;
+  final String query;
+
+  _SearchArguments(this.games, this.query);
+}
+
+Future<List<Games>> _searchGamesWorker(_SearchArguments args) async {
+  final queryLower = args.query.toLowerCase().trim();
+  final List<MapEntry<Games, double>> gameScores = [];
+
+  for (final game in args.games) {
+    double score = 0.0;
+
+    // Use the new `search` field as the primary matching source
+    final searchTerms = game.search ?? [];
+
+    for (final term in searchTerms) {
+      final termLower = term.toLowerCase();
+      if (termLower == queryLower) {
+        score += 120.0; // Exact match
+        break;
+      } else if (termLower.startsWith(queryLower)) {
+        score += 100.0;
+      } else if (termLower.contains(queryLower)) {
+        score += 80.0;
+      }
+    }
+
+    if (score > 0) {
+      gameScores.add(MapEntry(game, score));
+    }
+  }
+
+  gameScores.sort((a, b) => b.value.compareTo(a.value));
+  const maxResults = 20;
+  return gameScores.take(maxResults).map((e) => e.key).toList();
+}
+
 class GamesLocalStorage {
   GamesLocalStorage(this.ref);
 
@@ -29,7 +68,7 @@ class GamesLocalStorage {
 
       // Save to cache in background - don't wait for it
       // This prevents blocking the UI for large tournaments
-      final value = _encodeMyGamesList(games);
+      final value = await compute(_encodeMyGamesList, games);
       ref
           .read(sharedPreferencesRepository)
           .setStringList(getSaveKey(tourId), value)
@@ -65,7 +104,8 @@ class GamesLocalStorage {
           .read(sharedPreferencesRepository)
           .getStringList(getSaveKey(tourId));
       if (gameStringList.isNotEmpty) {
-        return _decodeMyGamesList(gameStringList);
+        // Decode in background to avoid UI jank on initial load
+        return await compute(_decodeMyGamesList, gameStringList);
       }
       return await fetchAndSaveGames(tourId);
     } catch (error, _) {
@@ -123,36 +163,8 @@ class GamesLocalStorage {
         return games;
       }
 
-      final queryLower = query.toLowerCase().trim();
-
-      final List<MapEntry<Games, double>> gameScores = [];
-
-      for (final game in games) {
-        double score = 0.0;
-
-        // Use the new `search` field as the primary matching source
-        final searchTerms = game.search ?? [];
-
-        for (final term in searchTerms) {
-          final termLower = term.toLowerCase();
-          if (termLower == queryLower) {
-            score += 120.0; // Exact match
-            break;
-          } else if (termLower.startsWith(queryLower)) {
-            score += 100.0;
-          } else if (termLower.contains(queryLower)) {
-            score += 80.0;
-          }
-        }
-
-        if (score > 0) {
-          gameScores.add(MapEntry(game, score));
-        }
-      }
-
-      gameScores.sort((a, b) => b.value.compareTo(a.value));
-      const maxResults = 20;
-      return gameScores.take(maxResults).map((e) => e.key).toList();
+      // Offload search scoring and sorting to background isolate
+      return await compute(_searchGamesWorker, _SearchArguments(games, query));
     } catch (e, _) {
       return <Games>[];
     }

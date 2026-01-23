@@ -10,7 +10,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_ba
 import 'package:chessever2/screens/tour_detail/games_tour/providers/knockout_tournament_state_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
 import 'package:chessever2/widgets/search/gameSearch/enhanced_game_search.dart';
-import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 final gamesTourScreenProvider = StateNotifierProvider<
@@ -19,7 +19,7 @@ final gamesTourScreenProvider = StateNotifierProvider<
 >((ref) {
   // Watch tour details first - this is the primary dependency
   final tourDetailAsync = ref.watch(tourDetailScreenProvider);
-  final showFinishedGames = ref.watch(showFinishedGamesProvider);
+  // unused: final showFinishedGames = ref.watch(showFinishedGamesProvider);
 
   if (tourDetailAsync.isLoading) {
     return GamesTourScreenProvider.loading(ref: ref);
@@ -44,6 +44,90 @@ final gamesTourScreenProvider = StateNotifierProvider<
 
 // Can use this in future to maintain the state across the app
 final showFinishedGamesProvider = StateProvider<bool>((ref) => true);
+
+class _GamesProcessingArgs {
+  final List<Games> games;
+  final List<String> pinnedIds;
+  final bool isSearchMode;
+
+  _GamesProcessingArgs({
+    required this.games,
+    required this.pinnedIds,
+    required this.isSearchMode,
+  });
+}
+
+// Top-level worker function for isolate
+List<GamesTourModel> _processGamesWorker(_GamesProcessingArgs args) {
+  // 1. Pre-parse numbers to avoid repeated regex operations during sort
+  final gameInfo = <String, (int, int)>{};
+  
+  // Helper to extract numbers (copied here to be accessible in isolate)
+  int extractRound(String roundSlug) {
+    final match = RegExp(r'round-?(\d+)', caseSensitive: false).firstMatch(roundSlug) ??
+                  RegExp(r'(\d+)').firstMatch(roundSlug);
+    return int.tryParse(match?.group(1) ?? '0') ?? 0;
+  }
+
+  int extractGame(String roundSlug) {
+    final match = RegExp(r'game-?(\d+)', caseSensitive: false).firstMatch(roundSlug);
+    return int.tryParse(match?.group(1) ?? '0') ?? 0;
+  }
+
+  for (final game in args.games) {
+    gameInfo[game.id] = (
+      extractRound(game.roundSlug),
+      extractGame(game.roundSlug),
+    );
+  }
+
+  // 2. Sort games
+  final sortedGames = List<Games>.from(args.games);
+  sortedGames.sort((a, b) {
+    // FIRST PRIORITY: Pinned games (only in non-search mode)
+    if (!args.isSearchMode) {
+      final aPinned = args.pinnedIds.contains(a.id);
+      final bPinned = args.pinnedIds.contains(b.id);
+      if (aPinned && !bPinned) return -1;
+      if (!aPinned && bPinned) return 1;
+
+      // If both are pinned, preserve pin order
+      if (aPinned && bPinned) {
+        final aIndex = args.pinnedIds.indexOf(a.id);
+        final bIndex = args.pinnedIds.indexOf(b.id);
+        if (aIndex != bIndex) return aIndex.compareTo(bIndex);
+      }
+    }
+
+    final (roundA, gameA) = gameInfo[a.id] ?? (0, 0);
+    final (roundB, gameB) = gameInfo[b.id] ?? (0, 0);
+
+    // Second, sort by round number DESCENDING
+    if (roundA != roundB) return roundB.compareTo(roundA);
+
+    // Within same round, sort by game number DESCENDING
+    if (gameA != gameB) return gameB.compareTo(gameA);
+
+    // Finally, sort by board number ASCENDING
+    final aBoard = a.boardNr, bBoard = b.boardNr;
+    if (aBoard != null && bBoard != null) return aBoard.compareTo(bBoard);
+    if (aBoard != null) return -1;
+    if (bBoard != null) return 1;
+    return 0;
+  });
+
+  // 3. Map to models (heavy PGN parsing happens here inside fromGame)
+  final models = <GamesTourModel>[];
+  for (final g in sortedGames) {
+    try {
+      models.add(GamesTourModel.fromGame(g));
+    } catch (e) {
+      // In isolate we can't use debugPrint, so we just skip invalid games
+      // The main thread will see a slightly shorter list
+    }
+  }
+  return models;
+}
 
 class GamesTourScreenProvider
     extends StateNotifier<AsyncValue<GamesScreenModel>> {
@@ -86,7 +170,7 @@ class GamesTourScreenProvider
       final nextGames = next.valueOrNull ?? [];
 
       if (next.hasValue) {
-        ref.refresh(gamesPinprovider(aboutTourModel!.id));
+        final _ = ref.refresh(gamesPinprovider(aboutTourModel!.id));
       }
 
       // ALWAYS recompute if we don't have any model data yet
@@ -233,9 +317,9 @@ class GamesTourScreenProvider
       // Check if there are any live games
       final hasLiveGames = allGames.any((g) => g.status == "*");
 
-      print('🎮 GamesTourScreen: Total games: ${allGames.length}, Live games: ${allGames.where((g) => g.status == "*").length}');
+      debugPrint('🎮 GamesTourScreen: Total games: ${allGames.length}, Live games: ${allGames.where((g) => g.status == "*").length}');
       if (allGames.where((g) => g.status == "*").isNotEmpty) {
-        print('🎮 GamesTourScreen: Live game rounds: ${allGames.where((g) => g.status == "*").map((g) => g.roundSlug).join(", ")}');
+        debugPrint('🎮 GamesTourScreen: Live game rounds: ${allGames.where((g) => g.status == "*").map((g) => g.roundSlug).join(", ")}');
       }
 
       // Find the upcoming round if no live games exist
@@ -260,58 +344,15 @@ class GamesTourScreenProvider
         }
       }
 
-      final sortedGames = List<Games>.from(allGames);
-      sortedGames.sort((a, b) {
-        // FIRST PRIORITY: Pinned games (only in non-search mode)
-        if (!isSearchMode) {
-          final aPinned = pinnedIds.contains(a.id);
-          final bPinned = pinnedIds.contains(b.id);
-          if (aPinned && !bPinned) return -1;
-          if (!aPinned && bPinned) return 1;
-
-          // If both are pinned, preserve pin order (favorites before countrymen)
-          if (aPinned && bPinned) {
-            final aIndex = pinnedIds.indexOf(a.id);
-            final bIndex = pinnedIds.indexOf(b.id);
-            if (aIndex != bIndex) return aIndex.compareTo(bIndex);
-          }
-        }
-
-        // Use pre-parsed values for performance
-        final (roundA, gameA) = gameInfo[a.id] ?? (0, 0);
-        final (roundB, gameB) = gameInfo[b.id] ?? (0, 0);
-
-        // Second, sort by round number DESCENDING (to match the round list order)
-        if (roundA != roundB) return roundB.compareTo(roundA);
-
-        // Within same round, sort by game number DESCENDING (Game 2 before Game 1)
-        if (gameA != gameB) return gameB.compareTo(gameA);
-
-        // Finally, sort by board number ASCENDING
-        final aBoard = a.boardNr, bBoard = b.boardNr;
-        if (aBoard != null && bBoard != null) return aBoard.compareTo(bBoard);
-        if (aBoard != null) return -1;
-        if (bBoard != null) return 1;
-        return 0;
-      });
-
-      final models = <GamesTourModel>[];
-      int skippedCount = 0;
-      for (final g in sortedGames) {
-        try {
-          models.add(GamesTourModel.fromGame(g));
-        } catch (e) {
-          skippedCount++;
-          debugPrint(
-            '⚠️ GamesTourScreenProvider: Failed to parse game ${g.id} (${g.name ?? 'unnamed'}): $e',
-          );
-        }
-      }
-      if (skippedCount > 0) {
-        debugPrint(
-          '⚠️ GamesTourScreenProvider: Skipped $skippedCount games due to parsing errors',
-        );
-      }
+      // Offload heavy sorting and mapping to background isolate
+      final models = await compute(
+        _processGamesWorker,
+        _GamesProcessingArgs(
+          games: allGames,
+          pinnedIds: pinnedIds,
+          isSearchMode: isSearchMode,
+        ),
+      );
 
       if (mounted) {
         state = AsyncValue.data(
