@@ -12,8 +12,8 @@ import 'package:chessever2/repository/supabase/evals/persist_cloud_eval.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game_navigator.dart';
-// REMOVED: SharedPreferences persistence was causing main isolate perf issues
-// import 'package:chessever2/screens/chessboard/analysis/chess_game_navigator_state_manager.dart';
+import 'package:chessever2/screens/chessboard/analysis/chess_game_navigator_state_manager.dart';
+import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new_worker.dart';
 import 'package:chessever2/screens/chessboard/provider/current_eval_provider.dart';
 import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
 import 'package:chessever2/screens/chessboard/provider/stockfish_singleton.dart';
@@ -96,6 +96,7 @@ class ChessBoardScreenNotifierNew
     required this.index,
     this.savedAnalysisData,
   }) : super(const AsyncValue.loading()) {
+    _stockfishOwnerId = '${game.gameId}_$index';
     _initializeState();
     _setupPgnStreamListener();
   }
@@ -103,6 +104,10 @@ class ChessBoardScreenNotifierNew
   final Ref ref;
   GamesTourModel game;
   final int index;
+
+  /// Unique owner ID for Stockfish job cancellation.
+  /// Allows this provider to cancel only its own jobs without affecting others.
+  late final String _stockfishOwnerId;
 
   /// Optional saved analysis data to restore full state
   final SavedAnalysisData? savedAnalysisData;
@@ -395,8 +400,8 @@ class ChessBoardScreenNotifierNew
     _cancelEvaluation = false;
     _clearActiveEvalState();
 
-    // Cancel any stuck Stockfish evaluations
-    unawaited(StockfishSingleton().cancelAllEvaluations());
+    // Cancel this provider's stuck Stockfish evaluations
+    unawaited(StockfishSingleton().cancelEvaluationsForOwner(_stockfishOwnerId));
 
     // Clear the evaluating flag to prevent UI from being stuck
     if (stateSnapshot != null && stateSnapshot.isEvaluating) {
@@ -711,36 +716,22 @@ class ChessBoardScreenNotifierNew
 
       game = game.copyWith(pgn: resolvedPgn);
       var hasAttemptedUpgrade = false;
-      late PgnGame gameData;
       late Position startingPos;
       late List<Move> allMoves;
       late List<String> moveSans;
       Move? lastMove;
       late Position finalPos;
+      List<String> moveTimes = [];
 
       while (true) {
-        gameData = PgnGame.parsePgn(resolvedPgn);
-        startingPos = PgnGame.startingPosition(gameData.headers);
+        final result = await compute(parsePgnWorker, resolvedPgn);
 
-        Position tempPos = startingPos;
-        allMoves = [];
-        moveSans = [];
-
-        for (final node in gameData.moves.mainline()) {
-          final move = tempPos.parseSan(node.san);
-          if (move == null) break;
-          allMoves.add(move);
-          moveSans.add(node.san);
-          tempPos = tempPos.play(move);
-        }
-
-        final lastMoveIndex = allMoves.length - 1;
-        lastMove = null;
-        finalPos = startingPos;
-        for (int i = 0; i <= lastMoveIndex; i++) {
-          lastMove = allMoves[i];
-          finalPos = finalPos.play(allMoves[i]);
-        }
+        allMoves = result.allMoves;
+        moveSans = result.moveSans;
+        startingPos = result.startingPos;
+        finalPos = result.finalPos;
+        lastMove = result.lastMove;
+        moveTimes = result.moveTimes;
 
         // Header-only PGNs (Gamebase previews) parse successfully but contain no
         // movetext. If that happens, try upgrading to a full PGN with moves and
@@ -763,7 +754,6 @@ class ChessBoardScreenNotifierNew
       }
 
       var lastMoveIndex = allMoves.length - 1;
-      final moveTimes = _parseMoveTimesFromPgn(resolvedPgn);
 
       final liveFen = game.fen?.trim();
       final liveUci = game.lastMove?.trim();
@@ -964,77 +954,7 @@ class ChessBoardScreenNotifierNew
     }
   }
 
-  List<String> _parseMoveTimesFromPgn(String pgn) {
-    final List<String> times = [];
 
-    try {
-      final game = PgnGame.parsePgn(pgn);
-
-      // Iterate through the mainline moves
-      for (final nodeData in game.moves.mainline()) {
-        String? timeString;
-
-        // Check if this move has comments
-        if (nodeData.comments != null) {
-          // Extract time if it exists in any comment
-          for (String comment in nodeData.comments!) {
-            final timeMatch = RegExp(
-              r'\[%clk (\d+:\d+:\d+)\]',
-            ).firstMatch(comment);
-            if (timeMatch != null) {
-              timeString = timeMatch.group(1);
-              break; // Found time, no need to check other comments for this move
-            }
-          }
-        }
-
-        // Add formatted time or default if no time found
-        if (timeString != null) {
-          times.add(_formatDisplayTime(timeString));
-        } else {
-          times.add('-:--:--'); // Default for moves without time
-        }
-      }
-    } catch (e) {
-      _releaseLog('Error parsing PGN: $e');
-      // Fallback to regex method if dartchess parsing fails
-      return _parseMoveTimesFromPgnFallback(pgn);
-    }
-
-    return times;
-  }
-
-  // Fallback method using the original regex approach
-  List<String> _parseMoveTimesFromPgnFallback(String pgn) {
-    final List<String> times = [];
-    final regex = RegExp(r'\{ \[%clk (\d+:\d+:\d+)\] \}');
-    final matches = regex.allMatches(pgn);
-
-    for (final match in matches) {
-      final timeString = match.group(1) ?? '0:00:00';
-      times.add(_formatDisplayTime(timeString));
-    }
-
-    return times;
-  }
-
-  String _formatDisplayTime(String timeString) {
-    // Convert "1:40:57" to display format
-    final parts = timeString.split(':');
-    if (parts.length == 3) {
-      final hours = int.parse(parts[0]);
-      final minutes = parts[1];
-      final seconds = parts[2];
-
-      // If less than an hour, show MM:SS format
-      if (hours == 0) {
-        return '$minutes:$seconds';
-      }
-      // Otherwise show H:MM:SS format
-      return '$hours:$minutes:$seconds';
-    }
-    return timeString;
-  }
 
   /// Mark all moves as seen (clear the unseen indicator)
   void markMovesAsSeen() {
@@ -1088,7 +1008,7 @@ class ChessBoardScreenNotifierNew
         return;
       }
       _cancelEvaluation = true;
-      await StockfishSingleton().cancelAllEvaluations();
+      await StockfishSingleton().cancelEvaluationsForOwner(_stockfishOwnerId);
       _clearActiveEvalState();
       Position newPosition = currentState.analysisState.startingPosition!;
       Move? newLastMove;
@@ -1154,7 +1074,7 @@ class ChessBoardScreenNotifierNew
       }
 
       _cancelEvaluation = true;
-      await StockfishSingleton().cancelAllEvaluations();
+      await StockfishSingleton().cancelEvaluationsForOwner(_stockfishOwnerId);
       _clearActiveEvalState();
 
       Position newPosition = currentState.startingPosition!;
@@ -3448,12 +3368,14 @@ class ChessBoardScreenNotifierNew
     _cancelEvaluation = true;
     _cancelEvalWatchdog(resetPending: true);
     _clearActiveEvalState();
-    await StockfishSingleton().cancelAllEvaluations();
+    // Cancel only THIS provider's Stockfish jobs, not all jobs globally
+    await StockfishSingleton().cancelEvaluationsForOwner(_stockfishOwnerId);
     _cancelEvaluation = false;
   }
 
   Future<void> onBecameVisible({bool force = true}) async {
-    await StockfishSingleton().cancelAllEvaluations();
+    // Cancel only THIS provider's stale jobs before starting new evaluation
+    await StockfishSingleton().cancelEvaluationsForOwner(_stockfishOwnerId);
     _cancelEvaluation = false;
     _clearActiveEvalState();
     _updateEvaluation(force: force);
@@ -4574,6 +4496,8 @@ class ChessBoardScreenNotifierNew
             fenToAnalyze,
             cascadeEval.pvs,
           );
+          // CRITICAL: Check mounted after await to avoid dispose errors
+          if (!mounted) return;
           var mergedCascadeLines = _mergePvProgress(pvLines, cascadeLines);
           if (mergedCascadeLines.length > configuredMultiPV) {
             mergedCascadeLines = mergedCascadeLines
@@ -4623,6 +4547,8 @@ class ChessBoardScreenNotifierNew
               fenToAnalyze,
               cascadeEval.pvs,
             );
+            // CRITICAL: Check mounted after await
+            if (!mounted) return;
             if (retryLines.isNotEmpty) {
               pvLines = _mergePvProgress(pvLines, retryLines);
               _releaseLog('✅ RETRY: Cloud PV building succeeded on retry');
@@ -4691,6 +4617,8 @@ class ChessBoardScreenNotifierNew
       final multiPV = configuredMultiPV;
       final isCurrentlyVisible = currentVisiblePage == index;
       EngineSearchProgress? pendingProgress;
+      int lastPvUpdateDepth = 0; // Track last depth we updated state for
+
       final stockfishFuture = StockfishSingleton().evaluatePosition(
         fenToAnalyze,
         depth: combinedMaxDepth,
@@ -4699,6 +4627,7 @@ class ChessBoardScreenNotifierNew
         searchDuration: combinedSearchDuration,
         maxDepth: combinedMaxDepth,
         allowCache: false,
+        ownerId: _stockfishOwnerId, // Tag job with this provider's owner ID
         onDepthUpdate: (depth, knodes) {
           final progress = EngineSearchProgress(
             depth: depth,
@@ -4714,6 +4643,16 @@ class ChessBoardScreenNotifierNew
           );
         },
         onPvUpdate: (pvs, depth) {
+          // PERFORMANCE FIX: Throttle PV state updates to reduce rebuilds.
+          // Only update state every 4 depths or at significant milestones (5, 10, 15, 20).
+          // This reduces ~40 state updates per eval to ~5-8.
+          final isSignificantDepth = depth % 5 == 0 || depth >= combinedMaxDepth - 1;
+          final depthSinceLastUpdate = depth - lastPvUpdateDepth;
+          if (depthSinceLastUpdate < 4 && !isSignificantDepth) {
+            return; // Skip this update, wait for more significant depth
+          }
+          lastPvUpdateDepth = depth;
+
           Future<void>(() async {
             if (!mounted) return;
             final visiblePage = ref.read(currentlyVisiblePageIndexProvider);
@@ -4734,12 +4673,16 @@ class ChessBoardScreenNotifierNew
             final mateScore = _getConsistentMate(pvs.first.mate, fenToAnalyze);
             evaluation = newEval;
 
+            // PERFORMANCE FIX: Don't emit intermediate state here.
+            // Wait until PV lines are built, then emit a single consolidated state update.
+            // This reduces state updates from 2 per depth to 1.
             var workingState = currentState.copyWith(
               evaluation: newEval,
               mate: mateScore,
               isEvaluating: true,
             );
-            state = AsyncValue.data(workingState);
+            // Removed: state = AsyncValue.data(workingState);
+            // State will be updated once below after PV building
 
             var lines = await _buildPrincipalVariations(fenToAnalyze, pvs);
             if (lines.isEmpty) return;
@@ -4823,9 +4766,12 @@ class ChessBoardScreenNotifierNew
             _activeEvalKey = null;
             _activeEvalStartTime = null;
           }
-          final snapshot = state.value;
-          if (snapshot != null && snapshot.isEvaluating) {
-            state = AsyncValue.data(snapshot.copyWith(isEvaluating: false));
+          // CRITICAL: Check mounted before accessing state to avoid dispose errors
+          if (mounted) {
+            final snapshot = state.value;
+            if (snapshot != null && snapshot.isEvaluating) {
+              state = AsyncValue.data(snapshot.copyWith(isEvaluating: false));
+            }
           }
 
           if (mounted && !_cancelEvaluation) {
@@ -4879,6 +4825,8 @@ class ChessBoardScreenNotifierNew
               fenToAnalyze,
               stockfishResult.pvs,
             );
+            // CRITICAL: Check mounted after await to avoid dispose errors
+            if (!mounted) return;
             if (finalLines.isNotEmpty) {
               if (finalLines.length > configuredMultiPV) {
                 finalLines = finalLines
@@ -5904,6 +5852,10 @@ class ChessBoardScreenNotifierNew
     // Clean up subscriptions
     _navigatorSubscription?.close();
     _navigatorSubscription = null;
+
+    // Cancel this provider's Stockfish jobs on dispose to prevent orphaned jobs
+    unawaited(StockfishSingleton().cancelEvaluationsForOwner(_stockfishOwnerId));
+    _cancelEvalWatchdog(resetPending: true);
 
     // Clear maps to release any retained objects
     _failedEvalTimestamps.clear();

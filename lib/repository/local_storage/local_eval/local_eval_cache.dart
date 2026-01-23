@@ -11,8 +11,10 @@ final localEvalCacheProvider = AutoDisposeProvider<LocalEvalCache>(
 class LocalEvalCache {
   static const _prefix = 'cloud_eval_';
   static const _versionKey = 'cloud_eval_version';
+  static const _keysListKey = 'cloud_eval_keys_list';
   static const _currentVersion =
-      10; // v10: Enforce persistence thresholds + multiPV tagging
+      11; // v11: Added cache size limit to prevent SharedPreferences bloat
+  static const _maxCacheSize = 500; // Maximum number of cached evaluations
 
   SharedPreferences get _prefs => SharedPreferencesService.instance.prefs;
 
@@ -28,10 +30,33 @@ class LocalEvalCache {
     final key = _buildKey(fen, effectiveMultiPv);
     await _prefs.setString(key, jsonEncode(eval.toJson()));
 
+    // Track keys for LRU eviction to prevent unbounded cache growth
+    await _trackKeyAndEnforceLimit(key);
+
     // Also store legacy key so older readers (or callers without multiPV) still benefit
     if (effectiveMultiPv > 0) {
-      await _prefs.setString('$_prefix$fen', jsonEncode(eval.toJson()));
+      final legacyKey = '$_prefix$fen';
+      await _prefs.setString(legacyKey, jsonEncode(eval.toJson()));
+      await _trackKeyAndEnforceLimit(legacyKey);
     }
+  }
+
+  /// Track a cache key and evict oldest entries if cache exceeds limit.
+  /// Uses LRU eviction to keep the cache size bounded.
+  Future<void> _trackKeyAndEnforceLimit(String key) async {
+    final keysList = _prefs.getStringList(_keysListKey) ?? [];
+
+    // Remove key if it already exists (will be re-added at end for LRU)
+    keysList.remove(key);
+    keysList.add(key);
+
+    // Evict oldest entries if over limit
+    while (keysList.length > _maxCacheSize) {
+      final oldestKey = keysList.removeAt(0);
+      await _prefs.remove(oldestKey);
+    }
+
+    await _prefs.setStringList(_keysListKey, keysList);
   }
 
   Future<CloudEval?> fetch(String fen, {int? multiPV}) async {
@@ -138,6 +163,8 @@ class LocalEvalCache {
     for (final k in keys) {
       await prefs.remove(k);
     }
+    // Also clear the keys tracking list
+    await prefs.remove(_keysListKey);
   }
 
   String _buildKey(String fen, int multiPV) {

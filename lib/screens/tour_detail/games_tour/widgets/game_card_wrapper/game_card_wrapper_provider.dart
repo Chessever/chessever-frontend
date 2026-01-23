@@ -49,7 +49,7 @@ class _GameCardWrapperProvider {
     try {
       final fullGames = await _ref
           .read(gamesLocalStorage)
-          .fetchAndSaveGames(tourId);
+          .getGames(tourId);
 
       if (fullGames.isEmpty) {
         return _ResolvedNavigation(games: orderedGames, index: safeIndex);
