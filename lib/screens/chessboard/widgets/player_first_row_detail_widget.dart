@@ -125,8 +125,8 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
               letterSpacing: -0.15,
             )
             : AppTypography.textXsMedium.copyWith(
-              color: kLightYellowColor,
-              fontWeight: FontWeight.w600,
+              color: kPrimaryColor, // Changed from kLightYellowColor to fix visibility
+              fontWeight: FontWeight.w700,
               fontSize: 14.f,
               height: 1.2,
             );
@@ -507,6 +507,7 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
                   softWrap: false,
                   textAlign: TextAlign.left,
                   text: TextSpan(
+                    style: nameStyle, // Add base style for inheritance
                     children: [
                       if (title.isNotEmpty)
                         TextSpan(text: title, style: rankStyle),
