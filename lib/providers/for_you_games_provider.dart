@@ -60,7 +60,26 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
   DateTime? _lastRefreshAt;
 
   ForYouNotifier(this.ref) : super(const ForYouState(isLoading: true)) {
+    _setupListeners();
     _loadInitial();
+  }
+
+  void _setupListeners() {
+    // Listen to favorite events changes and re-sort list immediately
+    ref.listen(favoriteEventsProvider, (_, __) => _reSortList());
+    
+    // Listen to favorite player cache updates (affects heart counts)
+    ref.listen(eventFavoritePlayersCacheProvider, (_, __) => _reSortList());
+  }
+
+  Future<void> _reSortList() async {
+    if (state.events.isEmpty) return;
+    
+    // Re-sort current events list with updated favorite data
+    final sorted = await _sortModels(state.events);
+    if (mounted) {
+      state = state.copyWith(events: sorted);
+    }
   }
 
   Future<void> _loadInitial() async {
