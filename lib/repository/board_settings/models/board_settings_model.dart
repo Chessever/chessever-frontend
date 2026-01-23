@@ -42,7 +42,7 @@ class BoardSettingsModel with BoardSettingsModelMappable {
       soundEnabled: json['sound_enabled'] as bool? ?? true,
       chatEnabled: json['chat_enabled'] as bool? ?? true,
       pieceStyleIndex: json['piece_style_index'] as int? ?? 0,
-      gamesListViewModeIndex: json['games_list_view_mode_index'] as int? ?? 0,
+      gamesListViewModeIndex: json['games_list_view_mode_index'] as int? ?? 1, // Default to chessBoardGrid
       createdAt: DateTime.parse(json['created_at'] as String),
       updatedAt: DateTime.parse(json['updated_at'] as String),
     );
@@ -90,7 +90,7 @@ class BoardSettingsModel with BoardSettingsModelMappable {
       soundEnabled: true,
       chatEnabled: true,
       pieceStyleIndex: 0, // cburnett (default)
-      gamesListViewModeIndex: 0, // gamesCard view
+      gamesListViewModeIndex: 1, // chessBoardGrid view (default)
       createdAt: DateTime.now(),
       updatedAt: DateTime.now(),
     );

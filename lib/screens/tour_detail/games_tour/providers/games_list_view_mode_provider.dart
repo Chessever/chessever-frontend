@@ -7,7 +7,7 @@ enum GamesListViewMode { gamesCard, chessBoardGrid, chessBoard }
 /// Provider that returns the persisted games list view mode from board settings
 final gamesListViewModeProvider = Provider<GamesListViewMode>((ref) {
   final boardSettings = ref.watch(boardSettingsProviderNew);
-  final index = boardSettings.valueOrNull?.gamesListViewModeIndex ?? 0;
+  final index = boardSettings.valueOrNull?.gamesListViewModeIndex ?? 1; // Default to chessBoardGrid
   return GamesListViewMode.values[index.clamp(0, GamesListViewMode.values.length - 1)];
 });
 

@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
+import 'package:chessever2/services/telegram_notification_service.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/widgets/review_prompt/review_prompt_dialogs.dart';
@@ -256,6 +257,16 @@ class ReviewPromptService {
         'build_number': packageInfo.buildNumber,
         'platform': Platform.operatingSystem,
       });
+
+      // Send Telegram notification for immediate alert
+      await TelegramNotificationService.instance.sendFeedbackNotification(
+        rating: rating,
+        feedback: feedback,
+        source: trigger.name,
+        userId: userId,
+        appVersion: '${packageInfo.version} (${packageInfo.buildNumber})',
+        platform: Platform.operatingSystem,
+      );
     } catch (_) {
       // Ignore feedback submission errors.
     }

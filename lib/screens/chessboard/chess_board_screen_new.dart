@@ -1135,6 +1135,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     }
 
     // Use same params as watch to listen to the same provider
+    final currentGame = syncedGames[_currentPageIndex.clamp(0, syncedGames.length - 1)];
     final currentParams = _createParams(currentGame, _currentPageIndex);
     ref.listen(
       chessBoardScreenProviderNew(currentParams),
@@ -1356,6 +1357,13 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
                                       showClock: widget.showClock,
                                     );
                                   },
+                                  loading: () => _LoadingScreen(
+                                    games: liveGames,
+                                    currentGameIndex: index,
+                                    onGameChanged: _navigateToGame,
+                                    lastViewedIndex: _lastViewedIndex,
+                                    hideEventInfo: widget.hideEventInfo,
+                                  ),
                                   error: (e, _) => ErrorWidget(e),
                                 );
                               } catch (e) {

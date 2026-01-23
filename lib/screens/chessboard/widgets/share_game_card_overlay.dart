@@ -1,13 +1,12 @@
 import 'dart:io' as io;
 import 'dart:math' as math;
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:screenshot/screenshot.dart';
 import 'package:share_plus/share_plus.dart';
-import 'package:gal/gal.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -135,80 +134,6 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
     }
   }
 
-  Future<void> _shareLink() async {
-    try {
-      await Share.share(
-        _gameUrl,
-        subject: 'Check out this chess game on ChessEver!',
-        sharePositionOrigin: const Rect.fromLTWH(0, 0, 1, 1),
-      );
-    } catch (e) {
-      debugPrint('Error sharing link: $e');
-      _showMessage('Failed to share link', isError: true);
-    }
-  }
-
-  Future<void> _copyLink() async {
-    try {
-      await Clipboard.setData(ClipboardData(text: _gameUrl));
-      HapticFeedback.lightImpact();
-      _showMessage('Link copied to clipboard!', isError: false);
-    } catch (e) {
-      debugPrint('Error copying link: $e');
-      _showMessage('Failed to copy link', isError: true);
-    }
-  }
-
-  Future<void> _downloadImage() async {
-    // Check and request permission using Gal's built-in permission handling
-    final hasAccess = await Gal.hasAccess();
-    if (!hasAccess) {
-      final granted = await Gal.requestAccess();
-      if (!granted) {
-        _showMessage(
-          'Storage permission is required to save images',
-          isError: true,
-        );
-        return;
-      }
-    }
-
-    final imageBytes = await _captureCard();
-    if (imageBytes == null) {
-      _showMessage('Failed to generate image', isError: true);
-      return;
-    }
-
-    try {
-      // Use Gal's putImageBytes method to save the image
-      await Gal.putImageBytes(imageBytes);
-      _showMessage('Image saved to gallery!', isError: false);
-    } on GalException catch (e) {
-      debugPrint('Gal error: ${e.type}');
-      String errorMessage = 'Failed to save image';
-
-      switch (e.type) {
-        case GalExceptionType.accessDenied:
-          errorMessage = 'Permission denied to save images';
-          break;
-        case GalExceptionType.notEnoughSpace:
-          errorMessage = 'Not enough storage space';
-          break;
-        case GalExceptionType.notSupportedFormat:
-          errorMessage = 'Image format not supported';
-          break;
-        case GalExceptionType.unexpected:
-          errorMessage = 'Unexpected error occurred';
-          break;
-      }
-
-      _showMessage(errorMessage, isError: true);
-    } catch (e) {
-      debugPrint('Error saving: $e');
-      _showMessage('Failed to save image', isError: true);
-    }
-  }
-
   void _showMessage(String message, {required bool isError}) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -305,122 +230,28 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
                       strokeWidth: 2,
                     )
                   else
-                    Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 40.w),
-                      child: Column(
-                        children: [
-                          // First row: Share Image + Download
-                          Row(
-                            children: [
-                              Expanded(
-                                child: ElevatedButton.icon(
-                                  onPressed: _shareImage,
-                                  icon: Icon(Icons.image, size: 18.sp),
-                                  label: Text(
-                                    'Share Image',
-                                    style: TextStyle(
-                                      fontSize: 13.sp,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: kPrimaryColor,
-                                    foregroundColor: kWhiteColor,
-                                    padding: EdgeInsets.symmetric(vertical: 12.h),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(10.br),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              SizedBox(width: 12.w),
-                              Expanded(
-                                child: ElevatedButton.icon(
-                                  onPressed: _downloadImage,
-                                  icon: Icon(Icons.download, size: 18.sp),
-                                  label: Text(
-                                    'Download',
-                                    style: TextStyle(
-                                      fontSize: 13.sp,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: kBlack2Color,
-                                    foregroundColor: kWhiteColor,
-                                    padding: EdgeInsets.symmetric(vertical: 12.h),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(10.br),
-                                      side: BorderSide(
-                                        color: kWhiteColor70,
-                                        width: 1,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                          SizedBox(height: 10.h),
-                          // Second row: Share Link + Copy Link
-                          Row(
-                            children: [
-                              Expanded(
-                                child: ElevatedButton.icon(
-                                  onPressed: _shareLink,
-                                  icon: Icon(Icons.link, size: 18.sp),
-                                  label: Text(
-                                    'Share Link',
-                                    style: TextStyle(
-                                      fontSize: 13.sp,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: kBlack2Color,
-                                    foregroundColor: kWhiteColor,
-                                    padding: EdgeInsets.symmetric(vertical: 12.h),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(10.br),
-                                      side: BorderSide(
-                                        color: kWhiteColor70,
-                                        width: 1,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              SizedBox(width: 12.w),
-                              Expanded(
-                                child: ElevatedButton.icon(
-                                  onPressed: _copyLink,
-                                  icon: Icon(Icons.copy, size: 18.sp),
-                                  label: Text(
-                                    'Copy Link',
-                                    style: TextStyle(
-                                      fontSize: 13.sp,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: kBlack2Color,
-                                    foregroundColor: kWhiteColor,
-                                    padding: EdgeInsets.symmetric(vertical: 12.h),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(10.br),
-                                      side: BorderSide(
-                                        color: kWhiteColor70,
-                                        width: 1,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
+                    ElevatedButton.icon(
+                    onPressed: _shareImage,
+                    icon: Icon(Icons.share, size: 18.sp),
+                    label: Text(
+                      'Share',
+                      style: TextStyle(
+                        fontSize: 14.sp,
+                        fontWeight: FontWeight.w600,
                       ),
-                    ).animate().fadeIn(delay: 200.ms, duration: 300.ms),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: kPrimaryColor,
+                      foregroundColor: kWhiteColor,
+                      padding: EdgeInsets.symmetric(
+                        vertical: 14.h,
+                        horizontal: 48.w,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10.br),
+                      ),
+                    ),
+                  ).animate().fadeIn(delay: 200.ms, duration: 300.ms),
                 ],
               ),
             ),
