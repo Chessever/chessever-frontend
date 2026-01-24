@@ -366,12 +366,12 @@ class _Bars extends StatelessWidget {
                     ? '...'
                     : (isMate && mate != 0)
                     ? '#${mate.abs()}'
-                    : evaluation.abs().toStringAsFixed(1),
+                    : evaluation.round().abs().toString(),
                 maxLines: 1,
                 textAlign: TextAlign.center,
                 style: AppTypography.textSmRegular.copyWith(
                   color: Colors.white,
-                  fontSize: playerView == PlayerView.gridView ? 6.sp : 9.sp, // Scaled sizes that fit container
+                  fontSize: playerView == PlayerView.gridView ? 0.2.f : 1.5.f,
                   fontWeight:
                       playerView == PlayerView.gridView
                           ? FontWeight.w300
