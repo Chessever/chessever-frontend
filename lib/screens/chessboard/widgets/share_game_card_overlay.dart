@@ -864,13 +864,10 @@ class _ShareCard extends ConsumerWidget {
             child: Row(
               children: [
                 // Always reserve space for score to prevent layout shift
+                // Score always visible (not tied to eval bar toggle)
                 SizedBox(
                   width: sideBarWidth.w,
-                  child: AnimatedOpacity(
-                    opacity: showEvalBar ? 1.0 : 0.0,
-                    duration: Duration(milliseconds: 200),
-                    child: _buildEndScoreWidget(isWhitePlayer: topIsWhitePlayer),
-                  ),
+                  child: _buildEndScoreWidget(isWhitePlayer: topIsWhitePlayer),
                 ),
                 SizedBox(width: 8.w),
                 if (topPlayerCountry.isNotEmpty) ...[
@@ -996,13 +993,10 @@ class _ShareCard extends ConsumerWidget {
             child: Row(
               children: [
                 // Always reserve space for score to prevent layout shift
+                // Score always visible (not tied to eval bar toggle)
                 SizedBox(
                   width: sideBarWidth.w,
-                  child: AnimatedOpacity(
-                    opacity: showEvalBar ? 1.0 : 0.0,
-                    duration: Duration(milliseconds: 200),
-                    child: _buildEndScoreWidget(isWhitePlayer: bottomIsWhitePlayer),
-                  ),
+                  child: _buildEndScoreWidget(isWhitePlayer: bottomIsWhitePlayer),
                 ),
                 SizedBox(width: 8.w),
                 if (bottomPlayerCountry.isNotEmpty) ...[
