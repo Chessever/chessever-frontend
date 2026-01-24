@@ -195,7 +195,7 @@ class _EvaluationBarWidgetState extends State<EvaluationBarWidget> {
                     textAlign: TextAlign.center,
                     style: AppTypography.textSmRegular.copyWith(
                       color: Colors.white,
-                      fontSize: 9.sp, // Reduced to fit 3 chars, .sp avoids 10px clamp
+                      fontSize: 3.5.f,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
