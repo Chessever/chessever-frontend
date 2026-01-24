@@ -433,9 +433,12 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
                         : ''; // Part after comma
 
                 // Build static parts
-                final title =
-                    playerCard.title.isNotEmpty ? '${playerCard.title} ' : '';
                 final rating = ' ${playerCard.rating}';
+
+                // DEBUG: Log title value
+                if (playerView == PlayerView.boardView) {
+                  debugPrint('[PlayerTitle] ${playerCard.name}: title="${playerCard.title}", isEmpty=${playerCard.title.isEmpty}');
+                }
 
                 // Create text painter to measure text width
                 final textPainter = TextPainter(
@@ -452,7 +455,7 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
                   // Strategy 1: Try full surname + full first name
                   textPainter.text = TextSpan(
                     children: [
-                      if (title.isNotEmpty) TextSpan(text: title, style: rankStyle),
+                      TextSpan(text: '${playerCard.title} ', style: rankStyle),
                       TextSpan(text: surname, style: nameStyle),
                       if (firstName.isNotEmpty)
                         TextSpan(text: ', $firstName', style: nameStyle),
@@ -473,7 +476,7 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
 
                     textPainter.text = TextSpan(
                       children: [
-                        if (title.isNotEmpty) TextSpan(text: title, style: rankStyle),
+                        TextSpan(text: '${playerCard.title} ', style: rankStyle),
                         TextSpan(text: surname, style: nameStyle),
                         TextSpan(text: displayFirstName, style: nameStyle),
                         TextSpan(text: rating, style: ratingStyle),
@@ -487,7 +490,7 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
 
                       textPainter.text = TextSpan(
                         children: [
-                          if (title.isNotEmpty) TextSpan(text: title, style: rankStyle),
+                          TextSpan(text: '${playerCard.title} ', style: rankStyle),
                           TextSpan(text: surname, style: nameStyle),
                           TextSpan(text: rating, style: ratingStyle),
                         ],
@@ -509,8 +512,8 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
                   text: TextSpan(
                     style: nameStyle, // Add base style for inheritance
                     children: [
-                      if (title.isNotEmpty)
-                        TextSpan(text: title, style: rankStyle),
+                      // Always render title (with trailing space) like old code
+                      TextSpan(text: '${playerCard.title} ', style: rankStyle),
                       if (displaySurname.isNotEmpty)
                         TextSpan(text: displaySurname, style: nameStyle),
                       if (displayFirstName.isNotEmpty)
