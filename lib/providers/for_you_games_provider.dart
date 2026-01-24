@@ -343,10 +343,11 @@ final eventGamesProvider = FutureProvider.autoDispose
 
 /// Game must have actual moves OR be finished
 /// This filters out games from unstarted rounds that have status='*' but no moves
+/// Note: We don't check pgn.isNotEmpty because future games have PGN headers (~700 chars)
+/// but no actual moves. Only lastMove and lastMoveTime indicate actual play.
 bool _hasActuallyStarted(Games game) {
   final hasMoves = (game.lastMove?.isNotEmpty ?? false) ||
-      game.lastMoveTime != null ||
-      (game.pgn?.isNotEmpty ?? false);
+      game.lastMoveTime != null;
   final isFinished = game.status == '1-0' ||
       game.status == '0-1' ||
       game.status == '1/2-1/2' ||
