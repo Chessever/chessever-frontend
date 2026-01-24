@@ -6,6 +6,7 @@ import 'package:chessever2/repository/local_storage/tournament/games/games_local
 import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
+import 'package:chessever2/repository/supabase/round/round_repository.dart';
 import 'package:chessever2/repository/supabase/tour/tour_repository.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/screens/group_event/providers/live_group_broadcast_id_provider.dart';
@@ -253,48 +254,66 @@ final eventGamesProvider = FutureProvider.autoDispose
 
   final groupBroadcastRepo = ref.read(groupBroadcastRepositoryProvider);
   final tourRepository = ref.read(tourRepositoryProvider);
+  final roundRepository = ref.read(roundRepositoryProvider);
   final gamesStorage = ref.read(gamesLocalStorage);
 
-  // Get all tour IDs for this event
-  List<String> tourIds = [];
+  // Get all tours for this event and pick the one with highest avgElo
+  String? selectedTourId;
   try {
     final tours = await tourRepository.getTourByGroupId(eventId);
     if (tours.isNotEmpty) {
-      tourIds = tours.map((tour) => tour.id).toList();
+      // Sort by avgElo descending and pick the highest
+      tours.sort((a, b) => (b.avgElo ?? 0).compareTo(a.avgElo ?? 0));
+      selectedTourId = tours.first.id;
+      debugPrint('[ForYou] Selected tour "${tours.first.name}" (avgElo: ${tours.first.avgElo}) from ${tours.length} tours');
     }
   } catch (e) {
-    tourIds = [];
+    debugPrint('[ForYou] Error fetching tours: $e');
   }
 
-  if (tourIds.isEmpty) {
+  // Fallback: try getting tour IDs directly
+  if (selectedTourId == null) {
     try {
-      tourIds = await groupBroadcastRepo.getTourIdsForGroupBroadcast(eventId);
-    } catch (e) {
-      tourIds = [];
-    }
-  }
-
-  if (tourIds.isEmpty) tourIds = [eventId];
-
-  // Collect ALL games from all tours
-  final allGames = <Games>[];
-  final seenGameIds = <String>{};
-
-  for (final tourId in tourIds) {
-    try {
-      // Use getGames which checks cache first (more efficient than fetchAndSaveGames)
-      final games = await gamesStorage.getGames(tourId);
-      for (final game in games) {
-        if (seenGameIds.add(game.id)) {
-          // Only include games that have started (have moves or are live/finished)
-          if (_hasStarted(game) && game.players != null && game.players!.length >= 2) {
-            allGames.add(game);
-          }
-        }
+      final tourIds = await groupBroadcastRepo.getTourIdsForGroupBroadcast(eventId);
+      if (tourIds.isNotEmpty) {
+        selectedTourId = tourIds.first;
       }
     } catch (e) {
-      debugPrint('[ForYou] Error fetching games for tour $tourId: $e');
+      debugPrint('[ForYou] Error fetching tour IDs: $e');
     }
+  }
+
+  // Final fallback: use eventId as tourId
+  selectedTourId ??= eventId;
+
+  // Fetch rounds for the selected tour and build a map of roundId -> startsAt
+  final roundStartsAtMap = <String, DateTime?>{};
+  try {
+    final rounds = await roundRepository.getRoundsByTourId(selectedTourId);
+    for (final round in rounds) {
+      roundStartsAtMap[round.id] = round.startsAt;
+    }
+  } catch (e) {
+    debugPrint('[ForYou] Error fetching rounds: $e');
+  }
+
+  final now = DateTime.now();
+
+  // Collect games from the selected tour only
+  final allGames = <Games>[];
+  try {
+    final games = await gamesStorage.getGames(selectedTourId);
+    for (final game in games) {
+      // Only include games that have started AND are from started rounds
+      final roundStartsAt = roundStartsAtMap[game.roundId];
+      final roundHasStarted = roundStartsAt == null || !roundStartsAt.isAfter(now);
+
+      if (_hasStarted(game) && game.players != null && game.players!.length >= 2 && roundHasStarted) {
+        allGames.add(game);
+      }
+    }
+  } catch (e) {
+    debugPrint('[ForYou] Error fetching games for tour $selectedTourId: $e');
   }
 
   if (allGames.isEmpty) {
@@ -302,28 +321,41 @@ final eventGamesProvider = FutureProvider.autoDispose
     return [];
   }
 
-  // Collect pinned game IDs from all tours (same as games tab)
-  final pinnedIds = <String>[];
-  final seenPinIds = <String>{};
-  for (final tourId in tourIds) {
-    try {
-      final pinState = ref.read(gamesPinprovider(tourId));
-      for (final pinId in pinState.allPins) {
-        if (seenPinIds.add(pinId)) {
-          pinnedIds.add(pinId);
-        }
-      }
-    } catch (e) {
-      // Pin provider might not be initialized, continue without pins
+  // Find the latest started round number among all games
+  int latestRoundNum = 0;
+  for (final game in allGames) {
+    final roundNum = _extractRoundNumber(game.roundSlug);
+    if (roundNum > latestRoundNum) {
+      latestRoundNum = roundNum;
     }
   }
 
+  // Filter to only games from the latest started round
+  final latestRoundGames = allGames.where((game) {
+    return _extractRoundNumber(game.roundSlug) == latestRoundNum;
+  }).toList();
+
+  debugPrint('[ForYou] Latest started round: $latestRoundNum with ${latestRoundGames.length} games');
+
+  if (latestRoundGames.isEmpty) {
+    return [];
+  }
+
+  // Collect pinned game IDs
+  final pinnedIds = <String>[];
+  try {
+    final pinState = ref.read(gamesPinprovider(selectedTourId));
+    pinnedIds.addAll(pinState.allPins);
+  } catch (e) {
+    // Pin provider might not be initialized, continue without pins
+  }
+
   // Sort using the SAME logic as Games tab
-  final sortedGames = _sortGamesLikeGamesTab(allGames, pinnedIds);
+  final sortedGames = _sortGamesLikeGamesTab(latestRoundGames, pinnedIds);
 
   // Return first 4 games
   final result = sortedGames.take(kGamesPerEvent).toList();
-  debugPrint('[ForYou] Selected ${result.length} games for event $eventId (from ${allGames.length} total)');
+  debugPrint('[ForYou] Selected ${result.length} games for event $eventId (from ${latestRoundGames.length} in round $latestRoundNum)');
   return result;
 });
 
