@@ -21,18 +21,32 @@ import 'package:chessground/chessground.dart';
 import 'package:dartchess/dartchess.dart';
 
 /// Top-level function for GIF encoding in isolate (MUST be top-level or static)
-/// Duration is in 1/100 second units (centiseconds)
+/// Duration is in 1/100 second units (centiseconds): 100 = 1 second
 Uint8List? _encodeGifInIsolate(List<Uint8List> frameBytes) {
-  final gif = img.GifEncoder();
-  for (int i = 0; i < frameBytes.length; i++) {
-    final decoded = img.decodeImage(frameBytes[i]);
-    if (decoded != null) {
-      // 50 centiseconds = 500ms per frame, 200 centiseconds = 2s for last frame
-      final isLastFrame = i == frameBytes.length - 1;
-      gif.addFrame(decoded, duration: isLastFrame ? 200 : 50);
+  if (frameBytes.isEmpty) return null;
+
+  try {
+    // Create encoder with default delay of 50 centiseconds (0.5s)
+    final gif = img.GifEncoder(delay: 50);
+    int framesAdded = 0;
+
+    for (int i = 0; i < frameBytes.length; i++) {
+      final decoded = img.decodePng(frameBytes[i]);
+      if (decoded != null) {
+        // 50 centiseconds = 500ms per frame, 200 centiseconds = 2s for last frame
+        final isLastFrame = i == frameBytes.length - 1;
+        gif.addFrame(decoded, duration: isLastFrame ? 200 : 50);
+        framesAdded++;
+      }
     }
+
+    if (framesAdded == 0) return null;
+
+    return gif.finish();
+  } catch (e) {
+    // Can't use debugPrint in isolate, but errors will propagate
+    return null;
   }
-  return gif.finish();
 }
 
 class ShareGameCardOverlay extends StatefulWidget {
@@ -179,14 +193,20 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
       Position position = Chess.initial;
       final frameBytes = <Uint8List>[];
 
-      // Initial position
+      // Initial position - set state and wait for widget to build
       setState(() {
         _gifFrameFen = position.fen;
         _gifFrameLastMove = null;
       });
-      await Future.delayed(const Duration(milliseconds: 80));
+      // Wait for widget to build and paint
+      await Future.delayed(const Duration(milliseconds: 150));
       await WidgetsBinding.instance.endOfFrame;
-      final initial = await _gifFrameController.capture(pixelRatio: 2.0);
+      await Future.delayed(const Duration(milliseconds: 50));
+
+      final initial = await _gifFrameController.capture(
+        pixelRatio: 2.0,
+        delay: const Duration(milliseconds: 20),
+      );
       if (initial != null) frameBytes.add(initial);
 
       // Each move
@@ -195,16 +215,31 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
         if (move == null) continue;
         position = position.play(move);
 
-        final normalMove = move as NormalMove;
+        // Extract from/to squares safely for any move type
+        NormalMove? lastMoveForDisplay;
+        if (move is NormalMove) {
+          lastMoveForDisplay = NormalMove(from: move.from, to: move.to);
+        } else {
+          // For castling and other special moves, we can still show the king's move
+          // by checking the move's string representation or just skip highlighting
+          lastMoveForDisplay = null;
+        }
+
         setState(() {
           _gifFrameFen = position.fen;
-          _gifFrameLastMove = NormalMove(from: normalMove.from, to: normalMove.to);
+          _gifFrameLastMove = lastMoveForDisplay;
           _gifProgress = (i + 1) / movesToAnimate.length * 0.7; // 70% for capture
         });
 
-        await Future.delayed(const Duration(milliseconds: 60));
+        // Wait for widget to rebuild with new position
+        await Future.delayed(const Duration(milliseconds: 100));
         await WidgetsBinding.instance.endOfFrame;
-        final frame = await _gifFrameController.capture(pixelRatio: 2.0);
+        await Future.delayed(const Duration(milliseconds: 30));
+
+        final frame = await _gifFrameController.capture(
+          pixelRatio: 2.0,
+          delay: const Duration(milliseconds: 20),
+        );
         if (frame != null) frameBytes.add(frame);
       }
 
@@ -213,14 +248,18 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
         return;
       }
 
+      debugPrint('GIF: Captured ${frameBytes.length} frames');
+
       // Phase 2: Encode GIF in isolate (heavy work off main thread)
       setState(() => _gifProgress = 0.8);
       final gifBytes = await compute(_encodeGifInIsolate, frameBytes);
 
-      if (gifBytes == null) {
+      if (gifBytes == null || gifBytes.isEmpty) {
         _showMessage('Failed to encode GIF', isError: true);
         return;
       }
+
+      debugPrint('GIF: Encoded ${gifBytes.length} bytes');
 
       // Phase 3: Save and share
       setState(() => _gifProgress = 0.95);
@@ -228,13 +267,16 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
       final file = io.File('${tempDir.path}/chessever_game.gif');
       await file.writeAsBytes(gifBytes);
 
+      debugPrint('GIF: Saved to ${file.path}');
+
       await Share.shareXFiles(
         [XFile(file.path)],
         text: _gameUrl,
         sharePositionOrigin: const Rect.fromLTWH(0, 0, 1, 1),
       );
-    } catch (e) {
+    } catch (e, st) {
       debugPrint('GIF error: $e');
+      debugPrint('GIF stack: $st');
       _showMessage('Failed to generate GIF', isError: true);
     } finally {
       setState(() {
@@ -600,16 +642,16 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
                 ),
               ),
             ),
-            // Offscreen GIF frame widget
-            if (_gifFrameFen != null)
-              Positioned(
-                left: -10000,
-                top: -10000,
+            // Offscreen GIF frame widget - always in tree for controller to work
+            Positioned(
+              left: -10000,
+              top: -10000,
+              child: RepaintBoundary(
                 child: Screenshot(
                   controller: _gifFrameController,
                   child: _ShareCard(
                     boardSettings: widget.boardSettings,
-                    positionFen: _gifFrameFen!,
+                    positionFen: _gifFrameFen ?? widget.positionFen,
                     lastMove: _gifFrameLastMove,
                     onClose: null,
                     pgn: widget.pgn,
@@ -637,6 +679,7 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
                   ),
                 ),
               ),
+            ),
           ],
         ),
       ),
