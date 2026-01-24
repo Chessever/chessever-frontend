@@ -1,8 +1,8 @@
 import 'dart:io' as io;
 import 'dart:math' as math;
-import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:screenshot/screenshot.dart';
@@ -79,6 +79,7 @@ class ShareGameCardOverlay extends StatefulWidget {
 class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
   final ScreenshotController _fullScreenshotController = ScreenshotController();
   bool _isGenerating = false;
+  bool _showEvalBar = true;
   double _rotationX = 0.0;
   double _rotationY = 0.0;
 
@@ -131,6 +132,17 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
     } catch (e) {
       debugPrint('Error sharing: $e');
       _showMessage('Failed to share image', isError: true);
+    }
+  }
+
+  Future<void> _copyPgn() async {
+    try {
+      await Clipboard.setData(ClipboardData(text: widget.pgn));
+      HapticFeedback.lightImpact();
+      _showMessage('PGN copied to clipboard!', isError: false);
+    } catch (e) {
+      debugPrint('Error copying PGN: $e');
+      _showMessage('Failed to copy PGN', isError: true);
     }
   }
 
@@ -216,42 +228,101 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
                             isFlipped: widget.isFlipped,
                             gameStatus: widget.gameStatus,
                             isPreview: true,
-                            gameId: widget.gameId, // Pass game ID for correct caching
+                            showEvalBar: _showEvalBar,
+                            gameId: widget.gameId,
                           ),
                         ),
                       )
                       .animate()
                       .fadeIn(duration: 300.ms)
                       .scale(begin: Offset(0.95, 0.95), duration: 300.ms),
-                  SizedBox(height: 20.h),
+                  SizedBox(height: 16.h),
+                  // Eval bar toggle
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'Show Eval Bar',
+                        style: TextStyle(
+                          color: kWhiteColor70,
+                          fontSize: 13.sp,
+                        ),
+                      ),
+                      SizedBox(width: 8.w),
+                      SizedBox(
+                        height: 24.h,
+                        child: Switch.adaptive(
+                          value: _showEvalBar,
+                          onChanged: (value) {
+                            setState(() => _showEvalBar = value);
+                          },
+                          activeTrackColor: kPrimaryColor,
+                          activeThumbColor: kWhiteColor,
+                        ),
+                      ),
+                    ],
+                  ).animate().fadeIn(delay: 150.ms, duration: 300.ms),
+                  SizedBox(height: 16.h),
                   if (_isGenerating)
                     CircularProgressIndicator(
                       color: kPrimaryColor,
                       strokeWidth: 2,
                     )
                   else
-                    ElevatedButton.icon(
-                    onPressed: _shareImage,
-                    icon: Icon(Icons.share, size: 18.sp),
-                    label: Text(
-                      'Share',
-                      style: TextStyle(
-                        fontSize: 14.sp,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: kPrimaryColor,
-                      foregroundColor: kWhiteColor,
-                      padding: EdgeInsets.symmetric(
-                        vertical: 14.h,
-                        horizontal: 48.w,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10.br),
-                      ),
-                    ),
-                  ).animate().fadeIn(delay: 200.ms, duration: 300.ms),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        ElevatedButton.icon(
+                          onPressed: _shareImage,
+                          icon: Icon(Icons.share, size: 18.sp),
+                          label: Text(
+                            'Share',
+                            style: TextStyle(
+                              fontSize: 14.sp,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: kPrimaryColor,
+                            foregroundColor: kWhiteColor,
+                            padding: EdgeInsets.symmetric(
+                              vertical: 14.h,
+                              horizontal: 32.w,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10.br),
+                            ),
+                          ),
+                        ),
+                        SizedBox(width: 12.w),
+                        ElevatedButton.icon(
+                          onPressed: _copyPgn,
+                          icon: Icon(Icons.copy, size: 18.sp),
+                          label: Text(
+                            'Copy PGN',
+                            style: TextStyle(
+                              fontSize: 14.sp,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: kBlack2Color,
+                            foregroundColor: kWhiteColor,
+                            padding: EdgeInsets.symmetric(
+                              vertical: 14.h,
+                              horizontal: 24.w,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10.br),
+                              side: BorderSide(
+                                color: kWhiteColor70,
+                                width: 1,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ).animate().fadeIn(delay: 200.ms, duration: 300.ms),
                 ],
               ),
             ),
@@ -287,7 +358,8 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
                   isFlipped: widget.isFlipped,
                   gameStatus: widget.gameStatus,
                   isPreview: false,
-                  gameId: widget.gameId, // Pass game ID for correct caching
+                  showEvalBar: _showEvalBar,
+                  gameId: widget.gameId,
                 ),
               ),
             ),
@@ -323,6 +395,7 @@ class _ShareCard extends ConsumerWidget {
   final bool isFlipped;
   final GameStatus gameStatus;
   final bool isPreview;
+  final bool showEvalBar;
   final String gameId; // CRITICAL: Include game ID for correct eval caching
 
   const _ShareCard({
@@ -350,6 +423,7 @@ class _ShareCard extends ConsumerWidget {
     required this.isFlipped,
     required this.gameStatus,
     this.isPreview = false,
+    this.showEvalBar = true,
     required this.gameId, // REQUIRED for correct eval caching
   });
 
@@ -470,11 +544,13 @@ class _ShareCard extends ConsumerWidget {
             child: Row(
               children: [
                 // Display end score for finished games (aligned with eval bar position)
-                SizedBox(
-                  width: 20.w,
-                  child: _buildEndScoreWidget(isWhitePlayer: topIsWhitePlayer),
-                ),
-                SizedBox(width: 8.w),
+                if (showEvalBar) ...[
+                  SizedBox(
+                    width: 20.w,
+                    child: _buildEndScoreWidget(isWhitePlayer: topIsWhitePlayer),
+                  ),
+                  SizedBox(width: 8.w),
+                ],
                 if (topPlayerCountry.isNotEmpty) ...[
                   CountryFlag.fromCountryCode(
                     topPlayerCountry,
@@ -540,12 +616,12 @@ class _ShareCard extends ConsumerWidget {
             ),
           ),
           SizedBox(height: 12.h),
-          // Board with evaluation bar - EXACT same structure as main chess board screen
+          // Board with optional evaluation bar
           Padding(
             padding: EdgeInsets.symmetric(horizontal: 16.sp),
             child: LayoutBuilder(
               builder: (context, constraints) {
-                final sideBarWidth = 20.w;
+                final sideBarWidth = showEvalBar ? 20.w : 0.0;
                 final availableWidth = constraints.maxWidth;
                 final boardSize = math.max(1.0, availableWidth - sideBarWidth);
                 final fenParts = positionFen.split(' ');
@@ -555,20 +631,21 @@ class _ShareCard extends ConsumerWidget {
                 return Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    SizedBox(
-                      width: sideBarWidth,
-                      height: boardSize,
-                      child: EvaluationBarWidget(
+                    if (showEvalBar)
+                      SizedBox(
                         width: sideBarWidth,
                         height: boardSize,
-                        evaluation: evaluation,
-                        mate: mate != 0 ? mate : null,
-                        isEvaluating: evaluation == null && mate == 0,
-                        isFlipped: isFlipped,
-                        isWhiteToMove: overlayWhiteToMove,
-                        positionKey: positionFen,
+                        child: EvaluationBarWidget(
+                          width: sideBarWidth,
+                          height: boardSize,
+                          evaluation: evaluation,
+                          mate: mate != 0 ? mate : null,
+                          isEvaluating: evaluation == null && mate == 0,
+                          isFlipped: isFlipped,
+                          isWhiteToMove: overlayWhiteToMove,
+                          positionKey: positionFen,
+                        ),
                       ),
-                    ),
                     SizedBox(
                       width: boardSize,
                       height: boardSize,
@@ -592,11 +669,13 @@ class _ShareCard extends ConsumerWidget {
             child: Row(
               children: [
                 // Display end score for finished games (aligned with eval bar position)
-                SizedBox(
-                  width: 20.w,
-                  child: _buildEndScoreWidget(isWhitePlayer: bottomIsWhitePlayer),
-                ),
-                SizedBox(width: 8.w),
+                if (showEvalBar) ...[
+                  SizedBox(
+                    width: 20.w,
+                    child: _buildEndScoreWidget(isWhitePlayer: bottomIsWhitePlayer),
+                  ),
+                  SizedBox(width: 8.w),
+                ],
                 if (bottomPlayerCountry.isNotEmpty) ...[
                   CountryFlag.fromCountryCode(
                     bottomPlayerCountry,
