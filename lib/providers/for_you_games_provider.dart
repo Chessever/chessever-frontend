@@ -6,6 +6,9 @@ import 'package:chessever2/repository/local_storage/tournament/games/games_local
 import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
+import 'package:chessever2/repository/supabase/round/round.dart';
+import 'package:chessever2/repository/supabase/round/round_repository.dart';
+import 'package:chessever2/repository/supabase/tour/tour.dart';
 import 'package:chessever2/repository/supabase/tour/tour_repository.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/screens/group_event/providers/live_group_broadcast_id_provider.dart';
@@ -240,11 +243,10 @@ final forYouEventsProvider = StateNotifierProvider.autoDispose<ForYouNotifier, F
 
 // ============================================================================
 // LAZY GAMES PER EVENT PROVIDER
-// Uses the same sorting logic as the Games tab in event detail screen:
-// 1. Pinned games first (manual + auto, preserving pin order)
-// 2. Round number DESCENDING (latest round first)
-// 3. Game number DESCENDING
-// 4. Board number ASCENDING
+// Selection logic:
+// 1. Pick the tour with highest avgElo (for events with multiple categories)
+// 2. Get games only from the latest started/completed round
+// 3. Sort by: pinned first, then board number ascending
 // ============================================================================
 
 final eventGamesProvider = FutureProvider.autoDispose
@@ -253,77 +255,111 @@ final eventGamesProvider = FutureProvider.autoDispose
 
   final groupBroadcastRepo = ref.read(groupBroadcastRepositoryProvider);
   final tourRepository = ref.read(tourRepositoryProvider);
+  final roundRepository = ref.read(roundRepositoryProvider);
   final gamesStorage = ref.read(gamesLocalStorage);
 
-  // Get all tour IDs for this event
-  List<String> tourIds = [];
+  // Get all tours for this event (with avgElo data)
+  List<Tour> tours = [];
   try {
-    final tours = await tourRepository.getTourByGroupId(eventId);
-    if (tours.isNotEmpty) {
-      tourIds = tours.map((tour) => tour.id).toList();
-    }
+    tours = await tourRepository.getTourByGroupId(eventId);
   } catch (e) {
-    tourIds = [];
+    debugPrint('[ForYou] Error fetching tours for event $eventId: $e');
   }
 
-  if (tourIds.isEmpty) {
+  // If no tours found, try alternative method
+  if (tours.isEmpty) {
     try {
-      tourIds = await groupBroadcastRepo.getTourIdsForGroupBroadcast(eventId);
-    } catch (e) {
-      tourIds = [];
-    }
-  }
-
-  if (tourIds.isEmpty) tourIds = [eventId];
-
-  // Collect ALL games from all tours
-  final allGames = <Games>[];
-  final seenGameIds = <String>{};
-
-  for (final tourId in tourIds) {
-    try {
-      // Use getGames which checks cache first (more efficient than fetchAndSaveGames)
-      final games = await gamesStorage.getGames(tourId);
-      for (final game in games) {
-        if (seenGameIds.add(game.id)) {
-          // Only include games that have started (have moves or are live/finished)
-          if (_hasStarted(game) && game.players != null && game.players!.length >= 2) {
-            allGames.add(game);
-          }
-        }
+      final tourIds = await groupBroadcastRepo.getTourIdsForGroupBroadcast(eventId);
+      if (tourIds.isNotEmpty) {
+        // Fetch full tour data to get avgElo
+        tours = await tourRepository.getToursByIds(tourIds);
       }
     } catch (e) {
-      debugPrint('[ForYou] Error fetching games for tour $tourId: $e');
+      debugPrint('[ForYou] Error fetching tour IDs for event $eventId: $e');
     }
   }
 
-  if (allGames.isEmpty) {
-    debugPrint('[ForYou] No games found for event $eventId');
+  if (tours.isEmpty) {
+    debugPrint('[ForYou] No tours found for event $eventId');
     return [];
   }
 
-  // Collect pinned game IDs from all tours (same as games tab)
-  final pinnedIds = <String>[];
-  final seenPinIds = <String>{};
-  for (final tourId in tourIds) {
-    try {
-      final pinState = ref.read(gamesPinprovider(tourId));
-      for (final pinId in pinState.allPins) {
-        if (seenPinIds.add(pinId)) {
-          pinnedIds.add(pinId);
-        }
-      }
-    } catch (e) {
-      // Pin provider might not be initialized, continue without pins
-    }
+  // Pick the tour with highest avgElo (for multi-category events like Masters/Challengers)
+  final selectedTour = tours.reduce((a, b) {
+    final aElo = a.avgElo ?? 0;
+    final bElo = b.avgElo ?? 0;
+    return aElo >= bElo ? a : b;
+  });
+
+  debugPrint('[ForYou] Selected tour "${selectedTour.name}" (avgElo: ${selectedTour.avgElo}) from ${tours.length} tours');
+
+  // Get rounds for the selected tour
+  List<Round> rounds = [];
+  try {
+    rounds = await roundRepository.getRoundsByTourId(selectedTour.id);
+  } catch (e) {
+    debugPrint('[ForYou] Error fetching rounds for tour ${selectedTour.id}: $e');
   }
 
-  // Sort using the SAME logic as Games tab
-  final sortedGames = _sortGamesLikeGamesTab(allGames, pinnedIds);
+  final now = DateTime.now();
+
+  // Filter to only started rounds (startsAt is null or <= now)
+  final startedRounds = rounds.where((round) {
+    return round.startsAt == null || !round.startsAt!.isAfter(now);
+  }).toList();
+
+  if (startedRounds.isEmpty) {
+    debugPrint('[ForYou] No started rounds for tour ${selectedTour.id}');
+    return [];
+  }
+
+  // Find the latest started round by round number (extracted from slug)
+  startedRounds.sort((a, b) {
+    final aNum = _extractRoundNumber(a.slug);
+    final bNum = _extractRoundNumber(b.slug);
+    return bNum.compareTo(aNum); // Descending - latest first
+  });
+
+  final latestRound = startedRounds.first;
+  debugPrint('[ForYou] Latest started round: "${latestRound.name}" (id: ${latestRound.id})');
+
+  // Get all games from the selected tour
+  List<Games> allGames = [];
+  try {
+    allGames = await gamesStorage.getGames(selectedTour.id);
+  } catch (e) {
+    debugPrint('[ForYou] Error fetching games for tour ${selectedTour.id}: $e');
+    return [];
+  }
+
+  // Filter to games from the latest started round that have started
+  final roundGames = allGames.where((game) {
+    return game.roundId == latestRound.id &&
+           _hasStarted(game) &&
+           game.players != null &&
+           game.players!.length >= 2;
+  }).toList();
+
+  if (roundGames.isEmpty) {
+    debugPrint('[ForYou] No started games in round ${latestRound.id}');
+    return [];
+  }
+
+  // Collect pinned game IDs
+  final pinnedIds = <String>[];
+  try {
+    final pinState = ref.read(gamesPinprovider(selectedTour.id));
+    pinnedIds.addAll(pinState.allPins);
+  } catch (e) {
+    // Pin provider might not be initialized, continue without pins
+  }
+
+  // Sort: pinned first (preserving pin order), then by board number ascending
+  final sortedGames = _sortGamesForForYou(roundGames, pinnedIds);
 
   // Return first 4 games
   final result = sortedGames.take(kGamesPerEvent).toList();
-  debugPrint('[ForYou] Selected ${result.length} games for event $eventId (from ${allGames.length} total)');
+  debugPrint('[ForYou] Selected ${result.length} games for event $eventId (from ${roundGames.length} in round)');
   return result;
 });
 
@@ -339,22 +375,11 @@ bool _hasStarted(Games game) {
   return isLive || hasMoves || isFinished;
 }
 
-/// Sorts games using the same algorithm as the Games tab:
+/// Sorts games for For You tab:
 /// 1. Pinned games first (preserving pin order)
-/// 2. Round number DESCENDING
-/// 3. Game number DESCENDING
-/// 4. Board number ASCENDING
-List<Games> _sortGamesLikeGamesTab(List<Games> games, List<String> pinnedIds) {
+/// 2. Board number ASCENDING
+List<Games> _sortGamesForForYou(List<Games> games, List<String> pinnedIds) {
   if (games.isEmpty) return [];
-
-  // Pre-parse round/game numbers to avoid repeated regex during sort
-  final gameInfo = <String, (int, int)>{};
-  for (final game in games) {
-    gameInfo[game.id] = (
-      _extractRoundNumber(game.roundSlug),
-      _extractGameNumber(game.roundSlug),
-    );
-  }
 
   final sortedGames = List<Games>.from(games);
   sortedGames.sort((a, b) {
@@ -371,16 +396,7 @@ List<Games> _sortGamesLikeGamesTab(List<Games> games, List<String> pinnedIds) {
       if (aIndex != bIndex) return aIndex.compareTo(bIndex);
     }
 
-    final (roundA, gameA) = gameInfo[a.id] ?? (0, 0);
-    final (roundB, gameB) = gameInfo[b.id] ?? (0, 0);
-
-    // 2. Sort by round number DESCENDING (latest round first)
-    if (roundA != roundB) return roundB.compareTo(roundA);
-
-    // 3. Within same round, sort by game number DESCENDING
-    if (gameA != gameB) return gameB.compareTo(gameA);
-
-    // 4. Finally, sort by board number ASCENDING
+    // 2. Sort by board number ASCENDING
     final aBoard = a.boardNr, bBoard = b.boardNr;
     if (aBoard != null && bBoard != null) return aBoard.compareTo(bBoard);
     if (aBoard != null) return -1;
@@ -394,11 +410,6 @@ List<Games> _sortGamesLikeGamesTab(List<Games> games, List<String> pinnedIds) {
 int _extractRoundNumber(String roundSlug) {
   final match = RegExp(r'round-?(\d+)', caseSensitive: false).firstMatch(roundSlug) ??
                 RegExp(r'(\d+)').firstMatch(roundSlug);
-  return int.tryParse(match?.group(1) ?? '0') ?? 0;
-}
-
-int _extractGameNumber(String roundSlug) {
-  final match = RegExp(r'game-?(\d+)', caseSensitive: false).firstMatch(roundSlug);
   return int.tryParse(match?.group(1) ?? '0') ?? 0;
 }
 
