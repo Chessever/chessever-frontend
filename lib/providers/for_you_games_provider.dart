@@ -6,7 +6,6 @@ import 'package:chessever2/repository/local_storage/tournament/games/games_local
 import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
-import 'package:chessever2/repository/supabase/round/round_repository.dart';
 import 'package:chessever2/repository/supabase/tour/tour_repository.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/screens/group_event/providers/live_group_broadcast_id_provider.dart';
@@ -254,7 +253,6 @@ final eventGamesProvider = FutureProvider.autoDispose
 
   final groupBroadcastRepo = ref.read(groupBroadcastRepositoryProvider);
   final tourRepository = ref.read(tourRepositoryProvider);
-  final roundRepository = ref.read(roundRepositoryProvider);
   final gamesStorage = ref.read(gamesLocalStorage);
 
   // Get all tours for this event and pick the one with highest avgElo
@@ -286,29 +284,13 @@ final eventGamesProvider = FutureProvider.autoDispose
   // Final fallback: use eventId as tourId
   selectedTourId ??= eventId;
 
-  // Fetch rounds for the selected tour and build a map of roundId -> startsAt
-  final roundStartsAtMap = <String, DateTime?>{};
-  try {
-    final rounds = await roundRepository.getRoundsByTourId(selectedTourId);
-    for (final round in rounds) {
-      roundStartsAtMap[round.id] = round.startsAt;
-    }
-  } catch (e) {
-    debugPrint('[ForYou] Error fetching rounds: $e');
-  }
-
-  final now = DateTime.now();
-
-  // Collect games from the selected tour only
+  // Collect games from the selected tour - only those that have actually started
   final allGames = <Games>[];
   try {
     final games = await gamesStorage.getGames(selectedTourId);
     for (final game in games) {
-      // Only include games that have started AND are from started rounds
-      final roundStartsAt = roundStartsAtMap[game.roundId];
-      final roundHasStarted = roundStartsAt == null || !roundStartsAt.isAfter(now);
-
-      if (_hasStarted(game) && game.players != null && game.players!.length >= 2 && roundHasStarted) {
+      // Only include games that have ACTUALLY started (have moves or finished)
+      if (_hasActuallyStarted(game) && game.players != null && game.players!.length >= 2) {
         allGames.add(game);
       }
     }
@@ -321,7 +303,7 @@ final eventGamesProvider = FutureProvider.autoDispose
     return [];
   }
 
-  // Find the latest started round number among all games
+  // Find the latest round number among games that have actually started
   int latestRoundNum = 0;
   for (final game in allGames) {
     final roundNum = _extractRoundNumber(game.roundSlug);
@@ -359,8 +341,9 @@ final eventGamesProvider = FutureProvider.autoDispose
   return result;
 });
 
-bool _hasStarted(Games game) {
-  final isLive = game.status == '*' || game.status == 'ongoing';
+/// Game must have actual moves OR be finished
+/// This filters out games from unstarted rounds that have status='*' but no moves
+bool _hasActuallyStarted(Games game) {
   final hasMoves = (game.lastMove?.isNotEmpty ?? false) ||
       game.lastMoveTime != null ||
       (game.pgn?.isNotEmpty ?? false);
@@ -368,7 +351,7 @@ bool _hasStarted(Games game) {
       game.status == '0-1' ||
       game.status == '1/2-1/2' ||
       game.status == '½-½';
-  return isLive || hasMoves || isFinished;
+  return hasMoves || isFinished;
 }
 
 /// Sorts games using the same algorithm as the Games tab:
