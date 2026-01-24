@@ -4,7 +4,6 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
-import 'package:image/image.dart' as img;
 import 'package:path_provider/path_provider.dart';
 import 'package:screenshot/screenshot.dart';
 import 'package:share_plus/share_plus.dart';
@@ -79,17 +78,10 @@ class ShareGameCardOverlay extends StatefulWidget {
 
 class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
   final ScreenshotController _fullScreenshotController = ScreenshotController();
-  final ScreenshotController _gifFrameController = ScreenshotController();
   bool _isGenerating = false;
-  bool _isGeneratingGif = false;
-  double _gifProgress = 0.0;
   bool _showEvalBar = true;
   double _rotationX = 0.0;
   double _rotationY = 0.0;
-
-  // For GIF generation - current frame position
-  String? _gifFrameFen;
-  Move? _gifFrameLastMove;
 
   Future<Uint8List?> _captureCard() async {
     try {
@@ -151,118 +143,6 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
     } catch (e) {
       debugPrint('Error copying PGN: $e');
       _showMessage('Failed to copy PGN', isError: true);
-    }
-  }
-
-  Future<void> _shareGif() async {
-    if (_isGeneratingGif) return;
-
-    final movesToAnimate = widget.moveSans.take(widget.currentMoveIndex + 1).toList();
-    if (movesToAnimate.isEmpty) {
-      _showMessage('No moves to animate', isError: true);
-      return;
-    }
-
-    setState(() {
-      _isGeneratingGif = true;
-      _gifProgress = 0.0;
-    });
-
-    try {
-      // Start from initial position
-      Position position = Chess.initial;
-      final frames = <img.Image>[];
-
-      // Capture initial position
-      setState(() {
-        _gifFrameFen = position.fen;
-        _gifFrameLastMove = null;
-      });
-      await Future.delayed(const Duration(milliseconds: 100));
-      await WidgetsBinding.instance.endOfFrame;
-      final initialFrame = await _gifFrameController.capture(pixelRatio: 2.0);
-      if (initialFrame != null) {
-        final decoded = img.decodeImage(initialFrame);
-        if (decoded != null) {
-          frames.add(decoded);
-        }
-      }
-
-      // Apply each move and capture
-      for (int i = 0; i < movesToAnimate.length; i++) {
-        final san = movesToAnimate[i];
-        final move = position.parseSan(san);
-        if (move == null) continue;
-
-        position = position.play(move);
-
-        // Cast to NormalMove to get from/to squares for display
-        final normalMove = move as NormalMove;
-        final lastMove = NormalMove(from: normalMove.from, to: normalMove.to);
-
-        setState(() {
-          _gifFrameFen = position.fen;
-          _gifFrameLastMove = lastMove;
-          _gifProgress = (i + 1) / movesToAnimate.length;
-        });
-
-        // Wait for render
-        await Future.delayed(const Duration(milliseconds: 80));
-        await WidgetsBinding.instance.endOfFrame;
-
-        final frameBytes = await _gifFrameController.capture(pixelRatio: 2.0);
-        if (frameBytes != null) {
-          final decoded = img.decodeImage(frameBytes);
-          if (decoded != null) {
-            frames.add(decoded);
-          }
-        }
-      }
-
-      if (frames.isEmpty) {
-        _showMessage('Failed to generate frames', isError: true);
-        return;
-      }
-
-      // Encode GIF
-      setState(() => _gifProgress = 0.95);
-
-      final gif = img.GifEncoder();
-      for (final frame in frames) {
-        // Add frame with 500ms delay (50 = 0.5 seconds in GIF time units of 1/100th sec)
-        gif.addFrame(frame, duration: 50);
-      }
-      // Hold last frame longer
-      if (frames.isNotEmpty) {
-        gif.addFrame(frames.last, duration: 200);
-      }
-
-      final gifBytes = gif.finish();
-      if (gifBytes == null) {
-        _showMessage('Failed to encode GIF', isError: true);
-        return;
-      }
-
-      // Save and share
-      final tempDir = await getTemporaryDirectory();
-      final file = io.File('${tempDir.path}/chessever_game.gif');
-      await file.writeAsBytes(gifBytes);
-
-      await Share.shareXFiles(
-        [XFile(file.path)],
-        text: _gameUrl,
-        sharePositionOrigin: const Rect.fromLTWH(0, 0, 1, 1),
-      );
-    } catch (e) {
-      debugPrint('Error generating GIF: $e');
-      _showMessage('Failed to generate GIF', isError: true);
-    } finally {
-      setState(() {
-        _isGeneratingGif = false;
-        _gifProgress = 0.0;
-        _gifFrameFen = null;
-        _gifFrameLastMove = null;
-      });
     }
   }
 
@@ -383,32 +263,10 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
                     ],
                   ).animate().fadeIn(delay: 150.ms, duration: 300.ms),
                   SizedBox(height: 16.h),
-                  if (_isGenerating || _isGeneratingGif)
-                    Column(
-                      children: [
-                        if (_isGeneratingGif) ...[
-                          Text(
-                            'Generating GIF... ${(_gifProgress * 100).toInt()}%',
-                            style: TextStyle(
-                              color: kWhiteColor70,
-                              fontSize: 12.sp,
-                            ),
-                          ),
-                          SizedBox(height: 8.h),
-                          SizedBox(
-                            width: 200.w,
-                            child: LinearProgressIndicator(
-                              value: _gifProgress,
-                              backgroundColor: kBlack2Color,
-                              valueColor: AlwaysStoppedAnimation(kPrimaryColor),
-                            ),
-                          ),
-                        ] else
-                          CircularProgressIndicator(
-                            color: kPrimaryColor,
-                            strokeWidth: 2,
-                          ),
-                      ],
+                  if (_isGenerating)
+                    CircularProgressIndicator(
+                      color: kPrimaryColor,
+                      strokeWidth: 2,
                     )
                   else
                     Column(
@@ -421,29 +279,6 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
                               icon: Icon(Icons.image, size: 18.sp),
                               label: Text(
                                 'Image',
-                                style: TextStyle(
-                                  fontSize: 14.sp,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: kPrimaryColor,
-                                foregroundColor: kWhiteColor,
-                                padding: EdgeInsets.symmetric(
-                                  vertical: 14.h,
-                                  horizontal: 24.w,
-                                ),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(10.br),
-                                ),
-                              ),
-                            ),
-                            SizedBox(width: 10.w),
-                            ElevatedButton.icon(
-                              onPressed: _shareGif,
-                              icon: Icon(Icons.gif_box, size: 18.sp),
-                              label: Text(
-                                'GIF',
                                 style: TextStyle(
                                   fontSize: 14.sp,
                                   fontWeight: FontWeight.w600,
@@ -532,45 +367,6 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
                 ),
               ),
             ),
-            // Offscreen GIF frame for capturing animation frames
-            if (_gifFrameFen != null)
-              Positioned(
-                left: -10000,
-                top: -10000,
-                child: Screenshot(
-                  controller: _gifFrameController,
-                  child: _ShareCard(
-                    boardSettings: widget.boardSettings,
-                    positionFen: _gifFrameFen!,
-                    lastMove: _gifFrameLastMove,
-                    onClose: null,
-                    pgn: widget.pgn,
-                    moveSans: widget.moveSans,
-                    whitePlayerName: widget.whitePlayerName,
-                    blackPlayerName: widget.blackPlayerName,
-                    whitePlayerCountry: widget.whitePlayerCountry,
-                    blackPlayerCountry: widget.blackPlayerCountry,
-                    whitePlayerElo: widget.whitePlayerElo,
-                    blackPlayerElo: widget.blackPlayerElo,
-                    whitePlayerTitle: widget.whitePlayerTitle,
-                    blackPlayerTitle: widget.blackPlayerTitle,
-                    // Don't show clocks in GIF frames
-                    whitePlayerClock: null,
-                    blackPlayerClock: null,
-                    tournamentName: widget.tournamentName,
-                    roundInfo: widget.roundInfo,
-                    currentMoveIndex: widget.currentMoveIndex,
-                    // Don't show eval in GIF
-                    evaluation: null,
-                    mate: 0,
-                    isFlipped: widget.isFlipped,
-                    gameStatus: widget.gameStatus,
-                    isPreview: false,
-                    showEvalBar: false,
-                    gameId: widget.gameId,
-                  ),
-                ),
-              ),
           ],
         ),
       ),
