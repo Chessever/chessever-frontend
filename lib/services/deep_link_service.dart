@@ -19,6 +19,14 @@ class DeepLinkService {
   StreamSubscription<Uri>? _subscription;
   bool _isInitialized = false;
 
+  // Guards to prevent duplicate/concurrent navigation
+  bool _isNavigating = false;
+  String? _lastHandledGameId;
+  DateTime? _lastHandledTime;
+
+  // Debounce duration to prevent duplicate link events
+  static const _debounceDuration = Duration(milliseconds: 500);
+
   /// Initialize the deep link service
   /// Should be called once after app startup when auth state is ready
   Future<void> initialize(
@@ -69,6 +77,27 @@ class DeepLinkService {
     GlobalKey<NavigatorState> navigatorKey,
     WidgetRef ref,
   ) async {
+    // Guard: Prevent concurrent navigation
+    if (_isNavigating) {
+      debugPrint('DeepLinkService: Navigation already in progress, ignoring');
+      return;
+    }
+
+    // Guard: Debounce duplicate links (same game within short time)
+    final now = DateTime.now();
+    if (_lastHandledGameId == gameId && _lastHandledTime != null) {
+      final timeSinceLastHandle = now.difference(_lastHandledTime!);
+      if (timeSinceLastHandle < _debounceDuration) {
+        debugPrint('DeepLinkService: Duplicate link ignored (debounce)');
+        return;
+      }
+    }
+
+    // Update tracking
+    _lastHandledGameId = gameId;
+    _lastHandledTime = now;
+    _isNavigating = true;
+
     // Check auth state - allow authenticated AND anonymous users
     final authState = ref.read(authStateProvider);
     final status = authState.value?.status;
@@ -76,6 +105,7 @@ class DeepLinkService {
     // Only block truly unauthenticated users (not logged in at all)
     if (status != AppAuthStatus.authenticated) {
       debugPrint('DeepLinkService: Ignoring link - user not authenticated');
+      _isNavigating = false;
       return; // Ignore deep link - user will see auth screen
     }
 
@@ -89,15 +119,26 @@ class DeepLinkService {
 
       debugPrint('DeepLinkService: Game loaded, navigating to chess board');
 
-      // Navigate to chess board
-      navigatorKey.currentState?.push(
-        MaterialPageRoute(
-          builder: (_) => ChessBoardScreenNew(
-            games: [gameTourModel],
-            currentIndex: 0,
+      // Navigate to chess board - pop all existing routes first to prevent stacking
+      // This ensures we don't stack multiple game screens
+      final navigator = navigatorKey.currentState;
+      if (navigator != null) {
+        // Pop until we reach a route that's not a ChessBoardScreenNew
+        // Then push the new game screen
+        navigator.pushAndRemoveUntil(
+          MaterialPageRoute(
+            builder: (_) => ChessBoardScreenNew(
+              games: [gameTourModel],
+              currentIndex: 0,
+            ),
           ),
-        ),
-      );
+          (route) {
+            // Keep the home screen (first route) or any non-game screen
+            // Remove any existing game screens to prevent stacking
+            return route.isFirst;
+          },
+        );
+      }
     } catch (e) {
       // On error, navigate to home screen silently
       debugPrint('DeepLinkService: Failed to load game: $e');
@@ -105,6 +146,8 @@ class DeepLinkService {
         '/home_screen',
         (route) => false,
       );
+    } finally {
+      _isNavigating = false;
     }
   }
 
@@ -113,5 +156,8 @@ class DeepLinkService {
     _subscription?.cancel();
     _subscription = null;
     _isInitialized = false;
+    _isNavigating = false;
+    _lastHandledGameId = null;
+    _lastHandledTime = null;
   }
 }
