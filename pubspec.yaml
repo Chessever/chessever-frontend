@@ -137,6 +137,7 @@ dependencies:
   shorebird_code_push: ^2.0.5
   showcaseview: ^5.0.1
   in_app_review: ^2.0.11
+  image: ^4.7.2
 
 dev_dependencies:
   flutter_test:
@@ -178,7 +179,7 @@ flutter:
     - assets/sfx/
     - assets/launch.jpg
     - assets/app_icon.png
-    # - .env
+    - .env
     # - .env.dev
     - shorebird.yaml
 
