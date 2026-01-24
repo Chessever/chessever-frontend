@@ -253,114 +253,125 @@ final eventGamesProvider = FutureProvider.autoDispose
     .family<List<Games>, String>((ref, eventId) async {
   ref.keepAlive();
 
-  final groupBroadcastRepo = ref.read(groupBroadcastRepositoryProvider);
-  final tourRepository = ref.read(tourRepositoryProvider);
-  final roundRepository = ref.read(roundRepositoryProvider);
-  final gamesStorage = ref.read(gamesLocalStorage);
-
-  // Get all tours for this event (with avgElo data)
-  List<Tour> tours = [];
   try {
-    tours = await tourRepository.getTourByGroupId(eventId);
-  } catch (e) {
-    debugPrint('[ForYou] Error fetching tours for event $eventId: $e');
-  }
+    final groupBroadcastRepo = ref.read(groupBroadcastRepositoryProvider);
+    final tourRepository = ref.read(tourRepositoryProvider);
+    final roundRepository = ref.read(roundRepositoryProvider);
+    final gamesStorage = ref.read(gamesLocalStorage);
 
-  // If no tours found, try alternative method
-  if (tours.isEmpty) {
+    // Get all tours for this event (with avgElo data)
+    List<Tour> tours = [];
     try {
-      final tourIds = await groupBroadcastRepo.getTourIdsForGroupBroadcast(eventId);
-      if (tourIds.isNotEmpty) {
-        // Fetch full tour data to get avgElo
-        tours = await tourRepository.getToursByIds(tourIds);
-      }
+      tours = await tourRepository.getTourByGroupId(eventId);
     } catch (e) {
-      debugPrint('[ForYou] Error fetching tour IDs for event $eventId: $e');
+      debugPrint('[ForYou] Error fetching tours for event $eventId: $e');
     }
-  }
 
-  if (tours.isEmpty) {
-    debugPrint('[ForYou] No tours found for event $eventId');
+    // If no tours found, try alternative method
+    if (tours.isEmpty) {
+      try {
+        final tourIds = await groupBroadcastRepo.getTourIdsForGroupBroadcast(eventId);
+        if (tourIds.isNotEmpty) {
+          // Fetch full tour data to get avgElo
+          tours = await tourRepository.getToursByIds(tourIds);
+        }
+      } catch (e) {
+        debugPrint('[ForYou] Error fetching tour IDs for event $eventId: $e');
+      }
+    }
+
+    if (tours.isEmpty) {
+      debugPrint('[ForYou] No tours found for event $eventId');
+      return [];
+    }
+
+    // Pick the tour with highest avgElo (for multi-category events like Masters/Challengers)
+    final selectedTour = tours.reduce((a, b) {
+      final aElo = a.avgElo ?? 0;
+      final bElo = b.avgElo ?? 0;
+      return aElo >= bElo ? a : b;
+    });
+
+    debugPrint('[ForYou] Selected tour "${selectedTour.name}" (avgElo: ${selectedTour.avgElo}) from ${tours.length} tours');
+
+    // Get rounds for the selected tour
+    List<Round> rounds = [];
+    try {
+      rounds = await roundRepository.getRoundsByTourId(selectedTour.id);
+    } catch (e) {
+      debugPrint('[ForYou] Error fetching rounds for tour ${selectedTour.id}: $e');
+    }
+
+    if (rounds.isEmpty) {
+      debugPrint('[ForYou] No rounds found for tour ${selectedTour.id}');
+      return [];
+    }
+
+    final now = DateTime.now();
+
+    // Filter to only started rounds (startsAt is null or <= now)
+    final startedRounds = rounds.where((round) {
+      return round.startsAt == null || !round.startsAt!.isAfter(now);
+    }).toList();
+
+    if (startedRounds.isEmpty) {
+      debugPrint('[ForYou] No started rounds for tour ${selectedTour.id}');
+      return [];
+    }
+
+    // Find the latest started round by round number (extracted from slug)
+    startedRounds.sort((a, b) {
+      final aNum = _extractRoundNumber(a.slug);
+      final bNum = _extractRoundNumber(b.slug);
+      return bNum.compareTo(aNum); // Descending - latest first
+    });
+
+    final latestRound = startedRounds.first;
+    debugPrint('[ForYou] Latest started round: "${latestRound.name}" (id: ${latestRound.id})');
+
+    // Get all games from the selected tour
+    List<Games> allGames = [];
+    try {
+      allGames = await gamesStorage.getGames(selectedTour.id);
+    } catch (e) {
+      debugPrint('[ForYou] Error fetching games for tour ${selectedTour.id}: $e');
+      return [];
+    }
+
+    // Filter to games from the latest started round that have started
+    final roundGames = allGames.where((game) {
+      return game.roundId == latestRound.id &&
+             _hasStarted(game) &&
+             game.players != null &&
+             game.players!.length >= 2;
+    }).toList();
+
+    if (roundGames.isEmpty) {
+      debugPrint('[ForYou] No started games in round ${latestRound.id}');
+      return [];
+    }
+
+    // Collect pinned game IDs
+    final pinnedIds = <String>[];
+    try {
+      final pinState = ref.read(gamesPinprovider(selectedTour.id));
+      pinnedIds.addAll(pinState.allPins);
+    } catch (e) {
+      // Pin provider might not be initialized, continue without pins
+    }
+
+    // Sort: pinned first (preserving pin order), then by board number ascending
+    final sortedGames = _sortGamesForForYou(roundGames, pinnedIds);
+
+    // Return first 4 games
+    final result = sortedGames.take(kGamesPerEvent).toList();
+    debugPrint('[ForYou] Selected ${result.length} games for event $eventId (from ${roundGames.length} in round)');
+    return result;
+  } catch (e, stack) {
+    debugPrint('[ForYou] Fatal error for event $eventId: $e');
+    debugPrint('[ForYou] Stack: $stack');
     return [];
   }
-
-  // Pick the tour with highest avgElo (for multi-category events like Masters/Challengers)
-  final selectedTour = tours.reduce((a, b) {
-    final aElo = a.avgElo ?? 0;
-    final bElo = b.avgElo ?? 0;
-    return aElo >= bElo ? a : b;
-  });
-
-  debugPrint('[ForYou] Selected tour "${selectedTour.name}" (avgElo: ${selectedTour.avgElo}) from ${tours.length} tours');
-
-  // Get rounds for the selected tour
-  List<Round> rounds = [];
-  try {
-    rounds = await roundRepository.getRoundsByTourId(selectedTour.id);
-  } catch (e) {
-    debugPrint('[ForYou] Error fetching rounds for tour ${selectedTour.id}: $e');
-  }
-
-  final now = DateTime.now();
-
-  // Filter to only started rounds (startsAt is null or <= now)
-  final startedRounds = rounds.where((round) {
-    return round.startsAt == null || !round.startsAt!.isAfter(now);
-  }).toList();
-
-  if (startedRounds.isEmpty) {
-    debugPrint('[ForYou] No started rounds for tour ${selectedTour.id}');
-    return [];
-  }
-
-  // Find the latest started round by round number (extracted from slug)
-  startedRounds.sort((a, b) {
-    final aNum = _extractRoundNumber(a.slug);
-    final bNum = _extractRoundNumber(b.slug);
-    return bNum.compareTo(aNum); // Descending - latest first
-  });
-
-  final latestRound = startedRounds.first;
-  debugPrint('[ForYou] Latest started round: "${latestRound.name}" (id: ${latestRound.id})');
-
-  // Get all games from the selected tour
-  List<Games> allGames = [];
-  try {
-    allGames = await gamesStorage.getGames(selectedTour.id);
-  } catch (e) {
-    debugPrint('[ForYou] Error fetching games for tour ${selectedTour.id}: $e');
-    return [];
-  }
-
-  // Filter to games from the latest started round that have started
-  final roundGames = allGames.where((game) {
-    return game.roundId == latestRound.id &&
-           _hasStarted(game) &&
-           game.players != null &&
-           game.players!.length >= 2;
-  }).toList();
-
-  if (roundGames.isEmpty) {
-    debugPrint('[ForYou] No started games in round ${latestRound.id}');
-    return [];
-  }
-
-  // Collect pinned game IDs
-  final pinnedIds = <String>[];
-  try {
-    final pinState = ref.read(gamesPinprovider(selectedTour.id));
-    pinnedIds.addAll(pinState.allPins);
-  } catch (e) {
-    // Pin provider might not be initialized, continue without pins
-  }
-
-  // Sort: pinned first (preserving pin order), then by board number ascending
-  final sortedGames = _sortGamesForForYou(roundGames, pinnedIds);
-
-  // Return first 4 games
-  final result = sortedGames.take(kGamesPerEvent).toList();
-  debugPrint('[ForYou] Selected ${result.length} games for event $eventId (from ${roundGames.length} in round)');
-  return result;
 });
 
 bool _hasStarted(Games game) {
