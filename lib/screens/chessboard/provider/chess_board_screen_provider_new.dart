@@ -94,6 +94,7 @@ class ChessBoardScreenNotifierNew
     required this.index,
     this.savedAnalysisData,
   }) : super(const AsyncValue.loading()) {
+    _stockfishOwnerId = '${game.gameId}_$index';
     _initializeState();
     _setupPgnStreamListener();
   }
@@ -101,6 +102,10 @@ class ChessBoardScreenNotifierNew
   final Ref ref;
   GamesTourModel game;
   final int index;
+
+  /// Unique owner ID for Stockfish job isolation.
+  /// Allows this provider to cancel only its own jobs without affecting others.
+  late final String _stockfishOwnerId;
 
   /// Optional saved analysis data to restore full state
   final SavedAnalysisData? savedAnalysisData;
@@ -379,8 +384,8 @@ class ChessBoardScreenNotifierNew
     _cancelEvaluation = false;
     _clearActiveEvalState();
 
-    // Cancel any stuck Stockfish evaluations
-    unawaited(StockfishSingleton().cancelAllEvaluations());
+    // Cancel this provider's stuck Stockfish evaluations
+    unawaited(StockfishSingleton().cancelEvaluationsForOwner(_stockfishOwnerId));
 
     // Clear the evaluating flag to prevent UI from being stuck
     if (stateSnapshot != null && stateSnapshot.isEvaluating) {
@@ -1072,7 +1077,7 @@ class ChessBoardScreenNotifierNew
         return;
       }
       _cancelEvaluation = true;
-      await StockfishSingleton().cancelAllEvaluations();
+      await StockfishSingleton().cancelEvaluationsForOwner(_stockfishOwnerId);
       _clearActiveEvalState();
       Position newPosition = currentState.analysisState.startingPosition!;
       Move? newLastMove;
@@ -1138,7 +1143,7 @@ class ChessBoardScreenNotifierNew
       }
 
       _cancelEvaluation = true;
-      await StockfishSingleton().cancelAllEvaluations();
+      await StockfishSingleton().cancelEvaluationsForOwner(_stockfishOwnerId);
       _clearActiveEvalState();
 
       Position newPosition = currentState.startingPosition!;
@@ -3395,12 +3400,14 @@ class ChessBoardScreenNotifierNew
     _cancelEvaluation = true;
     _cancelEvalWatchdog(resetPending: true);
     _clearActiveEvalState();
-    await StockfishSingleton().cancelAllEvaluations();
+    // Cancel only THIS provider's Stockfish jobs, not all jobs globally
+    await StockfishSingleton().cancelEvaluationsForOwner(_stockfishOwnerId);
     _cancelEvaluation = false;
   }
 
   Future<void> onBecameVisible({bool force = true}) async {
-    await StockfishSingleton().cancelAllEvaluations();
+    // Cancel only THIS provider's stale jobs before starting new evaluation
+    await StockfishSingleton().cancelEvaluationsForOwner(_stockfishOwnerId);
     _cancelEvaluation = false;
     _clearActiveEvalState();
     _updateEvaluation(force: force);
@@ -4646,6 +4653,7 @@ class ChessBoardScreenNotifierNew
         searchDuration: combinedSearchDuration,
         maxDepth: combinedMaxDepth,
         allowCache: false,
+        ownerId: _stockfishOwnerId, // Tag job with this provider's owner ID
         onDepthUpdate: (depth, knodes) {
           final progress = EngineSearchProgress(
             depth: depth,
@@ -5785,6 +5793,8 @@ class ChessBoardScreenNotifierNew
     _navigatorSubscription?.close();
     _navigatorSubscription = null;
     _cancelEvalWatchdog(resetPending: true);
+    // Cancel this provider's Stockfish jobs on dispose to prevent orphaned jobs
+    unawaited(StockfishSingleton().cancelEvaluationsForOwner(_stockfishOwnerId));
     super.dispose();
   }
 }

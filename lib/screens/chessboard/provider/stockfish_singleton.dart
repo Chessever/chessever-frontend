@@ -50,6 +50,7 @@ class StockfishSingleton {
     bool isCurrentPosition =
         false, // Priority flag for user's currently viewed position
     bool allowCache = true,
+    String? ownerId, // Owner ID for per-provider job isolation
   }) async {
     // Validate depth range (only if using depth-based search)
     if (searchDuration == null && (depth < 1 || depth > 99)) {
@@ -62,6 +63,7 @@ class StockfishSingleton {
     }
 
     // Create cache key including side to move for perspective-aware caching
+    // Cache key is FEN-based only - same position = same eval regardless of requester
     final fenParts = fen.split(' ');
     final sideToMove = fenParts.length > 1 ? fenParts[1] : 'w';
     final searchMode =
@@ -70,19 +72,24 @@ class StockfishSingleton {
             : 'depth_$depth';
     final cacheKey = '${fen}_${searchMode}_pv${multiPV}_$sideToMove';
 
+    // Job key includes ownerId to isolate jobs per provider
+    // This prevents different providers from sharing completers (which caused wrong evals)
+    final jobKey = ownerId != null ? '${cacheKey}_$ownerId' : cacheKey;
+
     if (allowCache && _evaluationCache.containsKey(cacheKey)) {
       debugPrint('📦 CACHE HIT for $fen');
       return _evaluationCache[cacheKey]!;
     }
 
-    // Deduplicate: if same job is current or pending, attach to it
-    if (_currentJob?.key == cacheKey) {
-      debugPrint('📋 QUEUE: Coalesced with CURRENT job for $fen');
+    // Deduplicate: only coalesce with jobs from the SAME owner
+    // Different owners get separate jobs to ensure results go to the correct provider
+    if (_currentJob?.key == jobKey) {
+      debugPrint('📋 QUEUE: Coalesced with CURRENT job for $fen (owner: $ownerId)');
       return _currentJob!.completer.future;
     }
-    final pending = _pendingJobs[cacheKey];
+    final pending = _pendingJobs[jobKey];
     if (pending != null) {
-      debugPrint('📋 QUEUE: Coalesced with PENDING job for $fen');
+      debugPrint('📋 QUEUE: Coalesced with PENDING job for $fen (owner: $ownerId)');
       return pending.completer.future;
     }
 
@@ -126,6 +133,7 @@ class StockfishSingleton {
     final job = _EvalJob(
       fen,
       depth,
+      jobKey,
       cacheKey,
       completer,
       searchDuration: searchDuration,
@@ -135,6 +143,7 @@ class StockfishSingleton {
       onPvUpdate: onPvUpdate,
       isCurrentPosition: isCurrentPosition,
       allowCache: allowCache,
+      ownerId: ownerId,
     );
 
     // PRIORITY: Insert high-priority jobs at the front, low-priority at the back
@@ -144,7 +153,7 @@ class StockfishSingleton {
     } else {
       _jobQueue.add(job); // Background jobs go to the back
     }
-    _pendingJobs[cacheKey] = job;
+    _pendingJobs[jobKey] = job;
     debugPrint(
       '📋 QUEUE: Added job for $fen (queue size: ${_jobQueue.length}, priority: ${isCurrentPosition ? "HIGH" : "low"})',
     );
@@ -255,6 +264,49 @@ class StockfishSingleton {
     try {
       _engine?.stdin = 'stop';
     } catch (_) {}
+  }
+
+  /// Cancel evaluations only for a specific owner (provider instance).
+  /// This allows providers to cancel their own jobs without affecting others.
+  Future<void> cancelEvaluationsForOwner(String ownerId) async {
+    debugPrint('🛑 STOCKFISH: Cancelling evaluations for owner: $ownerId');
+
+    // Cancel current job if it belongs to this owner
+    if (_currentJob?.ownerId == ownerId) {
+      debugPrint('🛑 STOCKFISH: Cancelling current job for owner: $ownerId');
+      await _cancelCurrentEvaluation();
+    }
+
+    // Remove pending jobs for this owner
+    final jobsToRemove = <_EvalJob>[];
+    for (final job in _jobQueue) {
+      if (job.ownerId == ownerId) {
+        jobsToRemove.add(job);
+        _pendingJobs.remove(job.key);
+        if (!job.completer.isCompleted) {
+          job.completer.complete(
+            EnhancedCloudEval(
+              fen: job.fen,
+              knodes: 0,
+              depth: 0,
+              pvs: [Pv(moves: '', cp: 0, mate: 0)],
+              isCancelled: true,
+              requestedMultiPv: job.multiPV,
+            ),
+          );
+        }
+      }
+    }
+
+    for (final job in jobsToRemove) {
+      _jobQueue.remove(job);
+    }
+
+    if (jobsToRemove.isNotEmpty) {
+      debugPrint(
+        '🛑 STOCKFISH: Removed ${jobsToRemove.length} pending jobs for owner: $ownerId',
+      );
+    }
   }
 
   Future<void> _processQueue() async {
@@ -813,6 +865,7 @@ class _EvalJob {
     this.fen,
     this.depth,
     this.key,
+    this.cacheKey,
     this.completer, {
     this.searchDuration,
     this.maxDepth,
@@ -821,18 +874,20 @@ class _EvalJob {
     this.onPvUpdate,
     this.isCurrentPosition = false,
     this.allowCache = true,
+    this.ownerId,
   });
 
   final String fen;
   final int depth;
-  final String key;
+  final String key; // Job key (includes ownerId) - for deduplication per owner
+  final String cacheKey; // Cache key (FEN-based only) - for shared cache lookup
   final Completer<EnhancedCloudEval> completer;
   final Duration? searchDuration;
   final int? maxDepth;
   final int multiPV;
   final Function(int depth, int knodes)? onDepthUpdate;
   final Function(List<Pv> pvs, int depth)? onPvUpdate;
-  final bool
-  isCurrentPosition; // True if this is the user's currently viewed position
+  final bool isCurrentPosition; // True if this is the user's currently viewed position
   final bool allowCache;
+  final String? ownerId; // Owner ID for per-provider job isolation
 }
