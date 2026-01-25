@@ -8948,8 +8948,10 @@ class _ShareGameScreen extends ConsumerWidget {
 
     // Build board settings for the share overlay board (sized responsively inside the overlay)
     // We use the theme colors but hide all highlights for clean screenshots
+    // IMPORTANT: Disable animations for instant static frame capture in GIF generation
     final chessboardSettings = ChessboardSettings(
       enableCoordinates: false,
+      animationDuration: Duration.zero, // Disable animations for screenshot/GIF
       colorScheme: ChessboardColorScheme(
         lightSquare: baseColorScheme.lightSquare,
         darkSquare: baseColorScheme.darkSquare,
