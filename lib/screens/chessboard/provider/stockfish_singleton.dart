@@ -37,19 +37,7 @@ class StockfishSingleton {
   final List<_EvalJob> _jobQueue = []; // Queue for pending evaluations
   final Map<String, _EvalJob> _pendingJobs = {}; // Keyed by cacheKey
   bool _isProcessing = false; // Flag to prevent concurrent processing
-  // PERF: Reduced from 60 to 18 - balance between queue responsiveness and background evals
-  static const int _maxQueueSize = 18;
-  static const int _maxCacheEntries = 80; // Cap cache size to avoid memory bloat
-
-  void _touchCacheEntry(String key, EnhancedCloudEval value) {
-    if (_evaluationCache.containsKey(key)) {
-      _evaluationCache.remove(key);
-    }
-    _evaluationCache[key] = value;
-    while (_evaluationCache.length > _maxCacheEntries) {
-      _evaluationCache.remove(_evaluationCache.keys.first);
-    }
-  }
+  static const int _maxQueueSize = 60; // Soft cap to avoid backlog
 
   Future<EnhancedCloudEval> evaluatePosition(
     String fen, {
@@ -62,7 +50,6 @@ class StockfishSingleton {
     bool isCurrentPosition =
         false, // Priority flag for user's currently viewed position
     bool allowCache = true,
-    String? ownerId, // Owner ID for per-provider cancellation
   }) async {
     // Validate depth range (only if using depth-based search)
     if (searchDuration == null && (depth < 1 || depth > 99)) {
@@ -83,11 +70,9 @@ class StockfishSingleton {
             : 'depth_$depth';
     final cacheKey = '${fen}_${searchMode}_pv${multiPV}_$sideToMove';
 
-    final cached = allowCache ? _evaluationCache[cacheKey] : null;
-    if (cached != null) {
+    if (allowCache && _evaluationCache.containsKey(cacheKey)) {
       debugPrint('📦 CACHE HIT for $fen');
-      _touchCacheEntry(cacheKey, cached);
-      return cached;
+      return _evaluationCache[cacheKey]!;
     }
 
     // Deduplicate: if same job is current or pending, attach to it
@@ -150,7 +135,6 @@ class StockfishSingleton {
       onPvUpdate: onPvUpdate,
       isCurrentPosition: isCurrentPosition,
       allowCache: allowCache,
-      ownerId: ownerId,
     );
 
     // PRIORITY: Insert high-priority jobs at the front, low-priority at the back
@@ -197,7 +181,7 @@ class StockfishSingleton {
         !result.isCancelled &&
         result.pvs.isNotEmpty &&
         result.pvs.first.moves.isNotEmpty) {
-      _touchCacheEntry(cacheKey, result);
+      _evaluationCache[cacheKey] = result;
       debugPrint(
         '✅ CACHED: Stockfish eval for $fen (depth=${result.depth}, cp=${result.pvs.first.cp})',
       );
@@ -231,11 +215,12 @@ class StockfishSingleton {
 
       _pendingJobs.remove(_currentJob!.key);
 
-      // Send stop command to engine - no delay needed as engine will stop asynchronously
-      // and the next command will naturally override any pending calculation
+      // Send stop command to engine if it's ready
       if (_engine != null && _engine!.state.value == StockfishState.ready) {
         try {
           _engine!.stdin = 'stop';
+          // Give the engine a moment to process the stop command
+          await Future.delayed(const Duration(milliseconds: 50));
         } catch (e) {
           // Ignore errors when stopping
           debugPrint('Error sending stop command to Stockfish: $e');
@@ -266,54 +251,10 @@ class StockfishSingleton {
       _jobQueue.clear();
     }
     _isProcessing = false;
-    _isSearching = false;
     _currentSubscription = null;
     try {
       _engine?.stdin = 'stop';
     } catch (_) {}
-  }
-
-  /// Cancel evaluations only for a specific owner (provider instance).
-  /// This allows providers to cancel their own jobs without affecting others.
-  Future<void> cancelEvaluationsForOwner(String ownerId) async {
-    debugPrint('🛑 STOCKFISH: Cancelling evaluations for owner: $ownerId');
-
-    // Cancel current job if it belongs to this owner
-    if (_currentJob?.ownerId == ownerId) {
-      debugPrint('🛑 STOCKFISH: Cancelling current job for owner: $ownerId');
-      await _cancelCurrentEvaluation();
-    }
-
-    // Remove pending jobs for this owner
-    final jobsToRemove = <_EvalJob>[];
-    for (final job in _jobQueue) {
-      if (job.ownerId == ownerId) {
-        jobsToRemove.add(job);
-        _pendingJobs.remove(job.key);
-        if (!job.completer.isCompleted) {
-          job.completer.complete(
-            EnhancedCloudEval(
-              fen: job.fen,
-              knodes: 0,
-              depth: 0,
-              pvs: [Pv(moves: '', cp: 0, mate: 0)],
-              isCancelled: true,
-              requestedMultiPv: job.multiPV,
-            ),
-          );
-        }
-      }
-    }
-
-    for (final job in jobsToRemove) {
-      _jobQueue.remove(job);
-    }
-
-    if (jobsToRemove.isNotEmpty) {
-      debugPrint(
-        '🛑 STOCKFISH: Removed ${jobsToRemove.length} pending jobs for owner: $ownerId',
-      );
-    }
   }
 
   Future<void> _processQueue() async {
@@ -468,7 +409,6 @@ class StockfishSingleton {
         // When analysis is complete
         if (line.startsWith('bestmove') && !evaluationComplete) {
           evaluationComplete = true;
-          _isSearching = false; // Mark engine as no longer searching
           final filteredPvs = pvs
               .where((pv) => pv.moves.isNotEmpty)
               .toList(growable: false);
@@ -546,7 +486,6 @@ class StockfishSingleton {
           debugPrint(
             '   → Sending: MultiPV $multiPV, movetime ${moveTimeMs}ms${maxDepth != null ? ", depth $maxDepth" : ""}',
           );
-          _isSearching = true; // Mark engine as searching
           if (maxDepth != null) {
             _engine!.stdin = 'go movetime $moveTimeMs depth $maxDepth';
           } else {
@@ -554,7 +493,6 @@ class StockfishSingleton {
           }
         } else {
           debugPrint('   → Sending: MultiPV $multiPV, depth $depth');
-          _isSearching = true; // Mark engine as searching
           _engine!.stdin = 'go depth $depth';
         }
       } catch (e) {
@@ -591,13 +529,12 @@ class StockfishSingleton {
       // Also add a stall detection mechanism
       Timer? stallDetector;
 
-      // PERF: Check stall every 500ms instead of 1 second for faster detection
-      stallDetector = Timer.periodic(const Duration(milliseconds: 500), (_) {
+      stallDetector = Timer.periodic(const Duration(seconds: 1), (_) {
         if (lastInfoReceived != null) {
           final timeSinceLastInfo = DateTime.now().difference(lastInfoReceived!);
-          // PERF: Reduced stall detection from 3 seconds to 1.5 seconds
-          if (timeSinceLastInfo > const Duration(milliseconds: 1500)) {
-            debugPrint('⚠️ STOCKFISH STALL DETECTED: No response for ${timeSinceLastInfo.inMilliseconds}ms');
+          // If we haven't received any info for 3 seconds, consider it stalled
+          if (timeSinceLastInfo > const Duration(seconds: 3)) {
+            debugPrint('⚠️ STOCKFISH STALL DETECTED: No response for ${timeSinceLastInfo.inSeconds}s');
             stallDetector?.cancel();
 
             // Force completion with current best results
@@ -613,10 +550,6 @@ class StockfishSingleton {
               );
               completer.complete(result);
               debugPrint('⚠️ STOCKFISH: Forced completion due to stall');
-
-              // CRITICAL: Cancel subscription to prevent leak
-              _currentSubscription?.cancel();
-              _currentSubscription = null;
 
               // Try to reset the engine
               try {
@@ -634,10 +567,6 @@ class StockfishSingleton {
           onTimeout: () {
             debugPrint('⚠️ STOCKFISH TIMEOUT: Evaluation took too long (${safetyTimeout.inSeconds}s)');
             stallDetector?.cancel();
-
-            // CRITICAL: Cancel subscription to prevent leak
-            _currentSubscription?.cancel();
-            _currentSubscription = null;
 
             // Complete with whatever we have so far
             final filteredPvs = pvs.where((pv) => pv.moves.isNotEmpty).toList(growable: false);
@@ -660,16 +589,10 @@ class StockfishSingleton {
         );
       } finally {
         stallDetector.cancel();
-        // Ensure subscription is always cleaned up
-        _currentSubscription?.cancel();
-        _currentSubscription = null;
       }
     } catch (e, st) {
       debugPrint('❌ STOCKFISH: Failed to process job for $fen: $e');
       debugPrint('$st');
-      // CRITICAL: Cancel subscription on exception to prevent leak
-      _currentSubscription?.cancel();
-      _currentSubscription = null;
       if (!completer.isCompleted) {
         completer.completeError(e, st);
       }
@@ -809,29 +732,26 @@ class StockfishSingleton {
     }
   }
 
-  bool _isSearching = false; // Track if engine is currently searching
-
   Future<void> _softResetEngine() async {
     if (_engine == null) return;
-
     await _currentSubscription?.cancel();
     _currentSubscription = null;
-
-    // UCI PROTOCOL: Must send 'stop' before new position if engine is searching
-    // Otherwise behavior is undefined per UCI spec
-    if (_isSearching) {
-      try {
-        _engine!.stdin = 'stop';
-        _isSearching = false;
-        // Brief yield to let stop process - no long wait needed
-        await Future.delayed(const Duration(milliseconds: 10));
-      } catch (e) {
-        debugPrint('⚠️ STOCKFISH STOP FAILED: $e');
-      }
+    try {
+      _engine!.stdin = 'stop';
+      await Future.delayed(const Duration(milliseconds: 20));
+    } catch (e) {
+      debugPrint('⚠️ STOCKFISH STOP FAILED: $e');
     }
-    // PERFORMANCE FIX: Removed 'ucinewgame' and 'Clear Hash' - they clear transposition
-    // tables which kills performance. Stockfish handles position changes fine without
-    // resetting, and preserving hash allows faster analysis of similar positions.
+    try {
+      _engine!.stdin = 'ucinewgame';
+    } catch (e) {
+      debugPrint('⚠️ STOCKFISH ucinewgame FAILED: $e');
+    }
+    try {
+      _engine!.stdin = 'setoption name Clear Hash';
+    } catch (e) {
+      debugPrint('⚠️ STOCKFISH Clear Hash FAILED: $e');
+    }
     await _waitForReadyOk();
   }
 
@@ -846,8 +766,7 @@ class StockfishSingleton {
     });
     try {
       _engine!.stdin = 'isready';
-      // PERF: Reduced from 1 second to 200ms - engine should respond quickly
-      await completer.future.timeout(const Duration(milliseconds: 200));
+      await completer.future.timeout(const Duration(seconds: 1));
     } catch (e) {
       debugPrint('⚠️ STOCKFISH READY WAIT FAILED: $e');
     } finally {
@@ -859,11 +778,6 @@ class StockfishSingleton {
     _cancelCurrentEvaluation();
     _jobQueue.clear();
     _isProcessing = false;
-    _isSearching = false;
-    // UCI PROTOCOL: Send 'quit' for clean shutdown before disposing
-    try {
-      _engine?.stdin = 'quit';
-    } catch (_) {}
     _engine?.dispose();
     _engine = null;
     _evaluationCache.clear();
@@ -874,11 +788,7 @@ class StockfishSingleton {
       await _currentSubscription?.cancel();
     } catch (_) {}
     _currentSubscription = null;
-    _isSearching = false;
     if (_engine != null) {
-      try {
-        _engine!.stdin = 'quit'; // UCI: clean shutdown
-      } catch (_) {}
       try {
         _engine!.dispose();
       } catch (_) {}
@@ -911,7 +821,6 @@ class _EvalJob {
     this.onPvUpdate,
     this.isCurrentPosition = false,
     this.allowCache = true,
-    this.ownerId,
   });
 
   final String fen;
@@ -924,7 +833,6 @@ class _EvalJob {
   final Function(int depth, int knodes)? onDepthUpdate;
   final Function(List<Pv> pvs, int depth)? onPvUpdate;
   final bool
-      isCurrentPosition; // True if this is the user's currently viewed position
+  isCurrentPosition; // True if this is the user's currently viewed position
   final bool allowCache;
-  final String? ownerId; // Owner ID for per-provider cancellation
 }
