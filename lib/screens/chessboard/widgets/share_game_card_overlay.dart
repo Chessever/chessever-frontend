@@ -1,8 +1,10 @@
 import 'dart:io' as io;
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:image/image.dart' as img;
@@ -17,35 +19,100 @@ import 'package:country_flags/country_flags.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/screens/chessboard/widgets/evaluation_bar_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/utils/png_asset.dart';
 import 'package:chessground/chessground.dart';
 import 'package:dartchess/dartchess.dart';
 
+/// Raw frame data for GIF encoding (avoids PNG encoding/decoding issues on iOS P3 displays)
+class _RawFrame {
+  final Uint8List rgba;
+  final int width;
+  final int height;
+  _RawFrame(this.rgba, this.width, this.height);
+}
+
+/// Result class to pass back both data and error info from isolate
+class _GifEncodeResult {
+  final Uint8List? data;
+  final String? error;
+  final int framesProcessed;
+  _GifEncodeResult({this.data, this.error, this.framesProcessed = 0});
+}
+
+/// Input data for isolate - contains raw RGBA frames
+class _GifEncodeInput {
+  final List<Uint8List> rgbaFrames;
+  final List<int> widths;
+  final List<int> heights;
+  _GifEncodeInput(this.rgbaFrames, this.widths, this.heights);
+}
+
 /// Top-level function for GIF encoding in isolate (MUST be top-level or static)
+/// Takes raw RGBA pixel data to avoid PNG decoding issues on iOS P3 displays
 /// Duration is in 1/100 second units (centiseconds): 100 = 1 second
-Uint8List? _encodeGifInIsolate(List<Uint8List> frameBytes) {
-  if (frameBytes.isEmpty) return null;
+_GifEncodeResult _encodeGifFromRawFrames(_GifEncodeInput input) {
+  if (input.rgbaFrames.isEmpty) {
+    return _GifEncodeResult(error: 'No frames provided');
+  }
 
   try {
-    // Create encoder with default delay of 50 centiseconds (0.5s)
-    final gif = img.GifEncoder(delay: 50);
+    // Create encoder with default delay of 80 centiseconds (0.8s per move)
+    final gif = img.GifEncoder(delay: 80);
     int framesAdded = 0;
+    final errors = <String>[];
 
-    for (int i = 0; i < frameBytes.length; i++) {
-      final decoded = img.decodePng(frameBytes[i]);
-      if (decoded != null) {
-        // 50 centiseconds = 500ms per frame, 200 centiseconds = 2s for last frame
-        final isLastFrame = i == frameBytes.length - 1;
-        gif.addFrame(decoded, duration: isLastFrame ? 200 : 50);
+    for (int i = 0; i < input.rgbaFrames.length; i++) {
+      try {
+        final width = input.widths[i];
+        final height = input.heights[i];
+        final rgba = input.rgbaFrames[i];
+
+        // Validate data
+        final expectedSize = width * height * 4;
+        if (rgba.length != expectedSize) {
+          errors.add('Frame $i: size mismatch (got ${rgba.length}, expected $expectedSize)');
+          continue;
+        }
+
+        // Create image from raw RGBA bytes
+        final image = img.Image(width: width, height: height);
+
+        // Copy RGBA data to image (more efficient bulk copy)
+        for (int y = 0; y < height; y++) {
+          for (int x = 0; x < width; x++) {
+            final idx = (y * width + x) * 4;
+            image.setPixelRgba(x, y, rgba[idx], rgba[idx + 1], rgba[idx + 2], rgba[idx + 3]);
+          }
+        }
+
+        // 80 centiseconds = 800ms per frame, 300 centiseconds = 3s for last frame
+        final isLastFrame = i == input.rgbaFrames.length - 1;
+        gif.addFrame(image, duration: isLastFrame ? 300 : 80);
         framesAdded++;
+      } catch (e) {
+        errors.add('Frame $i error: $e');
+        continue;
       }
     }
 
-    if (framesAdded == 0) return null;
+    if (framesAdded == 0) {
+      return _GifEncodeResult(
+        error: 'No frames processed. Errors: ${errors.join("; ")}',
+        framesProcessed: 0,
+      );
+    }
 
-    return gif.finish();
-  } catch (e) {
-    // Can't use debugPrint in isolate, but errors will propagate
-    return null;
+    final result = gif.finish();
+    if (result == null || result.isEmpty) {
+      return _GifEncodeResult(
+        error: 'GifEncoder.finish() returned null/empty',
+        framesProcessed: framesAdded,
+      );
+    }
+
+    return _GifEncodeResult(data: result, framesProcessed: framesAdded);
+  } catch (e, st) {
+    return _GifEncodeResult(error: 'Encoding exception: $e\nStack: $st');
   }
 }
 
@@ -109,7 +176,7 @@ class ShareGameCardOverlay extends StatefulWidget {
 
 class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
   final ScreenshotController _fullScreenshotController = ScreenshotController();
-  final ScreenshotController _gifFrameController = ScreenshotController();
+  final GlobalKey _gifFrameKey = GlobalKey(); // For raw pixel capture
   bool _isGenerating = false;
   bool _isGeneratingGif = false;
   double _gifProgress = 0.0;
@@ -120,6 +187,45 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
   // GIF frame state
   String? _gifFrameFen;
   NormalMove? _gifFrameLastMove;
+
+  // Board settings with animations disabled for instant frame capture
+  ChessboardSettings get _gifBoardSettings => ChessboardSettings(
+        enableCoordinates: widget.boardSettings.enableCoordinates,
+        colorScheme: widget.boardSettings.colorScheme,
+        pieceAssets: widget.boardSettings.pieceAssets,
+        borderRadius: widget.boardSettings.borderRadius,
+        boxShadow: widget.boardSettings.boxShadow,
+        // CRITICAL: Disable animations for instant static frame capture
+        animationDuration: Duration.zero,
+      );
+
+  /// Capture raw RGBA pixel data from the RepaintBoundary
+  /// This avoids PNG encoding issues on iOS P3 displays
+  Future<_RawFrame?> _captureRawFrame(double pixelRatio) async {
+    try {
+      final boundary = _gifFrameKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
+      if (boundary == null) {
+        debugPrint('GIF: RepaintBoundary not found');
+        return null;
+      }
+
+      final image = await boundary.toImage(pixelRatio: pixelRatio);
+      final byteData = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+      if (byteData == null) {
+        debugPrint('GIF: toByteData returned null');
+        return null;
+      }
+
+      return _RawFrame(
+        byteData.buffer.asUint8List(),
+        image.width,
+        image.height,
+      );
+    } catch (e) {
+      debugPrint('GIF: Raw capture error: $e');
+      return null;
+    }
+  }
 
   Future<Uint8List?> _captureCard() async {
     try {
@@ -189,9 +295,10 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
     });
 
     try {
-      // Phase 1: Capture frames (main thread - needs widget tree)
+      // Phase 1: Capture raw RGBA frames (avoids PNG encoding issues on iOS P3 displays)
       Position position = Chess.initial;
-      final frameBytes = <Uint8List>[];
+      final rawFrames = <_RawFrame>[];
+      const pixelRatio = 1.5; // Lower ratio for smaller file size and faster encoding
 
       // Initial position - set state and wait for widget to build
       setState(() {
@@ -199,17 +306,20 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
         _gifFrameLastMove = null;
       });
       // Wait for widget to build and paint
-      await Future.delayed(const Duration(milliseconds: 150));
       await WidgetsBinding.instance.endOfFrame;
       await Future.delayed(const Duration(milliseconds: 50));
 
-      final initial = await _gifFrameController.capture(
-        pixelRatio: 2.0,
-        delay: const Duration(milliseconds: 20),
-      );
-      if (initial != null) frameBytes.add(initial);
+      final initial = await _captureRawFrame(pixelRatio);
+      if (initial != null) {
+        debugPrint('GIF: Initial frame captured (${initial.width}x${initial.height}, ${initial.rgba.length} bytes)');
+        rawFrames.add(initial);
+      } else {
+        debugPrint('GIF WARNING: Initial frame capture returned null');
+      }
 
-      // Each move
+      debugPrint('GIF: Processing ${movesToAnimate.length} moves...');
+
+      // Each move - capture only the final position (no animation frames)
       for (int i = 0; i < movesToAnimate.length; i++) {
         final move = position.parseSan(movesToAnimate[i]);
         if (move == null) continue;
@@ -220,8 +330,7 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
         if (move is NormalMove) {
           lastMoveForDisplay = NormalMove(from: move.from, to: move.to);
         } else {
-          // For castling and other special moves, we can still show the king's move
-          // by checking the move's string representation or just skip highlighting
+          // For castling and other special moves, skip highlighting
           lastMoveForDisplay = null;
         }
 
@@ -231,35 +340,63 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
           _gifProgress = (i + 1) / movesToAnimate.length * 0.7; // 70% for capture
         });
 
-        // Wait for widget to rebuild with new position
-        await Future.delayed(const Duration(milliseconds: 100));
+        // Minimal wait - animations are disabled so position is instantly set
         await WidgetsBinding.instance.endOfFrame;
         await Future.delayed(const Duration(milliseconds: 30));
 
-        final frame = await _gifFrameController.capture(
-          pixelRatio: 2.0,
-          delay: const Duration(milliseconds: 20),
-        );
-        if (frame != null) frameBytes.add(frame);
+        final frame = await _captureRawFrame(pixelRatio);
+        if (frame != null) rawFrames.add(frame);
       }
 
-      if (frameBytes.isEmpty) {
-        _showMessage('Failed to capture frames', isError: true);
+      if (rawFrames.isEmpty) {
+        debugPrint('GIF ERROR: No frames were captured');
+        _showMessage('No frames captured - check board rendering', isError: true);
         return;
       }
 
-      debugPrint('GIF: Captured ${frameBytes.length} frames');
+      debugPrint('GIF: Captured ${rawFrames.length} raw frames');
+
+      // Prepare input for isolate
+      final input = _GifEncodeInput(
+        rawFrames.map((f) => f.rgba).toList(),
+        rawFrames.map((f) => f.width).toList(),
+        rawFrames.map((f) => f.height).toList(),
+      );
 
       // Phase 2: Encode GIF in isolate (heavy work off main thread)
       setState(() => _gifProgress = 0.8);
-      final gifBytes = await compute(_encodeGifInIsolate, frameBytes);
 
-      if (gifBytes == null || gifBytes.isEmpty) {
-        _showMessage('Failed to encode GIF', isError: true);
+      _GifEncodeResult result;
+      try {
+        result = await compute(_encodeGifFromRawFrames, input);
+        debugPrint('GIF: Isolate encoding completed');
+      } catch (e, st) {
+        // Isolate failed (common on some iOS devices), try synchronously
+        debugPrint('GIF: Isolate failed: $e');
+        debugPrint('GIF: Isolate stack: $st');
+        debugPrint('GIF: Trying synchronous encoding...');
+        result = _encodeGifFromRawFrames(input);
+      }
+
+      if (result.error != null) {
+        debugPrint('GIF ERROR: ${result.error}');
+        debugPrint('GIF: Frames processed: ${result.framesProcessed}');
+        // Show truncated error in UI for debugging on real devices
+        final shortError = result.error!.length > 100
+            ? result.error!.substring(0, 100)
+            : result.error!;
+        _showMessage('GIF encode failed: $shortError', isError: true);
         return;
       }
 
-      debugPrint('GIF: Encoded ${gifBytes.length} bytes');
+      final gifBytes = result.data;
+      if (gifBytes == null || gifBytes.isEmpty) {
+        debugPrint('GIF ERROR: Result data is null or empty');
+        _showMessage('GIF encode returned empty data', isError: true);
+        return;
+      }
+
+      debugPrint('GIF: Encoded ${gifBytes.length} bytes (${result.framesProcessed} frames)');
 
       // Phase 3: Save and share
       setState(() => _gifProgress = 0.95);
@@ -642,41 +779,41 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
                 ),
               ),
             ),
-            // Offscreen GIF frame widget - always in tree for controller to work
+            // Offscreen GIF frame widget - uses RepaintBoundary with GlobalKey for raw RGBA capture
+            // This avoids PNG encoding issues on iOS P3 displays
+            // Uses board settings with animations DISABLED for instant static frame capture
             Positioned(
               left: -10000,
               top: -10000,
               child: RepaintBoundary(
-                child: Screenshot(
-                  controller: _gifFrameController,
-                  child: _ShareCard(
-                    boardSettings: widget.boardSettings,
-                    positionFen: _gifFrameFen ?? widget.positionFen,
-                    lastMove: _gifFrameLastMove,
-                    onClose: null,
-                    pgn: widget.pgn,
-                    moveSans: widget.moveSans,
-                    whitePlayerName: widget.whitePlayerName,
-                    blackPlayerName: widget.blackPlayerName,
-                    whitePlayerCountry: widget.whitePlayerCountry,
-                    blackPlayerCountry: widget.blackPlayerCountry,
-                    whitePlayerElo: widget.whitePlayerElo,
-                    blackPlayerElo: widget.blackPlayerElo,
-                    whitePlayerTitle: widget.whitePlayerTitle,
-                    blackPlayerTitle: widget.blackPlayerTitle,
-                    whitePlayerClock: null, // No clocks in GIF
-                    blackPlayerClock: null,
-                    tournamentName: widget.tournamentName,
-                    roundInfo: widget.roundInfo,
-                    currentMoveIndex: widget.currentMoveIndex,
-                    evaluation: null, // No eval in GIF
-                    mate: 0,
-                    isFlipped: widget.isFlipped,
-                    gameStatus: widget.gameStatus,
-                    isPreview: false,
-                    showEvalBar: false, // No eval bar in GIF
-                    gameId: widget.gameId,
-                  ),
+                key: _gifFrameKey,
+                child: _ShareCard(
+                  boardSettings: _gifBoardSettings, // Animation disabled settings
+                  positionFen: _gifFrameFen ?? widget.positionFen,
+                  lastMove: _gifFrameLastMove,
+                  onClose: null,
+                  pgn: widget.pgn,
+                  moveSans: widget.moveSans,
+                  whitePlayerName: widget.whitePlayerName,
+                  blackPlayerName: widget.blackPlayerName,
+                  whitePlayerCountry: widget.whitePlayerCountry,
+                  blackPlayerCountry: widget.blackPlayerCountry,
+                  whitePlayerElo: widget.whitePlayerElo,
+                  blackPlayerElo: widget.blackPlayerElo,
+                  whitePlayerTitle: widget.whitePlayerTitle,
+                  blackPlayerTitle: widget.blackPlayerTitle,
+                  whitePlayerClock: widget.whitePlayerClock,
+                  blackPlayerClock: widget.blackPlayerClock,
+                  tournamentName: widget.tournamentName,
+                  roundInfo: widget.roundInfo,
+                  currentMoveIndex: widget.currentMoveIndex,
+                  evaluation: null, // No eval in GIF
+                  mate: 0,
+                  isFlipped: widget.isFlipped,
+                  gameStatus: widget.gameStatus,
+                  isPreview: false,
+                  showEvalBar: false, // No eval bar in GIF
+                  gameId: widget.gameId,
                 ),
               ),
             ),
@@ -746,38 +883,199 @@ class _ShareCard extends ConsumerWidget {
 
   Widget _buildEndScoreWidget({required bool isWhitePlayer}) {
     // For finished games, display end scores similar to main chess board screen
+    final scoreStyle = AppTypography.textXsBold.copyWith(
+      color: kWhiteColor,
+      fontSize: 14.sp, // Bigger for better proportion
+      fontWeight: FontWeight.w700,
+      height: 1.0,
+    );
+
     switch (gameStatus) {
       case GameStatus.whiteWins:
         return Text(
           isWhitePlayer ? '1' : '0',
-          style: AppTypography.textXsBold.copyWith(
-            color: kWhiteColor,
-            fontSize: 12.sp,
-          ),
+          style: scoreStyle,
           textAlign: TextAlign.center,
         );
       case GameStatus.blackWins:
         return Text(
           isWhitePlayer ? '0' : '1',
-          style: AppTypography.textXsBold.copyWith(
-            color: kWhiteColor,
-            fontSize: 12.sp,
-          ),
+          style: scoreStyle,
           textAlign: TextAlign.center,
         );
       case GameStatus.draw:
         return Text(
           '½',
-          style: AppTypography.textXsBold.copyWith(
-            color: kWhiteColor,
-            fontSize: 12.sp,
-          ),
+          style: scoreStyle,
           textAlign: TextAlign.center,
         );
       case GameStatus.ongoing:
       case GameStatus.unknown:
         return SizedBox.shrink();
     }
+  }
+
+  /// Build player row matching PlayerFirstRowDetailWidget boardView style exactly
+  Widget _buildPlayerRow({
+    required String playerName,
+    required String playerCountry,
+    required String? playerElo,
+    required String? playerTitle,
+    required String? playerClock,
+    required bool isWhitePlayer,
+    required double sideBarWidth,
+  }) {
+    // Text styles matching PlayerFirstRowDetailWidget boardView
+    final titleStyle = AppTypography.textXsMedium.copyWith(
+      color: kLightYellowColor,
+      fontWeight: FontWeight.w700,
+      fontSize: 14.sp,
+      height: 1.2,
+    );
+
+    final nameStyle = AppTypography.textXsMedium.copyWith(
+      color: kWhiteColor,
+      fontWeight: FontWeight.w600,
+      fontSize: 14.sp,
+      height: 1.2,
+    );
+
+    // Rating style - matches PlayerFirstRowDetailWidget (kWhiteColor70)
+    final ratingStyle = AppTypography.textXsMedium.copyWith(
+      color: kWhiteColor70,
+      fontWeight: FontWeight.w600,
+      fontSize: 14.sp,
+      height: 1.2,
+    );
+
+    final timeStyle = AppTypography.textXsMedium.copyWith(
+      color: kWhiteColor,
+      fontSize: 14.sp,
+      fontWeight: FontWeight.w500,
+      fontFeatures: const [FontFeature.tabularFigures()],
+    );
+
+    // Flag sizing matching boardView
+    const flagHeight = 12.0;
+    const flagWidth = 16.0;
+    const elementSpacing = 8.0;
+
+    // Parse name parts - format is "Surname, Given Names"
+    final nameParts = playerName.split(',').map((e) => e.trim()).toList();
+    final surname = nameParts.isNotEmpty ? nameParts[0] : '';
+    final firstName = nameParts.length > 1 ? nameParts[1] : '';
+    final rating = playerElo != null ? ' $playerElo' : '';
+    final title = playerTitle ?? '';
+
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: 16.w),
+      child: Row(
+        children: [
+          // Score area - matches eval bar width
+          SizedBox(
+            width: sideBarWidth.w,
+            child: Center(child: _buildEndScoreWidget(isWhitePlayer: isWhitePlayer)),
+          ),
+          SizedBox(width: elementSpacing.w),
+          // Country flag
+          if (playerCountry.toUpperCase() == 'FID') ...[
+            Image.asset(
+              PngAsset.fideLogo,
+              height: flagHeight.h,
+              width: flagWidth.w,
+              fit: BoxFit.cover,
+              cacheWidth: 48,
+              cacheHeight: 36,
+            ),
+            SizedBox(width: elementSpacing.w),
+          ] else if (playerCountry.isNotEmpty) ...[
+            CountryFlag.fromCountryCode(
+              playerCountry,
+              height: flagHeight.h,
+              width: flagWidth.w,
+            ),
+            SizedBox(width: elementSpacing.w),
+          ] else
+            SizedBox(width: elementSpacing.w),
+          // Name + Rating with smart truncation (matching PlayerFirstRowDetailWidget)
+          Expanded(
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final textPainter = TextPainter(
+                  textDirection: TextDirection.ltr,
+                  maxLines: 1,
+                );
+
+                String displaySurname = surname;
+                String displayFirstName = firstName.isNotEmpty ? ', $firstName' : '';
+
+                if (surname.isNotEmpty) {
+                  // Strategy 1: Try full surname + full first name + rating
+                  textPainter.text = TextSpan(
+                    children: [
+                      if (title.isNotEmpty) TextSpan(text: '$title ', style: titleStyle),
+                      TextSpan(text: surname, style: nameStyle),
+                      if (firstName.isNotEmpty) TextSpan(text: ', $firstName', style: nameStyle),
+                      TextSpan(text: rating, style: ratingStyle),
+                    ],
+                  );
+                  textPainter.layout();
+
+                  if (textPainter.width > constraints.maxWidth && firstName.isNotEmpty) {
+                    // Strategy 2: Keep full surname + abbreviate first name
+                    final firstNameParts = firstName.split(' ');
+                    final abbreviatedFirst = firstNameParts
+                        .where((part) => part.isNotEmpty)
+                        .map((part) => '${part[0]}.')
+                        .join(' ');
+                    displayFirstName = ', $abbreviatedFirst';
+
+                    textPainter.text = TextSpan(
+                      children: [
+                        if (title.isNotEmpty) TextSpan(text: '$title ', style: titleStyle),
+                        TextSpan(text: surname, style: nameStyle),
+                        TextSpan(text: displayFirstName, style: nameStyle),
+                        TextSpan(text: rating, style: ratingStyle),
+                      ],
+                    );
+                    textPainter.layout();
+
+                    // Strategy 3: If still doesn't fit, drop first name entirely
+                    if (textPainter.width > constraints.maxWidth) {
+                      displayFirstName = '';
+                    }
+                  }
+                }
+
+                return RichText(
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 1,
+                  softWrap: false,
+                  textAlign: TextAlign.left,
+                  text: TextSpan(
+                    style: nameStyle,
+                    children: [
+                      if (title.isNotEmpty) TextSpan(text: '$title ', style: titleStyle),
+                      if (displaySurname.isNotEmpty) TextSpan(text: displaySurname, style: nameStyle),
+                      if (displayFirstName.isNotEmpty) TextSpan(text: displayFirstName, style: nameStyle),
+                      TextSpan(text: rating, style: ratingStyle),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ),
+          // Clock time on far right (if available)
+          if (playerClock != null) ...[
+            SizedBox(width: 8.w),
+            Text(
+              playerClock,
+              style: timeStyle,
+            ),
+          ],
+        ],
+      ),
+    );
   }
 
   @override
@@ -859,80 +1157,15 @@ class _ShareCard extends ConsumerWidget {
               style: TextStyle(color: kWhiteColor70, fontSize: 9.sp),
             ),
           SizedBox(height: 12.h),
-          Padding(
-            padding: EdgeInsets.symmetric(horizontal: 16.w),
-            child: Row(
-              children: [
-                // Always reserve space for score to prevent layout shift
-                // Score always visible (not tied to eval bar toggle)
-                SizedBox(
-                  width: sideBarWidth.w,
-                  child: _buildEndScoreWidget(isWhitePlayer: topIsWhitePlayer),
-                ),
-                SizedBox(width: 8.w),
-                if (topPlayerCountry.isNotEmpty) ...[
-                  CountryFlag.fromCountryCode(
-                    topPlayerCountry,
-                    height: 12.h,
-                    width: 16.w,
-                  ),
-                  SizedBox(width: 8.w),
-                ],
-                if (topPlayerTitle != null) ...[
-                  Text(
-                    topPlayerTitle,
-                    style: TextStyle(
-                      color: kPrimaryColor,
-                      fontSize: 10.sp,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  SizedBox(width: 6.w),
-                ],
-                Expanded(
-                  child: Text(
-                    topPlayerName,
-                    style: TextStyle(
-                      color: kWhiteColor,
-                      fontSize: 11.sp,
-                      fontWeight: FontWeight.w600,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                if (topPlayerElo != null)
-                  Text(
-                    topPlayerElo,
-                    style: TextStyle(
-                      color: kLightYellowColor,
-                      fontSize: 10.sp,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                if (topPlayerClock != null) ...[
-                  SizedBox(width: 8.w),
-                  Container(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: 6.w,
-                      vertical: 2.h,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.4),
-                      borderRadius: BorderRadius.circular(4.br),
-                    ),
-                    child: Text(
-                      topPlayerClock,
-                      style: TextStyle(
-                        color: kWhiteColor,
-                        fontSize: 9.sp,
-                        fontFamily: 'monospace',
-                      ),
-                    ),
-                  ),
-                ],
-              ],
-            ),
+          // Top player row - matching PlayerFirstRowDetailWidget exactly
+          _buildPlayerRow(
+            playerName: topPlayerName,
+            playerCountry: topPlayerCountry,
+            playerElo: topPlayerElo,
+            playerTitle: topPlayerTitle,
+            playerClock: topPlayerClock,
+            isWhitePlayer: topIsWhitePlayer,
+            sideBarWidth: sideBarWidth,
           ),
           SizedBox(height: 12.h),
           // Board with optional evaluation bar
@@ -988,80 +1221,15 @@ class _ShareCard extends ConsumerWidget {
             ),
           ),
           SizedBox(height: 12.h),
-          Padding(
-            padding: EdgeInsets.symmetric(horizontal: 16.w),
-            child: Row(
-              children: [
-                // Always reserve space for score to prevent layout shift
-                // Score always visible (not tied to eval bar toggle)
-                SizedBox(
-                  width: sideBarWidth.w,
-                  child: _buildEndScoreWidget(isWhitePlayer: bottomIsWhitePlayer),
-                ),
-                SizedBox(width: 8.w),
-                if (bottomPlayerCountry.isNotEmpty) ...[
-                  CountryFlag.fromCountryCode(
-                    bottomPlayerCountry,
-                    height: 12.h,
-                    width: 16.w,
-                  ),
-                  SizedBox(width: 8.w),
-                ],
-                if (bottomPlayerTitle != null) ...[
-                  Text(
-                    bottomPlayerTitle,
-                    style: TextStyle(
-                      color: kPrimaryColor,
-                      fontSize: 10.sp,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  SizedBox(width: 6.w),
-                ],
-                Expanded(
-                  child: Text(
-                    bottomPlayerName,
-                    style: TextStyle(
-                      color: kWhiteColor,
-                      fontSize: 11.sp,
-                      fontWeight: FontWeight.w600,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                if (bottomPlayerElo != null)
-                  Text(
-                    bottomPlayerElo,
-                    style: TextStyle(
-                      color: kLightYellowColor,
-                      fontSize: 10.sp,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                if (bottomPlayerClock != null) ...[
-                  SizedBox(width: 8.w),
-                  Container(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: 6.w,
-                      vertical: 2.h,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.4),
-                      borderRadius: BorderRadius.circular(4.br),
-                    ),
-                    child: Text(
-                      bottomPlayerClock,
-                      style: TextStyle(
-                        color: kWhiteColor,
-                        fontSize: 9.sp,
-                        fontFamily: 'monospace',
-                      ),
-                    ),
-                  ),
-                ],
-              ],
-            ),
+          // Bottom player row - matching PlayerFirstRowDetailWidget exactly
+          _buildPlayerRow(
+            playerName: bottomPlayerName,
+            playerCountry: bottomPlayerCountry,
+            playerElo: bottomPlayerElo,
+            playerTitle: bottomPlayerTitle,
+            playerClock: bottomPlayerClock,
+            isWhitePlayer: bottomIsWhitePlayer,
+            sideBarWidth: sideBarWidth,
           ),
           SizedBox(height: 16.h),
         ],
