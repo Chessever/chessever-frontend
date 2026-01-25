@@ -4,8 +4,7 @@ import 'package:chessever2/providers/board_settings_provider_new.dart';
 import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/repository/lichess/cloud_eval/cloud_eval.dart';
 import 'package:chessever2/repository/local_storage/local_eval/local_eval_cache.dart';
-// REMOVED: SharedPreferences persistence was causing main isolate perf issues
-// import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
+import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
 import 'package:chessever2/repository/api_utils/api_exceptions.dart';
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
 import 'package:chessever2/repository/supabase/evals/persist_cloud_eval.dart';
@@ -13,7 +12,6 @@ import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game_navigator.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game_navigator_state_manager.dart';
-import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new_worker.dart';
 import 'package:chessever2/screens/chessboard/provider/current_eval_provider.dart';
 import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
 import 'package:chessever2/screens/chessboard/provider/stockfish_singleton.dart';
@@ -67,13 +65,13 @@ final lastSeenMoveCountProvider = StateProvider<Map<String, int>>((ref) {
 });
 
 void _releaseLog(String message) {
-  // PERF: Disabled release logging - was causing main isolate freezes
-  // 263 log calls during rapid swiping blocked the UI thread
   if (kReleaseMode) {
-    // NO-OP in release mode for performance
-    return;
+    // Ensure logs show up when running release builds from IDE.
+    // ignore: avoid_print
+    print(message);
+  } else {
+    debugPrint(message);
   }
-  debugPrint(message);
 }
 
 class _BranchHistory {
@@ -96,7 +94,6 @@ class ChessBoardScreenNotifierNew
     required this.index,
     this.savedAnalysisData,
   }) : super(const AsyncValue.loading()) {
-    _stockfishOwnerId = '${game.gameId}_$index';
     _initializeState();
     _setupPgnStreamListener();
   }
@@ -105,25 +102,12 @@ class ChessBoardScreenNotifierNew
   GamesTourModel game;
   final int index;
 
-  /// Unique owner ID for Stockfish job cancellation.
-  /// Allows this provider to cancel only its own jobs without affecting others.
-  late final String _stockfishOwnerId;
-
   /// Optional saved analysis data to restore full state
   final SavedAnalysisData? savedAnalysisData;
   Timer? _longPressTimer;
-  Timer? _initTimer;
   bool _hasParsedMoves = false;
   bool _isProcessingMove = false;
-  bool _isAnalysisNavigating = false;
   bool _isLongPressing = false;
-
-  /// Throttle rapid single taps on navigation buttons to prevent UI freeze
-  DateTime? _lastNavigationTime;
-  static const _navigationThrottleMs = 50;
-
-  /// Timer to defer legal moves calculation after rapid navigation settles
-  Timer? _deferredLegalMovesTimer;
   bool _cancelEvaluation = false;
   String? _pendingEvalFen;
   Timer? _evalWatchdogTimer;
@@ -135,7 +119,7 @@ class ChessBoardScreenNotifierNew
   String? _activeEvalKey;
   DateTime? _activeEvalStartTime; // Track when active eval started
   ChessGame? _analysisGame;
-  // REMOVED: _analysisStateManager - SharedPreferences persistence was killing perf
+  ChessGameNavigatorStateManager? _analysisStateManager;
   ProviderSubscription<ChessGameNavigatorState>? _navigatorSubscription;
   bool _isInitialLoad = true;
   ChessBoardStateNew? _pvPreviewSnapshot;
@@ -189,12 +173,7 @@ class ChessBoardScreenNotifierNew
         ), // Restore comments
       ),
     );
-    // Debounce heavy PGN parsing to prevent jank during rapid swiping
-    _initTimer = Timer(const Duration(milliseconds: 150), () {
-      if (mounted) {
-        parseMoves();
-      }
-    });
+    parseMoves();
 
     // Listen for engine settings changes and clear cache to force re-evaluation
     ref.listen<AsyncValue<EngineSettings>>(engineSettingsProviderNew, (
@@ -400,8 +379,8 @@ class ChessBoardScreenNotifierNew
     _cancelEvaluation = false;
     _clearActiveEvalState();
 
-    // Cancel this provider's stuck Stockfish evaluations
-    unawaited(StockfishSingleton().cancelEvaluationsForOwner(_stockfishOwnerId));
+    // Cancel any stuck Stockfish evaluations
+    unawaited(StockfishSingleton().cancelAllEvaluations());
 
     // Clear the evaluating flag to prevent UI from being stuck
     if (stateSnapshot != null && stateSnapshot.isEvaluating) {
@@ -716,22 +695,36 @@ class ChessBoardScreenNotifierNew
 
       game = game.copyWith(pgn: resolvedPgn);
       var hasAttemptedUpgrade = false;
+      late PgnGame gameData;
       late Position startingPos;
       late List<Move> allMoves;
       late List<String> moveSans;
       Move? lastMove;
       late Position finalPos;
-      List<String> moveTimes = [];
 
       while (true) {
-        final result = await compute(parsePgnWorker, resolvedPgn);
+        gameData = PgnGame.parsePgn(resolvedPgn);
+        startingPos = PgnGame.startingPosition(gameData.headers);
 
-        allMoves = result.allMoves;
-        moveSans = result.moveSans;
-        startingPos = result.startingPos;
-        finalPos = result.finalPos;
-        lastMove = result.lastMove;
-        moveTimes = result.moveTimes;
+        Position tempPos = startingPos;
+        allMoves = [];
+        moveSans = [];
+
+        for (final node in gameData.moves.mainline()) {
+          final move = tempPos.parseSan(node.san);
+          if (move == null) break;
+          allMoves.add(move);
+          moveSans.add(node.san);
+          tempPos = tempPos.play(move);
+        }
+
+        final lastMoveIndex = allMoves.length - 1;
+        lastMove = null;
+        finalPos = startingPos;
+        for (int i = 0; i <= lastMoveIndex; i++) {
+          lastMove = allMoves[i];
+          finalPos = finalPos.play(allMoves[i]);
+        }
 
         // Header-only PGNs (Gamebase previews) parse successfully but contain no
         // movetext. If that happens, try upgrading to a full PGN with moves and
@@ -754,6 +747,7 @@ class ChessBoardScreenNotifierNew
       }
 
       var lastMoveIndex = allMoves.length - 1;
+      final moveTimes = _parseMoveTimesFromPgn(resolvedPgn);
 
       final liveFen = game.fen?.trim();
       final liveUci = game.lastMove?.trim();
@@ -954,7 +948,77 @@ class ChessBoardScreenNotifierNew
     }
   }
 
+  List<String> _parseMoveTimesFromPgn(String pgn) {
+    final List<String> times = [];
 
+    try {
+      final game = PgnGame.parsePgn(pgn);
+
+      // Iterate through the mainline moves
+      for (final nodeData in game.moves.mainline()) {
+        String? timeString;
+
+        // Check if this move has comments
+        if (nodeData.comments != null) {
+          // Extract time if it exists in any comment
+          for (String comment in nodeData.comments!) {
+            final timeMatch = RegExp(
+              r'\[%clk (\d+:\d+:\d+)\]',
+            ).firstMatch(comment);
+            if (timeMatch != null) {
+              timeString = timeMatch.group(1);
+              break; // Found time, no need to check other comments for this move
+            }
+          }
+        }
+
+        // Add formatted time or default if no time found
+        if (timeString != null) {
+          times.add(_formatDisplayTime(timeString));
+        } else {
+          times.add('-:--:--'); // Default for moves without time
+        }
+      }
+    } catch (e) {
+      _releaseLog('Error parsing PGN: $e');
+      // Fallback to regex method if dartchess parsing fails
+      return _parseMoveTimesFromPgnFallback(pgn);
+    }
+
+    return times;
+  }
+
+  // Fallback method using the original regex approach
+  List<String> _parseMoveTimesFromPgnFallback(String pgn) {
+    final List<String> times = [];
+    final regex = RegExp(r'\{ \[%clk (\d+:\d+:\d+)\] \}');
+    final matches = regex.allMatches(pgn);
+
+    for (final match in matches) {
+      final timeString = match.group(1) ?? '0:00:00';
+      times.add(_formatDisplayTime(timeString));
+    }
+
+    return times;
+  }
+
+  String _formatDisplayTime(String timeString) {
+    // Convert "1:40:57" to display format
+    final parts = timeString.split(':');
+    if (parts.length == 3) {
+      final hours = int.parse(parts[0]);
+      final minutes = parts[1];
+      final seconds = parts[2];
+
+      // If less than an hour, show MM:SS format
+      if (hours == 0) {
+        return '$minutes:$seconds';
+      }
+      // Otherwise show H:MM:SS format
+      return '$hours:$minutes:$seconds';
+    }
+    return timeString;
+  }
 
   /// Mark all moves as seen (clear the unseen indicator)
   void markMovesAsSeen() {
@@ -1008,7 +1072,7 @@ class ChessBoardScreenNotifierNew
         return;
       }
       _cancelEvaluation = true;
-      await StockfishSingleton().cancelEvaluationsForOwner(_stockfishOwnerId);
+      await StockfishSingleton().cancelAllEvaluations();
       _clearActiveEvalState();
       Position newPosition = currentState.analysisState.startingPosition!;
       Move? newLastMove;
@@ -1074,7 +1138,7 @@ class ChessBoardScreenNotifierNew
       }
 
       _cancelEvaluation = true;
-      await StockfishSingleton().cancelEvaluationsForOwner(_stockfishOwnerId);
+      await StockfishSingleton().cancelAllEvaluations();
       _clearActiveEvalState();
 
       Position newPosition = currentState.startingPosition!;
@@ -2562,26 +2626,7 @@ class ChessBoardScreenNotifierNew
     selectVariant(targetIndex);
   }
 
-  /// Throttle check for rapid single tap navigation.
-  /// Returns true if navigation should be skipped (too soon after last navigation).
-  /// Long press bypasses throttle since it has its own interval.
-  bool _shouldThrottleNavigation() {
-    if (_isLongPressing) return false; // Long press has its own 150ms interval
-    final now = DateTime.now();
-    if (_lastNavigationTime != null) {
-      final elapsed = now.difference(_lastNavigationTime!).inMilliseconds;
-      if (elapsed < _navigationThrottleMs) {
-        return true;
-      }
-    }
-    _lastNavigationTime = now;
-    return false;
-  }
-
   Future<void> moveForward() async {
-    // Throttle rapid single taps to prevent UI freeze
-    if (_shouldThrottleNavigation()) return;
-
     final currentState = state.value;
 
     // If in preview mode with locked PV, navigate within locked PV
@@ -2608,7 +2653,7 @@ class ChessBoardScreenNotifierNew
     }
 
     if (currentState.isAnalysisMode) {
-      await analysisStepForward();
+      analysisStepForward();
       return;
     }
 
@@ -2616,9 +2661,6 @@ class ChessBoardScreenNotifierNew
   }
 
   Future<void> moveBackward() async {
-    // Throttle rapid single taps to prevent UI freeze
-    if (_shouldThrottleNavigation()) return;
-
     final currentState = state.value;
 
     // If in preview mode with locked PV, navigate within locked PV
@@ -2643,7 +2685,7 @@ class ChessBoardScreenNotifierNew
     }
 
     if (currentState.isAnalysisMode) {
-      await analysisStepBackward();
+      analysisStepBackward();
       return;
     }
 
@@ -2682,8 +2724,8 @@ class ChessBoardScreenNotifierNew
       _analysisGame = _createChessGameFromPgn(pgn);
     }
 
-    // REMOVED: SharedPreferences state manager initialization
-    // Was causing main isolate performance issues with frequent I/O
+    final storage = ref.read(sharedPreferencesRepository);
+    _analysisStateManager = ChessGameNavigatorStateManager(storage: storage);
 
     final navigator = ref.read(
       chessGameNavigatorProvider(_analysisGame!).notifier,
@@ -2745,12 +2787,11 @@ class ChessBoardScreenNotifierNew
     });
   }
 
-  // REMOVED: SharedPreferences persistence was causing severe main isolate perf issues
-  // Every action was triggering JSON serialization + I/O writes for full game state
-  // This was particularly bad on Android where SharedPreferences I/O is slower
   Future<void> _persistAnalysisState() async {
-    // NO-OP: Persistence disabled for performance
-    return;
+    if (_analysisGame == null || _analysisStateManager == null) return;
+
+    final navigatorState = ref.read(chessGameNavigatorProvider(_analysisGame!));
+    await _analysisStateManager!.saveState(navigatorState);
   }
 
   ChessGame _createChessGameFromPgn(String pgn) {
@@ -3068,146 +3109,132 @@ class ChessBoardScreenNotifierNew
   }
 
   /// Navigate forward in analysis mode (through main line when no variant selected)
-  Future<void> analysisStepForward() async {
+  void analysisStepForward() {
     _releaseLog('🎯 ANALYSIS STEP FORWARD called');
 
-    if (_isAnalysisNavigating) return;
-    _isAnalysisNavigating = true;
+    final currentState = state.value;
+    if (currentState == null) return;
 
-    try {
-      final currentState = state.value;
-      if (currentState == null) return;
-
-      // If preview mode is active, navigate within preview instead of exiting
-      if (currentState.isPvPreviewActive) {
-        _releaseLog(
-          '🎯 ANALYSIS STEP FORWARD: Preview mode active, navigating in preview',
-        );
-        final currentNavIndex = currentState.lockedPvNavigationIndex ?? -1;
-        final pvLength = currentState.lockedPvLine?.moves.length ?? 0;
-        if (pvLength == 0) {
-          return;
-        }
-        final nextIndex = currentNavIndex < 0 ? 0 : currentNavIndex + 1;
-        if (nextIndex < pvLength) {
-          _navigateToLockedPvIndex(nextIndex);
-        }
-        return;
-      }
-
-      _exitPvPreviewIfActive();
-      if (state.value?.isAnalysisMode != true) {
-        _releaseLog('🎯 ANALYSIS STEP FORWARD: Not in analysis mode');
-        return;
-      }
-      if (_analysisGame == null) {
-        _releaseLog('🎯 ANALYSIS STEP FORWARD: ERROR - _analysisGame is null');
-        return;
-      }
-      if (_analysisNavigator == null) {
-        _releaseLog(
-          '🎯 ANALYSIS STEP FORWARD: ERROR - _analysisNavigator is null',
-        );
-        return;
-      }
-
-      if (currentState.selectedVariantIndex != null ||
-          currentState.variantMovePointer.isNotEmpty) {
-        state = AsyncValue.data(_clearVariantSelection(currentState));
-      }
-
-      // CRITICAL: Reset cancellation flag before navigation to ensure evaluation happens
-      _cancelEvaluation = false;
-
-      final navigatorState = ref.read(chessGameNavigatorProvider(_analysisGame!));
+    // If preview mode is active, navigate within preview instead of exiting
+    if (currentState.isPvPreviewActive) {
       _releaseLog(
-        '🎯 ANALYSIS STEP FORWARD: Current movePointer=${navigatorState.movePointer}',
+        '🎯 ANALYSIS STEP FORWARD: Preview mode active, navigating in preview',
       );
-      _releaseLog(
-        '🎯 ANALYSIS STEP FORWARD: Current FEN=${navigatorState.currentFen}',
-      );
-      _releaseLog('🎯 ANALYSIS STEP FORWARD: Calling goToNextMove on navigator');
-      _analysisNavigator?.goToNextMove();
-
-      // CRITICAL: Manually sync state after navigation to ensure board updates immediately.
-      // The ref.listen callback may not fire synchronously, causing the notation to update
-      // (it watches navigator directly) while the board state lags behind.
-      final updatedState = ref.read(chessGameNavigatorProvider(_analysisGame!));
-      _syncAnalysisFromNavigator(updatedState);
-    } finally {
-      _isAnalysisNavigating = false;
+      final currentNavIndex = currentState.lockedPvNavigationIndex ?? -1;
+      final pvLength = currentState.lockedPvLine?.moves.length ?? 0;
+      if (pvLength == 0) {
+        return;
+      }
+      final nextIndex = currentNavIndex < 0 ? 0 : currentNavIndex + 1;
+      if (nextIndex < pvLength) {
+        _navigateToLockedPvIndex(nextIndex);
+      }
+      return;
     }
+
+    _exitPvPreviewIfActive();
+    if (state.value?.isAnalysisMode != true) {
+      _releaseLog('🎯 ANALYSIS STEP FORWARD: Not in analysis mode');
+      return;
+    }
+    if (_analysisGame == null) {
+      _releaseLog('🎯 ANALYSIS STEP FORWARD: ERROR - _analysisGame is null');
+      return;
+    }
+    if (_analysisNavigator == null) {
+      _releaseLog(
+        '🎯 ANALYSIS STEP FORWARD: ERROR - _analysisNavigator is null',
+      );
+      return;
+    }
+
+    if (currentState.selectedVariantIndex != null ||
+        currentState.variantMovePointer.isNotEmpty) {
+      state = AsyncValue.data(_clearVariantSelection(currentState));
+    }
+
+    // CRITICAL: Reset cancellation flag before navigation to ensure evaluation happens
+    _cancelEvaluation = false;
+
+    final navigatorState = ref.read(chessGameNavigatorProvider(_analysisGame!));
+    _releaseLog(
+      '🎯 ANALYSIS STEP FORWARD: Current movePointer=${navigatorState.movePointer}',
+    );
+    _releaseLog(
+      '🎯 ANALYSIS STEP FORWARD: Current FEN=${navigatorState.currentFen}',
+    );
+    _releaseLog('🎯 ANALYSIS STEP FORWARD: Calling goToNextMove on navigator');
+    _analysisNavigator?.goToNextMove();
+
+    // CRITICAL: Manually sync state after navigation to ensure board updates immediately.
+    // The ref.listen callback may not fire synchronously, causing the notation to update
+    // (it watches navigator directly) while the board state lags behind.
+    final updatedState = ref.read(chessGameNavigatorProvider(_analysisGame!));
+    _syncAnalysisFromNavigator(updatedState);
   }
 
   /// Navigate backward in analysis mode (through main line when no variant selected)
-  Future<void> analysisStepBackward() async {
+  void analysisStepBackward() {
     _releaseLog('🎯 ANALYSIS STEP BACKWARD called');
 
-    if (_isAnalysisNavigating) return;
-    _isAnalysisNavigating = true;
+    final currentState = state.value;
+    if (currentState == null) return;
 
-    try {
-      final currentState = state.value;
-      if (currentState == null) return;
-
-      // If preview mode is active, navigate within preview instead of exiting
-      if (currentState.isPvPreviewActive) {
-        _releaseLog(
-          '🎯 ANALYSIS STEP BACKWARD: Preview mode active, navigating in preview',
-        );
-        final currentNavIndex = currentState.lockedPvNavigationIndex ?? -1;
-        if (currentNavIndex > 0) {
-          _navigateToLockedPvIndex(currentNavIndex - 1);
-        } else if (currentNavIndex == -1) {
-          _navigateToLockedPvIndex(0);
-        }
-        return;
-      }
-
-      _exitPvPreviewIfActive();
-      if (state.value?.isAnalysisMode != true) {
-        _releaseLog('🎯 ANALYSIS STEP BACKWARD: Not in analysis mode');
-        return;
-      }
-      if (_analysisGame == null) {
-        _releaseLog('🎯 ANALYSIS STEP BACKWARD: ERROR - _analysisGame is null');
-        return;
-      }
-      if (_analysisNavigator == null) {
-        _releaseLog(
-          '🎯 ANALYSIS STEP BACKWARD: ERROR - _analysisNavigator is null',
-        );
-        return;
-      }
-
-      if (currentState.selectedVariantIndex != null ||
-          currentState.variantMovePointer.isNotEmpty) {
-        state = AsyncValue.data(_clearVariantSelection(currentState));
-      }
-
-      // CRITICAL: Reset cancellation flag before navigation to ensure evaluation happens
-      _cancelEvaluation = false;
-
-      final navigatorState = ref.read(chessGameNavigatorProvider(_analysisGame!));
+    // If preview mode is active, navigate within preview instead of exiting
+    if (currentState.isPvPreviewActive) {
       _releaseLog(
-        '🎯 ANALYSIS STEP BACKWARD: Current movePointer=${navigatorState.movePointer}',
+        '🎯 ANALYSIS STEP BACKWARD: Preview mode active, navigating in preview',
       );
-      _releaseLog(
-        '🎯 ANALYSIS STEP BACKWARD: Current FEN=${navigatorState.currentFen}',
-      );
-      _releaseLog(
-        '🎯 ANALYSIS STEP BACKWARD: Calling goToPreviousMove on navigator',
-      );
-      _analysisNavigator?.goToPreviousMove();
-
-      // CRITICAL: Manually sync state after navigation to ensure board updates immediately.
-      // The ref.listen callback may not fire synchronously, causing the notation to update
-      // (it watches navigator directly) while the board state lags behind.
-      final updatedState = ref.read(chessGameNavigatorProvider(_analysisGame!));
-      _syncAnalysisFromNavigator(updatedState);
-    } finally {
-      _isAnalysisNavigating = false;
+      final currentNavIndex = currentState.lockedPvNavigationIndex ?? -1;
+      if (currentNavIndex > 0) {
+        _navigateToLockedPvIndex(currentNavIndex - 1);
+      } else if (currentNavIndex == -1) {
+        _navigateToLockedPvIndex(0);
+      }
+      return;
     }
+
+    _exitPvPreviewIfActive();
+    if (state.value?.isAnalysisMode != true) {
+      _releaseLog('🎯 ANALYSIS STEP BACKWARD: Not in analysis mode');
+      return;
+    }
+    if (_analysisGame == null) {
+      _releaseLog('🎯 ANALYSIS STEP BACKWARD: ERROR - _analysisGame is null');
+      return;
+    }
+    if (_analysisNavigator == null) {
+      _releaseLog(
+        '🎯 ANALYSIS STEP BACKWARD: ERROR - _analysisNavigator is null',
+      );
+      return;
+    }
+
+    if (currentState.selectedVariantIndex != null ||
+        currentState.variantMovePointer.isNotEmpty) {
+      state = AsyncValue.data(_clearVariantSelection(currentState));
+    }
+
+    // CRITICAL: Reset cancellation flag before navigation to ensure evaluation happens
+    _cancelEvaluation = false;
+
+    final navigatorState = ref.read(chessGameNavigatorProvider(_analysisGame!));
+    _releaseLog(
+      '🎯 ANALYSIS STEP BACKWARD: Current movePointer=${navigatorState.movePointer}',
+    );
+    _releaseLog(
+      '🎯 ANALYSIS STEP BACKWARD: Current FEN=${navigatorState.currentFen}',
+    );
+    _releaseLog(
+      '🎯 ANALYSIS STEP BACKWARD: Calling goToPreviousMove on navigator',
+    );
+    _analysisNavigator?.goToPreviousMove();
+
+    // CRITICAL: Manually sync state after navigation to ensure board updates immediately.
+    // The ref.listen callback may not fire synchronously, causing the notation to update
+    // (it watches navigator directly) while the board state lags behind.
+    final updatedState = ref.read(chessGameNavigatorProvider(_analysisGame!));
+    _syncAnalysisFromNavigator(updatedState);
   }
 
   void jumpToStart() {
@@ -3368,14 +3395,12 @@ class ChessBoardScreenNotifierNew
     _cancelEvaluation = true;
     _cancelEvalWatchdog(resetPending: true);
     _clearActiveEvalState();
-    // Cancel only THIS provider's Stockfish jobs, not all jobs globally
-    await StockfishSingleton().cancelEvaluationsForOwner(_stockfishOwnerId);
+    await StockfishSingleton().cancelAllEvaluations();
     _cancelEvaluation = false;
   }
 
   Future<void> onBecameVisible({bool force = true}) async {
-    // Cancel only THIS provider's stale jobs before starting new evaluation
-    await StockfishSingleton().cancelEvaluationsForOwner(_stockfishOwnerId);
+    await StockfishSingleton().cancelAllEvaluations();
     _cancelEvaluation = false;
     _clearActiveEvalState();
     _updateEvaluation(force: force);
@@ -4496,8 +4521,6 @@ class ChessBoardScreenNotifierNew
             fenToAnalyze,
             cascadeEval.pvs,
           );
-          // CRITICAL: Check mounted after await to avoid dispose errors
-          if (!mounted) return;
           var mergedCascadeLines = _mergePvProgress(pvLines, cascadeLines);
           if (mergedCascadeLines.length > configuredMultiPV) {
             mergedCascadeLines = mergedCascadeLines
@@ -4547,8 +4570,6 @@ class ChessBoardScreenNotifierNew
               fenToAnalyze,
               cascadeEval.pvs,
             );
-            // CRITICAL: Check mounted after await
-            if (!mounted) return;
             if (retryLines.isNotEmpty) {
               pvLines = _mergePvProgress(pvLines, retryLines);
               _releaseLog('✅ RETRY: Cloud PV building succeeded on retry');
@@ -4617,8 +4638,6 @@ class ChessBoardScreenNotifierNew
       final multiPV = configuredMultiPV;
       final isCurrentlyVisible = currentVisiblePage == index;
       EngineSearchProgress? pendingProgress;
-      int lastPvUpdateDepth = 0; // Track last depth we updated state for
-
       final stockfishFuture = StockfishSingleton().evaluatePosition(
         fenToAnalyze,
         depth: combinedMaxDepth,
@@ -4627,7 +4646,6 @@ class ChessBoardScreenNotifierNew
         searchDuration: combinedSearchDuration,
         maxDepth: combinedMaxDepth,
         allowCache: false,
-        ownerId: _stockfishOwnerId, // Tag job with this provider's owner ID
         onDepthUpdate: (depth, knodes) {
           final progress = EngineSearchProgress(
             depth: depth,
@@ -4643,16 +4661,6 @@ class ChessBoardScreenNotifierNew
           );
         },
         onPvUpdate: (pvs, depth) {
-          // PERFORMANCE FIX: Throttle PV state updates to reduce rebuilds.
-          // Only update state every 4 depths or at significant milestones (5, 10, 15, 20).
-          // This reduces ~40 state updates per eval to ~5-8.
-          final isSignificantDepth = depth % 5 == 0 || depth >= combinedMaxDepth - 1;
-          final depthSinceLastUpdate = depth - lastPvUpdateDepth;
-          if (depthSinceLastUpdate < 4 && !isSignificantDepth) {
-            return; // Skip this update, wait for more significant depth
-          }
-          lastPvUpdateDepth = depth;
-
           Future<void>(() async {
             if (!mounted) return;
             final visiblePage = ref.read(currentlyVisiblePageIndexProvider);
@@ -4673,16 +4681,12 @@ class ChessBoardScreenNotifierNew
             final mateScore = _getConsistentMate(pvs.first.mate, fenToAnalyze);
             evaluation = newEval;
 
-            // PERFORMANCE FIX: Don't emit intermediate state here.
-            // Wait until PV lines are built, then emit a single consolidated state update.
-            // This reduces state updates from 2 per depth to 1.
             var workingState = currentState.copyWith(
               evaluation: newEval,
               mate: mateScore,
               isEvaluating: true,
             );
-            // Removed: state = AsyncValue.data(workingState);
-            // State will be updated once below after PV building
+            state = AsyncValue.data(workingState);
 
             var lines = await _buildPrincipalVariations(fenToAnalyze, pvs);
             if (lines.isEmpty) return;
@@ -4766,12 +4770,9 @@ class ChessBoardScreenNotifierNew
             _activeEvalKey = null;
             _activeEvalStartTime = null;
           }
-          // CRITICAL: Check mounted before accessing state to avoid dispose errors
-          if (mounted) {
-            final snapshot = state.value;
-            if (snapshot != null && snapshot.isEvaluating) {
-              state = AsyncValue.data(snapshot.copyWith(isEvaluating: false));
-            }
+          final snapshot = state.value;
+          if (snapshot != null && snapshot.isEvaluating) {
+            state = AsyncValue.data(snapshot.copyWith(isEvaluating: false));
           }
 
           if (mounted && !_cancelEvaluation) {
@@ -4825,8 +4826,6 @@ class ChessBoardScreenNotifierNew
               fenToAnalyze,
               stockfishResult.pvs,
             );
-            // CRITICAL: Check mounted after await to avoid dispose errors
-            if (!mounted) return;
             if (finalLines.isNotEmpty) {
               if (finalLines.length > configuredMultiPV) {
                 finalLines = finalLines
@@ -5274,24 +5273,6 @@ class ChessBoardScreenNotifierNew
       return;
     }
 
-    // Check for staleness against the latest navigator state
-    // This prevents race conditions where a delayed listener event overrides a newer manual sync
-    if (_analysisGame != null) {
-      final latestNavigatorState = ref.read(
-        chessGameNavigatorProvider(_analysisGame!),
-      );
-      const pointerEquality = ListEquality<int>();
-      if (!pointerEquality.equals(
-        navigatorState.movePointer,
-        latestNavigatorState.movePointer,
-      )) {
-        _releaseLog(
-          '🎯 SYNC SKIPPED: Stale navigator state detected (Arg: ${navigatorState.movePointer} vs Latest: ${latestNavigatorState.movePointer})',
-        );
-        return;
-      }
-    }
-
     // CRITICAL FIX: Prevent duplicate sync when board is already at target position.
     // Both the navigator listener and manual sync call this method, which caused
     // race conditions during rapid tapping that could skip moves.
@@ -5359,23 +5340,11 @@ class ChessBoardScreenNotifierNew
               .toList() ??
           const <Move>[];
 
-      // Optimization: Defer legal moves calculation during rapid navigation
-      // (long press or rapid taps) since user can't interact with board anyway.
-      // This significantly reduces CPU load during fast navigation.
-      _deferredLegalMovesTimer?.cancel();
-      final IMap<Square, ISet<Square>> validMoves;
-      if (_isLongPressing) {
-        // During long press, reuse previous valid moves to avoid expensive calculation
-        validMoves = current.analysisState.validMoves;
-      } else {
-        validMoves = makeLegalMoves(position);
-      }
-
       final nextState = current.copyWith(
         analysisState: current.analysisState.copyWith(
           game: navigatorState.game,
           position: position,
-          validMoves: validMoves,
+          validMoves: makeLegalMoves(position),
           lastMove: lastMove,
           moveSans:
               navigatorState.currentLine?.map((move) => move.san).toList() ??
@@ -5723,11 +5692,10 @@ class ChessBoardScreenNotifierNew
     if (force) {
       scheduleEvaluation();
     } else {
-      // PERF: Increased debounce from 120ms to 200ms to reduce redundant
-      // evaluations during rapid navigation while maintaining responsiveness
+      // Debounce rapid navigation so we only evaluate after the user settles on a move
       EasyDebounce.debounce(
         'evaluation-$index',
-        const Duration(milliseconds: 200),
+        const Duration(milliseconds: 120),
         scheduleEvaluation,
       );
     }
@@ -5806,67 +5774,17 @@ class ChessBoardScreenNotifierNew
     if (_isLongPressing) {
       _isLongPressing = false;
       _cancelEvaluation = false;
-      // Refresh valid moves that were deferred during long press navigation
-      _refreshValidMovesAfterNavigation();
       _updateEvaluation();
-    }
-  }
-
-  /// Recalculate valid moves after rapid navigation ends.
-  /// This is deferred during long press to improve performance.
-  void _refreshValidMovesAfterNavigation() {
-    final current = state.value;
-    if (current == null) return;
-    final position = current.analysisState.position;
-    final freshValidMoves = makeLegalMoves(position);
-    // Only update if valid moves actually changed
-    if (freshValidMoves != current.analysisState.validMoves) {
-      state = AsyncValue.data(
-        current.copyWith(
-          analysisState: current.analysisState.copyWith(
-            validMoves: freshValidMoves,
-          ),
-        ),
-      );
     }
   }
 
   @override
   void dispose() {
-    // Cancel all timers first to stop any pending operations
-    _initTimer?.cancel();
-    _initTimer = null;
-    _deferredLegalMovesTimer?.cancel();
-    _deferredLegalMovesTimer = null;
-    _cancelEvalWatchdog(resetPending: true);
     stopLongPress();
-
-    // Cancel any pending Stockfish evaluations for this board
-    // This prevents orphaned evaluations from consuming resources
-    _cancelEvaluation = true;
-    _clearActiveEvalState();
-
-    // Persist state before cleanup (fire and forget)
     unawaited(_persistAnalysisState());
-
-    // Clean up subscriptions
     _navigatorSubscription?.close();
     _navigatorSubscription = null;
-
-    // Cancel this provider's Stockfish jobs on dispose to prevent orphaned jobs
-    unawaited(StockfishSingleton().cancelEvaluationsForOwner(_stockfishOwnerId));
     _cancelEvalWatchdog(resetPending: true);
-
-    // Clear maps to release any retained objects
-    _failedEvalTimestamps.clear();
-
-    // Release heavy objects to help GC
-    // These can hold significant memory (game trees, position histories)
-    _analysisGame = null;
-    // REMOVED: _analysisStateManager = null; (no longer used)
-    _pvPreviewSnapshot = null;
-    _pendingEvalFen = null;
-
     super.dispose();
   }
 }
