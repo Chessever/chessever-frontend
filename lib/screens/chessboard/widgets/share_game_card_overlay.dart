@@ -1274,7 +1274,7 @@ class _ShareCard extends ConsumerWidget {
             isWhitePlayer: bottomIsWhitePlayer,
             sideBarWidth: sideBarWidth,
           ),
-          SizedBox(height: 16.h),
+          SizedBox(height: 20.h), // Extra padding to prevent bottom border cutoff in GIF
         ],
       ),
     );
