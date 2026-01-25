@@ -128,9 +128,9 @@ Future<void> main() async {
       // Tablets get all orientations, phones stay portrait-only
 
       // Load environment variables first (only in debug mode)
-      if (kDebugMode) {
-        await dotenv.load(fileName: ".env");
-      }
+      // if (kDebugMode) {
+      //   await dotenv.load(fileName: ".env");
+      // }
 
       // Add lifecycle observer
       WidgetsBinding.instance.addObserver(
@@ -154,6 +154,9 @@ Future<void> main() async {
 
       // Clear evaluation cache in background (don't block startup)
       unawaited(_clearEvaluationCache());
+
+      // Clear selected tour IDs on app startup (ensures highest ELO category is selected by default)
+      unawaited(_clearSelectedTourIds());
 
       // Parallelize all critical initialization tasks
       await Future.wait([
@@ -198,6 +201,26 @@ Future<void> main() async {
       Sentry.captureException(error, stackTrace: stackTrace);
     },
   );
+}
+
+/// Clears selected tour IDs on app startup
+/// This ensures the highest ELO category is selected by default when opening events
+Future<void> _clearSelectedTourIds() async {
+  try {
+    const String tourPrefix = 'selected_tour_';
+    final prefs = SharedPreferencesService.instance.prefs;
+    final keys = prefs.getKeys().where((k) => k.startsWith(tourPrefix)).toList();
+
+    for (final key in keys) {
+      await prefs.remove(key);
+    }
+
+    if (keys.isNotEmpty) {
+      debugPrint('🧹 Cleared ${keys.length} selected tour IDs for fresh session');
+    }
+  } catch (e) {
+    debugPrint('Error clearing selected tour IDs: $e');
+  }
 }
 
 /// Clears evaluation cache when cache version is updated
