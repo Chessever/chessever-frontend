@@ -122,6 +122,7 @@ class ShareGameCardOverlay extends StatefulWidget {
   final Move? lastMove;
   final String pgn;
   final List<String> moveSans; // The actual move list from analysis state
+  final List<String> moveTimes; // Clock times for each move (for GIF animation)
   final String whitePlayerName;
   final String blackPlayerName;
   final String? whitePlayerCountry;
@@ -149,6 +150,7 @@ class ShareGameCardOverlay extends StatefulWidget {
     required this.lastMove,
     required this.pgn,
     required this.moveSans,
+    this.moveTimes = const [], // Default to empty for backwards compatibility
     required this.whitePlayerName,
     required this.blackPlayerName,
     this.whitePlayerCountry,
@@ -187,6 +189,8 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
   // GIF frame state
   String? _gifFrameFen;
   NormalMove? _gifFrameLastMove;
+  String? _gifFrameWhiteClock;
+  String? _gifFrameBlackClock;
 
   // Board settings with animations disabled for instant frame capture
   ChessboardSettings get _gifBoardSettings => ChessboardSettings(
@@ -198,6 +202,35 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
         // CRITICAL: Disable animations for instant static frame capture
         animationDuration: Duration.zero,
       );
+
+  /// Calculate clock times at a given move index
+  /// Returns (whiteClock, blackClock) tuple
+  (String?, String?) _getClocksAtMoveIndex(int moveIndex) {
+    if (widget.moveTimes.isEmpty) {
+      return (null, null);
+    }
+
+    String? whiteClock;
+    String? blackClock;
+
+    // Find white's most recent clock (white moves are at even indices: 0, 2, 4...)
+    for (int i = moveIndex; i >= 0; i--) {
+      if (i % 2 == 0 && i < widget.moveTimes.length) {
+        whiteClock = widget.moveTimes[i];
+        break;
+      }
+    }
+
+    // Find black's most recent clock (black moves are at odd indices: 1, 3, 5...)
+    for (int i = moveIndex; i >= 0; i--) {
+      if (i % 2 == 1 && i < widget.moveTimes.length) {
+        blackClock = widget.moveTimes[i];
+        break;
+      }
+    }
+
+    return (whiteClock, blackClock);
+  }
 
   /// Capture raw RGBA pixel data from the RepaintBoundary
   /// This avoids PNG encoding issues on iOS P3 displays
@@ -301,9 +334,12 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
       const pixelRatio = 1.5; // Lower ratio for smaller file size and faster encoding
 
       // Initial position - set state and wait for widget to build
+      // At initial position (before any moves), no clocks to show yet
       setState(() {
         _gifFrameFen = position.fen;
         _gifFrameLastMove = null;
+        _gifFrameWhiteClock = null;
+        _gifFrameBlackClock = null;
       });
       // Wait for widget to build and paint
       await WidgetsBinding.instance.endOfFrame;
@@ -334,9 +370,14 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
           lastMoveForDisplay = null;
         }
 
+        // Get clock times at this move index
+        final (whiteClock, blackClock) = _getClocksAtMoveIndex(i);
+
         setState(() {
           _gifFrameFen = position.fen;
           _gifFrameLastMove = lastMoveForDisplay;
+          _gifFrameWhiteClock = whiteClock;
+          _gifFrameBlackClock = blackClock;
           _gifProgress = (i + 1) / movesToAnimate.length * 0.7; // 70% for capture
         });
 
@@ -421,6 +462,8 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
         _gifProgress = 0.0;
         _gifFrameFen = null;
         _gifFrameLastMove = null;
+        _gifFrameWhiteClock = null;
+        _gifFrameBlackClock = null;
       });
     }
   }
@@ -802,8 +845,8 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
                   blackPlayerElo: widget.blackPlayerElo,
                   whitePlayerTitle: widget.whitePlayerTitle,
                   blackPlayerTitle: widget.blackPlayerTitle,
-                  whitePlayerClock: widget.whitePlayerClock,
-                  blackPlayerClock: widget.blackPlayerClock,
+                  whitePlayerClock: _gifFrameWhiteClock, // Dynamic clock per frame
+                  blackPlayerClock: _gifFrameBlackClock, // Dynamic clock per frame
                   tournamentName: widget.tournamentName,
                   roundInfo: widget.roundInfo,
                   currentMoveIndex: widget.currentMoveIndex,

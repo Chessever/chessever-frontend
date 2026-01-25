@@ -9019,6 +9019,7 @@ class _ShareGameScreen extends ConsumerWidget {
           state
               .analysisState
               .moveSans, // Pass the actual move list from analysis state
+      moveTimes: state.moveTimes, // Pass clock times for GIF animation
       whitePlayerName: game.whitePlayer.name,
       blackPlayerName: game.blackPlayer.name,
       whitePlayerCountry: game.whitePlayer.federation,
