@@ -120,9 +120,9 @@ Future<void> main() async {
       WidgetsBinding widgetsBinding = WidgetsFlutterBinding.ensureInitialized();
       FlutterNativeSplash.preserve(widgetsBinding: widgetsBinding);
 
-      // CRITICAL: Initialize SharedPreferences FIRST before anything else
-      // This prevents multiple getInstance() calls that can hang on Android
-      await SharedPreferencesService.instance.initialize();
+      // CRITICAL: Kick off SharedPreferences initialization first.
+      // Accessors now await ensureInitialized(), so we don't block startup here.
+      unawaited(SharedPreferencesService.instance.initialize());
 
       // Orientation is set per-device in MyApp after we know the device type
       // Tablets get all orientations, phones stay portrait-only
@@ -208,7 +208,7 @@ Future<void> main() async {
 Future<void> _clearSelectedTourIds() async {
   try {
     const String tourPrefix = 'selected_tour_';
-    final prefs = SharedPreferencesService.instance.prefs;
+    final prefs = await SharedPreferencesService.instance.ensureInitialized();
     final keys = prefs.getKeys().where((k) => k.startsWith(tourPrefix)).toList();
 
     for (final key in keys) {
@@ -231,7 +231,7 @@ Future<void> _clearEvaluationCache() async {
     const String versionKey = 'eval_cache_clear_version';
     const String evalPrefix = 'cloud_eval_';
 
-    final prefs = SharedPreferencesService.instance.prefs;
+    final prefs = await SharedPreferencesService.instance.ensureInitialized();
     final currentVersion = prefs.getInt(versionKey) ?? 0;
 
     if (currentVersion < cacheVersion) {
@@ -290,7 +290,7 @@ Future<void> _resetFavoritesForMigration() async {
     const int migrationVersion = 4; // v4: Clear non-user-specific cache keys
     const String versionKey = 'favorites_reset_version';
 
-    final prefs = SharedPreferencesService.instance.prefs;
+    final prefs = await SharedPreferencesService.instance.ensureInitialized();
     final currentVersion = prefs.getInt(versionKey) ?? 0;
 
     if (currentVersion < migrationVersion) {

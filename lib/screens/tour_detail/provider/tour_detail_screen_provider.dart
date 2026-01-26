@@ -215,17 +215,26 @@ class _TourDetailScreenNotifier
         return;
       }
 
-      // ✅ Save the user's selection for future sessions
-      await ref
-          .read(tourDetailRepoProvider)
-          .saveSelectedTourId(groupEventId: groupBroadcast.id, tourId: tourId);
-
       final updatedViewModel = createViewModelFromExisting(
         currentState,
         selectedTourModel.tour,
         _currentLiveTourIds,
       );
       setDataState(updatedViewModel);
+
+      // ✅ Save the user's selection for future sessions (best effort, non-blocking)
+      unawaited(() async {
+        try {
+          await ref
+              .read(tourDetailRepoProvider)
+              .saveSelectedTourId(
+                groupEventId: groupBroadcast.id,
+                tourId: tourId,
+              );
+        } catch (e) {
+          logWarning('Failed to persist selected tour: $e');
+        }
+      }());
     } catch (e, st) {
       setErrorState(e, st);
     }
@@ -313,7 +322,16 @@ class _TourDetailScreenNotifier
     TourDetailViewModel? currentState,
     List<String> liveTourIds,
   ) async {
-    // 1️⃣ If user previously selected a tour during this session (stored locally)
+    // 1️⃣ If user already selected a tour during this session, keep it.
+    final currentSelectedId = currentState?.aboutTourModel.id;
+    if (currentSelectedId != null && currentSelectedId.isNotEmpty) {
+      final currentModel = findTourModel(tourModels, currentSelectedId);
+      if (currentModel != null) {
+        return currentModel.tour;
+      }
+    }
+
+    // 2️⃣ If user previously selected a tour during this session (stored locally)
     final savedTourId = await ref
         .read(tourDetailRepoProvider)
         .getSelectedTourId(groupBroadcast.id);
@@ -325,7 +343,7 @@ class _TourDetailScreenNotifier
       }
     }
 
-    // 2️⃣ Select the tour with the highest avgElo
+    // 3️⃣ Select the tour with the highest avgElo
     final toursWithElo =
         tourModels.where((model) => model.tour.avgElo != null).toList();
 
@@ -334,7 +352,7 @@ class _TourDetailScreenNotifier
       return toursWithElo.first.tour;
     }
 
-    // 3️⃣ Fallback: Handle live tours (if no avgElo data available)
+    // 4️⃣ Fallback: Handle live tours (if no avgElo data available)
     final liveModels =
         tourModels
             .where((model) => liveTourIds.contains(model.tour.id))
@@ -356,7 +374,7 @@ class _TourDetailScreenNotifier
       return liveModels.first.tour;
     }
 
-    // 4️⃣ If no live tours, pick most recently completed tour
+    // 5️⃣ If no live tours, pick most recently completed tour
     final completedTours =
         tourModels
             .where((model) => model.roundStatus == RoundStatus.completed)
@@ -372,7 +390,7 @@ class _TourDetailScreenNotifier
       return completedTours.first.tour;
     }
 
-    // 5️⃣ Fallback: first tour
+    // 6️⃣ Fallback: first tour
     return tourModels.first.tour;
   }
 

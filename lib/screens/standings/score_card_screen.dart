@@ -1,6 +1,6 @@
 import 'dart:math' as math;
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
+import 'package:chessever2/widgets/player_initials_avatar.dart';
 import 'package:chessever2/screens/standings/providers/player_ratings_provider.dart'
     show AllRatingsRequest, allRatingsProvider;
 import 'package:chessever2/screens/standings/providers/player_utils_provider.dart';
@@ -831,64 +831,18 @@ class _PlayerAvatarTile extends StatelessWidget {
     // Bigger avatar for tablets
     final avatarSize = ResponsiveHelper.isTablet ? 120.sp : 90.w;
 
-    return Stack(
-      alignment: Alignment.bottomCenter,
-      children: [
-        ClipRRect(
-          borderRadius: BorderRadius.circular(12.br),
-          child: FutureBuilder<String?>(
-            future: photoFuture,
-            builder: (context, snapshot) {
-              final photoUrl = snapshot.data;
-              if (photoUrl != null && photoUrl.isNotEmpty) {
-                return CachedNetworkImage(
-                  imageUrl: photoUrl,
-                  width: avatarSize,
-                  height: avatarSize,
-                  fit: BoxFit.cover,
-                  placeholder:
-                      (context, url) => _AvatarPlaceholder(
-                        initials: initials,
-                        size: avatarSize,
-                      ),
-                  errorWidget:
-                      (context, url, error) => _AvatarPlaceholder(
-                        initials: initials,
-                        size: avatarSize,
-                      ),
-                );
-              }
-
-              return _AvatarPlaceholder(initials: initials, size: avatarSize);
-            },
-          ),
-        ),
-        if (title != null && title!.isNotEmpty)
-          Positioned(
-            bottom: 0,
-            left: 0,
-            right: 0,
-            child: Container(
-              padding: EdgeInsets.symmetric(horizontal: 3.w, vertical: 1.5.h),
-              decoration: BoxDecoration(
-                color: kGreenColor.withValues(alpha: 0.9),
-                borderRadius: BorderRadius.only(
-                  bottomLeft: Radius.circular(10.br),
-                  bottomRight: Radius.circular(10.br),
-                ),
-              ),
-              child: Text(
-                title!,
-                textAlign: TextAlign.center,
-                style: AppTypography.textXsMedium.copyWith(
-                  color: Colors.white,
-                  fontSize: 9.sp,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-          ),
-      ],
+    return FutureBuilder<String?>(
+      future: photoFuture,
+      builder: (context, snapshot) {
+        // Always show the avatar with initials fallback, regardless of loading state
+        return PlayerInitialsAvatar(
+          photoUrl: snapshot.data,
+          initials: initials,
+          size: avatarSize,
+          borderRadius: 12.br,
+          title: title,
+        );
+      },
     );
   }
 }
@@ -1050,30 +1004,6 @@ class _SliverScoreboardAppBarState extends ConsumerState<_SliverScoreboardAppBar
   }
 }
 
-class _AvatarPlaceholder extends StatelessWidget {
-  final String initials;
-  final double size;
-
-  const _AvatarPlaceholder({required this.initials, required this.size});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(10.br),
-        gradient: kProfileInitialsGradient,
-      ),
-      child: Center(
-        child: Text(
-          initials,
-          style: AppTypography.textLgBold.copyWith(color: kWhiteColor),
-        ),
-      ),
-    );
-  }
-}
 
 /// Simplified rating display that uses a cached provider to fetch all ratings
 /// at once, avoiding 3 separate API calls for the same player.

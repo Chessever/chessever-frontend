@@ -5,7 +5,6 @@ import 'package:chessever2/repository/local_storage/local_storage_repository.dar
 import 'package:chessever2/screens/chessboard/provider/stockfish_singleton.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Enum to identify which engine component is making the analysis request
@@ -619,10 +618,9 @@ class EngineSettingsNotifierNew extends AsyncNotifier<EngineSettings> {
     }
   }
 
-  SharedPreferences get _prefs => SharedPreferencesService.instance.prefs;
-
   Future<void> _cacheSettings(EngineSettings settings) async {
     try {
+      final prefs = await SharedPreferencesService.instance.ensureInitialized();
       final json = jsonEncode({
         'showEngineGauge': settings.showEngineGauge,
         'showDepthOverlay': settings.showDepthOverlay,
@@ -632,7 +630,7 @@ class EngineSettingsNotifierNew extends AsyncNotifier<EngineSettings> {
         'principalVariationIndex': settings.principalVariationIndex,
         'maxArrowsOnBoard': settings.maxArrowsOnBoard,
       });
-      await _prefs.setString(_cacheKey, json);
+      await prefs.setString(_cacheKey, json);
       debugPrint('[EngineSettings] Cached settings locally');
     } catch (e) {
       debugPrint('[EngineSettings] Error caching settings: $e');
@@ -641,7 +639,8 @@ class EngineSettingsNotifierNew extends AsyncNotifier<EngineSettings> {
 
   Future<EngineSettings> _getCachedSettings() async {
     try {
-      final json = _prefs.getString(_cacheKey);
+      final prefs = await SharedPreferencesService.instance.ensureInitialized();
+      final json = prefs.getString(_cacheKey);
       if (json == null) {
         debugPrint('[EngineSettings] No cached settings, using defaults');
         return const EngineSettings();
@@ -653,7 +652,7 @@ class EngineSettingsNotifierNew extends AsyncNotifier<EngineSettings> {
       // and we should return defaults (which triggers fresh Supabase fetch)
       if (!map.containsKey('maxArrowsOnBoard')) {
         debugPrint('[EngineSettings] Cache is stale (missing fields), clearing and using defaults');
-        await _prefs.remove(_cacheKey);
+        await prefs.remove(_cacheKey);
         return const EngineSettings();
       }
 
@@ -677,7 +676,8 @@ class EngineSettingsNotifierNew extends AsyncNotifier<EngineSettings> {
   /// Clear cache (useful on sign out)
   Future<void> clearCache() async {
     try {
-      await _prefs.remove(_cacheKey);
+      final prefs = await SharedPreferencesService.instance.ensureInitialized();
+      await prefs.remove(_cacheKey);
       debugPrint('[EngineSettings] Cleared cache');
     } catch (e) {
       debugPrint('[EngineSettings] Error clearing cache: $e');

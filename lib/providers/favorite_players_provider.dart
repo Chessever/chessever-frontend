@@ -5,7 +5,6 @@ import 'package:chessever2/repository/local_storage/local_storage_repository.dar
 import 'package:chessever2/services/analytics/analytics_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Provider for managing player favorites
@@ -202,13 +201,12 @@ class FavoritePlayersNotifierNew extends AsyncNotifier<List<FavoritePlayer>> {
     }
   }
 
-  SharedPreferences get _prefs => SharedPreferencesService.instance.prefs;
-
   // Cache management
   Future<void> _cachePlayers(List<FavoritePlayer> players) async {
     try {
+      final prefs = await SharedPreferencesService.instance.ensureInitialized();
       final json = jsonEncode(players.map((p) => p.toSupabase()).toList());
-      await _prefs.setString(_cacheKey, json);
+      await prefs.setString(_cacheKey, json);
       debugPrint('[FavoritePlayers] Cached ${players.length} players locally');
     } catch (e) {
       debugPrint('[FavoritePlayers] Error caching players: $e');
@@ -217,7 +215,8 @@ class FavoritePlayersNotifierNew extends AsyncNotifier<List<FavoritePlayer>> {
 
   Future<List<FavoritePlayer>> _getCachedPlayers() async {
     try {
-      final json = _prefs.getString(_cacheKey);
+      final prefs = await SharedPreferencesService.instance.ensureInitialized();
+      final json = prefs.getString(_cacheKey);
       if (json == null) return [];
 
       final list = jsonDecode(json) as List;
@@ -231,7 +230,8 @@ class FavoritePlayersNotifierNew extends AsyncNotifier<List<FavoritePlayer>> {
   /// Clear cache (useful on sign out)
   Future<void> clearCache() async {
     try {
-      await _prefs.remove(_cacheKey);
+      final prefs = await SharedPreferencesService.instance.ensureInitialized();
+      await prefs.remove(_cacheKey);
       debugPrint('[FavoritePlayers] Cleared cache');
     } catch (e) {
       debugPrint('[FavoritePlayers] Error clearing cache: $e');

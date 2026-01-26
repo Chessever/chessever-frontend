@@ -80,7 +80,7 @@ class _SwipeActionCardState extends State<SwipeActionCard>
   }
 
   Future<void> _maybeShowSwipeHint() async {
-    final prefs = SharedPreferencesService.instance.prefs;
+    final prefs = await SharedPreferencesService.instance.ensureInitialized();
     final key = 'swipe_hint_shown_${widget.swipeHintKey}';
     final alreadyShown = prefs.getBool(key) ?? false;
 

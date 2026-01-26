@@ -1,7 +1,7 @@
 import 'dart:async';
 
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:chessever2/providers/country_dropdown_provider.dart';
+import 'package:chessever2/widgets/player_initials_avatar.dart';
 import 'package:chessever2/providers/favorite_players_provider.dart';
 import 'package:chessever2/providers/pending_favorite_players_provider.dart';
 import 'package:chessever2/repository/authentication/auth_repository.dart';
@@ -863,7 +863,6 @@ class _PlayerAvatar extends HookWidget {
   @override
   Widget build(BuildContext context) {
     final photoUrl = useState<String?>(null);
-    final isLoading = useState(true);
 
     useEffect(() {
       if (fideId.isNotEmpty) {
@@ -871,45 +870,16 @@ class _PlayerAvatar extends HookWidget {
           if (url != null) {
             photoUrl.value = url;
           }
-          isLoading.value = false;
         });
-      } else {
-        isLoading.value = false;
       }
       return null;
     }, [fideId]);
 
-    return Container(
-      width: size.w,
-      height: size.h,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: kBlack2Color,
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: photoUrl.value != null
-          ? CachedNetworkImage(
-              imageUrl: photoUrl.value!,
-              fit: BoxFit.cover,
-              placeholder: (_, __) => _buildInitialsPlaceholder(),
-              errorWidget: (_, __, ___) => _buildInitialsPlaceholder(),
-            )
-          : _buildInitialsPlaceholder(),
-    );
-  }
-
-  Widget _buildInitialsPlaceholder() {
-    return Container(
-      decoration: const BoxDecoration(gradient: kProfileInitialsGradient),
-      child: Center(
-        child: Text(
-          initials,
-          style: AppTypography.textXsMedium.copyWith(
-            color: kWhiteColor,
-            letterSpacing: 0.5,
-          ),
-        ),
-      ),
+    return PlayerInitialsAvatarCompact(
+      photoUrl: photoUrl.value,
+      initials: initials,
+      size: size.w,
+      borderRadius: size.w / 2, // Circular
     );
   }
 }

@@ -3,7 +3,7 @@ PODS:
     - AmplitudeSwift (= 1.15.1)
     - Flutter
     - FlutterMacOS
-  - AmplitudeCore (1.3.1)
+  - AmplitudeCore (1.3.4)
   - AmplitudeSwift (1.15.1):
     - AmplitudeCore (< 2.0.0, >= 1.1.0)
     - AnalyticsConnector (~> 1.3.0)
@@ -39,7 +39,7 @@ PODS:
     - FlutterMacOS
     - GoogleSignIn (~> 9.0)
     - GTMSessionFetcher (>= 3.4.0)
-  - GoogleSignIn (9.0.0):
+  - GoogleSignIn (9.1.0):
     - AppAuth (~> 2.0)
     - AppCheckCore (~> 11.0)
     - GTMAppAuth (~> 5.0)
@@ -195,7 +195,7 @@ EXTERNAL SOURCES:
 
 SPEC CHECKSUMS:
   amplitude_flutter: 6cc0a673ea65900beab45e3c9c55f2095e6287e7
-  AmplitudeCore: c47c0a661bec076a197bc75a5a7b4c413da288a5
+  AmplitudeCore: 5c50840819d07d0581ea2dd92714cb8bd0d9133b
   AmplitudeSwift: 41d52966044cc377435eda13124854ab7b4ec454
   AnalyticsConnector: 3def11199b4ddcad7202c778bde982ec5da0ebb3
   app_links: 3dbc685f76b1693c66a6d9dd1e9ab6f73d97dc0a
@@ -209,7 +209,7 @@ SPEC CHECKSUMS:
   flutter_soloud: 82912d2a91398e5254cd1c252ecf5ce1ebf5809b
   gal: baecd024ebfd13c441269ca7404792a7152fde89
   google_sign_in_ios: 00dfa94252eb10278b64828c81bcb7158a81a53a
-  GoogleSignIn: c7f09cfbc85a1abf69187be091997c317cc33b77
+  GoogleSignIn: fcee2257188d5eda57a5e2b6a715550ffff9206d
   GoogleUtilities: 00c88b9a86066ef77f0da2fab05f65d7768ed8e1
   GTMAppAuth: 217a876b249c3c585a54fd6f73e6b58c4f5c4238
   GTMSessionFetcher: 5aea5ba6bd522a239e236100971f10cb71b96ab6

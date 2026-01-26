@@ -15,12 +15,11 @@ final gamebaseOverlayEnabledProvider =
 class GamebaseOverlayEnabledNotifier extends AsyncNotifier<bool> {
   static const String _prefsKey = 'gamebase_overlay_enabled';
 
-  SharedPreferences get _prefs => SharedPreferencesService.instance.prefs;
-
   @override
   Future<bool> build() async {
     try {
-      return _prefs.getBool(_prefsKey) ?? true;
+      final prefs = await SharedPreferencesService.instance.ensureInitialized();
+      return prefs.getBool(_prefsKey) ?? true;
     } catch (e) {
       debugPrint('[GamebaseOverlay] Failed to load preference: $e');
       return true;
@@ -39,7 +38,8 @@ class GamebaseOverlayEnabledNotifier extends AsyncNotifier<bool> {
 
   Future<void> _persist(bool enabled) async {
     try {
-      await _prefs.setBool(_prefsKey, enabled);
+      final prefs = await SharedPreferencesService.instance.ensureInitialized();
+      await prefs.setBool(_prefsKey, enabled);
     } catch (e) {
       debugPrint('[GamebaseOverlay] Failed to persist preference: $e');
     }

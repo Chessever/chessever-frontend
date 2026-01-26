@@ -10,7 +10,6 @@ import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen_pr
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
 import 'package:country_code/country_code.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 final autoPinLogicProvider = AutoDisposeProvider<_AutoPinLogController>(
   (ref) => _AutoPinLogController(ref),
@@ -22,8 +21,6 @@ class _AutoPinLogController {
   _AutoPinLogController(this.ref);
 
   final Ref ref;
-  SharedPreferences get _prefs => SharedPreferencesService.instance.prefs;
-
   String _getTournamentKey(String tourId) => '${_autoPinFavKey}_$tourId';
 
   Future<(bool, List<String>)> getAutoPinnedGames(String tourId) async {
@@ -86,7 +83,8 @@ class _AutoPinLogController {
   Future<String?> _resolveCountryCode() async {
     // Get country code directly from SharedPreferences (fast, synchronous)
     // This ensures auto-pin works even while Supabase is syncing
-    final cachedCountryCode = _prefs.getString('selected_country_code');
+    final prefs = await SharedPreferencesService.instance.ensureInitialized();
+    final cachedCountryCode = prefs.getString('selected_country_code');
 
     if (cachedCountryCode != null && cachedCountryCode.isNotEmpty) {
       // Use cached country code (works immediately, no async wait)

@@ -1,7 +1,6 @@
 import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 final languageRepository = AutoDisposeProvider<_LanguageRepository>((ref) {
   return _LanguageRepository(ref);
@@ -47,8 +46,6 @@ class _LanguageRepository {
   final Ref ref;
   static const String _languageKey = 'app_language';
 
-  SharedPreferences get _prefs => SharedPreferencesService.instance.prefs;
-
   SupportedLanguage getLanguageFromLocale(Locale locale) {
     for (final language in SupportedLanguage.values) {
       if (language.locale.languageCode == locale.languageCode) {
@@ -61,10 +58,11 @@ class _LanguageRepository {
 
   Future<void> saveLanguage(Locale locale) async {
     try {
+      final prefs = await SharedPreferencesService.instance.ensureInitialized();
       final language = getLanguageFromLocale(locale);
 
       // Store the language index in preferences
-      await _prefs.setString(_languageKey, language.index.toString());
+      await prefs.setString(_languageKey, language.index.toString());
     } catch (error, _) {
       print('Error saving language: $error');
       rethrow;
@@ -73,7 +71,8 @@ class _LanguageRepository {
 
   Future<Locale> loadLanguage() async {
     try {
-      final indexString = _prefs.getString(_languageKey);
+      final prefs = await SharedPreferencesService.instance.ensureInitialized();
+      final indexString = prefs.getString(_languageKey);
 
       if (indexString == null) {
         // Default to English if no language preference is saved

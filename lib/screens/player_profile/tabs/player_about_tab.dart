@@ -1,4 +1,3 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:chessever2/screens/player_profile/provider/player_profile_provider.dart';
 import 'package:chessever2/services/fide_photo_service.dart';
 import 'package:chessever2/theme/app_theme.dart';
@@ -6,6 +5,7 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/country_utils.dart';
 import 'package:chessever2/utils/png_asset.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/player_initials_avatar.dart';
 import 'package:country_flags/country_flags.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -273,7 +273,7 @@ class _PlayerHeaderSectionState extends State<_PlayerHeaderSection> {
 
   @override
   Widget build(BuildContext context) {
-    final initials = _getInitials(widget.playerName);
+    final initials = getPlayerInitials(widget.playerName);
     final countryCode = widget.federation != null
         ? CountryUtils.toIso2Code(widget.federation!) ?? ''
         : '';
@@ -412,105 +412,15 @@ class _PlayerHeaderSectionState extends State<_PlayerHeaderSection> {
     return FutureBuilder<String?>(
       future: _photoFuture,
       builder: (context, snapshot) {
-        final photoUrl = snapshot.data;
-
-        return Stack(
-          children: [
-            Container(
-              width: 110.w,
-              height: 110.w,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(12.br),
-                color: kBlack2Color,
-              ),
-              clipBehavior: Clip.antiAlias,
-              child: photoUrl != null
-                  ? CachedNetworkImage(
-                      imageUrl: photoUrl,
-                      fit: BoxFit.cover,
-                      placeholder: (_, __) => _buildInitialsPlaceholder(initials),
-                      errorWidget: (_, __, ___) =>
-                          _buildInitialsPlaceholder(initials),
-                    )
-                  : _buildInitialsPlaceholder(initials),
-            ),
-
-            // Title badge
-            if (widget.title != null && widget.title!.isNotEmpty)
-              Positioned(
-                bottom: 0,
-                left: 0,
-                right: 0,
-                child: Container(
-                  padding: EdgeInsets.symmetric(vertical: 4.h),
-                  decoration: BoxDecoration(
-                    color: _getTitleColor(widget.title!),
-                    borderRadius: BorderRadius.only(
-                      bottomLeft: Radius.circular(12.br),
-                      bottomRight: Radius.circular(12.br),
-                    ),
-                  ),
-                  child: Text(
-                    widget.title!,
-                    textAlign: TextAlign.center,
-                    style: AppTypography.textXsBold.copyWith(
-                      color: kWhiteColor,
-                      letterSpacing: 1,
-                    ),
-                  ),
-                ),
-              ),
-          ],
+        return PlayerInitialsAvatar(
+          photoUrl: snapshot.data,
+          initials: initials,
+          size: 110.w,
+          borderRadius: 12.br,
+          title: widget.title,
         );
       },
     );
-  }
-
-  Widget _buildInitialsPlaceholder(String initials) {
-    return Container(
-      decoration: const BoxDecoration(gradient: kProfileInitialsGradient),
-      child: Center(
-        child: Text(
-          initials,
-          style: AppTypography.textXlBold.copyWith(color: kWhiteColor),
-        ),
-      ),
-    );
-  }
-
-  String _getInitials(String name) {
-    final parts = name.split(', ');
-    if (parts.length >= 2) {
-      return '${parts[1][0]}${parts[0][0]}'.toUpperCase();
-    }
-    final words = name.split(' ');
-    if (words.length >= 2) {
-      return '${words[0][0]}${words[1][0]}'.toUpperCase();
-    }
-    return name.substring(0, name.length >= 2 ? 2 : name.length).toUpperCase();
-  }
-
-  Color _getTitleColor(String title) {
-    switch (title.toUpperCase()) {
-      case 'GM':
-        return const Color(0xFFD4AF37);
-      case 'IM':
-        return const Color(0xFFC0C0C0);
-      case 'FM':
-        return const Color(0xFFCD7F32);
-      case 'WGM':
-        return const Color(0xFFE8B4B4);
-      case 'WIM':
-        return const Color(0xFFB4C4E8);
-      case 'WFM':
-        return const Color(0xFFB4E8D4);
-      case 'CM':
-        return const Color(0xFF8B9DC3);
-      case 'WCM':
-        return const Color(0xFFD4B4E8);
-      default:
-        return kDarkGreyColor;
-    }
   }
 }
 

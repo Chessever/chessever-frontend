@@ -21,12 +21,16 @@ class FavoriteEventsNotifier extends AsyncNotifier<List<FavoriteEvent>> {
 
   SupabaseClient get _supabase => Supabase.instance.client;
 
-  /// Get user-specific cache key to prevent cross-user cache pollution
-  String get _cacheKey {
+  Future<SharedPreferences> _getPrefs() async =>
+      SharedPreferencesService.instance.ensureInitialized();
+
+  /// Resolve user-specific cache key to prevent cross-user cache pollution.
+  Future<String> _resolveCacheKey({SharedPreferences? prefs}) async {
     final userId = _supabase.auth.currentUser?.id;
     if (userId != null) return '$_cacheKeyPrefix$userId';
 
-    final lastUserId = _prefs.getString(_lastUserIdKey);
+    final resolvedPrefs = prefs ?? await _getPrefs();
+    final lastUserId = resolvedPrefs.getString(_lastUserIdKey);
     if (lastUserId != null && lastUserId.isNotEmpty) {
       return '$_cacheKeyPrefix$lastUserId';
     }
@@ -77,7 +81,8 @@ class FavoriteEventsNotifier extends AsyncNotifier<List<FavoriteEvent>> {
 
     // Cache locally
     await _cacheEvents(events);
-    await _prefs.setString(_lastUserIdKey, userId);
+    final prefs = await _getPrefs();
+    await prefs.setString(_lastUserIdKey, userId);
 
     debugPrint('[FavoriteEvents] Fetched ${events.length} events from Supabase');
     return events;
@@ -253,13 +258,13 @@ class FavoriteEventsNotifier extends AsyncNotifier<List<FavoriteEvent>> {
     }
   }
 
-  SharedPreferences get _prefs => SharedPreferencesService.instance.prefs;
-
   // Cache management
   Future<void> _cacheEvents(List<FavoriteEvent> events) async {
     try {
+      final prefs = await _getPrefs();
+      final cacheKey = await _resolveCacheKey(prefs: prefs);
       final json = jsonEncode(events.map((e) => e.toSupabase()).toList());
-      await _prefs.setString(_cacheKey, json);
+      await prefs.setString(cacheKey, json);
       debugPrint('[FavoriteEvents] Cached ${events.length} events locally');
     } catch (e) {
       debugPrint('[FavoriteEvents] Error caching events: $e');
@@ -268,7 +273,9 @@ class FavoriteEventsNotifier extends AsyncNotifier<List<FavoriteEvent>> {
 
   Future<List<FavoriteEvent>> _getCachedEvents() async {
     try {
-      final json = _prefs.getString(_cacheKey);
+      final prefs = await _getPrefs();
+      final cacheKey = await _resolveCacheKey(prefs: prefs);
+      final json = prefs.getString(cacheKey);
       if (json == null) return [];
 
       final list = jsonDecode(json) as List;
@@ -282,8 +289,10 @@ class FavoriteEventsNotifier extends AsyncNotifier<List<FavoriteEvent>> {
   /// Clear cache (useful on sign out)
   Future<void> clearCache() async {
     try {
-      await _prefs.remove(_cacheKey);
-      await _prefs.remove(_lastUserIdKey);
+      final prefs = await _getPrefs();
+      final cacheKey = await _resolveCacheKey(prefs: prefs);
+      await prefs.remove(cacheKey);
+      await prefs.remove(_lastUserIdKey);
       debugPrint('[FavoriteEvents] Cleared cache');
     } catch (e) {
       debugPrint('[FavoriteEvents] Error clearing cache: $e');

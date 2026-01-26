@@ -16,35 +16,37 @@ class LocalEvalCache {
       11; // v11: Added cache size limit to prevent SharedPreferences bloat
   static const _maxCacheSize = 500; // Maximum number of cached evaluations
 
-  SharedPreferences get _prefs => SharedPreferencesService.instance.prefs;
-
   Future<void> save(String fen, CloudEval eval, {int? multiPV}) async {
-    final storedVersion = _prefs.getInt(_versionKey) ?? 1;
+    final prefs = await SharedPreferencesService.instance.ensureInitialized();
+    final storedVersion = prefs.getInt(_versionKey) ?? 1;
     if (storedVersion < _currentVersion) {
-      await _clearWithPrefs(_prefs);
+      await _clearWithPrefs(prefs);
     }
-    await _prefs.setInt(_versionKey, _currentVersion);
+    await prefs.setInt(_versionKey, _currentVersion);
 
     final effectiveMultiPv =
         (multiPV ?? eval.requestedMultiPv ?? eval.pvs.length).clamp(0, 5);
     final key = _buildKey(fen, effectiveMultiPv);
-    await _prefs.setString(key, jsonEncode(eval.toJson()));
+    await prefs.setString(key, jsonEncode(eval.toJson()));
 
     // Track keys for LRU eviction to prevent unbounded cache growth
-    await _trackKeyAndEnforceLimit(key);
+    await _trackKeyAndEnforceLimit(prefs, key);
 
     // Also store legacy key so older readers (or callers without multiPV) still benefit
     if (effectiveMultiPv > 0) {
       final legacyKey = '$_prefix$fen';
-      await _prefs.setString(legacyKey, jsonEncode(eval.toJson()));
-      await _trackKeyAndEnforceLimit(legacyKey);
+      await prefs.setString(legacyKey, jsonEncode(eval.toJson()));
+      await _trackKeyAndEnforceLimit(prefs, legacyKey);
     }
   }
 
   /// Track a cache key and evict oldest entries if cache exceeds limit.
   /// Uses LRU eviction to keep the cache size bounded.
-  Future<void> _trackKeyAndEnforceLimit(String key) async {
-    final keysList = _prefs.getStringList(_keysListKey) ?? [];
+  Future<void> _trackKeyAndEnforceLimit(
+    SharedPreferences prefs,
+    String key,
+  ) async {
+    final keysList = prefs.getStringList(_keysListKey) ?? [];
 
     // Remove key if it already exists (will be re-added at end for LRU)
     keysList.remove(key);
@@ -53,17 +55,18 @@ class LocalEvalCache {
     // Evict oldest entries if over limit
     while (keysList.length > _maxCacheSize) {
       final oldestKey = keysList.removeAt(0);
-      await _prefs.remove(oldestKey);
+      await prefs.remove(oldestKey);
     }
 
-    await _prefs.setStringList(_keysListKey, keysList);
+    await prefs.setStringList(_keysListKey, keysList);
   }
 
   Future<CloudEval?> fetch(String fen, {int? multiPV}) async {
-    final storedVersion = _prefs.getInt(_versionKey) ?? 1;
+    final prefs = await SharedPreferencesService.instance.ensureInitialized();
+    final storedVersion = prefs.getInt(_versionKey) ?? 1;
     if (storedVersion < _currentVersion) {
-      await _clearWithPrefs(_prefs);
-      await _prefs.setInt(_versionKey, _currentVersion);
+      await _clearWithPrefs(prefs);
+      await prefs.setInt(_versionKey, _currentVersion);
       return null;
     }
 
@@ -80,7 +83,7 @@ class LocalEvalCache {
     keysToTry.add('$_prefix$fen');
 
     for (final key in keysToTry) {
-      final raw = _prefs.getString(key);
+      final raw = prefs.getString(key);
       if (raw == null) continue;
       try {
         final eval = CloudEval.fromJson(jsonDecode(raw));
@@ -132,15 +135,16 @@ class LocalEvalCache {
     final result = <String, CloudEval>{};
     if (fens.isEmpty) return result;
 
-    final storedVersion = _prefs.getInt(_versionKey) ?? 1;
+    final prefs = await SharedPreferencesService.instance.ensureInitialized();
+    final storedVersion = prefs.getInt(_versionKey) ?? 1;
     if (storedVersion < _currentVersion) {
-      await _clearWithPrefs(_prefs);
-      await _prefs.setInt(_versionKey, _currentVersion);
+      await _clearWithPrefs(prefs);
+      await prefs.setInt(_versionKey, _currentVersion);
       return result;
     }
 
     for (final fen in fens) {
-      final raw = _prefs.getString(_buildKey(fen, 0));
+      final raw = prefs.getString(_buildKey(fen, 0));
       if (raw != null) {
         try {
           result[fen] = CloudEval.fromJson(jsonDecode(raw));
@@ -154,8 +158,9 @@ class LocalEvalCache {
   }
 
   Future<void> clear() async {
-    await _clearWithPrefs(_prefs);
-    await _prefs.setInt(_versionKey, _currentVersion);
+    final prefs = await SharedPreferencesService.instance.ensureInitialized();
+    await _clearWithPrefs(prefs);
+    await prefs.setInt(_versionKey, _currentVersion);
   }
 
   Future<void> _clearWithPrefs(SharedPreferences prefs) async {
