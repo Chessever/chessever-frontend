@@ -1,7 +1,7 @@
 import 'dart:async';
 
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:chessever2/providers/country_dropdown_provider.dart';
+import 'package:chessever2/widgets/player_initials_avatar.dart';
 import 'package:chessever2/repository/supabase/chess_player/chess_player_repository.dart';
 import 'package:chessever2/screens/favorites/favorite_players_provider.dart';
 import 'package:chessever2/screens/favorites/tabs/favorites_players_tab.dart';
@@ -692,44 +692,32 @@ class _PlayerCard extends ConsumerWidget {
               ),
               SizedBox(width: 4.w),
               // Player photo
-              ClipRRect(
-                borderRadius: BorderRadius.circular(8.br),
-                child: photoAsync.when(
-                  data: (photoUrl) {
-                    if (photoUrl != null && photoUrl.isNotEmpty) {
-                      return CachedNetworkImage(
-                        imageUrl: photoUrl,
-                        width: avatarSize,
-                        height: avatarSize,
-                        fit: BoxFit.cover,
-                        placeholder: (context, url) => _AvatarPlaceholder(
-                          initials: initials,
-                          size: avatarSize,
-                        ),
-                        errorWidget: (context, url, error) => _AvatarPlaceholder(
-                          initials: initials,
-                          size: avatarSize,
-                        ),
-                      );
-                    }
-                    return _AvatarPlaceholder(initials: initials, size: avatarSize);
-                  },
-                  loading: () => skel.Skeletonizer(
-                    enabled: true,
-                    effect: const skel.ShimmerEffect(
-                      baseColor: Color(0xFF2A2A2A),
-                      highlightColor: Color(0xFF3A3A3A),
-                    ),
-                    child: Container(
-                      width: avatarSize,
-                      height: avatarSize,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF2A2A2A),
-                        borderRadius: BorderRadius.circular(8.br),
-                      ),
+              photoAsync.when(
+                data: (photoUrl) => PlayerInitialsAvatarCompact(
+                  photoUrl: photoUrl,
+                  initials: initials,
+                  size: avatarSize,
+                  borderRadius: 8.br,
+                ),
+                loading: () => skel.Skeletonizer(
+                  enabled: true,
+                  effect: const skel.ShimmerEffect(
+                    baseColor: Color(0xFF2A2A2A),
+                    highlightColor: Color(0xFF3A3A3A),
+                  ),
+                  child: Container(
+                    width: avatarSize,
+                    height: avatarSize,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF2A2A2A),
+                      borderRadius: BorderRadius.circular(8.br),
                     ),
                   ),
-                  error: (_, __) => _AvatarPlaceholder(initials: initials, size: avatarSize),
+                ),
+                error: (_, __) => PlayerInitialsAvatarCompact(
+                  initials: initials,
+                  size: avatarSize,
+                  borderRadius: 8.br,
                 ),
               ),
               SizedBox(width: 12.w),
@@ -838,30 +826,3 @@ class _PlayerCard extends ConsumerWidget {
   }
 }
 
-class _AvatarPlaceholder extends StatelessWidget {
-  final String initials;
-  final double size;
-
-  const _AvatarPlaceholder({required this.initials, required this.size});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(8.br),
-        gradient: kProfileInitialsGradient,
-      ),
-      child: Center(
-        child: Text(
-          initials,
-          style: AppTypography.textMdBold.copyWith(
-            color: kWhiteColor,
-            fontSize: 14.sp,
-          ),
-        ),
-      ),
-    );
-  }
-}

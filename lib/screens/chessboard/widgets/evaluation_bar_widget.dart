@@ -6,6 +6,7 @@ import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
+import 'package:dartchess/dartchess.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:motor/motor.dart';
@@ -228,6 +229,25 @@ class EvaluationBarWidgetForGames extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // First, check if position is checkmate - handle immediately without external eval
+    final checkmateResult = _detectCheckmate(fen);
+    if (checkmateResult != null) {
+      // Checkmate detected - show definitive result
+      // whiteWon = true means white delivered checkmate (eval +10.0)
+      // whiteWon = false means black delivered checkmate (eval -10.0)
+      final eval = checkmateResult ? 10.0 : -10.0;
+      return _Bars(
+        width: width,
+        height: height,
+        whiteHeight: _getWhiteHeight(eval, height),
+        blackHeight: _getBlackHeight(eval, height),
+        evaluation: eval,
+        isCheckmate: true,
+        playerView: playerView,
+        isFlipped: false,
+      );
+    }
+
     // Uses cascade (local → Supabase → Lichess) with Stockfish depth 8 fallback
     // Auto-disposes when card scrolls out of view
     return ref
@@ -295,6 +315,25 @@ class EvaluationBarWidgetForGames extends ConsumerWidget {
         );
   }
 
+  /// Detects if the FEN position is checkmate.
+  /// Returns: true if white won (delivered checkmate), false if black won, null if not checkmate
+  bool? _detectCheckmate(String fen) {
+    if (fen.isEmpty) return null;
+    try {
+      final setup = Setup.parseFen(fen);
+      final position = Chess.fromSetup(setup);
+      if (position.isCheckmate) {
+        // The side to move is the one that got checkmated
+        // So if it's white's turn and checkmate, black won (delivered checkmate)
+        // If it's black's turn and checkmate, white won (delivered checkmate)
+        return setup.turn == Side.black; // true = white won
+      }
+      return null;
+    } catch (e) {
+      return null;
+    }
+  }
+
   double _getWhiteHeight(double eval, double totalHeight) {
     final ratio = _normalizedEvalToRatio(eval);
     return ratio * totalHeight;
@@ -316,6 +355,7 @@ class _Bars extends StatelessWidget {
   final bool isEvaluating;
   final bool isMate;
   final int mate;
+  final bool isCheckmate;
 
   const _Bars({
     required this.width,
@@ -328,6 +368,7 @@ class _Bars extends StatelessWidget {
     this.isEvaluating = false,
     this.isMate = false,
     this.mate = 0,
+    this.isCheckmate = false,
   });
 
   @override
@@ -364,6 +405,8 @@ class _Bars extends StatelessWidget {
               child: Text(
                 isEvaluating && evaluation == 0.0
                     ? '...'
+                    : isCheckmate
+                    ? '#'
                     : (isMate && mate != 0)
                     ? '#${mate.abs()}'
                     : evaluation.round().abs().toString(),

@@ -3,7 +3,6 @@ import 'package:chessever2/providers/country_dropdown_provider.dart';
 import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
 import 'package:chessever2/screens/authentication/auth_screen_provider.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 final sessionManagerProvider = Provider<SessionManager>((ref) {
@@ -18,14 +17,13 @@ class SessionManager {
   static const _keyPersistSession = 'supabase_session';
   static const _keyPersistUser = 'supabase_user';
 
-  SharedPreferences get _prefs => SharedPreferencesService.instance.prefs;
-
   /// Save the session as JSON string
   Future<void> saveSession(Session session, User user) async {
+    final prefs = await SharedPreferencesService.instance.ensureInitialized();
     print('Saving session: ${session.toJson()}');
 
-    await _prefs.setString(_keyPersistSession, jsonEncode(session.toJson()));
-    await _prefs.setString(_keyPersistUser, jsonEncode(user.toJson()));
+    await prefs.setString(_keyPersistSession, jsonEncode(session.toJson()));
+    await prefs.setString(_keyPersistUser, jsonEncode(user.toJson()));
 
     print('Session saved: ${session.toJson()}');
   }
@@ -33,8 +31,9 @@ class SessionManager {
   /// Clear only local storage without calling signOut
   /// Used when responding to auth state changes to avoid infinite loops
   Future<void> clearLocalStorage() async {
-    await _prefs.remove(_keyPersistSession);
-    await _prefs.remove(_keyPersistUser);
+    final prefs = await SharedPreferencesService.instance.ensureInitialized();
+    await prefs.remove(_keyPersistSession);
+    await prefs.remove(_keyPersistUser);
     // Keep the auth notifier alive but reset its state when clearing storage
     ref.read(authScreenProvider.notifier).reset();
     // Clear local country cache only - Supabase data persists for next login
@@ -44,9 +43,10 @@ class SessionManager {
   /// Clear ALL user data from SharedPreferences
   /// Used when account is deleted - wipes everything for a clean slate
   Future<void> clearAllUserData() async {
+    final prefs = await SharedPreferencesService.instance.ensureInitialized();
     // Clear everything - account deletion means complete data wipe
     // This ensures no data leaks between accounts and fresh start for new users
-    await _prefs.clear();
+    await prefs.clear();
 
     // Reset provider states
     ref.read(authScreenProvider.notifier).reset();
@@ -64,7 +64,8 @@ class SessionManager {
     }
 
     // If no current session, try to recover from local storage
-    final sessionStr = _prefs.getString(_keyPersistSession);
+    final prefs = await SharedPreferencesService.instance.ensureInitialized();
+    final sessionStr = prefs.getString(_keyPersistSession);
 
     if (sessionStr == null) return false;
 
@@ -91,7 +92,8 @@ class SessionManager {
   }
 
   Future<String?> getUserInitials() async {
-    final userStr = _prefs.getString(_keyPersistUser);
+    final prefs = await SharedPreferencesService.instance.ensureInitialized();
+    final userStr = prefs.getString(_keyPersistUser);
     if (userStr == null) return null;
 
     final json = jsonDecode(userStr);

@@ -24,14 +24,17 @@ class FavoriteStandingsPlayerService {
   FavoriteStandingsPlayerService(this.ref);
 
   SupabaseClient get _supabase => Supabase.instance.client;
-  SharedPreferences get _prefs => SharedPreferencesService.instance.prefs;
 
-  /// Get user-specific cache key to prevent cross-user cache pollution
-  String get _cacheKey {
+  Future<SharedPreferences> _getPrefs() async =>
+      SharedPreferencesService.instance.ensureInitialized();
+
+  /// Resolve user-specific cache key to prevent cross-user cache pollution
+  Future<String> _resolveCacheKey({SharedPreferences? prefs}) async {
     final userId = _supabase.auth.currentUser?.id;
     if (userId != null) return '$_cacheKeyPrefix$userId';
 
-    final lastUserId = _prefs.getString(_lastUserIdKey);
+    final resolvedPrefs = prefs ?? await _getPrefs();
+    final lastUserId = resolvedPrefs.getString(_lastUserIdKey);
     if (lastUserId != null && lastUserId.isNotEmpty) {
       return '$_cacheKeyPrefix$lastUserId';
     }
@@ -41,8 +44,9 @@ class FavoriteStandingsPlayerService {
   /// Clean up old global cache that may have cross-user data
   Future<void> _cleanupOldGlobalCache() async {
     try {
-      if (_prefs.containsKey(_oldGlobalCacheKey)) {
-        await _prefs.remove(_oldGlobalCacheKey);
+      final prefs = await _getPrefs();
+      if (prefs.containsKey(_oldGlobalCacheKey)) {
+        await prefs.remove(_oldGlobalCacheKey);
         debugPrint('[FavoriteStandings] Cleaned up old global cache key');
       }
     } catch (e) {
@@ -95,7 +99,8 @@ class FavoriteStandingsPlayerService {
 
       // Cache locally
       await _cachePlayers(players);
-      await _prefs.setString(_lastUserIdKey, userId);
+      final prefs = await _getPrefs();
+      await prefs.setString(_lastUserIdKey, userId);
 
       debugPrint(
         '[FavoriteStandings] Fetched ${players.length} players from Supabase',
@@ -212,8 +217,10 @@ class FavoriteStandingsPlayerService {
   /// Cache players locally in SharedPreferences
   Future<void> _cachePlayers(List<PlayerStandingModel> players) async {
     try {
+      final prefs = await _getPrefs();
+      final cacheKey = await _resolveCacheKey(prefs: prefs);
       final json = jsonEncode(players.map((p) => p.toJson()).toList());
-      await _prefs.setString(_cacheKey, json);
+      await prefs.setString(cacheKey, json);
       debugPrint('[FavoriteStandings] Cached ${players.length} players locally');
     } catch (e) {
       debugPrint('[FavoriteStandings] Error caching players: $e');
@@ -223,7 +230,9 @@ class FavoriteStandingsPlayerService {
   /// Get cached players from SharedPreferences
   Future<List<PlayerStandingModel>> _getCachedPlayers() async {
     try {
-      final json = _prefs.getString(_cacheKey);
+      final prefs = await _getPrefs();
+      final cacheKey = await _resolveCacheKey(prefs: prefs);
+      final json = prefs.getString(cacheKey);
       if (json == null) {
         debugPrint('[FavoriteStandings] No cache found');
         return [];

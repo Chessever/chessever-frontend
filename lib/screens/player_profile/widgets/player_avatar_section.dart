@@ -1,9 +1,9 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:chessever2/services/fide_photo_service.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/png_asset.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/player_initials_avatar.dart';
 import 'package:flutter/material.dart';
 
 /// Section displaying player avatar with three rating cards (Classical, Rapid, Blitz).
@@ -90,47 +90,18 @@ class _PlayerAvatarSectionState extends State<PlayerAvatarSection> {
   }
 
   Widget _buildPlayerAvatar() {
-    final initials = _getInitials(widget.playerName);
+    final initials = getPlayerInitials(widget.playerName);
 
     return FutureBuilder<String?>(
       future: _photoFuture,
       builder: (context, snapshot) {
-        final photoUrl = snapshot.data;
-
-        return Container(
-          width: 110.w,
-          height: 110.w,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(12.br),
-            color: kBlack2Color,
-          ),
-          clipBehavior: Clip.antiAlias,
-          child:
-              photoUrl != null
-                  ? CachedNetworkImage(
-                    imageUrl: photoUrl,
-                    fit: BoxFit.cover,
-                    placeholder:
-                        (context, url) => _buildInitialsPlaceholder(initials),
-                    errorWidget:
-                        (context, url, error) =>
-                            _buildInitialsPlaceholder(initials),
-                  )
-                  : _buildInitialsPlaceholder(initials),
+        return PlayerInitialsAvatar(
+          photoUrl: snapshot.data,
+          initials: initials,
+          size: 110.w,
+          borderRadius: 12.br,
         );
       },
-    );
-  }
-
-  Widget _buildInitialsPlaceholder(String initials) {
-    return Container(
-      decoration: const BoxDecoration(gradient: kProfileInitialsGradient),
-      child: Center(
-        child: Text(
-          initials,
-          style: AppTypography.textXlBold.copyWith(color: kWhiteColor),
-        ),
-      ),
     );
   }
 
@@ -170,17 +141,4 @@ class _PlayerAvatarSectionState extends State<PlayerAvatarSection> {
     );
   }
 
-  String _getInitials(String name) {
-    final parts = name.split(', ');
-    if (parts.length >= 2) {
-      // Format: "Lastname, Firstname" -> "FL"
-      return '${parts[1][0]}${parts[0][0]}'.toUpperCase();
-    }
-    // Fallback: first two characters
-    final words = name.split(' ');
-    if (words.length >= 2) {
-      return '${words[0][0]}${words[1][0]}'.toUpperCase();
-    }
-    return name.substring(0, name.length >= 2 ? 2 : name.length).toUpperCase();
-  }
 }

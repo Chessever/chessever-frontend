@@ -13,6 +13,7 @@ class SharedPreferencesService {
   static SharedPreferencesService get instance => _instance;
 
   SharedPreferences? _prefs;
+  Future<SharedPreferences>? _initFuture;
 
   /// Returns the cached SharedPreferences instance.
   /// Throws if not initialized - call initialize() first in main().
@@ -28,8 +29,17 @@ class SharedPreferencesService {
 
   /// Initialize SharedPreferences once at app startup.
   /// Should be called in main() before runApp().
-  Future<void> initialize() async {
-    _prefs ??= await SharedPreferences.getInstance();
+  Future<SharedPreferences> initialize() async {
+    if (_prefs != null) return _prefs!;
+    _initFuture ??= SharedPreferences.getInstance();
+    _prefs = await _initFuture!;
+    return _prefs!;
+  }
+
+  /// Ensure preferences are initialized, even if main() didn't await it.
+  Future<SharedPreferences> ensureInitialized() async {
+    if (_prefs != null) return _prefs!;
+    return initialize();
   }
 
   /// Check if the service has been initialized.
@@ -45,41 +55,51 @@ final sharedPreferencesRepository = AutoDisposeProvider<AppSharedPreferences>((
 class AppSharedPreferences {
   AppSharedPreferences();
 
-  SharedPreferences get _prefs => SharedPreferencesService.instance.prefs;
+  Future<SharedPreferences> _getPrefs() async =>
+      SharedPreferencesService.instance.ensureInitialized();
 
   Future<void> setInt(String key, int value) async {
-    await _prefs.setInt(key, value);
+    final prefs = await _getPrefs();
+    await prefs.setInt(key, value);
   }
 
   Future<int?> getInt(String key) async {
-    return _prefs.getInt(key);
+    final prefs = await _getPrefs();
+    return prefs.getInt(key);
   }
 
   Future<void> setBool(String key, bool value) async {
-    await _prefs.setBool(key, value);
+    final prefs = await _getPrefs();
+    await prefs.setBool(key, value);
   }
 
   Future<bool?> getBool(String key) async {
-    return _prefs.getBool(key);
+    final prefs = await _getPrefs();
+    return prefs.getBool(key);
   }
 
   Future<void> setString(String key, String value) async {
-    await _prefs.setString(key, value);
+    final prefs = await _getPrefs();
+    await prefs.setString(key, value);
   }
 
   Future<String?> getString(String key) async {
-    return _prefs.getString(key);
+    final prefs = await _getPrefs();
+    return prefs.getString(key);
   }
 
   Future<void> setStringList(String key, List<String> value) async {
-    await _prefs.setStringList(key, value);
+    final prefs = await _getPrefs();
+    await prefs.setStringList(key, value);
   }
 
   Future<List<String>> getStringList(String key) async {
-    return _prefs.getStringList(key) ?? [];
+    final prefs = await _getPrefs();
+    return prefs.getStringList(key) ?? [];
   }
 
   Future<void> removeData(String key) async {
-    await _prefs.remove(key);
+    final prefs = await _getPrefs();
+    await prefs.remove(key);
   }
 }
