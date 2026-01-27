@@ -13,6 +13,7 @@ class BoardSettingsModel with BoardSettingsModelMappable {
   final bool chatEnabled;
   final int pieceStyleIndex; // Index into chessground's PieceSet
   final int gamesListViewModeIndex; // 0=gamesCard, 1=chessBoardGrid, 2=chessBoard
+  final bool useFigurine; // Use chess piece symbols (♔♕♖♗♘) instead of letters
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -26,6 +27,7 @@ class BoardSettingsModel with BoardSettingsModelMappable {
     required this.chatEnabled,
     required this.pieceStyleIndex,
     required this.gamesListViewModeIndex,
+    required this.useFigurine,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -43,6 +45,7 @@ class BoardSettingsModel with BoardSettingsModelMappable {
       chatEnabled: json['chat_enabled'] as bool? ?? true,
       pieceStyleIndex: json['piece_style_index'] as int? ?? 0,
       gamesListViewModeIndex: json['games_list_view_mode_index'] as int? ?? 1, // Default to chessBoardGrid
+      useFigurine: json['use_figurine'] as bool? ?? false,
       createdAt: DateTime.parse(json['created_at'] as String),
       updatedAt: DateTime.parse(json['updated_at'] as String),
     );
@@ -60,6 +63,7 @@ class BoardSettingsModel with BoardSettingsModelMappable {
       'chat_enabled': chatEnabled,
       'piece_style_index': pieceStyleIndex,
       'games_list_view_mode_index': gamesListViewModeIndex,
+      'use_figurine': useFigurine,
       'created_at': createdAt.toIso8601String(),
       'updated_at': updatedAt.toIso8601String(),
     };
@@ -76,6 +80,7 @@ class BoardSettingsModel with BoardSettingsModelMappable {
       'chat_enabled': chatEnabled,
       'piece_style_index': pieceStyleIndex,
       'games_list_view_mode_index': gamesListViewModeIndex,
+      'use_figurine': useFigurine,
     };
   }
 
@@ -91,6 +96,7 @@ class BoardSettingsModel with BoardSettingsModelMappable {
       chatEnabled: true,
       pieceStyleIndex: 0, // cburnett (default)
       gamesListViewModeIndex: 1, // chessBoardGrid view (default)
+      useFigurine: false, // Use letters by default
       createdAt: DateTime.now(),
       updatedAt: DateTime.now(),
     );

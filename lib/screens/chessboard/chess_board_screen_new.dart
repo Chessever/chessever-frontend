@@ -12,6 +12,7 @@ import 'package:chessever2/screens/chessboard/analysis/simple_move_impact.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game_navigator.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/chessboard/provider/stockfish_singleton.dart';
+import 'package:chessever2/screens/chessboard/provider/lichess_move_annotations_provider.dart';
 import 'package:chessever2/screens/chessboard/notation/notation_cache.dart';
 import 'package:chessever2/screens/chessboard/notation/notation_pointer.dart';
 import 'package:chessever2/screens/chessboard/notation/notation_tree.dart';
@@ -73,6 +74,7 @@ import 'package:chessever2/utils/chess_title_utils.dart';
 import 'package:showcaseview/showcaseview.dart';
 import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
 import 'package:flutter/foundation.dart';
+import 'package:chessever2/services/lichess_move_annotations_service.dart';
 
 /// Spring-based curve that mimics iOS snappy motion
 /// Quick, precise animation with subtle natural settling
@@ -157,6 +159,181 @@ final moveImpactCacheProvider = StateNotifierProvider<
   MoveImpactCacheNotifier,
   Map<String, CachedMoveImpact>
 >((ref) => MoveImpactCacheNotifier());
+
+extension LichessMoveAnnotationTypeX on LichessMoveAnnotationType {
+  String get symbol {
+    switch (this) {
+      case LichessMoveAnnotationType.inaccuracy:
+        return '?!';
+      case LichessMoveAnnotationType.mistake:
+        return '?';
+      case LichessMoveAnnotationType.blunder:
+        return '??';
+    }
+  }
+
+  Color get color {
+    switch (this) {
+      case LichessMoveAnnotationType.inaccuracy:
+        return const Color(0xFFF2C94C); // Yellow
+      case LichessMoveAnnotationType.mistake:
+        return const Color(0xFFFFA726); // Orange
+      case LichessMoveAnnotationType.blunder:
+        return const Color(0xFF8B1E1E); // Dark red
+    }
+  }
+}
+
+String _moveSansSignature(List<String> moveSans) {
+  // Normalize: strip check indicators (+, #) for consistent signature matching
+  // Different PGN parsers may or may not include these symbols
+  final normalized = moveSans.map((san) => san.replaceAll(RegExp(r'[+#]'), '')).toList();
+  return '${normalized.length}:${normalized.join('|')}';
+}
+
+/// Map piece letters to PieceKind for figurine notation.
+/// Uses white pieces for clean, elegant appearance on dark backgrounds.
+const _pieceLetterToKind = {
+  'K': PieceKind.whiteKing,
+  'Q': PieceKind.whiteQueen,
+  'R': PieceKind.whiteRook,
+  'B': PieceKind.whiteBishop,
+  'N': PieceKind.whiteKnight,
+};
+
+/// Build rich text spans with inline piece images for figurine notation.
+/// Creates an elegant display where piece letters are replaced with actual
+/// piece images from the user's selected piece set.
+List<InlineSpan> _buildFigurineSpans({
+  required String text,
+  required PieceAssets pieceAssets,
+  required TextStyle style,
+  required double pieceSize,
+}) {
+  final spans = <InlineSpan>[];
+  final buffer = StringBuffer();
+  var i = 0;
+  var afterMoveNumber = false;
+
+  void flushBuffer() {
+    if (buffer.isNotEmpty) {
+      spans.add(TextSpan(text: buffer.toString(), style: style));
+      buffer.clear();
+    }
+  }
+
+  while (i < text.length) {
+    final char = text[i];
+
+    // Track if we're past move number (e.g., "1. " or "12... ")
+    if (char.contains(RegExp(r'[0-9.]'))) {
+      buffer.write(char);
+      i++;
+      continue;
+    }
+
+    if (char == ' ') {
+      buffer.write(char);
+      afterMoveNumber = true;
+      i++;
+      continue;
+    }
+
+    // Check if this is a piece letter that should be converted
+    final pieceKind = _pieceLetterToKind[char];
+    if (pieceKind != null) {
+      flushBuffer();
+      final pieceImage = pieceAssets[pieceKind];
+      if (pieceImage != null) {
+        spans.add(
+          WidgetSpan(
+            alignment: PlaceholderAlignment.middle,
+            child: Padding(
+              padding: EdgeInsets.only(right: 1.sp),
+              child: Image(
+                image: pieceImage,
+                width: pieceSize,
+                height: pieceSize,
+                filterQuality: FilterQuality.high,
+              ),
+            ),
+          ),
+        );
+      } else {
+        buffer.write(char);
+      }
+    } else {
+      buffer.write(char);
+    }
+    i++;
+  }
+
+  flushBuffer();
+  return spans;
+}
+
+String? _extractLichessSiteUrl(ChessGame game) {
+  final candidates = <String?>[
+    game.metadata['Site']?.toString(),
+    game.metadata['LichessURL']?.toString(),
+    game.metadata['SiteUrl']?.toString(),
+    game.metadata['Source']?.toString(),
+  ];
+
+  for (final candidate in candidates) {
+    if (candidate == null || candidate.isEmpty) continue;
+    final trimmed = candidate.trim();
+    if (trimmed.contains('lichess.org')) {
+      return trimmed;
+    }
+  }
+  return null;
+}
+
+String? _extractLichessGameId(ChessGame game) {
+  final candidates = <String?>[
+    game.metadata['Site']?.toString(),
+    game.metadata['LichessId']?.toString(),
+    game.metadata['LichessGameId']?.toString(),
+    game.metadata['LichessURL']?.toString(),
+    game.metadata['SiteUrl']?.toString(),
+    game.metadata['Source']?.toString(),
+  ];
+
+  // Lichess game IDs are exactly 8 characters. (See /game/export/{gameId})
+  final idRegex = RegExp(r'^[a-zA-Z0-9]{8}$');
+  // Match direct game URLs like https://lichess.org/abcdefgh or /abcdefgh/white
+  final urlRegex = RegExp(r'lichess\.org/([a-zA-Z0-9]{8})(?:[/?#]|$)');
+  // Match broadcast URLs: lichess.org/broadcast/{slug}/{roundSlug}/{roundId}/{gameId}
+  final broadcastRegex =
+      RegExp(r'lichess\.org/broadcast/[^/]+/[^/]+/[a-zA-Z0-9]{8}/([a-zA-Z0-9]{8})');
+
+  for (final candidate in candidates) {
+    if (candidate == null || candidate.isEmpty) continue;
+    final trimmed = candidate.trim();
+
+    // Check broadcast URL first (more specific pattern)
+    final broadcastMatch = broadcastRegex.firstMatch(trimmed);
+    if (broadcastMatch != null) {
+      return broadcastMatch.group(1);
+    }
+
+    if (idRegex.hasMatch(trimmed)) {
+      return trimmed;
+    }
+    final match = urlRegex.firstMatch(trimmed);
+    if (match != null) {
+      return match.group(1);
+    }
+  }
+
+  final fallbackId = game.gameId.trim();
+  if (idRegex.hasMatch(fallbackId)) {
+    return fallbackId;
+  }
+
+  return null;
+}
 
 /// LAZY move impact provider - calculates impact for a SINGLE move only when needed
 /// This is the NEW approach that doesn't block the eval bar
@@ -826,6 +1003,10 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
       _isRevertingPage = false;
       return;
     }
+
+    // Ignore page changes during tutorial swipe animation
+    // The animation moves the page position but shouldn't change the current index
+    if (_showTutorialOverlay) return;
 
     if (_currentPageIndex == newIndex) return;
 
@@ -5545,48 +5726,429 @@ class _AnalysisBoard extends ConsumerWidget {
       engineSettingsProviderNew.select((s) => s.valueOrNull?.showPvArrows ?? true),
     );
 
+    // Check if game has ended and we're at the final position
+    final gameStatus = game.gameStatus;
+    final isAtEnd = chessBoardState.analysisState.isAtEnd;
+    final isGameOver = gameStatus != GameStatus.ongoing &&
+                       gameStatus != GameStatus.unknown;
+    final showGameEndingEffect = isGameOver && isAtEnd;
+
+    // Calculate square highlights and annotations for game ending
+    final gameEndingData = showGameEndingEffect
+        ? _calculateGameEndingData(
+            chessBoardState.analysisState.position,
+            gameStatus,
+          )
+        : null;
+
     // PERF: RepaintBoundary isolates chessboard repaints from propagating
     // to parent widgets during piece animations and drag operations
-    return RepaintBoundary(
-      child: Chessboard(
-        size: size,
-        settings: ChessboardSettings(
-          enableCoordinates: true,
-          animationDuration: const Duration(milliseconds: 200),
-          dragFeedbackScale: 1,
-          dragTargetKind: DragTargetKind.none,
-          pieceShiftMethod: PieceShiftMethod.tapTwoSquares,
-          autoQueenPromotionOnPremove: false,
-          pieceOrientationBehavior: PieceOrientationBehavior.facingUser,
-          // Use theme colors from settings with our custom app colors
-          colorScheme: colorScheme,
-          // Use piece set from settings
-          pieceAssets: pieceAssets,
+
+    // For fallen king animation: hide the loser's king from the board
+    // so it doesn't show both the original and the tilted overlay
+    String displayFen = chessBoardState.analysisState.position.fen;
+    if (showGameEndingEffect && gameEndingData?.loserKingSquare != null) {
+      displayFen = _removeKingFromFen(
+        displayFen,
+        gameEndingData!.loserKingSquare!,
+        gameStatus == GameStatus.whiteWins ? 'k' : 'K',
+      );
+    }
+
+    final chessboard = Chessboard(
+      size: size,
+      settings: ChessboardSettings(
+        enableCoordinates: true,
+        animationDuration: const Duration(milliseconds: 200),
+        dragFeedbackScale: 1,
+        dragTargetKind: DragTargetKind.none,
+        pieceShiftMethod: PieceShiftMethod.tapTwoSquares,
+        autoQueenPromotionOnPremove: false,
+        pieceOrientationBehavior: PieceOrientationBehavior.facingUser,
+        // Use theme colors from settings with our custom app colors
+        colorScheme: colorScheme,
+        // Use piece set from settings
+        pieceAssets: pieceAssets,
+      ),
+      orientation: isFlipped ? Side.black : Side.white,
+      fen: displayFen,
+      lastMove: chessBoardState.analysisState.lastMove,
+      // Only show shapes (arrows) when ALL conditions are met:
+      // 1. Engine analysis is enabled (master toggle)
+      // 2. Principal variations are enabled in board state
+      // 3. PV arrows are enabled in engine settings
+      shapes:
+          (chessBoardState.showEngineAnalysis &&
+                  chessBoardState.showPrincipalVariations &&
+                  showPvArrows)
+              ? chessBoardState.shapes
+              : const ISet.empty(),
+      squareHighlights: gameEndingData?.squareHighlights ?? const IMap.empty(),
+      annotations: gameEndingData?.annotations ?? const IMap.empty(),
+      game: GameData(
+        playerSide:
+            chessBoardState.analysisState.position.turn == Side.white
+                ? PlayerSide.white
+                : PlayerSide.black,
+        validMoves: chessBoardState.analysisState.validMoves,
+        sideToMove: chessBoardState.analysisState.position.turn,
+        isCheck: chessBoardState.analysisState.position.isCheck,
+        promotionMove: chessBoardState.analysisState.promotionMove,
+        onMove: notifier.onAnalysisMove,
+        onPromotionSelection: notifier.onAnalysisPromotionSelection,
+      ),
+    );
+
+    // If game ended with a winner, add rotated king overlay with motor animation
+    if (showGameEndingEffect && gameEndingData?.loserKingSquare != null) {
+      final squareSize = size / 8;
+      final loserSquare = gameEndingData!.loserKingSquare!;
+      final loserSide = gameStatus == GameStatus.whiteWins ? Side.black : Side.white;
+
+      // Calculate square position on board
+      final file = loserSquare.file;
+      final rank = loserSquare.rank;
+
+      // Adjust for board orientation
+      final effectiveFile = isFlipped ? 7 - file : file;
+      final effectiveRank = isFlipped ? rank : 7 - rank;
+
+      final pieceKind = loserSide == Side.white
+          ? PieceKind.whiteKing
+          : PieceKind.blackKing;
+      final pieceImage = pieceAssets[pieceKind];
+
+      return RepaintBoundary(
+        child: Stack(
+          children: [
+            chessboard,
+            // Animated falling king overlay using motor springs
+            _FallenKingOverlay(
+              left: effectiveFile * squareSize,
+              top: effectiveRank * squareSize,
+              squareSize: squareSize,
+              pieceImage: pieceImage!,
+            ),
+          ],
         ),
-        orientation: isFlipped ? Side.black : Side.white,
-        fen: chessBoardState.analysisState.position.fen,
-        lastMove: chessBoardState.analysisState.lastMove,
-        // Only show shapes (arrows) when ALL conditions are met:
-        // 1. Engine analysis is enabled (master toggle)
-        // 2. Principal variations are enabled in board state
-        // 3. PV arrows are enabled in engine settings
-        shapes:
-            (chessBoardState.showEngineAnalysis &&
-                    chessBoardState.showPrincipalVariations &&
-                    showPvArrows)
-                ? chessBoardState.shapes
-                : const ISet.empty(),
-        game: GameData(
-          playerSide:
-              chessBoardState.analysisState.position.turn == Side.white
-                  ? PlayerSide.white
-                  : PlayerSide.black,
-          validMoves: chessBoardState.analysisState.validMoves,
-          sideToMove: chessBoardState.analysisState.position.turn,
-          isCheck: chessBoardState.analysisState.position.isCheck,
-          promotionMove: chessBoardState.analysisState.promotionMove,
-          onMove: notifier.onAnalysisMove,
-          onPromotionSelection: notifier.onAnalysisPromotionSelection,
+      );
+    }
+
+    // If game ended in a draw, add peace icons on both kings with motor animation
+    if (showGameEndingEffect && gameStatus == GameStatus.draw && gameEndingData != null) {
+      final squareSize = size / 8;
+      final position = chessBoardState.analysisState.position;
+      final board = position.board;
+      final whiteKingSquare = board.kingOf(Side.white);
+      final blackKingSquare = board.kingOf(Side.black);
+
+      if (whiteKingSquare != null && blackKingSquare != null) {
+        return RepaintBoundary(
+          child: Stack(
+            children: [
+              chessboard,
+              // Animated peace icon on white king
+              _AnimatedPeaceIcon(
+                square: whiteKingSquare,
+                squareSize: squareSize,
+                isFlipped: isFlipped,
+                delayMs: 0,
+              ),
+              // Animated peace icon on black king (slight delay for stagger effect)
+              _AnimatedPeaceIcon(
+                square: blackKingSquare,
+                squareSize: squareSize,
+                isFlipped: isFlipped,
+                delayMs: 100,
+              ),
+            ],
+          ),
+        );
+      }
+    }
+
+    return RepaintBoundary(child: chessboard);
+  }
+
+  /// Calculate game ending visual data (square highlights and annotations)
+  _GameEndingData? _calculateGameEndingData(
+    Position position,
+    GameStatus gameStatus,
+  ) {
+    final board = position.board;
+    final whiteKingSquare = board.kingOf(Side.white);
+    final blackKingSquare = board.kingOf(Side.black);
+
+    if (whiteKingSquare == null || blackKingSquare == null) {
+      return null;
+    }
+
+    // Convert dartchess Square to chessground Square
+    final whiteKingCgSquare = Square.fromName(whiteKingSquare.name);
+    final blackKingCgSquare = Square.fromName(blackKingSquare.name);
+
+    if (gameStatus == GameStatus.draw) {
+      // Draw: neutral background for both kings (peace icon added as overlay)
+      return _GameEndingData(
+        squareHighlights: IMap({
+          whiteKingCgSquare: const SquareHighlight(
+            details: HighlightDetails(
+              solidColor: Color(0x80B8860B), // Dark goldenrod with alpha
+            ),
+          ),
+          blackKingCgSquare: const SquareHighlight(
+            details: HighlightDetails(
+              solidColor: Color(0x80B8860B), // Dark goldenrod with alpha
+            ),
+          ),
+        }),
+        annotations: const IMap.empty(),
+        loserKingSquare: null,
+      );
+    } else if (gameStatus == GameStatus.whiteWins) {
+      // White wins: black king is the loser
+      return _GameEndingData(
+        squareHighlights: IMap({
+          blackKingCgSquare: const SquareHighlight(
+            details: HighlightDetails(
+              solidColor: Color(0xCCDC2626), // Red with alpha
+            ),
+          ),
+        }),
+        annotations: const IMap.empty(),
+        loserKingSquare: blackKingSquare,
+      );
+    } else if (gameStatus == GameStatus.blackWins) {
+      // Black wins: white king is the loser
+      return _GameEndingData(
+        squareHighlights: IMap({
+          whiteKingCgSquare: const SquareHighlight(
+            details: HighlightDetails(
+              solidColor: Color(0xCCDC2626), // Red with alpha
+            ),
+          ),
+        }),
+        annotations: const IMap.empty(),
+        loserKingSquare: whiteKingSquare,
+      );
+    }
+
+    return null;
+  }
+
+  /// Remove a king from FEN string to hide it when showing fallen king overlay
+  String _removeKingFromFen(String fen, Square square, String kingChar) {
+    final parts = fen.split(' ');
+    if (parts.isEmpty) return fen;
+
+    final ranks = parts[0].split('/');
+    final rankIndex = 7 - square.rank; // FEN ranks are 8-1 (top to bottom)
+    if (rankIndex < 0 || rankIndex >= ranks.length) return fen;
+
+    // Expand the rank to individual characters
+    final rank = ranks[rankIndex];
+    final expanded = StringBuffer();
+    for (final char in rank.split('')) {
+      final digit = int.tryParse(char);
+      if (digit != null) {
+        expanded.write('1' * digit); // Replace numbers with 1s
+      } else {
+        expanded.write(char);
+      }
+    }
+
+    // Remove the king at the file position
+    final fileIndex = square.file;
+    final chars = expanded.toString().split('');
+    if (fileIndex >= 0 && fileIndex < chars.length && chars[fileIndex] == kingChar) {
+      chars[fileIndex] = '1';
+    }
+
+    // Compress back: consecutive 1s become a single number
+    final compressed = StringBuffer();
+    int emptyCount = 0;
+    for (final char in chars) {
+      if (char == '1') {
+        emptyCount++;
+      } else {
+        if (emptyCount > 0) {
+          compressed.write(emptyCount);
+          emptyCount = 0;
+        }
+        compressed.write(char);
+      }
+    }
+    if (emptyCount > 0) {
+      compressed.write(emptyCount);
+    }
+
+    ranks[rankIndex] = compressed.toString();
+    parts[0] = ranks.join('/');
+    return parts.join(' ');
+  }
+}
+
+/// Data class for game ending visual effects
+class _GameEndingData {
+  final IMap<Square, SquareHighlight> squareHighlights;
+  final IMap<Square, Annotation> annotations;
+  final Square? loserKingSquare;
+
+  const _GameEndingData({
+    required this.squareHighlights,
+    required this.annotations,
+    required this.loserKingSquare,
+  });
+}
+
+/// Animated fallen king overlay using motor springs
+/// Shows the losing king tilting and falling with smooth physics-based animation
+class _FallenKingOverlay extends StatefulWidget {
+  final double left;
+  final double top;
+  final double squareSize;
+  final ImageProvider pieceImage;
+
+  const _FallenKingOverlay({
+    required this.left,
+    required this.top,
+    required this.squareSize,
+    required this.pieceImage,
+  });
+
+  @override
+  State<_FallenKingOverlay> createState() => _FallenKingOverlayState();
+}
+
+class _FallenKingOverlayState extends State<_FallenKingOverlay> {
+  bool _animate = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Trigger animation after first frame
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        setState(() => _animate = true);
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned(
+      left: widget.left,
+      top: widget.top,
+      child: SizedBox(
+        width: widget.squareSize,
+        height: widget.squareSize,
+        child: Center(
+          // Animate rotation with motor's bouncy spring
+          child: SingleMotionBuilder(
+            motion: const CupertinoMotion.bouncy(),
+            value: _animate ? -math.pi / 4 : 0.0, // -45 degrees when animated
+            builder: (context, rotation, child) {
+              return Transform.rotate(
+                angle: rotation,
+                // Rotate around exact center - no offset needed
+                alignment: Alignment.center,
+                child: child,
+              );
+            },
+            child: Image(
+              image: widget.pieceImage,
+              fit: BoxFit.contain,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Animated peace icon overlay for draw games using motor springs
+/// Shows a dove (🕊️) icon in the top-right corner of each king's cell
+class _AnimatedPeaceIcon extends StatefulWidget {
+  final Square square;
+  final double squareSize;
+  final bool isFlipped;
+  final int delayMs;
+
+  const _AnimatedPeaceIcon({
+    required this.square,
+    required this.squareSize,
+    required this.isFlipped,
+    required this.delayMs,
+  });
+
+  @override
+  State<_AnimatedPeaceIcon> createState() => _AnimatedPeaceIconState();
+}
+
+class _AnimatedPeaceIconState extends State<_AnimatedPeaceIcon> {
+  bool _animate = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Trigger animation after delay for stagger effect
+    Future.delayed(Duration(milliseconds: widget.delayMs), () {
+      if (mounted) {
+        setState(() => _animate = true);
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final file = widget.square.file;
+    final rank = widget.square.rank;
+
+    // Adjust for board orientation
+    final effectiveFile = widget.isFlipped ? 7 - file : file;
+    final effectiveRank = widget.isFlipped ? rank : 7 - rank;
+
+    // Smaller icon size for subtle appearance
+    final containerSize = widget.squareSize * 0.28;
+
+    return Positioned(
+      // Position at bottom-right corner of the king's square
+      left: effectiveFile * widget.squareSize + widget.squareSize - containerSize - 1,
+      top: effectiveRank * widget.squareSize + widget.squareSize - containerSize - 1,
+      child: SingleMotionBuilder(
+        motion: const CupertinoMotion.bouncy(),
+        value: _animate ? 1.0 : 0.0,
+        builder: (context, scale, child) {
+          return Transform.scale(
+            scale: scale,
+            alignment: Alignment.bottomRight,
+            child: child,
+          );
+        },
+        child: Container(
+          width: containerSize,
+          height: containerSize,
+          decoration: BoxDecoration(
+            color: const Color(0xFFF5F5DC), // Beige/cream for contrast
+            shape: BoxShape.circle,
+            border: Border.all(
+              color: const Color(0xFFB8860B).withValues(alpha: 0.6), // Goldenrod border
+              width: 1,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.2),
+                blurRadius: 2,
+                offset: const Offset(0, 1),
+              ),
+            ],
+          ),
+          child: Center(
+            child: Text(
+              '🕊️',
+              style: TextStyle(fontSize: containerSize * 0.65),
+            ),
+          ),
         ),
       ),
     );
@@ -5681,6 +6243,46 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     final notifier = ref.read(chessBoardScreenProviderNew(params).notifier);
     final navigatorState = ref.watch(chessGameNavigatorProvider(analysisGame));
     final signature = notationGameSignature(navigatorState.game);
+    final mainlineSans =
+        navigatorState.game.mainline.map((move) => move.san).toList();
+    final lichessGameId = _extractLichessGameId(navigatorState.game);
+    final lichessSiteUrl = _extractLichessSiteUrl(navigatorState.game);
+    // Debug: Log extracted Lichess identifiers
+    debugPrint('🎯 [Notation] Extracted: gameId=$lichessGameId, siteUrl=$lichessSiteUrl, isLive=${navigatorState.game.isLiveGame}, moves=${mainlineSans.length}');
+    final lichessAnnotationsAsync = ref.watch(
+      lichessMoveAnnotationsProvider(
+        LichessMoveAnnotationsParams(
+          lichessGameId: lichessGameId,
+          siteUrl: lichessSiteUrl,
+          signature: _moveSansSignature(mainlineSans),
+          moveSans: mainlineSans,
+          isLiveGame: navigatorState.game.isLiveGame,
+        ),
+      ),
+    );
+    final lichessAnnotations =
+        lichessAnnotationsAsync.valueOrNull ??
+        const <int, LichessMoveAnnotation>{};
+
+    // Debug: Log annotation state
+    if (lichessAnnotations.isNotEmpty) {
+      debugPrint('🎯 [Annotations] Got ${lichessAnnotations.length} annotations for game $lichessGameId');
+      debugPrint('🎯 [Annotations] Keys: ${lichessAnnotations.keys.toList()}');
+    } else if (lichessAnnotationsAsync.isLoading) {
+      debugPrint('🎯 [Annotations] Loading for game $lichessGameId...');
+    } else if (lichessAnnotationsAsync.hasError) {
+      debugPrint('🎯 [Annotations] Error: ${lichessAnnotationsAsync.error}');
+    }
+
+    // Get figurine notation setting and piece assets for rendering
+    final useFigurine = ref.watch(
+      boardSettingsProviderNew.select((s) => s.valueOrNull?.useFigurine ?? false),
+    );
+    final pieceAssets = ref.watch(
+      boardSettingsProviderNew.select(
+        (s) => s.valueOrNull?.pieceAssets ?? const BoardSettingsNew().pieceAssets,
+      ),
+    );
 
     if (_lastSignature != signature) {
       _moveKeys.clear();
@@ -5742,6 +6344,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     final tokens = _buildTokens(
       tree.mainline,
       depth: 0,
+      startingPly: tree.startingPly,
       pointerMap: pointerMap,
       forcedOpenIds: forcedOpenIds,
       variationComments: widget.state.variationComments,
@@ -5786,6 +6389,9 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
                         currentPly,
                         pointerForHighlightId,
                         tailPointerId,
+                        lichessAnnotations,
+                        useFigurine: useFigurine,
+                        pieceAssets: pieceAssets,
                       );
                     case _NotationTokenType.comment:
                       return _buildVariationCommentChip(token, params);
@@ -6079,7 +6685,10 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     int currentPly,
     String? currentPointerId,
     String? tailPointerId,
-  ) {
+    Map<int, LichessMoveAnnotation> lichessAnnotations, {
+    bool useFigurine = false,
+    PieceAssets? pieceAssets,
+  }) {
     final pointerId = token.pointerId;
     final key =
         pointerId == null
@@ -6090,7 +6699,48 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
         pointerId != null &&
         tailPointerId != null &&
         pointerId == tailPointerId;
-    final color = _resolveMoveColor(token, currentPly);
+    final annotation = _resolveLichessAnnotation(token, lichessAnnotations);
+    // Debug: Log annotation resolution for moves that should have annotations
+    if (lichessAnnotations.isNotEmpty && token.moveIndex != null) {
+      final hasAnnotation = lichessAnnotations.containsKey(token.moveIndex);
+      if (hasAnnotation) {
+        debugPrint('🎯 [MoveChip] Move ${token.moveIndex} "${token.text}" has annotation: ${annotation?.type.name}');
+      }
+    }
+    final annotationColor = annotation?.type.color;
+    final baseColor = _resolveMoveColor(token, currentPly);
+    final color = annotationColor ?? baseColor;
+
+    final textStyle = AppTypography.textXsMedium.copyWith(
+      color: color,
+      fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
+    );
+
+    // Build move text spans - either with figurine pieces or plain text
+    final List<InlineSpan> moveSpans;
+    if (useFigurine && pieceAssets != null) {
+      moveSpans = _buildFigurineSpans(
+        text: token.text,
+        pieceAssets: pieceAssets,
+        style: textStyle,
+        pieceSize: 14.sp, // Slightly larger than text for clarity
+      );
+    } else {
+      moveSpans = [TextSpan(text: token.text, style: textStyle)];
+    }
+
+    // Add annotation symbol if present
+    if (annotation != null) {
+      moveSpans.add(
+        TextSpan(
+          text: annotation.type.symbol,
+          style: AppTypography.textXsMedium.copyWith(
+            color: annotation.type.color,
+            fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
+          ),
+        ),
+      );
+    }
 
     return GestureDetector(
       key: key,
@@ -6134,12 +6784,8 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
                 width: 0.7,
               ),
             ),
-            child: Text(
-              token.text,
-              style: AppTypography.textXsMedium.copyWith(
-                color: color,
-                fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
-              ),
+            child: Text.rich(
+              TextSpan(children: moveSpans),
             ),
           ),
           if (isTail && widget.state.hasUnseenMoves)
@@ -6578,9 +7224,26 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     return depthColor.withValues(alpha: isPast ? 0.95 : 0.75);
   }
 
+  LichessMoveAnnotation? _resolveLichessAnnotation(
+    _NotationDisplayToken token,
+    Map<int, LichessMoveAnnotation> annotations,
+  ) {
+    final node = token.node;
+    if (node == null || !node.isMainline) return null;
+    final moveIndex = token.moveIndex;
+    if (moveIndex == null) return null;
+    final result = annotations[moveIndex];
+    // Debug: Only log when we should find an annotation but don't
+    if (result == null && annotations.containsKey(moveIndex)) {
+      debugPrint('⚠️ [Annotation] MISMATCH: moveIndex=$moveIndex exists in annotations but lookup returned null');
+    }
+    return result;
+  }
+
   List<_NotationDisplayToken> _buildTokens(
     List<NotationMoveNode> moves, {
     required int depth,
+    required int startingPly,
     NotationVariationNode? variationContext,
     required Map<String, NotationMoveNode> pointerMap,
     required Set<String> forcedOpenIds,
@@ -6602,12 +7265,14 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
           (variationMovesList?.isNotEmpty ?? false)
               ? List<Number>.of(variationMovesList!.first.pointer)
               : null;
+      final moveIndex = node.ply - startingPly;
       tokens.add(
         _NotationDisplayToken(
           type: _NotationTokenType.move,
           text: text,
           depth: depth,
           pointerId: pointerId,
+          moveIndex: moveIndex >= 0 ? moveIndex : null,
           node: node,
           pointer: pointerList,
           variationIndex: variationContext?.variationIndex,
@@ -6698,6 +7363,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
             _buildTokens(
               variation.moves,
               depth: variation.depth,
+              startingPly: startingPly,
               variationContext: variation,
               pointerMap: pointerMap,
               forcedOpenIds: forcedOpenIds,
@@ -7539,6 +8205,7 @@ class _NotationDisplayToken {
   final String text;
   final int depth;
   final String? pointerId;
+  final int? moveIndex;
   final NotationMoveNode? node;
   final ChessMovePointer? pointer;
   final int? variationIndex;
@@ -7558,6 +8225,7 @@ class _NotationDisplayToken {
     required this.text,
     required this.depth,
     this.pointerId,
+    this.moveIndex,
     this.node,
     this.pointer,
     this.variationIndex,

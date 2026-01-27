@@ -516,6 +516,74 @@ class _ChessBoardSettingsPageState extends ConsumerState<ChessBoardSettingsPage>
             ],
           ),
         ),
+        SizedBox(height: 18.h),
+
+        // Figurine Notation Toggle
+        _SettingCard(
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Text(
+                          'Figurine Notation',
+                          style: AppTypography.textMdMedium.copyWith(
+                            color: kWhiteColor,
+                            fontSize: 13.f,
+                          ),
+                        ),
+                        SizedBox(width: 8.w),
+                        // Preview badge showing the difference
+                        Container(
+                          padding: EdgeInsets.symmetric(horizontal: 8.sp, vertical: 2.sp),
+                          decoration: BoxDecoration(
+                            color: kPrimaryColor.withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(6.br),
+                            border: Border.all(color: kPrimaryColor.withValues(alpha: 0.3)),
+                          ),
+                          child: Text(
+                            boardSettings.useFigurine ? '♞f3' : 'Nf3',
+                            style: AppTypography.textSmMedium.copyWith(
+                              color: kPrimaryColor,
+                              fontSize: 11.f,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    SizedBox(height: 4.h),
+                    Text(
+                      'Show chess piece symbols (♔♕♖♗♘) instead of letters (K, Q, R, B, N) in move notation.',
+                      style: AppTypography.textSmRegular.copyWith(
+                        color: kWhiteColor70,
+                        fontSize: 11.f,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Switch.adaptive(
+                value: boardSettings.useFigurine,
+                thumbColor: WidgetStateProperty.resolveWith(
+                  (states) => states.contains(WidgetState.selected)
+                      ? kPrimaryColor
+                      : kWhiteColor.withValues(alpha: 0.6),
+                ),
+                trackColor: WidgetStateProperty.resolveWith(
+                  (states) => states.contains(WidgetState.selected)
+                      ? kPrimaryColor.withValues(alpha: 0.35)
+                      : kDividerColor.withValues(alpha: 0.5),
+                ),
+                onChanged: (value) {
+                  _trackPersist(boardNotifier.toggleFigurine(value));
+                },
+              ),
+            ],
+          ),
+        ),
 
         ],
         ),

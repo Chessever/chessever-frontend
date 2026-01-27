@@ -64,6 +64,11 @@ class BoardSettingsModelMapper extends ClassMapperBase<BoardSettingsModel> {
     'gamesListViewModeIndex',
     _$gamesListViewModeIndex,
   );
+  static bool _$useFigurine(BoardSettingsModel v) => v.useFigurine;
+  static const Field<BoardSettingsModel, bool> _f$useFigurine = Field(
+    'useFigurine',
+    _$useFigurine,
+  );
   static DateTime _$createdAt(BoardSettingsModel v) => v.createdAt;
   static const Field<BoardSettingsModel, DateTime> _f$createdAt = Field(
     'createdAt',
@@ -86,6 +91,7 @@ class BoardSettingsModelMapper extends ClassMapperBase<BoardSettingsModel> {
     #chatEnabled: _f$chatEnabled,
     #pieceStyleIndex: _f$pieceStyleIndex,
     #gamesListViewModeIndex: _f$gamesListViewModeIndex,
+    #useFigurine: _f$useFigurine,
     #createdAt: _f$createdAt,
     #updatedAt: _f$updatedAt,
   };
@@ -101,6 +107,7 @@ class BoardSettingsModelMapper extends ClassMapperBase<BoardSettingsModel> {
       chatEnabled: data.dec(_f$chatEnabled),
       pieceStyleIndex: data.dec(_f$pieceStyleIndex),
       gamesListViewModeIndex: data.dec(_f$gamesListViewModeIndex),
+      useFigurine: data.dec(_f$useFigurine),
       createdAt: data.dec(_f$createdAt),
       updatedAt: data.dec(_f$updatedAt),
     );
@@ -187,6 +194,7 @@ abstract class BoardSettingsModelCopyWith<
     bool? chatEnabled,
     int? pieceStyleIndex,
     int? gamesListViewModeIndex,
+    bool? useFigurine,
     DateTime? createdAt,
     DateTime? updatedAt,
   });
@@ -214,6 +222,7 @@ class _BoardSettingsModelCopyWithImpl<$R, $Out>
     bool? chatEnabled,
     int? pieceStyleIndex,
     int? gamesListViewModeIndex,
+    bool? useFigurine,
     DateTime? createdAt,
     DateTime? updatedAt,
   }) => $apply(
@@ -228,6 +237,7 @@ class _BoardSettingsModelCopyWithImpl<$R, $Out>
       if (pieceStyleIndex != null) #pieceStyleIndex: pieceStyleIndex,
       if (gamesListViewModeIndex != null)
         #gamesListViewModeIndex: gamesListViewModeIndex,
+      if (useFigurine != null) #useFigurine: useFigurine,
       if (createdAt != null) #createdAt: createdAt,
       if (updatedAt != null) #updatedAt: updatedAt,
     }),
@@ -249,6 +259,7 @@ class _BoardSettingsModelCopyWithImpl<$R, $Out>
       #gamesListViewModeIndex,
       or: $value.gamesListViewModeIndex,
     ),
+    useFigurine: data.get(#useFigurine, or: $value.useFigurine),
     createdAt: data.get(#createdAt, or: $value.createdAt),
     updatedAt: data.get(#updatedAt, or: $value.updatedAt),
   );
