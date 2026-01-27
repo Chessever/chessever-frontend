@@ -31,6 +31,7 @@ class BoardSettingsNew {
     this.chatEnabled = true,
     this.pieceStyleIndex = 0, // Now used for chessground PieceSet
     this.gamesListViewModeIndex = 0,
+    this.useFigurine = false, // Use chess piece symbols (♔♕♖♗♘) instead of letters
   });
 
   /// DEPRECATED: Kept for backwards compatibility migration only
@@ -44,6 +45,8 @@ class BoardSettingsNew {
   final int pieceStyleIndex;
   /// Games list view mode: 0=gamesCard, 1=chessBoardGrid, 2=chessBoard
   final int gamesListViewModeIndex;
+  /// Use figurine notation (chess piece symbols) instead of letters (K, Q, R, B, N)
+  final bool useFigurine;
 
   /// Get the current piece set from chessground
   PieceSet get pieceSet => getPieceSetByIndex(pieceStyleIndex);
@@ -110,6 +113,7 @@ class BoardSettingsNew {
     bool? chatEnabled,
     int? pieceStyleIndex,
     int? gamesListViewModeIndex,
+    bool? useFigurine,
   }) {
     return BoardSettingsNew(
       boardColorIndex: boardColorIndex ?? this.boardColorIndex,
@@ -119,6 +123,7 @@ class BoardSettingsNew {
       chatEnabled: chatEnabled ?? this.chatEnabled,
       pieceStyleIndex: pieceStyleIndex ?? this.pieceStyleIndex,
       gamesListViewModeIndex: gamesListViewModeIndex ?? this.gamesListViewModeIndex,
+      useFigurine: useFigurine ?? this.useFigurine,
     );
   }
 }
@@ -189,6 +194,7 @@ class BoardSettingsNotifierNew extends AsyncNotifier<BoardSettingsNew> {
         chatEnabled: model.chatEnabled,
         pieceStyleIndex: model.pieceStyleIndex,
         gamesListViewModeIndex: model.gamesListViewModeIndex,
+        useFigurine: model.useFigurine,
       );
 
       // Cache locally
@@ -290,6 +296,15 @@ class BoardSettingsNotifierNew extends AsyncNotifier<BoardSettingsNew> {
     await _persist(newSettings);
   }
 
+  /// Toggle figurine notation (chess piece symbols instead of letters)
+  Future<void> toggleFigurine(bool value) async {
+    final currentState = state.valueOrNull ?? const BoardSettingsNew();
+    final newSettings = currentState.copyWith(useFigurine: value);
+    debugPrint('♔ BoardSettings: Figurine notation ${value ? 'enabled' : 'disabled'}');
+    state = AsyncValue.data(newSettings);
+    await _persist(newSettings);
+  }
+
   /// Refresh settings from Supabase
   Future<void> refresh() async {
     state = const AsyncValue.loading();
@@ -346,6 +361,7 @@ class BoardSettingsNotifierNew extends AsyncNotifier<BoardSettingsNew> {
           'chat_enabled': settings.chatEnabled,
           'piece_style_index': settings.pieceStyleIndex,
           'games_list_view_mode_index': settings.gamesListViewModeIndex,
+          'use_figurine': settings.useFigurine,
           'updated_at': DateTime.now().toUtc().toIso8601String(),
         },
         onConflict: 'user_id', // Specify conflict column
@@ -368,6 +384,7 @@ class BoardSettingsNotifierNew extends AsyncNotifier<BoardSettingsNew> {
         'chatEnabled': settings.chatEnabled,
         'pieceStyleIndex': settings.pieceStyleIndex,
         'gamesListViewModeIndex': settings.gamesListViewModeIndex,
+        'useFigurine': settings.useFigurine,
       });
       await prefs.setString(_cacheKey, json);
       debugPrint('[BoardSettings] Cached settings locally');
@@ -404,6 +421,7 @@ class BoardSettingsNotifierNew extends AsyncNotifier<BoardSettingsNew> {
         chatEnabled: map['chatEnabled'] as bool? ?? true,
         pieceStyleIndex: map['pieceStyleIndex'] as int? ?? 0,
         gamesListViewModeIndex: map['gamesListViewModeIndex'] as int? ?? 0,
+        useFigurine: map['useFigurine'] as bool? ?? false,
       );
       debugPrint('[BoardSettings] Loaded settings from cache');
       return settings;
