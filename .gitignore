@@ -169,3 +169,4 @@ app.*.symbols
 # MCP configuration (personal development tools)
 .mcp.json
 openapi.json
+lichessopenapi.json

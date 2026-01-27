@@ -120,17 +120,17 @@ Future<void> main() async {
       WidgetsBinding widgetsBinding = WidgetsFlutterBinding.ensureInitialized();
       FlutterNativeSplash.preserve(widgetsBinding: widgetsBinding);
 
-      // CRITICAL: Kick off SharedPreferences initialization first.
-      // Accessors now await ensureInitialized(), so we don't block startup here.
+      // CRITICAL: Kick off SharedPreferences initialization early, non-blocking.
+      // Callers await ensureInitialized() when they actually need prefs.
       unawaited(SharedPreferencesService.instance.initialize());
 
       // Orientation is set per-device in MyApp after we know the device type
       // Tablets get all orientations, phones stay portrait-only
 
       // Load environment variables first (only in debug mode)
-      // if (kDebugMode) {
-      //   await dotenv.load(fileName: ".env");
-      // }
+      if (kDebugMode) {
+        await dotenv.load(fileName: ".env");
+      }
 
       // Add lifecycle observer
       WidgetsBinding.instance.addObserver(
@@ -155,8 +155,6 @@ Future<void> main() async {
       // Clear evaluation cache in background (don't block startup)
       unawaited(_clearEvaluationCache());
 
-      // Clear selected tour IDs on app startup (ensures highest ELO category is selected by default)
-      unawaited(_clearSelectedTourIds());
 
       // Parallelize all critical initialization tasks
       await Future.wait([
@@ -172,8 +170,6 @@ Future<void> main() async {
           workerManager.init(isolatesCount: 6)
         else
           Future.value(),
-        // Reset favorites for Supabase migration (one-time for beta users)
-        _resetFavoritesForMigration(),
         // Initialize Amplitude (with error handling)
         AnalyticsService.instance.initialize(
           apiKey: _resolveAmplitudeApiKey(),
@@ -181,6 +177,9 @@ Future<void> main() async {
         // Initialize RevenueCat for subscriptions
         _initializeRevenueCat(),
       ]);
+
+      // Non-critical: run migrations after critical startup to avoid blocking app launch
+      unawaited(_resetFavoritesForMigration());
 
       // Initialize TerminateRestart
       TerminateRestart.instance.initialize();
@@ -201,26 +200,6 @@ Future<void> main() async {
       Sentry.captureException(error, stackTrace: stackTrace);
     },
   );
-}
-
-/// Clears selected tour IDs on app startup
-/// This ensures the highest ELO category is selected by default when opening events
-Future<void> _clearSelectedTourIds() async {
-  try {
-    const String tourPrefix = 'selected_tour_';
-    final prefs = await SharedPreferencesService.instance.ensureInitialized();
-    final keys = prefs.getKeys().where((k) => k.startsWith(tourPrefix)).toList();
-
-    for (final key in keys) {
-      await prefs.remove(key);
-    }
-
-    if (keys.isNotEmpty) {
-      debugPrint('🧹 Cleared ${keys.length} selected tour IDs for fresh session');
-    }
-  } catch (e) {
-    debugPrint('Error clearing selected tour IDs: $e');
-  }
 }
 
 /// Clears evaluation cache when cache version is updated

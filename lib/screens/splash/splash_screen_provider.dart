@@ -70,7 +70,18 @@ class _SplashScreenProvider {
     // PRIORITY 1: Check onboarding FIRST - simple boolean, no user dependency
     // This ensures ALL new users see onboarding regardless of auth state
     final onboardingRepo = ref.read(onboardingRepositoryProvider);
-    final hasSeenOnboarding = await onboardingRepo.hasSeenOnboarding();
+    bool hasSeenOnboarding = true;
+    try {
+      hasSeenOnboarding = await onboardingRepo
+          .hasSeenOnboarding()
+          .timeout(const Duration(seconds: 3));
+    } catch (e) {
+      if (kDebugMode) {
+        print('⚠️ Onboarding check failed/timeout: $e');
+      }
+      // Fail open to avoid getting stuck on splash.
+      hasSeenOnboarding = true;
+    }
 
     if (!hasSeenOnboarding) {
       // New user - show onboarding (handles both signed-in and guest on last page)
@@ -85,7 +96,18 @@ class _SplashScreenProvider {
 
     // PRIORITY 2: User has seen onboarding - check auth state
     final sessionManager = ref.read(sessionManagerProvider);
-    final isLoggedIn = await sessionManager.isLoggedIn();
+    bool isLoggedIn = false;
+    try {
+      isLoggedIn = await sessionManager
+          .isLoggedIn()
+          .timeout(const Duration(seconds: 5));
+    } catch (e) {
+      if (kDebugMode) {
+        print('⚠️ Session check failed/timeout: $e');
+      }
+      // Fall back to auth screen if session recovery stalls.
+      isLoggedIn = false;
+    }
 
     if (!context.mounted) return;
 

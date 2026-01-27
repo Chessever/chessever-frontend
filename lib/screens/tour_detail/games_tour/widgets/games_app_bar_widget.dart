@@ -323,9 +323,12 @@ class _GamesAppBarWidgetState extends ConsumerState<GamesAppBarWidget>
                           ),
                         ),
                         if (hasTours) ...[
-                          // Use Expanded to center the dropdown and give it available space
-                          const Expanded(
-                            child: Center(child: CategoryDropdown()),
+                          // Use Expanded to center the dropdown with proper margins from icons
+                          Expanded(
+                            child: Padding(
+                              padding: EdgeInsets.symmetric(horizontal: 12.w),
+                              child: const Center(child: CategoryDropdown()),
+                            ),
                           ),
                           Semantics(
                             label: 'Search games',

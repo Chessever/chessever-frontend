@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:chessever2/repository/local_storage/tournament/tour_local_storage.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.dart';
 import 'package:chessever2/repository/supabase/tour/tour.dart';
@@ -222,19 +224,17 @@ class _TourDetailScreenNotifier
       );
       setDataState(updatedViewModel);
 
-      // ✅ Save the user's selection for future sessions (best effort, non-blocking)
-      unawaited(() async {
-        try {
-          await ref
-              .read(tourDetailRepoProvider)
-              .saveSelectedTourId(
-                groupEventId: groupBroadcast.id,
-                tourId: tourId,
-              );
-        } catch (e) {
-          logWarning('Failed to persist selected tour: $e');
-        }
-      }());
+      // ✅ Save the user's selection for future sessions (ensure persistence before any reloads)
+      try {
+        await ref
+            .read(tourDetailRepoProvider)
+            .saveSelectedTourId(
+              groupEventId: groupBroadcast.id,
+              tourId: tourId,
+            );
+      } catch (e) {
+        logWarning('Failed to persist selected tour: $e');
+      }
     } catch (e, st) {
       setErrorState(e, st);
     }

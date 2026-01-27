@@ -201,12 +201,14 @@ class _AutoPinLogController {
     required bool shouldHide,
   }) async {
     final key = _getTournamentKey(tourId);
-    await _prefs.setBool(key, shouldHide);
+    final prefs = await SharedPreferencesService.instance.ensureInitialized();
+    await prefs.setBool(key, shouldHide);
   }
 
   Future<bool> _getHidePin(String tourId) async {
     final key = _getTournamentKey(tourId);
-    return _prefs.getBool(key) ?? false;
+    final prefs = await SharedPreferencesService.instance.ensureInitialized();
+    return prefs.getBool(key) ?? false;
   }
 }
 
