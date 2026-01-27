@@ -5690,7 +5690,7 @@ class _BoardWithSidebar extends ConsumerWidget {
 
 // REMOVED: _ChessBoardNew widget - analysis mode is always active, only _AnalysisBoard is used
 
-class _AnalysisBoard extends ConsumerWidget {
+class _AnalysisBoard extends ConsumerStatefulWidget {
   final double size;
   final ChessBoardStateNew chessBoardState;
   final bool isFlipped;
@@ -5706,7 +5706,54 @@ class _AnalysisBoard extends ConsumerWidget {
   });
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_AnalysisBoard> createState() => _AnalysisBoardState();
+}
+
+class _AnalysisBoardState extends ConsumerState<_AnalysisBoard> {
+  bool _showDelayedGameEndingEffect = false;
+  bool _wasAtEnd = false;
+
+  @override
+  void didUpdateWidget(covariant _AnalysisBoard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    final isAtEnd = widget.chessBoardState.analysisState.isAtEnd;
+    final gameStatus = widget.game.gameStatus;
+    final isGameOver = gameStatus != GameStatus.ongoing &&
+                       gameStatus != GameStatus.unknown;
+    final shouldShowEffect = isGameOver && isAtEnd;
+
+    // When navigating TO the final position, delay the effect for animation
+    if (shouldShowEffect && !_wasAtEnd) {
+      _showDelayedGameEndingEffect = false;
+      Future.delayed(const Duration(milliseconds: 220), () {
+        if (mounted && widget.chessBoardState.analysisState.isAtEnd) {
+          setState(() => _showDelayedGameEndingEffect = true);
+        }
+      });
+    } else if (!shouldShowEffect) {
+      _showDelayedGameEndingEffect = false;
+    }
+
+    _wasAtEnd = isAtEnd;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _wasAtEnd = widget.chessBoardState.analysisState.isAtEnd;
+
+    // If starting at the end position, show effect immediately
+    final gameStatus = widget.game.gameStatus;
+    final isGameOver = gameStatus != GameStatus.ongoing &&
+                       gameStatus != GameStatus.unknown;
+    if (isGameOver && _wasAtEnd) {
+      _showDelayedGameEndingEffect = true;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     // PERF: Use .select() to only rebuild when specific properties change
     final colorScheme = ref.watch(
       boardSettingsProviderNew.select(
@@ -5718,7 +5765,7 @@ class _AnalysisBoard extends ConsumerWidget {
         (s) => s.valueOrNull?.pieceAssets ?? const BoardSettingsNew().pieceAssets,
       ),
     );
-    final params = ChessBoardProviderParams(game: game, index: index);
+    final params = ChessBoardProviderParams(game: widget.game, index: widget.index);
     final notifier = ref.read(chessBoardScreenProviderNew(params).notifier);
 
     // PERF: Use .select() to only rebuild when showPvArrows changes
@@ -5727,16 +5774,18 @@ class _AnalysisBoard extends ConsumerWidget {
     );
 
     // Check if game has ended and we're at the final position
-    final gameStatus = game.gameStatus;
-    final isAtEnd = chessBoardState.analysisState.isAtEnd;
+    final gameStatus = widget.game.gameStatus;
+    final isAtEnd = widget.chessBoardState.analysisState.isAtEnd;
     final isGameOver = gameStatus != GameStatus.ongoing &&
                        gameStatus != GameStatus.unknown;
-    final showGameEndingEffect = isGameOver && isAtEnd;
+
+    // Use delayed flag to allow move animation to complete first
+    final showGameEndingEffect = isGameOver && isAtEnd && _showDelayedGameEndingEffect;
 
     // Calculate square highlights and annotations for game ending
     final gameEndingData = showGameEndingEffect
         ? _calculateGameEndingData(
-            chessBoardState.analysisState.position,
+            widget.chessBoardState.analysisState.position,
             gameStatus,
           )
         : null;
@@ -5746,7 +5795,7 @@ class _AnalysisBoard extends ConsumerWidget {
 
     // For fallen king animation: hide the loser's king from the board
     // so it doesn't show both the original and the tilted overlay
-    String displayFen = chessBoardState.analysisState.position.fen;
+    String displayFen = widget.chessBoardState.analysisState.position.fen;
     if (showGameEndingEffect && gameEndingData?.loserKingSquare != null) {
       displayFen = _removeKingFromFen(
         displayFen,
@@ -5756,7 +5805,7 @@ class _AnalysisBoard extends ConsumerWidget {
     }
 
     final chessboard = Chessboard(
-      size: size,
+      size: widget.size,
       settings: ChessboardSettings(
         enableCoordinates: true,
         animationDuration: const Duration(milliseconds: 200),
@@ -5770,30 +5819,30 @@ class _AnalysisBoard extends ConsumerWidget {
         // Use piece set from settings
         pieceAssets: pieceAssets,
       ),
-      orientation: isFlipped ? Side.black : Side.white,
+      orientation: widget.isFlipped ? Side.black : Side.white,
       fen: displayFen,
-      lastMove: chessBoardState.analysisState.lastMove,
+      lastMove: widget.chessBoardState.analysisState.lastMove,
       // Only show shapes (arrows) when ALL conditions are met:
       // 1. Engine analysis is enabled (master toggle)
       // 2. Principal variations are enabled in board state
       // 3. PV arrows are enabled in engine settings
       shapes:
-          (chessBoardState.showEngineAnalysis &&
-                  chessBoardState.showPrincipalVariations &&
+          (widget.chessBoardState.showEngineAnalysis &&
+                  widget.chessBoardState.showPrincipalVariations &&
                   showPvArrows)
-              ? chessBoardState.shapes
+              ? widget.chessBoardState.shapes
               : const ISet.empty(),
       squareHighlights: gameEndingData?.squareHighlights ?? const IMap.empty(),
       annotations: gameEndingData?.annotations ?? const IMap.empty(),
       game: GameData(
         playerSide:
-            chessBoardState.analysisState.position.turn == Side.white
+            widget.chessBoardState.analysisState.position.turn == Side.white
                 ? PlayerSide.white
                 : PlayerSide.black,
-        validMoves: chessBoardState.analysisState.validMoves,
-        sideToMove: chessBoardState.analysisState.position.turn,
-        isCheck: chessBoardState.analysisState.position.isCheck,
-        promotionMove: chessBoardState.analysisState.promotionMove,
+        validMoves: widget.chessBoardState.analysisState.validMoves,
+        sideToMove: widget.chessBoardState.analysisState.position.turn,
+        isCheck: widget.chessBoardState.analysisState.position.isCheck,
+        promotionMove: widget.chessBoardState.analysisState.promotionMove,
         onMove: notifier.onAnalysisMove,
         onPromotionSelection: notifier.onAnalysisPromotionSelection,
       ),
@@ -5801,7 +5850,7 @@ class _AnalysisBoard extends ConsumerWidget {
 
     // If game ended with a winner, add rotated king overlay with motor animation
     if (showGameEndingEffect && gameEndingData?.loserKingSquare != null) {
-      final squareSize = size / 8;
+      final squareSize = widget.size / 8;
       final loserSquare = gameEndingData!.loserKingSquare!;
       final loserSide = gameStatus == GameStatus.whiteWins ? Side.black : Side.white;
 
@@ -5810,8 +5859,8 @@ class _AnalysisBoard extends ConsumerWidget {
       final rank = loserSquare.rank;
 
       // Adjust for board orientation
-      final effectiveFile = isFlipped ? 7 - file : file;
-      final effectiveRank = isFlipped ? rank : 7 - rank;
+      final effectiveFile = widget.isFlipped ? 7 - file : file;
+      final effectiveRank = widget.isFlipped ? rank : 7 - rank;
 
       final pieceKind = loserSide == Side.white
           ? PieceKind.whiteKing
@@ -5836,8 +5885,8 @@ class _AnalysisBoard extends ConsumerWidget {
 
     // If game ended in a draw, add peace icons on both kings with motor animation
     if (showGameEndingEffect && gameStatus == GameStatus.draw && gameEndingData != null) {
-      final squareSize = size / 8;
-      final position = chessBoardState.analysisState.position;
+      final squareSize = widget.size / 8;
+      final position = widget.chessBoardState.analysisState.position;
       final board = position.board;
       final whiteKingSquare = board.kingOf(Side.white);
       final blackKingSquare = board.kingOf(Side.black);
@@ -5851,14 +5900,14 @@ class _AnalysisBoard extends ConsumerWidget {
               _AnimatedPeaceIcon(
                 square: whiteKingSquare,
                 squareSize: squareSize,
-                isFlipped: isFlipped,
+                isFlipped: widget.isFlipped,
                 delayMs: 0,
               ),
               // Animated peace icon on black king (slight delay for stagger effect)
               _AnimatedPeaceIcon(
                 square: blackKingSquare,
                 squareSize: squareSize,
-                isFlipped: isFlipped,
+                isFlipped: widget.isFlipped,
                 delayMs: 100,
               ),
             ],
