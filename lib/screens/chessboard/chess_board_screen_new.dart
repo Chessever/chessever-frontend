@@ -6112,16 +6112,16 @@ class _AnimatedPeaceIconState extends State<_AnimatedPeaceIcon> {
     final containerSize = widget.squareSize * 0.28;
 
     return Positioned(
-      // Position at bottom-right corner of the king's square
+      // Position at top-right corner of the king's square
       left: effectiveFile * widget.squareSize + widget.squareSize - containerSize - 1,
-      top: effectiveRank * widget.squareSize + widget.squareSize - containerSize - 1,
+      top: effectiveRank * widget.squareSize + 1,
       child: SingleMotionBuilder(
         motion: const CupertinoMotion.bouncy(),
         value: _animate ? 1.0 : 0.0,
         builder: (context, scale, child) {
           return Transform.scale(
             scale: scale,
-            alignment: Alignment.bottomRight,
+            alignment: Alignment.topRight,
             child: child,
           );
         },

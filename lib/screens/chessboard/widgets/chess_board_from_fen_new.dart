@@ -1083,13 +1083,13 @@ class _SmallPeaceIconState extends State<_SmallPeaceIcon>
 
     return Positioned(
       left: effectiveFile * widget.squareSize + widget.squareSize - containerSize - 1,
-      top: effectiveRank * widget.squareSize + widget.squareSize - containerSize - 1,
+      top: effectiveRank * widget.squareSize + 1,
       child: AnimatedBuilder(
         animation: _scaleAnimation,
         builder: (context, child) {
           return Transform.scale(
             scale: _scaleAnimation.value,
-            alignment: Alignment.bottomRight,
+            alignment: Alignment.topRight,
             child: child,
           );
         },
