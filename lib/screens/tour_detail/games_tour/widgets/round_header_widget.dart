@@ -59,7 +59,7 @@ class RoundHeader extends StatelessWidget {
             SizedBox(width: 12.w),
             Expanded(
               child: Text(
-                '$displayName ⚫ ${roundGames.length} games',
+                '$displayName ⚫ ${round.formattedRoundDateTime}',
                 style: TextStyle(
                   color: kWhiteColor,
                   fontSize: 16.sp,

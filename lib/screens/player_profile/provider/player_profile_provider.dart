@@ -380,7 +380,12 @@ class PlayerAnalytics {
 
     for (int i = 0; i < games.length; i++) {
       final game = games[i];
-      final eco = game.eco ?? 'Unknown';
+      // Normalize ECO: treat null or '?' as 'Unknown'
+      final eco = (game.eco == null || game.eco == '?') ? 'Unknown' : game.eco!;
+      final openingName =
+          (game.openingName == null || game.openingName == '?')
+              ? null
+              : game.openingName;
 
       // Determine if target player is white or black
       // First try fideId matching, then fall back to name matching
@@ -415,11 +420,11 @@ class PlayerAnalytics {
 
       // Only count completed games for statistics
       if (isCompleted) {
-        // Update opening stats (from target player's perspective)
+        // Update opening stats
         if (!openingMap.containsKey(eco)) {
           openingMap[eco] = {
             'eco': eco,
-            'openingName': game.openingName,
+            'openingName': openingName,
             'count': 0,
             'wins': 0,
             'draws': 0,
@@ -430,14 +435,20 @@ class PlayerAnalytics {
 
         if (targetWon) {
           openingMap[eco]!['wins'] = (openingMap[eco]!['wins'] as int) + 1;
+        } else if (targetLost) {
+          openingMap[eco]!['losses'] = (openingMap[eco]!['losses'] as int) + 1;
+        } else if (targetDrew) {
+          openingMap[eco]!['draws'] = (openingMap[eco]!['draws'] as int) + 1;
+        }
+
+        // Track overall results (regardless of ECO availability)
+        if (targetWon) {
           totalWins++;
           if (form.length < 10) form.add(1.0);
         } else if (targetLost) {
-          openingMap[eco]!['losses'] = (openingMap[eco]!['losses'] as int) + 1;
           totalLosses++;
           if (form.length < 10) form.add(0.0);
         } else if (targetDrew) {
-          openingMap[eco]!['draws'] = (openingMap[eco]!['draws'] as int) + 1;
           totalDraws++;
           if (form.length < 10) form.add(0.5);
         }

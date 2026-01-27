@@ -535,8 +535,10 @@ class GroupBroadcastRepository extends BaseRepository {
 
       // Step 1: Query tours with country location filter to get group_broadcast_ids
       // Build OR filter for all country variations
+      // Use end-of-string matching (%, Country) since locations are formatted as "City, Country"
+      // This prevents false positives like "Turkistan, Kazakhstan" matching Turkey
       final orConditions = searchVariations
-          .map((v) => 'info->>location.ilike.%$v%')
+          .map((v) => 'info->>location.ilike.%$v')
           .join(',');
 
       var tourQuery = supabase
