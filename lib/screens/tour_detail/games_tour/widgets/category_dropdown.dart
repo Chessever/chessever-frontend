@@ -355,12 +355,21 @@ class _CategoryDropdownContent extends HookConsumerWidget {
     if (fullName.contains(':')) {
       return fullName.split(':').last.trim();
     }
-    if (fullName.contains('-')) {
-      final parts = fullName.split('-');
-      if (parts.length > 1 && parts.last.trim().length < 30) {
-        return parts.last.trim();
-      }
+
+    // Look for common category patterns like "Boards X-Y" or "Boards X+"
+    final boardsMatch = RegExp(r'(Boards?\s+\d+[\-\+]?\d*\+?)$', caseSensitive: false)
+        .firstMatch(fullName);
+    if (boardsMatch != null) {
+      return boardsMatch.group(0)!.trim();
     }
+
+    // Look for patterns like "Group A", "Section B", "Division 1"
+    final groupMatch = RegExp(r'((?:Group|Section|Division|Category)\s+\w+)$', caseSensitive: false)
+        .firstMatch(fullName);
+    if (groupMatch != null) {
+      return groupMatch.group(0)!.trim();
+    }
+
     // Don't truncate - let the marquee handle long text
     return fullName;
   }
@@ -563,7 +572,15 @@ class _MarqueeText extends HookWidget {
       return null;
     }, [text, continuous]);
 
-    // Animation function - forward only, same timing for both modes
+    // Calculate scroll duration based on distance - consistent speed
+    Duration _getScrollDuration(double distance) {
+      // Speed: ~20 pixels per second (very slow, readable)
+      const pixelsPerSecond = 20.0;
+      final seconds = (distance / pixelsPerSecond).clamp(3.0, 15.0);
+      return Duration(milliseconds: (seconds * 1000).round());
+    }
+
+    // Animation function - forward only, smooth and slow
     void runAnimation() async {
       if (isDisposed.value) return;
       if (!scrollController.hasClients) return;
@@ -574,8 +591,8 @@ class _MarqueeText extends HookWidget {
       // For non-continuous: only run once
       if (!continuous && hasCompletedCycle.value) return;
 
-      // Initial delay before starting
-      await Future.delayed(const Duration(milliseconds: 1200));
+      // Initial delay - let user see the start
+      await Future.delayed(const Duration(seconds: 2));
       if (isDisposed.value || !scrollController.hasClients) return;
 
       if (continuous) {
@@ -584,11 +601,11 @@ class _MarqueeText extends HookWidget {
           final currentMax = scrollController.position.maxScrollExtent;
           if (currentMax <= 0) break;
 
-          // Smooth scroll forward
+          // Slow, smooth scroll forward - speed based on distance
           try {
             await scrollController.animateTo(
               currentMax,
-              duration: const Duration(milliseconds: 2500),
+              duration: _getScrollDuration(currentMax),
               curve: Curves.easeInOut,
             );
           } catch (_) {
@@ -597,32 +614,32 @@ class _MarqueeText extends HookWidget {
 
           if (isDisposed.value || !scrollController.hasClients) break;
 
-          // Brief pause at end
-          await Future.delayed(const Duration(milliseconds: 800));
+          // Pause at end to read
+          await Future.delayed(const Duration(seconds: 2));
           if (isDisposed.value || !scrollController.hasClients) break;
 
-          // Quick reset to start
+          // Reset to start
           scrollController.jumpTo(0);
 
-          // Small pause before next cycle
-          await Future.delayed(const Duration(milliseconds: 500));
+          // Pause before next cycle
+          await Future.delayed(const Duration(seconds: 1));
         }
       } else {
-        // Single cycle mode - same timing, but resets after showing
+        // Single cycle mode - same slow timing
         final currentMax = scrollController.position.maxScrollExtent;
         if (currentMax > 0) {
           try {
-            // Smooth scroll forward (same as continuous)
+            // Slow, smooth scroll forward - speed based on distance
             await scrollController.animateTo(
               currentMax,
-              duration: const Duration(milliseconds: 2500),
+              duration: _getScrollDuration(currentMax),
               curve: Curves.easeInOut,
             );
 
             if (isDisposed.value || !scrollController.hasClients) return;
 
-            // Brief pause at end
-            await Future.delayed(const Duration(milliseconds: 800));
+            // Pause at end to read
+            await Future.delayed(const Duration(seconds: 2));
             if (isDisposed.value || !scrollController.hasClients) return;
 
             // Reset to start
@@ -1601,6 +1618,21 @@ class _CategoryRow extends StatelessWidget {
     if (fullName.contains(':')) {
       return fullName.split(':').last.trim();
     }
+
+    // Look for common category patterns like "Boards X-Y" or "Boards X+"
+    final boardsMatch = RegExp(r'(Boards?\s+\d+[\-\+]?\d*\+?)$', caseSensitive: false)
+        .firstMatch(fullName);
+    if (boardsMatch != null) {
+      return boardsMatch.group(0)!.trim();
+    }
+
+    // Look for patterns like "Group A", "Section B", "Division 1"
+    final groupMatch = RegExp(r'((?:Group|Section|Division|Category)\s+\w+)$', caseSensitive: false)
+        .firstMatch(fullName);
+    if (groupMatch != null) {
+      return groupMatch.group(0)!.trim();
+    }
+
     // Don't truncate - let the marquee/ellipsis handle overflow
     return fullName;
   }
