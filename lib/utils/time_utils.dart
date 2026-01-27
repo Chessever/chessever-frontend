@@ -65,11 +65,11 @@ class TimeUtils {
     return DateFormat('d MMMM, h:mm a').format(localDate);
   }
 
-  /// Format for round dropdown: "29 Dec 2025, 17:00"
+  /// Format for round dropdown: "29 Dec 2025 17:00"
   /// Displays in phone's local timezone
   static String formatRoundDateTime(DateTime? date) {
     if (date == null) return '';
     final localDate = date.toLocal();
-    return DateFormat('d MMM yyyy, HH:mm').format(localDate);
+    return DateFormat('d MMM yyyy HH:mm').format(localDate);
   }
 }

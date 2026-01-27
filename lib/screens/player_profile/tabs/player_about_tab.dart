@@ -306,7 +306,6 @@ class _PlayerHeaderSectionState extends State<_PlayerHeaderSection> {
                       icon: PngAsset.classicalIcon,
                       label: 'Classical',
                       rating: classicalRating,
-                      games: widget.profileData?.classicalGames,
                     ),
                   ),
                   SizedBox(width: 6.w),
@@ -315,7 +314,6 @@ class _PlayerHeaderSectionState extends State<_PlayerHeaderSection> {
                       icon: PngAsset.rapidIcon,
                       label: 'Rapid',
                       rating: rapidRating,
-                      games: widget.profileData?.rapidGames,
                     ),
                   ),
                   SizedBox(width: 6.w),
@@ -324,7 +322,6 @@ class _PlayerHeaderSectionState extends State<_PlayerHeaderSection> {
                       icon: PngAsset.blitzIcon,
                       label: 'Blitz',
                       rating: blitzRating,
-                      games: widget.profileData?.blitzGames,
                     ),
                   ),
                 ],
@@ -430,13 +427,11 @@ class _RatingCard extends StatelessWidget {
     required this.icon,
     required this.label,
     this.rating,
-    this.games,
   });
 
   final String icon;
   final String label;
   final int? rating;
-  final int? games;
 
   @override
   Widget build(BuildContext context) {
@@ -465,14 +460,6 @@ class _RatingCard extends StatelessWidget {
             rating?.toString() ?? '-',
             style: AppTypography.textLgBold.copyWith(color: kWhiteColor),
           ),
-          if (games != null && games! > 0)
-            Text(
-              '$games games',
-              style: AppTypography.textXsRegular.copyWith(
-                color: kWhiteColor.withValues(alpha: 0.4),
-                fontSize: 9.sp,
-              ),
-            ),
         ],
       ),
     );
@@ -789,11 +776,11 @@ class _ColorStatCard extends StatelessWidget {
           SizedBox(height: 8.h),
           Row(
             children: [
-              _WLDIndicator(value: wins, type: 'W'),
+              _WLDIndicator(value: wins, type: 'W', compact: true),
               SizedBox(width: 6.w),
-              _WLDIndicator(value: draws, type: 'D'),
+              _WLDIndicator(value: draws, type: 'D', compact: true),
               SizedBox(width: 6.w),
-              _WLDIndicator(value: losses, type: 'L'),
+              _WLDIndicator(value: losses, type: 'L', compact: true),
             ],
           ),
           SizedBox(height: 4.h),

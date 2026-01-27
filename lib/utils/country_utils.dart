@@ -41,6 +41,7 @@ class CountryUtils {
     // These handle: accented characters, abbreviations, alternative names
     const variations = {
       // Turkey - database uses 'Türkiye' with umlaut (32 events)
+      // 'Turkish' is safe with end-matching (won't match "Turkistan, Kazakhstan")
       'Turkey': ['Türkiye', 'Turkiye', 'Turkish'],
       'Türkiye': ['Turkey', 'Turkiye', 'Turkish'],
 
