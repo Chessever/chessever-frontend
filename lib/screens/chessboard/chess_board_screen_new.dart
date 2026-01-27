@@ -5888,17 +5888,17 @@ class _AnalysisBoard extends ConsumerWidget {
     final blackKingCgSquare = Square.fromName(blackKingSquare.name);
 
     if (gameStatus == GameStatus.draw) {
-      // Draw: neutral background for both kings (peace icon added as overlay)
+      // Draw: mint green background for both kings (peace icon added as overlay)
       return _GameEndingData(
         squareHighlights: IMap({
           whiteKingCgSquare: const SquareHighlight(
             details: HighlightDetails(
-              solidColor: Color(0x80B8860B), // Dark goldenrod with alpha
+              solidColor: Color(0xCCADE1CD), // Mint green with alpha
             ),
           ),
           blackKingCgSquare: const SquareHighlight(
             details: HighlightDetails(
-              solidColor: Color(0x80B8860B), // Dark goldenrod with alpha
+              solidColor: Color(0xCCADE1CD), // Mint green with alpha
             ),
           ),
         }),
@@ -5911,7 +5911,7 @@ class _AnalysisBoard extends ConsumerWidget {
         squareHighlights: IMap({
           blackKingCgSquare: const SquareHighlight(
             details: HighlightDetails(
-              solidColor: Color(0xCCDC2626), // Red with alpha
+              solidColor: Color(0xCCF53236), // Red with alpha
             ),
           ),
         }),
@@ -5924,7 +5924,7 @@ class _AnalysisBoard extends ConsumerWidget {
         squareHighlights: IMap({
           whiteKingCgSquare: const SquareHighlight(
             details: HighlightDetails(
-              solidColor: Color(0xCCDC2626), // Red with alpha
+              solidColor: Color(0xCCF53236), // Red with alpha
             ),
           ),
         }),
@@ -6129,12 +6129,8 @@ class _AnimatedPeaceIconState extends State<_AnimatedPeaceIcon> {
           width: containerSize,
           height: containerSize,
           decoration: BoxDecoration(
-            color: const Color(0xFFF5F5DC), // Beige/cream for contrast
+            color: Colors.white,
             shape: BoxShape.circle,
-            border: Border.all(
-              color: const Color(0xFFB8860B).withValues(alpha: 0.6), // Goldenrod border
-              width: 1,
-            ),
             boxShadow: [
               BoxShadow(
                 color: Colors.black.withValues(alpha: 0.2),
@@ -6144,9 +6140,15 @@ class _AnimatedPeaceIconState extends State<_AnimatedPeaceIcon> {
             ],
           ),
           child: Center(
-            child: Text(
-              '🕊️',
-              style: TextStyle(fontSize: containerSize * 0.65),
+            child: ColorFiltered(
+              colorFilter: const ColorFilter.mode(
+                Colors.black,
+                BlendMode.srcIn,
+              ),
+              child: Text(
+                '🕊️',
+                style: TextStyle(fontSize: containerSize * 0.6),
+              ),
             ),
           ),
         ),
