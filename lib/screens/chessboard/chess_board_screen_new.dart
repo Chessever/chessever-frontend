@@ -5723,7 +5723,7 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard> {
                        gameStatus != GameStatus.unknown;
     final shouldShowEffect = isGameOver && isAtEnd;
 
-    // When navigating TO the final position, delay the effect for animation
+    // When navigating TO the final position, delay showing the effect for animation
     if (shouldShowEffect && !_wasAtEnd) {
       _showDelayedGameEndingEffect = false;
       Future.delayed(const Duration(milliseconds: 220), () {
@@ -5731,7 +5731,17 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard> {
           setState(() => _showDelayedGameEndingEffect = true);
         }
       });
-    } else if (!shouldShowEffect) {
+    }
+    // When navigating AWAY from the final position, delay hiding the effect for animation
+    else if (!shouldShowEffect && _wasAtEnd && _showDelayedGameEndingEffect) {
+      Future.delayed(const Duration(milliseconds: 220), () {
+        if (mounted && !widget.chessBoardState.analysisState.isAtEnd) {
+          setState(() => _showDelayedGameEndingEffect = false);
+        }
+      });
+    }
+    // For other cases (e.g., game not over), hide immediately
+    else if (!shouldShowEffect && !_wasAtEnd) {
       _showDelayedGameEndingEffect = false;
     }
 
