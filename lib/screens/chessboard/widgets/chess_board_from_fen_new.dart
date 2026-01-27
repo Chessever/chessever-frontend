@@ -807,6 +807,13 @@ class _ChessBoardWidget extends ConsumerWidget {
         child: Stack(
           children: [
             chessboard,
+            // Red background for loser's king square
+            _SquareHighlight(
+              left: effectiveFile * squareSize,
+              top: effectiveRank * squareSize,
+              squareSize: squareSize,
+              color: const Color(0xCCDC2626), // Red with alpha
+            ),
             _SmallFallenKingOverlay(
               left: effectiveFile * squareSize,
               top: effectiveRank * squareSize,
@@ -824,12 +831,32 @@ class _ChessBoardWidget extends ConsumerWidget {
       final whiteKingCg = Square.fromName(whiteKingSquare.name);
       final blackKingCg = Square.fromName(blackKingSquare.name);
 
+      // Calculate positions for both kings
+      final whiteEffectiveFile = whiteKingCg.file;
+      final whiteEffectiveRank = 7 - whiteKingCg.rank;
+      final blackEffectiveFile = blackKingCg.file;
+      final blackEffectiveRank = 7 - blackKingCg.rank;
+
       return SizedBox(
         width: boardSize,
         height: boardSize,
         child: Stack(
           children: [
             chessboard,
+            // Goldenrod background for white king's square
+            _SquareHighlight(
+              left: whiteEffectiveFile * squareSize,
+              top: whiteEffectiveRank * squareSize,
+              squareSize: squareSize,
+              color: const Color(0x80B8860B), // Dark goldenrod with alpha
+            ),
+            // Goldenrod background for black king's square
+            _SquareHighlight(
+              left: blackEffectiveFile * squareSize,
+              top: blackEffectiveRank * squareSize,
+              squareSize: squareSize,
+              color: const Color(0x80B8860B), // Dark goldenrod with alpha
+            ),
             _SmallPeaceIcon(
               square: whiteKingCg,
               squareSize: squareSize,
@@ -966,6 +993,34 @@ class _SmallFallenKingOverlayState extends State<_SmallFallenKingOverlay>
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Square highlight overlay for game ending effects
+class _SquareHighlight extends StatelessWidget {
+  final double left;
+  final double top;
+  final double squareSize;
+  final Color color;
+
+  const _SquareHighlight({
+    required this.left,
+    required this.top,
+    required this.squareSize,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned(
+      left: left,
+      top: top,
+      child: Container(
+        width: squareSize,
+        height: squareSize,
+        color: color,
       ),
     );
   }
