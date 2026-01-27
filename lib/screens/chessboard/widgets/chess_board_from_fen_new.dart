@@ -679,12 +679,16 @@ class _ChessBoardWithEvaluation extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Get effective game status for ended games
+    final gameStatus = gamesTourModel.gameStatus;
+
     if (!showEvalBar || !gamesTourModel.hasStarted) {
       return _ChessBoardWidget(
         fen: gamesTourModel.fen ?? '',
         lastMove: lastMove,
         boardSize: boardSize,
         showCoordinates: showCoordinates,
+        gameStatus: gameStatus,
       );
     }
 
@@ -701,6 +705,7 @@ class _ChessBoardWithEvaluation extends StatelessWidget {
           lastMove: lastMove,
           boardSize: boardSize,
           showCoordinates: showCoordinates,
+          gameStatus: gameStatus,
         ),
       ],
     );
@@ -713,19 +718,48 @@ class _ChessBoardWidget extends ConsumerWidget {
     required this.lastMove,
     required this.boardSize,
     this.showCoordinates = true,
+    this.gameStatus,
   });
 
   final String? fen;
   final Move? lastMove;
   final double boardSize;
   final bool showCoordinates;
+  final GameStatus? gameStatus;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final boardSettingsAsync = ref.watch(boardSettingsProviderNew);
     final boardSettings = boardSettingsAsync.valueOrNull ?? const BoardSettingsNew();
 
-    return Container(
+    // Check if game has ended with a winner or draw
+    final isGameEnded = gameStatus?.isFinished ?? false;
+    final isWhiteWins = gameStatus == GameStatus.whiteWins;
+    final isBlackWins = gameStatus == GameStatus.blackWins;
+    final isDraw = gameStatus == GameStatus.draw;
+
+    // Parse FEN to find king positions
+    String displayFen = fen ?? '';
+    Square? loserKingSquare;
+    Square? whiteKingSquare;
+    Square? blackKingSquare;
+
+    if (isGameEnded && displayFen.isNotEmpty) {
+      final position = Chess.fromSetup(Setup.parseFen(displayFen));
+      final board = position.board;
+      whiteKingSquare = board.kingOf(Side.white);
+      blackKingSquare = board.kingOf(Side.black);
+
+      if (isWhiteWins && blackKingSquare != null) {
+        loserKingSquare = Square.fromName(blackKingSquare.name);
+        displayFen = _removeKingFromFen(displayFen, loserKingSquare, 'k');
+      } else if (isBlackWins && whiteKingSquare != null) {
+        loserKingSquare = Square.fromName(whiteKingSquare.name);
+        displayFen = _removeKingFromFen(displayFen, loserKingSquare, 'K');
+      }
+    }
+
+    final chessboard = Container(
       height: boardSize,
       width: boardSize,
       decoration: BoxDecoration(
@@ -748,8 +782,286 @@ class _ChessBoardWidget extends ConsumerWidget {
             pieceAssets: boardSettings.pieceAssets,
           ),
           orientation: Side.white,
-          fen: fen ?? '',
+          fen: displayFen,
           lastMove: lastMove,
+        ),
+      ),
+    );
+
+    // Add fallen king overlay for wins
+    if ((isWhiteWins || isBlackWins) && loserKingSquare != null) {
+      final squareSize = boardSize / 8;
+      final loserSide = isWhiteWins ? Side.black : Side.white;
+      final pieceKind = loserSide == Side.white
+          ? PieceKind.whiteKing
+          : PieceKind.blackKing;
+      final pieceImage = boardSettings.pieceAssets[pieceKind];
+
+      // Position on board (not flipped, always white at bottom)
+      final effectiveFile = loserKingSquare.file;
+      final effectiveRank = 7 - loserKingSquare.rank;
+
+      return SizedBox(
+        width: boardSize,
+        height: boardSize,
+        child: Stack(
+          children: [
+            chessboard,
+            _SmallFallenKingOverlay(
+              left: effectiveFile * squareSize,
+              top: effectiveRank * squareSize,
+              squareSize: squareSize,
+              pieceImage: pieceImage!,
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Add dove icons for draws
+    if (isDraw && whiteKingSquare != null && blackKingSquare != null) {
+      final squareSize = boardSize / 8;
+      final whiteKingCg = Square.fromName(whiteKingSquare.name);
+      final blackKingCg = Square.fromName(blackKingSquare.name);
+
+      return SizedBox(
+        width: boardSize,
+        height: boardSize,
+        child: Stack(
+          children: [
+            chessboard,
+            _SmallPeaceIcon(
+              square: whiteKingCg,
+              squareSize: squareSize,
+              delayMs: 0,
+            ),
+            _SmallPeaceIcon(
+              square: blackKingCg,
+              squareSize: squareSize,
+              delayMs: 100,
+            ),
+          ],
+        ),
+      );
+    }
+
+    return chessboard;
+  }
+
+  /// Remove a king from FEN string to hide it when showing fallen king overlay
+  static String _removeKingFromFen(String fen, Square square, String kingChar) {
+    final parts = fen.split(' ');
+    if (parts.isEmpty) return fen;
+
+    final ranks = parts[0].split('/');
+    final rankIndex = 7 - square.rank;
+    if (rankIndex < 0 || rankIndex >= ranks.length) return fen;
+
+    final rank = ranks[rankIndex];
+    final expanded = StringBuffer();
+    for (final char in rank.split('')) {
+      final digit = int.tryParse(char);
+      if (digit != null) {
+        expanded.write('1' * digit);
+      } else {
+        expanded.write(char);
+      }
+    }
+
+    final fileIndex = square.file;
+    final chars = expanded.toString().split('');
+    if (fileIndex >= 0 && fileIndex < chars.length && chars[fileIndex] == kingChar) {
+      chars[fileIndex] = '1';
+    }
+
+    final compressed = StringBuffer();
+    int emptyCount = 0;
+    for (final char in chars) {
+      if (char == '1') {
+        emptyCount++;
+      } else {
+        if (emptyCount > 0) {
+          compressed.write(emptyCount);
+          emptyCount = 0;
+        }
+        compressed.write(char);
+      }
+    }
+    if (emptyCount > 0) {
+      compressed.write(emptyCount);
+    }
+
+    ranks[rankIndex] = compressed.toString();
+    parts[0] = ranks.join('/');
+    return parts.join(' ');
+  }
+}
+
+/// Fallen king overlay for small boards (grid/list views)
+class _SmallFallenKingOverlay extends StatefulWidget {
+  final double left;
+  final double top;
+  final double squareSize;
+  final ImageProvider pieceImage;
+
+  const _SmallFallenKingOverlay({
+    required this.left,
+    required this.top,
+    required this.squareSize,
+    required this.pieceImage,
+  });
+
+  @override
+  State<_SmallFallenKingOverlay> createState() => _SmallFallenKingOverlayState();
+}
+
+class _SmallFallenKingOverlayState extends State<_SmallFallenKingOverlay>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _rotationAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: const Duration(milliseconds: 600),
+      vsync: this,
+    );
+    _rotationAnimation = Tween<double>(begin: 0, end: -0.785398) // -45 degrees
+        .chain(CurveTween(curve: Curves.elasticOut))
+        .animate(_controller);
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _controller.forward();
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned(
+      left: widget.left,
+      top: widget.top,
+      child: SizedBox(
+        width: widget.squareSize,
+        height: widget.squareSize,
+        child: Center(
+          child: AnimatedBuilder(
+            animation: _rotationAnimation,
+            builder: (context, child) {
+              return Transform.rotate(
+                angle: _rotationAnimation.value,
+                alignment: Alignment.center,
+                child: child,
+              );
+            },
+            child: Image(
+              image: widget.pieceImage,
+              fit: BoxFit.contain,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Peace icon (dove) overlay for small boards (grid/list views)
+class _SmallPeaceIcon extends StatefulWidget {
+  final Square square;
+  final double squareSize;
+  final int delayMs;
+
+  const _SmallPeaceIcon({
+    required this.square,
+    required this.squareSize,
+    required this.delayMs,
+  });
+
+  @override
+  State<_SmallPeaceIcon> createState() => _SmallPeaceIconState();
+}
+
+class _SmallPeaceIconState extends State<_SmallPeaceIcon>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _scaleAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: const Duration(milliseconds: 400),
+      vsync: this,
+    );
+    _scaleAnimation = Tween<double>(begin: 0, end: 1)
+        .chain(CurveTween(curve: Curves.elasticOut))
+        .animate(_controller);
+
+    Future.delayed(Duration(milliseconds: widget.delayMs), () {
+      if (mounted) _controller.forward();
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final file = widget.square.file;
+    final rank = widget.square.rank;
+
+    // Position on board (not flipped)
+    final effectiveFile = file;
+    final effectiveRank = 7 - rank;
+
+    // Scale down for smaller boards
+    final containerSize = widget.squareSize * 0.28;
+
+    return Positioned(
+      left: effectiveFile * widget.squareSize + widget.squareSize - containerSize - 1,
+      top: effectiveRank * widget.squareSize + widget.squareSize - containerSize - 1,
+      child: AnimatedBuilder(
+        animation: _scaleAnimation,
+        builder: (context, child) {
+          return Transform.scale(
+            scale: _scaleAnimation.value,
+            alignment: Alignment.bottomRight,
+            child: child,
+          );
+        },
+        child: Container(
+          width: containerSize,
+          height: containerSize,
+          decoration: BoxDecoration(
+            color: const Color(0xFFF5F5DC),
+            shape: BoxShape.circle,
+            border: Border.all(
+              color: const Color(0xFFB8860B).withValues(alpha: 0.6),
+              width: 1,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.2),
+                blurRadius: 2,
+                offset: const Offset(0, 1),
+              ),
+            ],
+          ),
+          child: Center(
+            child: Text(
+              '🕊️',
+              style: TextStyle(fontSize: containerSize * 0.6),
+            ),
+          ),
         ),
       ),
     );
