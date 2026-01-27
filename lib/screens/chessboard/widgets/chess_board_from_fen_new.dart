@@ -812,7 +812,7 @@ class _ChessBoardWidget extends ConsumerWidget {
               left: effectiveFile * squareSize,
               top: effectiveRank * squareSize,
               squareSize: squareSize,
-              color: const Color(0xCCDC2626), // Red with alpha
+              color: const Color(0xCCF53236), // Red with alpha
             ),
             _SmallFallenKingOverlay(
               left: effectiveFile * squareSize,
@@ -843,19 +843,19 @@ class _ChessBoardWidget extends ConsumerWidget {
         child: Stack(
           children: [
             chessboard,
-            // Goldenrod background for white king's square
+            // Mint/teal background for white king's square
             _SquareHighlight(
               left: whiteEffectiveFile * squareSize,
               top: whiteEffectiveRank * squareSize,
               squareSize: squareSize,
-              color: const Color(0x80B8860B), // Dark goldenrod with alpha
+              color: const Color(0xCCADE1CD), // Mint green with alpha
             ),
-            // Goldenrod background for black king's square
+            // Mint/teal background for black king's square
             _SquareHighlight(
               left: blackEffectiveFile * squareSize,
               top: blackEffectiveRank * squareSize,
               squareSize: squareSize,
-              color: const Color(0x80B8860B), // Dark goldenrod with alpha
+              color: const Color(0xCCADE1CD), // Mint green with alpha
             ),
             _SmallPeaceIcon(
               square: whiteKingCg,
@@ -1097,12 +1097,8 @@ class _SmallPeaceIconState extends State<_SmallPeaceIcon>
           width: containerSize,
           height: containerSize,
           decoration: BoxDecoration(
-            color: const Color(0xFFF5F5DC),
+            color: Colors.white,
             shape: BoxShape.circle,
-            border: Border.all(
-              color: const Color(0xFFB8860B).withValues(alpha: 0.6),
-              width: 1,
-            ),
             boxShadow: [
               BoxShadow(
                 color: Colors.black.withValues(alpha: 0.2),
@@ -1112,9 +1108,15 @@ class _SmallPeaceIconState extends State<_SmallPeaceIcon>
             ],
           ),
           child: Center(
-            child: Text(
-              '🕊️',
-              style: TextStyle(fontSize: containerSize * 0.6),
+            child: ColorFiltered(
+              colorFilter: const ColorFilter.mode(
+                Colors.black,
+                BlendMode.srcIn,
+              ),
+              child: Text(
+                '🕊️',
+                style: TextStyle(fontSize: containerSize * 0.6),
+              ),
             ),
           ),
         ),
