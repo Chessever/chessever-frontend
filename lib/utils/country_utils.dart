@@ -6,9 +6,9 @@ class CountryUtils {
   /// Note: The API uses ILIKE partial matching, so partial names work.
   static String toGamebaseCountryName(String countryPickerName) {
     // Map country_picker names to FIDE database names
-    // Note: Database stores 'Turkiye' (no umlaut), not 'Türkiye'
+    // Note: Database stores 'Türkiye' (with umlaut ü)
     const nameMapping = {
-      'Turkey': 'Turkiye', // Database uses 'Turkiye' without umlaut
+      'Turkey': 'Türkiye', // Database uses 'Türkiye' with umlaut
       'United States': 'United States of America',
       'Russia': 'Russia',
       'United Kingdom': 'England', // FIDE uses England, Scotland, Wales separately
@@ -32,31 +32,65 @@ class CountryUtils {
     return nameMapping[countryPickerName] ?? countryPickerName;
   }
 
-  /// Returns alternative country name variations for gamebase API search.
-  /// The API uses ILIKE partial matching, so we only need one good variation.
-  /// The primary variation from toGamebaseCountryName() should work in most cases.
+  /// Returns alternative country name variations for location search.
+  /// Database locations use various formats - this ensures we match all of them.
   static List<String> getGamebaseCountryVariations(String countryName) {
     final primary = toGamebaseCountryName(countryName);
 
-    // Only add variations if the primary might not match
-    // Note: API uses ILIKE '%value%' so partial names work
-    // e.g., 'Turk' matches 'Turkiye', 'United' matches 'United States of America'
+    // Map country names to all known variations in the database
+    // These handle: accented characters, abbreviations, alternative names
     const variations = {
-      'United States of America': ['United'], // 'United' partial matches
-      'United Kingdom': ['England'], // UK games are under England
-      'Turkey': ['Turkiye'], // Ensure we try the database value
-      'Turkiye': ['Turk'], // Partial match fallback
+      // Turkey - database uses 'Türkiye' with umlaut (32 events)
+      'Turkey': ['Türkiye', 'Turkiye', 'Turkish'],
+      'Türkiye': ['Turkey', 'Turkiye', 'Turkish'],
+
+      // USA - database uses both 'USA' (37) and 'United States' (28)
+      'United States': ['USA', 'United States of America'],
+      'United States of America': ['USA', 'United States'],
+
+      // UK - database uses 'England' (39), rarely 'United Kingdom' (9)
+      'United Kingdom': ['England', 'UK', 'Britain'],
+      'England': ['United Kingdom', 'UK'],
+
+      // Mexico - database uses both 'México' (40) and 'Mexico' (35)
+      'Mexico': ['México', 'Méx'],
+      'México': ['Mexico'],
+
+      // Czech - database uses both 'Czechia' (8) and 'Czech Republic' (3)
+      'Czech Republic': ['Czechia', 'Czech'],
+      'Czechia': ['Czech Republic', 'Czech'],
+
+      // Peru - database sometimes uses 'Perú' with accent
+      'Peru': ['Perú'],
+      'Perú': ['Peru'],
+
+      // Bahrain - database sometimes uses 'Bahréin' with accent
+      'Bahrain': ['Bahréin'],
+      'Bahréin': ['Bahrain'],
+
+      // Venezuela - handle full name
+      'Venezuela': ['Venezuela (Bolivarian Republic of)'],
+      'Venezuela (Bolivarian Republic of)': ['Venezuela'],
+
+      // Korea - handle both Koreas
+      'South Korea': ['Korea'],
+      'North Korea': ['Korea'],
+      'Korea': ['South Korea'],
     };
 
-    final result = <String>[primary];
+    final result = <String>{primary};
+
+    // Add variations for the original country name
     if (variations.containsKey(countryName)) {
       result.addAll(variations[countryName]!);
     }
-    if (variations.containsKey(primary) && primary != countryName) {
+
+    // Add variations for the mapped primary name (if different)
+    if (primary != countryName && variations.containsKey(primary)) {
       result.addAll(variations[primary]!);
     }
 
-    return result.toSet().toList(); // Remove duplicates
+    return result.toList();
   }
 
   /// Converts ISO 2-letter country code to FIDE 3-letter federation code.

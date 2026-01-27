@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:chessever2/repository/supabase/base_repository.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.dart';
+import 'package:chessever2/utils/country_utils.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -292,26 +293,24 @@ class GroupBroadcastRepository extends BaseRepository {
     if (trimmedQuery.isEmpty) return [];
 
     try {
-      final tokens = _extractSearchTokens(trimmedQuery);
-      final orFilters = <String>[
-        'name.ilike.%$trimmedQuery%',
-        for (final token in tokens) 'name.ilike.%$token%',
-      ];
-      final orFilter = orFilters.join(',');
-
       final resultsById = <String, GroupBroadcast>{};
 
-      // Use direct query instead of slow RPC function.
-      // Search by name with token OR matching, ordered by ELO (best events first).
+      // Use full-text search with search_fts column (GIN indexed) for performance.
+      // Build tsquery: split words and join with & for AND matching.
+      final tokens = _extractSearchTokens(trimmedQuery);
+      final searchTerms = tokens.isNotEmpty ? tokens : [trimmedQuery];
+      final ftsQuery = searchTerms.map((t) => '$t:*').join(' & ');
+
+      // Primary search: FTS on search_fts column, sorted by date_start descending (latest first).
       final res = await supabase
           .from('group_broadcasts')
           .select('id, created_at, name, search, max_avg_elo, date_start, date_end, time_control')
-          .or(orFilter)
-          .order('max_avg_elo', ascending: false, nullsFirst: false)
+          .textSearch('search_fts', ftsQuery)
+          .order('date_start', ascending: false, nullsFirst: false)
           .limit(80);
 
       final resList = res as List?;
-      debugPrint('[Search] Direct query results: ${resList?.length ?? 0}');
+      debugPrint('[Search] FTS query results: ${resList?.length ?? 0}');
 
       if (resList != null) {
         for (final row in resList) {
@@ -320,46 +319,36 @@ class GroupBroadcastRepository extends BaseRepository {
         }
       }
 
-      // Also search tours by name, then map to group_broadcasts.
-      final tours = await supabase
-          .from('tours')
-          .select('id, group_broadcast_id, name, slug, info, dates, avg_elo, search, created_at')
-          .or(orFilter)
-          .limit(80);
+      // Fallback: if FTS returns few results, also try trigram search on name.
+      if (resultsById.length < 10) {
+        final trigramRes = await supabase
+            .from('group_broadcasts')
+            .select('id, created_at, name, search, max_avg_elo, date_start, date_end, time_control')
+            .ilike('name', '%$trimmedQuery%')
+            .order('date_start', ascending: false, nullsFirst: false)
+            .limit(40);
 
-      final tourRows = tours as List?;
-      if (tourRows != null && tourRows.isNotEmpty) {
-        final groupIds = <String>{};
-        final toursById = <String, Map<String, dynamic>>{};
-
-        for (final tour in tourRows) {
-          final groupId = tour['group_broadcast_id'] as String?;
-          final tourId = tour['id'] as String?;
-          if (tourId != null) {
-            toursById[tourId] = tour;
-          }
-          if (groupId != null && groupId.isNotEmpty) {
-            groupIds.add(groupId);
-          }
-        }
-
-        if (groupIds.isNotEmpty) {
-          final groupBroadcasts = await getGroupBroadcastsWithElo(groupIds.toList());
-          for (final broadcast in groupBroadcasts.values) {
+        final trigramList = trigramRes as List?;
+        if (trigramList != null) {
+          for (final row in trigramList) {
+            final broadcast = GroupBroadcast.fromJson(row);
             resultsById.putIfAbsent(broadcast.id, () => broadcast);
-          }
-        }
-
-        for (final tour in toursById.values) {
-          final groupId = tour['group_broadcast_id'] as String?;
-          if (groupId == null || groupId.isEmpty || !resultsById.containsKey(groupId)) {
-            final synthetic = _mapTourRowToGroupBroadcast(tour);
-            resultsById.putIfAbsent(synthetic.id, () => synthetic);
           }
         }
       }
 
-      return resultsById.values.toList();
+      // Sort final results by date_start descending (latest events first).
+      final results = resultsById.values.toList()
+        ..sort((a, b) {
+          final aDate = a.dateStart;
+          final bDate = b.dateStart;
+          if (aDate == null && bDate == null) return 0;
+          if (aDate == null) return 1;
+          if (bDate == null) return -1;
+          return bDate.compareTo(aDate); // Descending: latest first
+        });
+
+      return results;
     } catch (e) {
       debugPrint('[Search] Error: $e');
       return [];
@@ -526,18 +515,34 @@ class GroupBroadcastRepository extends BaseRepository {
   /// Get group broadcasts by country location.
   /// Queries tours table for location match, then fetches corresponding group_broadcasts.
   /// Returns results sorted with current+upcoming events first, then past events by date.
+  ///
+  /// [countryName] - The country name (e.g., "Turkey")
+  /// [countryCode] - Optional ISO 2-letter code (e.g., "TR") for better matching
   Future<List<GroupBroadcast>> getGroupBroadcastsByCountry({
     required String countryName,
+    String? countryCode,
     String? searchQuery,
     int limit = 30,
     int offset = 0,
   }) async {
     return handleApiCall(() async {
+      // Build all country name variations for robust matching
+      // Database locations may contain: "TUR", "Turkiye", "Turkey", etc.
+      final searchVariations = _buildCountrySearchVariations(
+        countryName: countryName,
+        countryCode: countryCode,
+      );
+
       // Step 1: Query tours with country location filter to get group_broadcast_ids
+      // Build OR filter for all country variations
+      final orConditions = searchVariations
+          .map((v) => 'info->>location.ilike.%$v%')
+          .join(',');
+
       var tourQuery = supabase
           .from('tours')
           .select('id, group_broadcast_id, name, slug, info, dates, avg_elo, search, created_at')
-          .ilike('info->>location', '%$countryName%');
+          .or(orConditions);
 
       // Add search filter if provided
       if (searchQuery != null && searchQuery.trim().isNotEmpty) {
@@ -703,5 +708,36 @@ class GroupBroadcastRepository extends BaseRepository {
                   : null,
       timeControl: timeControl,
     );
+  }
+
+  /// Build a list of country name variations for robust location matching.
+  /// Database locations may contain various formats:
+  /// - FIDE code: "TUR", "GER", "USA"
+  /// - Official name: "Turkiye", "Germany", "United States"
+  /// - Common name: "Turkey", "USA"
+  List<String> _buildCountrySearchVariations({
+    required String countryName,
+    String? countryCode,
+  }) {
+    final variations = <String>{};
+
+    // Add the original country name
+    variations.add(countryName);
+
+    // Add gamebase variations (e.g., Turkey -> Turkiye)
+    final gamebaseVariations = CountryUtils.getGamebaseCountryVariations(countryName);
+    variations.addAll(gamebaseVariations);
+
+    // If we have the ISO2 country code, add FIDE code variation
+    if (countryCode != null && countryCode.isNotEmpty) {
+      final fideCode = CountryUtils.toFideCode(countryCode);
+      if (fideCode.isNotEmpty) {
+        variations.add(fideCode);
+      }
+      // Also add the ISO2 code itself (some locations might use "TR" instead of "TUR")
+      variations.add(countryCode.toUpperCase());
+    }
+
+    return variations.toList();
   }
 }

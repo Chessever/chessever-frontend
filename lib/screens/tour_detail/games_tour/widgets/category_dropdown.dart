@@ -348,6 +348,7 @@ class _CategoryDropdownContent extends HookConsumerWidget {
   }
 
   String _extractCategoryName(String fullName) {
+    // Extract just the category part if formatted with separator
     if (fullName.contains('|')) {
       return fullName.split('|').last.trim();
     }
@@ -356,16 +357,11 @@ class _CategoryDropdownContent extends HookConsumerWidget {
     }
     if (fullName.contains('-')) {
       final parts = fullName.split('-');
-      if (parts.length > 1 && parts.last.trim().length < 20) {
+      if (parts.length > 1 && parts.last.trim().length < 30) {
         return parts.last.trim();
       }
     }
-    // Allow more characters on tablet since we have more space
-    final maxLength = ResponsiveHelper.isTablet ? 35 : 18;
-    final truncateLength = ResponsiveHelper.isTablet ? 32 : 15;
-    if (fullName.length > maxLength) {
-      return '${fullName.substring(0, truncateLength)}...';
-    }
+    // Don't truncate - let the marquee handle long text
     return fullName;
   }
 }
@@ -441,14 +437,13 @@ class _StadiumChipButton extends HookWidget {
               SizedBox(width: 8.sp),
             ],
             Flexible(
-              child: Text(
-                label,
+              child: _MarqueeText(
+                text: label,
                 style: AppTypography.textXsMedium.copyWith(
                   color: isOpen ? kPrimaryColor : kWhiteColor,
                   letterSpacing: 0.3,
                 ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+                continuous: false, // Single cycle for chip button
               ),
             ),
             if (showChevron) ...[
@@ -471,8 +466,8 @@ class _StadiumChipButton extends HookWidget {
       ),
     );
 
-    // Wider chip on tablet for better text visibility
-    final chipMaxWidth = ResponsiveHelper.isTablet ? 450.0 : 160.w;
+    // Chip width - balanced for text visibility while respecting app bar icons
+    final chipMaxWidth = ResponsiveHelper.isTablet ? 400.0 : 200.w;
 
     return GestureDetector(
       onTap: onTap,
@@ -528,6 +523,184 @@ class _FluidShimmerPainter extends CustomPainter {
   @override
   bool shouldRepaint(_FluidShimmerPainter oldDelegate) {
     return progress != oldDelegate.progress;
+  }
+}
+
+/// Auto-scrolling text widget for long text that doesn't fit.
+/// - Forward scroll only (no ping-pong)
+/// - Single cycle when [continuous] is false
+/// - Continuous forward cycles when [continuous] is true (for open menus)
+class _MarqueeText extends HookWidget {
+  final String text;
+  final TextStyle style;
+  final bool continuous;
+
+  const _MarqueeText({
+    required this.text,
+    required this.style,
+    this.continuous = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final scrollController = useScrollController();
+    final hasCompletedCycle = useRef(false);
+    final isDisposed = useRef(false);
+
+    // Cleanup on dispose
+    useEffect(() {
+      return () {
+        isDisposed.value = true;
+      };
+    }, []);
+
+    // Reset cycle flag when text changes or continuous mode changes
+    useEffect(() {
+      hasCompletedCycle.value = false;
+      if (scrollController.hasClients) {
+        scrollController.jumpTo(0);
+      }
+      return null;
+    }, [text, continuous]);
+
+    // Animation function - forward only, same timing for both modes
+    void runAnimation() async {
+      if (isDisposed.value) return;
+      if (!scrollController.hasClients) return;
+
+      final maxScroll = scrollController.position.maxScrollExtent;
+      if (maxScroll <= 0) return;
+
+      // For non-continuous: only run once
+      if (!continuous && hasCompletedCycle.value) return;
+
+      // Initial delay before starting
+      await Future.delayed(const Duration(milliseconds: 1200));
+      if (isDisposed.value || !scrollController.hasClients) return;
+
+      if (continuous) {
+        // Continuous mode: loop forever (forward only)
+        while (!isDisposed.value && scrollController.hasClients) {
+          final currentMax = scrollController.position.maxScrollExtent;
+          if (currentMax <= 0) break;
+
+          // Smooth scroll forward
+          try {
+            await scrollController.animateTo(
+              currentMax,
+              duration: const Duration(milliseconds: 2500),
+              curve: Curves.easeInOut,
+            );
+          } catch (_) {
+            break;
+          }
+
+          if (isDisposed.value || !scrollController.hasClients) break;
+
+          // Brief pause at end
+          await Future.delayed(const Duration(milliseconds: 800));
+          if (isDisposed.value || !scrollController.hasClients) break;
+
+          // Quick reset to start
+          scrollController.jumpTo(0);
+
+          // Small pause before next cycle
+          await Future.delayed(const Duration(milliseconds: 500));
+        }
+      } else {
+        // Single cycle mode - same timing, but resets after showing
+        final currentMax = scrollController.position.maxScrollExtent;
+        if (currentMax > 0) {
+          try {
+            // Smooth scroll forward (same as continuous)
+            await scrollController.animateTo(
+              currentMax,
+              duration: const Duration(milliseconds: 2500),
+              curve: Curves.easeInOut,
+            );
+
+            if (isDisposed.value || !scrollController.hasClients) return;
+
+            // Brief pause at end
+            await Future.delayed(const Duration(milliseconds: 800));
+            if (isDisposed.value || !scrollController.hasClients) return;
+
+            // Reset to start
+            scrollController.jumpTo(0);
+
+            hasCompletedCycle.value = true;
+          } catch (_) {
+            // Animation interrupted
+          }
+        }
+      }
+    }
+
+    // Start animation after layout
+    useEffect(() {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (isDisposed.value) return;
+        if (!scrollController.hasClients) return;
+
+        final maxScroll = scrollController.position.maxScrollExtent;
+        if (maxScroll > 0) {
+          runAnimation();
+        }
+      });
+      return null;
+    }, [text, continuous]);
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Measure if text overflows
+        final textPainter = TextPainter(
+          text: TextSpan(text: text, style: style),
+          maxLines: 1,
+          textDirection: TextDirection.ltr,
+        )..layout();
+
+        final needsScroll = textPainter.width > constraints.maxWidth;
+
+        if (!needsScroll) {
+          // Text fits - show normally, no animation needed
+          return Text(
+            text,
+            style: style,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          );
+        }
+
+        // Text overflows - show scrolling marquee
+        return ShaderMask(
+          shaderCallback: (Rect bounds) {
+            return LinearGradient(
+              colors: [
+                Colors.transparent,
+                Colors.white,
+                Colors.white,
+                Colors.transparent,
+              ],
+              stops: const [0.0, 0.03, 0.97, 1.0],
+            ).createShader(bounds);
+          },
+          blendMode: BlendMode.dstIn,
+          child: SingleChildScrollView(
+            controller: scrollController,
+            scrollDirection: Axis.horizontal,
+            physics: const NeverScrollableScrollPhysics(),
+            child: Padding(
+              padding: EdgeInsets.only(left: 2.sp, right: 6.sp),
+              child: Text(
+                text,
+                style: style,
+                maxLines: 1,
+              ),
+            ),
+          ),
+        );
+      },
+    );
   }
 }
 
@@ -621,9 +794,9 @@ class _DropdownOverlay extends ConsumerWidget {
           )
         : null;
 
-    // Wider dropdown on tablet for better readability
-    final minWidth = ResponsiveHelper.isTablet ? 360.0 : 280.w;
-    final maxWidth = ResponsiveHelper.isTablet ? 500.0 : 360.w;
+    // Wider dropdown for better readability - use available horizontal space
+    final minWidth = ResponsiveHelper.isTablet ? 400.0 : 300.w;
+    final maxWidth = ResponsiveHelper.isTablet ? 600.0 : 400.w;
     final dropdownWidth = (screenWidth - 32.w).clamp(minWidth, maxWidth);
     final leftOffset = (screenWidth - dropdownWidth) / 2;
 
@@ -1377,14 +1550,13 @@ class _CategoryRow extends StatelessWidget {
                     ],
                     // Category name
                     Expanded(
-                      child: Text(
-                        _extractName(category.tour.name),
+                      child: _MarqueeText(
+                        text: _extractName(category.tour.name),
                         style: AppTypography.textSmMedium.copyWith(
                           color: isSelected ? kPrimaryColor : kWhiteColor,
                           fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
                         ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                        continuous: true, // Continuous in open dropdown
                       ),
                     ),
                   ],
@@ -1422,15 +1594,14 @@ class _CategoryRow extends StatelessWidget {
   }
 
   String _extractName(String fullName) {
+    // Extract just the category part if formatted with separator
     if (fullName.contains('|')) {
       return fullName.split('|').last.trim();
     }
     if (fullName.contains(':')) {
       return fullName.split(':').last.trim();
     }
-    if (fullName.length > 25) {
-      return '${fullName.substring(0, 22)}...';
-    }
+    // Don't truncate - let the marquee/ellipsis handle overflow
     return fullName;
   }
 }
@@ -1501,16 +1672,15 @@ class _RoundRow extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text(
-                      round.name,
+                    _MarqueeText(
+                      text: round.name,
                       style: AppTypography.textSmRegular.copyWith(
                         color: isSelected
                             ? kPrimaryColor
                             : kWhiteColor.withValues(alpha: 0.85),
                         fontWeight: isSelected ? FontWeight.w500 : FontWeight.w400,
                       ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                      continuous: true, // Continuous in open dropdown
                     ),
                     if (round.formattedRoundDateTime.isNotEmpty)
                       Text(

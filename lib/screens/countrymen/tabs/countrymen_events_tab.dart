@@ -103,9 +103,11 @@ class CountrymenEventsNotifier extends StateNotifier<CountrymenEventsState> {
       final offset = isInitial ? 0 : state.offset;
 
       // Use the new comprehensive query that fetches GroupBroadcast with images
-      // and prioritizes current+upcoming events
+      // and prioritizes current+upcoming events.
+      // Pass both name and code for robust country matching (handles TUR, Turkiye, Turkey, etc.)
       final events = await repo.getGroupBroadcastsByCountry(
         countryName: country.name,
+        countryCode: country.countryCode,
         searchQuery: state.isSearching ? state.searchQuery : null,
         limit: _pageSize,
         offset: offset,

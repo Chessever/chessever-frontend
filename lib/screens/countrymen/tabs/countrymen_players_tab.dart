@@ -6,8 +6,7 @@ import 'package:chessever2/repository/supabase/chess_player/chess_player_reposit
 import 'package:chessever2/screens/favorites/favorite_players_provider.dart';
 import 'package:chessever2/screens/favorites/tabs/favorites_players_tab.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
-import 'package:chessever2/screens/standings/score_card_screen.dart';
-import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
+import 'package:chessever2/screens/player_profile/player_profile_screen.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/country_utils.dart';
@@ -436,13 +435,18 @@ class _CountrymenPlayersTabState extends ConsumerState<CountrymenPlayersTab>
   }
 
   void _navigateToPlayerDetail(PlayerStandingModel player) {
-    ref.read(selectedBroadcastModelProvider.notifier).state = null;
-    ref.read(selectedPlayerProvider.notifier).state = player;
-    // Clear games context to use fallback (fetches all player games globally)
-    ref.read(scoreCardGamesContextProvider.notifier).state = null;
-    // No event context from countrymen players tab
-    ref.read(scoreCardHasEventContextProvider.notifier).state = false;
-    Navigator.pushNamed(context, '/scorecard_screen');
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => PlayerProfileScreen(
+          fideId: player.fideId,
+          playerName: player.name,
+          title: player.title,
+          federation: player.countryCode,
+          rating: player.score,
+        ),
+      ),
+    );
   }
 
   void _toggleFavorite(

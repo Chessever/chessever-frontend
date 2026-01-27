@@ -59,25 +59,23 @@ final supabaseCombinedSearchProvider =
           final keyB = key(b.name);
           final qLower = trimmedQuery.toLowerCase();
 
-          /* 1. exact */
+          /* 1. exact match first */
           final aExact = keyA == qLower;
           final bExact = keyB == qLower;
           if (aExact && !bExact) return -1;
           if (!aExact && bExact) return 1;
 
-          /* 2. starts-with */
+          /* 2. starts-with beats contains */
           final aStart = keyA.startsWith(qLower);
           final bStart = keyB.startsWith(qLower);
           if (aStart && !bStart) return -1;
           if (!aStart && bStart) return 1;
-          if (aStart && bStart) return keyA.compareTo(keyB);
 
-          /* 3. contains */
+          /* 3. contains beats no match */
           final aContain = keyA.contains(qLower);
           final bContain = keyB.contains(qLower);
           if (aContain && !bContain) return -1;
           if (!aContain && bContain) return 1;
-          if (aContain && bContain) return keyA.compareTo(keyB);
 
           /* 4. most recent first (by start date descending) */
           final aDate = a.dateStart;
