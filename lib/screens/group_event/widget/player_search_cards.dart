@@ -9,6 +9,7 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/country_utils.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/player_initials_avatar.dart' show getTitleBadgeColor;
 import 'package:country_flags/country_flags.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -205,7 +206,7 @@ class _PlayerSearchCard extends ConsumerWidget {
                           vertical: 2.sp,
                         ),
                         decoration: BoxDecoration(
-                          color: _getTitleColor(player.title!),
+                          color: getTitleBadgeColor(player.title!),
                           borderRadius: BorderRadius.circular(4.br),
                         ),
                         child: Text(
@@ -298,29 +299,6 @@ class _PlayerSearchCard extends ConsumerWidget {
       }
     }
     return name;
-  }
-
-  Color _getTitleColor(String title) {
-    switch (title.toUpperCase()) {
-      case 'GM':
-        return const Color(0xFFD4AF37); // Gold
-      case 'IM':
-        return const Color(0xFFC0C0C0); // Silver
-      case 'FM':
-        return const Color(0xFFCD7F32); // Bronze
-      case 'WGM':
-        return const Color(0xFFE8B4B4); // Rose gold
-      case 'WIM':
-        return const Color(0xFFB4C4E8); // Light blue
-      case 'WFM':
-        return const Color(0xFFB4E8D4); // Light teal
-      case 'CM':
-        return const Color(0xFF8B9DC3); // Slate blue
-      case 'WCM':
-        return const Color(0xFFD4B4E8); // Light purple
-      default:
-        return kDarkGreyColor;
-    }
   }
 }
 

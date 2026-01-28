@@ -14,9 +14,9 @@
 
 # Environment variables
 # .env
-.env.*
-.env.dev
-.env copy.dev
+# .env.*
+# .env.dev
+# .env copy.dev
 
 lichess_openapi_structure.json
 

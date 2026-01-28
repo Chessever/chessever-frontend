@@ -74,7 +74,7 @@ class PlayerInitialsAvatar extends StatelessWidget {
             child: Container(
               padding: EdgeInsets.symmetric(horizontal: 3.w, vertical: 1.5.h),
               decoration: BoxDecoration(
-                color: kGreenColor.withValues(alpha: 0.9),
+                color: getTitleBadgeColor(title!),
                 borderRadius: BorderRadius.only(
                   bottomLeft: Radius.circular(effectiveBorderRadius - 2),
                   bottomRight: Radius.circular(effectiveBorderRadius - 2),
@@ -547,4 +547,33 @@ String getPlayerInitials(String name) {
   }
 
   return '?';
+}
+
+/// Returns the appropriate badge color for a chess title.
+/// Consistent across the app for all title badge displays.
+Color getTitleBadgeColor(String title) {
+  switch (title.toUpperCase()) {
+    case 'GM':
+      return const Color(0xFF22C55E); // Green - Grandmaster
+    case 'IM':
+      return const Color(0xFFEAB308); // Yellow/Gold - International Master
+    case 'FM':
+      return const Color(0xFFCD7F32); // Bronze - FIDE Master
+    case 'CM':
+      return const Color(0xFF8B5CF6); // Purple - Candidate Master
+    case 'NM':
+      return const Color(0xFF6366F1); // Indigo - National Master
+    case 'WGM':
+      return const Color(0xFFEC4899); // Pink - Woman Grandmaster
+    case 'WIM':
+      return const Color(0xFFF59E0B); // Amber - Woman International Master
+    case 'WFM':
+      return const Color(0xFF14B8A6); // Teal - Woman FIDE Master
+    case 'WCM':
+      return const Color(0xFFA855F7); // Light Purple - Woman Candidate Master
+    case 'WNM':
+      return const Color(0xFF8B5CF6); // Purple - Woman National Master
+    default:
+      return const Color(0xFF71717A); // Gray - Unknown/Other
+  }
 }

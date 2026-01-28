@@ -351,18 +351,20 @@ class _MenuItem extends StatelessWidget {
       child: Container(
         color: color,
         padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 8.sp),
-        height: 40.h,
+        constraints: BoxConstraints(minHeight: 40.h),
         child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            customIcon ?? Icon(icon, color: kWhiteColor, size: 24.ic),
+            customIcon ?? Icon(icon, color: kWhiteColor, size: 22.ic),
             SizedBox(width: 4.w),
-            Text(
-              title,
-              style: AppTypography.textMdMedium.copyWith(
-                color: textColors ?? kWhiteColor,
+            Expanded(
+              child: Text(
+                title,
+                style: AppTypography.textMdMedium.copyWith(
+                  color: textColors ?? kWhiteColor,
+                ),
               ),
             ),
-            Spacer(),
             showChevron
                 ? Padding(
                   padding: EdgeInsets.only(right: 12.sp),

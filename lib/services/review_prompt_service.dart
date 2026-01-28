@@ -147,11 +147,13 @@ class ReviewPromptService {
           feedback: combinedFeedback,
           trigger: trigger,
         );
-        if (context.mounted) {
-          _showThanksSnackBar(context);
-        }
       } else {
         debugPrint('[Feedback] SKIPPED: combinedFeedback is empty');
+      }
+
+      // Always thank the user for their time
+      if (context.mounted) {
+        _showThanksSnackBar(context);
       }
 
       // If High Rating, trigger native review
