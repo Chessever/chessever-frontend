@@ -1,10 +1,8 @@
 import 'dart:async';
 
 import 'package:chessever2/providers/country_dropdown_provider.dart';
-import 'package:chessever2/widgets/player_initials_avatar.dart';
 import 'package:chessever2/repository/supabase/chess_player/chess_player_repository.dart';
 import 'package:chessever2/screens/favorites/favorite_players_provider.dart';
-import 'package:chessever2/screens/favorites/tabs/favorites_players_tab.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/screens/player_profile/player_profile_screen.dart';
 import 'package:chessever2/theme/app_theme.dart';
@@ -13,14 +11,13 @@ import 'package:chessever2/utils/country_utils.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
+import 'package:chessever2/widgets/figma_player_card.dart';
 import 'package:chessever2/widgets/scroll_to_top_button.dart';
 import 'package:chessever2/widgets/search/gameSearch/enhanced_game_search_widget.dart';
-import 'package:country_flags/country_flags.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:skeletonizer/skeletonizer.dart' as skel;
 
 // --- Provider ---
 
@@ -420,10 +417,11 @@ class _CountrymenPlayersTabState extends ConsumerState<CountrymenPlayersTab>
             final player = players[index];
             final isFavorite = favoriteIds.contains(player.fideId);
 
-            return _PlayerCard(
+            return FigmaPlayerCard(
               player: player,
               isFavorite: isFavorite,
               rank: index + 1,
+              showFavoriteButton: true,
               onTap: () => _navigateToPlayerDetail(player),
               onToggleFavorite: () => _toggleFavorite(player, isFavorite),
             );
@@ -636,197 +634,4 @@ class _CountrymenPlayersTabState extends ConsumerState<CountrymenPlayersTab>
   }
 }
 
-class _PlayerCard extends ConsumerWidget {
-  final PlayerStandingModel player;
-  final bool isFavorite;
-  final int rank;
-  final VoidCallback onTap;
-  final VoidCallback onToggleFavorite;
-
-  const _PlayerCard({
-    required this.player,
-    required this.isFavorite,
-    required this.rank,
-    required this.onTap,
-    required this.onToggleFavorite,
-  });
-
-  String _getInitials(String name) {
-    final parts = name.split(',');
-    if (parts.length > 1) {
-      final first = parts[0].trim();
-      final second = parts[1].trim();
-      return '${first.isNotEmpty ? first[0] : ''}${second.isNotEmpty ? second[0] : ''}'.toUpperCase();
-    }
-    final words = name.trim().split(' ');
-    if (words.length >= 2) {
-      return '${words[0].isNotEmpty ? words[0][0] : ''}${words[1].isNotEmpty ? words[1][0] : ''}'.toUpperCase();
-    }
-    return name.isNotEmpty ? name.substring(0, name.length >= 2 ? 2 : 1).toUpperCase() : '';
-  }
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final photoAsync = ref.watch(playerPhotoProvider(player.fideId));
-    final avatarSize = 44.w;
-    final initials = _getInitials(player.name);
-
-    return Padding(
-      padding: EdgeInsets.only(bottom: 8.h),
-      child: GestureDetector(
-        onTap: onTap,
-        child: Container(
-          padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 10.h),
-          decoration: BoxDecoration(
-            color: kBlack2Color,
-            borderRadius: BorderRadius.circular(12.br),
-          ),
-          child: Row(
-            children: [
-              // Rank number
-              SizedBox(
-                width: 28.w,
-                child: Text(
-                  rank.toString(),
-                  style: AppTypography.textSmMedium.copyWith(
-                    color: const Color(0xFF71717A),
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-              ),
-              SizedBox(width: 4.w),
-              // Player photo
-              photoAsync.when(
-                data: (photoUrl) => PlayerInitialsAvatarCompact(
-                  photoUrl: photoUrl,
-                  initials: initials,
-                  size: avatarSize,
-                  borderRadius: 8.br,
-                ),
-                loading: () => skel.Skeletonizer(
-                  enabled: true,
-                  effect: const skel.ShimmerEffect(
-                    baseColor: Color(0xFF2A2A2A),
-                    highlightColor: Color(0xFF3A3A3A),
-                  ),
-                  child: Container(
-                    width: avatarSize,
-                    height: avatarSize,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF2A2A2A),
-                      borderRadius: BorderRadius.circular(8.br),
-                    ),
-                  ),
-                ),
-                error: (_, __) => PlayerInitialsAvatarCompact(
-                  initials: initials,
-                  size: avatarSize,
-                  borderRadius: 8.br,
-                ),
-              ),
-              SizedBox(width: 12.w),
-              // Player info
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        // Flag
-                        if (player.countryCode.isNotEmpty)
-                          Padding(
-                            padding: EdgeInsets.only(right: 6.w),
-                            child: CountryFlag.fromCountryCode(
-                              player.countryCode,
-                              height: 12.h,
-                              width: 18.w,
-                              shape: RoundedRectangle(2.br),
-                            ),
-                          ),
-                        if (player.title != null && player.title!.isNotEmpty)
-                          Container(
-                            padding: EdgeInsets.symmetric(
-                              horizontal: 4.w,
-                              vertical: 1.h,
-                            ),
-                            margin: EdgeInsets.only(right: 6.w),
-                            decoration: BoxDecoration(
-                              color: _getTitleColor(player.title!),
-                              borderRadius: BorderRadius.circular(3.br),
-                            ),
-                            child: Text(
-                              player.title!,
-                              style: AppTypography.textXsBold.copyWith(
-                                color: kWhiteColor,
-                                fontSize: 10.sp,
-                              ),
-                            ),
-                          ),
-                        Expanded(
-                          child: Text(
-                            player.name,
-                            style: AppTypography.textSmMedium.copyWith(
-                              color: kWhiteColor,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ],
-                    ),
-                    SizedBox(height: 4.h),
-                    Text(
-                      'Elo: ${player.score}',
-                      style: AppTypography.textXsRegular.copyWith(
-                        color: const Color(0xFFA1A1AA),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              // Favorite button
-              GestureDetector(
-                onTap: onToggleFavorite,
-                child: Container(
-                  padding: EdgeInsets.all(8.sp),
-                  child: Icon(
-                    isFavorite ? Icons.favorite : Icons.favorite_border,
-                    color: isFavorite
-                        ? const Color(0xFFEF4444)
-                        : const Color(0xFF71717A),
-                    size: 22.ic,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Color _getTitleColor(String title) {
-    switch (title.toUpperCase()) {
-      case 'GM':
-        return const Color(0xFFEAB308); // Gold
-      case 'IM':
-        return const Color(0xFF3B82F6); // Blue
-      case 'FM':
-        return const Color(0xFF22C55E); // Green
-      case 'CM':
-      case 'NM':
-        return const Color(0xFF8B5CF6); // Purple
-      case 'WGM':
-        return const Color(0xFFEC4899); // Pink
-      case 'WIM':
-        return const Color(0xFF06B6D4); // Cyan
-      case 'WFM':
-        return const Color(0xFF84CC16); // Lime
-      case 'WCM':
-        return const Color(0xFFF97316); // Orange
-      default:
-        return const Color(0xFF71717A); // Gray
-    }
-  }
-}
 

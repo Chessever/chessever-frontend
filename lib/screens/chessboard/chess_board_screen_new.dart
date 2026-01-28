@@ -5250,21 +5250,35 @@ class _AnalysisGameBody extends ConsumerWidget {
                 SizedBox(width: 12.sp),
 
                 // ─────────────────────────────────────────────────────────────
-                // RIGHT SECTION: Moves display and analysis
+                // RIGHT SECTION: PV cards + Moves display and analysis
                 // ─────────────────────────────────────────────────────────────
                 Expanded(
-                  child: Container(
+                  child: SizedBox(
                     height: screenHeight - 16.sp,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF1A1A1A),
-                      borderRadius: BorderRadius.circular(12.sp),
-                      border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.06),
-                        width: 1,
-                      ),
+                    child: Column(
+                      children: [
+                        // PV Cards section for tablet landscape
+                        if (pvSection.isNotEmpty) ...[
+                          ...pvSection,
+                          SizedBox(height: 8.sp),
+                        ],
+                        // Moves panel with elegant container
+                        Expanded(
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF1A1A1A),
+                              borderRadius: BorderRadius.circular(12.sp),
+                              border: Border.all(
+                                color: Colors.white.withValues(alpha: 0.06),
+                                width: 1,
+                              ),
+                            ),
+                            clipBehavior: Clip.antiAlias,
+                            child: buildAnalysisView(),
+                          ),
+                        ),
+                      ],
                     ),
-                    clipBehavior: Clip.antiAlias,
-                    child: buildAnalysisView(),
                   ),
                 ),
               ],

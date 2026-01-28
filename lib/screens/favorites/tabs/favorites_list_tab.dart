@@ -7,9 +7,9 @@ import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provide
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/tablet_safe_menu.dart';
+import 'package:chessever2/widgets/figma_player_card.dart';
 import 'package:chessever2/widgets/scroll_to_top_button.dart';
 import 'package:chessever2/widgets/search/gameSearch/enhanced_game_search_widget.dart';
-import 'package:chessever2/widgets/standing_score_card.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -154,7 +154,7 @@ class _FavoritesListTabState extends ConsumerState<FavoritesListTab>
 
     // Tablet-specific padding
     final horizontalPadding = ResponsiveHelper.adaptive(
-      phone: 20.sp,
+      phone: 16.sp,
       tablet: 24.sp,
     );
 
@@ -163,73 +163,12 @@ class _FavoritesListTabState extends ConsumerState<FavoritesListTab>
       sliver: SliverList(
         delegate: SliverChildBuilderDelegate(
           (context, index) {
-            // First item is the column header
-            if (index == 0) {
-              return Padding(
-                padding: EdgeInsets.only(bottom: 4.h),
-                child: Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 8.sp),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      // Rank header
-                      SizedBox(
-                        width: 28.w,
-                        child: Text(
-                          '#',
-                          style: AppTypography.textSmMedium.copyWith(
-                            color: kWhiteColor,
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
-                      ),
-                      Expanded(
-                        child: Row(
-                          children: [
-                            SizedBox(width: 20.w),
-                            Flexible(
-                              child: Text(
-                                'Player',
-                                style: AppTypography.textSmMedium.copyWith(
-                                  color: kWhiteColor,
-                                ),
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      SizedBox(
-                        width: 100.w,
-                        child: Text(
-                          'Elo',
-                          style: AppTypography.textSmMedium.copyWith(
-                            color: kWhiteColor,
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
-                      ),
-                      SizedBox(width: 60.w),
-                    ],
-                  ),
-                ),
-              );
-            }
-
-            // Adjust index for player items (subtract 1 for header)
-            final playerIndex = index - 1;
-            final player = sortedPlayers[playerIndex];
-            return StandingScoreCard(
-              countryCode: player.countryCode,
-              title: player.title,
-              name: player.name,
-              score: player.score,
-              scoreChange: player.scoreChange,
-              matchScore: player.matchScore,
-              index: playerIndex,
-              rank: playerIndex + 1,
-              isFirst: playerIndex == 0,
-              isLast: playerIndex == sortedPlayers.length - 1,
+            final player = sortedPlayers[index];
+            return FigmaPlayerCard(
+              player: player,
+              rank: index + 1,
+              isFavorite: true,
+              showFavoriteButton: true,
               onTap: () {
                 FocusScope.of(context).unfocus();
                 ref.read(selectedBroadcastModelProvider.notifier).state = null;
@@ -248,12 +187,9 @@ class _FavoritesListTabState extends ConsumerState<FavoritesListTab>
                   player,
                 );
               },
-              isFav: true,
-              hideScore: true,
             );
           },
-          // +1 for header row
-          childCount: sortedPlayers.length + 1,
+          childCount: sortedPlayers.length,
         ),
       ),
     );

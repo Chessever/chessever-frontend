@@ -169,35 +169,31 @@ class _EvaluationBarWidgetState extends State<EvaluationBarWidget> {
                   color: bottomColor,
                 ),
               ),
-              Center(
+              // Evaluation text positioned at the meeting point of black/white
+              Positioned(
+                left: 0,
+                right: 0,
+                // Position at the edge where black and white meet, clamped to stay within bounds
+                top: (topHeight - 10.h).clamp(0.0, widget.height - 20.h),
                 child: Container(
                   width: widget.width,
-                  height: 2,
-                  color: kRedColor,
-                ),
-              ),
-              Center(
-                child: Container(
-                  padding: EdgeInsets.symmetric(
-                    horizontal: 1.w,
-                    vertical: 0.5.h,
-                  ),
-                  decoration: BoxDecoration(
-                    color: kPrimaryColor,
-                    borderRadius: BorderRadius.circular(2.br),
-                  ),
-                  child: Text(
-                    showLoading
-                        ? '...'
-                        : (displayEval.abs() >= 10.0 && displayMate != 0)
-                        ? '#${displayMate.abs()}'
-                        : displayEval.abs().toStringAsFixed(1),
-                    maxLines: 1,
-                    textAlign: TextAlign.center,
-                    style: AppTypography.textSmRegular.copyWith(
-                      color: Colors.white,
-                      fontSize: 3.5.f,
-                      fontWeight: FontWeight.w600,
+                  color: kPrimaryColor,
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      showLoading
+                          ? '...'
+                          : (displayEval.abs() >= 10.0 && displayMate != 0)
+                          ? '#${displayMate.abs()}'
+                          : displayEval.abs().toStringAsFixed(1),
+                      maxLines: 1,
+                      textAlign: TextAlign.center,
+                      style: AppTypography.textSmRegular.copyWith(
+                        color: Colors.white,
+                        fontSize: 3.5.f,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: -0.5,
+                      ),
                     ),
                   ),
                 ),
@@ -394,31 +390,38 @@ class _Bars extends StatelessWidget {
               color: isFlipped ? kPopUpColor : kWhiteColor,
             ),
           ),
-          Center(child: Container(width: width, height: 2, color: kRedColor)),
-          Center(
+          // Evaluation text positioned at the meeting point of black/white
+          Positioned(
+            left: 0,
+            right: 0,
+            // Position at the edge where black and white meet, clamped to stay within bounds
+            top: ((isFlipped ? whiteHeight : blackHeight) -
+                    (playerView == PlayerView.gridView ? 6.h : 10.h))
+                .clamp(0.0, height - (playerView == PlayerView.gridView ? 12.h : 20.h)),
             child: Container(
-              padding: EdgeInsets.symmetric(horizontal: 1.w, vertical: 0.5.h),
-              decoration: BoxDecoration(
-                color: kPrimaryColor,
-                borderRadius: BorderRadius.circular(2.br),
-              ),
-              child: Text(
-                isEvaluating && evaluation == 0.0
-                    ? '...'
-                    : isCheckmate
-                    ? '#'
-                    : (isMate && mate != 0)
-                    ? '#${mate.abs()}'
-                    : evaluation.round().abs().toString(),
-                maxLines: 1,
-                textAlign: TextAlign.center,
-                style: AppTypography.textSmRegular.copyWith(
-                  color: Colors.white,
-                  fontSize: playerView == PlayerView.gridView ? 0.2.f : 1.5.f,
-                  fontWeight:
-                      playerView == PlayerView.gridView
-                          ? FontWeight.w300
-                          : FontWeight.w600,
+              width: width,
+              color: kPrimaryColor,
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  isEvaluating && evaluation == 0.0
+                      ? '...'
+                      : isCheckmate
+                      ? '#'
+                      : (isMate && mate != 0)
+                      ? '#${mate.abs()}'
+                      : evaluation.abs().toStringAsFixed(1),
+                  maxLines: 1,
+                  textAlign: TextAlign.center,
+                  style: AppTypography.textSmRegular.copyWith(
+                    color: Colors.white,
+                    fontSize: playerView == PlayerView.gridView ? 0.2.f : 1.5.f,
+                    fontWeight:
+                        playerView == PlayerView.gridView
+                            ? FontWeight.w300
+                            : FontWeight.w600,
+                    letterSpacing: -0.5,
+                  ),
                 ),
               ),
             ),
