@@ -88,11 +88,25 @@ class ReviewPromptService {
     bool force = false,
     bool skipSurveyForHighRating = false,
   }) async {
-    if (_promptActive) return;
-    if (!context.mounted) return;
-    if (!force && !await _shouldPrompt(trigger)) return;
-    if (!context.mounted) return;
+    debugPrint('[Feedback] maybePrompt called - trigger: $trigger, force: $force');
+    if (_promptActive) {
+      debugPrint('[Feedback] BLOCKED: prompt already active');
+      return;
+    }
+    if (!context.mounted) {
+      debugPrint('[Feedback] BLOCKED: context not mounted (1)');
+      return;
+    }
+    if (!force && !await _shouldPrompt(trigger)) {
+      debugPrint('[Feedback] BLOCKED: _shouldPrompt returned false');
+      return;
+    }
+    if (!context.mounted) {
+      debugPrint('[Feedback] BLOCKED: context not mounted (2)');
+      return;
+    }
 
+    debugPrint('[Feedback] Showing dialog...');
     _promptActive = true;
     try {
       // Step 1: Show the unified review flow dialog
@@ -100,11 +114,15 @@ class ReviewPromptService {
         context,
         skipSurveyForHighRating: skipSurveyForHighRating,
       );
-      
-      if (!context.mounted) return;
+
+      debugPrint('[Feedback] Dialog result: rating=${result?.rating}, feedback=${result?.feedback}, featureRequest=${result?.featureRequest}');
+
       await _recordPromptShown();
 
-      if (result == null) return;
+      if (result == null) {
+        debugPrint('[Feedback] BLOCKED: result is null (user cancelled)');
+        return;
+      }
 
       final prefs = await _getPrefs();
       await prefs.setInt(_keyLastRating, result.rating);
@@ -119,9 +137,11 @@ class ReviewPromptService {
       }
 
       final combinedFeedback = parts.join('\n\n');
+      debugPrint('[Feedback] combinedFeedback: "$combinedFeedback"');
 
       // Submit if there's any text
       if (combinedFeedback.isNotEmpty) {
+        debugPrint('[Feedback] Calling _submitFeedback...');
         await _submitFeedback(
           rating: result.rating,
           feedback: combinedFeedback,
@@ -130,6 +150,8 @@ class ReviewPromptService {
         if (context.mounted) {
           _showThanksSnackBar(context);
         }
+      } else {
+        debugPrint('[Feedback] SKIPPED: combinedFeedback is empty');
       }
 
       // If High Rating, trigger native review
@@ -248,11 +270,17 @@ class ReviewPromptService {
     required String feedback,
     required ReviewPromptTrigger trigger,
   }) async {
+    debugPrint('[Feedback] _submitFeedback called - rating: $rating, trigger: $trigger');
     final supabase = Supabase.instance.client;
     final userId = supabase.auth.currentUser?.id;
-    if (userId == null) return;
+    debugPrint('[Feedback] userId: $userId');
+    if (userId == null) {
+      debugPrint('[Feedback] BLOCKED: userId is null (not logged in)');
+      return;
+    }
 
     final packageInfo = await PackageInfo.fromPlatform();
+    debugPrint('[Feedback] Inserting to Supabase...');
     try {
       await supabase.from('app_feedback').insert({
         'user_id': userId,
@@ -263,8 +291,10 @@ class ReviewPromptService {
         'build_number': packageInfo.buildNumber,
         'platform': Platform.operatingSystem,
       });
+      debugPrint('[Feedback] Supabase insert SUCCESS');
 
       // Send Telegram notification for immediate alert
+      debugPrint('[Feedback] Sending Telegram notification...');
       await TelegramNotificationService.instance.sendFeedbackNotification(
         rating: rating,
         feedback: feedback,
@@ -273,8 +303,9 @@ class ReviewPromptService {
         appVersion: '${packageInfo.version} (${packageInfo.buildNumber})',
         platform: Platform.operatingSystem,
       );
-    } catch (_) {
-      // Ignore feedback submission errors.
+      debugPrint('[Feedback] Telegram notification sent');
+    } catch (e) {
+      debugPrint('[Feedback] ERROR: $e');
     }
   }
 

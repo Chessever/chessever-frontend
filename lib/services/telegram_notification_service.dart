@@ -52,6 +52,7 @@ class TelegramNotificationService {
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
           'chat_id': _chatId,
+          'message_thread_id': 19,
           'text': message.toString(),
           'parse_mode': 'Markdown',
         }),
