@@ -18,6 +18,7 @@ class LiveGamebaseSearchGameCard extends ConsumerWidget {
     this.showSwipeHint = false,
     this.showGamebaseButton = false,
     this.hideEventInfo = false,
+    this.onTap,
   });
 
   final GamesTourModel game;
@@ -29,6 +30,9 @@ class LiveGamebaseSearchGameCard extends ConsumerWidget {
   final bool showSwipeHint;
   final bool showGamebaseButton;
   final bool hideEventInfo;
+
+  /// Optional tap callback. If provided, overrides default chessboard navigation.
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -55,6 +59,7 @@ class LiveGamebaseSearchGameCard extends ConsumerWidget {
       showSwipeHint: showSwipeHint,
       showGamebaseButton: showGamebaseButton,
       hideEventInfo: hideEventInfo,
+      onTap: onTap,
     );
   }
 }

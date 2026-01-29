@@ -1,14 +1,13 @@
 import 'dart:async';
 
 import 'package:chessever2/repository/favorites/models/favorite_player.dart';
-import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/favorites/favorite_players_provider.dart';
 import 'package:chessever2/screens/favorites/player_games/provider/favorites_combined_games_provider.dart';
 import 'package:chessever2/screens/library/widgets/add_to_folder_sheet.dart';
 import 'package:chessever2/screens/library/widgets/live_gamebase_search_game_card.dart';
+import 'package:chessever2/screens/player_profile/player_profile_screen.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
-import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/board_game_card_wrapper_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/grid_game_card_wrapper_widget.dart';
 import 'package:chessever2/theme/app_theme.dart';
@@ -750,6 +749,7 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
                   allGames: games,
                   isChessBoardVisible: true,
                   isLast: isLast,
+                  onNavigateToProfile: () => _navigateToPlayerProfile(game),
                 ),
               );
             } else {
@@ -766,6 +766,7 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
                     showSwipeHint: showHint,
                     showGamebaseButton: false,
                     onAdd: () => _showAddToFolderSheet(context, game),
+                    onTap: () => _navigateToPlayerProfile(game),
                   ),
                 ),
               );
@@ -840,13 +841,8 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
         if (!hasPremium) return;
         if (!mounted) return;
 
-        ref.read(gameCardWrapperProvider).navigateToChessBoard(
-              context: context,
-              orderedGames: updatedGames,
-              gameIndex: gameIndex,
-              onReturnFromChessboard: (_) {},
-              viewSource: ChessboardView.favScorecard,
-            );
+        // Navigate to player profile for the favorite player
+        _navigateToPlayerProfile(game);
       },
       pinnedIds: const [],
       onPinToggle: (_) {},
@@ -1063,6 +1059,44 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
   void _showAddToFolderSheet(BuildContext context, GamesTourModel game) {
     showAddToFolderSheet(context: context, game: game);
   }
+
+  /// Navigate to player profile for the favorite player in this game.
+  /// Determines which player (white or black) is the favorite and navigates to their profile.
+  void _navigateToPlayerProfile(GamesTourModel game) {
+    final favoritesState = ref.read(favoritePlayersNotifierProvider);
+    final favoriteIds = favoritesState.valueOrNull?.players
+            .map((p) => p.fideId)
+            .where((id) => id != null)
+            .cast<int>()
+            .toSet() ??
+        <int>{};
+
+    // Determine which player is the favorite
+    PlayerCard? favoritePlayer;
+    if (game.whitePlayer.fideId != null &&
+        favoriteIds.contains(game.whitePlayer.fideId)) {
+      favoritePlayer = game.whitePlayer;
+    } else if (game.blackPlayer.fideId != null &&
+        favoriteIds.contains(game.blackPlayer.fideId)) {
+      favoritePlayer = game.blackPlayer;
+    }
+
+    // Fallback to white player if neither is found (shouldn't happen in favorites)
+    favoritePlayer ??= game.whitePlayer;
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => PlayerProfileScreen(
+          fideId: favoritePlayer!.fideId,
+          playerName: favoritePlayer.name,
+          title: favoritePlayer.title.isNotEmpty ? favoritePlayer.title : null,
+          federation: favoritePlayer.federation,
+          rating: favoritePlayer.rating > 0 ? favoritePlayer.rating : null,
+        ),
+      ),
+    );
+  }
 }
 
 /// Date section header - similar to RoundHeader
@@ -1152,6 +1186,7 @@ class _FavoritesKeepAliveGameCard extends ConsumerStatefulWidget {
     required this.allGames,
     required this.isChessBoardVisible,
     required this.isLast,
+    required this.onNavigateToProfile,
   });
 
   final GamesTourModel game;
@@ -1161,6 +1196,7 @@ class _FavoritesKeepAliveGameCard extends ConsumerStatefulWidget {
   final List<GamesTourModel> allGames;
   final bool isChessBoardVisible;
   final bool isLast;
+  final VoidCallback onNavigateToProfile;
 
   @override
   ConsumerState<_FavoritesKeepAliveGameCard> createState() =>
@@ -1179,13 +1215,8 @@ class _FavoritesKeepAliveGameCardState
     if (!hasPremium) return;
     if (!mounted) return;
 
-    ref.read(gameCardWrapperProvider).navigateToChessBoard(
-          context: context,
-          orderedGames: updatedGames,
-          gameIndex: widget.gameIndex,
-          onReturnFromChessboard: (_) {},
-          viewSource: ChessboardView.favScorecard,
-        );
+    // Navigate to player profile for the favorite player
+    widget.onNavigateToProfile();
   }
 
   @override

@@ -23,6 +23,177 @@ import 'package:chessever2/utils/png_asset.dart';
 import 'package:chessground/chessground.dart';
 import 'package:dartchess/dartchess.dart';
 
+/// Remove a king from FEN string to hide it when showing fallen king overlay
+String _removeKingFromFen(String fen, Square square, String kingChar) {
+  final parts = fen.split(' ');
+  if (parts.isEmpty) return fen;
+
+  final ranks = parts[0].split('/');
+  final rankIndex = 7 - square.rank;
+  if (rankIndex < 0 || rankIndex >= ranks.length) return fen;
+
+  final rank = ranks[rankIndex];
+  final expanded = StringBuffer();
+  for (final char in rank.split('')) {
+    final digit = int.tryParse(char);
+    if (digit != null) {
+      expanded.write('1' * digit);
+    } else {
+      expanded.write(char);
+    }
+  }
+
+  final fileIndex = square.file;
+  final chars = expanded.toString().split('');
+  if (fileIndex >= 0 && fileIndex < chars.length && chars[fileIndex] == kingChar) {
+    chars[fileIndex] = '1';
+  }
+
+  final compressed = StringBuffer();
+  int emptyCount = 0;
+  for (final char in chars) {
+    if (char == '1') {
+      emptyCount++;
+    } else {
+      if (emptyCount > 0) {
+        compressed.write(emptyCount);
+        emptyCount = 0;
+      }
+      compressed.write(char);
+    }
+  }
+  if (emptyCount > 0) {
+    compressed.write(emptyCount);
+  }
+
+  ranks[rankIndex] = compressed.toString();
+  parts[0] = ranks.join('/');
+  return parts.join(' ');
+}
+
+/// Square highlight overlay for game ending effects (static version for share)
+class _ShareSquareHighlight extends StatelessWidget {
+  final double left;
+  final double top;
+  final double squareSize;
+  final Color color;
+
+  const _ShareSquareHighlight({
+    required this.left,
+    required this.top,
+    required this.squareSize,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned(
+      left: left,
+      top: top,
+      child: Container(
+        width: squareSize,
+        height: squareSize,
+        color: color,
+      ),
+    );
+  }
+}
+
+/// Fallen king overlay for share (static, tilted 45 degrees - no animation)
+class _ShareFallenKingOverlay extends StatelessWidget {
+  final double left;
+  final double top;
+  final double squareSize;
+  final ImageProvider pieceImage;
+
+  const _ShareFallenKingOverlay({
+    required this.left,
+    required this.top,
+    required this.squareSize,
+    required this.pieceImage,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned(
+      left: left,
+      top: top,
+      child: SizedBox(
+        width: squareSize,
+        height: squareSize,
+        child: Center(
+          child: Transform.rotate(
+            angle: -0.785398, // -45 degrees
+            alignment: Alignment.center,
+            child: Image(
+              image: pieceImage,
+              fit: BoxFit.contain,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Peace icon (dove) overlay for share (static, no animation)
+class _SharePeaceIcon extends StatelessWidget {
+  final Square square;
+  final double squareSize;
+  final bool isFlipped;
+
+  const _SharePeaceIcon({
+    required this.square,
+    required this.squareSize,
+    required this.isFlipped,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final file = square.file;
+    final rank = square.rank;
+
+    // Position on board (account for flip)
+    final effectiveFile = isFlipped ? 7 - file : file;
+    final effectiveRank = isFlipped ? rank : 7 - rank;
+
+    // Scale down for smaller boards
+    final containerSize = squareSize * 0.28;
+
+    return Positioned(
+      left: effectiveFile * squareSize + squareSize - containerSize - 1,
+      top: effectiveRank * squareSize + 1,
+      child: Container(
+        width: containerSize,
+        height: containerSize,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          shape: BoxShape.circle,
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.2),
+              blurRadius: 2,
+              offset: const Offset(0, 1),
+            ),
+          ],
+        ),
+        child: Center(
+          child: ColorFiltered(
+            colorFilter: const ColorFilter.mode(
+              Colors.black,
+              BlendMode.srcIn,
+            ),
+            child: Text(
+              '🕊️',
+              style: TextStyle(fontSize: containerSize * 0.6),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// Raw frame data for GIF encoding (avoids PNG encoding/decoding issues on iOS P3 displays)
 class _RawFrame {
   final Uint8List rgba;
@@ -191,6 +362,7 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
   NormalMove? _gifFrameLastMove;
   String? _gifFrameWhiteClock;
   String? _gifFrameBlackClock;
+  bool _gifFrameShowEndOverlay = false; // Only true for last frame of GIF
 
   // Board settings with animations disabled for instant frame capture
   ChessboardSettings get _gifBoardSettings => ChessboardSettings(
@@ -335,11 +507,13 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
 
       // Initial position - set state and wait for widget to build
       // At initial position (before any moves), no clocks to show yet
+      // Don't show end overlay yet (only for last frame)
       setState(() {
         _gifFrameFen = position.fen;
         _gifFrameLastMove = null;
         _gifFrameWhiteClock = null;
         _gifFrameBlackClock = null;
+        _gifFrameShowEndOverlay = false;
       });
       // Wait for widget to build and paint
       await WidgetsBinding.instance.endOfFrame;
@@ -373,11 +547,15 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
         // Get clock times at this move index
         final (whiteClock, blackClock) = _getClocksAtMoveIndex(i);
 
+        // Show end game overlay only on the last frame
+        final isLastFrame = i == movesToAnimate.length - 1;
+
         setState(() {
           _gifFrameFen = position.fen;
           _gifFrameLastMove = lastMoveForDisplay;
           _gifFrameWhiteClock = whiteClock;
           _gifFrameBlackClock = blackClock;
+          _gifFrameShowEndOverlay = isLastFrame; // Fallen king / peace icons only on last frame
           _gifProgress = (i + 1) / movesToAnimate.length * 0.7; // 70% for capture
         });
 
@@ -464,6 +642,7 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
         _gifFrameLastMove = null;
         _gifFrameWhiteClock = null;
         _gifFrameBlackClock = null;
+        _gifFrameShowEndOverlay = false;
       });
     }
   }
@@ -857,6 +1036,7 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
                   isPreview: false,
                   showEvalBar: false, // No eval bar in GIF
                   gameId: widget.gameId,
+                  showEndGameOverlay: _gifFrameShowEndOverlay, // Only true for last frame
                 ),
               ),
             ),
@@ -894,6 +1074,7 @@ class _ShareCard extends ConsumerWidget {
   final bool isPreview;
   final bool showEvalBar;
   final String gameId; // CRITICAL: Include game ID for correct eval caching
+  final bool showEndGameOverlay; // Control whether to show fallen king/peace icons
 
   const _ShareCard({
     required this.boardSettings,
@@ -922,7 +1103,155 @@ class _ShareCard extends ConsumerWidget {
     this.isPreview = false,
     this.showEvalBar = true,
     required this.gameId, // REQUIRED for correct eval caching
+    this.showEndGameOverlay = true, // Default to true for normal use
   });
+
+  /// Build board widget with end-game overlays (fallen king for wins, peace icons for draws)
+  Widget _buildBoardWithOverlays({
+    required double boardSize,
+    required String fen,
+    required Side orientation,
+    required Move? lastMove,
+    required ChessboardSettings boardSettings,
+  }) {
+    // Check if game has ended with a winner or draw
+    // Only show overlays if showEndGameOverlay is true (for GIF, only on last frame)
+    final isGameEnded = gameStatus.isFinished && showEndGameOverlay;
+    final isWhiteWins = gameStatus == GameStatus.whiteWins;
+    final isBlackWins = gameStatus == GameStatus.blackWins;
+    final isDraw = gameStatus == GameStatus.draw;
+
+    // Parse FEN to find king positions
+    String displayFen = fen;
+    Square? loserKingSquare;
+    Square? whiteKingSquare;
+    Square? blackKingSquare;
+
+    if (isGameEnded && displayFen.isNotEmpty) {
+      try {
+        final position = Chess.fromSetup(Setup.parseFen(displayFen));
+        final board = position.board;
+        whiteKingSquare = board.kingOf(Side.white);
+        blackKingSquare = board.kingOf(Side.black);
+
+        if (isWhiteWins && blackKingSquare != null) {
+          loserKingSquare = Square.fromName(blackKingSquare.name);
+          displayFen = _removeKingFromFen(displayFen, loserKingSquare, 'k');
+        } else if (isBlackWins && whiteKingSquare != null) {
+          loserKingSquare = Square.fromName(whiteKingSquare.name);
+          displayFen = _removeKingFromFen(displayFen, loserKingSquare, 'K');
+        }
+      } catch (e) {
+        // If FEN parsing fails, just use original FEN without overlays
+        debugPrint('Share overlay FEN parse error: $e');
+      }
+    }
+
+    final chessboard = SizedBox(
+      width: boardSize,
+      height: boardSize,
+      child: Chessboard(
+        size: boardSize,
+        fen: displayFen,
+        orientation: orientation,
+        lastMove: lastMove,
+        game: null,
+        settings: boardSettings,
+      ),
+    );
+
+    final isFlippedBoard = orientation == Side.black;
+
+    // Add fallen king overlay for wins
+    if ((isWhiteWins || isBlackWins) && loserKingSquare != null) {
+      final squareSize = boardSize / 8;
+      final loserSide = isWhiteWins ? Side.black : Side.white;
+      final pieceKind = loserSide == Side.white
+          ? PieceKind.whiteKing
+          : PieceKind.blackKing;
+      final pieceImage = boardSettings.pieceAssets[pieceKind];
+
+      if (pieceImage == null) {
+        return chessboard;
+      }
+
+      // Position on board (account for flip)
+      final effectiveFile = isFlippedBoard ? 7 - loserKingSquare.file : loserKingSquare.file;
+      final effectiveRank = isFlippedBoard ? loserKingSquare.rank : 7 - loserKingSquare.rank;
+
+      return SizedBox(
+        width: boardSize,
+        height: boardSize,
+        child: Stack(
+          children: [
+            chessboard,
+            // Red background for loser's king square
+            _ShareSquareHighlight(
+              left: effectiveFile * squareSize,
+              top: effectiveRank * squareSize,
+              squareSize: squareSize,
+              color: const Color(0xCCF53236), // Red with alpha
+            ),
+            _ShareFallenKingOverlay(
+              left: effectiveFile * squareSize,
+              top: effectiveRank * squareSize,
+              squareSize: squareSize,
+              pieceImage: pieceImage,
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Add dove icons for draws
+    if (isDraw && whiteKingSquare != null && blackKingSquare != null) {
+      final squareSize = boardSize / 8;
+      final whiteKingCg = Square.fromName(whiteKingSquare.name);
+      final blackKingCg = Square.fromName(blackKingSquare.name);
+
+      // Calculate positions for both kings (account for flip)
+      final whiteEffectiveFile = isFlippedBoard ? 7 - whiteKingCg.file : whiteKingCg.file;
+      final whiteEffectiveRank = isFlippedBoard ? whiteKingCg.rank : 7 - whiteKingCg.rank;
+      final blackEffectiveFile = isFlippedBoard ? 7 - blackKingCg.file : blackKingCg.file;
+      final blackEffectiveRank = isFlippedBoard ? blackKingCg.rank : 7 - blackKingCg.rank;
+
+      return SizedBox(
+        width: boardSize,
+        height: boardSize,
+        child: Stack(
+          children: [
+            chessboard,
+            // Mint/teal background for white king's square
+            _ShareSquareHighlight(
+              left: whiteEffectiveFile * squareSize,
+              top: whiteEffectiveRank * squareSize,
+              squareSize: squareSize,
+              color: const Color(0xCCADE1CD), // Mint green with alpha
+            ),
+            // Mint/teal background for black king's square
+            _ShareSquareHighlight(
+              left: blackEffectiveFile * squareSize,
+              top: blackEffectiveRank * squareSize,
+              squareSize: squareSize,
+              color: const Color(0xCCADE1CD), // Mint green with alpha
+            ),
+            _SharePeaceIcon(
+              square: whiteKingCg,
+              squareSize: squareSize,
+              isFlipped: isFlippedBoard,
+            ),
+            _SharePeaceIcon(
+              square: blackKingCg,
+              squareSize: squareSize,
+              isFlipped: isFlippedBoard,
+            ),
+          ],
+        ),
+      );
+    }
+
+    return chessboard;
+  }
 
   Widget _buildEndScoreWidget({required bool isWhitePlayer}) {
     // For finished games, display end scores similar to main chess board screen
@@ -1246,17 +1575,12 @@ class _ShareCard extends ConsumerWidget {
                         ),
                       ),
                     ),
-                    SizedBox(
-                      width: boardSize,
-                      height: boardSize,
-                      child: Chessboard(
-                        size: boardSize,
-                        fen: positionFen,
-                        orientation: boardOrientation,
-                        lastMove: lastMove,
-                        game: null,
-                        settings: boardSettings,
-                      ),
+                    _buildBoardWithOverlays(
+                      boardSize: boardSize,
+                      fen: positionFen,
+                      orientation: boardOrientation,
+                      lastMove: lastMove,
+                      boardSettings: boardSettings,
                     ),
                   ],
                 );

@@ -118,7 +118,7 @@ class _SearchResultTileState extends State<SearchResultTile>
               ),
               SizedBox(height: 4.h),
               Text(
-                'in ${widget.result.tournament.title}',
+                _buildPlayerSubtitle(player),
                 style: TextStyle(
                   color: Colors.grey[400],
                   fontSize: 12,
@@ -130,6 +130,18 @@ class _SearchResultTileState extends State<SearchResultTile>
         ),
       ],
     );
+  }
+
+  String _buildPlayerSubtitle(dynamic player) {
+    if (player == null) return '';
+    final parts = <String>[];
+    if (player.title != null && player.title!.isNotEmpty) {
+      parts.add(player.title!);
+    }
+    if (player.rating != null && player.rating! > 0) {
+      parts.add('${player.rating}');
+    }
+    return parts.join(' • ');
   }
 
   Widget _buildTournamentContent() {

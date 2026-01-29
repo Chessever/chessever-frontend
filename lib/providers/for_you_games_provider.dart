@@ -14,6 +14,8 @@ import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/game_status_stream_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_pin_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/live_rounds_id_provider.dart';
+import 'package:collection/collection.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -285,9 +287,11 @@ final eventGamesProvider = FutureProvider.autoDispose
   selectedTourId ??= eventId;
 
   // Collect games from the selected tour - only those that have actually started
+  // Always use refresh() to get fresh data from network for For You tab
+  // This ensures we see new rounds immediately when they start
   final allGames = <Games>[];
   try {
-    final games = await gamesStorage.getGames(selectedTourId);
+    final games = await gamesStorage.refresh(selectedTourId);
     for (final game in games) {
       // Only include games that have ACTUALLY started (have moves or finished)
       if (_hasActuallyStarted(game) && game.players != null && game.players!.length >= 2) {
@@ -419,15 +423,53 @@ int _extractGameNumber(String roundSlug) {
 }
 
 // ============================================================================
-// LIVE GAME WATCHER - AUTO-REFRESH WHEN GAMES FINISH
+// LIVE ROUND WATCHER - DETECTS ROUND STARTS FOR ALL FOR YOU EVENTS
+// ============================================================================
+
+/// Tracks the last known set of live round IDs to detect changes
+/// Persists across provider rebuilds to properly detect additions
+final _lastKnownLiveRoundsProvider = StateProvider<Set<String>>((ref) => {});
+
+// ============================================================================
+// LIVE GAME WATCHER - AUTO-REFRESH WHEN GAMES FINISH OR ROUNDS START
 // ============================================================================
 
 /// Watches the status of displayed games and returns updated list
-/// When a live game finishes, it automatically re-fetches to show next live game
+/// When a live game finishes OR a new round starts, it automatically re-fetches
 final forYouEventGamesWithAutoRefreshProvider = Provider.autoDispose
     .family<AsyncValue<List<Games>>, String>((ref, eventId) {
   // Watch the base games provider
   final gamesAsync = ref.watch(eventGamesProvider(eventId));
+
+  // Listen for live round changes - this triggers refresh when new rounds start
+  // Using listen instead of watch to get previous value for comparison
+  ref.listen<AsyncValue<List<String>>>(liveRoundsIdProvider, (previous, current) {
+    final currRounds = current.valueOrNull;
+    if (currRounds == null) return;
+
+    final currSet = currRounds.toSet();
+    final lastKnown = ref.read(_lastKnownLiveRoundsProvider);
+
+    // Only trigger refresh if we have a baseline AND new rounds were added
+    // This prevents refresh on initial load
+    if (lastKnown.isNotEmpty) {
+      final newRounds = currSet.difference(lastKnown);
+      if (newRounds.isNotEmpty) {
+        debugPrint('[ForYou] New rounds started: ${newRounds.length} rounds - refreshing games for event $eventId');
+        // Invalidate to re-fetch games with new round data
+        Future.microtask(() {
+          ref.invalidate(eventGamesProvider(eventId));
+        });
+      }
+    }
+
+    // Update baseline if changed
+    if (!const SetEquality<String>().equals(currSet, lastKnown)) {
+      Future.microtask(() {
+        ref.read(_lastKnownLiveRoundsProvider.notifier).state = currSet;
+      });
+    }
+  }, fireImmediately: true);
 
   return gamesAsync.when(
     data: (games) {

@@ -27,6 +27,7 @@ class GamebaseSearchGameCard extends ConsumerWidget {
     // this.showGamebaseButton = true,
     this.showGamebaseButton = false,
     this.hideEventInfo = false,
+    this.onTap,
   });
 
   final GamesTourModel game;
@@ -47,6 +48,9 @@ class GamebaseSearchGameCard extends ConsumerWidget {
   /// Set to true for library/position analysis where event info is not relevant.
   final bool hideEventInfo;
 
+  /// Optional tap callback. If provided, overrides default chessboard navigation.
+  final VoidCallback? onTap;
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final card = LibraryGameCard(
@@ -55,7 +59,7 @@ class GamebaseSearchGameCard extends ConsumerWidget {
       eco: game.eco,  // Only ECO code, never round info
       date: game.lastMoveTime,
       showRound: showRound,
-      onTap: () => _handleGamebaseTap(context, ref, game, allGames, gameIndex),
+      onTap: onTap ?? () => _handleGamebaseTap(context, ref, game, allGames, gameIndex),
       onLongPress: onAdd,
     );
 

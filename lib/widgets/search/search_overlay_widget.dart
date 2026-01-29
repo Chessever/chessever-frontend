@@ -148,19 +148,10 @@ class SearchOverlay extends ConsumerWidget {
     bool isFullWidth = false,
     bool isPlayerSection = false,
   }) {
+    // Provider already handles deduplication, just filter out null players
     final filteredResults =
         isPlayerSection
-            ? results
-                .where((result) => result.player != null)
-                .fold<Map<String, SearchResult>>({}, (map, result) {
-                  final name = result.player!.name.toLowerCase();
-                  if (!map.containsKey(name)) {
-                    map[name] = result;
-                  }
-                  return map;
-                })
-                .values
-                .toList()
+            ? results.where((result) => result.player != null).toList()
             : results;
 
     if (filteredResults.isEmpty) {

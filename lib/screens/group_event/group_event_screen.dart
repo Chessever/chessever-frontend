@@ -13,7 +13,9 @@ import 'package:chessever2/screens/home/home_screen_provider.dart';
 import 'package:chessever2/screens/group_event/providers/group_event_screen_provider.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/screens/group_event/providers/sorting_all_event_provider.dart';
+import 'package:chessever2/screens/player_profile/player_profile_screen.dart';
 import 'package:chessever2/theme/app_theme.dart';
+import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup.dart';
 import 'package:chessever2/providers/for_you_games_provider.dart';
@@ -240,18 +242,19 @@ class GroupEventScreen extends HookConsumerWidget {
                               .onSelectTournament(context: context, id: t.id),
                       onPlayerSelected: (player) {
                         FocusScope.of(context).unfocus();
-                        searchController.text = player.name;
-                        if (context.mounted) {
-                          ref.read(searchQueryProvider.notifier).state =
-                              player.name;
-                          // Set search tab query - tab appears automatically
-                          ref.read(searchTabQueryProvider.notifier).state =
-                              player.name;
-                          // Switch to search tab
-                          ref
-                              .read(selectedGroupCategoryProvider.notifier)
-                              .state = GroupEventCategory.search;
-                        }
+                        HapticFeedbackService.buttonPress();
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => PlayerProfileScreen(
+                              fideId: player.fideId,
+                              playerName: player.name,
+                              title: player.title,
+                              federation: player.fed,
+                              rating: player.rating,
+                            ),
+                          ),
+                        );
                       },
                       onFilterTap: () {
                         if (selectedTourEvent == GroupEventCategory.forYou) {

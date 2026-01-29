@@ -16,6 +16,13 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 const _countryPlayerCacheTtl = Duration(minutes: 10);
 final _countryPlayerCache = <String, _CountryPlayerCacheEntry>{};
 
+// Cache for player name searches (key: lowercase query, value: results + timestamp)
+const _playerNameCacheTtl = Duration(minutes: 5);
+final _playerNameCache = <String, _PlayerNameCacheEntry>{};
+
+// Pre-compiled regex for normalization (avoid creating in hot loops)
+final _whitespaceRegex = RegExp(r'\s+');
+
 final supabaseCombinedSearchProvider =
     AutoDisposeFutureProvider.family<EnhancedSearchResult, String>(
       (ref, query) async {
@@ -37,12 +44,11 @@ final supabaseCombinedSearchProvider =
           broadcasts = await ref
               .read(groupBroadcastRepositoryProvider)
               .searchGroupBroadcastsFromSupabase(trimmedQuery)
-              .timeout(const Duration(seconds: 6), onTimeout: () => []);
+              .timeout(const Duration(seconds: 3), onTimeout: () => []);
         } catch (e) {
           debugPrint('[Search] RPC error: $e');
           broadcasts = [];
         }
-        debugPrint('[Search] Query: "$trimmedQuery", RPC results: ${broadcasts.length}');
 
         // Country-aware player fetch (directly from chess_players)
         final countryPlayerResults =
@@ -173,7 +179,7 @@ final supabaseCombinedSearchProvider =
           String normalize(String s) => s
               .toLowerCase()
               .replaceAll(',', ' ')
-              .replaceAll(RegExp(r'\s+'), ' ')
+              .replaceAll(_whitespaceRegex, ' ')
               .trim();
 
           final normalizedQuery = normalize(query);
@@ -219,7 +225,7 @@ final supabaseCombinedSearchProvider =
           final parts = name
               .toLowerCase()
               .replaceAll(',', ' ')
-              .replaceAll(RegExp(r'\s+'), ' ')
+              .replaceAll(_whitespaceRegex, ' ')
               .trim()
               .split(' ')
               .where((p) => p.isNotEmpty)
@@ -350,7 +356,7 @@ final supabaseCombinedSearchProvider =
           String normalize(String s) => s
               .toLowerCase()
               .replaceAll(',', ' ')
-              .replaceAll(RegExp(r'\s+'), ' ')
+              .replaceAll(_whitespaceRegex, ' ')
               .trim();
 
           final nQuery = normalize(query);
@@ -563,15 +569,23 @@ Future<List<SearchResult>> _fetchTopCountryPlayers({
 }
 
 /// Fetches players by name search directly from Supabase chess_players.
+/// Results are cached for 5 minutes to reduce API calls.
 Future<List<SearchResult>> _fetchPlayersByName({
   required String query,
   int limit = 10,
 }) async {
-  if (query.trim().length < 2) return [];
+  final searchQuery = query.trim();
+  if (searchQuery.length < 2) return [];
+
+  // Check cache first
+  final cacheKey = searchQuery.toLowerCase();
+  final cached = _playerNameCache[cacheKey];
+  if (cached != null && cached.isFresh) {
+    return cached.results;
+  }
 
   try {
     final supabase = Supabase.instance.client;
-    final searchQuery = query.trim();
 
     // Use ilike for case-insensitive partial matching
     final rows = await supabase
@@ -622,6 +636,12 @@ Future<List<SearchResult>> _fetchPlayersByName({
         .whereType<SearchResult>()
         .toList();
 
+    // Cache the results
+    _playerNameCache[cacheKey] = _PlayerNameCacheEntry(
+      results: results,
+      cachedAt: DateTime.now(),
+    );
+
     return results;
   } catch (_) {
     return [];
@@ -638,4 +658,16 @@ class _CountryPlayerCacheEntry {
   final DateTime cachedAt;
 
   bool get isFresh => DateTime.now().difference(cachedAt) < _countryPlayerCacheTtl;
+}
+
+class _PlayerNameCacheEntry {
+  _PlayerNameCacheEntry({
+    required this.results,
+    required this.cachedAt,
+  });
+
+  final List<SearchResult> results;
+  final DateTime cachedAt;
+
+  bool get isFresh => DateTime.now().difference(cachedAt) < _playerNameCacheTtl;
 }
