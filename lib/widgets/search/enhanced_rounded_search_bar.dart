@@ -132,7 +132,7 @@ class _EnhancedRoundedSearchBarState
     }
     EasyDebounce.debounce(
       'search_debounce',
-      const Duration(milliseconds: 400),
+      const Duration(milliseconds: 300),
       () => widget.onChanged?.call(widget.controller.text),
     );
   }

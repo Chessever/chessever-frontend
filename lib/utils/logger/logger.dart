@@ -10,7 +10,9 @@ class _LoggerController {
   // ignore: unused_field
   final Ref _ref;
 
-  final logger = Logger();
+  final logger = Logger(
+    printer: PrettyPrinter(colors: false),
+  );
 
   void logError(Object error, [StackTrace? stackTrace]) async {
     logger.e(error, stackTrace: stackTrace ?? StackTrace.current);
