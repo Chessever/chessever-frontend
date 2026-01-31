@@ -19,6 +19,7 @@ import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:country_flags/country_flags.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:motor/motor.dart';
 
 /// Enum for player profile screen tabs
 enum PlayerProfileTab { about, games, events }
@@ -221,36 +222,9 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
               // Tab switcher
               _buildTabSwitcher(selectedTab),
 
-              // Tab content
+              // Tab content with filter indicator bar
               Expanded(
-                child: PageView.builder(
-                  controller: _pageController,
-                  itemCount: PlayerProfileTab.values.length,
-                  onPageChanged: _handlePageChanged,
-                  itemBuilder: (context, index) {
-                    switch (PlayerProfileTab.values[index]) {
-                      case PlayerProfileTab.about:
-                        return PlayerAboutTab(
-                          fideId: widget.fideId,
-                          playerName: widget.playerName,
-                          title: widget.title,
-                          federation: widget.federation,
-                          fallbackRating: widget.rating,
-                          onOpenGames: _openGames,
-                        );
-                      case PlayerProfileTab.games:
-                        return PlayerGamesTab(
-                          fideId: widget.fideId,
-                          playerName: widget.playerName,
-                        );
-                      case PlayerProfileTab.events:
-                        return PlayerEventsTab(
-                          fideId: widget.fideId,
-                          playerName: widget.playerName,
-                        );
-                    }
-                  },
-                ),
+                child: _buildTabContentWithFilterBar(),
               ),
             ],
           ),
@@ -358,52 +332,88 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
       tablet: 32.sp,
     );
 
-    // Check if games tab has active filters
-    final playerKey = PlayerProfileKey(
-      fideId: widget.fideId,
-      playerName: widget.playerName,
-    );
-    final gamesState = ref.watch(playerProfileGamesKeyProvider(playerKey));
-    final hasActiveFilters = gamesState.hasActiveFilters;
-
-    // Build option labels with badge for Games tab
-    final optionLabels = PlayerProfileTab.values.map((tab) {
-      final label = playerProfileTabNames[tab]!;
-      final showBadge = tab == PlayerProfileTab.games && hasActiveFilters;
-
-      if (!showBadge) {
-        return Text(label);
-      }
-
-      return Row(
-        mainAxisSize: MainAxisSize.min,
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Text(label),
-          SizedBox(width: 4.w),
-          Container(
-            width: 8.w,
-            height: 8.w,
-            decoration: const BoxDecoration(
-              color: Color(0xFFEF4444),
-              shape: BoxShape.circle,
-            ),
-          ),
-        ],
-      );
-    }).toList();
-
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
       child: SegmentedSwitcher(
         backgroundColor: kPopUpColor,
         selectedBackgroundColor: kPopUpColor,
         options: playerProfileTabNames.values.toList(),
-        optionLabels: optionLabels,
         initialSelection: PlayerProfileTab.values.indexOf(selectedTab),
         currentSelection: PlayerProfileTab.values.indexOf(selectedTab),
         onSelectionChanged: _handleTabSelection,
       ),
+    );
+  }
+
+  Widget _buildTabContentWithFilterBar() {
+    final playerKey = PlayerProfileKey(
+      fideId: widget.fideId,
+      playerName: widget.playerName,
+    );
+    final gamesState = ref.watch(playerProfileGamesKeyProvider(playerKey));
+    final hasActiveFilter =
+        gamesState.filter.timeControl != GameTimeControlFilter.all;
+
+    return Stack(
+      children: [
+        // PageView content
+        PageView.builder(
+          controller: _pageController,
+          itemCount: PlayerProfileTab.values.length,
+          onPageChanged: _handlePageChanged,
+          itemBuilder: (context, index) {
+            switch (PlayerProfileTab.values[index]) {
+              case PlayerProfileTab.about:
+                return PlayerAboutTab(
+                  fideId: widget.fideId,
+                  playerName: widget.playerName,
+                  title: widget.title,
+                  federation: widget.federation,
+                  fallbackRating: widget.rating,
+                  onOpenGames: _openGames,
+                );
+              case PlayerProfileTab.games:
+                return PlayerGamesTab(
+                  fideId: widget.fideId,
+                  playerName: widget.playerName,
+                );
+              case PlayerProfileTab.events:
+                return PlayerEventsTab(
+                  fideId: widget.fideId,
+                  playerName: widget.playerName,
+                );
+            }
+          },
+        ),
+        // Filter active indicator bar at top - visible on all tabs
+        SingleMotionBuilder(
+          motion: const CupertinoMotion.snappy(),
+          value: hasActiveFilter ? 1.0 : 0.0,
+          builder: (context, barProgress, _) {
+            if (barProgress < 0.01) return const SizedBox.shrink();
+
+            return Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: Container(
+                height: 2.h * barProgress,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      kPrimaryColor.withValues(alpha: 0.0),
+                      kPrimaryColor.withValues(alpha: 0.8 * barProgress),
+                      kPrimaryColor.withValues(alpha: 0.8 * barProgress),
+                      kPrimaryColor.withValues(alpha: 0.0),
+                    ],
+                    stops: const [0.0, 0.2, 0.8, 1.0],
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
+      ],
     );
   }
 

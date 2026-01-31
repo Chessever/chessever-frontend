@@ -297,34 +297,6 @@ class _PlayerAboutTabState extends ConsumerState<PlayerAboutTab>
             );
           },
         ),
-        // Filter active indicator bar at top
-        SingleMotionBuilder(
-          motion: const CupertinoMotion.snappy(),
-          value: hasActiveFilter ? 1.0 : 0.0,
-          builder: (context, barProgress, _) {
-            if (barProgress < 0.01) return const SizedBox.shrink();
-
-            return Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
-              child: Container(
-                height: 2.h * barProgress,
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [
-                      kPrimaryColor.withValues(alpha: 0.0),
-                      kPrimaryColor.withValues(alpha: 0.8 * barProgress),
-                      kPrimaryColor.withValues(alpha: 0.8 * barProgress),
-                      kPrimaryColor.withValues(alpha: 0.0),
-                    ],
-                    stops: const [0.0, 0.2, 0.8, 1.0],
-                  ),
-                ),
-              ),
-            );
-          },
-        ),
       ],
     );
   }
