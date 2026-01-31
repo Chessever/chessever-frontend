@@ -9,6 +9,7 @@ import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/event_card/event_card.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
+import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -1000,6 +1001,7 @@ class _FallbackEventCard extends StatelessWidget {
 }
 
 /// Skeleton event image that matches _EventImage dimensions exactly
+/// Uses SkeletonWidget with shimmer effect for smooth loading transition
 class _SkeletonEventImage extends StatelessWidget {
   const _SkeletonEventImage();
 
@@ -1019,16 +1021,14 @@ class _SkeletonEventImage extends StatelessWidget {
       width: imageWidth,
       child: AspectRatio(
         aspectRatio: 3 / 2,
-        child: Container(
-          decoration: BoxDecoration(
-            color: kLightBlack,
-            borderRadius: BorderRadius.circular(6.br),
-          ),
-          child: Center(
-            child: Icon(
-              Icons.emoji_events_outlined,
-              color: kWhiteColor.withValues(alpha: 0.3),
-              size: 24.sp,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(6.br),
+          child: SkeletonWidget(
+            child: Container(
+              decoration: BoxDecoration(
+                color: kLightBlack,
+                borderRadius: BorderRadius.circular(6.br),
+              ),
             ),
           ),
         ),

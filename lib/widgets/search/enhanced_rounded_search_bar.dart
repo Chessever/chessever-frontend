@@ -92,6 +92,7 @@ class _EnhancedRoundedSearchBarState
     if (widget.focusNode == null) _internalFocusNode.dispose();
     widget.controller.removeListener(_onTextChange);
     EasyDebounce.cancel('search_debounce');
+    cancelSearchDebounce(); // Cancel debounced search timer
     _overlayController.dispose();
     _searchBarController.dispose();
     super.dispose();
@@ -119,6 +120,10 @@ class _EnhancedRoundedSearchBarState
     final hasText = widget.controller.text.isNotEmpty;
     ref.read(isSearchingProvider.notifier).state = hasText;
     ref.read(searchQueryProvider.notifier).state = widget.controller.text;
+
+    // Trigger debounced search query update (prevents heavy search on every keystroke)
+    updateDebouncedSearchQuery(ref, widget.controller.text);
+
     if (hasText != _showOverlay && _effectiveNode.hasFocus) {
       setState(() {
         _showOverlay = hasText;
@@ -149,6 +154,8 @@ class _EnhancedRoundedSearchBarState
     widget.controller.clear(); // Clear the search text
     ref.read(isSearchingProvider.notifier).state = false; // Clear search state
     ref.read(searchQueryProvider.notifier).state = ''; // Clear query state
+    ref.read(debouncedSearchQueryProvider.notifier).state = ''; // Clear debounced state
+    cancelSearchDebounce(); // Cancel any pending debounce
     _hideOverlay();
     widget.onClearSearchField?.call();
   }

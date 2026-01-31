@@ -8623,6 +8623,16 @@ class _PrincipalVariationListState
     final engineSettings = ref.watch(engineSettingsProviderNew).valueOrNull;
     final multiPV = engineSettings?.multiPvForLichess() ?? 3;
 
+    // Get figurine notation setting and piece assets for PV card rendering
+    final useFigurine = ref.watch(
+      boardSettingsProviderNew.select((s) => s.valueOrNull?.useFigurine ?? false),
+    );
+    final pieceAssets = ref.watch(
+      boardSettingsProviderNew.select(
+        (s) => s.valueOrNull?.pieceAssets ?? const BoardSettingsNew().pieceAssets,
+      ),
+    );
+
     // Check if position is terminal (game over)
     final isGameOver = position?.isGameOver ?? false;
 
@@ -8702,6 +8712,22 @@ class _PrincipalVariationListState
         final key = GlobalKey();
         _previewMoveKeys[token.moveIndex!] = key;
 
+        // Build move content - either with figurine pieces or plain text
+        Widget moveContent;
+        if (useFigurine) {
+          final figurineSpans = _buildFigurineSpans(
+            text: token.text,
+            pieceAssets: pieceAssets,
+            style: moveStyle,
+            pieceSize: 12.sp,
+          );
+          moveContent = Text.rich(
+            TextSpan(children: [...figurineSpans, TextSpan(text: ' ', style: moveStyle)]),
+          );
+        } else {
+          moveContent = Text('${token.text} ', style: moveStyle);
+        }
+
         // Wrap move text in a widget with key for scroll targeting
         spans.add(
           WidgetSpan(
@@ -8714,7 +8740,7 @@ class _PrincipalVariationListState
                 // Navigate to this position in the preview card
                 notifier.navigateToPreviewCardIndex(token.moveIndex!);
               },
-              child: Text('${token.text} ', style: moveStyle),
+              child: moveContent,
             ),
           ),
         );
@@ -9022,6 +9048,8 @@ class _PrincipalVariationListState
                                   isPreviewingThisVariant
                                       ? widget.state.pvPreviewMoveIndex
                                       : null,
+                              useFigurine: useFigurine,
+                              pieceAssets: pieceAssets,
                             ),
                           ),
                           softWrap: true,
@@ -9343,6 +9371,8 @@ class _PrincipalVariationListState
     required int variantIndex,
     required Color variantColor,
     int? previewMoveIndex,
+    bool useFigurine = false,
+    PieceAssets? pieceAssets,
   }) {
     final spans = <InlineSpan>[];
     // Use consistent styling for all text in PV notation
@@ -9374,6 +9404,22 @@ class _PrincipalVariationListState
               )
               : baseStyle;
 
+      // Build move content - either with figurine pieces or plain text
+      Widget moveContent;
+      if (useFigurine && pieceAssets != null) {
+        final figurineSpans = _buildFigurineSpans(
+          text: token.text,
+          pieceAssets: pieceAssets,
+          style: moveStyle,
+          pieceSize: 12.sp,
+        );
+        moveContent = Text.rich(
+          TextSpan(children: [...figurineSpans, TextSpan(text: ' ', style: moveStyle)]),
+        );
+      } else {
+        moveContent = Text('${token.text} ', style: moveStyle);
+      }
+
       // Use WidgetSpan with GestureDetector to handle tap and long press
       spans.add(
         WidgetSpan(
@@ -9403,7 +9449,7 @@ class _PrincipalVariationListState
             },
             child: Material(
               color: Colors.transparent,
-              child: Text('${token.text} ', style: moveStyle),
+              child: moveContent,
             ),
           ),
         ),

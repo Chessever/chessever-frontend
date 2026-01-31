@@ -1,15 +1,24 @@
+import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/player_profile/provider/player_profile_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_tour_content_provider.dart';
 import 'package:chessever2/services/fide_photo_service.dart';
+import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:motor/motor.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/country_utils.dart';
 import 'package:chessever2/utils/png_asset.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/utils/string_utils.dart';
 import 'package:chessever2/widgets/app_button.dart';
+import 'package:chessever2/widgets/fullscreen_image_viewer.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:chessever2/widgets/player_initials_avatar.dart';
 import 'package:country_flags/country_flags.dart';
+import 'package:heroine/heroine.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -183,6 +192,11 @@ class _PlayerAboutTabState extends ConsumerState<PlayerAboutTab>
                     if (analytics.recentForm.isNotEmpty) ...[
                       _RecentFormSection(
                         form: analytics.recentForm,
+                        recentGames: _getRecentCompletedGames(
+                          filteredGames,
+                          widget.fideId,
+                          widget.playerName,
+                        ),
                         onOpenGames: widget.onOpenGames,
                       ),
                       SizedBox(height: 24.h),
@@ -431,6 +445,57 @@ class _PlayerAboutTabState extends ConsumerState<PlayerAboutTab>
       ),
     );
   }
+}
+
+/// Get the recent completed games for a player (matches the recent form)
+List<GamesTourModel> _getRecentCompletedGames(
+  List<GamesTourModel> games,
+  int? targetFideId,
+  String targetPlayerName,
+) {
+  final normalizedTargetName = _normalizeName(targetPlayerName);
+  final completedGames = <GamesTourModel>[];
+
+  for (final game in games) {
+    // Determine if target player is in this game
+    bool isTargetWhite = game.whitePlayer.fideId == targetFideId;
+    bool isTargetBlack = game.blackPlayer.fideId == targetFideId;
+
+    // If fideId matching failed, try name matching
+    if (!isTargetWhite && !isTargetBlack) {
+      final whiteNameNormalized = _normalizeName(game.whitePlayer.name);
+      final blackNameNormalized = _normalizeName(game.blackPlayer.name);
+      isTargetWhite = whiteNameNormalized == normalizedTargetName;
+      isTargetBlack = blackNameNormalized == normalizedTargetName;
+    }
+
+    if (!isTargetWhite && !isTargetBlack) continue;
+
+    // Only include completed games
+    final isWhiteWin = game.gameStatus == GameStatus.whiteWins;
+    final isBlackWin = game.gameStatus == GameStatus.blackWins;
+    final isDraw = game.gameStatus == GameStatus.draw;
+    final isCompleted = isWhiteWin || isBlackWin || isDraw;
+
+    if (isCompleted) {
+      completedGames.add(game);
+      if (completedGames.length >= 10) break;
+    }
+  }
+
+  return completedGames;
+}
+
+/// Normalize player name for comparison
+String _normalizeName(String name) {
+  final trimmed = name.trim().toLowerCase();
+  if (trimmed.contains(',')) {
+    final parts = trimmed.split(',');
+    if (parts.length >= 2) {
+      return '${parts[1].trim()} ${parts[0].trim()}';
+    }
+  }
+  return trimmed;
 }
 
 /// Filter active banner showing which time control filter is applied
@@ -705,15 +770,35 @@ class _PlayerHeaderSectionState extends ConsumerState<_PlayerHeaderSection> {
   }
 
   Widget _buildAvatar(String initials) {
+    final heroTag = 'player_avatar_profile_${widget.fideId ?? widget.playerName}';
+
     return FutureBuilder<String?>(
       future: _photoFuture,
       builder: (context, snapshot) {
-        return PlayerInitialsAvatar(
-          photoUrl: snapshot.data,
-          initials: initials,
-          size: 110.w,
-          borderRadius: 12.br,
-          title: widget.title,
+        final photoUrl = snapshot.data;
+
+        return GestureDetector(
+          onTap: () {
+            showPlayerAvatarFullscreen(
+              context: context,
+              photoUrl: photoUrl,
+              initials: initials,
+              heroTag: heroTag,
+              title: widget.title,
+            );
+          },
+          child: Heroine(
+            tag: heroTag,
+            motion: const CupertinoMotion.smooth(),
+            flightShuttleBuilder: const FadeShuttleBuilder(),
+            child: PlayerInitialsAvatar(
+              photoUrl: photoUrl,
+              initials: initials,
+              size: 110.w,
+              borderRadius: 12.br,
+              title: widget.title,
+            ),
+          ),
         );
       },
     );
@@ -1253,23 +1338,55 @@ class _ColorStatCard extends StatelessWidget {
   }
 }
 
-/// Recent form section
-class _RecentFormSection extends StatelessWidget {
+/// Recent form section with expandable game cards
+class _RecentFormSection extends StatefulWidget {
   const _RecentFormSection({
     required this.form,
+    required this.recentGames,
     this.onOpenGames,
   });
 
   final List<double> form;
+  final List<GamesTourModel> recentGames;
   final PlayerGamesOpenCallback? onOpenGames;
 
   @override
+  State<_RecentFormSection> createState() => _RecentFormSectionState();
+}
+
+class _RecentFormSectionState extends State<_RecentFormSection> {
+  int? _selectedIndex;
+
+  void _onChipTapped(int index) {
+    HapticFeedbackService.buttonPress();
+    setState(() {
+      if (_selectedIndex == index) {
+        // Deselect if same chip tapped
+        _selectedIndex = null;
+      } else {
+        _selectedIndex = index;
+      }
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
+    // Get the selected game if any
+    final selectedGame = _selectedIndex != null &&
+            _selectedIndex! < widget.recentGames.length
+        ? widget.recentGames[_selectedIndex!]
+        : null;
+
+    // Get event name for the selected game
+    final eventName = selectedGame?.tourSlug != null
+        ? StringUtils.slugToTitle(selectedGame!.tourSlug!)
+        : null;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Recent Form (Last ${form.length} games)',
+          'Recent Form (Last ${widget.form.length} games)',
           style: AppTypography.textSmBold.copyWith(color: kWhiteColor),
         ),
         SizedBox(height: 12.h),
@@ -1279,54 +1396,268 @@ class _RecentFormSection extends StatelessWidget {
             color: kBlack2Color,
             borderRadius: BorderRadius.circular(12.br),
           ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: form.map((result) {
-              Color bgColor;
-              String text;
-              PlayerResultFilter? filter;
-              if (result == 1.0) {
-                bgColor = kGreenColor;
-                text = 'W';
-                filter = PlayerResultFilter.win;
-              } else if (result == 0.5) {
-                bgColor = kWhiteColor.withValues(alpha: 0.5);
-                text = 'D';
-                filter = PlayerResultFilter.draw;
-              } else {
-                bgColor = Colors.redAccent;
-                text = 'L';
-                filter = PlayerResultFilter.loss;
-              }
-              final chip = Container(
-                width: 28.w,
-                height: 28.w,
-                decoration: BoxDecoration(
-                  color: bgColor,
-                  borderRadius: BorderRadius.circular(6.br),
-                ),
-                child: Center(
-                  child: Text(
-                    text,
-                    style: AppTypography.textXsBold.copyWith(
-                      color: result == 0.5 ? kBlackColor : kWhiteColor,
-                    ),
-                  ),
-                ),
-              );
+          child: Column(
+            children: [
+              // W/D/L chips row
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: List.generate(widget.form.length, (index) {
+                  final result = widget.form[index];
+                  final isSelected = _selectedIndex == index;
 
-              if (onOpenGames == null || filter == null) return chip;
+                  Color bgColor;
+                  String text;
+                  if (result == 1.0) {
+                    bgColor = kGreenColor;
+                    text = 'W';
+                  } else if (result == 0.5) {
+                    bgColor = kWhiteColor.withValues(alpha: 0.5);
+                    text = 'D';
+                  } else {
+                    bgColor = Colors.redAccent;
+                    text = 'L';
+                  }
 
-              return TappableScale(
-                scaleDown: 0.92,
-                onTap: () => onOpenGames?.call(playerResultFilter: filter),
-                child: chip,
-              );
-            }).toList(),
+                  return _AnimatedFormChip(
+                    text: text,
+                    bgColor: bgColor,
+                    isSelected: isSelected,
+                    isDraw: result == 0.5,
+                    onTap: () => _onChipTapped(index),
+                  );
+                }),
+              ),
+
+              // Expandable game card section
+              _ExpandableGameCard(
+                selectedGame: selectedGame,
+                selectedIndex: _selectedIndex,
+                allRecentGames: widget.recentGames,
+                eventName: eventName,
+              ),
+            ],
           ),
         ),
       ],
     ).animate().fadeIn(duration: 300.ms, delay: 300.ms);
+  }
+}
+
+/// Animated form chip with motor-powered selection state
+class _AnimatedFormChip extends StatefulWidget {
+  const _AnimatedFormChip({
+    required this.text,
+    required this.bgColor,
+    required this.isSelected,
+    required this.isDraw,
+    required this.onTap,
+  });
+
+  final String text;
+  final Color bgColor;
+  final bool isSelected;
+  final bool isDraw;
+  final VoidCallback onTap;
+
+  @override
+  State<_AnimatedFormChip> createState() => _AnimatedFormChipState();
+}
+
+class _AnimatedFormChipState extends State<_AnimatedFormChip> {
+  double _pressScale = 1.0;
+
+  void _onTapDown(TapDownDetails _) {
+    setState(() => _pressScale = 0.85);
+  }
+
+  void _onTapUp(TapUpDetails _) {
+    setState(() => _pressScale = 1.0);
+    widget.onTap();
+  }
+
+  void _onTapCancel() {
+    setState(() => _pressScale = 1.0);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTapDown: _onTapDown,
+      onTapUp: _onTapUp,
+      onTapCancel: _onTapCancel,
+      child: SingleMotionBuilder(
+        motion: const CupertinoMotion.snappy(),
+        value: _pressScale,
+        builder: (context, pressScale, _) {
+          return SingleMotionBuilder(
+            motion: const CupertinoMotion.bouncy(),
+            value: widget.isSelected ? 1.0 : 0.0,
+            builder: (context, selectProgress, _) {
+              // Selection scale and shadow
+              final selectScale = 1.0 + (selectProgress * 0.15);
+              final combinedScale = pressScale * selectScale;
+
+              // Selection indicator glow
+              final glowOpacity = selectProgress * 0.6;
+              final borderWidth = selectProgress * 2.5;
+
+              return Transform.scale(
+                scale: combinedScale,
+                child: Container(
+                  width: 28.w,
+                  height: 28.w,
+                  decoration: BoxDecoration(
+                    color: widget.bgColor,
+                    borderRadius: BorderRadius.circular(6.br),
+                    border: borderWidth > 0
+                        ? Border.all(
+                            color: kWhiteColor.withValues(alpha: glowOpacity + 0.3),
+                            width: borderWidth,
+                          )
+                        : null,
+                    boxShadow: selectProgress > 0.1
+                        ? [
+                            BoxShadow(
+                              color: widget.bgColor.withValues(alpha: 0.5 * selectProgress),
+                              blurRadius: 8 * selectProgress,
+                              spreadRadius: 2 * selectProgress,
+                            ),
+                          ]
+                        : null,
+                  ),
+                  child: Center(
+                    child: Text(
+                      widget.text,
+                      style: AppTypography.textXsBold.copyWith(
+                        color: widget.isDraw ? kBlackColor : kWhiteColor,
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
+}
+
+/// Expandable game card with motor-powered height animation
+class _ExpandableGameCard extends ConsumerWidget {
+  const _ExpandableGameCard({
+    required this.selectedGame,
+    required this.selectedIndex,
+    required this.allRecentGames,
+    this.eventName,
+  });
+
+  final GamesTourModel? selectedGame;
+  final int? selectedIndex;
+  final List<GamesTourModel> allRecentGames;
+  final String? eventName;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isExpanded = selectedGame != null;
+
+    return SingleMotionBuilder(
+      motion: const CupertinoMotion.bouncy(),
+      value: isExpanded ? 1.0 : 0.0,
+      builder: (context, expandProgress, _) {
+        if (expandProgress < 0.01) {
+          return const SizedBox.shrink();
+        }
+
+        // Calculate animated properties
+        final opacity = expandProgress.clamp(0.0, 1.0);
+        final scale = 0.9 + (0.1 * expandProgress);
+
+        return Column(
+          children: [
+            // Animated spacing
+            SizedBox(height: 16.h * expandProgress),
+
+            // Divider with animated opacity
+            Opacity(
+              opacity: opacity,
+              child: Container(
+                height: 1,
+                margin: EdgeInsets.only(bottom: 16.h * expandProgress),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      kDividerColor.withValues(alpha: 0),
+                      kDividerColor.withValues(alpha: 0.5),
+                      kDividerColor.withValues(alpha: 0),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+
+            // Game card with scale and opacity animation
+            Opacity(
+              opacity: opacity,
+              child: Transform.scale(
+                scale: scale,
+                alignment: Alignment.topCenter,
+                child: selectedGame != null
+                    ? _buildTappableGameCard(context, ref, selectedGame!, eventName)
+                    : const SizedBox.shrink(),
+              ),
+            ),
+
+            // Hint text
+            Opacity(
+              opacity: opacity * 0.7,
+              child: Padding(
+                padding: EdgeInsets.only(top: 8.h * expandProgress),
+                child: Text(
+                  'Tap card to view full game',
+                  style: AppTypography.textXsRegular.copyWith(
+                    color: kWhiteColor.withValues(alpha: 0.4),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildTappableGameCard(
+    BuildContext context,
+    WidgetRef ref,
+    GamesTourModel game,
+    String? eventName,
+  ) {
+    return TappableScale(
+      scaleDown: 0.98,
+      onTap: () {
+        HapticFeedbackService.cardTap();
+        // Navigate to chessboard
+        ref.read(gameCardWrapperProvider).navigateToChessBoard(
+              context: context,
+              orderedGames: allRecentGames,
+              gameIndex: selectedIndex ?? 0,
+              onReturnFromChessboard: null,
+              viewSource: ChessboardView.playerProfile,
+            );
+      },
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(12.br),
+        child: GamesTourGameCardBody(
+          matchComparison: MatchWithComparison(
+            game: game,
+            comparison: MatchComparison.sameOrder,
+          ),
+          eventName: eventName,
+          showClock: false,
+        ),
+      ),
+    );
   }
 }
 

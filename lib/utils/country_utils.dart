@@ -96,8 +96,10 @@ class CountryUtils {
 
   /// Converts ISO 2-letter country code to FIDE 3-letter federation code.
   /// FIDE uses specific codes that differ from ISO 3166-1 alpha-3.
+  /// Complete mapping based on all FIDE federations.
   static String toFideCode(String iso2Code) {
     const iso2ToFide = {
+      // Major chess nations
       'US': 'USA',
       'GB': 'ENG', // UK defaults to England in FIDE
       'RU': 'RUS',
@@ -118,14 +120,97 @@ class CountryUtils {
       'GE': 'GEO',
       'TR': 'TUR',
       'IL': 'ISR',
+
+      // Americas
       'AR': 'ARG',
       'BR': 'BRA',
       'PE': 'PER',
       'CU': 'CUB',
+      'CA': 'CAN',
+      'MX': 'MEX',
+      'CO': 'COL',
+      'CL': 'CHI',
+      'VE': 'VEN',
+      'EC': 'ECU',
+      'UY': 'URU',
+      'PY': 'PAR',
+      'BO': 'BOL',
+      'CR': 'CRC', // Costa Rica
+      'PA': 'PAN', // Panama
+      'GT': 'GUA', // Guatemala
+      'SV': 'ESA', // El Salvador
+      'HN': 'HON', // Honduras
+      'NI': 'NCA', // Nicaragua
+      'DO': 'DOM', // Dominican Republic
+      'PR': 'PUR', // Puerto Rico
+      'JM': 'JAM', // Jamaica
+      'TT': 'TTO', // Trinidad and Tobago
+      'BB': 'BAR', // Barbados
+      'BS': 'BAH', // Bahamas
+      'HT': 'HAI', // Haiti
+      'SR': 'SUR', // Suriname
+      'GY': 'GUY', // Guyana
+      'AW': 'ARU', // Aruba
+      'AN': 'AHO', // Netherlands Antilles (historical)
+      'CW': 'AHO', // Curaçao (part of former Neth. Antilles)
+      'SX': 'AHO', // Sint Maarten (part of former Neth. Antilles)
+      'BQ': 'AHO', // Caribbean Netherlands
+      'KY': 'CAY', // Cayman Islands
+      'VI': 'ISV', // US Virgin Islands
+      'AG': 'ANT', // Antigua and Barbuda
+      'LC': 'LCA', // Saint Lucia
+      'VC': 'VIN', // Saint Vincent
+      'KN': 'SKN', // Saint Kitts and Nevis
+      'DM': 'DMA', // Dominica
+      'BM': 'BER', // Bermuda
+
+      // Asia
       'VN': 'VIE',
       'PH': 'PHI',
       'ID': 'INA',
       'IR': 'IRI',
+      'KR': 'KOR',
+      'JP': 'JPN',
+      'SG': 'SGP',
+      'MY': 'MAS',
+      'TH': 'THA',
+      'PK': 'PAK',
+      'BD': 'BAN',
+      'LK': 'SRI',
+      'NP': 'NEP',
+      'HK': 'HKG', // Hong Kong
+      'TW': 'TPE', // Chinese Taipei
+      'MO': 'MAC', // Macau
+      'MN': 'MGL', // Mongolia
+      'UZ': 'UZB',
+      'KZ': 'KAZ',
+      'KG': 'KGZ', // Kyrgyzstan
+      'TJ': 'TJK', // Tajikistan
+      'TM': 'TKM', // Turkmenistan
+      'AF': 'AFG', // Afghanistan
+      'MM': 'MYA', // Myanmar
+      'KH': 'CAM', // Cambodia
+      'LA': 'LAO', // Laos
+      'BT': 'BHU', // Bhutan
+      'MV': 'MDV', // Maldives
+      'BN': 'BRU', // Brunei
+      'TL': 'TLS', // Timor-Leste
+
+      // Middle East
+      'SA': 'KSA',
+      'AE': 'UAE',
+      'QA': 'QAT',
+      'IQ': 'IRQ', // Iraq
+      'JO': 'JOR', // Jordan
+      'LB': 'LBN', // Lebanon
+      'SY': 'SYR', // Syria
+      'YE': 'YEM', // Yemen
+      'OM': 'OMA', // Oman
+      'KW': 'KUW', // Kuwait
+      'BH': 'BRN', // Bahrain
+      'PS': 'PLE', // Palestine
+
+      // Europe
       'NO': 'NOR',
       'SE': 'SWE',
       'DK': 'DEN',
@@ -145,38 +230,89 @@ class CountryUtils {
       'EE': 'EST',
       'LV': 'LAT',
       'LT': 'LTU',
-      'AU': 'AUS',
-      'NZ': 'NZL',
+      'IE': 'IRL',
+      'IS': 'ISL',
+      'BY': 'BLR', // Belarus
+      'MD': 'MDA', // Moldova
+      'ME': 'MNE', // Montenegro
+      'AL': 'ALB', // Albania
+      'XK': 'KOS', // Kosovo
+      'CY': 'CYP', // Cyprus
+      'MT': 'MLT', // Malta
+      'LU': 'LUX', // Luxembourg
+      'AD': 'AND', // Andorra
+      'MC': 'MNC', // Monaco (FIDE uses MNC, not MON)
+      'LI': 'LIE', // Liechtenstein
+      'SM': 'SMR', // San Marino
+      'FO': 'FAI', // Faroe Islands
+      'JE': 'JCI', // Jersey
+      'GG': 'GCI', // Guernsey
+      'IM': 'IOM', // Isle of Man
+
+      // Africa
       'ZA': 'RSA',
       'EG': 'EGY',
       'NG': 'NGR',
       'KE': 'KEN',
-      'UZ': 'UZB',
-      'KZ': 'KAZ',
-      'MN': 'MGL',
-      'KR': 'KOR',
-      'JP': 'JPN',
-      'SG': 'SGP',
-      'MY': 'MAS',
-      'TH': 'THA',
-      'PK': 'PAK',
-      'BD': 'BAN',
-      'LK': 'SRI',
-      'NP': 'NEP',
-      'SA': 'KSA',
-      'AE': 'UAE',
-      'QA': 'QAT',
-      'CA': 'CAN',
-      'MX': 'MEX',
-      'CO': 'COL',
-      'CL': 'CHI',
-      'VE': 'VEN',
-      'EC': 'ECU',
-      'UY': 'URU',
-      'PY': 'PAR',
-      'BO': 'BOL',
-      'IE': 'IRL',
-      'IS': 'ISL',
+      'DZ': 'ALG', // Algeria
+      'MA': 'MAR', // Morocco
+      'TN': 'TUN', // Tunisia
+      'LY': 'LBA', // Libya
+      'SD': 'SUD', // Sudan
+      'SS': 'SSD', // South Sudan
+      'ET': 'ETH', // Ethiopia
+      'UG': 'UGA', // Uganda
+      'TZ': 'TAN', // Tanzania
+      'RW': 'RWA', // Rwanda
+      'BI': 'BDI', // Burundi
+      'ZM': 'ZAM', // Zambia
+      'ZW': 'ZIM', // Zimbabwe
+      'BW': 'BOT', // Botswana
+      'NA': 'NAM', // Namibia
+      'AO': 'ANG', // Angola
+      'MZ': 'MOZ', // Mozambique
+      'MG': 'MAD', // Madagascar
+      'MU': 'MRI', // Mauritius
+      'SC': 'SEY', // Seychelles
+      'MW': 'MAW', // Malawi
+      'LS': 'LES', // Lesotho
+      'SZ': 'SWZ', // Eswatini
+      'CM': 'CMR', // Cameroon
+      'CI': 'CIV', // Côte d'Ivoire
+      'GH': 'GHA', // Ghana
+      'SN': 'SEN', // Senegal
+      'ML': 'MLI', // Mali
+      'BF': 'BUR', // Burkina Faso
+      'NE': 'NIG', // Niger
+      'TD': 'CHA', // Chad
+      'CF': 'CAF', // Central African Republic
+      'GA': 'GAB', // Gabon
+      'CG': 'CGO', // Congo
+      'CD': 'COD', // DR Congo
+      'GQ': 'GEQ', // Equatorial Guinea
+      'ST': 'STP', // São Tomé and Príncipe
+      'CV': 'CPV', // Cape Verde
+      'GM': 'GAM', // Gambia
+      'GW': 'GBS', // Guinea-Bissau
+      'GN': 'GUI', // Guinea
+      'SL': 'SLE', // Sierra Leone
+      'LR': 'LBR', // Liberia
+      'TG': 'TOG', // Togo
+      'BJ': 'BEN', // Benin
+      'MR': 'MTN', // Mauritania
+      'DJ': 'DJI', // Djibouti
+      'SO': 'SOM', // Somalia
+      'ER': 'ERI', // Eritrea
+
+      // Oceania
+      'AU': 'AUS',
+      'NZ': 'NZL',
+      'FJ': 'FIJ', // Fiji
+      'PG': 'PNG', // Papua New Guinea
+      'GU': 'GUM', // Guam
+      'PW': 'PLW', // Palau
+      'NR': 'NRU', // Nauru
+      'VU': 'VAN', // Vanuatu
     };
 
     final upper = iso2Code.toUpperCase();
@@ -290,12 +426,14 @@ class CountryUtils {
 
   /// Converts FIDE 3-letter federation code to ISO 2-letter country code.
   /// Used for displaying flags (CountryFlag expects ISO 2-letter codes).
+  /// Complete mapping based on all FIDE federations.
   static String toIso2Code(String fideCode) {
     const fideToIso2 = {
+      // Major chess nations
       'USA': 'US',
-      'ENG': 'GB',
-      'SCO': 'GB', // Scotland
-      'WLS': 'GB', // Wales
+      'ENG': 'GB', // England (handled specially in FederationFlag)
+      'SCO': 'GB', // Scotland (handled specially in FederationFlag)
+      'WLS': 'GB', // Wales (handled specially in FederationFlag)
       'RUS': 'RU',
       'CHN': 'CN',
       'IND': 'IN',
@@ -314,14 +452,94 @@ class CountryUtils {
       'GEO': 'GE',
       'TUR': 'TR',
       'ISR': 'IL',
+
+      // Americas
       'ARG': 'AR',
       'BRA': 'BR',
       'PER': 'PE',
       'CUB': 'CU',
+      'CAN': 'CA',
+      'MEX': 'MX',
+      'COL': 'CO',
+      'CHI': 'CL',
+      'VEN': 'VE',
+      'ECU': 'EC',
+      'URU': 'UY',
+      'PAR': 'PY',
+      'BOL': 'BO',
+      'CRC': 'CR', // Costa Rica
+      'PAN': 'PA', // Panama
+      'GUA': 'GT', // Guatemala
+      'ESA': 'SV', // El Salvador
+      'HON': 'HN', // Honduras
+      'NCA': 'NI', // Nicaragua
+      'DOM': 'DO', // Dominican Republic
+      'PUR': 'PR', // Puerto Rico
+      'JAM': 'JM', // Jamaica
+      'TTO': 'TT', // Trinidad and Tobago
+      'BAR': 'BB', // Barbados
+      'BAH': 'BS', // Bahamas
+      'HAI': 'HT', // Haiti
+      'SUR': 'SR', // Suriname
+      'GUY': 'GY', // Guyana
+      'ARU': 'AW', // Aruba
+      'AHO': 'CW', // Netherlands Antilles (now Curaçao)
+      'CAY': 'KY', // Cayman Islands
+      'ISV': 'VI', // US Virgin Islands
+      'ANT': 'AG', // Antigua and Barbuda
+      'LCA': 'LC', // Saint Lucia
+      'VIN': 'VC', // Saint Vincent
+      'SKN': 'KN', // Saint Kitts and Nevis
+      'DMA': 'DM', // Dominica
+      'BER': 'BM', // Bermuda
+
+      // Asia
       'VIE': 'VN',
       'PHI': 'PH',
       'INA': 'ID',
       'IRI': 'IR',
+      'KOR': 'KR',
+      'JPN': 'JP',
+      'SGP': 'SG',
+      'MAS': 'MY',
+      'THA': 'TH',
+      'PAK': 'PK',
+      'BAN': 'BD',
+      'SRI': 'LK',
+      'NEP': 'NP',
+      'HKG': 'HK', // Hong Kong
+      'TPE': 'TW', // Chinese Taipei
+      'MAC': 'MO', // Macau
+      'MGL': 'MN', // Mongolia
+      'UZB': 'UZ',
+      'KAZ': 'KZ',
+      'KGZ': 'KG', // Kyrgyzstan
+      'TJK': 'TJ', // Tajikistan
+      'TKM': 'TM', // Turkmenistan
+      'AFG': 'AF', // Afghanistan
+      'MYA': 'MM', // Myanmar
+      'CAM': 'KH', // Cambodia
+      'LAO': 'LA', // Laos
+      'BHU': 'BT', // Bhutan
+      'MDV': 'MV', // Maldives
+      'BRU': 'BN', // Brunei
+      'TLS': 'TL', // Timor-Leste
+
+      // Middle East
+      'KSA': 'SA',
+      'UAE': 'AE',
+      'QAT': 'QA',
+      'IRQ': 'IQ', // Iraq
+      'JOR': 'JO', // Jordan
+      'LBN': 'LB', // Lebanon
+      'SYR': 'SY', // Syria
+      'YEM': 'YE', // Yemen
+      'OMA': 'OM', // Oman
+      'KUW': 'KW', // Kuwait
+      'BRN': 'BH', // Bahrain
+      'PLE': 'PS', // Palestine
+
+      // Europe
       'NOR': 'NO',
       'SWE': 'SE',
       'DEN': 'DK',
@@ -341,51 +559,94 @@ class CountryUtils {
       'EST': 'EE',
       'LAT': 'LV',
       'LTU': 'LT',
-      'AUS': 'AU',
-      'NZL': 'NZ',
-      'RSA': 'ZA',
-      'EGY': 'EG',
-      'NGR': 'NG',
-      'KEN': 'KE',
-      'UZB': 'UZ',
-      'KAZ': 'KZ',
-      'MGL': 'MN',
-      'KOR': 'KR',
-      'JPN': 'JP',
-      'SGP': 'SG',
-      'MAS': 'MY',
-      'THA': 'TH',
-      'PAK': 'PK',
-      'BAN': 'BD',
-      'SRI': 'LK',
-      'NEP': 'NP',
-      'KSA': 'SA',
-      'UAE': 'AE',
-      'QAT': 'QA',
-      'CAN': 'CA',
-      'MEX': 'MX',
-      'COL': 'CO',
-      'CHI': 'CL',
-      'VEN': 'VE',
-      'ECU': 'EC',
-      'URU': 'UY',
-      'PAR': 'PY',
-      'BOL': 'BO',
       'IRL': 'IE',
       'ISL': 'IS',
       'BLR': 'BY', // Belarus
       'MDA': 'MD', // Moldova
-      'ALB': 'AL', // Albania
       'MNE': 'ME', // Montenegro
+      'ALB': 'AL', // Albania
+      'KOS': 'XK', // Kosovo
       'CYP': 'CY', // Cyprus
       'MLT': 'MT', // Malta
       'LUX': 'LU', // Luxembourg
       'AND': 'AD', // Andorra
-      'MON': 'MC', // Monaco
+      'MNC': 'MC', // Monaco
+      'MON': 'MC', // Monaco (alternate)
       'LIE': 'LI', // Liechtenstein
       'SMR': 'SM', // San Marino
       'FAI': 'FO', // Faroe Islands
-      'FID': 'FI', // FIDE (fallback to something)
+      'JCI': 'JE', // Jersey
+      'GCI': 'GG', // Guernsey
+      'IOM': 'IM', // Isle of Man
+
+      // Africa
+      'RSA': 'ZA',
+      'EGY': 'EG',
+      'NGR': 'NG',
+      'KEN': 'KE',
+      'ALG': 'DZ', // Algeria
+      'MAR': 'MA', // Morocco
+      'TUN': 'TN', // Tunisia
+      'LBA': 'LY', // Libya
+      'SUD': 'SD', // Sudan
+      'SSD': 'SS', // South Sudan
+      'ETH': 'ET', // Ethiopia
+      'UGA': 'UG', // Uganda
+      'TAN': 'TZ', // Tanzania
+      'RWA': 'RW', // Rwanda
+      'BDI': 'BI', // Burundi
+      'ZAM': 'ZM', // Zambia
+      'ZIM': 'ZW', // Zimbabwe
+      'BOT': 'BW', // Botswana
+      'NAM': 'NA', // Namibia
+      'ANG': 'AO', // Angola
+      'MOZ': 'MZ', // Mozambique
+      'MAD': 'MG', // Madagascar
+      'MRI': 'MU', // Mauritius
+      'SEY': 'SC', // Seychelles
+      'MAW': 'MW', // Malawi
+      'LES': 'LS', // Lesotho
+      'SWZ': 'SZ', // Eswatini
+      'CMR': 'CM', // Cameroon
+      'CIV': 'CI', // Côte d'Ivoire
+      'GHA': 'GH', // Ghana
+      'SEN': 'SN', // Senegal
+      'MLI': 'ML', // Mali
+      'BUR': 'BF', // Burkina Faso
+      'NIG': 'NE', // Niger
+      'CHA': 'TD', // Chad
+      'CAF': 'CF', // Central African Republic
+      'GAB': 'GA', // Gabon
+      'CGO': 'CG', // Congo
+      'COD': 'CD', // DR Congo
+      'GEQ': 'GQ', // Equatorial Guinea
+      'STP': 'ST', // São Tomé and Príncipe
+      'CPV': 'CV', // Cape Verde
+      'GAM': 'GM', // Gambia
+      'GBS': 'GW', // Guinea-Bissau
+      'GUI': 'GN', // Guinea
+      'SLE': 'SL', // Sierra Leone
+      'LBR': 'LR', // Liberia
+      'TOG': 'TG', // Togo
+      'BEN': 'BJ', // Benin
+      'MTN': 'MR', // Mauritania
+      'DJI': 'DJ', // Djibouti
+      'SOM': 'SO', // Somalia
+      'ERI': 'ER', // Eritrea
+
+      // Oceania
+      'AUS': 'AU',
+      'NZL': 'NZ',
+      'FIJ': 'FJ', // Fiji
+      'PNG': 'PG', // Papua New Guinea
+      'GUM': 'GU', // Guam
+      'PLW': 'PW', // Palau
+      'NRU': 'NR', // Nauru
+      'VAN': 'VU', // Vanuatu
+
+      // Special
+      'FID': 'XX', // FIDE (no country)
+      'NON': 'XX', // No nation
     };
 
     final upper = fideCode.toUpperCase();

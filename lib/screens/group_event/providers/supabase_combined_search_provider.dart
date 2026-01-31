@@ -16,12 +16,33 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 const _countryPlayerCacheTtl = Duration(minutes: 10);
 final _countryPlayerCache = <String, _CountryPlayerCacheEntry>{};
 
+// Cache recent search results to avoid re-fetching
+const _searchCacheTtl = Duration(seconds: 30);
+final _searchCache = <String, _SearchCacheEntry>{};
+
+class _SearchCacheEntry {
+  final EnhancedSearchResult result;
+  final DateTime cachedAt;
+
+  _SearchCacheEntry({required this.result, required this.cachedAt});
+
+  bool get isFresh => DateTime.now().difference(cachedAt) < _searchCacheTtl;
+}
+
 final supabaseCombinedSearchProvider =
     AutoDisposeFutureProvider.family<EnhancedSearchResult, String>(
       (ref, query) async {
-        if (query.trim().isEmpty) return EnhancedSearchResult.empty();
+        if (query.trim().length < 2) return EnhancedSearchResult.empty();
 
         final trimmedQuery = query.trim();
+
+        // Check cache first
+        final cacheKey = trimmedQuery.toLowerCase();
+        final cached = _searchCache[cacheKey];
+        if (cached != null && cached.isFresh) {
+          debugPrint('[Search] Cache hit for "$trimmedQuery"');
+          return cached.result;
+        }
         final detectedCountryIso2 = _detectCountryIsoCode(trimmedQuery);
         final detectedFideCode =
             detectedCountryIso2 != null ? CountryUtils.toFideCode(detectedCountryIso2) : null;
@@ -30,28 +51,41 @@ final supabaseCombinedSearchProvider =
         final fideCountryCode = detectedFideCode;
         final normalizedCountryKey = fideCountryCode?.toUpperCase();
 
-        // Always search Supabase RPC for events (searches all: current, past, upcoming)
-        // RPC handles country-related searches well and is fast enough
-        List<GroupBroadcast> broadcasts = [];
-        try {
-          broadcasts = await ref
+        // Run all searches in parallel for better performance
+        final liveIds = ref.read(liveBroadcastIdsProvider);
+
+        final parallelResults = await Future.wait([
+          // 1. Supabase RPC for events
+          ref
               .read(groupBroadcastRepositoryProvider)
               .searchGroupBroadcastsFromSupabase(trimmedQuery)
-              .timeout(const Duration(seconds: 6), onTimeout: () => []);
-        } catch (e) {
-          debugPrint('[Search] RPC error: $e');
-          broadcasts = [];
-        }
-        debugPrint('[Search] Query: "$trimmedQuery", RPC results: ${broadcasts.length}');
+              .timeout(const Duration(seconds: 5), onTimeout: () => <GroupBroadcast>[])
+              .catchError((_) => <GroupBroadcast>[]),
+          // 2. Country players (if applicable)
+          isCountrySearch && normalizedCountryKey != null
+              ? _fetchTopCountryPlayers(fideCode: normalizedCountryKey, countryIso2: countryIso2!)
+              : Future.value(<SearchResult>[]),
+          // 3. Direct chess_players search
+          _fetchPlayersByName(query: trimmedQuery, limit: 25),
+          // 4. Local cache searches
+          ref
+              .read(groupBroadcastLocalStorage(GroupEventCategory.current))
+              .searchWithScoring(trimmedQuery, liveIds)
+              .catchError((_) => EnhancedSearchResult.empty()),
+          ref
+              .read(groupBroadcastLocalStorage(GroupEventCategory.past))
+              .searchWithScoring(trimmedQuery, liveIds)
+              .catchError((_) => EnhancedSearchResult.empty()),
+        ]);
 
-        // Country-aware player fetch (directly from chess_players)
-        final countryPlayerResults =
-            isCountrySearch && normalizedCountryKey != null
-                ? await _fetchTopCountryPlayers(
-                    fideCode: normalizedCountryKey,
-                    countryIso2: countryIso2!,
-                  )
-                : <SearchResult>[];
+        final broadcasts = parallelResults[0] as List<GroupBroadcast>;
+        final countryPlayerResults = parallelResults[1] as List<SearchResult>;
+        final directPlayerResults = parallelResults[2] as List<SearchResult>;
+        final localSearchCurrent = parallelResults[3] as EnhancedSearchResult;
+        final localSearchPast = parallelResults[4] as EnhancedSearchResult;
+
+        debugPrint('[Search] Query: "$trimmedQuery", results: ${broadcasts.length} events, ${directPlayerResults.length} players');
+
         String key(String s) => s.toLowerCase().trim();
 
         broadcasts.sort((a, b) {
@@ -96,28 +130,6 @@ final supabaseCombinedSearchProvider =
         final tournamentResults = <SearchResult>[];
         final playerResults = <SearchResult>[];
         final allPlayers = <SearchPlayer>[];
-        final liveIds = ref.read(liveBroadcastIdsProvider);
-
-        // Fallback/local cache search across ALL categories (current, past)
-        // Run in parallel for efficiency, with error handling for each
-        EnhancedSearchResult localSearchCurrent = EnhancedSearchResult.empty();
-        EnhancedSearchResult localSearchPast = EnhancedSearchResult.empty();
-        try {
-          final results = await Future.wait([
-            ref
-                .read(groupBroadcastLocalStorage(GroupEventCategory.current))
-                .searchWithScoring(trimmedQuery, liveIds)
-                .catchError((_) => EnhancedSearchResult.empty()),
-            ref
-                .read(groupBroadcastLocalStorage(GroupEventCategory.past))
-                .searchWithScoring(trimmedQuery, liveIds)
-                .catchError((_) => EnhancedSearchResult.empty()),
-          ]);
-          localSearchCurrent = results[0];
-          localSearchPast = results[1];
-        } catch (_) {
-          // If Future.wait fails, continue with empty local results
-        }
 
         for (final gb in broadcasts) {
           final tourEventModel = GroupEventCardModel.fromGroupBroadcast(
@@ -162,12 +174,7 @@ final supabaseCombinedSearchProvider =
           return parts.join(' ');
         }
 
-        // Search chess_players table - the authoritative source for player data
-        final directPlayerResults = await _fetchPlayersByName(
-          query: trimmedQuery,
-          limit: 25,
-        );
-
+        // Add chess_players results (already fetched in parallel)
         playerResults.addAll(directPlayerResults);
 
         // Merge in country player results (dedupe by normalized name, prefer FIDE ID then higher Elo)
@@ -330,12 +337,21 @@ final supabaseCombinedSearchProvider =
             allPlayers.add(result.player!);
           }
         }
-        return EnhancedSearchResult(
+
+        final searchResult = EnhancedSearchResult(
           tournamentResults: tournamentResults,
           playerResults: playerResults,
           allPlayers: allPlayers,
           countryFedCode: fideCountryCode,
         );
+
+        // Cache the result
+        _searchCache[cacheKey] = _SearchCacheEntry(
+          result: searchResult,
+          cachedAt: DateTime.now(),
+        );
+
+        return searchResult;
       },
     );
 
@@ -447,6 +463,7 @@ Future<List<SearchResult>> _fetchTopCountryPlayers({
 }
 
 /// Fetches players by name search directly from Supabase chess_players.
+/// Supports flexible word order: "guy gov", "gov guy", "gov, guy" all match "Gov, Guy"
 Future<List<SearchResult>> _fetchPlayersByName({
   required String query,
   int limit = 10,
@@ -457,11 +474,27 @@ Future<List<SearchResult>> _fetchPlayersByName({
     final supabase = Supabase.instance.client;
     final searchQuery = query.trim();
 
-    // Use ilike for case-insensitive partial matching
-    final rows = await supabase
+    // Split query into words for flexible matching
+    // "guy gov" → ["guy", "gov"] → matches "Gov, Guy"
+    final words = searchQuery
+        .replaceAll(',', ' ')
+        .split(RegExp(r'\s+'))
+        .where((w) => w.isNotEmpty && w.length >= 2)
+        .toList();
+
+    if (words.isEmpty) return [];
+
+    // Build query - each word must appear in name (any order)
+    var queryBuilder = supabase
         .from('chess_players')
-        .select('fideid, name, title, rating, country')
-        .ilike('name', '%$searchQuery%')
+        .select('fideid, name, title, rating, country');
+
+    // Apply ILIKE filter for each word (AND logic)
+    for (final word in words) {
+      queryBuilder = queryBuilder.ilike('name', '%$word%');
+    }
+
+    final rows = await queryBuilder
         .gt('rating', 0)
         .order('rating', ascending: false)
         .limit(limit);
