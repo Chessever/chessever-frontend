@@ -182,7 +182,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
           ),
 
           // Active filters indicator
-          if (state.filter.hasActiveFilters)
+          if (state.hasActiveFilters)
             SliverToBoxAdapter(
               child: Padding(
                 padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
@@ -233,8 +233,8 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
   }
 
   Widget _buildSearchBar(PlayerProfileGamesState state) {
-    final hasActiveFilters = state.filter.hasActiveFilters;
-    final activeFilterCount = state.filter.activeFilterCount;
+    final hasActiveFilters = state.hasActiveFilters;
+    final activeFilterCount = state.activeFilterCount;
     final searchBarHeight = 48.h;
 
     return SizedBox(
@@ -304,12 +304,12 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
               height: searchBarHeight,
               decoration: BoxDecoration(
                 color: hasActiveFilters
-                    ? kPrimaryColor.withValues(alpha: 0.15)
+                    ? const Color(0xFFEF4444).withValues(alpha: 0.15)
                     : const Color(0xFF09090B),
                 borderRadius: BorderRadius.circular(12.br),
                 border: Border.all(
                   color: hasActiveFilters
-                      ? kPrimaryColor.withValues(alpha: 0.5)
+                      ? const Color(0xFFEF4444).withValues(alpha: 0.5)
                       : const Color(0xFF27272A),
                 ),
               ),
@@ -320,7 +320,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
                     Icons.tune_rounded,
                     size: 20.sp,
                     color: hasActiveFilters
-                        ? kPrimaryColor
+                        ? const Color(0xFFEF4444)
                         : const Color(0xFFA1A1AA),
                   ),
                   if (hasActiveFilters)
@@ -331,7 +331,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
                         width: 14.w,
                         height: 14.h,
                         decoration: const BoxDecoration(
-                          color: kPrimaryColor,
+                          color: Color(0xFFEF4444),
                           shape: BoxShape.circle,
                         ),
                         child: Center(
@@ -382,6 +382,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
   }
 
   Widget _buildActiveFiltersChip(PlayerProfileGamesState state) {
+    const filterRedColor = Color(0xFFEF4444);
     return GestureDetector(
       onTap: () {
         HapticFeedback.lightImpact();
@@ -393,9 +394,9 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
         margin: EdgeInsets.only(bottom: 8.h),
         padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
         decoration: BoxDecoration(
-          color: kPrimaryColor.withValues(alpha: 0.1),
+          color: filterRedColor.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(8.br),
-          border: Border.all(color: kPrimaryColor.withValues(alpha: 0.3)),
+          border: Border.all(color: filterRedColor.withValues(alpha: 0.3)),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -403,18 +404,34 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
             Icon(
               Icons.filter_list_rounded,
               size: 16.sp,
-              color: kPrimaryColor,
+              color: filterRedColor,
             ),
             SizedBox(width: 6.w),
             Text(
-              '${state.filter.activeFilterCount} filter${state.filter.activeFilterCount > 1 ? 's' : ''} active',
-              style: AppTypography.textXsMedium.copyWith(color: kPrimaryColor),
+              '${state.activeFilterCount} filter${state.activeFilterCount > 1 ? 's' : ''} active',
+              style: AppTypography.textXsMedium.copyWith(color: filterRedColor),
             ),
+            if (state.playerResultFilter != PlayerResultFilter.all) ...[
+              SizedBox(width: 8.w),
+              Container(
+                padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 2.h),
+                decoration: BoxDecoration(
+                  color: filterRedColor.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(6.br),
+                ),
+                child: Text(
+                  state.playerResultFilter.label,
+                  style: AppTypography.textXsRegular.copyWith(
+                    color: filterRedColor,
+                  ),
+                ),
+              ),
+            ],
             SizedBox(width: 8.w),
             Icon(
               Icons.close_rounded,
               size: 14.sp,
-              color: kPrimaryColor,
+              color: filterRedColor,
             ),
           ],
         ),
@@ -425,7 +442,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
   Widget _buildGamesCount(PlayerProfileGamesState state) {
     final filteredCount = state.filteredGames.length;
     final totalCount = state.allGames.length;
-    final isFiltered = state.filter.hasActiveFilters || state.searchQuery.isNotEmpty;
+    final isFiltered = state.hasActiveFilters || state.searchQuery.isNotEmpty;
 
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -442,7 +459,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
           Text(
             '(filtered)',
             style: AppTypography.textXsRegular.copyWith(
-              color: kPrimaryColor.withValues(alpha: 0.7),
+              color: const Color(0xFFEF4444).withValues(alpha: 0.7),
             ),
           ),
       ],

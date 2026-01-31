@@ -2,8 +2,7 @@ import 'dart:async';
 
 import 'package:chessever2/screens/favorites/favorite_players_provider.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
-import 'package:chessever2/screens/standings/score_card_screen.dart';
-import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
+import 'package:chessever2/screens/player_profile/player_profile_screen.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/tablet_safe_menu.dart';
@@ -171,13 +170,18 @@ class _FavoritesListTabState extends ConsumerState<FavoritesListTab>
               showFavoriteButton: true,
               onTap: () {
                 FocusScope.of(context).unfocus();
-                ref.read(selectedBroadcastModelProvider.notifier).state = null;
-                ref.read(selectedPlayerProvider.notifier).state = player;
-                // Clear games context to use fallback (fetches all player games globally)
-                ref.read(scoreCardGamesContextProvider.notifier).state = null;
-                // No event context from favorites tab
-                ref.read(scoreCardHasEventContextProvider.notifier).state = false;
-                Navigator.pushNamed(context, '/scorecard_screen');
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => PlayerProfileScreen(
+                      fideId: player.fideId,
+                      playerName: player.name,
+                      title: player.title,
+                      federation: player.countryCode,
+                      rating: player.score,
+                    ),
+                  ),
+                );
               },
               onToggleFavorite: () => _removeFavoritePlayer(player),
               onLongPress: (details) {

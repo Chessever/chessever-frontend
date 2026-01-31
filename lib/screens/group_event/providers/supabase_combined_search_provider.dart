@@ -16,13 +16,6 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 const _countryPlayerCacheTtl = Duration(minutes: 10);
 final _countryPlayerCache = <String, _CountryPlayerCacheEntry>{};
 
-// Cache for player name searches (key: lowercase query, value: results + timestamp)
-const _playerNameCacheTtl = Duration(minutes: 5);
-final _playerNameCache = <String, _PlayerNameCacheEntry>{};
-
-// Pre-compiled regex for normalization (avoid creating in hot loops)
-final _whitespaceRegex = RegExp(r'\s+');
-
 final supabaseCombinedSearchProvider =
     AutoDisposeFutureProvider.family<EnhancedSearchResult, String>(
       (ref, query) async {
@@ -44,11 +37,12 @@ final supabaseCombinedSearchProvider =
           broadcasts = await ref
               .read(groupBroadcastRepositoryProvider)
               .searchGroupBroadcastsFromSupabase(trimmedQuery)
-              .timeout(const Duration(seconds: 3), onTimeout: () => []);
+              .timeout(const Duration(seconds: 6), onTimeout: () => []);
         } catch (e) {
           debugPrint('[Search] RPC error: $e');
           broadcasts = [];
         }
+        debugPrint('[Search] Query: "$trimmedQuery", RPC results: ${broadcasts.length}');
 
         // Country-aware player fetch (directly from chess_players)
         final countryPlayerResults =
@@ -140,26 +134,9 @@ final supabaseCombinedSearchProvider =
             ),
           );
 
-          for (final searchTerm in gb.search) {
-            if (_isPlayerName(searchTerm, gb.name)) {
-              final player = SearchPlayer.fromSearchTerm(
-                searchTerm,
-                gb.id,
-                gb.name,
-              );
-              allPlayers.add(player);
-
-              playerResults.add(
-                SearchResult(
-                  tournament: tourEventModel,
-                  score: 90.0,
-                  matchedText: searchTerm,
-                  type: SearchResultType.player,
-                  player: player,
-                ),
-              );
-            }
-          }
+          // Note: We no longer create SearchPlayers from broadcast search terms
+          // because they lack FIDE IDs. Player search results now come entirely
+          // from chess_players table which has comprehensive FIDE data.
         }
         final broadcastById = <String, GroupBroadcast>{
           for (final b in broadcasts) b.id: b,
@@ -171,61 +148,12 @@ final supabaseCombinedSearchProvider =
           return b?.dateStart;
         }
 
-        final qLower = trimmedQuery.toLowerCase();
-
-        // Smart matching function that handles word reordering
-        bool matchesFlexibly(String query, String playerName) {
-          // Normalize: remove commas, extra spaces, convert to lowercase
-          String normalize(String s) => s
-              .toLowerCase()
-              .replaceAll(',', ' ')
-              .replaceAll(_whitespaceRegex, ' ')
-              .trim();
-
-          final normalizedQuery = normalize(query);
-          final normalizedName = normalize(playerName);
-
-          // Split into words
-          final queryWords = normalizedQuery.split(' ').where((w) => w.isNotEmpty).toList();
-          final nameWords = normalizedName.split(' ').where((w) => w.isNotEmpty).toList();
-
-          if (queryWords.isEmpty) return false;
-
-          // Check if ALL query words match ANY name word (prefix match)
-          for (final qWord in queryWords) {
-            bool found = false;
-            for (final nWord in nameWords) {
-              // Exact match or prefix match (e.g., "gir" matches "giri")
-              if (nWord == qWord || nWord.startsWith(qWord) || qWord.startsWith(nWord)) {
-                found = true;
-                break;
-              }
-            }
-            if (!found) return false;
-          }
-          return true;
-        }
-
-        playerResults.retainWhere((r) {
-          final fed = r.player?.fed?.toUpperCase();
-          if (isCountrySearch && fed == fideCountryCode) {
-            return true; // Keep country matches even if name doesn't include query text
-          }
-          return matchesFlexibly(qLower, r.matchedText);
-        });
-
-        // Direct search in chess_players table for better player data
-        final directPlayerResults = await _fetchPlayersByName(
-          query: trimmedQuery,
-          limit: 10,
-        );
-
         // Normalize name for comparison (handles "Lastname, Firstname" vs "Firstname Lastname")
         String normalizeName(String name) {
           final parts = name
               .toLowerCase()
               .replaceAll(',', ' ')
-              .replaceAll(_whitespaceRegex, ' ')
+              .replaceAll(RegExp(r'\s+'), ' ')
               .trim()
               .split(' ')
               .where((p) => p.isNotEmpty)
@@ -234,83 +162,47 @@ final supabaseCombinedSearchProvider =
           return parts.join(' ');
         }
 
-        // Merge direct player results with broadcast-based results
-        if (directPlayerResults.isNotEmpty) {
-          final existingNormalized = <String, int>{};
-          for (int i = 0; i < playerResults.length; i++) {
-            if (playerResults[i].player != null) {
-              existingNormalized[normalizeName(playerResults[i].player!.name)] = i;
-            }
-          }
+        // Search chess_players table - the authoritative source for player data
+        final directPlayerResults = await _fetchPlayersByName(
+          query: trimmedQuery,
+          limit: 25,
+        );
 
-          for (final directResult in directPlayerResults) {
-            if (directResult.player != null) {
-              final normalizedName = normalizeName(directResult.player!.name);
-              final existingIndex = existingNormalized[normalizedName];
+        playerResults.addAll(directPlayerResults);
 
-              if (existingIndex != null) {
-                // Update existing player with proper data from chess_players
-                final existing = playerResults[existingIndex];
-                final updatedPlayer = SearchPlayer(
-                  id: existing.player!.id,
-                  name: existing.player!.name,
-                  rating: directResult.player!.rating ?? existing.player!.rating,
-                  tournamentId: existing.player!.tournamentId,
-                  tournamentName: existing.player!.tournamentName,
-                  fideId: directResult.player!.fideId ?? existing.player!.fideId,
-                  fed: directResult.player!.fed ?? existing.player!.fed,
-                  title: directResult.player!.title ?? existing.player!.title,
-                  gameId: existing.player!.gameId,
-                  roundId: existing.player!.roundId,
-                  isWhitePlayer: existing.player!.isWhitePlayer,
-                );
-                playerResults[existingIndex] = SearchResult(
-                  tournament: existing.tournament,
-                  score: existing.score + 10, // Boost score for enriched results
-                  matchedText: existing.matchedText,
-                  type: existing.type,
-                  player: updatedPlayer,
-                );
-              } else if (!existingNormalized.containsKey(normalizedName)) {
-                // Add new player from direct search at the beginning for priority
-                playerResults.insert(0, directResult);
-                existingNormalized[normalizedName] = 0;
-                // Update indices
-                for (final key in existingNormalized.keys.toList()) {
-                  if (key != normalizedName) {
-                    existingNormalized[key] = existingNormalized[key]! + 1;
-                  }
-                }
-              }
-            }
-          }
-        }
-
-        // Merge in country player results (dedupe by name, prefer higher Elo)
+        // Merge in country player results (dedupe by normalized name, prefer FIDE ID then higher Elo)
         if (countryPlayerResults.isNotEmpty) {
-          final byName = <String, SearchResult>{
+          final byNormalizedName = <String, SearchResult>{
             for (final r in playerResults)
-              (r.player?.name.toLowerCase() ?? r.matchedText.toLowerCase()): r,
+              normalizeName(r.player?.name ?? r.matchedText): r,
           };
 
           for (final countryResult in countryPlayerResults) {
-            final keyName =
-                countryResult.player?.name.toLowerCase() ??
-                countryResult.matchedText.toLowerCase();
-            final existing = byName[keyName];
+            final keyName = normalizeName(
+              countryResult.player?.name ?? countryResult.matchedText,
+            );
+            final existing = byNormalizedName[keyName];
             if (existing == null) {
-              byName[keyName] = countryResult;
+              byNormalizedName[keyName] = countryResult;
             } else {
-              final existingElo = existing.player?.rating ?? 0;
-              final newElo = countryResult.player?.rating ?? 0;
-              if (newElo > existingElo) {
-                byName[keyName] = countryResult;
+              // Prefer player with FIDE ID
+              final existingHasFideId = existing.player?.fideId != null && existing.player!.fideId! > 0;
+              final newHasFideId = countryResult.player?.fideId != null && countryResult.player!.fideId! > 0;
+              if (newHasFideId && !existingHasFideId) {
+                byNormalizedName[keyName] = countryResult;
+              } else if (existingHasFideId == newHasFideId) {
+                // Both have or both lack FIDE ID - prefer higher rating
+                final existingElo = existing.player?.rating ?? 0;
+                final newElo = countryResult.player?.rating ?? 0;
+                if (newElo > existingElo) {
+                  byNormalizedName[keyName] = countryResult;
+                }
               }
             }
           }
           playerResults
             ..clear()
-            ..addAll(byName.values);
+            ..addAll(byNormalizedName.values);
         }
 
         // Merge resilient local-search results from ALL categories (current + past)
@@ -327,28 +219,8 @@ final supabaseCombinedSearchProvider =
             }
           }
 
-          if (localSearch.playerResults.isNotEmpty) {
-            final byName = <String, SearchResult>{
-              for (final r in playerResults)
-                (r.player?.name.toLowerCase() ?? r.matchedText.toLowerCase()): r,
-            };
-            for (final r in localSearch.playerResults) {
-              final keyName = r.player?.name.toLowerCase() ?? r.matchedText.toLowerCase();
-              final existing = byName[keyName];
-              if (existing == null) {
-                byName[keyName] = r;
-              } else {
-                final existingElo = existing.player?.rating ?? 0;
-                final newElo = r.player?.rating ?? 0;
-                if (newElo > existingElo) {
-                  byName[keyName] = r;
-                }
-              }
-            }
-            playerResults
-              ..clear()
-              ..addAll(byName.values);
-          }
+          // Skip local search player results - they lack FIDE data
+          // Player search now relies entirely on chess_players table
         }
 
         // Score how well a player name matches the query
@@ -356,7 +228,7 @@ final supabaseCombinedSearchProvider =
           String normalize(String s) => s
               .toLowerCase()
               .replaceAll(',', ' ')
-              .replaceAll(_whitespaceRegex, ' ')
+              .replaceAll(RegExp(r'\s+'), ' ')
               .trim();
 
           final nQuery = normalize(query);
@@ -384,6 +256,33 @@ final supabaseCombinedSearchProvider =
           return 50;
         }
 
+        // Final deduplication: prefer players with FIDE ID over those without
+        final deduped = <String, SearchResult>{};
+        for (final r in playerResults) {
+          final key = normalizeName(r.player?.name ?? r.matchedText);
+          final existing = deduped[key];
+          if (existing == null) {
+            deduped[key] = r;
+          } else {
+            // Prefer the one with FIDE ID
+            final existingHasFideId = existing.player?.fideId != null && existing.player!.fideId! > 0;
+            final newHasFideId = r.player?.fideId != null && r.player!.fideId! > 0;
+            if (newHasFideId && !existingHasFideId) {
+              deduped[key] = r;
+            } else if (existingHasFideId == newHasFideId) {
+              // Both have or both lack FIDE ID - prefer higher rating
+              final existingRating = existing.player?.rating ?? 0;
+              final newRating = r.player?.rating ?? 0;
+              if (newRating > existingRating) {
+                deduped[key] = r;
+              }
+            }
+          }
+        }
+        playerResults
+          ..clear()
+          ..addAll(deduped.values);
+
         playerResults.sort((a, b) {
           // 0. Country match boost (when searching by country)
           if (isCountrySearch) {
@@ -392,17 +291,22 @@ final supabaseCombinedSearchProvider =
             if (aMatch != bMatch) return bMatch ? -1 : 1;
           }
 
-          // 1. Match score (higher = better match)
+          // 1. FIDE ID boost - players with FIDE ID are more reliable
+          final aHasFideId = a.player?.fideId != null && a.player!.fideId! > 0;
+          final bHasFideId = b.player?.fideId != null && b.player!.fideId! > 0;
+          if (aHasFideId != bHasFideId) return aHasFideId ? -1 : 1;
+
+          // 2. Match score (higher = better match)
           final aScore = matchScore(a.matchedText, trimmedQuery);
           final bScore = matchScore(b.matchedText, trimmedQuery);
           if (aScore != bScore) return bScore.compareTo(aScore);
 
-          // 2. ELO (higher first)
+          // 3. ELO (higher first)
           final aElo = a.player?.rating ?? 0;
           final bElo = b.player?.rating ?? 0;
           if (aElo != bElo) return bElo.compareTo(aElo);
 
-          // 3. most recent tournament date first
+          // 4. most recent tournament date first
           final aDate = playerTournamentDate(a);
           final bDate = playerTournamentDate(b);
           if (aDate != null && bDate != null) {
@@ -414,7 +318,7 @@ final supabaseCombinedSearchProvider =
             return 1; // b has date, a doesn't -> b comes first
           }
 
-          // 4. alphabetical
+          // 5. alphabetical
           return a.matchedText.compareTo(b.matchedText);
         });
         if (playerResults.length > 20) {
@@ -434,32 +338,6 @@ final supabaseCombinedSearchProvider =
         );
       },
     );
-
-bool _isPlayerName(String searchTerm, String tournamentName) {
-  final t = searchTerm.trim().toLowerCase();
-  final tn = tournamentName.trim().toLowerCase();
-
-  if (t == tn || t.startsWith('$tn |')) return false;
-
-  if ([
-    'chess',
-    'tournament',
-    'championship',
-    'festival',
-    'open',
-    'classic',
-  ].any((w) => t.contains(w))) {
-    return false;
-  }
-
-  final words = searchTerm.trim().split(' ');
-  if (words.length == 1 || (words.length >= 2 && words.length <= 4)) {
-    return words.every(
-      (w) => w.isNotEmpty && w[0] == w[0].toUpperCase(),
-    );
-  }
-  return false;
-}
 
 /// Detects ISO-2 country code from a user query.
 /// Supports ISO2/ISO3/FIDE codes and country names.
@@ -569,23 +447,15 @@ Future<List<SearchResult>> _fetchTopCountryPlayers({
 }
 
 /// Fetches players by name search directly from Supabase chess_players.
-/// Results are cached for 5 minutes to reduce API calls.
 Future<List<SearchResult>> _fetchPlayersByName({
   required String query,
   int limit = 10,
 }) async {
-  final searchQuery = query.trim();
-  if (searchQuery.length < 2) return [];
-
-  // Check cache first
-  final cacheKey = searchQuery.toLowerCase();
-  final cached = _playerNameCache[cacheKey];
-  if (cached != null && cached.isFresh) {
-    return cached.results;
-  }
+  if (query.trim().length < 2) return [];
 
   try {
     final supabase = Supabase.instance.client;
+    final searchQuery = query.trim();
 
     // Use ilike for case-insensitive partial matching
     final rows = await supabase
@@ -636,12 +506,6 @@ Future<List<SearchResult>> _fetchPlayersByName({
         .whereType<SearchResult>()
         .toList();
 
-    // Cache the results
-    _playerNameCache[cacheKey] = _PlayerNameCacheEntry(
-      results: results,
-      cachedAt: DateTime.now(),
-    );
-
     return results;
   } catch (_) {
     return [];
@@ -658,16 +522,4 @@ class _CountryPlayerCacheEntry {
   final DateTime cachedAt;
 
   bool get isFresh => DateTime.now().difference(cachedAt) < _countryPlayerCacheTtl;
-}
-
-class _PlayerNameCacheEntry {
-  _PlayerNameCacheEntry({
-    required this.results,
-    required this.cachedAt,
-  });
-
-  final List<SearchResult> results;
-  final DateTime cachedAt;
-
-  bool get isFresh => DateTime.now().difference(cachedAt) < _playerNameCacheTtl;
 }
