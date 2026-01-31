@@ -53,19 +53,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   Future<void> _checkForShorebirdUpdate() async {
-    // Simulate update in Debug Mode
-    if (kDebugMode) {
-      if (mounted) {
-        showDialog(
-          context: context,
-          barrierDismissible: false,
-          builder:
-              (context) =>
-                  const ShorebirdUpdateDialog(initialStatus: UpdateStatus.outdated),
-        );
-      }
-      return;
-    }
+    // Skip update check in Debug Mode
+    if (kDebugMode) return;
 
     // Shorebird is only supported on Android and iOS
     if (!(Platform.isAndroid || Platform.isIOS)) return;

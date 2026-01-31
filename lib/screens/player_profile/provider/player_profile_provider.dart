@@ -317,6 +317,8 @@ final playerAnalyticsProvider = Provider.family
 class PlayerAnalytics {
   const PlayerAnalytics({
     required this.openingStats,
+    this.openingStatsWhite = const [],
+    this.openingStatsBlack = const [],
     required this.colorStats,
     required this.resultStats,
     required this.recentForm,
@@ -324,6 +326,8 @@ class PlayerAnalytics {
   });
 
   final List<OpeningStatistic> openingStats;
+  final List<OpeningStatistic> openingStatsWhite;
+  final List<OpeningStatistic> openingStatsBlack;
   final ColorStatistics colorStats;
   final ResultStatistics resultStats;
   final List<double> recentForm;
@@ -337,6 +341,8 @@ class PlayerAnalytics {
     if (games.isEmpty) {
       return const PlayerAnalytics(
         openingStats: [],
+        openingStatsWhite: [],
+        openingStatsBlack: [],
         colorStats: ColorStatistics(
           whiteGames: 0,
           whiteWins: 0,
@@ -362,7 +368,9 @@ class PlayerAnalytics {
     final normalizedTargetName = _normalizeName(targetPlayerName);
 
     // Opening statistics (tracked from target player's perspective)
-    final openingMap = <String, Map<String, dynamic>>{};
+    final openingMapAll = <String, Map<String, dynamic>>{};
+    final openingMapWhite = <String, Map<String, dynamic>>{};
+    final openingMapBlack = <String, Map<String, dynamic>>{};
 
     // Color statistics
     int whiteGames = 0, whiteWins = 0, whiteDraws = 0, whiteLosses = 0;
@@ -377,6 +385,38 @@ class PlayerAnalytics {
     // Opponent ratings
     int totalOpponentRating = 0;
     int ratingCount = 0;
+
+    void updateOpeningStats(
+      Map<String, Map<String, dynamic>> map,
+      String eco,
+      String? openingName,
+      bool targetWon,
+      bool targetDrew,
+      bool targetLost,
+    ) {
+      if (!map.containsKey(eco)) {
+        map[eco] = {
+          'eco': eco,
+          'openingName': openingName,
+          'count': 0,
+          'wins': 0,
+          'draws': 0,
+          'losses': 0,
+        };
+      } else if (map[eco]!['openingName'] == null && openingName != null) {
+        map[eco]!['openingName'] = openingName;
+      }
+
+      map[eco]!['count'] = (map[eco]!['count'] as int) + 1;
+
+      if (targetWon) {
+        map[eco]!['wins'] = (map[eco]!['wins'] as int) + 1;
+      } else if (targetLost) {
+        map[eco]!['losses'] = (map[eco]!['losses'] as int) + 1;
+      } else if (targetDrew) {
+        map[eco]!['draws'] = (map[eco]!['draws'] as int) + 1;
+      }
+    }
 
     for (int i = 0; i < games.length; i++) {
       final game = games[i];
@@ -421,24 +461,33 @@ class PlayerAnalytics {
       // Only count completed games for statistics
       if (isCompleted) {
         // Update opening stats
-        if (!openingMap.containsKey(eco)) {
-          openingMap[eco] = {
-            'eco': eco,
-            'openingName': openingName,
-            'count': 0,
-            'wins': 0,
-            'draws': 0,
-            'losses': 0,
-          };
+        updateOpeningStats(
+          openingMapAll,
+          eco,
+          openingName,
+          targetWon,
+          targetDrew,
+          targetLost,
+        );
+        if (isTargetWhite) {
+          updateOpeningStats(
+            openingMapWhite,
+            eco,
+            openingName,
+            targetWon,
+            targetDrew,
+            targetLost,
+          );
         }
-        openingMap[eco]!['count'] = (openingMap[eco]!['count'] as int) + 1;
-
-        if (targetWon) {
-          openingMap[eco]!['wins'] = (openingMap[eco]!['wins'] as int) + 1;
-        } else if (targetLost) {
-          openingMap[eco]!['losses'] = (openingMap[eco]!['losses'] as int) + 1;
-        } else if (targetDrew) {
-          openingMap[eco]!['draws'] = (openingMap[eco]!['draws'] as int) + 1;
+        if (isTargetBlack) {
+          updateOpeningStats(
+            openingMapBlack,
+            eco,
+            openingName,
+            targetWon,
+            targetDrew,
+            targetLost,
+          );
         }
 
         // Track overall results (regardless of ECO availability)
@@ -484,24 +533,35 @@ class PlayerAnalytics {
 
     final totalGames = whiteGames + blackGames;
 
-    // Convert opening map to sorted list
-    final openingStats = openingMap.entries.map((e) {
-      final data = e.value;
-      return OpeningStatistic(
-        eco: data['eco'] as String,
-        openingName: data['openingName'] as String?,
-        count: data['count'] as int,
-        wins: data['wins'] as int,
-        draws: data['draws'] as int,
-        losses: data['losses'] as int,
-      );
-    }).toList();
+    List<OpeningStatistic> buildOpeningStats(
+      Map<String, Map<String, dynamic>> map,
+    ) {
+      final stats = map.entries.map((e) {
+        final data = e.value;
+        return OpeningStatistic(
+          eco: data['eco'] as String,
+          openingName: data['openingName'] as String?,
+          count: data['count'] as int,
+          wins: data['wins'] as int,
+          draws: data['draws'] as int,
+          losses: data['losses'] as int,
+        );
+      }).toList();
 
-    // Sort by count descending
-    openingStats.sort((a, b) => b.count.compareTo(a.count));
+      stats.sort((a, b) => b.count.compareTo(a.count));
+      return stats;
+    }
+
+    final openingStatsAll = buildOpeningStats(openingMapAll).take(20).toList();
+    final openingStatsWhite =
+        buildOpeningStats(openingMapWhite).take(20).toList();
+    final openingStatsBlack =
+        buildOpeningStats(openingMapBlack).take(20).toList();
 
     return PlayerAnalytics(
-      openingStats: openingStats.take(20).toList(),
+      openingStats: openingStatsAll,
+      openingStatsWhite: openingStatsWhite,
+      openingStatsBlack: openingStatsBlack,
       colorStats: ColorStatistics(
         whiteGames: whiteGames,
         whiteWins: whiteWins,
@@ -634,7 +694,7 @@ Future<List<PlayerEventData>> _getPlayerEventsFromGamesWithKey(
       if (status != null && (isWhite || isBlack)) {
         final isWhiteWin = status == 'whiteWins' || status == '1-0';
         final isBlackWin = status == 'blackWins' || status == '0-1';
-        final isDraw = status == 'draw' || status == '1/2-1/2';
+        final isDraw = status == 'draw' || status == '1/2-1/2' || status == '½-½';
 
         if ((isWhite && isWhiteWin) || (isBlack && isBlackWin)) {
           tourMap[tourId]!['wins'] = (tourMap[tourId]!['wins'] as int) + 1;
@@ -807,7 +867,7 @@ Future<List<PlayerEventData>> _getPlayerEventsFromGames(
         if (isWhite || isBlack) {
           final isWhiteWin = status == 'whiteWins' || status == '1-0';
           final isBlackWin = status == 'blackWins' || status == '0-1';
-          final isDraw = status == 'draw' || status == '1/2-1/2';
+          final isDraw = status == 'draw' || status == '1/2-1/2' || status == '½-½';
 
           if ((isWhite && isWhiteWin) || (isBlack && isBlackWin)) {
             tourMap[tourId]!['wins'] = (tourMap[tourId]!['wins'] as int) + 1;
@@ -931,11 +991,29 @@ Future<List<PlayerEventData>> _getPlayerEventsFromGames(
 }
 
 /// State for player profile games with filtering
+enum PlayerResultFilter { all, win, draw, loss }
+
+extension PlayerResultFilterX on PlayerResultFilter {
+  String get label {
+    switch (this) {
+      case PlayerResultFilter.all:
+        return 'All Results';
+      case PlayerResultFilter.win:
+        return 'Wins';
+      case PlayerResultFilter.draw:
+        return 'Draws';
+      case PlayerResultFilter.loss:
+        return 'Losses';
+    }
+  }
+}
+
 class PlayerProfileGamesState {
   PlayerProfileGamesState({
     required this.playerKey,
     this.allGames = const [],
     GameFilter? filter,
+    this.playerResultFilter = PlayerResultFilter.all,
     this.isLoading = false,
     this.error,
     this.searchQuery = '',
@@ -944,6 +1022,7 @@ class PlayerProfileGamesState {
   final PlayerProfileKey playerKey;
   final List<GamesTourModel> allGames;
   final GameFilter filter;
+  final PlayerResultFilter playerResultFilter;
   final bool isLoading;
   final String? error;
   final String searchQuery;
@@ -965,6 +1044,11 @@ class PlayerProfileGamesState {
       }).toList();
     }
 
+    // Apply player-result filter (from player's perspective)
+    if (playerResultFilter != PlayerResultFilter.all) {
+      games = games.where(_matchesPlayerResultFilter).toList();
+    }
+
     // Apply filter with targetFideId for accurate color filtering
     // Also pass playerName for name-based matching when fideId is not available
     return GameFilterHelper.applyFilter(
@@ -975,10 +1059,56 @@ class PlayerProfileGamesState {
     );
   }
 
+  bool _matchesPlayerResultFilter(GamesTourModel game) {
+    final isWhiteWin = game.gameStatus == GameStatus.whiteWins;
+    final isBlackWin = game.gameStatus == GameStatus.blackWins;
+    final isDraw = game.gameStatus == GameStatus.draw;
+    final isCompleted = isWhiteWin || isBlackWin || isDraw;
+
+    if (!isCompleted) return false;
+
+    bool isTargetWhite = false;
+    bool isTargetBlack = false;
+
+    if (playerKey.fideId != null) {
+      isTargetWhite = game.whitePlayer.fideId == playerKey.fideId;
+      isTargetBlack = game.blackPlayer.fideId == playerKey.fideId;
+    } else {
+      final targetName = playerKey.playerName.trim().toLowerCase();
+      if (targetName.isNotEmpty) {
+        isTargetWhite = game.whitePlayer.name.toLowerCase().contains(targetName);
+        isTargetBlack = game.blackPlayer.name.toLowerCase().contains(targetName);
+      }
+    }
+
+    if (!isTargetWhite && !isTargetBlack) {
+      return true;
+    }
+
+    switch (playerResultFilter) {
+      case PlayerResultFilter.win:
+        return (isTargetWhite && isWhiteWin) || (isTargetBlack && isBlackWin);
+      case PlayerResultFilter.draw:
+        return isDraw;
+      case PlayerResultFilter.loss:
+        return (isTargetWhite && isBlackWin) || (isTargetBlack && isWhiteWin);
+      case PlayerResultFilter.all:
+        return true;
+    }
+  }
+
+  bool get hasActiveFilters =>
+      filter.hasActiveFilters || playerResultFilter != PlayerResultFilter.all;
+
+  int get activeFilterCount =>
+      filter.activeFilterCount +
+      (playerResultFilter != PlayerResultFilter.all ? 1 : 0);
+
   PlayerProfileGamesState copyWith({
     PlayerProfileKey? playerKey,
     List<GamesTourModel>? allGames,
     GameFilter? filter,
+    PlayerResultFilter? playerResultFilter,
     bool? isLoading,
     String? error,
     String? searchQuery,
@@ -987,6 +1117,7 @@ class PlayerProfileGamesState {
       playerKey: playerKey ?? this.playerKey,
       allGames: allGames ?? this.allGames,
       filter: filter ?? this.filter,
+      playerResultFilter: playerResultFilter ?? this.playerResultFilter,
       isLoading: isLoading ?? this.isLoading,
       error: error,
       searchQuery: searchQuery ?? this.searchQuery,
@@ -1048,11 +1179,18 @@ class PlayerProfileGamesNotifier
   }
 
   void clearFilter() {
-    state = state.copyWith(filter: GameFilter.defaultFilter());
+    state = state.copyWith(
+      filter: GameFilter.defaultFilter(),
+      playerResultFilter: PlayerResultFilter.all,
+    );
   }
 
   void setSearchQuery(String query) {
     state = state.copyWith(searchQuery: query);
+  }
+
+  void setPlayerResultFilter(PlayerResultFilter filter) {
+    state = state.copyWith(playerResultFilter: filter);
   }
 
   Future<void> refresh() async {

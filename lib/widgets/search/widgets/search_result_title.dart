@@ -100,6 +100,29 @@ class _SearchResultTileState extends State<SearchResultTile>
 
   Widget _buildPlayerContent() {
     final player = widget.result.player;
+    final title = player?.title;
+    final rating = player?.rating;
+    final fed = player?.fed;
+
+    final hasTitle = title != null && title.isNotEmpty;
+    final hasRating = rating != null && rating > 0;
+    final hasFed = fed != null && fed.isNotEmpty;
+
+    // Build display name with title prefix
+    final displayName = hasTitle
+        ? '$title ${player?.name ?? widget.result.matchedText}'
+        : (player?.name ?? widget.result.matchedText);
+
+    // Build subtitle: rating and federation
+    final subtitleParts = <String>[];
+    if (hasRating) {
+      subtitleParts.add('$rating');
+    }
+    if (hasFed) {
+      subtitleParts.add(fed);
+    }
+    final subtitle = subtitleParts.isNotEmpty ? subtitleParts.join(' • ') : null;
+
     return Row(
       children: [
         Expanded(
@@ -107,7 +130,7 @@ class _SearchResultTileState extends State<SearchResultTile>
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                player?.name ?? widget.result.matchedText,
+                displayName,
                 style: const TextStyle(
                   color: Colors.white,
                   fontSize: 12,
@@ -116,32 +139,22 @@ class _SearchResultTileState extends State<SearchResultTile>
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
-              SizedBox(height: 4.h),
-              Text(
-                _buildPlayerSubtitle(player),
-                style: TextStyle(
-                  color: Colors.grey[400],
-                  fontSize: 12,
+              if (subtitle != null) ...[
+                SizedBox(height: 4.h),
+                Text(
+                  subtitle,
+                  style: TextStyle(
+                    color: Colors.grey[400],
+                    fontSize: 12,
+                  ),
+                  overflow: TextOverflow.ellipsis,
                 ),
-                overflow: TextOverflow.ellipsis,
-              ),
+              ],
             ],
           ),
         ),
       ],
     );
-  }
-
-  String _buildPlayerSubtitle(dynamic player) {
-    if (player == null) return '';
-    final parts = <String>[];
-    if (player.title != null && player.title!.isNotEmpty) {
-      parts.add(player.title!);
-    }
-    if (player.rating != null && player.rating! > 0) {
-      parts.add('${player.rating}');
-    }
-    return parts.join(' • ');
   }
 
   Widget _buildTournamentContent() {

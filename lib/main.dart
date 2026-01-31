@@ -348,7 +348,7 @@ class MyApp extends HookConsumerWidget {
       () => Upgrader(
         messages: CustomUpgraderMessages(),
         durationUntilAlertAgain: const Duration(days: 1),
-        debugDisplayAlways: kDebugMode,
+        debugDisplayAlways: false,
         debugLogging: false,
       ),
       const [],

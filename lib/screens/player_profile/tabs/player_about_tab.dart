@@ -1,15 +1,24 @@
 import 'package:chessever2/screens/player_profile/provider/player_profile_provider.dart';
 import 'package:chessever2/services/fide_photo_service.dart';
+import 'package:motor/motor.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/country_utils.dart';
 import 'package:chessever2/utils/png_asset.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/app_button.dart';
+import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:chessever2/widgets/player_initials_avatar.dart';
 import 'package:country_flags/country_flags.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+
+typedef PlayerGamesOpenCallback = void Function({
+  GameFilter? filter,
+  PlayerResultFilter? playerResultFilter,
+  String? searchQuery,
+});
 
 /// About tab showing comprehensive player information and analytics
 class PlayerAboutTab extends ConsumerStatefulWidget {
@@ -20,6 +29,7 @@ class PlayerAboutTab extends ConsumerStatefulWidget {
     this.title,
     this.federation,
     this.fallbackRating,
+    this.onOpenGames,
   });
 
   final int? fideId;
@@ -27,6 +37,7 @@ class PlayerAboutTab extends ConsumerStatefulWidget {
   final String? title;
   final String? federation;
   final int? fallbackRating;
+  final PlayerGamesOpenCallback? onOpenGames;
 
   @override
   ConsumerState<PlayerAboutTab> createState() => _PlayerAboutTabState();
@@ -37,15 +48,41 @@ class _PlayerAboutTabState extends ConsumerState<PlayerAboutTab>
   @override
   bool get wantKeepAlive => true;
 
+  GameTimeControlFilter? _previousTimeControl;
+  double _filterFlashValue = 0.0;
+
   /// Get the player profile key for provider lookups
   PlayerProfileKey get _playerKey => PlayerProfileKey(
         fideId: widget.fideId,
         playerName: widget.playerName,
       );
 
+  void _triggerFilterFlash() {
+    setState(() => _filterFlashValue = 1.0);
+    // Let motor handle the spring back to 0
+    Future.delayed(const Duration(milliseconds: 50), () {
+      if (mounted) {
+        setState(() => _filterFlashValue = 0.0);
+      }
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     super.build(context);
+
+    // Watch filter state and trigger animation on change
+    final gamesState = ref.watch(playerProfileGamesKeyProvider(_playerKey));
+    final currentTimeControl = gamesState.filter.timeControl;
+    final hasActiveFilter = currentTimeControl != GameTimeControlFilter.all;
+
+    // Trigger flash animation when time control filter changes
+    if (_previousTimeControl != null && _previousTimeControl != currentTimeControl) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _triggerFilterFlash();
+      });
+    }
+    _previousTimeControl = currentTimeControl;
 
     // Profile data only available with fideId
     final profileDataAsync = widget.fideId != null
@@ -81,42 +118,73 @@ class _PlayerAboutTabState extends ConsumerState<PlayerAboutTab>
               federation: widget.federation,
               profileData: profileDataAsync.valueOrNull,
               fallbackRating: widget.fallbackRating,
+              onOpenGames: widget.onOpenGames,
             ),
 
             SizedBox(height: 24.h),
 
             // Analytics section (computed from games)
             gamesAsync.when(
-              data: (games) {
-                if (games.isEmpty) {
+              data: (allGames) {
+                if (allGames.isEmpty) {
                   return _buildNoGamesMessage();
+                }
+
+                // Filter games by time control if a filter is active
+                final filteredGames = currentTimeControl == GameTimeControlFilter.all
+                    ? allGames
+                    : GameFilterHelper.applyFilter(
+                        allGames,
+                        GameFilter.defaultFilter().copyWith(timeControl: currentTimeControl),
+                      );
+
+                // Show empty state if no games match filter
+                if (filteredGames.isEmpty && hasActiveFilter) {
+                  return _buildNoGamesForFilterMessage(currentTimeControl);
                 }
 
                 final analyticsRequest = PlayerAnalyticsRequest(
                   fideId: widget.fideId,
                   playerName: widget.playerName,
-                  games: games,
+                  games: filteredGames,
                 );
                 final analytics = ref.watch(playerAnalyticsProvider(analyticsRequest));
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    // Filter active indicator
+                    if (hasActiveFilter) ...[
+                      _FilterActiveBanner(
+                        timeControl: currentTimeControl,
+                        totalGames: allGames.length,
+                        filteredGames: filteredGames.length,
+                      ),
+                      SizedBox(height: 16.h),
+                    ],
+
                     // Overall statistics
                     _OverallStatsSection(
                       resultStats: analytics.resultStats,
                       avgOpponentRating: analytics.avgOpponentRating,
+                      onOpenGames: widget.onOpenGames,
                     ),
 
                     SizedBox(height: 24.h),
 
                     // Color performance
-                    _ColorPerformanceSection(colorStats: analytics.colorStats),
+                    _ColorPerformanceSection(
+                      colorStats: analytics.colorStats,
+                      onOpenGames: widget.onOpenGames,
+                    ),
 
                     SizedBox(height: 24.h),
 
                     // Recent form
                     if (analytics.recentForm.isNotEmpty) ...[
-                      _RecentFormSection(form: analytics.recentForm),
+                      _RecentFormSection(
+                        form: analytics.recentForm,
+                        onOpenGames: widget.onOpenGames,
+                      ),
                       SizedBox(height: 24.h),
                     ],
 
@@ -124,6 +192,9 @@ class _PlayerAboutTabState extends ConsumerState<PlayerAboutTab>
                     if (analytics.openingStats.isNotEmpty)
                       _OpeningRepertoireSection(
                         openingStats: analytics.openingStats,
+                        openingStatsWhite: analytics.openingStatsWhite,
+                        openingStatsBlack: analytics.openingStatsBlack,
+                        onOpenGames: widget.onOpenGames,
                       ),
 
                     SizedBox(height: 24.h),
@@ -150,7 +221,98 @@ class _PlayerAboutTabState extends ConsumerState<PlayerAboutTab>
       );
     }
 
-    return content;
+    // Wrap with motor-powered filter flash overlay
+    return Stack(
+      children: [
+        // Main content with subtle scale when filter active
+        SingleMotionBuilder(
+          motion: const CupertinoMotion.smooth(),
+          value: hasActiveFilter ? 1.0 : 0.0,
+          builder: (context, filterProgress, _) {
+            return content;
+          },
+        ),
+        // Filter flash overlay - elegant wave effect
+        SingleMotionBuilder(
+          motion: const CupertinoMotion.bouncy(),
+          value: _filterFlashValue,
+          builder: (context, flashValue, _) {
+            if (flashValue < 0.01) {
+              return const SizedBox.shrink();
+            }
+
+            // Wave effect - flash sweeps down then fades
+            final waveProgress = flashValue;
+            final opacity = waveProgress * 0.35;
+
+            return Positioned.fill(
+              child: IgnorePointer(
+                child: ShaderMask(
+                  shaderCallback: (bounds) {
+                    return LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Colors.white.withValues(alpha: 1.0),
+                        Colors.white.withValues(alpha: 0.6),
+                        Colors.transparent,
+                      ],
+                      stops: [
+                        0.0,
+                        0.3 + (waveProgress * 0.2),
+                        0.5 + (waveProgress * 0.3),
+                      ],
+                    ).createShader(bounds);
+                  },
+                  blendMode: BlendMode.dstIn,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [
+                          kPrimaryColor.withValues(alpha: opacity),
+                          kPrimaryColor.withValues(alpha: opacity * 0.7),
+                          kPrimaryColor.withValues(alpha: opacity * 0.3),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
+        // Filter active indicator bar at top
+        SingleMotionBuilder(
+          motion: const CupertinoMotion.snappy(),
+          value: hasActiveFilter ? 1.0 : 0.0,
+          builder: (context, barProgress, _) {
+            if (barProgress < 0.01) return const SizedBox.shrink();
+
+            return Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: Container(
+                height: 2.h * barProgress,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      kPrimaryColor.withValues(alpha: 0.0),
+                      kPrimaryColor.withValues(alpha: 0.8 * barProgress),
+                      kPrimaryColor.withValues(alpha: 0.8 * barProgress),
+                      kPrimaryColor.withValues(alpha: 0.0),
+                    ],
+                    stops: const [0.0, 0.2, 0.8, 1.0],
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
+      ],
+    );
   }
 
   Widget _buildNoGamesMessage() {
@@ -175,6 +337,40 @@ class _PlayerAboutTabState extends ConsumerState<PlayerAboutTab>
           SizedBox(height: 4.h),
           Text(
             'Analytics will appear when games are available',
+            style: AppTypography.textSmRegular.copyWith(
+              color: kWhiteColor.withValues(alpha: 0.6),
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+    ).animate().fadeIn(duration: 300.ms);
+  }
+
+  Widget _buildNoGamesForFilterMessage(GameTimeControlFilter timeControl) {
+    const filterRedColor = Color(0xFFEF4444);
+    final timeControlName = timeControl.displayText;
+    return Container(
+      padding: EdgeInsets.all(24.sp),
+      decoration: BoxDecoration(
+        color: kBlack2Color,
+        borderRadius: BorderRadius.circular(12.br),
+      ),
+      child: Column(
+        children: [
+          Icon(
+            Icons.filter_alt_outlined,
+            size: 48.ic,
+            color: filterRedColor.withValues(alpha: 0.6),
+          ),
+          SizedBox(height: 12.h),
+          Text(
+            'No $timeControlName games',
+            style: AppTypography.textMdMedium.copyWith(color: kWhiteColor),
+          ),
+          SizedBox(height: 4.h),
+          Text(
+            'This player has no $timeControlName games in the database.\nTap the time control card again to clear the filter.',
             style: AppTypography.textSmRegular.copyWith(
               color: kWhiteColor.withValues(alpha: 0.6),
             ),
@@ -237,8 +433,65 @@ class _PlayerAboutTabState extends ConsumerState<PlayerAboutTab>
   }
 }
 
+/// Filter active banner showing which time control filter is applied
+class _FilterActiveBanner extends StatelessWidget {
+  const _FilterActiveBanner({
+    required this.timeControl,
+    required this.totalGames,
+    required this.filteredGames,
+  });
+
+  final GameTimeControlFilter timeControl;
+  final int totalGames;
+  final int filteredGames;
+
+  static const _filterRedColor = Color(0xFFEF4444);
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 10.h),
+      decoration: BoxDecoration(
+        color: _filterRedColor.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(10.br),
+        border: Border.all(
+          color: _filterRedColor.withValues(alpha: 0.4),
+          width: 1,
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 8.w,
+            height: 8.w,
+            decoration: const BoxDecoration(
+              color: _filterRedColor,
+              shape: BoxShape.circle,
+            ),
+          ),
+          SizedBox(width: 10.w),
+          Expanded(
+            child: Text(
+              'Showing ${timeControl.displayText} games only',
+              style: AppTypography.textSmMedium.copyWith(
+                color: kWhiteColor,
+              ),
+            ),
+          ),
+          Text(
+            '$filteredGames of $totalGames',
+            style: AppTypography.textXsMedium.copyWith(
+              color: kWhiteColor.withValues(alpha: 0.7),
+            ),
+          ),
+        ],
+      ),
+    ).animate().fadeIn(duration: 200.ms).slideY(begin: -0.1, end: 0);
+  }
+}
+
 /// Player header with photo and rating cards
-class _PlayerHeaderSection extends StatefulWidget {
+class _PlayerHeaderSection extends ConsumerStatefulWidget {
   const _PlayerHeaderSection({
     this.fideId,
     required this.playerName,
@@ -246,6 +499,7 @@ class _PlayerHeaderSection extends StatefulWidget {
     this.federation,
     this.profileData,
     this.fallbackRating,
+    this.onOpenGames,
   });
 
   final int? fideId;
@@ -254,12 +508,13 @@ class _PlayerHeaderSection extends StatefulWidget {
   final String? federation;
   final PlayerProfileData? profileData;
   final int? fallbackRating;
+  final PlayerGamesOpenCallback? onOpenGames;
 
   @override
-  State<_PlayerHeaderSection> createState() => _PlayerHeaderSectionState();
+  ConsumerState<_PlayerHeaderSection> createState() => _PlayerHeaderSectionState();
 }
 
-class _PlayerHeaderSectionState extends State<_PlayerHeaderSection> {
+class _PlayerHeaderSectionState extends ConsumerState<_PlayerHeaderSection> {
   Future<String?>? _photoFuture;
 
   @override
@@ -287,6 +542,14 @@ class _PlayerHeaderSectionState extends State<_PlayerHeaderSection> {
     final rapidRating = widget.profileData?.rapidRating;
     final blitzRating = widget.profileData?.blitzRating;
 
+    // Get current time control filter to show selected state
+    final playerKey = PlayerProfileKey(
+      fideId: widget.fideId,
+      playerName: widget.playerName,
+    );
+    final gamesState = ref.watch(playerProfileGamesKeyProvider(playerKey));
+    final currentTimeControl = gamesState.filter.timeControl;
+
     return Column(
       children: [
         Row(
@@ -306,6 +569,18 @@ class _PlayerHeaderSectionState extends State<_PlayerHeaderSection> {
                       icon: PngAsset.classicalIcon,
                       label: 'Classical',
                       rating: classicalRating,
+                      isSelected: currentTimeControl == GameTimeControlFilter.classical,
+                      onTap: () {
+                        // Toggle: if already selected, clear filter; otherwise apply
+                        final newTimeControl = currentTimeControl == GameTimeControlFilter.classical
+                            ? GameTimeControlFilter.all
+                            : GameTimeControlFilter.classical;
+                        widget.onOpenGames?.call(
+                          filter: GameFilter.defaultFilter().copyWith(
+                            timeControl: newTimeControl,
+                          ),
+                        );
+                      },
                     ),
                   ),
                   SizedBox(width: 6.w),
@@ -314,6 +589,18 @@ class _PlayerHeaderSectionState extends State<_PlayerHeaderSection> {
                       icon: PngAsset.rapidIcon,
                       label: 'Rapid',
                       rating: rapidRating,
+                      isSelected: currentTimeControl == GameTimeControlFilter.rapid,
+                      onTap: () {
+                        // Toggle: if already selected, clear filter; otherwise apply
+                        final newTimeControl = currentTimeControl == GameTimeControlFilter.rapid
+                            ? GameTimeControlFilter.all
+                            : GameTimeControlFilter.rapid;
+                        widget.onOpenGames?.call(
+                          filter: GameFilter.defaultFilter().copyWith(
+                            timeControl: newTimeControl,
+                          ),
+                        );
+                      },
                     ),
                   ),
                   SizedBox(width: 6.w),
@@ -322,6 +609,18 @@ class _PlayerHeaderSectionState extends State<_PlayerHeaderSection> {
                       icon: PngAsset.blitzIcon,
                       label: 'Blitz',
                       rating: blitzRating,
+                      isSelected: currentTimeControl == GameTimeControlFilter.blitz,
+                      onTap: () {
+                        // Toggle: if already selected, clear filter; otherwise apply
+                        final newTimeControl = currentTimeControl == GameTimeControlFilter.blitz
+                            ? GameTimeControlFilter.all
+                            : GameTimeControlFilter.blitz;
+                        widget.onOpenGames?.call(
+                          filter: GameFilter.defaultFilter().copyWith(
+                            timeControl: newTimeControl,
+                          ),
+                        );
+                      },
                     ),
                   ),
                 ],
@@ -421,46 +720,152 @@ class _PlayerHeaderSectionState extends State<_PlayerHeaderSection> {
   }
 }
 
-/// Rating card widget
-class _RatingCard extends StatelessWidget {
+/// Rating card widget with motor animations and selection state
+/// Chess-themed: smooth like a piece sliding into position
+class _RatingCard extends StatefulWidget {
   const _RatingCard({
     required this.icon,
     required this.label,
     this.rating,
+    this.onTap,
+    this.isSelected = false,
   });
 
   final String icon;
   final String label;
   final int? rating;
+  final VoidCallback? onTap;
+  final bool isSelected;
+
+  @override
+  State<_RatingCard> createState() => _RatingCardState();
+}
+
+class _RatingCardState extends State<_RatingCard> {
+  double _pressScale = 1.0;
+
+  void _onTapDown(TapDownDetails _) {
+    if (widget.onTap != null) {
+      setState(() => _pressScale = 0.92);
+    }
+  }
+
+  void _onTapUp(TapUpDetails _) {
+    setState(() => _pressScale = 1.0);
+  }
+
+  void _onTapCancel() {
+    setState(() => _pressScale = 1.0);
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: EdgeInsets.symmetric(horizontal: 8.sp, vertical: 10.sp),
-      height: 110.w, // Match player avatar height
-      decoration: BoxDecoration(
-        color: kBlack2Color,
-        borderRadius: BorderRadius.circular(10.br),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Image.asset(icon, width: 20.w, height: 20.h),
-          SizedBox(height: 6.h),
-          Text(
-            label,
-            style: AppTypography.textXsMedium.copyWith(
-              color: kWhiteColor70,
-              fontSize: 10.sp,
-            ),
-          ),
-          SizedBox(height: 4.h),
-          Text(
-            rating?.toString() ?? '-',
-            style: AppTypography.textLgBold.copyWith(color: kWhiteColor),
-          ),
-        ],
+    // Use motor for all animated properties
+    return GestureDetector(
+      onTapDown: widget.onTap != null ? _onTapDown : null,
+      onTapUp: widget.onTap != null ? _onTapUp : null,
+      onTapCancel: widget.onTap != null ? _onTapCancel : null,
+      onTap: widget.onTap,
+      child: SingleMotionBuilder(
+        motion: const CupertinoMotion.snappy(),
+        value: _pressScale,
+        builder: (context, pressScale, _) {
+          return SingleMotionBuilder(
+            // Bouncy spring for selection - like a chess piece settling
+            motion: const CupertinoMotion.bouncy(),
+            value: widget.isSelected ? 1.0 : 0.0,
+            builder: (context, selectProgress, _) {
+              // Interpolate colors based on selection progress
+              final bgColor = Color.lerp(
+                kBlack2Color,
+                kPrimaryColor.withValues(alpha: 0.18),
+                selectProgress,
+              )!;
+              final borderColor = Color.lerp(
+                Colors.transparent,
+                kPrimaryColor,
+                selectProgress,
+              )!;
+              final labelColor = Color.lerp(
+                kWhiteColor70,
+                kPrimaryColor,
+                selectProgress,
+              )!;
+              final ratingColor = Color.lerp(
+                kWhiteColor,
+                kPrimaryColor,
+                selectProgress,
+              )!;
+
+              // Subtle scale bump when selected
+              final selectScale = 1.0 + (selectProgress * 0.03);
+              final combinedScale = pressScale * selectScale;
+
+              // Border width animates
+              final borderWidth = 1.0 + (selectProgress * 0.5);
+
+              return Transform.scale(
+                scale: combinedScale,
+                child: Container(
+                  padding: EdgeInsets.symmetric(horizontal: 8.sp, vertical: 10.sp),
+                  height: 110.w,
+                  decoration: BoxDecoration(
+                    color: bgColor,
+                    borderRadius: BorderRadius.circular(10.br),
+                    border: Border.all(
+                      color: borderColor,
+                      width: borderWidth,
+                    ),
+                    // Subtle glow when selected
+                    boxShadow: selectProgress > 0.5
+                        ? [
+                            BoxShadow(
+                              color: kPrimaryColor.withValues(alpha: 0.2 * selectProgress),
+                              blurRadius: 12 * selectProgress,
+                              spreadRadius: 0,
+                            ),
+                          ]
+                        : null,
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      // Icon with color filter when selected
+                      ColorFiltered(
+                        colorFilter: selectProgress > 0.5
+                            ? ColorFilter.mode(
+                                kPrimaryColor.withValues(alpha: selectProgress * 0.3),
+                                BlendMode.srcATop,
+                              )
+                            : const ColorFilter.mode(
+                                Colors.transparent,
+                                BlendMode.dst,
+                              ),
+                        child: Image.asset(widget.icon, width: 20.w, height: 20.h),
+                      ),
+                      SizedBox(height: 6.h),
+                      Text(
+                        widget.label,
+                        style: AppTypography.textXsMedium.copyWith(
+                          color: labelColor,
+                          fontSize: 10.sp,
+                        ),
+                      ),
+                      SizedBox(height: 4.h),
+                      Text(
+                        widget.rating?.toString() ?? '-',
+                        style: AppTypography.textLgBold.copyWith(
+                          color: ratingColor,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          );
+        },
       ),
     );
   }
@@ -471,10 +876,12 @@ class _OverallStatsSection extends StatelessWidget {
   const _OverallStatsSection({
     required this.resultStats,
     required this.avgOpponentRating,
+    this.onOpenGames,
   });
 
   final ResultStatistics resultStats;
   final int avgOpponentRating;
+  final PlayerGamesOpenCallback? onOpenGames;
 
   @override
   Widget build(BuildContext context) {
@@ -501,18 +908,33 @@ class _OverallStatsSection extends StatelessWidget {
                     label: 'Win Rate',
                     value: '${(resultStats.winRate * 100).toStringAsFixed(1)}%',
                     color: kGreenColor,
+                    onTap: () {
+                      onOpenGames?.call(
+                        playerResultFilter: PlayerResultFilter.win,
+                      );
+                    },
                   ),
                   SizedBox(width: 12.w),
                   _StatBox(
                     label: 'Draw Rate',
                     value: '${(resultStats.drawRate * 100).toStringAsFixed(1)}%',
                     color: kWhiteColor70,
+                    onTap: () {
+                      onOpenGames?.call(
+                        playerResultFilter: PlayerResultFilter.draw,
+                      );
+                    },
                   ),
                   SizedBox(width: 12.w),
                   _StatBox(
                     label: 'Loss Rate',
                     value: '${(resultStats.lossRate * 100).toStringAsFixed(1)}%',
                     color: Colors.redAccent,
+                    onTap: () {
+                      onOpenGames?.call(
+                        playerResultFilter: PlayerResultFilter.loss,
+                      );
+                    },
                   ),
                 ],
               ),
@@ -619,46 +1041,57 @@ class _StatBox extends StatelessWidget {
     required this.label,
     required this.value,
     required this.color,
+    this.onTap,
   });
 
   final String label;
   final String value;
   final Color color;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Expanded(
-      child: Container(
-        padding: EdgeInsets.symmetric(vertical: 12.h),
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.15),
-          borderRadius: BorderRadius.circular(8.br),
-        ),
-        child: Column(
-          children: [
-            Text(
-              value,
-              style: AppTypography.textMdBold.copyWith(color: color),
-            ),
-            SizedBox(height: 2.h),
-            Text(
-              label,
-              style: AppTypography.textXsRegular.copyWith(
-                color: kWhiteColor.withValues(alpha: 0.6),
-              ),
-            ),
-          ],
-        ),
+    final box = Container(
+      padding: EdgeInsets.symmetric(vertical: 12.h),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(8.br),
       ),
+      child: Column(
+        children: [
+          Text(
+            value,
+            style: AppTypography.textMdBold.copyWith(color: color),
+          ),
+          SizedBox(height: 2.h),
+          Text(
+            label,
+            style: AppTypography.textXsRegular.copyWith(
+              color: kWhiteColor.withValues(alpha: 0.6),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    return Expanded(
+      child:
+          onTap == null
+              ? box
+              : TappableScale(scaleDown: 0.97, onTap: onTap!, child: box),
     );
   }
 }
 
 /// Color performance section
 class _ColorPerformanceSection extends StatelessWidget {
-  const _ColorPerformanceSection({required this.colorStats});
+  const _ColorPerformanceSection({
+    required this.colorStats,
+    this.onOpenGames,
+  });
 
   final ColorStatistics colorStats;
+  final PlayerGamesOpenCallback? onOpenGames;
 
   @override
   Widget build(BuildContext context) {
@@ -682,6 +1115,13 @@ class _ColorPerformanceSection extends StatelessWidget {
                 draws: colorStats.whiteDraws,
                 losses: colorStats.whiteLosses,
                 score: colorStats.whiteScore,
+                onTap: () {
+                  onOpenGames?.call(
+                    filter: GameFilter.defaultFilter().copyWith(
+                      color: GameColorFilter.white,
+                    ),
+                  );
+                },
               ),
             ),
             SizedBox(width: 12.w),
@@ -695,6 +1135,13 @@ class _ColorPerformanceSection extends StatelessWidget {
                 draws: colorStats.blackDraws,
                 losses: colorStats.blackLosses,
                 score: colorStats.blackScore,
+                onTap: () {
+                  onOpenGames?.call(
+                    filter: GameFilter.defaultFilter().copyWith(
+                      color: GameColorFilter.black,
+                    ),
+                  );
+                },
               ),
             ),
           ],
@@ -714,6 +1161,7 @@ class _ColorStatCard extends StatelessWidget {
     required this.draws,
     required this.losses,
     required this.score,
+    this.onTap,
   });
 
   final Color color;
@@ -723,10 +1171,11 @@ class _ColorStatCard extends StatelessWidget {
   final int draws;
   final int losses;
   final double score;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    final card = Container(
       padding: EdgeInsets.all(16.sp),
       decoration: BoxDecoration(
         color: kBlack2Color,
@@ -793,14 +1242,26 @@ class _ColorStatCard extends StatelessWidget {
         ],
       ),
     );
+
+    if (onTap == null) return card;
+
+    return TappableScale(
+      scaleDown: 0.98,
+      onTap: onTap!,
+      child: card,
+    );
   }
 }
 
 /// Recent form section
 class _RecentFormSection extends StatelessWidget {
-  const _RecentFormSection({required this.form});
+  const _RecentFormSection({
+    required this.form,
+    this.onOpenGames,
+  });
 
   final List<double> form;
+  final PlayerGamesOpenCallback? onOpenGames;
 
   @override
   Widget build(BuildContext context) {
@@ -823,17 +1284,21 @@ class _RecentFormSection extends StatelessWidget {
             children: form.map((result) {
               Color bgColor;
               String text;
+              PlayerResultFilter? filter;
               if (result == 1.0) {
                 bgColor = kGreenColor;
                 text = 'W';
+                filter = PlayerResultFilter.win;
               } else if (result == 0.5) {
                 bgColor = kWhiteColor.withValues(alpha: 0.5);
                 text = 'D';
+                filter = PlayerResultFilter.draw;
               } else {
                 bgColor = Colors.redAccent;
                 text = 'L';
+                filter = PlayerResultFilter.loss;
               }
-              return Container(
+              final chip = Container(
                 width: 28.w,
                 height: 28.w,
                 decoration: BoxDecoration(
@@ -849,6 +1314,14 @@ class _RecentFormSection extends StatelessWidget {
                   ),
                 ),
               );
+
+              if (onOpenGames == null || filter == null) return chip;
+
+              return TappableScale(
+                scaleDown: 0.92,
+                onTap: () => onOpenGames?.call(playerResultFilter: filter),
+                child: chip,
+              );
             }).toList(),
           ),
         ),
@@ -857,16 +1330,45 @@ class _RecentFormSection extends StatelessWidget {
   }
 }
 
+enum _OpeningRepertoireFilter { all, white, black }
+
 /// Opening repertoire section
-class _OpeningRepertoireSection extends StatelessWidget {
-  const _OpeningRepertoireSection({required this.openingStats});
+class _OpeningRepertoireSection extends StatefulWidget {
+  const _OpeningRepertoireSection({
+    required this.openingStats,
+    required this.openingStatsWhite,
+    required this.openingStatsBlack,
+    this.onOpenGames,
+  });
 
   final List<OpeningStatistic> openingStats;
+  final List<OpeningStatistic> openingStatsWhite;
+  final List<OpeningStatistic> openingStatsBlack;
+  final PlayerGamesOpenCallback? onOpenGames;
+
+  @override
+  State<_OpeningRepertoireSection> createState() =>
+      _OpeningRepertoireSectionState();
+}
+
+class _OpeningRepertoireSectionState extends State<_OpeningRepertoireSection> {
+  _OpeningRepertoireFilter _filter = _OpeningRepertoireFilter.all;
+
+  List<OpeningStatistic> get _filteredOpenings {
+    switch (_filter) {
+      case _OpeningRepertoireFilter.white:
+        return widget.openingStatsWhite;
+      case _OpeningRepertoireFilter.black:
+        return widget.openingStatsBlack;
+      case _OpeningRepertoireFilter.all:
+        return widget.openingStats;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     // Take top 10 most played openings
-    final topOpenings = openingStats.take(10).toList();
+    final topOpenings = _filteredOpenings.take(10).toList();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -881,36 +1383,116 @@ class _OpeningRepertoireSection extends StatelessWidget {
             color: kBlack2Color,
             borderRadius: BorderRadius.circular(12.br),
           ),
-          child: ListView.separated(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: topOpenings.length,
-            separatorBuilder: (_, __) => Divider(
-              color: kDividerColor,
-              height: 1,
-              indent: 16.w,
-              endIndent: 16.w,
-            ),
-            itemBuilder: (context, index) {
-              final opening = topOpenings[index];
-              return _OpeningRow(opening: opening);
-            },
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Filter chips inside the container
+              Padding(
+                padding: EdgeInsets.fromLTRB(16.w, 12.h, 16.w, 8.h),
+                child: Row(
+                  children: [
+                    _buildFilterChip(_OpeningRepertoireFilter.all, 'All'),
+                    SizedBox(width: 8.w),
+                    _buildFilterChip(_OpeningRepertoireFilter.white, 'White'),
+                    SizedBox(width: 8.w),
+                    _buildFilterChip(_OpeningRepertoireFilter.black, 'Black'),
+                  ],
+                ),
+              ),
+              // Divider between chips and list
+              Divider(
+                color: kDividerColor,
+                height: 1,
+                indent: 16.w,
+                endIndent: 16.w,
+              ),
+              // Repertoire list
+              if (topOpenings.isEmpty)
+                Padding(
+                  padding: EdgeInsets.fromLTRB(16.w, 0, 16.w, 20.h),
+                  child: Text(
+                    _filter == _OpeningRepertoireFilter.all
+                        ? 'No openings found yet'
+                        : 'No openings found for this color',
+                    style: AppTypography.textSmRegular.copyWith(
+                      color: kWhiteColor.withValues(alpha: 0.6),
+                    ),
+                  ),
+                )
+              else
+                ListView.separated(
+                  shrinkWrap: true,
+                  padding: EdgeInsets.zero,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: topOpenings.length,
+                  separatorBuilder: (_, __) => Divider(
+                    color: kDividerColor,
+                    height: 1,
+                    indent: 16.w,
+                    endIndent: 16.w,
+                  ),
+                  itemBuilder: (context, index) {
+                    final opening = topOpenings[index];
+                    return _OpeningRow(
+                      opening: opening,
+                      onOpenGames: widget.onOpenGames,
+                    );
+                  },
+                ),
+            ],
           ),
         ),
       ],
     ).animate().fadeIn(duration: 300.ms, delay: 400.ms);
   }
+
+  Widget _buildFilterChip(_OpeningRepertoireFilter filter, String label) {
+    final isSelected = _filter == filter;
+    final background =
+        isSelected
+            ? kWhiteColor.withValues(alpha: 0.12)
+            : kBlack2Color;
+    final borderColor =
+        isSelected
+            ? kWhiteColor.withValues(alpha: 0.6)
+            : kDividerColor.withValues(alpha: 0.6);
+    final textColor =
+        isSelected ? kWhiteColor : kWhiteColor.withValues(alpha: 0.6);
+
+    return GestureDetector(
+      onTap: () {
+        if (_filter == filter) return;
+        setState(() => _filter = filter);
+      },
+      child: Container(
+        padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 6.h),
+        decoration: BoxDecoration(
+          color: background,
+          borderRadius: BorderRadius.circular(16.br),
+          border: Border.all(color: borderColor, width: 1),
+        ),
+        child: Text(
+          label,
+          style: AppTypography.textXsMedium.copyWith(color: textColor),
+        ),
+      ),
+    );
+  }
 }
 
 /// Opening row widget
 class _OpeningRow extends StatelessWidget {
-  const _OpeningRow({required this.opening});
+  const _OpeningRow({
+    required this.opening,
+    this.onOpenGames,
+  });
 
   final OpeningStatistic opening;
+  final PlayerGamesOpenCallback? onOpenGames;
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
+    final row = Padding(
       padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
       child: Row(
         children: [
@@ -986,6 +1568,29 @@ class _OpeningRow extends StatelessWidget {
           ),
         ],
       ),
+    );
+
+    if (onOpenGames == null) return row;
+
+    return TappableScale(
+      scaleDown: 0.98,
+      onTap: () {
+        final eco = opening.eco.trim();
+        final hasEco = RegExp(r'^[A-E]').hasMatch(eco);
+        final name = opening.openingName?.trim();
+        final searchQuery = (name != null && name.isNotEmpty) ? name : eco;
+
+        onOpenGames?.call(
+          filter:
+              hasEco
+                  ? GameFilter.defaultFilter().copyWith(
+                    eco: GameEcoFilter.forCode(eco),
+                  )
+                  : null,
+          searchQuery: searchQuery.isNotEmpty ? searchQuery : null,
+        );
+      },
+      child: row,
     );
   }
 

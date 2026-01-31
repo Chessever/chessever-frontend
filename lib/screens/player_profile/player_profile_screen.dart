@@ -1,5 +1,6 @@
 import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/screens/favorites/favorite_players_provider.dart';
+import 'package:chessever2/screens/player_profile/provider/player_profile_provider.dart';
 import 'package:chessever2/screens/player_profile/tabs/player_about_tab.dart';
 import 'package:chessever2/screens/player_profile/tabs/player_events_tab.dart';
 import 'package:chessever2/screens/player_profile/tabs/player_games_tab.dart';
@@ -12,6 +13,7 @@ import 'package:chessever2/utils/png_asset.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
+import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:chessever2/widgets/segmented_switcher.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:country_flags/country_flags.dart';
@@ -121,6 +123,26 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
     }
   }
 
+  void _openGames({
+    GameFilter? filter,
+    PlayerResultFilter? playerResultFilter,
+    String? searchQuery,
+  }) {
+    HapticFeedbackService.buttonPress();
+    final playerKey = PlayerProfileKey(
+      fideId: widget.fideId,
+      playerName: widget.playerName,
+    );
+    final notifier = ref.read(playerProfileGamesKeyProvider(playerKey).notifier);
+
+    notifier.applyFilter(filter ?? GameFilter.defaultFilter());
+    notifier.setPlayerResultFilter(playerResultFilter ?? PlayerResultFilter.all);
+    notifier.setSearchQuery(searchQuery ?? '');
+
+    // Don't auto-switch to Games tab - keep user on current page
+    // Badge will indicate filter is applied on Games tab
+  }
+
   Future<void> _toggleFavorite() async {
     final allowed = await requireFullAuthGuard(context);
     if (!allowed) return;
@@ -214,6 +236,7 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
                           title: widget.title,
                           federation: widget.federation,
                           fallbackRating: widget.rating,
+                          onOpenGames: _openGames,
                         );
                       case PlayerProfileTab.games:
                         return PlayerGamesTab(
@@ -334,12 +357,49 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
       phone: 20.sp,
       tablet: 32.sp,
     );
+
+    // Check if games tab has active filters
+    final playerKey = PlayerProfileKey(
+      fideId: widget.fideId,
+      playerName: widget.playerName,
+    );
+    final gamesState = ref.watch(playerProfileGamesKeyProvider(playerKey));
+    final hasActiveFilters = gamesState.hasActiveFilters;
+
+    // Build option labels with badge for Games tab
+    final optionLabels = PlayerProfileTab.values.map((tab) {
+      final label = playerProfileTabNames[tab]!;
+      final showBadge = tab == PlayerProfileTab.games && hasActiveFilters;
+
+      if (!showBadge) {
+        return Text(label);
+      }
+
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text(label),
+          SizedBox(width: 4.w),
+          Container(
+            width: 8.w,
+            height: 8.w,
+            decoration: const BoxDecoration(
+              color: Color(0xFFEF4444),
+              shape: BoxShape.circle,
+            ),
+          ),
+        ],
+      );
+    }).toList();
+
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
       child: SegmentedSwitcher(
         backgroundColor: kPopUpColor,
         selectedBackgroundColor: kPopUpColor,
         options: playerProfileTabNames.values.toList(),
+        optionLabels: optionLabels,
         initialSelection: PlayerProfileTab.values.indexOf(selectedTab),
         currentSelection: PlayerProfileTab.values.indexOf(selectedTab),
         onSelectionChanged: _handleTabSelection,
