@@ -3,8 +3,10 @@ import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/png_asset.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/fullscreen_image_viewer.dart';
 import 'package:chessever2/widgets/player_initials_avatar.dart';
 import 'package:flutter/material.dart';
+import 'package:heroine/heroine.dart';
 
 /// Section displaying player avatar with three rating cards (Classical, Rapid, Blitz).
 class PlayerAvatarSection extends StatefulWidget {
@@ -91,15 +93,33 @@ class _PlayerAvatarSectionState extends State<PlayerAvatarSection> {
 
   Widget _buildPlayerAvatar() {
     final initials = getPlayerInitials(widget.playerName);
+    final heroTag = 'player_avatar_profile_${widget.fideId ?? widget.playerName}';
 
     return FutureBuilder<String?>(
       future: _photoFuture,
       builder: (context, snapshot) {
-        return PlayerInitialsAvatar(
-          photoUrl: snapshot.data,
-          initials: initials,
-          size: 110.w,
-          borderRadius: 12.br,
+        final photoUrl = snapshot.data;
+
+        return GestureDetector(
+          onTap: () {
+            showPlayerAvatarFullscreen(
+              context: context,
+              photoUrl: photoUrl,
+              initials: initials,
+              heroTag: heroTag,
+            );
+          },
+          child: Heroine(
+            tag: heroTag,
+            motion: const CupertinoMotion.smooth(),
+            flightShuttleBuilder: const FadeShuttleBuilder(),
+            child: PlayerInitialsAvatar(
+              photoUrl: photoUrl,
+              initials: initials,
+              size: 110.w,
+              borderRadius: 12.br,
+            ),
+          ),
         );
       },
     );

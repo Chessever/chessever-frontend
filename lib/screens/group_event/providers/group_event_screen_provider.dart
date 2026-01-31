@@ -25,6 +25,25 @@ final isSearchingProvider = StateProvider<bool>((ref) => false);
 final searchQueryProvider = StateProvider<String>((ref) => '');
 final liveBroadcastIdsProvider = StateProvider<List<String>>((ref) => []);
 
+/// Debounced search query - only updates after user stops typing for 400ms
+/// This prevents heavy search operations on every keystroke
+final debouncedSearchQueryProvider = StateProvider<String>((ref) => '');
+
+Timer? _searchDebounceTimer;
+
+/// Call this to update the debounced search query with debouncing
+void updateDebouncedSearchQuery(WidgetRef ref, String query) {
+  _searchDebounceTimer?.cancel();
+  _searchDebounceTimer = Timer(const Duration(milliseconds: 400), () {
+    ref.read(debouncedSearchQueryProvider.notifier).state = query;
+  });
+}
+
+/// Cancel any pending debounce timer
+void cancelSearchDebounce() {
+  _searchDebounceTimer?.cancel();
+}
+
 final supabaseSearchProvider =
     FutureProvider.family<List<GroupBroadcast>, String>((ref, query) async {
       return ref

@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/widgets/player_initials_avatar.dart';
+import 'package:chessever2/widgets/fullscreen_image_viewer.dart';
 import 'package:chessever2/screens/standings/providers/player_ratings_provider.dart'
     show AllRatingsRequest, allRatingsProvider;
 import 'package:chessever2/screens/standings/providers/player_utils_provider.dart';
@@ -14,6 +15,7 @@ import 'package:chessever2/utils/location_service_provider.dart';
 import 'package:chessever2/utils/png_asset.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:country_flags/country_flags.dart';
+import 'package:heroine/heroine.dart';
 import 'package:skeletonizer/skeletonizer.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -26,6 +28,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_s
 import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/favorites/favorite_players_provider.dart';
+import 'package:chessever2/screens/player_profile/player_profile_screen.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
@@ -498,6 +501,7 @@ class ScoreCardScreen extends ConsumerWidget {
                           photoFuture: photoFuture,
                           initials: initials,
                           title: player.title,
+                          fideId: player.fideId?.toString(),
                         ),
                         SizedBox(width: avatarRatingGap),
                         Expanded(
@@ -511,6 +515,7 @@ class ScoreCardScreen extends ConsumerWidget {
                                     fideId: player.fideId,
                                     timeControlType: "standard",
                                     assetPath: PngAsset.classicalIcon,
+                                    onTap: () => _navigateToPlayerProfile(context, player),
                                   ),
                                 ),
                                 SizedBox(width: ratingBoxGap),
@@ -521,6 +526,7 @@ class ScoreCardScreen extends ConsumerWidget {
                                     fideId: player.fideId,
                                     timeControlType: "rapid",
                                     assetPath: PngAsset.rapidIcon,
+                                    onTap: () => _navigateToPlayerProfile(context, player),
                                   ),
                                 ),
                                 SizedBox(width: ratingBoxGap),
@@ -531,6 +537,7 @@ class ScoreCardScreen extends ConsumerWidget {
                                     fideId: player.fideId,
                                     timeControlType: "blitz",
                                     assetPath: PngAsset.blitzIcon,
+                                    onTap: () => _navigateToPlayerProfile(context, player),
                                   ),
                                 ),
                               ],
@@ -540,14 +547,17 @@ class ScoreCardScreen extends ConsumerWidget {
                       ],
                     ),
                     SizedBox(height: 12.h),
-                    PerformanceStatsRow(
-                      performanceRating: performanceRating,
-                      score: eventScore,
-                      totalGames: eventTotalGames,
-                      // Use calculated sum of rating changes from games instead of standings value
-                      ratingDiff: hasEventContext && totalRatingDiff != 0.0
-                          ? totalRatingDiff.round()
-                          : null,
+                    GestureDetector(
+                      onTap: () => _navigateToPlayerProfile(context, player),
+                      child: PerformanceStatsRow(
+                        performanceRating: performanceRating,
+                        score: eventScore,
+                        totalGames: eventTotalGames,
+                        // Use calculated sum of rating changes from games instead of standings value
+                        ratingDiff: hasEventContext && totalRatingDiff != 0.0
+                            ? totalRatingDiff.round()
+                            : null,
+                      ),
                     ),
                   ],
                 ),
@@ -733,6 +743,21 @@ class ScoreCardScreen extends ConsumerWidget {
     return null;
   }
 
+  void _navigateToPlayerProfile(BuildContext context, PlayerStandingModel player) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => PlayerProfileScreen(
+          fideId: player.fideId,
+          playerName: player.name,
+          title: player.title,
+          federation: player.countryCode,
+          rating: player.score.round(),
+        ),
+      ),
+    );
+  }
+
   /// Extract round number from a round slug or round id string
   /// e.g., "round-2" -> 2, "round7" -> 7, "r3" -> 3
   int? _extractRoundNumber(String? source) {
@@ -819,28 +844,48 @@ class _PlayerAvatarTile extends StatelessWidget {
   final Future<String?>? photoFuture;
   final String initials;
   final String? title;
+  final String? fideId;
 
   const _PlayerAvatarTile({
     required this.photoFuture,
     required this.initials,
     required this.title,
+    this.fideId,
   });
 
   @override
   Widget build(BuildContext context) {
     // Bigger avatar for tablets
     final avatarSize = ResponsiveHelper.isTablet ? 120.sp : 90.w;
+    final heroTag = 'player_avatar_scorecard_${fideId ?? initials}';
 
     return FutureBuilder<String?>(
       future: photoFuture,
       builder: (context, snapshot) {
-        // Always show the avatar with initials fallback, regardless of loading state
-        return PlayerInitialsAvatar(
-          photoUrl: snapshot.data,
-          initials: initials,
-          size: avatarSize,
-          borderRadius: 12.br,
-          title: title,
+        final photoUrl = snapshot.data;
+
+        return GestureDetector(
+          onTap: () {
+            showPlayerAvatarFullscreen(
+              context: context,
+              photoUrl: photoUrl,
+              initials: initials,
+              heroTag: heroTag,
+              title: title,
+            );
+          },
+          child: Heroine(
+            tag: heroTag,
+            motion: const CupertinoMotion.smooth(),
+            flightShuttleBuilder: const FadeShuttleBuilder(),
+            child: PlayerInitialsAvatar(
+              photoUrl: photoUrl,
+              initials: initials,
+              size: avatarSize,
+              borderRadius: 12.br,
+              title: title,
+            ),
+          ),
         );
       },
     );
@@ -1013,6 +1058,7 @@ class _RatingDisplay extends ConsumerWidget {
   final int? fideId;
   final String timeControlType;
   final String assetPath;
+  final VoidCallback? onTap;
 
   const _RatingDisplay({
     required this.label,
@@ -1020,6 +1066,7 @@ class _RatingDisplay extends ConsumerWidget {
     this.fideId,
     required this.timeControlType,
     required this.assetPath,
+    this.onTap,
   });
 
   @override
@@ -1040,66 +1087,69 @@ class _RatingDisplay extends ConsumerWidget {
     final labelFontSize = ResponsiveHelper.isTablet ? 12.sp : 10.sp;
     final elementSpacing = ResponsiveHelper.isTablet ? 6.h : 4.h;
 
-    return Container(
-      padding: EdgeInsets.symmetric(
-        horizontal: ResponsiveHelper.isTablet ? 6.sp : 3.sp,
-        vertical: ResponsiveHelper.isTablet ? 12.sp : 8.sp,
-      ),
-      width: double.infinity,
-      height: containerHeight,
-      decoration: BoxDecoration(
-        color: kBlack2Color,
-        borderRadius: BorderRadius.circular(8.br),
-      ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Image.asset(assetPath, width: iconSize, height: iconSize),
-          SizedBox(height: elementSpacing),
-          Text(
-            label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: AppTypography.textXsMedium.copyWith(
-              color: kWhiteColor70,
-              fontSize: labelFontSize,
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: EdgeInsets.symmetric(
+          horizontal: ResponsiveHelper.isTablet ? 6.sp : 3.sp,
+          vertical: ResponsiveHelper.isTablet ? 12.sp : 8.sp,
+        ),
+        width: double.infinity,
+        height: containerHeight,
+        decoration: BoxDecoration(
+          color: kBlack2Color,
+          borderRadius: BorderRadius.circular(8.br),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Image.asset(assetPath, width: iconSize, height: iconSize),
+            SizedBox(height: elementSpacing),
+            Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: AppTypography.textXsMedium.copyWith(
+                color: kWhiteColor70,
+                fontSize: labelFontSize,
+              ),
+              textAlign: TextAlign.center,
             ),
-            textAlign: TextAlign.center,
-          ),
-          SizedBox(height: elementSpacing),
-          ratingsAsync.when(
-            data: (ratings) {
-              final rating = ratings.getRating(timeControlType);
-              return Text(
-                rating?.toString() ?? '-',
+            SizedBox(height: elementSpacing),
+            ratingsAsync.when(
+              data: (ratings) {
+                final rating = ratings.getRating(timeControlType);
+                return Text(
+                  rating?.toString() ?? '-',
+                  style: ResponsiveHelper.isTablet
+                      ? AppTypography.textLgBold.copyWith(color: kWhiteColor)
+                      : AppTypography.textMdBold.copyWith(color: kWhiteColor),
+                );
+              },
+              loading: () => Skeletonizer(
+                enabled: true,
+                ignoreContainers: true,
+                effect: const ShimmerEffect(
+                  baseColor: Color(0xFF2A2A2A),
+                  highlightColor: Color(0xFF3A3A3A),
+                ),
+                child: Text(
+                  '2400',
+                  style: ResponsiveHelper.isTablet
+                      ? AppTypography.textLgBold.copyWith(color: kWhiteColor)
+                      : AppTypography.textMdBold.copyWith(color: kWhiteColor),
+                ),
+              ),
+              error: (_, __) => Text(
+                '-',
                 style: ResponsiveHelper.isTablet
                     ? AppTypography.textLgBold.copyWith(color: kWhiteColor)
                     : AppTypography.textMdBold.copyWith(color: kWhiteColor),
-              );
-            },
-            loading: () => Skeletonizer(
-              enabled: true,
-              ignoreContainers: true,
-              effect: const ShimmerEffect(
-                baseColor: Color(0xFF2A2A2A),
-                highlightColor: Color(0xFF3A3A3A),
-              ),
-              child: Text(
-                '2400',
-                style: ResponsiveHelper.isTablet
-                    ? AppTypography.textLgBold.copyWith(color: kWhiteColor)
-                    : AppTypography.textMdBold.copyWith(color: kWhiteColor),
               ),
             ),
-            error: (_, __) => Text(
-              '-',
-              style: ResponsiveHelper.isTablet
-                  ? AppTypography.textLgBold.copyWith(color: kWhiteColor)
-                  : AppTypography.textMdBold.copyWith(color: kWhiteColor),
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

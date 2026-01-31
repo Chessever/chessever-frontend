@@ -41,8 +41,13 @@ class SearchOverlay extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final queries = ref.watch(searchQueryProvider);
+    // Use debounced query for actual search to avoid heavy ops on every keystroke
+    final debouncedQuery = ref.watch(debouncedSearchQueryProvider);
     final maxH = _computeMaxHeight(context);
+
+    // Show loading state while waiting for debounce if user is actively typing
+    final currentQuery = ref.watch(searchQueryProvider);
+    final isWaitingForDebounce = currentQuery != debouncedQuery && currentQuery.isNotEmpty;
 
     return Container(
       decoration: BoxDecoration(
@@ -54,16 +59,19 @@ class SearchOverlay extends ConsumerWidget {
         borderRadius: BorderRadius.circular(16),
         child: ConstrainedBox(
           constraints: BoxConstraints(maxHeight: maxH),
-          child: ref
-              .watch(supabaseCombinedSearchProvider(queries))
-              .when(
-                loading: () => _buildLoadingState(maxH),
-                error: (e, _) => _buildErrorState(e.toString(), maxH),
-                data: (searchResult) {
-                  if (searchResult.isEmpty) return _buildEmptyState(maxH);
-                  return _buildSearchResults(searchResult);
-                },
-              ),
+          child: debouncedQuery.isEmpty
+              ? _buildLoadingState(maxH)
+              : ref
+                  .watch(supabaseCombinedSearchProvider(debouncedQuery))
+                  .when(
+                    loading: () => _buildLoadingState(maxH),
+                    error: (e, _) => _buildErrorState(e.toString(), maxH),
+                    data: (searchResult) {
+                      if (isWaitingForDebounce) return _buildLoadingState(maxH);
+                      if (searchResult.isEmpty) return _buildEmptyState(maxH);
+                      return _buildSearchResults(searchResult);
+                    },
+                  ),
         ),
       ),
     );
