@@ -351,8 +351,7 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
       playerName: widget.playerName,
     );
     final gamesState = ref.watch(playerProfileGamesKeyProvider(playerKey));
-    final hasActiveFilter =
-        gamesState.filter.timeControl != GameTimeControlFilter.all;
+    final hasActiveFilter = gamesState.hasActiveFilters;
 
     return Stack(
       children: [
