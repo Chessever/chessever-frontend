@@ -1,8 +1,9 @@
+import 'dart:convert';
+
 import 'package:chessever2/providers/board_settings_provider.dart';
-import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
+import 'package:chessever2/repository/sqlite/app_database.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'dart:convert';
 
 // Add an enum for board colors
 enum BoardColor { defaultColor, brown, grey, green, orange, purple, blue, pink }
@@ -145,7 +146,7 @@ class _BoardSettingsRepository {
 
   Future<void> saveBoardSettings(BoardSettings settings) async {
     try {
-      final prefs = ref.read(sharedPreferencesRepository);
+      final db = ref.read(appDatabaseProvider);
       final Map<String, dynamic> data = {
         'boardColorIndex': getBoardColorEnum(settings.boardColor).index,
         'showEvaluationBar': settings.showEvaluationBar,
@@ -154,16 +155,16 @@ class _BoardSettingsRepository {
         'pieceStyle': settings.pieceStyle.index,
       };
 
-      await prefs.setString(_boardSettingsKey, jsonEncode(data));
+      await db.setString(_boardSettingsKey, jsonEncode(data));
     } catch (error, _) {
-      rethrow;
+      // Local storage failure is not critical - Supabase is source of truth
     }
   }
 
   Future<BoardSettings?> loadBoardSettings() async {
     try {
-      final prefs = ref.read(sharedPreferencesRepository);
-      final String? settingsString = await prefs.getString(_boardSettingsKey);
+      final db = ref.read(appDatabaseProvider);
+      final String? settingsString = await db.getString(_boardSettingsKey);
 
       if (settingsString == null) {
         return null;
@@ -187,7 +188,8 @@ class _BoardSettingsRepository {
         return null;
       }
     } catch (error, _) {
-      rethrow;
+      // Local storage failure is not critical - return null and use defaults
+      return null;
     }
   }
 }

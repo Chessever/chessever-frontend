@@ -1,133 +1,121 @@
 import 'dart:convert';
 import 'package:chessever2/repository/lichess/cloud_eval/cloud_eval.dart';
-import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
+import 'package:chessever2/repository/sqlite/app_database.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 final localEvalCacheProvider = AutoDisposeProvider<LocalEvalCache>(
-  (_) => LocalEvalCache(),
+  (ref) => LocalEvalCache(ref),
 );
 
 class LocalEvalCache {
-  static const _prefix = 'cloud_eval_';
+  LocalEvalCache(this.ref);
+
+  final Ref ref;
+
+  static const _cacheKeyPrefix = 'cloud_eval_';
   static const _versionKey = 'cloud_eval_version';
-  static const _keysListKey = 'cloud_eval_keys_list';
-  static const _currentVersion =
-      11; // v11: Added cache size limit to prevent SharedPreferences bloat
-  static const _maxCacheSize = 500; // Maximum number of cached evaluations
+  static const _currentVersion = 12; // v12: Migrated to SQLite
+  static const _maxCacheSize = 500;
 
   Future<void> save(String fen, CloudEval eval, {int? multiPV}) async {
-    final prefs = await SharedPreferencesService.instance.ensureInitialized();
-    final storedVersion = prefs.getInt(_versionKey) ?? 1;
-    if (storedVersion < _currentVersion) {
-      await _clearWithPrefs(prefs);
+    try {
+      final db = ref.read(appDatabaseProvider);
+
+      // Check version and clear if outdated
+      final storedVersion = await db.getInt(_versionKey) ?? 1;
+      if (storedVersion < _currentVersion) {
+        await _clearAll();
+      }
+      await db.setInt(_versionKey, _currentVersion);
+
+      final effectiveMultiPv =
+          (multiPV ?? eval.requestedMultiPv ?? eval.pvs.length).clamp(0, 5);
+      final key = _buildKey(fen, effectiveMultiPv);
+      await db.setCache(key: key, value: jsonEncode(eval.toJson()));
+
+      // Also store legacy key so older readers (or callers without multiPV) still benefit
+      if (effectiveMultiPv > 0) {
+        final legacyKey = '$_cacheKeyPrefix$fen';
+        await db.setCache(key: legacyKey, value: jsonEncode(eval.toJson()));
+      }
+    } catch (e) {
+      // Cache failure is not critical
     }
-    await prefs.setInt(_versionKey, _currentVersion);
-
-    final effectiveMultiPv =
-        (multiPV ?? eval.requestedMultiPv ?? eval.pvs.length).clamp(0, 5);
-    final key = _buildKey(fen, effectiveMultiPv);
-    await prefs.setString(key, jsonEncode(eval.toJson()));
-
-    // Track keys for LRU eviction to prevent unbounded cache growth
-    await _trackKeyAndEnforceLimit(prefs, key);
-
-    // Also store legacy key so older readers (or callers without multiPV) still benefit
-    if (effectiveMultiPv > 0) {
-      final legacyKey = '$_prefix$fen';
-      await prefs.setString(legacyKey, jsonEncode(eval.toJson()));
-      await _trackKeyAndEnforceLimit(prefs, legacyKey);
-    }
-  }
-
-  /// Track a cache key and evict oldest entries if cache exceeds limit.
-  /// Uses LRU eviction to keep the cache size bounded.
-  Future<void> _trackKeyAndEnforceLimit(
-    SharedPreferences prefs,
-    String key,
-  ) async {
-    final keysList = prefs.getStringList(_keysListKey) ?? [];
-
-    // Remove key if it already exists (will be re-added at end for LRU)
-    keysList.remove(key);
-    keysList.add(key);
-
-    // Evict oldest entries if over limit
-    while (keysList.length > _maxCacheSize) {
-      final oldestKey = keysList.removeAt(0);
-      await prefs.remove(oldestKey);
-    }
-
-    await prefs.setStringList(_keysListKey, keysList);
   }
 
   Future<CloudEval?> fetch(String fen, {int? multiPV}) async {
-    final prefs = await SharedPreferencesService.instance.ensureInitialized();
-    final storedVersion = prefs.getInt(_versionKey) ?? 1;
-    if (storedVersion < _currentVersion) {
-      await _clearWithPrefs(prefs);
-      await prefs.setInt(_versionKey, _currentVersion);
-      return null;
-    }
+    try {
+      final db = ref.read(appDatabaseProvider);
 
-    final desired = (multiPV ?? 0);
-    final keysToTry = <String>[];
-
-    if (desired > 0) {
-      for (int pv = desired; pv >= 1; pv--) {
-        keysToTry.add(_buildKey(fen, pv));
+      final storedVersion = await db.getInt(_versionKey) ?? 1;
+      if (storedVersion < _currentVersion) {
+        await _clearAll();
+        await db.setInt(_versionKey, _currentVersion);
+        return null;
       }
-    }
 
-    // Legacy fallbacks (no PV suffix)
-    keysToTry.add('$_prefix$fen');
+      final desired = (multiPV ?? 0);
+      final keysToTry = <String>[];
 
-    for (final key in keysToTry) {
-      final raw = prefs.getString(key);
-      if (raw == null) continue;
-      try {
-        final eval = CloudEval.fromJson(jsonDecode(raw));
-        if (eval.pvs.isEmpty) continue;
-        if (desired > 0) {
-          // Skip entries that don't satisfy the requested PV count
-          if (eval.pvs.length < desired) {
-            continue;
-          }
-          if (eval.pvs.length > desired) {
-            final trimmed = CloudEval(
-              fen: eval.fen,
-              knodes: eval.knodes,
-              depth: eval.depth,
-              pvs: eval.pvs.take(desired).toList(growable: false),
-              requestedMultiPv: desired,
-            );
-            return trimmed;
-          }
-          if (eval.requestedMultiPv != desired) {
-            return CloudEval(
-              fen: eval.fen,
-              knodes: eval.knodes,
-              depth: eval.depth,
-              pvs: eval.pvs,
-              requestedMultiPv: desired,
-            );
-          }
+      if (desired > 0) {
+        for (int pv = desired; pv >= 1; pv--) {
+          keysToTry.add(_buildKey(fen, pv));
         }
-        return eval.requestedMultiPv == null
-            ? CloudEval(
+      }
+
+      // Legacy fallbacks (no PV suffix)
+      keysToTry.add('$_cacheKeyPrefix$fen');
+
+      for (final key in keysToTry) {
+        final entry = await db.getCache(key: key);
+        if (entry == null) continue;
+
+        try {
+          final eval = CloudEval.fromJson(jsonDecode(entry.value));
+          if (eval.pvs.isEmpty) continue;
+
+          if (desired > 0) {
+            if (eval.pvs.length < desired) {
+              continue;
+            }
+            if (eval.pvs.length > desired) {
+              final trimmed = CloudEval(
+                fen: eval.fen,
+                knodes: eval.knodes,
+                depth: eval.depth,
+                pvs: eval.pvs.take(desired).toList(growable: false),
+                requestedMultiPv: desired,
+              );
+              return trimmed;
+            }
+            if (eval.requestedMultiPv != desired) {
+              return CloudEval(
                 fen: eval.fen,
                 knodes: eval.knodes,
                 depth: eval.depth,
                 pvs: eval.pvs,
-                requestedMultiPv: eval.pvs.length,
-              )
-            : eval;
-      } catch (_) {
-        // corrupted entry → skip it
+                requestedMultiPv: desired,
+              );
+            }
+          }
+          return eval.requestedMultiPv == null
+              ? CloudEval(
+                  fen: eval.fen,
+                  knodes: eval.knodes,
+                  depth: eval.depth,
+                  pvs: eval.pvs,
+                  requestedMultiPv: eval.pvs.length,
+                )
+              : eval;
+        } catch (_) {
+          // corrupted entry - skip it
+        }
       }
-    }
 
-    return null;
+      return null;
+    } catch (e) {
+      return null;
+    }
   }
 
   /// Batch fetch multiple evals at once - much faster than individual fetches
@@ -135,45 +123,54 @@ class LocalEvalCache {
     final result = <String, CloudEval>{};
     if (fens.isEmpty) return result;
 
-    final prefs = await SharedPreferencesService.instance.ensureInitialized();
-    final storedVersion = prefs.getInt(_versionKey) ?? 1;
-    if (storedVersion < _currentVersion) {
-      await _clearWithPrefs(prefs);
-      await prefs.setInt(_versionKey, _currentVersion);
-      return result;
-    }
+    try {
+      final db = ref.read(appDatabaseProvider);
 
-    for (final fen in fens) {
-      final raw = prefs.getString(_buildKey(fen, 0));
-      if (raw != null) {
-        try {
-          result[fen] = CloudEval.fromJson(jsonDecode(raw));
-        } catch (_) {
-          // corrupted entry → skip it
+      final storedVersion = await db.getInt(_versionKey) ?? 1;
+      if (storedVersion < _currentVersion) {
+        await _clearAll();
+        await db.setInt(_versionKey, _currentVersion);
+        return result;
+      }
+
+      for (final fen in fens) {
+        final entry = await db.getCache(key: _buildKey(fen, 0));
+        if (entry != null) {
+          try {
+            result[fen] = CloudEval.fromJson(jsonDecode(entry.value));
+          } catch (_) {
+            // corrupted entry - skip it
+          }
         }
       }
+    } catch (e) {
+      // Cache failure is not critical
     }
 
     return result;
   }
 
   Future<void> clear() async {
-    final prefs = await SharedPreferencesService.instance.ensureInitialized();
-    await _clearWithPrefs(prefs);
-    await prefs.setInt(_versionKey, _currentVersion);
+    await _clearAll();
+    try {
+      final db = ref.read(appDatabaseProvider);
+      await db.setInt(_versionKey, _currentVersion);
+    } catch (e) {
+      // Cache failure is not critical
+    }
   }
 
-  Future<void> _clearWithPrefs(SharedPreferences prefs) async {
-    final keys = prefs.getKeys().where((k) => k.startsWith(_prefix));
-    for (final k in keys) {
-      await prefs.remove(k);
+  Future<void> _clearAll() async {
+    try {
+      final db = ref.read(appDatabaseProvider);
+      await db.clearCacheByPrefix(_cacheKeyPrefix);
+    } catch (e) {
+      // Cache failure is not critical
     }
-    // Also clear the keys tracking list
-    await prefs.remove(_keysListKey);
   }
 
   String _buildKey(String fen, int multiPV) {
-    if (multiPV <= 0) return '$_prefix$fen';
-    return '$_prefix${fen}_pv$multiPV';
+    if (multiPV <= 0) return '$_cacheKeyPrefix$fen';
+    return '$_cacheKeyPrefix${fen}_pv$multiPV';
   }
 }

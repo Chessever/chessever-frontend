@@ -26,7 +26,7 @@ class FavoritesMigration {
   /// This is safe to call multiple times - it only runs once per user
   /// NOTE: Event migration is DISABLED - the old keys (current, upcoming, past)
   /// stored ALL fetched events, not just favorites. Only player favorites are migrated.
-  static Future<SharedPreferences> _getPrefs() async =>
+  static Future<SharedPreferences?> _getPrefs() async =>
       SharedPreferencesService.instance.ensureInitialized();
 
   static Future<void> migrateIfNeeded() async {
@@ -38,6 +38,10 @@ class FavoritesMigration {
       }
 
       final prefs = await _getPrefs();
+      if (prefs == null) {
+        debugPrint('[FavoritesMigration] SharedPreferences unavailable, skipping');
+        return;
+      }
 
       // User-specific migration flag - v4 to force re-run after disabling event migration
       final userMigrationKey = _migrationKeyForUser(userId);
@@ -180,6 +184,7 @@ class FavoritesMigration {
       return;
     }
     final prefs = await _getPrefs();
+    if (prefs == null) return;
     await prefs.remove(_migrationKeyForUser(userId));
     debugPrint('[FavoritesMigration] Migration flag reset for user $userId');
   }
@@ -196,6 +201,10 @@ class FavoritesMigration {
       }
 
       final prefs = await _getPrefs();
+      if (prefs == null) {
+        debugPrint('[FavoritesMigration] SharedPreferences unavailable, skipping cleanup');
+        return;
+      }
       final cleanupKey = 'favorites_cleanup_v1_$userId';
       final cleanupDone = prefs.getBool(cleanupKey) ?? false;
 
@@ -249,6 +258,10 @@ class FavoritesMigration {
       }
 
       final prefs = await _getPrefs();
+      if (prefs == null) {
+        debugPrint('[FavoritesMigration] SharedPreferences unavailable, skipping cache cleanup');
+        return;
+      }
       // v1: Initial cleanup for double-sync duplicate issue
       final cleanupKey = 'favorites_cache_cleanup_v1_$userId';
       final cleanupDone = prefs.getBool(cleanupKey) ?? false;

@@ -1,4 +1,4 @@
-import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
+import 'package:chessever2/repository/sqlite/app_database.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -11,37 +11,50 @@ class _FavoriteRepository {
 
   final Ref ref;
 
-  String _userScopedKey(String key) {
+  String? _getCurrentUserId() {
     final userId = Supabase.instance.client.auth.currentUser?.id;
     if (userId == null || userId.isEmpty) {
-      return '${key}_guest';
+      return null; // guest user
     }
-    return '${key}_$userId';
+    return userId;
   }
 
   Future<void> toggleStar(String key, String value) async {
     try {
-      final scopedKey = _userScopedKey(key);
-      final prefs = ref.read(sharedPreferencesRepository);
-      final currentSaved = (await prefs.getStringList(scopedKey)).toList();
-      if (currentSaved.contains(value)) {
-        currentSaved.remove(value);
+      final db = ref.read(appDatabaseProvider);
+      final userId = _getCurrentUserId();
+      final contains = await db.listContains(
+        key: 'starred_$key',
+        item: value,
+        userId: userId,
+      );
+
+      if (contains) {
+        await db.removeFromList(
+          key: 'starred_$key',
+          item: value,
+          userId: userId,
+        );
       } else {
-        currentSaved.add(value);
+        await db.addToList(
+          key: 'starred_$key',
+          item: value,
+          userId: userId,
+        );
       }
-      await prefs.setStringList(scopedKey, currentSaved);
     } catch (error, _) {
-      rethrow;
+      // Local storage failure is not critical
     }
   }
 
   Future<List<String>> getStar(String key) async {
     try {
-      final scopedKey = _userScopedKey(key);
-      final prefs = ref.read(sharedPreferencesRepository);
-      return await prefs.getStringList(scopedKey);
+      final db = ref.read(appDatabaseProvider);
+      final userId = _getCurrentUserId();
+      return await db.getList(key: 'starred_$key', userId: userId);
     } catch (error, _) {
-      rethrow;
+      // Local storage failure - return empty list
+      return [];
     }
   }
 }

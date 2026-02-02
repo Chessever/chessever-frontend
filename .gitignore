@@ -170,3 +170,4 @@ app.*.symbols
 .mcp.json
 openapi.json
 lichessopenapi.json
+promo-video/

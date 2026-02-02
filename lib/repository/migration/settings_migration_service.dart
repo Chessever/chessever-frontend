@@ -1,11 +1,14 @@
 import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
+import 'package:chessever2/repository/sqlite/app_database.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 final settingsMigrationServiceProvider = Provider((ref) => SettingsMigrationService(ref));
 
-/// Service to handle one-time migration of local settings to Supabase
+/// Service to handle one-time migration of local settings from SharedPreferences to Supabase
+/// NOTE: This reads from SharedPreferences as the SOURCE (legacy data) to migrate to Supabase.
+/// The migration flag itself is stored in SQLite (the new storage system).
 class SettingsMigrationService {
   SettingsMigrationService(this.ref);
 
@@ -17,7 +20,7 @@ class SettingsMigrationService {
 
   /// Check if migration has already been performed
   Future<bool> isMigrated() async {
-    final flag = await ref.read(sharedPreferencesRepository).getBool(_migrationKey);
+    final flag = await AppDatabase.instance.getBool(_migrationKey);
     return flag ?? false;
   }
 
@@ -160,8 +163,8 @@ class SettingsMigrationService {
         debugPrint('[Migration] ℹ️ No local settings found to migrate');
       }
 
-      // Mark migration as complete
-      await prefs.setBool(_migrationKey, true);
+      // Mark migration as complete (use SQLite for the flag)
+      await AppDatabase.instance.setBool(_migrationKey, true);
       debugPrint('[Migration] ✅ Migration complete, flag set');
     } catch (e, st) {
       debugPrint('[Migration] ❌ Error during migration: $e');
@@ -173,7 +176,7 @@ class SettingsMigrationService {
   /// Reset migration flag (for testing purposes only)
   @visibleForTesting
   Future<void> resetMigrationFlag() async {
-    await ref.read(sharedPreferencesRepository).removeData(_migrationKey);
+    await AppDatabase.instance.remove(_migrationKey);
     debugPrint('[Migration] 🔄 Migration flag reset');
   }
 }

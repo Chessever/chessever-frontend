@@ -1,4 +1,4 @@
-import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
+import 'package:chessever2/repository/sqlite/app_database.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -8,11 +8,9 @@ final onboardingRepositoryProvider = Provider<OnboardingRepository>((ref) {
 
 class OnboardingRepository {
   /// Simple device-level key - shown once per fresh install
-  /// Using new key (v3) to reset for all users after this fix
-  static const String _legacyDeviceKey = 'has_seen_onboarding_v3';
+  static const String _baseKey = 'has_seen_onboarding';
 
   /// Per-user key to avoid cross-account pollution on the same device
-  static const String _baseKey = 'has_seen_onboarding_v4';
   static String _userKey(String userId) => '${_baseKey}_$userId';
 
   String _resolveKey(String? userId) {
@@ -23,22 +21,24 @@ class OnboardingRepository {
   }
 
   /// Check if onboarding has been shown on this device.
-  /// Simple boolean check - no user-specific or legacy logic.
   Future<bool> hasSeenOnboarding({String? userId}) async {
-    final supabaseUserId = userId ?? Supabase.instance.client.auth.currentUser?.id;
-    final prefs = await SharedPreferencesService.instance.ensureInitialized();
+    try {
+      final supabaseUserId =
+          userId ?? Supabase.instance.client.auth.currentUser?.id;
+      final db = AppDatabase.instance;
 
-    // Prefer user-specific flag if available
-    final userKey = _resolveKey(supabaseUserId);
-    final userSeen = prefs.getBool(userKey);
-    if (userSeen != null) return userSeen;
+      // Prefer user-specific flag if available
+      final userKey = _resolveKey(supabaseUserId);
+      final userSeen = await db.getBool(userKey);
+      if (userSeen != null) return userSeen;
 
-    // Fallback to device-level flag (pre-auth)
-    final deviceSeen = prefs.getBool(_baseKey);
-    if (deviceSeen != null) return deviceSeen;
-
-    // Fallback to legacy key (v3)
-    return prefs.getBool(_legacyDeviceKey) ?? false;
+      // Fallback to device-level flag (pre-auth)
+      final deviceSeen = await db.getBool(_baseKey);
+      return deviceSeen ?? false;
+    } catch (e) {
+      // Local storage failure - assume not seen to be safe
+      return false;
+    }
   }
 
   /// Legacy method for backwards compatibility - delegates to hasSeenOnboarding
@@ -48,19 +48,21 @@ class OnboardingRepository {
 
   /// Mark onboarding as seen on this device.
   Future<void> markAsSeen({String? userId}) async {
-    final supabaseUserId = userId ?? Supabase.instance.client.auth.currentUser?.id;
-    final prefs = await SharedPreferencesService.instance.ensureInitialized();
+    try {
+      final supabaseUserId =
+          userId ?? Supabase.instance.client.auth.currentUser?.id;
+      final db = AppDatabase.instance;
 
-    // Always set the device-level flag to avoid repeat onboarding on fresh installs
-    await prefs.setBool(_baseKey, true);
+      // Always set the device-level flag
+      await db.setBool(_baseKey, true);
 
-    // Also set user-specific flag when we know the user
-    if (supabaseUserId != null) {
-      await prefs.setBool(_userKey(supabaseUserId), true);
+      // Also set user-specific flag when we know the user
+      if (supabaseUserId != null) {
+        await db.setBool(_userKey(supabaseUserId), true);
+      }
+    } catch (e) {
+      // Local storage failure is not critical
     }
-
-    // Clean up legacy key to prevent stale state from older versions
-    await prefs.remove(_legacyDeviceKey);
   }
 
   /// Legacy method for backwards compatibility - delegates to markAsSeen
@@ -70,12 +72,16 @@ class OnboardingRepository {
 
   /// Reset onboarding (for testing/debugging).
   Future<void> resetOnboarding({String? userId}) async {
-    final supabaseUserId = userId ?? Supabase.instance.client.auth.currentUser?.id;
-    final prefs = await SharedPreferencesService.instance.ensureInitialized();
-    await prefs.remove(_baseKey);
-    await prefs.remove(_legacyDeviceKey);
-    if (supabaseUserId != null) {
-      await prefs.remove(_userKey(supabaseUserId));
+    try {
+      final supabaseUserId =
+          userId ?? Supabase.instance.client.auth.currentUser?.id;
+      final db = AppDatabase.instance;
+      await db.remove(_baseKey);
+      if (supabaseUserId != null) {
+        await db.remove(_userKey(supabaseUserId));
+      }
+    } catch (e) {
+      // Local storage failure is not critical
     }
   }
 }

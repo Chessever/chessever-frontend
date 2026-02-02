@@ -22,6 +22,7 @@ class Games {
   final DateTime? dateStart;
   final String? eco;
   final String? openingName;
+  final String? timeControl; // From group_broadcasts: 'standard', 'rapid', 'blitz'
 
   Games({
     required this.id,
@@ -45,6 +46,7 @@ class Games {
     this.dateStart,
     this.eco,
     this.openingName,
+    this.timeControl,
   });
 
   Games copyWith({
@@ -69,6 +71,7 @@ class Games {
     DateTime? dateStart,
     String? eco,
     String? openingName,
+    String? timeControl,
   }) {
     return Games(
       id: id ?? this.id,
@@ -92,11 +95,24 @@ class Games {
       dateStart: dateStart ?? this.dateStart,
       eco: eco ?? this.eco,
       openingName: openingName ?? this.openingName,
+      timeControl: timeControl ?? this.timeControl,
     );
   }
 
   factory Games.fromJson(Map<String, dynamic> json) {
     try {
+      // Extract time_control from nested tours.group_broadcasts join
+      String? timeControl;
+      final tours = json['tours'];
+      if (tours is Map<String, dynamic>) {
+        final groupBroadcasts = tours['group_broadcasts'];
+        if (groupBroadcasts is Map<String, dynamic>) {
+          timeControl = groupBroadcasts['time_control'] as String?;
+        }
+      }
+      // Also check direct time_control field (for backwards compatibility)
+      timeControl ??= json['time_control'] as String?;
+
       return Games(
         id: json['id'] as String,
         roundId: json['round_id'] as String,
@@ -146,6 +162,7 @@ class Games {
                 : null,
         eco: json['eco'] as String?,
         openingName: json['opening_name'] as String?,
+        timeControl: timeControl,
       );
     } catch (e, _) {
       rethrow;
@@ -178,6 +195,7 @@ class Games {
         'date_start': dateStart!.toIso8601String().split('T').first,
       if (eco != null) 'eco': eco,
       if (openingName != null) 'opening_name': openingName,
+      if (timeControl != null) 'time_control': timeControl,
     };
   }
 }

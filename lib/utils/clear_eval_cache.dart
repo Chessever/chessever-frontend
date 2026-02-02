@@ -11,8 +11,8 @@ Future<void> clearAllEvaluationCaches(WidgetRef ref) async {
   print('🧹 CLEARING ALL EVALUATION CACHES...');
 
   try {
-    // 1. Clear SharedPreferences local cache
-    print('🧹 Clearing local SharedPreferences cache...');
+    // 1. Clear SQLite local cache
+    print('🧹 Clearing local SQLite cache...');
     final localCache = ref.read(localEvalCacheProvider);
     await localCache.clear();
     print('✅ Local cache cleared');

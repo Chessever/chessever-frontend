@@ -1,4 +1,4 @@
-import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
+import 'package:chessever2/repository/sqlite/app_database.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -58,40 +58,30 @@ class _LanguageRepository {
 
   Future<void> saveLanguage(Locale locale) async {
     try {
-      final prefs = await SharedPreferencesService.instance.ensureInitialized();
+      final db = ref.read(appDatabaseProvider);
       final language = getLanguageFromLocale(locale);
-
-      // Store the language index in preferences
-      await prefs.setString(_languageKey, language.index.toString());
+      await db.setInt(_languageKey, language.index);
     } catch (error, _) {
-      print('Error saving language: $error');
-      rethrow;
+      // Local storage failure is not critical
     }
   }
 
   Future<Locale> loadLanguage() async {
     try {
-      final prefs = await SharedPreferencesService.instance.ensureInitialized();
-      final indexString = prefs.getString(_languageKey);
+      final db = ref.read(appDatabaseProvider);
+      final index = await db.getInt(_languageKey);
 
-      if (indexString == null) {
-        // Default to English if no language preference is saved
+      if (index == null) {
         return SupportedLanguage.english.locale;
       }
 
-      final index = int.tryParse(indexString);
-      if (index != null &&
-          index >= 0 &&
-          index < SupportedLanguage.values.length) {
+      if (index >= 0 && index < SupportedLanguage.values.length) {
         return SupportedLanguage.values[index].locale;
       } else {
-        // Default to English if index is invalid
         return SupportedLanguage.english.locale;
       }
     } catch (error, _) {
-      print('Error loading language: $error');
-
-      // Default to English on error
+      // Local storage failure - return default
       return SupportedLanguage.english.locale;
     }
   }
