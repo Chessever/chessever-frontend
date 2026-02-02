@@ -173,7 +173,8 @@ Future<void> main() async {
         ),
       );
 
-      // Parallelize all critical initialization tasks
+      // Parallelize all critical initialization tasks with timeouts
+      // Each initializer has its own timeout to prevent app from hanging
       final supabaseAnonKey = _getEnv('SUPABASE_ANON_KEY');
       final authOptions = FlutterAuthClientOptions(
         localStorage: SafeSupabaseLocalStorage(
@@ -182,27 +183,52 @@ Future<void> main() async {
         pkceAsyncStorage: SafeGotrueAsyncStorage(),
       );
 
-      await Future.wait([
-        // Critical: Required before app starts
-        Supabase.initialize(
+      // Supabase is critical - must complete (with timeout)
+      try {
+        await Supabase.initialize(
           url: supabaseUrl,
           anonKey: supabaseAnonKey,
           authOptions: authOptions,
-        ),
+        ).timeout(const Duration(seconds: 10), onTimeout: () {
+          debugPrint('⚠️ Supabase.initialize() timed out after 10s');
+          throw TimeoutException('Supabase initialization timed out');
+        });
+      } catch (e) {
+        debugPrint('⚠️ Supabase initialization failed: $e');
+        // Continue anyway - app might work in offline mode
+      }
+
+      // Non-critical initializers - run in parallel with timeouts, don't block app
+      unawaited(Future.wait([
         // Platform-specific worker manager initialization
-        if (Platform.isAndroid)
-          workerManager.init(isolatesCount: 3)
-        else if (Platform.isIOS)
-          workerManager.init(isolatesCount: 6)
-        else
-          Future.value(),
+        () async {
+          try {
+            if (Platform.isAndroid) {
+              await workerManager.init(isolatesCount: 3).timeout(
+                const Duration(seconds: 5),
+              );
+            } else if (Platform.isIOS) {
+              await workerManager.init(isolatesCount: 6).timeout(
+                const Duration(seconds: 5),
+              );
+            }
+          } catch (e) {
+            debugPrint('⚠️ WorkerManager init failed: $e');
+          }
+        }(),
         // Initialize Amplitude (with error handling)
-        AnalyticsService.instance.initialize(
-          apiKey: _resolveAmplitudeApiKey(),
-        ),
+        () async {
+          try {
+            await AnalyticsService.instance.initialize(
+              apiKey: _resolveAmplitudeApiKey(),
+            ).timeout(const Duration(seconds: 5));
+          } catch (e) {
+            debugPrint('⚠️ Analytics init failed: $e');
+          }
+        }(),
         // Initialize RevenueCat for subscriptions
         _initializeRevenueCat(),
-      ]);
+      ]));
 
       // Initialize TerminateRestart (for user-triggered Shorebird updates only)
       TerminateRestart.instance.initialize();
@@ -210,14 +236,24 @@ Future<void> main() async {
       // Non-critical: Load audio assets in background (don't block app startup)
       unawaited(AudioPlayerService.instance.initializeAndLoadAllAssets());
 
-      await SentryFlutter.init(
-        (options) {
-          options.dsn = _getEnv('SENTRY_FLUTTER');
-          options.sendDefaultPii = true;
-        },
-        appRunner:
-            () => runApp(SentryWidget(child: ProviderScope(child: MyApp()))),
-      );
+      // Sentry init with timeout - don't let it block app startup indefinitely
+      try {
+        await SentryFlutter.init(
+          (options) {
+            options.dsn = _getEnv('SENTRY_FLUTTER');
+            options.sendDefaultPii = true;
+          },
+          appRunner:
+              () => runApp(SentryWidget(child: ProviderScope(child: MyApp()))),
+        ).timeout(const Duration(seconds: 10), onTimeout: () {
+          debugPrint('⚠️ SentryFlutter.init() timed out - starting app anyway');
+          // Start app without Sentry wrapper
+          runApp(ProviderScope(child: MyApp()));
+        });
+      } catch (e) {
+        debugPrint('⚠️ Sentry init failed: $e - starting app anyway');
+        runApp(ProviderScope(child: MyApp()));
+      }
     },
     (error, stackTrace) {
       Sentry.captureException(error, stackTrace: stackTrace);
