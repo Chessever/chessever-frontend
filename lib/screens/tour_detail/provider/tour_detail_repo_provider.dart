@@ -1,4 +1,4 @@
-import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
+import 'package:chessever2/repository/sqlite/app_database.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 final tourDetailRepoProvider = AutoDisposeProvider<_TourDetailRepo>((ref) {
@@ -12,18 +12,18 @@ class _TourDetailRepo {
     required String groupEventId,
     required String tourId,
   }) async {
-    final prefs = await SharedPreferencesService.instance.ensureInitialized();
-    await prefs.setString('$_prefix$groupEventId', tourId);
+    final db = AppDatabase.instance;
+    await db.setString('$_prefix$groupEventId', tourId);
   }
 
   Future<String?> getSelectedTourId(String groupEventId) async {
-    final prefs = await SharedPreferencesService.instance.ensureInitialized();
-    return prefs.getString('$_prefix$groupEventId');
+    final db = AppDatabase.instance;
+    return await db.getString('$_prefix$groupEventId');
   }
 
   /// Optional: clear tourId for a given groupEventId
   Future<void> clearSelectedTourId(String groupEventId) async {
-    final prefs = await SharedPreferencesService.instance.ensureInitialized();
-    await prefs.remove('$_prefix$groupEventId');
+    final db = AppDatabase.instance;
+    await db.remove('$_prefix$groupEventId');
   }
 }

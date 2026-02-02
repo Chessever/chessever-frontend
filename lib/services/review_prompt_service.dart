@@ -1,6 +1,6 @@
 import 'dart:io';
 
-import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
+import 'package:chessever2/repository/sqlite/app_database.dart';
 import 'package:chessever2/services/telegram_notification_service.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
@@ -9,7 +9,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:in_app_review/in_app_review.dart';
 import 'package:package_info_plus/package_info_plus.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 enum ReviewPromptTrigger { session, premium, favoriteEvent, favoritePlayer, sidebar }
@@ -19,18 +18,9 @@ class ReviewPromptService {
 
   static final ReviewPromptService instance = ReviewPromptService._();
 
-  static const Duration _sessionGap = Duration(hours: 6);
-  static const Duration _minTimeSinceInstall = Duration(days: 2);
   // Cooldown between prompts
   static const Duration _cooldown = Duration(days: 30);
-  static const Duration _activityWindow = Duration(days: 45);
-  static const int _minSessions = 3;
-  static const int _minActiveDays = 7;
 
-  static const String _keyInstallAt = 'review_prompt_install_at_ms';
-  static const String _keyLastSessionAt = 'review_prompt_last_session_at_ms';
-  static const String _keySessionCount = 'review_prompt_session_count';
-  static const String _keyActiveDays = 'review_prompt_active_days';
   static const String _keyLastPromptAt = 'review_prompt_last_prompt_at_ms';
   static const String _keyLastPromptVersion = 'review_prompt_last_version';
   static const String _keyHasRatedHigh = 'review_prompt_has_rated_high';
@@ -40,31 +30,10 @@ class ReviewPromptService {
 
   final InAppReview _inAppReview = InAppReview.instance;
 
-  Future<SharedPreferences> _getPrefs() async =>
-      SharedPreferencesService.instance.ensureInitialized();
+  AppDatabase get _db => AppDatabase.instance;
 
   Future<void> recordSession() async {
-    final prefs = await _getPrefs();
-    final now = DateTime.now();
-    final lastSessionAtMs = prefs.getInt(_keyLastSessionAt);
-    final installAtMs = prefs.getInt(_keyInstallAt);
-
-    if (installAtMs == null) {
-      await prefs.setInt(_keyInstallAt, now.millisecondsSinceEpoch);
-    }
-
-    await _recordActiveDay(prefs, now);
-
-    if (lastSessionAtMs == null ||
-        now.difference(
-              DateTime.fromMillisecondsSinceEpoch(lastSessionAtMs),
-            ) >=
-            _sessionGap) {
-      final currentCount = prefs.getInt(_keySessionCount) ?? 0;
-      await prefs.setInt(_keySessionCount, currentCount + 1);
-    }
-
-    await prefs.setInt(_keyLastSessionAt, now.millisecondsSinceEpoch);
+    // No-op: session tracking removed to allow prompts on first session
   }
 
   /// Shows the review/feedback flow.
@@ -124,8 +93,7 @@ class ReviewPromptService {
         return;
       }
 
-      final prefs = await _getPrefs();
-      await prefs.setInt(_keyLastRating, result.rating);
+      await _db.setInt(_keyLastRating, result.rating);
 
       // Combine feedback and feature request
       final parts = <String>[];
@@ -159,7 +127,7 @@ class ReviewPromptService {
       // If High Rating, trigger native review
       if (result.rating >= 4) {
         await _requestNativeReview();
-        await prefs.setBool(_keyHasRatedHigh, true);
+        await _db.setBool(_keyHasRatedHigh, true);
       }
     } finally {
       _promptActive = false;
@@ -167,13 +135,12 @@ class ReviewPromptService {
   }
 
   Future<void> _recordPromptShown() async {
-    final prefs = await _getPrefs();
     final now = DateTime.now().millisecondsSinceEpoch;
-    await prefs.setInt(_keyLastPromptAt, now);
+    await _db.setInt(_keyLastPromptAt, now);
 
     try {
       final packageInfo = await PackageInfo.fromPlatform();
-      await prefs.setString(_keyLastPromptVersion, packageInfo.version);
+      await _db.setString(_keyLastPromptVersion, packageInfo.version);
     } catch (_) {
       // Ignore package info failures.
     }
@@ -182,11 +149,10 @@ class ReviewPromptService {
   Future<bool> _shouldPrompt(ReviewPromptTrigger trigger) async {
     if (!_isMobilePlatform) return false;
 
-    final prefs = await _getPrefs();
-    final hasRatedHigh = prefs.getBool(_keyHasRatedHigh) ?? false;
+    final hasRatedHigh = await _db.getBool(_keyHasRatedHigh) ?? false;
     if (hasRatedHigh) return false;
 
-    final lastPromptAtMs = prefs.getInt(_keyLastPromptAt);
+    final lastPromptAtMs = await _db.getInt(_keyLastPromptAt);
     if (lastPromptAtMs != null) {
       final lastPromptAt = DateTime.fromMillisecondsSinceEpoch(lastPromptAtMs);
       if (DateTime.now().difference(lastPromptAt) < _cooldown) return false;
@@ -194,64 +160,13 @@ class ReviewPromptService {
 
     try {
       final packageInfo = await PackageInfo.fromPlatform();
-      final lastPromptVersion = prefs.getString(_keyLastPromptVersion);
+      final lastPromptVersion = await _db.getString(_keyLastPromptVersion);
       if (lastPromptVersion == packageInfo.version) return false;
     } catch (_) {
       // If version lookup fails, skip version gating.
     }
 
-    if (trigger == ReviewPromptTrigger.premium) {
-      return true;
-    }
-
-    final installAtMs = prefs.getInt(_keyInstallAt);
-    if (installAtMs == null) return false;
-
-    final installAt = DateTime.fromMillisecondsSinceEpoch(installAtMs);
-    if (DateTime.now().difference(installAt) < _minTimeSinceInstall) {
-      return false;
-    }
-
-    final sessions = prefs.getInt(_keySessionCount) ?? 0;
-    if (sessions < _minSessions) return false;
-
-    if (trigger != ReviewPromptTrigger.premium) {
-      final storedDays = prefs.getStringList(_keyActiveDays) ?? [];
-      final activeDays = _getActiveDaysCount(DateTime.now(), storedDays);
-      if (activeDays < _minActiveDays) return false;
-    }
-
     return true;
-  }
-
-  Future<void> _recordActiveDay(SharedPreferences prefs, DateTime now) async {
-    final todayKey = _dayKey(now);
-    final stored = prefs.getStringList(_keyActiveDays) ?? [];
-    final days = stored.map(int.parse).toSet();
-
-    days.add(todayKey);
-
-    final cutoff = _dayKey(now.subtract(_activityWindow));
-    days.removeWhere((day) => day < cutoff);
-
-    await prefs.setStringList(
-      _keyActiveDays,
-      days.map((day) => day.toString()).toList(),
-    );
-  }
-
-  int _getActiveDaysCount(DateTime now, List<String> stored) {
-    if (stored.isEmpty) return 0;
-
-    final cutoff = _dayKey(now.subtract(_activityWindow));
-    final days = stored.map(int.parse).where((day) => day >= cutoff).toSet();
-    return days.length;
-  }
-
-  int _dayKey(DateTime date) {
-    final utc = date.toUtc();
-    return DateTime.utc(utc.year, utc.month, utc.day)
-        .millisecondsSinceEpoch;
   }
 
   Future<void> _requestNativeReview() async {

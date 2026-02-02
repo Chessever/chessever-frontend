@@ -1,5 +1,5 @@
 import 'dart:convert';
-import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
+import 'package:chessever2/repository/sqlite/app_database.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/utils/logger/logger.dart';
@@ -9,8 +9,6 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 final gamesLocalStorage = AutoDisposeProvider<GamesLocalStorage>((ref) {
   return GamesLocalStorage(ref);
 });
-
-enum _GameSaver { tourId }
 
 class _SearchArguments {
   final List<Games> games;
@@ -25,14 +23,12 @@ Future<List<Games>> _searchGamesWorker(_SearchArguments args) async {
 
   for (final game in args.games) {
     double score = 0.0;
-
-    // Use the new `search` field as the primary matching source
     final searchTerms = game.search ?? [];
 
     for (final term in searchTerms) {
       final termLower = term.toLowerCase();
       if (termLower == queryLower) {
-        score += 120.0; // Exact match
+        score += 120.0;
         break;
       } else if (termLower.startsWith(queryLower)) {
         score += 100.0;
@@ -56,7 +52,7 @@ class GamesLocalStorage {
 
   final Ref ref;
 
-  String getSaveKey(String tourId) => '${_GameSaver.tourId.name}$tourId';
+  String _getCacheKey(String tourId) => 'games_$tourId';
 
   Future<List<Games>> fetchAndSaveGames(String tourId) async {
     try {
@@ -67,22 +63,18 @@ class GamesLocalStorage {
           .getGamesByTourId(tourId);
 
       // Save to cache in background - don't wait for it
-      // This prevents blocking the UI for large tournaments
-      final value = await compute(_encodeMyGamesList, games);
-      ref
-          .read(sharedPreferencesRepository)
-          .setStringList(getSaveKey(tourId), value)
-          .catchError((error, st) {
-        ref.read(loggerProvider).logError(
-          'Failed to save games to cache: $error',
-          st,
-        );
+      compute(_encodeMyGamesList, games).then((value) async {
+        try {
+          final db = ref.read(appDatabaseProvider);
+          await db.setCache(key: _getCacheKey(tourId), value: jsonEncode(value));
+        } catch (e) {
+          ref.read(loggerProvider).logError('Failed to save games to cache: $e', null);
+        }
       });
 
       return games;
     } catch (error, st) {
       ref.read(loggerProvider).logError(error, st);
-
       return <Games>[];
     }
   }
@@ -100,12 +92,12 @@ class GamesLocalStorage {
 
   Future<List<Games>> getGames(String tourId) async {
     try {
-      final gameStringList = await ref
-          .read(sharedPreferencesRepository)
-          .getStringList(getSaveKey(tourId));
-      if (gameStringList.isNotEmpty) {
-        // Decode in background to avoid UI jank on initial load
-        return await compute(_decodeMyGamesList, gameStringList);
+      final db = ref.read(appDatabaseProvider);
+      final entry = await db.getCache(key: _getCacheKey(tourId));
+
+      if (entry != null) {
+        final jsonList = jsonDecode(entry.value) as List;
+        return await compute(_decodeMyGamesList, jsonList.cast<String>());
       }
       return await fetchAndSaveGames(tourId);
     } catch (error, _) {
@@ -132,7 +124,6 @@ class GamesLocalStorage {
       final initialParsed =
           initial.map((e) => Games.fromJson(json.decode(e))).toList();
 
-      // Parse the rest in background isolate
       compute(_decodeGamesInIsolate, remaining).then((parsedRemaining) {
         final all = [...initialParsed, ...parsedRemaining];
         ref.read(fullGamesProvider.notifier).state = all;
@@ -163,7 +154,6 @@ class GamesLocalStorage {
         return games;
       }
 
-      // Offload search scoring and sorting to background isolate
       return await compute(_searchGamesWorker, _SearchArguments(games, query));
     } catch (e, _) {
       return <Games>[];
@@ -172,17 +162,12 @@ class GamesLocalStorage {
 }
 
 List<String> _encodeMyGamesList(List<Games> games) =>
-    games.map(_encoder).toList();
+    games.map((g) => json.encode(g.toJson())).toList();
 
 List<Games> _decodeMyGamesList(List<String> gameStringList) =>
     gameStringList
-        .map<Games>((reelsString) => Games.fromJson(_decoder(reelsString)))
+        .map<Games>((s) => Games.fromJson(json.decode(s)))
         .toList();
-
-String _encoder(Games games) => json.encode(games.toJson());
-
-Map<String, dynamic> _decoder(String gameString) =>
-    json.decode(gameString) as Map<String, dynamic>;
 
 final fullGamesProvider = StateProvider<List<Games>>((ref) => []);
 

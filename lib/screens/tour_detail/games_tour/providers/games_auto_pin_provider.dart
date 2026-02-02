@@ -1,7 +1,7 @@
 import 'dart:async';
 
 import 'package:chessever2/providers/country_dropdown_provider.dart';
-import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
+import 'package:chessever2/repository/sqlite/app_database.dart';
 import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/knockout_tournament_state_provider.dart';
@@ -81,13 +81,13 @@ class _AutoPinLogController {
   }
 
   Future<String?> _resolveCountryCode() async {
-    // Get country code directly from SharedPreferences (fast, synchronous)
+    // Get country code directly from SQLite (fast, async)
     // This ensures auto-pin works even while Supabase is syncing
-    final prefs = await SharedPreferencesService.instance.ensureInitialized();
-    final cachedCountryCode = prefs.getString('selected_country_code');
+    final db = AppDatabase.instance;
+    final cachedCountryCode = await db.getString('selected_country_code');
 
     if (cachedCountryCode != null && cachedCountryCode.isNotEmpty) {
-      // Use cached country code (works immediately, no async wait)
+      // Use cached country code (works immediately)
       print('🎯 Auto-pin: Using cached country code: $cachedCountryCode');
       return cachedCountryCode;
     }
@@ -201,14 +201,14 @@ class _AutoPinLogController {
     required bool shouldHide,
   }) async {
     final key = _getTournamentKey(tourId);
-    final prefs = await SharedPreferencesService.instance.ensureInitialized();
-    await prefs.setBool(key, shouldHide);
+    final db = AppDatabase.instance;
+    await db.setBool(key, shouldHide);
   }
 
   Future<bool> _getHidePin(String tourId) async {
     final key = _getTournamentKey(tourId);
-    final prefs = await SharedPreferencesService.instance.ensureInitialized();
-    return prefs.getBool(key) ?? false;
+    final db = AppDatabase.instance;
+    return await db.getBool(key) ?? false;
   }
 }
 

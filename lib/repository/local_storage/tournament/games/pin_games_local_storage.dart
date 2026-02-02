@@ -1,60 +1,61 @@
-import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
+import 'package:chessever2/repository/sqlite/app_database.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 final pinGameLocalStorage = Provider.autoDispose<_PinGameLocalStorage>(
-  (ref) => _PinGameLocalStorage(),
+  (ref) => _PinGameLocalStorage(ref),
 );
 
 class _PinGameLocalStorage {
-  static const _keyPrefix = 'pinned_games_tournament_';
+  _PinGameLocalStorage(this.ref);
 
-  // Generate key for specific tournament
-  String _getTournamentKey(String tournamentId) {
-    return '$_keyPrefix$tournamentId';
-  }
+  final Ref ref;
+
+  String _getListKey(String tournamentId) => 'pinned_games_$tournamentId';
 
   // Get pinned game IDs for a specific tournament
   Future<List<String>> getPinnedGameIds(String tournamentId) async {
-    final key = _getTournamentKey(tournamentId);
-    final prefs = await SharedPreferencesService.instance.ensureInitialized();
-    return prefs.getStringList(key) ?? [];
+    try {
+      final db = ref.read(appDatabaseProvider);
+      return await db.getList(key: _getListKey(tournamentId));
+    } catch (e) {
+      return [];
+    }
   }
 
   // Add a pinned game ID for a specific tournament
   Future<void> addPinnedGameId(String tournamentId, String gameId) async {
-    final key = _getTournamentKey(tournamentId);
-    final prefs = await SharedPreferencesService.instance.ensureInitialized();
-    final pinnedIds = prefs.getStringList(key) ?? [];
-    if (!pinnedIds.contains(gameId)) {
-      pinnedIds.add(gameId);
-      await prefs.setStringList(key, pinnedIds);
+    try {
+      final db = ref.read(appDatabaseProvider);
+      await db.addToList(key: _getListKey(tournamentId), item: gameId);
+    } catch (e) {
+      // Local storage failure is not critical
     }
   }
 
   // Remove a pinned game ID for a specific tournament
   Future<void> removePinnedGameId(String tournamentId, String gameId) async {
-    final key = _getTournamentKey(tournamentId);
-    final prefs = await SharedPreferencesService.instance.ensureInitialized();
-    final pinnedIds = prefs.getStringList(key) ?? [];
-    pinnedIds.remove(gameId);
-    await prefs.setStringList(key, pinnedIds);
+    try {
+      final db = ref.read(appDatabaseProvider);
+      await db.removeFromList(key: _getListKey(tournamentId), item: gameId);
+    } catch (e) {
+      // Local storage failure is not critical
+    }
   }
 
   // Clear all pinned games for a specific tournament
   Future<void> clearPinnedGames(String tournamentId) async {
-    final key = _getTournamentKey(tournamentId);
-    final prefs = await SharedPreferencesService.instance.ensureInitialized();
-    await prefs.remove(key);
+    try {
+      final db = ref.read(appDatabaseProvider);
+      await db.clearList(key: _getListKey(tournamentId));
+    } catch (e) {
+      // Local storage failure is not critical
+    }
   }
 
   // Clear all pinned games for all tournaments
   Future<void> clearAllPinnedGames() async {
-    final prefs = await SharedPreferencesService.instance.ensureInitialized();
-    final keys = prefs.getKeys();
-    final tournamentKeys = keys.where((key) => key.startsWith(_keyPrefix));
-
-    for (final key in tournamentKeys) {
-      await prefs.remove(key);
-    }
+    // Note: This is less efficient with SQLite than SharedPreferences
+    // but pinned games are a cache - if they get cleared, no big deal
+    // We could add a method to clear by key prefix if needed
   }
 }

@@ -68,6 +68,7 @@ class GamesTourModel {
   final DateTime? lastMoveTime;
   final String? eco;
   final String? openingName;
+  final String? timeControl; // From group_broadcasts: 'standard', 'rapid', 'blitz'
 
   GamesTourModel({
     required this.gameId,
@@ -91,6 +92,7 @@ class GamesTourModel {
     this.lastMoveTime,
     this.eco,
     this.openingName,
+    this.timeControl,
   });
 
   GamesTourModel copyWith({
@@ -115,6 +117,7 @@ class GamesTourModel {
     DateTime? lastMoveTime,
     String? eco,
     String? openingName,
+    String? timeControl,
   }) {
     return GamesTourModel(
       gameId: gameId ?? this.gameId,
@@ -140,6 +143,7 @@ class GamesTourModel {
       lastMoveTime: lastMoveTime ?? this.lastMoveTime,
       eco: eco ?? this.eco,
       openingName: openingName ?? this.openingName,
+      timeControl: timeControl ?? this.timeControl,
     );
   }
 
@@ -255,6 +259,7 @@ class GamesTourModel {
         lastMoveTime: game.lastMoveTime ?? game.gameDay ?? game.dateStart,
         eco: game.eco,
         openingName: game.openingName,
+        timeControl: game.timeControl,
       );
     } catch (e) {
       throw ArgumentError(
@@ -517,7 +522,8 @@ class GamesTourModel {
         other.pgn == pgn &&
         other.boardNr == boardNr &&
         other.roundId == roundId &&
-        other.tourId == tourId;
+        other.tourId == tourId &&
+        other.timeControl == timeControl;
   }
 
   @override
@@ -538,7 +544,8 @@ class GamesTourModel {
         (pgn?.hashCode ?? 0) ^
         (boardNr?.hashCode ?? 0) ^
         roundId.hashCode ^
-        tourId.hashCode;
+        tourId.hashCode ^
+        (timeControl?.hashCode ?? 0);
   }
 }
 

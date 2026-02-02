@@ -4,7 +4,6 @@ import 'package:chessever2/providers/board_settings_provider_new.dart';
 import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/repository/lichess/cloud_eval/cloud_eval.dart';
 import 'package:chessever2/repository/local_storage/local_eval/local_eval_cache.dart';
-import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
 import 'package:chessever2/repository/api_utils/api_exceptions.dart';
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
 import 'package:chessever2/repository/supabase/evals/persist_cloud_eval.dart';
@@ -86,6 +85,13 @@ class _BranchHistory {
   });
 }
 
+class _NavigationRequest {
+  final int delta;
+  final Completer<void> completer;
+
+  _NavigationRequest(this.delta) : completer = Completer<void>();
+}
+
 class ChessBoardScreenNotifierNew
     extends StateNotifier<AsyncValue<ChessBoardStateNew>> {
   ChessBoardScreenNotifierNew(
@@ -114,6 +120,8 @@ class ChessBoardScreenNotifierNew
   bool _isProcessingMove = false;
   bool _isLongPressing = false;
   bool _cancelEvaluation = false;
+  bool _isNavigationProcessing = false;
+  final List<_NavigationRequest> _navigationQueue = <_NavigationRequest>[];
   String? _pendingEvalFen;
   Timer? _evalWatchdogTimer;
   bool _resumeVariantAutoPlay = false;
@@ -2632,20 +2640,72 @@ class ChessBoardScreenNotifierNew
   }
 
   Future<void> moveForward() async {
+    await _queueNavigation(1);
+  }
+
+  Future<void> moveBackward() async {
+    await _queueNavigation(-1);
+  }
+
+  Future<void> _queueNavigation(int delta) {
+    if (delta == 0 || !mounted) return Future.value();
+    final request = _NavigationRequest(delta);
+    _navigationQueue.add(request);
+    if (!_isNavigationProcessing) {
+      unawaited(_processQueuedNavigation());
+    }
+    return request.completer.future;
+  }
+
+  Future<void> _processQueuedNavigation() async {
+    if (_isNavigationProcessing || !mounted) return;
+    _isNavigationProcessing = true;
+    try {
+      while (mounted && _navigationQueue.isNotEmpty) {
+        final request = _navigationQueue.removeAt(0);
+        final step = request.delta >= 0 ? 1 : -1;
+        final didMove =
+            step > 0
+                ? await _moveForwardInternal()
+                : await _moveBackwardInternal();
+        if (!request.completer.isCompleted) {
+          request.completer.complete();
+        }
+        if (!didMove) {
+          // Drop any remaining queued steps in the same direction.
+          _navigationQueue.removeWhere(
+            (pending) => (pending.delta >= 0) == (step > 0),
+          );
+          break;
+        }
+        // Yield to allow navigator/listeners to settle between rapid steps.
+        await Future<void>.delayed(Duration.zero);
+      }
+    } finally {
+      _isNavigationProcessing = false;
+    }
+  }
+
+  Future<bool> _moveForwardInternal() async {
     final currentState = state.value;
 
     // If in preview mode with locked PV, navigate within locked PV
     if (currentState?.isPvPreviewActive == true &&
         currentState?.lockedPvLine != null) {
+      final pvLine = currentState!.lockedPvLine!;
+      final currentIndex = currentState.lockedPvNavigationIndex ?? -1;
+      final maxIndex = pvLine.moves.length - 1;
+      final canAdvance = maxIndex >= 0 && currentIndex < maxIndex;
+      if (!canAdvance) return false;
       navigateLockedPvForward();
-      return;
+      return true;
     }
 
     _exitPvPreviewIfActive();
     // Bottom nav arrows should navigate within the active context
     // (analysis variation or main game) without forcing a mode change
     if (currentState == null || _isProcessingMove) {
-      return;
+      return false;
     }
 
     final canAdvance =
@@ -2654,30 +2714,37 @@ class ChessBoardScreenNotifierNew
             : currentState.canMoveForward;
 
     if (!canAdvance) {
-      return;
+      return false;
     }
 
     if (currentState.isAnalysisMode) {
       analysisStepForward();
-      return;
+      return true;
     }
 
     await goToMove(currentState.currentMoveIndex + 1);
+    return true;
   }
 
-  Future<void> moveBackward() async {
+  Future<bool> _moveBackwardInternal() async {
     final currentState = state.value;
 
     // If in preview mode with locked PV, navigate within locked PV
     if (currentState?.isPvPreviewActive == true &&
         currentState?.lockedPvLine != null) {
+      final pvLine = currentState!.lockedPvLine!;
+      final currentIndex = currentState.lockedPvNavigationIndex ?? -1;
+      final maxIndex = pvLine.moves.length - 1;
+      final canRetreat =
+          maxIndex >= 0 && (currentIndex > 0 || currentIndex == -1);
+      if (!canRetreat) return false;
       navigateLockedPvBackward();
-      return;
+      return true;
     }
 
     _exitPvPreviewIfActive();
     if (currentState == null || _isProcessingMove) {
-      return;
+      return false;
     }
 
     final canRetreat =
@@ -2686,15 +2753,16 @@ class ChessBoardScreenNotifierNew
             : currentState.canMoveBackward;
 
     if (!canRetreat) {
-      return;
+      return false;
     }
 
     if (currentState.isAnalysisMode) {
       analysisStepBackward();
-      return;
+      return true;
     }
 
     await goToMove(currentState.currentMoveIndex - 1);
+    return true;
   }
 
   // REMOVED: toggleAnalysisMode - analysis mode is always active and cannot be toggled
@@ -2729,8 +2797,7 @@ class ChessBoardScreenNotifierNew
       _analysisGame = _createChessGameFromPgn(pgn);
     }
 
-    final storage = ref.read(sharedPreferencesRepository);
-    _analysisStateManager = ChessGameNavigatorStateManager(storage: storage);
+    _analysisStateManager = ChessGameNavigatorStateManager();
 
     final navigator = ref.read(
       chessGameNavigatorProvider(_analysisGame!).notifier,
@@ -5789,6 +5856,12 @@ class ChessBoardScreenNotifierNew
   @override
   void dispose() {
     stopLongPress();
+    for (final request in _navigationQueue) {
+      if (!request.completer.isCompleted) {
+        request.completer.complete();
+      }
+    }
+    _navigationQueue.clear();
     unawaited(_persistAnalysisState());
     _navigatorSubscription?.close();
     _navigatorSubscription = null;

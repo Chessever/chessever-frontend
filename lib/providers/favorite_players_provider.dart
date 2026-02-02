@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:chessever2/repository/favorites/models/favorite_player.dart';
-import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
+import 'package:chessever2/repository/sqlite/app_database.dart';
 import 'package:chessever2/services/analytics/analytics_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -204,9 +204,10 @@ class FavoritePlayersNotifierNew extends AsyncNotifier<List<FavoritePlayer>> {
   // Cache management
   Future<void> _cachePlayers(List<FavoritePlayer> players) async {
     try {
-      final prefs = await SharedPreferencesService.instance.ensureInitialized();
+      final db = AppDatabase.instance;
+      final userId = _supabase.auth.currentUser?.id;
       final json = jsonEncode(players.map((p) => p.toSupabase()).toList());
-      await prefs.setString(_cacheKey, json);
+      await db.setCache(key: _cacheKey, value: json, userId: userId);
       debugPrint('[FavoritePlayers] Cached ${players.length} players locally');
     } catch (e) {
       debugPrint('[FavoritePlayers] Error caching players: $e');
@@ -215,11 +216,12 @@ class FavoritePlayersNotifierNew extends AsyncNotifier<List<FavoritePlayer>> {
 
   Future<List<FavoritePlayer>> _getCachedPlayers() async {
     try {
-      final prefs = await SharedPreferencesService.instance.ensureInitialized();
-      final json = prefs.getString(_cacheKey);
-      if (json == null) return [];
+      final db = AppDatabase.instance;
+      final userId = _supabase.auth.currentUser?.id;
+      final entry = await db.getCache(key: _cacheKey, userId: userId);
+      if (entry == null) return [];
 
-      final list = jsonDecode(json) as List;
+      final list = jsonDecode(entry.value) as List;
       return list.map((json) => FavoritePlayer.fromSupabase(json)).toList();
     } catch (e) {
       debugPrint('[FavoritePlayers] Error getting cached players: $e');
@@ -230,8 +232,9 @@ class FavoritePlayersNotifierNew extends AsyncNotifier<List<FavoritePlayer>> {
   /// Clear cache (useful on sign out)
   Future<void> clearCache() async {
     try {
-      final prefs = await SharedPreferencesService.instance.ensureInitialized();
-      await prefs.remove(_cacheKey);
+      final db = AppDatabase.instance;
+      final userId = _supabase.auth.currentUser?.id;
+      await db.removeCache(key: _cacheKey, userId: userId);
       debugPrint('[FavoritePlayers] Cleared cache');
     } catch (e) {
       debugPrint('[FavoritePlayers] Error clearing cache: $e');

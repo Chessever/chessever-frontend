@@ -175,6 +175,7 @@ class _PlayerAboutTabState extends ConsumerState<PlayerAboutTab>
                     _OverallStatsSection(
                       resultStats: analytics.resultStats,
                       avgOpponentRating: analytics.avgOpponentRating,
+                      currentResultFilter: gamesState.playerResultFilter,
                       onOpenGames: widget.onOpenGames,
                     ),
 
@@ -183,6 +184,7 @@ class _PlayerAboutTabState extends ConsumerState<PlayerAboutTab>
                     // Color performance
                     _ColorPerformanceSection(
                       colorStats: analytics.colorStats,
+                      currentColorFilter: gamesState.filter.color,
                       onOpenGames: widget.onOpenGames,
                     ),
 
@@ -933,11 +935,13 @@ class _OverallStatsSection extends StatelessWidget {
   const _OverallStatsSection({
     required this.resultStats,
     required this.avgOpponentRating,
+    required this.currentResultFilter,
     this.onOpenGames,
   });
 
   final ResultStatistics resultStats;
   final int avgOpponentRating;
+  final PlayerResultFilter currentResultFilter;
   final PlayerGamesOpenCallback? onOpenGames;
 
   @override
@@ -965,9 +969,14 @@ class _OverallStatsSection extends StatelessWidget {
                     label: 'Win Rate',
                     value: '${(resultStats.winRate * 100).toStringAsFixed(1)}%',
                     color: kGreenColor,
+                    isSelected: currentResultFilter == PlayerResultFilter.win,
                     onTap: () {
+                      // Toggle: if already selected, clear filter; otherwise apply
+                      final newFilter = currentResultFilter == PlayerResultFilter.win
+                          ? PlayerResultFilter.all
+                          : PlayerResultFilter.win;
                       onOpenGames?.call(
-                        playerResultFilter: PlayerResultFilter.win,
+                        playerResultFilter: newFilter,
                       );
                     },
                   ),
@@ -976,9 +985,14 @@ class _OverallStatsSection extends StatelessWidget {
                     label: 'Draw Rate',
                     value: '${(resultStats.drawRate * 100).toStringAsFixed(1)}%',
                     color: kWhiteColor70,
+                    isSelected: currentResultFilter == PlayerResultFilter.draw,
                     onTap: () {
+                      // Toggle: if already selected, clear filter; otherwise apply
+                      final newFilter = currentResultFilter == PlayerResultFilter.draw
+                          ? PlayerResultFilter.all
+                          : PlayerResultFilter.draw;
                       onOpenGames?.call(
-                        playerResultFilter: PlayerResultFilter.draw,
+                        playerResultFilter: newFilter,
                       );
                     },
                   ),
@@ -987,9 +1001,14 @@ class _OverallStatsSection extends StatelessWidget {
                     label: 'Loss Rate',
                     value: '${(resultStats.lossRate * 100).toStringAsFixed(1)}%',
                     color: Colors.redAccent,
+                    isSelected: currentResultFilter == PlayerResultFilter.loss,
                     onTap: () {
+                      // Toggle: if already selected, clear filter; otherwise apply
+                      final newFilter = currentResultFilter == PlayerResultFilter.loss
+                          ? PlayerResultFilter.all
+                          : PlayerResultFilter.loss;
                       onOpenGames?.call(
-                        playerResultFilter: PlayerResultFilter.loss,
+                        playerResultFilter: newFilter,
                       );
                     },
                   ),
@@ -1092,50 +1111,124 @@ class _OverallStatsSection extends StatelessWidget {
   }
 }
 
-/// Stat box widget
-class _StatBox extends StatelessWidget {
+/// Stat box widget with selection state
+class _StatBox extends StatefulWidget {
   const _StatBox({
     required this.label,
     required this.value,
     required this.color,
+    this.isSelected = false,
     this.onTap,
   });
 
   final String label;
   final String value;
   final Color color;
+  final bool isSelected;
   final VoidCallback? onTap;
 
   @override
-  Widget build(BuildContext context) {
-    final box = Container(
-      padding: EdgeInsets.symmetric(vertical: 12.h),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.15),
-        borderRadius: BorderRadius.circular(8.br),
-      ),
-      child: Column(
-        children: [
-          Text(
-            value,
-            style: AppTypography.textMdBold.copyWith(color: color),
-          ),
-          SizedBox(height: 2.h),
-          Text(
-            label,
-            style: AppTypography.textXsRegular.copyWith(
-              color: kWhiteColor.withValues(alpha: 0.6),
-            ),
-          ),
-        ],
-      ),
-    );
+  State<_StatBox> createState() => _StatBoxState();
+}
 
+class _StatBoxState extends State<_StatBox> {
+  double _pressScale = 1.0;
+
+  void _onTapDown(TapDownDetails _) {
+    if (widget.onTap != null) {
+      setState(() => _pressScale = 0.95);
+    }
+  }
+
+  void _onTapUp(TapUpDetails _) {
+    setState(() => _pressScale = 1.0);
+  }
+
+  void _onTapCancel() {
+    setState(() => _pressScale = 1.0);
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Expanded(
-      child:
-          onTap == null
-              ? box
-              : TappableScale(scaleDown: 0.97, onTap: onTap!, child: box),
+      child: GestureDetector(
+        onTapDown: widget.onTap != null ? _onTapDown : null,
+        onTapUp: widget.onTap != null ? _onTapUp : null,
+        onTapCancel: widget.onTap != null ? _onTapCancel : null,
+        onTap: widget.onTap,
+        child: SingleMotionBuilder(
+          motion: const CupertinoMotion.snappy(),
+          value: _pressScale,
+          builder: (context, pressScale, _) {
+            return SingleMotionBuilder(
+              motion: const CupertinoMotion.bouncy(),
+              value: widget.isSelected ? 1.0 : 0.0,
+              builder: (context, selectProgress, _) {
+                // Interpolate colors based on selection
+                final bgColor = Color.lerp(
+                  widget.color.withValues(alpha: 0.15),
+                  widget.color.withValues(alpha: 0.25),
+                  selectProgress,
+                )!;
+                final borderColor = Color.lerp(
+                  Colors.transparent,
+                  widget.color,
+                  selectProgress,
+                )!;
+
+                // Subtle scale bump when selected
+                final selectScale = 1.0 + (selectProgress * 0.02);
+                final combinedScale = pressScale * selectScale;
+
+                // Border width animates
+                final borderWidth = selectProgress * 1.5;
+
+                return Transform.scale(
+                  scale: combinedScale,
+                  child: Container(
+                    padding: EdgeInsets.symmetric(vertical: 12.h),
+                    decoration: BoxDecoration(
+                      color: bgColor,
+                      borderRadius: BorderRadius.circular(8.br),
+                      border: borderWidth > 0
+                          ? Border.all(
+                              color: borderColor,
+                              width: borderWidth,
+                            )
+                          : null,
+                      // Subtle glow when selected
+                      boxShadow: selectProgress > 0.5
+                          ? [
+                              BoxShadow(
+                                color: widget.color.withValues(alpha: 0.2 * selectProgress),
+                                blurRadius: 8 * selectProgress,
+                                spreadRadius: 0,
+                              ),
+                            ]
+                          : null,
+                    ),
+                    child: Column(
+                      children: [
+                        Text(
+                          widget.value,
+                          style: AppTypography.textMdBold.copyWith(color: widget.color),
+                        ),
+                        SizedBox(height: 2.h),
+                        Text(
+                          widget.label,
+                          style: AppTypography.textXsRegular.copyWith(
+                            color: kWhiteColor.withValues(alpha: 0.6),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            );
+          },
+        ),
+      ),
     );
   }
 }
@@ -1144,10 +1237,12 @@ class _StatBox extends StatelessWidget {
 class _ColorPerformanceSection extends StatelessWidget {
   const _ColorPerformanceSection({
     required this.colorStats,
+    required this.currentColorFilter,
     this.onOpenGames,
   });
 
   final ColorStatistics colorStats;
+  final GameColorFilter currentColorFilter;
   final PlayerGamesOpenCallback? onOpenGames;
 
   @override
@@ -1172,10 +1267,15 @@ class _ColorPerformanceSection extends StatelessWidget {
                 draws: colorStats.whiteDraws,
                 losses: colorStats.whiteLosses,
                 score: colorStats.whiteScore,
+                isSelected: currentColorFilter == GameColorFilter.white,
                 onTap: () {
+                  // Toggle: if already selected, clear filter; otherwise apply
+                  final newFilter = currentColorFilter == GameColorFilter.white
+                      ? GameColorFilter.all
+                      : GameColorFilter.white;
                   onOpenGames?.call(
                     filter: GameFilter.defaultFilter().copyWith(
-                      color: GameColorFilter.white,
+                      color: newFilter,
                     ),
                   );
                 },
@@ -1192,10 +1292,15 @@ class _ColorPerformanceSection extends StatelessWidget {
                 draws: colorStats.blackDraws,
                 losses: colorStats.blackLosses,
                 score: colorStats.blackScore,
+                isSelected: currentColorFilter == GameColorFilter.black,
                 onTap: () {
+                  // Toggle: if already selected, clear filter; otherwise apply
+                  final newFilter = currentColorFilter == GameColorFilter.black
+                      ? GameColorFilter.all
+                      : GameColorFilter.black;
                   onOpenGames?.call(
                     filter: GameFilter.defaultFilter().copyWith(
-                      color: GameColorFilter.black,
+                      color: newFilter,
                     ),
                   );
                 },
@@ -1208,8 +1313,8 @@ class _ColorPerformanceSection extends StatelessWidget {
   }
 }
 
-/// Color stat card
-class _ColorStatCard extends StatelessWidget {
+/// Color stat card with selection state
+class _ColorStatCard extends StatefulWidget {
   const _ColorStatCard({
     required this.color,
     required this.label,
@@ -1218,6 +1323,7 @@ class _ColorStatCard extends StatelessWidget {
     required this.draws,
     required this.losses,
     required this.score,
+    this.isSelected = false,
     this.onTap,
   });
 
@@ -1228,84 +1334,170 @@ class _ColorStatCard extends StatelessWidget {
   final int draws;
   final int losses;
   final double score;
+  final bool isSelected;
   final VoidCallback? onTap;
 
   @override
+  State<_ColorStatCard> createState() => _ColorStatCardState();
+}
+
+class _ColorStatCardState extends State<_ColorStatCard> {
+  double _pressScale = 1.0;
+
+  void _onTapDown(TapDownDetails _) {
+    if (widget.onTap != null) {
+      setState(() => _pressScale = 0.96);
+    }
+  }
+
+  void _onTapUp(TapUpDetails _) {
+    setState(() => _pressScale = 1.0);
+  }
+
+  void _onTapCancel() {
+    setState(() => _pressScale = 1.0);
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final card = Container(
-      padding: EdgeInsets.all(16.sp),
-      decoration: BoxDecoration(
-        color: kBlack2Color,
-        borderRadius: BorderRadius.circular(12.br),
-        border: Border.all(
-          color: color == Colors.white
-              ? kWhiteColor.withValues(alpha: 0.2)
-              : kBlackColor,
-          width: 1,
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 20.w,
-                height: 20.w,
-                decoration: BoxDecoration(
-                  color: color,
-                  borderRadius: BorderRadius.circular(4.br),
-                  border: Border.all(
-                    color: kWhiteColor.withValues(alpha: 0.3),
-                    width: 1,
+    // Determine accent color based on piece color
+    final accentColor = widget.color == Colors.white ? kPrimaryColor : kPrimaryColor;
+
+    return GestureDetector(
+      onTapDown: widget.onTap != null ? _onTapDown : null,
+      onTapUp: widget.onTap != null ? _onTapUp : null,
+      onTapCancel: widget.onTap != null ? _onTapCancel : null,
+      onTap: widget.onTap,
+      child: SingleMotionBuilder(
+        motion: const CupertinoMotion.snappy(),
+        value: _pressScale,
+        builder: (context, pressScale, _) {
+          return SingleMotionBuilder(
+            motion: const CupertinoMotion.bouncy(),
+            value: widget.isSelected ? 1.0 : 0.0,
+            builder: (context, selectProgress, _) {
+              // Interpolate colors based on selection
+              final bgColor = Color.lerp(
+                kBlack2Color,
+                accentColor.withValues(alpha: 0.12),
+                selectProgress,
+              )!;
+
+              final defaultBorderColor = widget.color == Colors.white
+                  ? kWhiteColor.withValues(alpha: 0.2)
+                  : kBlackColor;
+              final selectedBorderColor = accentColor;
+              final borderColor = Color.lerp(
+                defaultBorderColor,
+                selectedBorderColor,
+                selectProgress,
+              )!;
+
+              // Subtle scale bump when selected
+              final selectScale = 1.0 + (selectProgress * 0.02);
+              final combinedScale = pressScale * selectScale;
+
+              // Border width animates
+              final borderWidth = 1.0 + (selectProgress * 1.0);
+
+              return Transform.scale(
+                scale: combinedScale,
+                child: Container(
+                  padding: EdgeInsets.all(16.sp),
+                  decoration: BoxDecoration(
+                    color: bgColor,
+                    borderRadius: BorderRadius.circular(12.br),
+                    border: Border.all(
+                      color: borderColor,
+                      width: borderWidth,
+                    ),
+                    // Subtle glow when selected
+                    boxShadow: selectProgress > 0.5
+                        ? [
+                            BoxShadow(
+                              color: accentColor.withValues(alpha: 0.15 * selectProgress),
+                              blurRadius: 10 * selectProgress,
+                              spreadRadius: 0,
+                            ),
+                          ]
+                        : null,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            width: 20.w,
+                            height: 20.w,
+                            decoration: BoxDecoration(
+                              color: widget.color,
+                              borderRadius: BorderRadius.circular(4.br),
+                              border: Border.all(
+                                color: Color.lerp(
+                                  kWhiteColor.withValues(alpha: 0.3),
+                                  accentColor,
+                                  selectProgress,
+                                )!,
+                                width: 1 + selectProgress,
+                              ),
+                            ),
+                          ),
+                          SizedBox(width: 8.w),
+                          Text(
+                            widget.label,
+                            style: AppTypography.textSmMedium.copyWith(
+                              color: Color.lerp(
+                                kWhiteColor,
+                                accentColor,
+                                selectProgress * 0.5,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      SizedBox(height: 12.h),
+                      Text(
+                        '${(widget.score * 100).toStringAsFixed(1)}%',
+                        style: AppTypography.textXlBold.copyWith(
+                          color: Color.lerp(
+                            kWhiteColor,
+                            accentColor,
+                            selectProgress * 0.3,
+                          ),
+                        ),
+                      ),
+                      Text(
+                        'Score',
+                        style: AppTypography.textXsRegular.copyWith(
+                          color: kWhiteColor.withValues(alpha: 0.5),
+                        ),
+                      ),
+                      SizedBox(height: 8.h),
+                      Row(
+                        children: [
+                          _WLDIndicator(value: widget.wins, type: 'W', compact: true),
+                          SizedBox(width: 6.w),
+                          _WLDIndicator(value: widget.draws, type: 'D', compact: true),
+                          SizedBox(width: 6.w),
+                          _WLDIndicator(value: widget.losses, type: 'L', compact: true),
+                        ],
+                      ),
+                      SizedBox(height: 4.h),
+                      Text(
+                        '${widget.games} games',
+                        style: AppTypography.textXsRegular.copyWith(
+                          color: kWhiteColor.withValues(alpha: 0.4),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-              ),
-              SizedBox(width: 8.w),
-              Text(
-                label,
-                style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
-              ),
-            ],
-          ),
-          SizedBox(height: 12.h),
-          Text(
-            '${(score * 100).toStringAsFixed(1)}%',
-            style: AppTypography.textXlBold.copyWith(color: kWhiteColor),
-          ),
-          Text(
-            'Score',
-            style: AppTypography.textXsRegular.copyWith(
-              color: kWhiteColor.withValues(alpha: 0.5),
-            ),
-          ),
-          SizedBox(height: 8.h),
-          Row(
-            children: [
-              _WLDIndicator(value: wins, type: 'W', compact: true),
-              SizedBox(width: 6.w),
-              _WLDIndicator(value: draws, type: 'D', compact: true),
-              SizedBox(width: 6.w),
-              _WLDIndicator(value: losses, type: 'L', compact: true),
-            ],
-          ),
-          SizedBox(height: 4.h),
-          Text(
-            '$games games',
-            style: AppTypography.textXsRegular.copyWith(
-              color: kWhiteColor.withValues(alpha: 0.4),
-            ),
-          ),
-        ],
+              );
+            },
+          );
+        },
       ),
-    );
-
-    if (onTap == null) return card;
-
-    return TappableScale(
-      scaleDown: 0.98,
-      onTap: onTap!,
-      child: card,
     );
   }
 }

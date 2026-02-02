@@ -1,6 +1,6 @@
 import 'dart:convert';
 
-import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
+import 'package:chessever2/repository/sqlite/app_database.dart';
 import 'package:chessever2/repository/supabase/tour/tour.dart';
 import 'package:chessever2/repository/supabase/tour/tour_repository.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -9,12 +9,12 @@ final tourLocalStorageProvider = Provider<_TourLocalStorage>(
   (ref) => _TourLocalStorage(ref),
 );
 
-enum _LocalTourStorage { tour }
-
 class _TourLocalStorage {
   _TourLocalStorage(this.ref);
 
   final Ref ref;
+
+  String _getCacheKey(String groupId) => 'tour_$groupId';
 
   Future<void> fetchAndSaveTournament(String groupId) async {
     try {
@@ -22,27 +22,26 @@ class _TourLocalStorage {
           .read(tourRepositoryProvider)
           .getTourByGroupId(groupId);
 
-      final toursEncoded = _encodeMyToursList(tours);
-      await ref
-          .read(sharedPreferencesRepository)
-          .setStringList(getPathId(groupId), toursEncoded);
+      final db = ref.read(appDatabaseProvider);
+      final encoded = tours.map((t) => json.encode(t.toJson())).toList();
+      await db.setCache(key: _getCacheKey(groupId), value: jsonEncode(encoded));
     } catch (error, _) {
-      rethrow;
+      // Local storage failure is not critical - Supabase is source of truth
     }
   }
-
-  String getPathId(String id) => '${_LocalTourStorage.tour.name}$id';
 
   Future<List<Tour>> getToursBasedOnGroupId(String groupId) async {
     try {
       await fetchAndSaveTournament(groupId);
-      final tourStringList = await ref
-          .read(sharedPreferencesRepository)
-          .getStringList(getPathId(groupId));
+      final db = ref.read(appDatabaseProvider);
+      final entry = await db.getCache(key: _getCacheKey(groupId));
 
-      final firstBatch = _decodeMyToursList(tourStringList);
+      if (entry == null) return <Tour>[];
 
-      return firstBatch;
+      final jsonList = jsonDecode(entry.value) as List;
+      return jsonList
+          .map((e) => Tour.fromJson(json.decode(e as String)))
+          .toList();
     } catch (e) {
       return <Tour>[];
     }
@@ -56,16 +55,3 @@ class _TourLocalStorage {
     }
   }
 }
-
-List<String> _encodeMyToursList(List<Tour> tours) =>
-    tours.map(_encoder).toList();
-
-List<Tour> _decodeMyToursList(List<String> tourStringList) =>
-    tourStringList
-        .map<Tour>((reelsString) => Tour.fromJson(_decoder(reelsString)))
-        .toList();
-
-String _encoder(Tour tour) => json.encode(tour.toJson());
-
-Map<String, dynamic> _decoder(String tourString) =>
-    json.decode(tourString) as Map<String, dynamic>;

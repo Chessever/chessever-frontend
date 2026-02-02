@@ -33,6 +33,8 @@ import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
+import 'package:chessever2/repository/local_storage/supabase_safe_storage.dart';
+import 'package:chessever2/repository/sqlite/app_database.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:terminate_restart/terminate_restart.dart';
 import 'package:worker_manager/worker_manager.dart';
@@ -120,17 +122,38 @@ Future<void> main() async {
       WidgetsBinding widgetsBinding = WidgetsFlutterBinding.ensureInitialized();
       FlutterNativeSplash.preserve(widgetsBinding: widgetsBinding);
 
-      // CRITICAL: Kick off SharedPreferences initialization early, non-blocking.
-      // Callers await ensureInitialized() when they actually need prefs.
-      unawaited(SharedPreferencesService.instance.initialize());
+      // CRITICAL: Initialize SQLite database FIRST (replaces SharedPreferences for all app storage)
+      // SQLite is now the primary storage for everything except Supabase auth token
+      await AppDatabase.instance.database;
 
-      // Orientation is set per-device in MyApp after we know the device type
-      // Tablets get all orientations, phones stay portrait-only
-
-      // Load environment variables first (only in debug mode)
+      // Load environment variables (only in debug mode)
       if (kDebugMode) {
         await dotenv.load(fileName: ".env");
       }
+
+      // Get Supabase auth key name for cleanup exclusion
+      final supabaseUrl = _getEnv('SUPABASE_URL');
+      final supabaseHost = Uri.parse(supabaseUrl).host.split('.').first;
+      final persistSessionKey = 'sb-$supabaseHost-auth-token';
+
+      // ONE-TIME MIGRATION: Clean up all SharedPreferences except Supabase auth token
+      // SQLite takes over from this version onwards (non-blocking with timeout)
+      unawaited(_migrateToSqliteStorage(persistSessionKey));
+
+      // Initialize SharedPreferences for Supabase auth only (with timeout, non-blocking)
+      // If this fails, Supabase safe storage will fall back to memory
+      unawaited(
+        SharedPreferencesService.instance.initialize().timeout(
+          const Duration(seconds: 3),
+          onTimeout: () {
+            debugPrint('⚠️ SharedPreferences init timed out - using memory fallback for auth');
+            return Future.value(null);
+          },
+        ).catchError((e) {
+          debugPrint('⚠️ SharedPreferences init failed: $e');
+          return null;
+        }),
+      );
 
       // Add lifecycle observer
       WidgetsBinding.instance.addObserver(
@@ -140,28 +163,31 @@ Future<void> main() async {
           },
           onAppResume: () async {
             // Sync purchases when app comes to foreground
-            // This calls syncAndRefresh via callback to update Riverpod state
             final revenueCat = RevenueCatService();
             if (revenueCat.onAppResumeCallback != null) {
               unawaited(revenueCat.onAppResumeCallback!());
             } else {
-              // Fallback if provider not yet initialized
               unawaited(revenueCat.syncPurchases());
             }
           },
         ),
       );
 
-      // Clear evaluation cache in background (don't block startup)
-      unawaited(_clearEvaluationCache());
-
-
       // Parallelize all critical initialization tasks
+      final supabaseAnonKey = _getEnv('SUPABASE_ANON_KEY');
+      final authOptions = FlutterAuthClientOptions(
+        localStorage: SafeSupabaseLocalStorage(
+          persistSessionKey: persistSessionKey,
+        ),
+        pkceAsyncStorage: SafeGotrueAsyncStorage(),
+      );
+
       await Future.wait([
         // Critical: Required before app starts
         Supabase.initialize(
-          url: _getEnv('SUPABASE_URL'),
-          anonKey: _getEnv('SUPABASE_ANON_KEY'),
+          url: supabaseUrl,
+          anonKey: supabaseAnonKey,
+          authOptions: authOptions,
         ),
         // Platform-specific worker manager initialization
         if (Platform.isAndroid)
@@ -178,10 +204,7 @@ Future<void> main() async {
         _initializeRevenueCat(),
       ]);
 
-      // Non-critical: run migrations after critical startup to avoid blocking app launch
-      unawaited(_resetFavoritesForMigration());
-
-      // Initialize TerminateRestart
+      // Initialize TerminateRestart (for user-triggered Shorebird updates only)
       TerminateRestart.instance.initialize();
 
       // Non-critical: Load audio assets in background (don't block app startup)
@@ -202,41 +225,76 @@ Future<void> main() async {
   );
 }
 
-/// Clears evaluation cache when cache version is updated
-/// Update CACHE_VERSION number to trigger cache clearing
-Future<void> _clearEvaluationCache() async {
+/// One-time migration: Clear all SharedPreferences except Supabase auth token
+/// SQLite takes over all app storage from this version onwards
+/// Has a timeout to prevent blocking if SharedPreferences is corrupted
+Future<void> _migrateToSqliteStorage(String supabaseAuthKey) async {
   try {
-    const int cacheVersion = 8; // v8: Force clear for eval bar perspective fix
-    const String versionKey = 'eval_cache_clear_version';
-    const String evalPrefix = 'cloud_eval_';
+    final db = AppDatabase.instance;
+    const migrationKey = 'sqlite_migration_complete_v1';
 
-    final prefs = await SharedPreferencesService.instance.ensureInitialized();
-    final currentVersion = prefs.getInt(versionKey) ?? 0;
+    // Check if already migrated (stored in SQLite)
+    final alreadyMigrated = await db.getBool(migrationKey) ?? false;
+    if (alreadyMigrated) return;
 
-    if (currentVersion < cacheVersion) {
-      print(
-        '🧹 CLEARING EVALUATION CACHE: version $currentVersion -> $cacheVersion',
+    debugPrint('🔄 SQLite Migration: Cleaning up old SharedPreferences...');
+
+    // Get SharedPreferences with timeout to prevent hang on corrupted prefs
+    SharedPreferences prefs;
+    try {
+      prefs = await SharedPreferences.getInstance().timeout(
+        const Duration(seconds: 3),
+        onTimeout: () {
+          throw TimeoutException('SharedPreferences.getInstance() timed out');
+        },
       );
+    } catch (e) {
+      debugPrint('⚠️ SQLite Migration: SharedPreferences timed out, skipping cleanup');
+      // Mark as migrated anyway - SQLite will be used going forward
+      // Old corrupted prefs will just be ignored
+      await db.setBool(migrationKey, true);
+      return;
+    }
 
-      // Find and remove all evaluation cache entries
-      final keys = prefs.getKeys().where((k) => k.startsWith(evalPrefix));
-      int removedCount = 0;
+    final allKeys = prefs.getKeys().toList();
 
-      for (final key in keys) {
-        await prefs.remove(key);
-        removedCount++;
+    // Keys to preserve (Supabase auth related)
+    final keysToPreserve = <String>{
+      supabaseAuthKey,
+      'flutter.$supabaseAuthKey', // Flutter prefix variant
+    };
+
+    int removedCount = 0;
+    for (final key in allKeys) {
+      // Preserve Supabase auth keys
+      if (keysToPreserve.any((preserve) => key.contains(preserve))) {
+        continue;
+      }
+      // Preserve any key containing 'auth-token' or 'supabase' for safety
+      if (key.contains('auth-token') || key.contains('supabase')) {
+        continue;
       }
 
-      // Update version
-      await prefs.setInt(versionKey, cacheVersion);
-
-      print(
-        '✅ Evaluation cache cleared: $removedCount entries removed, version updated to $cacheVersion',
-      );
-    } else {
-      print('📁 Evaluation cache version $cacheVersion is up to date');
+      // Remove everything else
+      try {
+        await prefs.remove(key).timeout(const Duration(milliseconds: 500));
+        removedCount++;
+      } catch (_) {
+        // Skip keys that timeout
+      }
     }
-  } catch (e, _) {}
+
+    // Mark migration as complete in SQLite
+    await db.setBool(migrationKey, true);
+
+    debugPrint('✅ SQLite Migration complete: Removed $removedCount old SharedPreferences keys');
+  } catch (e, st) {
+    debugPrint('❌ SQLite Migration error: $e');
+    if (kDebugMode) {
+      debugPrintStack(stackTrace: st);
+    }
+    // Don't block app startup on migration errors
+  }
 }
 
 /// Initialize RevenueCat for subscription management
@@ -256,59 +314,6 @@ Future<void> _initializeRevenueCat() async {
     unawaited(RevenueCatService().syncPurchases());
   } catch (e, st) {
     debugPrint('❌ Error initializing RevenueCat: $e');
-    if (kDebugMode) {
-      debugPrintStack(stackTrace: st);
-    }
-  }
-}
-
-/// Resets favorites system to clean state for Supabase migration
-/// This is a one-time reset for beta users to ensure clean transition
-Future<void> _resetFavoritesForMigration() async {
-  try {
-    const int migrationVersion = 4; // v4: Clear non-user-specific cache keys
-    const String versionKey = 'favorites_reset_version';
-
-    final prefs = await SharedPreferencesService.instance.ensureInitialized();
-    final currentVersion = prefs.getInt(versionKey) ?? 0;
-
-    if (currentVersion < migrationVersion) {
-      print(
-        '🧹 RESETTING FAVORITES: Migrating to Supabase-backed system (v$migrationVersion)',
-      );
-
-      // Old SharedPreferences-only keys to clear
-      const oldKeys = [
-        'favorite_players', // Old player favorites
-        'current', // Old event favorites (current category)
-        'upcoming', // Old event favorites (upcoming category)
-        'past', // Old event favorites (past category)
-        'cached_favorite_players_full', // Old cache key
-        'cached_favorite_events', // Old non-user-specific event cache (now user-specific)
-        'cached_favorite_players', // Old player cache
-        'favorites_migration_complete_v1', // Old migration flag
-      ];
-
-      int removedCount = 0;
-      for (final key in oldKeys) {
-        if (prefs.containsKey(key)) {
-          await prefs.remove(key);
-          removedCount++;
-        }
-      }
-
-      // Update version to prevent re-running
-      await prefs.setInt(versionKey, migrationVersion);
-
-      print(
-        '✅ Favorites reset complete: $removedCount keys cleared. Users will need to re-favorite players/events.',
-      );
-      print('   New system uses Supabase + SharedPreferences cache.');
-    } else {
-      print('📁 Favorites migration version $migrationVersion is up to date');
-    }
-  } catch (e, st) {
-    print('❌ Error resetting favorites: $e');
     if (kDebugMode) {
       debugPrintStack(stackTrace: st);
     }

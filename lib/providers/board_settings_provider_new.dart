@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:chessever2/repository/board_settings/models/board_settings_model.dart';
-import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
+import 'package:chessever2/repository/sqlite/app_database.dart';
 import 'package:chessever2/utils/board_customization_utils.dart';
 import 'package:chessground/chessground.dart';
 import 'package:flutter/material.dart';
@@ -375,7 +375,7 @@ class BoardSettingsNotifierNew extends AsyncNotifier<BoardSettingsNew> {
 
   Future<void> _cacheSettings(BoardSettingsNew settings) async {
     try {
-      final prefs = await SharedPreferencesService.instance.ensureInitialized();
+      final db = AppDatabase.instance;
       final json = jsonEncode({
         'boardColorIndex': settings.boardColorIndex,
         'boardThemeIndex': settings.boardThemeIndex,
@@ -386,7 +386,7 @@ class BoardSettingsNotifierNew extends AsyncNotifier<BoardSettingsNew> {
         'gamesListViewModeIndex': settings.gamesListViewModeIndex,
         'useFigurine': settings.useFigurine,
       });
-      await prefs.setString(_cacheKey, json);
+      await db.setString(_cacheKey, json);
       debugPrint('[BoardSettings] Cached settings locally');
     } catch (e) {
       debugPrint('[BoardSettings] Error caching settings: $e');
@@ -395,8 +395,8 @@ class BoardSettingsNotifierNew extends AsyncNotifier<BoardSettingsNew> {
 
   Future<BoardSettingsNew> _getCachedSettings() async {
     try {
-      final prefs = await SharedPreferencesService.instance.ensureInitialized();
-      final json = prefs.getString(_cacheKey);
+      final db = AppDatabase.instance;
+      final json = await db.getString(_cacheKey);
       if (json == null) {
         debugPrint('[BoardSettings] No cached settings, using defaults');
         return const BoardSettingsNew();
@@ -434,8 +434,8 @@ class BoardSettingsNotifierNew extends AsyncNotifier<BoardSettingsNew> {
   /// Clear cache (useful on sign out)
   Future<void> clearCache() async {
     try {
-      final prefs = await SharedPreferencesService.instance.ensureInitialized();
-      await prefs.remove(_cacheKey);
+      final db = AppDatabase.instance;
+      await db.remove(_cacheKey);
       debugPrint('[BoardSettings] Cleared cache');
     } catch (e) {
       debugPrint('[BoardSettings] Error clearing cache: $e');

@@ -1,11 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:chessever2/repository/favorites/models/favorite_event.dart';
-import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
+import 'package:chessever2/repository/sqlite/app_database.dart';
 import 'package:chessever2/services/analytics/analytics_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Provider for managing event favorites
@@ -16,26 +15,11 @@ final favoriteEventsProvider =
 );
 
 class FavoriteEventsNotifier extends AsyncNotifier<List<FavoriteEvent>> {
-  static const String _cacheKeyPrefix = 'cached_favorite_events_';
-  static const String _lastUserIdKey = 'favorite_events_last_user_id';
+  static const String _cacheKey = 'cached_favorite_events';
 
   SupabaseClient get _supabase => Supabase.instance.client;
 
-  Future<SharedPreferences> _getPrefs() async =>
-      SharedPreferencesService.instance.ensureInitialized();
-
-  /// Resolve user-specific cache key to prevent cross-user cache pollution.
-  Future<String> _resolveCacheKey({SharedPreferences? prefs}) async {
-    final userId = _supabase.auth.currentUser?.id;
-    if (userId != null) return '$_cacheKeyPrefix$userId';
-
-    final resolvedPrefs = prefs ?? await _getPrefs();
-    final lastUserId = resolvedPrefs.getString(_lastUserIdKey);
-    if (lastUserId != null && lastUserId.isNotEmpty) {
-      return '$_cacheKeyPrefix$lastUserId';
-    }
-    return '${_cacheKeyPrefix}anonymous';
-  }
+  String? _getCurrentUserId() => _supabase.auth.currentUser?.id;
 
   @override
   Future<List<FavoriteEvent>> build() async {
@@ -61,7 +45,7 @@ class FavoriteEventsNotifier extends AsyncNotifier<List<FavoriteEvent>> {
   }
 
   Future<List<FavoriteEvent>> _fetchFavoritesFromSupabase() async {
-    final userId = _supabase.auth.currentUser?.id;
+    final userId = _getCurrentUserId();
     if (userId == null) {
       debugPrint('[FavoriteEvents] No user logged in, returning empty list');
       return [];
@@ -80,9 +64,7 @@ class FavoriteEventsNotifier extends AsyncNotifier<List<FavoriteEvent>> {
             .toList();
 
     // Cache locally
-    await _cacheEvents(events);
-    final prefs = await _getPrefs();
-    await prefs.setString(_lastUserIdKey, userId);
+    await _cacheEvents(events, userId);
 
     debugPrint('[FavoriteEvents] Fetched ${events.length} events from Supabase');
     return events;
@@ -107,7 +89,7 @@ class FavoriteEventsNotifier extends AsyncNotifier<List<FavoriteEvent>> {
     int? maxAvgElo,
     String? dates,
   }) async {
-    final userId = _supabase.auth.currentUser?.id;
+    final userId = _getCurrentUserId();
     if (userId == null) {
       throw Exception('User must be logged in to favorite events');
     }
@@ -135,7 +117,7 @@ class FavoriteEventsNotifier extends AsyncNotifier<List<FavoriteEvent>> {
     state = AsyncValue.data(updatedEvents);
 
     // Cache immediately
-    await _cacheEvents(updatedEvents);
+    await _cacheEvents(updatedEvents, userId);
 
     try {
       // STEP 2: Sync to Supabase in background (upsert prevents duplicates)
@@ -162,14 +144,14 @@ class FavoriteEventsNotifier extends AsyncNotifier<List<FavoriteEvent>> {
 
       // STEP 4: Revert optimistic update on error
       state = AsyncValue.data(currentEvents);
-      await _cacheEvents(currentEvents);
+      await _cacheEvents(currentEvents, userId);
       rethrow;
     }
   }
 
   /// Remove event from favorites (optimistic update)
   Future<void> removeFavorite(String eventId) async {
-    final userId = _supabase.auth.currentUser?.id;
+    final userId = _getCurrentUserId();
     if (userId == null) {
       throw Exception('User must be logged in to remove favorites');
     }
@@ -180,7 +162,7 @@ class FavoriteEventsNotifier extends AsyncNotifier<List<FavoriteEvent>> {
     state = AsyncValue.data(updatedEvents);
 
     // Cache immediately
-    await _cacheEvents(updatedEvents);
+    await _cacheEvents(updatedEvents, userId);
 
     try {
       // STEP 2: Sync to Supabase in background
@@ -202,7 +184,7 @@ class FavoriteEventsNotifier extends AsyncNotifier<List<FavoriteEvent>> {
 
       // STEP 4: Revert optimistic update on error
       state = AsyncValue.data(currentEvents);
-      await _cacheEvents(currentEvents);
+      await _cacheEvents(currentEvents, userId);
       rethrow;
     }
   }
@@ -259,12 +241,11 @@ class FavoriteEventsNotifier extends AsyncNotifier<List<FavoriteEvent>> {
   }
 
   // Cache management
-  Future<void> _cacheEvents(List<FavoriteEvent> events) async {
+  Future<void> _cacheEvents(List<FavoriteEvent> events, String? userId) async {
     try {
-      final prefs = await _getPrefs();
-      final cacheKey = await _resolveCacheKey(prefs: prefs);
+      final db = AppDatabase.instance;
       final json = jsonEncode(events.map((e) => e.toSupabase()).toList());
-      await prefs.setString(cacheKey, json);
+      await db.setCache(key: _cacheKey, value: json, userId: userId);
       debugPrint('[FavoriteEvents] Cached ${events.length} events locally');
     } catch (e) {
       debugPrint('[FavoriteEvents] Error caching events: $e');
@@ -273,12 +254,12 @@ class FavoriteEventsNotifier extends AsyncNotifier<List<FavoriteEvent>> {
 
   Future<List<FavoriteEvent>> _getCachedEvents() async {
     try {
-      final prefs = await _getPrefs();
-      final cacheKey = await _resolveCacheKey(prefs: prefs);
-      final json = prefs.getString(cacheKey);
-      if (json == null) return [];
+      final db = AppDatabase.instance;
+      final userId = _getCurrentUserId();
+      final entry = await db.getCache(key: _cacheKey, userId: userId);
+      if (entry == null) return [];
 
-      final list = jsonDecode(json) as List;
+      final list = jsonDecode(entry.value) as List;
       return list.map((json) => FavoriteEvent.fromSupabase(json)).toList();
     } catch (e) {
       debugPrint('[FavoriteEvents] Error getting cached events: $e');
@@ -289,10 +270,9 @@ class FavoriteEventsNotifier extends AsyncNotifier<List<FavoriteEvent>> {
   /// Clear cache (useful on sign out)
   Future<void> clearCache() async {
     try {
-      final prefs = await _getPrefs();
-      final cacheKey = await _resolveCacheKey(prefs: prefs);
-      await prefs.remove(cacheKey);
-      await prefs.remove(_lastUserIdKey);
+      final db = AppDatabase.instance;
+      final userId = _getCurrentUserId();
+      await db.removeCache(key: _cacheKey, userId: userId);
       debugPrint('[FavoriteEvents] Cleared cache');
     } catch (e) {
       debugPrint('[FavoriteEvents] Error clearing cache: $e');

@@ -1,4 +1,4 @@
-import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
+import 'package:chessever2/repository/sqlite/app_database.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -80,14 +80,14 @@ class _SwipeActionCardState extends State<SwipeActionCard>
   }
 
   Future<void> _maybeShowSwipeHint() async {
-    final prefs = await SharedPreferencesService.instance.ensureInitialized();
+    final db = AppDatabase.instance;
     final key = 'swipe_hint_shown_${widget.swipeHintKey}';
-    final alreadyShown = prefs.getBool(key) ?? false;
+    final alreadyShown = await db.getBool(key) ?? false;
 
     if (alreadyShown || !mounted) return;
 
     // Mark as shown immediately to prevent showing on other cards
-    await prefs.setBool(key, true);
+    await db.setBool(key, true);
 
     // Small delay before starting the hint animation
     await Future.delayed(const Duration(milliseconds: 600));

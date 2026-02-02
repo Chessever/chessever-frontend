@@ -305,11 +305,27 @@ class GameFilterHelper {
     }).toList();
   }
 
-  /// Infer time control from game clock data
-  /// Uses whiteClockSeconds (from DB last_clock_white) as primary source,
-  /// falls back to whiteClockCentiseconds (from players JSON)
+  /// Get time control from game data
+  /// Primary source: timeControl field from group_broadcasts table
+  /// Fallback: infer from clock data (less accurate)
   static GameTimeControlFilter _inferTimeControl(GamesTourModel game) {
-    // Try whiteClockSeconds first (from last_clock_white DB column, more reliable)
+    // Primary: use the actual time_control from group_broadcasts
+    if (game.timeControl != null && game.timeControl!.isNotEmpty) {
+      switch (game.timeControl!.toLowerCase()) {
+        case 'standard':
+        case 'classical':
+          return GameTimeControlFilter.classical;
+        case 'rapid':
+          return GameTimeControlFilter.rapid;
+        case 'blitz':
+          return GameTimeControlFilter.blitz;
+        case 'bullet':
+          return GameTimeControlFilter.blitz; // Treat bullet as blitz
+      }
+    }
+
+    // Fallback: infer from clock data (less accurate, uses remaining time)
+    // Try whiteClockSeconds first (from last_clock_white DB column)
     if (game.whiteClockSeconds != null && game.whiteClockSeconds! > 0) {
       final baseSeconds = game.whiteClockSeconds!;
       if (baseSeconds >= 1800) return GameTimeControlFilter.classical;

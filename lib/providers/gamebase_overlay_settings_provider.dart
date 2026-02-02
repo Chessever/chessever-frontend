@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
+import 'package:chessever2/repository/sqlite/app_database.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -18,8 +18,8 @@ class GamebaseOverlayEnabledNotifier extends AsyncNotifier<bool> {
   @override
   Future<bool> build() async {
     try {
-      final prefs = await SharedPreferencesService.instance.ensureInitialized();
-      return prefs.getBool(_prefsKey) ?? true;
+      final db = AppDatabase.instance;
+      return await db.getBool(_prefsKey) ?? true;
     } catch (e) {
       debugPrint('[GamebaseOverlay] Failed to load preference: $e');
       return true;
@@ -38,8 +38,8 @@ class GamebaseOverlayEnabledNotifier extends AsyncNotifier<bool> {
 
   Future<void> _persist(bool enabled) async {
     try {
-      final prefs = await SharedPreferencesService.instance.ensureInitialized();
-      await prefs.setBool(_prefsKey, enabled);
+      final db = AppDatabase.instance;
+      await db.setBool(_prefsKey, enabled);
     } catch (e) {
       debugPrint('[GamebaseOverlay] Failed to persist preference: $e');
     }

@@ -1,6 +1,6 @@
 import 'dart:convert';
 
-import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
+import 'package:chessever2/repository/sqlite/app_database.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
 import 'package:chessever2/screens/group_event/group_event_screen.dart';
@@ -23,43 +23,25 @@ class GroupBroadcastLocalStorage {
   String get localStorageName {
     switch (category) {
       case GroupEventCategory.forYou:
-        // ForYou shows games, not events, so use upcoming storage key for backwards compatibility
         return _LocalGroupBroadcastStorage.upcoming.name;
       case GroupEventCategory.current:
         return _LocalGroupBroadcastStorage.current.name;
       case GroupEventCategory.past:
         return _LocalGroupBroadcastStorage.past.name;
       case GroupEventCategory.search:
-        // Search shows dynamic results, not stored events
         return _LocalGroupBroadcastStorage.current.name;
     }
   }
 
-  String get localStorageTimeName {
-    switch (category) {
-      case GroupEventCategory.forYou:
-        // ForYou shows games, not events, so use upcoming storage key for backwards compatibility
-        return '${_LocalGroupBroadcastStorage.upcoming.name}_time';
-      case GroupEventCategory.current:
-        return '${_LocalGroupBroadcastStorage.current.name}_time';
-      case GroupEventCategory.past:
-        return '${_LocalGroupBroadcastStorage.past.name}_time';
-      case GroupEventCategory.search:
-        // Search shows dynamic results, not stored events
-        return '${_LocalGroupBroadcastStorage.current.name}_time';
-    }
-  }
+  String get _cacheKey => 'group_broadcast_$localStorageName';
+  String get _cacheTimeKey => 'group_broadcast_${localStorageName}_time';
 
   Future<void> fetchAndSaveGroupBroadcasts() async {
     try {
       List<GroupBroadcast> broadcasts = [];
       switch (category) {
         case GroupEventCategory.forYou:
-          // ForYou shows games, not events, so return empty list
-          broadcasts = [];
-          break;
         case GroupEventCategory.search:
-          // Search shows dynamic results, not stored events
           broadcasts = [];
           break;
         case GroupEventCategory.current:
@@ -76,52 +58,48 @@ class GroupBroadcastLocalStorage {
           break;
       }
 
-      await ref
-          .read(sharedPreferencesRepository)
-          .setStringList(
-            localStorageName,
-            _encodeGroupBroadcastsList(broadcasts),
-          );
-      await ref
-          .read(sharedPreferencesRepository)
-          .setInt(localStorageTimeName, DateTime.now().millisecondsSinceEpoch);
+      final db = ref.read(appDatabaseProvider);
+      final encoded = _encodeGroupBroadcastsList(broadcasts);
+      await db.setCache(key: _cacheKey, value: jsonEncode(encoded));
+      await db.setInt(_cacheTimeKey, DateTime.now().millisecondsSinceEpoch);
     } catch (_) {
-      rethrow;
+      // Local storage failure is not critical - Supabase is source of truth
     }
   }
 
   Future<List<GroupBroadcast>> fetchGroupBroadcasts() async {
-    final lastFetched = await ref
-        .read(sharedPreferencesRepository)
-        .getInt(localStorageTimeName);
-    final totalValues = await getGroupBroadcasts();
-    if (lastFetched != null) {
-      final currentTime = DateTime.now().millisecondsSinceEpoch;
-      final difference = currentTime - lastFetched;
-      // If data is older than 25 minutes, refresh it
-      if (difference > 25 * 60 * 1000 || totalValues.isEmpty) {
+    try {
+      final db = ref.read(appDatabaseProvider);
+      final lastFetched = await db.getInt(_cacheTimeKey);
+      final totalValues = await getGroupBroadcasts();
+
+      if (lastFetched != null) {
+        final currentTime = DateTime.now().millisecondsSinceEpoch;
+        final difference = currentTime - lastFetched;
+        // If data is older than 25 minutes, refresh it
+        if (difference > 25 * 60 * 1000 || totalValues.isEmpty) {
+          await fetchAndSaveGroupBroadcasts();
+          return getGroupBroadcasts();
+        } else {
+          return getGroupBroadcasts();
+        }
+      } else {
         await fetchAndSaveGroupBroadcasts();
         return getGroupBroadcasts();
-      } else {
-        return getGroupBroadcasts();
       }
-    } else {
-      await fetchAndSaveGroupBroadcasts();
-      return getGroupBroadcasts();
+    } catch (_) {
+      return <GroupBroadcast>[];
     }
   }
 
   Future<List<GroupBroadcast>> _ensureStarredEventsIncluded(
     List<GroupBroadcast> tours,
   ) async {
-    // Get starred event IDs
     final starredIds = ref.read(starredProvider(localStorageName));
-
     final allStarredIds = <String>{...starredIds};
 
     if (allStarredIds.isEmpty) return tours;
 
-    // Find starred events that might not be in current tour list
     final currentIds = tours.map((t) => t.id).toSet();
     final missingStarredIds = allStarredIds.where(
       (id) => !currentIds.contains(id),
@@ -129,7 +107,6 @@ class GroupBroadcastLocalStorage {
 
     if (missingStarredIds.isEmpty) return tours;
 
-    // Fetch missing starred events
     final missingStarredEvents = <GroupBroadcast>[];
     for (final id in missingStarredIds) {
       try {
@@ -150,44 +127,32 @@ class GroupBroadcastLocalStorage {
 
   Future<List<GroupBroadcast>> getGroupBroadcasts() async {
     try {
-      final jsonList = await ref
-          .read(sharedPreferencesRepository)
-          .getStringList(localStorageName);
-      if (jsonList.isEmpty) {
-        return <GroupBroadcast>[];
-      }
-      return _decodeGroupBroadcastsList(jsonList);
+      final db = ref.read(appDatabaseProvider);
+      final entry = await db.getCache(key: _cacheKey);
+      if (entry == null) return <GroupBroadcast>[];
+
+      final jsonList = jsonDecode(entry.value) as List;
+      return _decodeGroupBroadcastsList(jsonList.cast<String>());
     } catch (_) {
       return <GroupBroadcast>[];
     }
   }
 
-  /// Refreshes the cached data from the network and returns the fresh list
   Future<List<GroupBroadcast>> refresh() async {
     try {
       await fetchAndSaveGroupBroadcasts();
-      final jsonList = await ref
-          .read(sharedPreferencesRepository)
-          .getStringList(localStorageName);
-      if (jsonList.isNotEmpty) {
-        return _decodeGroupBroadcastsList(jsonList);
-      } else {
-        return <GroupBroadcast>[];
-      }
+      return getGroupBroadcasts();
     } catch (_) {
       return <GroupBroadcast>[];
     }
   }
 
-  /// Case-insensitive search by name or search tags (same scoring logic as tours)
   Future<List<GroupBroadcast>> searchGroupBroadcastsByName(String query) async {
     try {
       final broadcasts = await getGroupBroadcasts();
       if (query.isEmpty) return broadcasts;
 
       final queryLower = query.toLowerCase().trim();
-
-      // Split into words for flexible matching
       final queryWords =
           queryLower
               .split(RegExp(r'\s+'))
@@ -200,12 +165,7 @@ class GroupBroadcastLocalStorage {
           nameLower,
           ...gb.search.map((s) => s.toLowerCase()),
         ].join(' ');
-
-        // Option 1: All words must be present (AND search)
         return queryWords.every((word) => allText.contains(word));
-
-        // Option 2: Any word can be present (OR search) - uncomment if preferred
-        // return queryWords.any((word) => allText.contains(word));
       }).toList();
     } catch (e) {
       return <GroupBroadcast>[];
@@ -219,6 +179,5 @@ List<String> _encodeGroupBroadcastsList(List<GroupBroadcast> list) =>
 List<GroupBroadcast> _decodeGroupBroadcastsList(List<String> jsonList) =>
     jsonList.map((e) => GroupBroadcast.fromJson(json.decode(e))).toList();
 
-/// Optional isolate-friendly decoder
 List<GroupBroadcast> decodeGroupBroadcastsInIsolate(List<String> jsonStrings) =>
     jsonStrings.map((e) => GroupBroadcast.fromJson(json.decode(e))).toList();
