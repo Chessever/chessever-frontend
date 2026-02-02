@@ -3,7 +3,7 @@
 <plist version="1.0">
 	<dict>
 		<key>CADisableMinimumFrameDurationOnPhone</key>
-		<true />
+		<true/>
 		<key>CFBundleDevelopmentRegion</key>
 		<string>$(DEVELOPMENT_LANGUAGE)</string>
 		<key>CFBundleDisplayName</key>
@@ -17,7 +17,7 @@
 			<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
 		</array>
 		<key>ITSAppUsesNonExemptEncryption</key>
-		<false />
+		<false/>
 		<key>CFBundleInfoDictionaryVersion</key>
 		<string>6.0</string>
 		<key>CFBundleName</key>
@@ -39,20 +39,20 @@
 				</array>
 			</dict>
 			<!-- Google Sign In URL Scheme -->
-				<dict>
-					<key>CFBundleTypeRole</key>
-					<string>Editor</string>
-					<key>CFBundleURLSchemes</key>
-					<array>
-						<string>com.googleusercontent.apps.882734779574-8v68and9jcueedkvk0dl2ftse6dn8kt3</string>
-					</array>
-				</dict>
-			</array>
-			<!-- Google Sign In Client IDs -->
-			<key>GIDClientID</key>
-			<string>882734779574-8v68and9jcueedkvk0dl2ftse6dn8kt3.apps.googleusercontent.com</string>
-			<key>GIDServerClientID</key>
-			<string>882734779574-0qk635jlqrbp9qhenmau7pd6bffiag2j.apps.googleusercontent.com</string>
+			<dict>
+				<key>CFBundleTypeRole</key>
+				<string>Editor</string>
+				<key>CFBundleURLSchemes</key>
+				<array>
+					<string>com.googleusercontent.apps.882734779574-8v68and9jcueedkvk0dl2ftse6dn8kt3</string>
+				</array>
+			</dict>
+		</array>
+		<!-- Google Sign In Client IDs -->
+		<key>GIDClientID</key>
+		<string>882734779574-8v68and9jcueedkvk0dl2ftse6dn8kt3.apps.googleusercontent.com</string>
+		<key>GIDServerClientID</key>
+		<string>882734779574-0qk635jlqrbp9qhenmau7pd6bffiag2j.apps.googleusercontent.com</string>
 		<key>CFBundleVersion</key>
 		<string>$(FLUTTER_BUILD_NUMBER)</string>
 		<key>LSApplicationQueriesSchemes</key>
@@ -62,7 +62,7 @@
 			<string>mailto</string>
 		</array>
 		<key>LSRequiresIPhoneOS</key>
-		<true />
+		<true/>
 		<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
 		<string>This app needs location access to determine your country.</string>
 		<key>NSLocationWhenInUseUsageDescription</key>
@@ -72,7 +72,7 @@
 		<key>NSPhotoLibraryUsageDescription</key>
 		<string>This app needs permission to access your photo library to save chess game images.</string>
 		<key>UIApplicationSupportsIndirectInputEvents</key>
-		<true />
+		<true/>
 		<key>UIBackgroundModes</key>
 		<array>
 			<string>fetch</string>
@@ -83,7 +83,7 @@
 		<key>UIMainStoryboardFile</key>
 		<string>Main</string>
 		<key>UIStatusBarHidden</key>
-		<true />
+		<true/>
 		<key>UISupportedInterfaceOrientations</key>
 		<array>
 			<string>UIInterfaceOrientationPortrait</string>
@@ -98,6 +98,6 @@
 			<string>UIInterfaceOrientationLandscapeRight</string>
 		</array>
 		<key>UIViewControllerBasedStatusBarAppearance</key>
-		<false />
+		<false/>
 	</dict>
 </plist>

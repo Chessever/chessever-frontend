@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io' show Platform;
 import 'package:chessever2/repository/lichess/cloud_eval/cloud_eval.dart';
 import 'package:flutter/foundation.dart';
 import 'package:stockfish/stockfish.dart';
@@ -37,7 +38,35 @@ class StockfishSingleton {
   final List<_EvalJob> _jobQueue = []; // Queue for pending evaluations
   final Map<String, _EvalJob> _pendingJobs = {}; // Keyed by cacheKey
   bool _isProcessing = false; // Flag to prevent concurrent processing
+  bool _isInitializing = false; // Lock to prevent concurrent engine initialization
+  Completer<void>? _initCompleter; // Completer for waiting on initialization
   static const int _maxQueueSize = 60; // Soft cap to avoid backlog
+
+  // Global instance lock to prevent "Multiple instances not supported" on Android
+  // Android's native Stockfish library requires strict single-instance management
+  Completer<void>? _instanceLock;
+  DateTime? _lastDisposeTime; // Track when engine was last disposed
+  static const Duration _androidMinDisposalWait = Duration(milliseconds: 800);
+  static const Duration _iosMinDisposalWait = Duration(milliseconds: 100);
+
+  /// Get the minimum disposal wait time based on platform
+  Duration get _minDisposalWait {
+    try {
+      return Platform.isAndroid ? _androidMinDisposalWait : _iosMinDisposalWait;
+    } catch (_) {
+      // Fallback for web or test environments
+      return _iosMinDisposalWait;
+    }
+  }
+
+  /// Check if we're on Android (needs stricter instance management)
+  bool get _isAndroid {
+    try {
+      return Platform.isAndroid;
+    } catch (_) {
+      return false;
+    }
+  }
 
   Future<EnhancedCloudEval> evaluatePosition(
     String fen, {
@@ -241,8 +270,10 @@ class StockfishSingleton {
   }
 
   Future<void> cancelAllEvaluations() async {
+    debugPrint('🛑 STOCKFISH: Cancelling all evaluations...');
     await _cancelCurrentEvaluation();
     if (_jobQueue.isNotEmpty) {
+      final jobCount = _jobQueue.length;
       for (final job in _jobQueue) {
         _pendingJobs.remove(job.key);
         if (!job.completer.isCompleted) {
@@ -258,12 +289,16 @@ class StockfishSingleton {
         }
       }
       _jobQueue.clear();
+      debugPrint('🛑 STOCKFISH: Cancelled $jobCount queued jobs');
     }
     _isProcessing = false;
     _currentSubscription = null;
     try {
-      _engine?.stdin = 'stop';
+      if (_engine != null && _engine!.state.value == StockfishState.ready) {
+        _engine!.stdin = 'stop';
+      }
     } catch (_) {}
+    debugPrint('✅ STOCKFISH: All evaluations cancelled');
   }
 
   /// Cancel evaluations only for a specific owner (provider instance).
@@ -592,11 +627,14 @@ class StockfishSingleton {
             // Force completion with current best results
             if (!completer.isCompleted) {
               final filteredPvs = pvs.where((pv) => pv.moves.isNotEmpty).toList(growable: false);
+              final normalizedPvs = _normalizeToWhitePerspective(filteredPvs, fen);
               final result = EnhancedCloudEval(
                 fen: fen,
                 knodes: knodes,
                 depth: finalDepth > 0 ? finalDepth : 1,
-                pvs: filteredPvs.isEmpty ? [Pv(moves: '', cp: 0)] : filteredPvs,
+                pvs: normalizedPvs.isEmpty
+                    ? [Pv(moves: '', cp: 0)]
+                    : normalizedPvs,
                 isCancelled: false,
                 requestedMultiPv: job.multiPV,
               );
@@ -622,11 +660,14 @@ class StockfishSingleton {
 
             // Complete with whatever we have so far
             final filteredPvs = pvs.where((pv) => pv.moves.isNotEmpty).toList(growable: false);
+            final normalizedPvs = _normalizeToWhitePerspective(filteredPvs, fen);
             final result = EnhancedCloudEval(
               fen: fen,
               knodes: knodes,
               depth: finalDepth > 0 ? finalDepth : 1,
-              pvs: filteredPvs.isEmpty ? [Pv(moves: '', cp: 0)] : filteredPvs,
+              pvs: normalizedPvs.isEmpty
+                  ? [Pv(moves: '', cp: 0)]
+                  : normalizedPvs,
               isCancelled: false,
               requestedMultiPv: job.multiPV,
             );
@@ -636,6 +677,14 @@ class StockfishSingleton {
               _engine?.stdin = 'stop';
             } catch (_) {}
 
+            if (!completer.isCompleted) {
+              completer.complete(result);
+              final sub = _currentSubscription;
+              _currentSubscription = null;
+              if (sub != null) {
+                unawaited(sub.cancel());
+              }
+            }
             return result;
           },
         );
@@ -693,13 +742,22 @@ class StockfishSingleton {
   }
 
   Future<void> _waitUntilReady({
-    Duration timeout = const Duration(seconds: 2), // Keep it fast, fail quick if engine not responding
+    Duration timeout = const Duration(seconds: 3), // Slightly longer timeout for Android
   }) async {
     if (_engine == null) {
       throw StateError('Stockfish engine is not initialized');
     }
 
-    if (_engine!.state.value == StockfishState.ready) {
+    // Check for error or disposed state immediately
+    final currentState = _engine!.state.value;
+    if (currentState == StockfishState.error) {
+      throw StateError('Stockfish engine is in error state');
+    }
+    if (currentState == StockfishState.disposed) {
+      throw StateError('Stockfish engine was disposed');
+    }
+
+    if (currentState == StockfishState.ready) {
       await _configureEngineForAnalysis();
       return;
     }
@@ -709,19 +767,31 @@ class StockfishSingleton {
     late final Timer timer;
 
     listener = () {
-      if (_engine?.state.value == StockfishState.ready &&
-          !completer.isCompleted) {
+      final state = _engine?.state.value;
+      if (completer.isCompleted) return;
+
+      if (state == StockfishState.ready) {
         completer.complete();
+      } else if (state == StockfishState.error) {
+        completer.completeError(StateError('Stockfish entered error state'));
+      } else if (state == StockfishState.disposed) {
+        completer.completeError(StateError('Stockfish was disposed'));
       }
     };
 
     _engine!.state.addListener(listener);
 
-    timer = Timer(timeout, () {
+    // Use longer timeout on Android
+    final effectiveTimeout = _isAndroid
+        ? Duration(milliseconds: timeout.inMilliseconds + 1000)
+        : timeout;
+
+    timer = Timer(effectiveTimeout, () {
       if (!completer.isCompleted) {
+        final state = _engine?.state.value;
         completer.completeError(
           TimeoutException(
-            'Stockfish did not become ready within ${timeout.inMilliseconds}ms',
+            'Stockfish did not become ready within ${effectiveTimeout.inMilliseconds}ms (current state: $state)',
           ),
         );
       }
@@ -733,39 +803,190 @@ class StockfishSingleton {
     } finally {
       timer.cancel();
       try {
-        _engine!.state.removeListener(listener);
+        _engine?.state.removeListener(listener);
       } catch (_) {}
     }
   }
 
-  Future<void> _ensureEngineReady() async {
-    int attempt = 0;
-    while (true) {
-      attempt++;
+  /// Acquires the instance lock, ensuring only one operation can create/dispose engine at a time.
+  /// Returns a function to release the lock when done.
+  Future<void Function()> _acquireInstanceLock() async {
+    // Wait for any existing lock to be released
+    while (_instanceLock != null && !_instanceLock!.isCompleted) {
+      debugPrint('🔒 STOCKFISH: Waiting for instance lock...');
       try {
-        // Force reset if engine is in error state or if we've been waiting too long
-        if (_engine == null ||
-            _engine!.state.value == StockfishState.error ||
-            _engine!.state.value == StockfishState.disposed) {
-          debugPrint('🔄 STOCKFISH: Reinitializing engine (state: ${_engine?.state.value})');
-          try {
-            _engine?.dispose();
-          } catch (_) {}
-          await Future.delayed(const Duration(milliseconds: 100)); // Small delay before reinit
-          _engine = Stockfish();
-        }
-        await _waitUntilReady();
-        return;
-      } catch (e, st) {
-        debugPrint(
-          '⚠️ STOCKFISH INIT: Engine not ready (attempt $attempt) – $e',
-        );
-        debugPrint('$st');
-        await _resetEngineAfterFailure();
-        // Allow more retries for initial load
-        if (attempt >= 3) rethrow;
-        await Future.delayed(Duration(milliseconds: 200 * attempt)); // Exponential backoff
+        await _instanceLock!.future.timeout(const Duration(seconds: 10));
+      } catch (e) {
+        debugPrint('⚠️ STOCKFISH: Instance lock wait timeout: $e');
+        // Force release stale lock
+        _instanceLock = null;
       }
+    }
+
+    // Acquire the lock
+    _instanceLock = Completer<void>();
+    debugPrint('🔒 STOCKFISH: Instance lock acquired');
+
+    return () {
+      if (_instanceLock != null && !_instanceLock!.isCompleted) {
+        _instanceLock!.complete();
+        debugPrint('🔓 STOCKFISH: Instance lock released');
+      }
+      _instanceLock = null;
+    };
+  }
+
+  /// Safely disposes the current engine with proper cleanup timing.
+  Future<void> _safeDisposeEngine() async {
+    if (_engine == null) return;
+
+    debugPrint('🧹 STOCKFISH: Disposing engine (state: ${_engine!.state.value})');
+
+    // Cancel any active subscription first
+    try {
+      await _currentSubscription?.cancel();
+    } catch (_) {}
+    _currentSubscription = null;
+
+    // Send stop command if engine is responsive
+    if (_engine!.state.value == StockfishState.ready) {
+      try {
+        _engine!.stdin = 'stop';
+        _engine!.stdin = 'quit';
+        // Give engine time to process quit command
+        await Future.delayed(const Duration(milliseconds: 50));
+      } catch (e) {
+        debugPrint('⚠️ STOCKFISH: Could not send quit: $e');
+      }
+    }
+
+    // Dispose the engine
+    try {
+      _engine!.dispose();
+    } catch (e) {
+      debugPrint('⚠️ STOCKFISH: Dispose error (expected on some platforms): $e');
+    }
+    _engine = null;
+    _lastDisposeTime = DateTime.now();
+
+    // CRITICAL: Wait for native cleanup based on platform
+    // Android's native Stockfish library is very strict about single instances
+    final waitTime = _minDisposalWait;
+    debugPrint('⏳ STOCKFISH: Waiting ${waitTime.inMilliseconds}ms for native cleanup...');
+    await Future.delayed(waitTime);
+
+    debugPrint('✅ STOCKFISH: Engine disposed and cleanup complete');
+  }
+
+  /// Creates a new engine instance with proper timing.
+  Future<Stockfish> _createEngineInstance() async {
+    // Ensure minimum time has passed since last disposal
+    if (_lastDisposeTime != null) {
+      final timeSinceDispose = DateTime.now().difference(_lastDisposeTime!);
+      final minWait = _minDisposalWait;
+      if (timeSinceDispose < minWait) {
+        final remainingWait = minWait - timeSinceDispose;
+        debugPrint('⏳ STOCKFISH: Waiting ${remainingWait.inMilliseconds}ms before creating new instance...');
+        await Future.delayed(remainingWait);
+      }
+    }
+
+    debugPrint('🆕 STOCKFISH: Creating new engine instance...');
+    final engine = Stockfish();
+    debugPrint('✅ STOCKFISH: New engine instance created');
+    return engine;
+  }
+
+  Future<void> _ensureEngineReady() async {
+    // If another call is already initializing, wait for it
+    if (_isInitializing && _initCompleter != null) {
+      debugPrint('🔒 STOCKFISH: Waiting for ongoing initialization...');
+      try {
+        await _initCompleter!.future.timeout(const Duration(seconds: 10));
+        if (_engine != null && _engine!.state.value == StockfishState.ready) {
+          return;
+        }
+      } catch (e) {
+        debugPrint('⚠️ STOCKFISH: Init wait failed: $e');
+      }
+    }
+
+    // Check if engine is already ready
+    if (_engine != null && _engine!.state.value == StockfishState.ready) {
+      await _configureEngineForAnalysis();
+      return;
+    }
+
+    // Acquire initialization lock
+    _isInitializing = true;
+    _initCompleter = Completer<void>();
+
+    // Acquire global instance lock for thread-safety
+    final releaseLock = await _acquireInstanceLock();
+
+    int attempt = 0;
+    final maxAttempts = _isAndroid ? 5 : 3; // More retries on Android
+
+    try {
+      while (true) {
+        attempt++;
+        try {
+          // Force reset if engine is in error state or disposed
+          if (_engine == null ||
+              _engine!.state.value == StockfishState.error ||
+              _engine!.state.value == StockfishState.disposed) {
+            debugPrint('🔄 STOCKFISH: Reinitializing engine (state: ${_engine?.state.value}, attempt: $attempt/$maxAttempts)');
+
+            // Properly dispose old engine first with platform-specific timing
+            if (_engine != null) {
+              await _safeDisposeEngine();
+            }
+
+            // Create new engine instance with proper timing
+            _engine = await _createEngineInstance();
+          }
+
+          await _waitUntilReady();
+          _initCompleter?.complete();
+          return;
+        } catch (e, st) {
+          debugPrint(
+            '⚠️ STOCKFISH INIT: Engine not ready (attempt $attempt/$maxAttempts) – $e',
+          );
+          debugPrint('$st');
+
+          final isMultipleInstanceError = e.toString().contains('Multiple instances');
+
+          if (isMultipleInstanceError) {
+            debugPrint('🔄 STOCKFISH: Multiple instance error detected on Android');
+            // Force null without calling dispose (it's already in bad state)
+            _engine = null;
+            _lastDisposeTime = DateTime.now();
+
+            // Aggressive backoff for Android multiple instance errors
+            // Each retry waits longer: 800ms, 1200ms, 1600ms, 2000ms, 2400ms
+            final waitMs = _isAndroid
+                ? 800 + (attempt * 400)
+                : 300 + (attempt * 200);
+            debugPrint('⏳ STOCKFISH: Waiting ${waitMs}ms before retry...');
+            await Future.delayed(Duration(milliseconds: waitMs));
+          } else {
+            // Other errors - use standard reset
+            await _resetEngineAfterFailure();
+            await Future.delayed(Duration(milliseconds: 200 * attempt));
+          }
+
+          // Give up after max attempts
+          if (attempt >= maxAttempts) {
+            debugPrint('❌ STOCKFISH: Max attempts ($maxAttempts) reached, giving up');
+            _initCompleter?.completeError(e, st);
+            rethrow;
+          }
+        }
+      }
+    } finally {
+      _isInitializing = false;
+      releaseLock();
     }
   }
 
@@ -786,25 +1007,40 @@ class StockfishSingleton {
 
   Future<void> _softResetEngine() async {
     if (_engine == null) return;
+
+    // Only proceed if engine is in a valid state
+    final state = _engine!.state.value;
+    if (state != StockfishState.ready && state != StockfishState.starting) {
+      debugPrint('⚠️ STOCKFISH: Soft reset skipped, engine state: $state');
+      return;
+    }
+
     await _currentSubscription?.cancel();
     _currentSubscription = null;
+
     try {
       _engine!.stdin = 'stop';
       await Future.delayed(const Duration(milliseconds: 20));
     } catch (e) {
       debugPrint('⚠️ STOCKFISH STOP FAILED: $e');
+      // If stop fails, the engine might be unresponsive - don't continue
+      return;
     }
-    try {
-      _engine!.stdin = 'ucinewgame';
-    } catch (e) {
-      debugPrint('⚠️ STOCKFISH ucinewgame FAILED: $e');
+
+    // Only send these commands if engine is still responsive
+    if (_engine != null && _engine!.state.value == StockfishState.ready) {
+      try {
+        _engine!.stdin = 'ucinewgame';
+      } catch (e) {
+        debugPrint('⚠️ STOCKFISH ucinewgame FAILED: $e');
+      }
+      try {
+        _engine!.stdin = 'setoption name Clear Hash';
+      } catch (e) {
+        debugPrint('⚠️ STOCKFISH Clear Hash FAILED: $e');
+      }
+      await _waitForReadyOk();
     }
-    try {
-      _engine!.stdin = 'setoption name Clear Hash';
-    } catch (e) {
-      debugPrint('⚠️ STOCKFISH Clear Hash FAILED: $e');
-    }
-    await _waitForReadyOk();
   }
 
   Future<void> _waitForReadyOk() async {
@@ -829,23 +1065,121 @@ class StockfishSingleton {
   void dispose() {
     _cancelCurrentEvaluation();
     _jobQueue.clear();
+    _pendingJobs.clear();
     _isProcessing = false;
-    _engine?.dispose();
-    _engine = null;
+    _isInitializing = false;
+    _initCompleter = null;
+
+    // Release any pending instance lock
+    if (_instanceLock != null && !_instanceLock!.isCompleted) {
+      _instanceLock!.complete();
+    }
+    _instanceLock = null;
+
+    // Dispose engine synchronously for dispose() call
+    if (_engine != null) {
+      try {
+        _engine!.stdin = 'quit';
+      } catch (_) {}
+      try {
+        _engine!.dispose();
+      } catch (_) {}
+      _engine = null;
+      _lastDisposeTime = DateTime.now();
+    }
     _evaluationCache.clear();
+    debugPrint('🧹 STOCKFISH: Singleton disposed');
+  }
+
+  /// Async dispose with proper cleanup timing - use when you need to reinitialize afterwards.
+  Future<void> disposeAsync() async {
+    await _cancelCurrentEvaluation();
+    _jobQueue.clear();
+    _pendingJobs.clear();
+    _isProcessing = false;
+    _isInitializing = false;
+    _initCompleter = null;
+
+    // Release any pending instance lock
+    if (_instanceLock != null && !_instanceLock!.isCompleted) {
+      _instanceLock!.complete();
+    }
+    _instanceLock = null;
+
+    // Use safe disposal with proper timing
+    if (_engine != null) {
+      await _safeDisposeEngine();
+    }
+
+    _evaluationCache.clear();
+    debugPrint('🧹 STOCKFISH: Singleton disposed async');
   }
 
   Future<void> _resetEngineAfterFailure() async {
+    debugPrint('🔄 STOCKFISH: Resetting engine after failure...');
+
+    // Cancel subscription first
     try {
       await _currentSubscription?.cancel();
     } catch (_) {}
     _currentSubscription = null;
+
+    // Use safe disposal with platform-specific timing
     if (_engine != null) {
-      try {
-        _engine!.dispose();
-      } catch (_) {}
+      await _safeDisposeEngine();
+    } else {
+      // Even if engine is null, record disposal time for proper timing
+      _lastDisposeTime = DateTime.now();
     }
-    _engine = null;
+
+    debugPrint('✅ STOCKFISH: Engine reset complete');
+  }
+
+  /// Force recovery of the Stockfish engine when it's stuck or unresponsive.
+  /// This will cancel all evaluations, dispose the current engine, and reinitialize.
+  /// Use this when the engine is not responding and needs a hard reset.
+  Future<void> forceRecovery() async {
+    debugPrint('🔧 STOCKFISH: Force recovery initiated...');
+
+    // Cancel everything first
+    await cancelAllEvaluations();
+
+    // Force dispose with proper timing
+    if (_engine != null) {
+      await _safeDisposeEngine();
+    }
+
+    // Clear initialization state
+    _isInitializing = false;
+    if (_initCompleter != null && !_initCompleter!.isCompleted) {
+      _initCompleter!.completeError(StateError('Force recovery'));
+    }
+    _initCompleter = null;
+
+    // Release instance lock if held
+    if (_instanceLock != null && !_instanceLock!.isCompleted) {
+      _instanceLock!.complete();
+    }
+    _instanceLock = null;
+
+    // Extra wait time on Android to ensure native cleanup
+    if (_isAndroid) {
+      debugPrint('⏳ STOCKFISH: Extra recovery wait for Android...');
+      await Future.delayed(const Duration(milliseconds: 500));
+    }
+
+    debugPrint('✅ STOCKFISH: Force recovery complete, engine will reinitialize on next request');
+  }
+
+  /// Check if the engine is currently in a healthy state
+  bool get isEngineHealthy {
+    return _engine != null && _engine!.state.value == StockfishState.ready;
+  }
+
+  /// Get the current engine state for debugging
+  String get engineStateDebug {
+    if (_engine == null) return 'null';
+    return _engine!.state.value.toString();
   }
 
   void clearCache() {

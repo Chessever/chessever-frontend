@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:chessever2/repository/lichess/cloud_eval/cloud_eval.dart';
 import 'package:chessever2/repository/sqlite/app_database.dart';
@@ -17,16 +18,46 @@ class LocalEvalCache {
   static const _currentVersion = 12; // v12: Migrated to SQLite
   static const _maxCacheSize = 500;
 
-  Future<void> save(String fen, CloudEval eval, {int? multiPV}) async {
+  /// Prevents concurrent version check/clear operations
+  static Completer<void>? _versionCheckCompleter;
+  static bool _versionVerified = false;
+
+  /// Ensures version is checked and cache cleared if needed (only once per session)
+  Future<void> _ensureVersionChecked() async {
+    // Fast path: already verified this session
+    if (_versionVerified) return;
+
+    // If another operation is already checking version, wait for it
+    if (_versionCheckCompleter != null) {
+      await _versionCheckCompleter!.future;
+      return;
+    }
+
+    // We're the first - create completer and do the check
+    _versionCheckCompleter = Completer<void>();
     try {
       final db = ref.read(appDatabaseProvider);
-
-      // Check version and clear if outdated
       final storedVersion = await db.getInt(_versionKey) ?? 1;
       if (storedVersion < _currentVersion) {
         await _clearAll();
+        await db.setInt(_versionKey, _currentVersion);
       }
-      await db.setInt(_versionKey, _currentVersion);
+      _versionVerified = true;
+      _versionCheckCompleter!.complete();
+    } catch (e) {
+      _versionCheckCompleter!.completeError(e);
+      rethrow;
+    } finally {
+      _versionCheckCompleter = null;
+    }
+  }
+
+  Future<void> save(String fen, CloudEval eval, {int? multiPV}) async {
+    try {
+      // Single synchronized version check
+      await _ensureVersionChecked();
+
+      final db = ref.read(appDatabaseProvider);
 
       final effectiveMultiPv =
           (multiPV ?? eval.requestedMultiPv ?? eval.pvs.length).clamp(0, 5);
@@ -45,14 +76,10 @@ class LocalEvalCache {
 
   Future<CloudEval?> fetch(String fen, {int? multiPV}) async {
     try {
-      final db = ref.read(appDatabaseProvider);
+      // Single synchronized version check
+      await _ensureVersionChecked();
 
-      final storedVersion = await db.getInt(_versionKey) ?? 1;
-      if (storedVersion < _currentVersion) {
-        await _clearAll();
-        await db.setInt(_versionKey, _currentVersion);
-        return null;
-      }
+      final db = ref.read(appDatabaseProvider);
 
       final desired = (multiPV ?? 0);
       final keysToTry = <String>[];
@@ -124,14 +151,10 @@ class LocalEvalCache {
     if (fens.isEmpty) return result;
 
     try {
-      final db = ref.read(appDatabaseProvider);
+      // Single synchronized version check
+      await _ensureVersionChecked();
 
-      final storedVersion = await db.getInt(_versionKey) ?? 1;
-      if (storedVersion < _currentVersion) {
-        await _clearAll();
-        await db.setInt(_versionKey, _currentVersion);
-        return result;
-      }
+      final db = ref.read(appDatabaseProvider);
 
       for (final fen in fens) {
         final entry = await db.getCache(key: _buildKey(fen, 0));
@@ -152,6 +175,7 @@ class LocalEvalCache {
 
   Future<void> clear() async {
     await _clearAll();
+    _versionVerified = false; // Reset so next access re-checks version
     try {
       final db = ref.read(appDatabaseProvider);
       await db.setInt(_versionKey, _currentVersion);

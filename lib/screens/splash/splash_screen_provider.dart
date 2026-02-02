@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:chessever2/providers/country_dropdown_provider.dart';
 import 'package:chessever2/repository/local_storage/group_broadcast/group_broadcast_local_storage.dart';
@@ -8,7 +9,17 @@ import 'package:chessever2/screens/group_event/group_event_screen.dart';
 import 'package:chessever2/widgets/event_card/starred_provider.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_native_splash/flutter_native_splash.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+
+/// Exception thrown when network is unavailable during splash initialization
+class NoNetworkException implements Exception {
+  final String message;
+  NoNetworkException([this.message = 'No internet connection']);
+
+  @override
+  String toString() => message;
+}
 
 final splashScreenProvider = AutoDisposeProvider<_SplashScreenProvider>((ref) {
   return _SplashScreenProvider(ref);
@@ -19,11 +30,30 @@ class _SplashScreenProvider {
 
   _SplashScreenProvider(this.ref);
 
+  /// Check if we have network connectivity by attempting DNS lookup
+  Future<bool> _hasNetworkConnectivity() async {
+    try {
+      final result = await InternetAddress.lookup('google.com')
+          .timeout(const Duration(seconds: 3));
+      return result.isNotEmpty && result[0].rawAddress.isNotEmpty;
+    } on SocketException catch (_) {
+      return false;
+    } on TimeoutException catch (_) {
+      return false;
+    }
+  }
+
   Future<void> runAuthenticationPreProcessor(BuildContext context) async {
-    // Fetch only critical tournament data with timeout to prevent indefinite blocking
+    // Check network connectivity first - we need it for critical services
+    final hasNetwork = await _hasNetworkConnectivity();
+    if (!hasNetwork) {
+      throw NoNetworkException('No internet connection. Please check your network and try again.');
+    }
+
+    // Fetch critical tournament data - this MUST succeed for proper app experience
+    // Using 15 second timeout to allow for slow networks
     try {
       await Future.wait([
-        // Critical: Current and upcoming tournaments (user needs these immediately)
         ref
             .read(groupBroadcastLocalStorage(GroupEventCategory.current))
             .fetchAndSaveGroupBroadcasts(),
@@ -36,12 +66,21 @@ class _SplashScreenProvider {
         ref
             .read(starredProvider(GroupEventCategory.forYou.name).notifier)
             .init(),
-      ]).timeout(const Duration(seconds: 5));
+      ]).timeout(const Duration(seconds: 15));
+    } on TimeoutException {
+      throw NoNetworkException('Connection timed out. Please try again.');
     } catch (e) {
-      // If network is slow or fails, proceed anyway to avoid indefinite blocking
       if (kDebugMode) {
-        print('⚠️ Tournament data fetch failed or timed out: $e');
+        print('⚠️ Tournament data fetch failed: $e');
       }
+      // Check if it's a network-related error
+      if (e.toString().contains('SocketException') ||
+          e.toString().contains('Failed host lookup') ||
+          e.toString().contains('No address associated')) {
+        throw NoNetworkException('Network error. Please check your connection.');
+      }
+      // For other errors, rethrow to be handled by splash screen
+      rethrow;
     }
 
     // Non-critical: Load past tournaments in background (defer to improve perceived speed)
@@ -86,6 +125,7 @@ class _SplashScreenProvider {
     if (!hasSeenOnboarding) {
       // New user - show onboarding (handles both signed-in and guest on last page)
       ref.read(countryDropdownProvider);
+      FlutterNativeSplash.remove();
       Navigator.pushNamedAndRemoveUntil(
         context,
         '/onboarding',
@@ -110,6 +150,9 @@ class _SplashScreenProvider {
     }
 
     if (!context.mounted) return;
+
+    // Remove native splash right before navigation
+    FlutterNativeSplash.remove();
 
     if (isLoggedIn) {
       // User is logged in - go to home

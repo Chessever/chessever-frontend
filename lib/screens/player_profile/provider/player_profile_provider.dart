@@ -1098,11 +1098,14 @@ class PlayerProfileGamesState {
   }
 
   bool get hasActiveFilters =>
-      filter.hasActiveFilters || playerResultFilter != PlayerResultFilter.all;
+      filter.hasActiveFilters ||
+      playerResultFilter != PlayerResultFilter.all ||
+      searchQuery.isNotEmpty;
 
   int get activeFilterCount =>
       filter.activeFilterCount +
-      (playerResultFilter != PlayerResultFilter.all ? 1 : 0);
+      (playerResultFilter != PlayerResultFilter.all ? 1 : 0) +
+      (searchQuery.isNotEmpty ? 1 : 0);
 
   PlayerProfileGamesState copyWith({
     PlayerProfileKey? playerKey,
@@ -1178,10 +1181,61 @@ class PlayerProfileGamesNotifier
     state = state.copyWith(filter: filter);
   }
 
+  /// Update only the time control filter, preserving other filter settings
+  void setTimeControlFilter(GameTimeControlFilter timeControl) {
+    state = state.copyWith(
+      filter: state.filter.copyWith(timeControl: timeControl),
+    );
+  }
+
+  /// Update only the color filter, preserving other filter settings
+  void setColorFilter(GameColorFilter color) {
+    state = state.copyWith(
+      filter: state.filter.copyWith(color: color),
+    );
+  }
+
+  /// Update only the ECO filter, preserving other filter settings
+  void setEcoFilter(GameEcoFilter eco) {
+    state = state.copyWith(
+      filter: state.filter.copyWith(eco: eco),
+    );
+  }
+
+  /// Update only the result filter, preserving other filter settings
+  void setResultFilter(GameResultFilter result) {
+    state = state.copyWith(
+      filter: state.filter.copyWith(result: result),
+    );
+  }
+
+  /// Merge a partial filter update with existing filter state
+  void mergeFilter({
+    GameTimeControlFilter? timeControl,
+    GameColorFilter? color,
+    GameEcoFilter? eco,
+    GameResultFilter? result,
+    PlayerResultFilter? playerResultFilter,
+    String? searchQuery,
+  }) {
+    final newFilter = state.filter.copyWith(
+      timeControl: timeControl,
+      color: color,
+      eco: eco,
+      result: result,
+    );
+    state = state.copyWith(
+      filter: newFilter,
+      playerResultFilter: playerResultFilter ?? state.playerResultFilter,
+      searchQuery: searchQuery ?? state.searchQuery,
+    );
+  }
+
   void clearFilter() {
     state = state.copyWith(
       filter: GameFilter.defaultFilter(),
       playerResultFilter: PlayerResultFilter.all,
+      searchQuery: '',
     );
   }
 

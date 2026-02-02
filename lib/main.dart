@@ -37,7 +37,6 @@ import 'package:chessever2/repository/local_storage/supabase_safe_storage.dart';
 import 'package:chessever2/repository/sqlite/app_database.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:terminate_restart/terminate_restart.dart';
-import 'package:worker_manager/worker_manager.dart';
 import 'package:clarity_flutter/clarity_flutter.dart';
 import 'package:heroine/heroine.dart';
 import 'package:upgrader/upgrader.dart';
@@ -119,7 +118,7 @@ String _resolveAmplitudeApiKey() {
 Future<void> main() async {
   await runZonedGuarded(
     () async {
-      WidgetsBinding widgetsBinding = WidgetsFlutterBinding.ensureInitialized();
+      WidgetsBinding widgetsBinding = SentryWidgetsFlutterBinding.ensureInitialized();
       FlutterNativeSplash.preserve(widgetsBinding: widgetsBinding);
 
       // CRITICAL: Initialize SQLite database FIRST (replaces SharedPreferences for all app storage)
@@ -191,22 +190,6 @@ Future<void> main() async {
 
       // Non-critical initializers - run in parallel, don't block app startup
       unawaited(Future.wait([
-        // Platform-specific worker manager initialization
-        () async {
-          try {
-            if (Platform.isAndroid) {
-              await workerManager.init(isolatesCount: 3).timeout(
-                const Duration(seconds: 5),
-              );
-            } else if (Platform.isIOS) {
-              await workerManager.init(isolatesCount: 6).timeout(
-                const Duration(seconds: 5),
-              );
-            }
-          } catch (e) {
-            debugPrint('⚠️ WorkerManager init failed: $e');
-          }
-        }(),
         // Initialize Amplitude (with error handling)
         () async {
           try {
@@ -233,12 +216,51 @@ Future<void> main() async {
           (options) {
             options.dsn = _getEnv('SENTRY_FLUTTER');
             options.sendDefaultPii = true;
+
+            // ========== PERFORMANCE OPTIMIZATIONS ==========
+            // Disable performance tracing - causes frame drops
+            options.tracesSampleRate = 0.0;
+            options.profilesSampleRate = 0.0;
+            options.enableAutoPerformanceTracing = false;
+            options.enableUserInteractionTracing = false;
+
+            // Disable expensive features that can block UI
+            options.attachScreenshot = false;
+            options.attachViewHierarchy = false;
+
+            // Limit breadcrumbs to reduce memory/processing overhead
+            options.maxBreadcrumbs = 50;
+            options.enableAutoNativeBreadcrumbs = false;
+            options.enableUserInteractionBreadcrumbs = false;
+
+            // Disable app lifecycle tracking overhead
+            options.enableAutoSessionTracking = false;
+            options.anrEnabled = false; // ANR detection can cause overhead
+
+            // Sample rate for errors (1.0 = 100% of errors sent)
+            options.sampleRate = 1.0;
+
+            // ========== BUG FIXES ==========
+            // Disable LoadContextsIntegration to avoid "type 'int' is not a subtype of type 'double?'"
+            // error on Android when native layer returns int instead of double for device properties
+            for (final integration in List.of(options.integrations)) {
+              if (integration.runtimeType.toString() ==
+                  'LoadContextsIntegration') {
+                options.removeIntegration(integration);
+              }
+            }
+
+            // Add beforeSend to catch any remaining errors and ensure non-blocking
+            options.beforeSend = (event, hint) {
+              // Let the event through - errors during processing are handled internally
+              return event;
+            };
           },
-          appRunner:
-              () => runApp(SentryWidget(child: ProviderScope(child: MyApp()))),
-        ).timeout(const Duration(seconds: 10), onTimeout: () {
+          // Don't use SentryWidget - it adds performance monitoring overhead
+          // Just run the app directly
+          appRunner: () => runApp(ProviderScope(child: MyApp())),
+        ).timeout(const Duration(seconds: 5), onTimeout: () {
           debugPrint('⚠️ SentryFlutter.init() timed out - starting app anyway');
-          // Start app without Sentry wrapper
           runApp(ProviderScope(child: MyApp()));
         });
       } catch (e) {
@@ -247,7 +269,15 @@ Future<void> main() async {
       }
     },
     (error, stackTrace) {
-      Sentry.captureException(error, stackTrace: stackTrace);
+      // Wrap in try-catch to prevent recursive errors if Sentry itself fails
+      try {
+        // Use unawaited to make error capture non-blocking
+        unawaited(
+          Sentry.captureException(error, stackTrace: stackTrace).catchError((_) => SentryId.empty()),
+        );
+      } catch (_) {
+        // Silently ignore Sentry errors - don't let monitoring break the app
+      }
     },
   );
 }

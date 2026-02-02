@@ -14,6 +14,23 @@ import 'package:dartchess/dartchess.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
+const String _kStartFen =
+    'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+
+Setup? _tryParseFen(String fen) {
+  if (fen.trim().isEmpty) return null;
+  try {
+    return Setup.parseFen(fen);
+  } catch (_) {
+    return null;
+  }
+}
+
+String _resolveFen(String? fen) {
+  final rawFen = (fen ?? '').trim();
+  return _tryParseFen(rawFen) != null ? rawFen : _kStartFen;
+}
+
 bool _shouldShowEvalBar(WidgetRef ref) {
   final settings = ref.watch(engineSettingsProviderNew).valueOrNull;
   return (settings?.showEngineAnalysis ?? true) &&
@@ -66,7 +83,7 @@ void _showShareOverlay(BuildContext context, WidgetRef ref, GamesTourModel game)
 
   // For grid/list view, we show the current position (latest move)
   // We don't have full move history, so moveSans will be empty
-  final positionFen = game.fen ?? 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+  final positionFen = _resolveFen(game.fen);
   final lastMove = _uciToMove(game.lastMove ?? '');
 
   Navigator.of(context).push(
@@ -505,10 +522,14 @@ Move? _uciToMove(String uci) {
   if (uci.length != 4 && uci.length != 5) {
     return null;
   }
-  final from = _square(uci.substring(0, 2));
-  final to = _square(uci.substring(2, 4));
-  final promo = uci.length == 5 ? Role.fromChar(uci[4]) : null;
-  return NormalMove(from: from, to: to, promotion: promo);
+  try {
+    final from = _square(uci.substring(0, 2));
+    final to = _square(uci.substring(2, 4));
+    final promo = uci.length == 5 ? Role.fromChar(uci[4]) : null;
+    return NormalMove(from: from, to: to, promotion: promo);
+  } catch (_) {
+    return null;
+  }
 }
 
 Square _square(String name) => Square.fromName(name);
@@ -681,10 +702,11 @@ class _ChessBoardWithEvaluation extends StatelessWidget {
   Widget build(BuildContext context) {
     // Get effective game status for ended games
     final gameStatus = gamesTourModel.gameStatus;
+    final resolvedFen = _resolveFen(gamesTourModel.fen);
 
     if (!showEvalBar || !gamesTourModel.hasStarted) {
       return _ChessBoardWidget(
-        fen: gamesTourModel.fen ?? '',
+        fen: resolvedFen,
         lastMove: lastMove,
         boardSize: boardSize,
         showCoordinates: showCoordinates,
@@ -697,11 +719,11 @@ class _ChessBoardWithEvaluation extends StatelessWidget {
         EvaluationBarWidgetForGames(
           width: sideBarWidth,
           height: boardSize,
-          fen: gamesTourModel.fen ?? '',
+          fen: resolvedFen,
           playerView: playerView,
         ),
         _ChessBoardWidget(
-          fen: gamesTourModel.fen ?? '',
+          fen: resolvedFen,
           lastMove: lastMove,
           boardSize: boardSize,
           showCoordinates: showCoordinates,
@@ -739,13 +761,15 @@ class _ChessBoardWidget extends ConsumerWidget {
     final isDraw = gameStatus == GameStatus.draw;
 
     // Parse FEN to find king positions
-    String displayFen = fen ?? '';
+    final rawFen = (fen ?? '').trim();
+    final setup = _tryParseFen(rawFen);
+    String displayFen = setup != null ? rawFen : _kStartFen;
     Square? loserKingSquare;
     Square? whiteKingSquare;
     Square? blackKingSquare;
 
-    if (isGameEnded && displayFen.isNotEmpty) {
-      final position = Chess.fromSetup(Setup.parseFen(displayFen));
+    if (isGameEnded && setup != null) {
+      final position = Chess.fromSetup(setup);
       final board = position.board;
       whiteKingSquare = board.kingOf(Side.white);
       blackKingSquare = board.kingOf(Side.black);
