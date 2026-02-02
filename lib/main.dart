@@ -173,8 +173,8 @@ Future<void> main() async {
         ),
       );
 
-      // Parallelize all critical initialization tasks with timeouts
-      // Each initializer has its own timeout to prevent app from hanging
+      // Initialize Supabase FIRST - this is critical and must complete
+      // The SafeSupabaseLocalStorage has built-in 3s timeout for SharedPreferences
       final supabaseAnonKey = _getEnv('SUPABASE_ANON_KEY');
       final authOptions = FlutterAuthClientOptions(
         localStorage: SafeSupabaseLocalStorage(
@@ -183,22 +183,13 @@ Future<void> main() async {
         pkceAsyncStorage: SafeGotrueAsyncStorage(),
       );
 
-      // Supabase is critical - must complete (with timeout)
-      try {
-        await Supabase.initialize(
-          url: supabaseUrl,
-          anonKey: supabaseAnonKey,
-          authOptions: authOptions,
-        ).timeout(const Duration(seconds: 10), onTimeout: () {
-          debugPrint('⚠️ Supabase.initialize() timed out after 10s');
-          throw TimeoutException('Supabase initialization timed out');
-        });
-      } catch (e) {
-        debugPrint('⚠️ Supabase initialization failed: $e');
-        // Continue anyway - app might work in offline mode
-      }
+      await Supabase.initialize(
+        url: supabaseUrl,
+        anonKey: supabaseAnonKey,
+        authOptions: authOptions,
+      );
 
-      // Non-critical initializers - run in parallel with timeouts, don't block app
+      // Non-critical initializers - run in parallel, don't block app startup
       unawaited(Future.wait([
         // Platform-specific worker manager initialization
         () async {
