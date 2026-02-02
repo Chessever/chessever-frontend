@@ -215,30 +215,34 @@ class LibraryGameCard extends ConsumerWidget {
     return result.join(' ');
   }
 
-  /// Infer time control icon from game clock data
-  /// Uses the same logic as GameFilterHelper._inferTimeControl()
+  /// Get time control icon from game data
+  /// Primary source: timeControl field from group_broadcasts table (via tours join)
+  /// Fallback: event name keywords (e.g., "Tata Steel Blitz")
+  /// NOTE: Do NOT use remaining clock time - it's unreliable (a classical game
+  /// with 5 minutes left would be wrongly classified as blitz)
   String _getTimeControlIcon(GamesTourModel game, String eventName) {
-    // First, try to infer from clock data (most accurate)
-    // Try whiteClockSeconds first (from last_clock_white DB column, more reliable)
-    if (game.whiteClockSeconds != null && game.whiteClockSeconds! > 0) {
-      final baseSeconds = game.whiteClockSeconds!;
-      if (baseSeconds >= 1800) return PngAsset.classicalIcon; // 30+ min
-      if (baseSeconds >= 600) return PngAsset.rapidIcon; // 10-30 min
-      return PngAsset.blitzIcon; // < 10 min
+    // Primary: use the actual time_control from group_broadcasts
+    if (game.timeControl != null && game.timeControl!.isNotEmpty) {
+      switch (game.timeControl!.toLowerCase()) {
+        case 'standard':
+        case 'classical':
+          return PngAsset.classicalIcon;
+        case 'rapid':
+          return PngAsset.rapidIcon;
+        case 'blitz':
+        case 'bullet':
+          return PngAsset.blitzIcon;
+      }
     }
 
-    // Fall back to whiteClockCentiseconds (from players JSON)
-    if (game.whiteClockCentiseconds > 0) {
-      final baseSeconds = (game.whiteClockCentiseconds / 100).round();
-      if (baseSeconds >= 1800) return PngAsset.classicalIcon;
-      if (baseSeconds >= 600) return PngAsset.rapidIcon;
+    // Fallback: check event name for keywords
+    final event = eventName.toLowerCase();
+    if (event.contains('blitz') || event.contains('bullet')) {
       return PngAsset.blitzIcon;
     }
-
-    // Final fallback: check event name for keywords
-    final event = eventName.toLowerCase();
-    if (event.contains('blitz')) return PngAsset.blitzIcon;
     if (event.contains('rapid')) return PngAsset.rapidIcon;
+
+    // Default to classical for standard/unknown events
     return PngAsset.classicalIcon;
   }
 

@@ -3,40 +3,14 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/repository/lichess/cloud_eval/cloud_eval.dart';
-import 'package:chessever2/repository/lichess/cloud_eval/lichess_eval_repository.dart';
 import 'package:chessever2/repository/local_storage/local_eval/local_eval_cache.dart';
 import 'package:chessever2/repository/supabase/evals/evals_repository.dart';
 import 'package:chessever2/repository/supabase/evals/persist_cloud_eval.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart' show FutureProvider;
 import 'stockfish_singleton.dart';
 
-/// Track Lichess API rate limiting to avoid abuse
-class _LichessRateLimitTracker {
-  static DateTime? _lastRateLimitTime;
-  static const _cooldownDuration = Duration(minutes: 2);
-
-  static bool isInCooldown() {
-    if (_lastRateLimitTime == null) return false;
-    final now = DateTime.now();
-    final cooldownEnds = _lastRateLimitTime!.add(_cooldownDuration);
-    return now.isBefore(cooldownEnds);
-  }
-
-  static void recordRateLimit() {
-    _lastRateLimitTime = DateTime.now();
-    debugPrint(
-      '⚠️ LICHESS: Rate limited, entering ${_cooldownDuration.inMinutes}min cooldown',
-    );
-  }
-
-  static void reset() {
-    _lastRateLimitTime = null;
-    debugPrint('✅ LICHESS: Rate limit cooldown cleared');
-  }
-}
-
-// REMOVED: _activeBackgroundUpgrades
-// No longer needed since we removed progressive ladder and background upgrades
+// REMOVED: _LichessRateLimitTracker - Lichess API removed, relying only on Stockfish
+// REMOVED: lichess_eval_repository import - no longer used
 
 /// Parameters for cascade eval with configurable multiPV and priority
 class CascadeEvalParams {
@@ -44,13 +18,11 @@ class CascadeEvalParams {
   final int multiPV;
   final bool
   isCurrentPosition; // Priority flag for user's currently viewed position
-  final bool enableLichessFallback;
 
   const CascadeEvalParams({
     required this.fen,
     this.multiPV = 3,
     this.isCurrentPosition = false,
-    this.enableLichessFallback = true,
   });
 
   @override
@@ -59,12 +31,10 @@ class CascadeEvalParams {
       other is CascadeEvalParams &&
           other.fen == fen &&
           other.multiPV == multiPV &&
-          other.isCurrentPosition == isCurrentPosition &&
-          other.enableLichessFallback == enableLichessFallback;
+          other.isCurrentPosition == isCurrentPosition;
 
   @override
-  int get hashCode =>
-      Object.hash(fen, multiPV, isCurrentPosition, enableLichessFallback);
+  int get hashCode => Object.hash(fen, multiPV, isCurrentPosition);
 }
 
 const int _minPersistDepth = 20;
@@ -77,7 +47,7 @@ bool _shouldPersistCloudEval(CloudEval eval) {
   );
 }
 
-/// 1. local → 2. Supabase → 3. lichess
+/// 1. local → 2. Supabase → 3. Stockfish (Lichess removed)
 /// Uses autoDispose to cancel evaluations when switching games
 final cascadeEvalProvider = FutureProvider.family.autoDispose<
   CloudEval,
@@ -87,13 +57,22 @@ final cascadeEvalProvider = FutureProvider.family.autoDispose<
   final multiPV = params.multiPV;
   final local = ref.watch(localEvalCacheProvider);
   final persist = ref.watch(persistCloudEvalProvider);
-  final lichess = ref.watch(lichessEvalRepoProvider);
-  try {
-    if (fen.isEmpty) throw Exception('Empty FEN');
+  final evalsRepo = ref.watch(evalsRepositoryProvider);
 
-    // 1️⃣  Local cache (with multiPV in key)
+  if (fen.isEmpty) {
+    return CloudEval(
+      fen: fen,
+      knodes: 0,
+      depth: 0,
+      pvs: const [],
+      requestedMultiPv: multiPV,
+    );
+  }
+
+  // 1️⃣  Local cache (with multiPV in key)
+  try {
     final cached = await local.fetch(fen, multiPV: multiPV);
-    if (cached != null) {
+    if (cached != null && _isValidEvaluation(cached)) {
       final fenParts = fen.split(' ');
       final sideToMove = fenParts.length >= 2 ? fenParts[1] : 'w';
       final cp = cached.pvs.isNotEmpty ? cached.pvs.first.cp : 0;
@@ -102,118 +81,106 @@ final cascadeEvalProvider = FutureProvider.family.autoDispose<
       );
       return cached;
     }
+  } catch (e) {
+    debugPrint('⚠️ cascadeEval: Local cache error: $e');
+  }
 
-    // 2️⃣  Supabase
-    final supabaseEval = await ref
-        .read(evalsRepositoryProvider)
+  // 2️⃣  Supabase
+  try {
+    final supabaseEval = await evalsRepo
         .fetchFromSupabase(fen, desiredMultiPv: multiPV)
         .timeout(const Duration(milliseconds: 600), onTimeout: () => null);
     if (supabaseEval != null) {
-      final cloud = ref
-          .read(evalsRepositoryProvider)
-          .evalsToCloudEval(fen, supabaseEval);
-      final fenParts = fen.split(' ');
-      final sideToMove = fenParts.length >= 2 ? fenParts[1] : 'w';
-      final cp = cloud.pvs.isNotEmpty ? cloud.pvs.first.cp : 0;
-      debugPrint(
-        "🟡 EVAL SOURCE (cascadeEval): SUPABASE - fen=$fen, side=$sideToMove, cp=$cp",
-      );
-      if (_shouldPersistCloudEval(cloud)) {
-        // OPTIMIZATION: Save to local cache in background (unawaited)
-        local
-            .save(
-              fen,
-              cloud,
-              multiPV: cloud.requestedMultiPv ?? cloud.pvs.length,
-            )
-            .catchError((e) => null);
-      } else {
+      final cloud = evalsRepo.evalsToCloudEval(fen, supabaseEval);
+      if (_isValidEvaluation(cloud)) {
+        final fenParts = fen.split(' ');
+        final sideToMove = fenParts.length >= 2 ? fenParts[1] : 'w';
+        final cp = cloud.pvs.isNotEmpty ? cloud.pvs.first.cp : 0;
         debugPrint(
-          '⚠️ CACHE SKIP (Supabase): depth=${cloud.depth}, fullMoves=${cloud.pvs.isNotEmpty ? cloud.pvs.first.fullMoveCount : 0}',
+          "🟡 EVAL SOURCE (cascadeEval): SUPABASE - fen=$fen, side=$sideToMove, cp=$cp",
         );
+        if (_shouldPersistCloudEval(cloud)) {
+          // OPTIMIZATION: Save to local cache in background (unawaited)
+          unawaited(
+            local
+                .save(
+                  fen,
+                  cloud,
+                  multiPV: cloud.requestedMultiPv ?? cloud.pvs.length,
+                )
+                .catchError((e) => null),
+          );
+        }
+        return cloud;
       }
-      return cloud;
+    }
+  } catch (e) {
+    debugPrint('⚠️ cascadeEval: Supabase error: $e');
+  }
+
+  // 3️⃣  Stockfish (primary engine - Lichess removed)
+  final engineSettingsValue = ref.read(engineSettingsProviderNew).value;
+  final resolvedSettings = engineSettingsValue ?? const EngineSettings();
+
+  // Clamp stockfish MultiPV to user preference and request (1-5)
+  final settingsMultiPv = resolvedSettings.multiPvForStockfish();
+  final resolvedMultiPv = multiPV <= settingsMultiPv ? multiPV : settingsMultiPv;
+
+  final searchDuration = resolvedSettings.searchDurationFor(
+    EngineComponent.cascadeEval,
+  );
+  var maxDepthSetting = resolvedSettings.maxDepthFor(
+    EngineComponent.cascadeEval,
+  );
+  if (maxDepthSetting < 1) {
+    maxDepthSetting = 1;
+  } else if (maxDepthSetting > 99) {
+    maxDepthSetting = 99;
+  }
+
+  try {
+    debugPrint(
+      '⚡ cascadeEval: Using Stockfish (depth=$maxDepthSetting, multiPV=$resolvedMultiPv, duration=${searchDuration?.inSeconds}s) for $fen',
+    );
+    final sfEval = await StockfishSingleton().evaluatePosition(
+      fen,
+      depth: maxDepthSetting,
+      maxDepth: maxDepthSetting,
+      multiPV: resolvedMultiPv,
+      searchDuration: searchDuration,
+      isCurrentPosition: params.isCurrentPosition,
+    );
+
+    // Handle cancelled/empty results gracefully - don't throw, return empty
+    if (sfEval.pvs.isEmpty || sfEval.pvs.first.moves.isEmpty) {
+      debugPrint('⚠️ cascadeEval: Stockfish returned empty result for $fen (likely cancelled)');
+      return CloudEval(
+        fen: fen,
+        knodes: 0,
+        depth: 0,
+        pvs: const [],
+        requestedMultiPv: resolvedMultiPv,
+      );
     }
 
-    // 3️⃣  Lichess → Supabase → local (request multiPV from user settings)
+    final cloudFromSf = CloudEval(
+      fen: fen,
+      knodes: sfEval.knodes,
+      depth: sfEval.depth,
+      pvs: sfEval.pvs,
+      requestedMultiPv: resolvedMultiPv,
+    );
 
-    final cloud = await lichess.getEval(fen, multiPv: multiPV);
     final fenParts = fen.split(' ');
     final sideToMove = fenParts.length >= 2 ? fenParts[1] : 'w';
-    final cp = cloud.pvs.isNotEmpty ? cloud.pvs.first.cp : 0;
+    final cp = cloudFromSf.pvs.isNotEmpty ? cloudFromSf.pvs.first.cp : 0;
     debugPrint(
-      "🟢 EVAL SOURCE (cascadeEval): LICHESS (${cloud.pvs.length} PVs) - fen=$fen, side=$sideToMove, cp=$cp",
+      "🟢 EVAL SOURCE (cascadeEval): STOCKFISH (depth=${cloudFromSf.depth}) - fen=$fen, side=$sideToMove, cp=$cp",
     );
-    // OPTIMIZATION: Save to caches in background (unawaited)
-    if (_shouldPersistCloudEval(cloud)) {
-      Future.wait<void>([
-        persist.call(fen, cloud),
-        local.save(
-          fen,
-          cloud,
-          multiPV: cloud.requestedMultiPv ?? cloud.pvs.length,
-        ),
-      ]).catchError((e) => <void>[]);
-    } else {
-      debugPrint(
-        '⚠️ CACHE SKIP (Lichess): depth=${cloud.depth}, fullMoves=${cloud.pvs.isNotEmpty ? cloud.pvs.first.fullMoveCount : 0}',
-      );
-    }
-    return cloud;
-  } catch (e, st) {
-    debugPrint('❌ cascadeEvalProvider: Cloud sources failed for $fen - $e');
-    debugPrint(st.toString());
-    if (!params.isCurrentPosition) {
-      // Non-visible widgets should not tie up the local engine; surface error quickly.
-      return Future.error(e, st);
-    }
-    final engineSettingsValue = ref.read(engineSettingsProviderNew).value;
-    final resolvedSettings = engineSettingsValue ?? const EngineSettings();
 
-    // Clamp stockfish MultiPV to user preference and request (1-5)
-    final settingsMultiPv = resolvedSettings.multiPvForStockfish();
-    final fallbackMultiPv =
-        multiPV <= settingsMultiPv ? multiPV : settingsMultiPv;
-
-    final searchDuration = resolvedSettings.searchDurationFor(
-      EngineComponent.cascadeEval,
-    );
-    var maxDepthSetting = resolvedSettings.maxDepthFor(
-      EngineComponent.cascadeEval,
-    );
-    if (maxDepthSetting < 1) {
-      maxDepthSetting = 1;
-    } else if (maxDepthSetting > 99) {
-      maxDepthSetting = 99;
-    }
-
-    try {
-      debugPrint(
-        '⚡ cascadeEvalProvider: Falling back to Stockfish (depth=$maxDepthSetting, multiPV=$fallbackMultiPv, duration=${searchDuration?.inSeconds}s)',
-      );
-      final sfEval = await StockfishSingleton().evaluatePosition(
-        fen,
-        depth: maxDepthSetting,
-        maxDepth: maxDepthSetting,
-        multiPV: fallbackMultiPv,
-        searchDuration: searchDuration,
-        isCurrentPosition: params.isCurrentPosition,
-      );
-
-      if (sfEval.pvs.isEmpty || sfEval.pvs.first.moves.isEmpty) {
-        throw Exception('Stockfish returned empty PVs for $fen');
-      }
-
-      final cloudFromSf = CloudEval(
-        fen: fen,
-        knodes: sfEval.knodes,
-        depth: sfEval.depth,
-        pvs: sfEval.pvs,
-        requestedMultiPv: fallbackMultiPv,
-      );
-
-      if (_shouldPersistCloudEval(cloudFromSf)) {
-        // Persist Stockfish result asynchronously for future reuse
+    if (_shouldPersistCloudEval(cloudFromSf)) {
+      // Persist Stockfish result asynchronously for future reuse
+      unawaited(
         Future.wait<void>([
           persist.call(fen, cloudFromSf),
           local.save(
@@ -223,25 +190,27 @@ final cascadeEvalProvider = FutureProvider.family.autoDispose<
           ),
         ]).catchError((error) {
           debugPrint(
-            '⚠️ cascadeEvalProvider: Background persist failed for $fen: $error',
+            '⚠️ cascadeEval: Background persist failed for $fen: $error',
           );
           return <void>[];
-        });
-      } else {
-        debugPrint(
-          '⚠️ PERSIST SKIP (Stockfish fallback): depth=${cloudFromSf.depth}, fullMoves=${cloudFromSf.pvs.first.fullMoveCount}',
-        );
-      }
-
-      return cloudFromSf;
-    } catch (engineError, engineStack) {
-      debugPrint(
-        '❌ cascadeEvalProvider: Stockfish fallback failed for $fen: $engineError',
+        }),
       );
-      debugPrint(engineStack.toString());
-      // Propagate failure with original stack
-      return Future.error(engineError, engineStack);
     }
+
+    return cloudFromSf;
+  } catch (engineError, engineStack) {
+    debugPrint(
+      '❌ cascadeEval: Stockfish failed for $fen: $engineError',
+    );
+    debugPrint(engineStack.toString());
+    // Return empty result instead of throwing - prevents UI errors on rapid navigation
+    return CloudEval(
+      fen: fen,
+      knodes: 0,
+      depth: 0,
+      pvs: const [],
+      requestedMultiPv: resolvedMultiPv,
+    );
   }
 });
 
@@ -265,8 +234,8 @@ bool _isValidEvaluation(CloudEval cloud) {
   return false;
 }
 
-/// SEQUENTIAL cascade: local → Supabase → Lichess → Stockfish
-/// Respects Lichess API rate limits by querying SEQUENTIALLY (not parallel)
+/// SEQUENTIAL cascade: local → Supabase → Stockfish (Lichess removed)
+/// Used for board evaluation - returns empty result instead of throwing errors
 /// Uses autoDispose to cancel evaluations when switching games
 final cascadeEvalProviderForBoard = FutureProvider.family.autoDispose<
   CloudEval,
@@ -275,116 +244,82 @@ final cascadeEvalProviderForBoard = FutureProvider.family.autoDispose<
   final fen = params.fen;
   final multiPV = params.multiPV;
   final local = ref.watch(localEvalCacheProvider);
-  final persist = ref.watch(persistCloudEvalProvider);
-  final lichess = ref.watch(lichessEvalRepoProvider);
   final evalsRepo = ref.watch(evalsRepositoryProvider);
 
-  try {
-    if (fen.isEmpty) throw Exception('Empty FEN');
+  if (fen.isEmpty) {
+    return CloudEval(
+      fen: fen,
+      knodes: 0,
+      depth: 0,
+      pvs: const [],
+      requestedMultiPv: multiPV,
+    );
+  }
 
-    // 1️⃣ Check local cache first (instant, with multiPV in key)
+  // 1️⃣ Check local cache first (instant, with multiPV in key)
+  try {
     final cached = await local.fetch(fen, multiPV: multiPV);
     if (cached != null && _isValidEvaluation(cached)) {
       final fenParts = fen.split(' ');
       final sideToMove = fenParts.length >= 2 ? fenParts[1] : 'w';
       final cp = cached.pvs.isNotEmpty ? cached.pvs.first.cp : 0;
       debugPrint(
-        "🔵 EVAL SOURCE: LOCAL CACHE (instant) - fen=$fen, side=$sideToMove, cp=$cp",
+        "🔵 EVAL SOURCE (board): LOCAL CACHE - fen=$fen, side=$sideToMove, cp=$cp",
       );
       return cached;
     }
+  } catch (e) {
+    debugPrint('⚠️ cascadeEvalForBoard: Local cache error: $e');
+  }
 
-    // 2️⃣ Query Supabase FIRST (our database, no rate limits)
-    debugPrint('🔍 EVAL: Checking Supabase for $fen');
-    try {
-      final supabaseEval = await evalsRepo
-          .fetchFromSupabase(
-            fen,
-            desiredMultiPv: multiPV,
-          )
-          .timeout(const Duration(milliseconds: 600), onTimeout: () => null);
-      if (supabaseEval != null) {
-        final cloud = evalsRepo.evalsToCloudEval(fen, supabaseEval);
-        if (_isValidEvaluation(cloud)) {
-          final fenParts = fen.split(' ');
-          final sideToMove = fenParts.length >= 2 ? fenParts[1] : 'w';
-          final cp = cloud.pvs.isNotEmpty ? cloud.pvs.first.cp : 0;
-          debugPrint(
-            "🟡 EVAL SOURCE: SUPABASE - fen=$fen, side=$sideToMove, cp=$cp",
-          );
-          // Background save to local cache when meaningful
-          if (_shouldPersistCloudEval(cloud)) {
+  // 2️⃣ Query Supabase (our database, no rate limits)
+  try {
+    final supabaseEval = await evalsRepo
+        .fetchFromSupabase(
+          fen,
+          desiredMultiPv: multiPV,
+        )
+        .timeout(const Duration(milliseconds: 600), onTimeout: () => null);
+    if (supabaseEval != null) {
+      final cloud = evalsRepo.evalsToCloudEval(fen, supabaseEval);
+      if (_isValidEvaluation(cloud)) {
+        final fenParts = fen.split(' ');
+        final sideToMove = fenParts.length >= 2 ? fenParts[1] : 'w';
+        final cp = cloud.pvs.isNotEmpty ? cloud.pvs.first.cp : 0;
+        debugPrint(
+          "🟡 EVAL SOURCE (board): SUPABASE - fen=$fen, side=$sideToMove, cp=$cp",
+        );
+        // Background save to local cache when meaningful
+        if (_shouldPersistCloudEval(cloud)) {
+          unawaited(
             local
                 .save(
                   fen,
                   cloud,
                   multiPV: cloud.requestedMultiPv ?? cloud.pvs.length,
                 )
-                .catchError((e) => null);
-          }
-          return cloud;
+                .catchError((e) => null),
+          );
         }
+        return cloud;
       }
-    } catch (e) {
-      debugPrint('⚠️ Supabase eval failed: $e, continuing to Lichess...');
     }
-
-    if (!params.enableLichessFallback) {
-      debugPrint('⚠️ cascadeEvalProviderForBoard: Lichess disabled, skipping remote fallback for $fen');
-      return CloudEval(
-        fen: fen,
-        knodes: 0,
-        depth: 0,
-        pvs: const [],
-        requestedMultiPv: multiPV,
-      );
-    }
-
-    // 3️⃣ LICHESS FALLBACK ONLY (NO LOCAL ENGINE HERE)
-    // Important: The local engine is managed exclusively by the board notifier
-    // to avoid duplicate jobs and massive queue growth.
-    final cloud = await _fetchLichessWithFallback(fen, multiPV, lichess);
-    if (_shouldPersistCloudEval(cloud)) {
-      // Persist in background
-      Future.wait<void>([
-        persist.call(fen, cloud),
-        local.save(
-          fen,
-          cloud,
-          multiPV: cloud.requestedMultiPv ?? cloud.pvs.length,
-        ),
-      ]).catchError((_) => <void>[]);
-    }
-    return cloud;
-  } catch (error, _) {
-    rethrow;
-  }
-});
-
-/// Helper to fetch from Lichess with proper error handling
-Future<CloudEval> _fetchLichessWithFallback(
-  String fen,
-  int multiPV,
-  dynamic lichess, // Type inferred from provider
-) async {
-  try {
-    if (_LichessRateLimitTracker.isInCooldown()) {
-      throw Exception('Lichess fetch skipped (rate limit cooldown)');
-    }
-    final result = await lichess
-        .getEval(fen, multiPv: multiPV)
-        .timeout(const Duration(milliseconds: 600));
-    _LichessRateLimitTracker.reset();
-    return result;
-  } on RateLimitException catch (e) {
-    _LichessRateLimitTracker.recordRateLimit();
-    throw Exception('Lichess fetch failed: $e');
-  } on TimeoutException catch (e) {
-    throw Exception('Lichess fetch timeout: ${e.message}');
   } catch (e) {
-    throw Exception('Lichess fetch failed: $e');
+    debugPrint('⚠️ cascadeEvalForBoard: Supabase error: $e');
   }
-}
+
+  // 3️⃣ Return empty - Stockfish is managed by board notifier directly
+  // This provider is for quick cache/Supabase lookups only
+  // The board notifier handles Stockfish evaluation separately to avoid duplicate jobs
+  debugPrint('⚠️ cascadeEvalForBoard: No cached eval for $fen, board notifier will use Stockfish');
+  return CloudEval(
+    fen: fen,
+    knodes: 0,
+    depth: 0,
+    pvs: const [],
+    requestedMultiPv: multiPV,
+  );
+});
 
 // REMOVED: All background upgrade functions
 //
@@ -402,8 +337,7 @@ Future<CloudEval> _fetchLichessWithFallback(
 // - Priority: Show depth 12 FAST, then continuously improve to 50
 
 /// Evaluation provider for game cards with Stockfish fallback.
-/// Uses cascade (local → Supabase → Lichess) as primary, with local Stockfish
-/// at depth 8 as fallback when cloud sources fail.
+/// Uses cascade (local → Supabase → Stockfish) - Lichess removed.
 /// - Auto-disposes when card scrolls out of view (via autoDispose)
 /// - Low priority Stockfish (isCurrentPosition: false) to not interfere with active board
 /// - Depth 8 is fast enough for responsive UI fallback
@@ -423,14 +357,16 @@ final gameCardEvalWithStockfishFallbackProvider = FutureProvider.family.autoDisp
 
   const multiPV = 1;
   final local = ref.watch(localEvalCacheProvider);
-  final lichess = ref.watch(lichessEvalRepoProvider);
   final evalsRepo = ref.watch(evalsRepositoryProvider);
-  final persist = ref.watch(persistCloudEvalProvider);
 
   // 1️⃣ Check local cache first (instant hit)
-  final cached = await local.fetch(fen, multiPV: multiPV);
-  if (cached != null && _isValidEvaluation(cached)) {
-    return cached;
+  try {
+    final cached = await local.fetch(fen, multiPV: multiPV);
+    if (cached != null && _isValidEvaluation(cached)) {
+      return cached;
+    }
+  } catch (e) {
+    debugPrint('⚠️ gameCardEval: Local cache error: $e');
   }
 
   // 2️⃣ Try Supabase
@@ -449,36 +385,11 @@ final gameCardEvalWithStockfishFallbackProvider = FutureProvider.family.autoDisp
         return cloud;
       }
     }
-  } catch (_) {
-    // Continue to Lichess
+  } catch (e) {
+    debugPrint('⚠️ gameCardEval: Supabase error: $e');
   }
 
-  // 3️⃣ Try Lichess API
-  try {
-    if (!_LichessRateLimitTracker.isInCooldown()) {
-      final cloud = await lichess
-          .getEval(fen, multiPv: multiPV)
-          .timeout(const Duration(milliseconds: 800));
-
-      if (_isValidEvaluation(cloud)) {
-        _LichessRateLimitTracker.reset();
-        // Background persist to caches
-        unawaited(
-          Future.wait<void>([
-            persist.call(fen, cloud),
-            local.save(fen, cloud, multiPV: cloud.requestedMultiPv ?? cloud.pvs.length),
-          ]).catchError((_) => <void>[]),
-        );
-        return cloud;
-      }
-    }
-  } on RateLimitException {
-    _LichessRateLimitTracker.recordRateLimit();
-  } catch (_) {
-    // Fall through to Stockfish
-  }
-
-  // 4️⃣ Fallback: Local Stockfish at depth 8
+  // 3️⃣ Stockfish fallback at depth 8 (Lichess removed)
   const fallbackDepth = 8;
   try {
     final sfEval = await StockfishSingleton().evaluatePosition(
@@ -489,7 +400,9 @@ final gameCardEvalWithStockfishFallbackProvider = FutureProvider.family.autoDisp
       allowCache: true,
     );
 
+    // Handle cancelled/empty results gracefully
     if (sfEval.pvs.isEmpty || sfEval.pvs.first.moves.isEmpty) {
+      debugPrint('⚠️ gameCardEval: Stockfish returned empty result for $fen');
       return CloudEval(
         fen: fen,
         knodes: 0,
@@ -514,6 +427,7 @@ final gameCardEvalWithStockfishFallbackProvider = FutureProvider.family.autoDisp
 
     return cloudFromSf;
   } catch (e) {
+    debugPrint('⚠️ gameCardEval: Stockfish error for $fen: $e');
     // Return empty result on error - don't block the UI
     return CloudEval(
       fen: fen,

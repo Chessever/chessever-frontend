@@ -124,8 +124,16 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
     }
   }
 
+  /// Update filters in a combinable way.
+  ///
+  /// Filter logic:
+  /// - If a filter property is provided (even if 'all'), it updates that property
+  /// - Other filter properties are preserved
+  /// - This allows combining: tap Rapid → tap Win → tap opening = all 3 active
   void _openGames({
-    GameFilter? filter,
+    GameTimeControlFilter? timeControl,
+    GameColorFilter? color,
+    GameEcoFilter? eco,
     PlayerResultFilter? playerResultFilter,
     String? searchQuery,
   }) {
@@ -136,12 +144,14 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
     );
     final notifier = ref.read(playerProfileGamesKeyProvider(playerKey).notifier);
 
-    notifier.applyFilter(filter ?? GameFilter.defaultFilter());
-    notifier.setPlayerResultFilter(playerResultFilter ?? PlayerResultFilter.all);
-    notifier.setSearchQuery(searchQuery ?? '');
-
-    // Don't auto-switch to Games tab - keep user on current page
-    // Badge will indicate filter is applied on Games tab
+    // Merge filters - only update properties that are explicitly provided
+    notifier.mergeFilter(
+      timeControl: timeControl,
+      color: color,
+      eco: eco,
+      playerResultFilter: playerResultFilter,
+      searchQuery: searchQuery,
+    );
   }
 
   Future<void> _toggleFavorite() async {

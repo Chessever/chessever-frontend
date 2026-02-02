@@ -7,11 +7,12 @@ import 'package:chessever2/screens/standings/score_card_screen.dart';
 import 'package:skeletonizer/skeletonizer.dart';
 import 'package:chessever2/providers/board_settings_provider_new.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
-import 'package:chessever2/screens/chessboard/analysis/move_impact_analyzer.dart';
-import 'package:chessever2/screens/chessboard/analysis/simple_move_impact.dart';
+// DISABLED: Local move impact calculation - we get move impact from Supabase edge function
+// This prevents phone from heating up by avoiding local Stockfish calculations for move impact
+// import 'package:chessever2/screens/chessboard/analysis/move_impact_analyzer.dart';
+// import 'package:chessever2/screens/chessboard/analysis/simple_move_impact.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game_navigator.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
-import 'package:chessever2/screens/chessboard/provider/stockfish_singleton.dart';
 import 'package:chessever2/screens/chessboard/provider/lichess_move_annotations_provider.dart';
 import 'package:chessever2/screens/chessboard/notation/notation_cache.dart';
 import 'package:chessever2/screens/chessboard/notation/notation_pointer.dart';
@@ -122,43 +123,45 @@ class BouncySpringCurve extends Curve {
   }
 }
 
-/// Cached move impact results keyed by game id/signature to avoid recomputation
-class CachedMoveImpact {
-  final String signature;
-  final Map<int, MoveImpactAnalysis> impacts;
-
-  const CachedMoveImpact({required this.signature, required this.impacts});
-}
-
-class MoveImpactCacheNotifier
-    extends StateNotifier<Map<String, CachedMoveImpact>> {
-  MoveImpactCacheNotifier() : super(<String, CachedMoveImpact>{});
-  static const int _maxEntries = 12;
-
-  CachedMoveImpact? lookup(String gameId) => state[gameId];
-
-  void store(String gameId, CachedMoveImpact cached) {
-    final next = Map<String, CachedMoveImpact>.from(state);
-    next.remove(gameId);
-    next[gameId] = cached;
-    while (next.length > _maxEntries) {
-      next.remove(next.keys.first);
-    }
-    state = next;
-  }
-
-  void invalidate(String gameId) {
-    if (!state.containsKey(gameId)) return;
-    final copy = {...state};
-    copy.remove(gameId);
-    state = copy;
-  }
-}
-
-final moveImpactCacheProvider = StateNotifierProvider<
-  MoveImpactCacheNotifier,
-  Map<String, CachedMoveImpact>
->((ref) => MoveImpactCacheNotifier());
+// DISABLED: Local move impact calculation - we get move impact from Supabase edge function
+// This prevents phone from heating up by avoiding local Stockfish calculations for move impact
+// /// Cached move impact results keyed by game id/signature to avoid recomputation
+// class CachedMoveImpact {
+//   final String signature;
+//   final Map<int, MoveImpactAnalysis> impacts;
+//
+//   const CachedMoveImpact({required this.signature, required this.impacts});
+// }
+//
+// class MoveImpactCacheNotifier
+//     extends StateNotifier<Map<String, CachedMoveImpact>> {
+//   MoveImpactCacheNotifier() : super(<String, CachedMoveImpact>{});
+//   static const int _maxEntries = 12;
+//
+//   CachedMoveImpact? lookup(String gameId) => state[gameId];
+//
+//   void store(String gameId, CachedMoveImpact cached) {
+//     final next = Map<String, CachedMoveImpact>.from(state);
+//     next.remove(gameId);
+//     next[gameId] = cached;
+//     while (next.length > _maxEntries) {
+//       next.remove(next.keys.first);
+//     }
+//     state = next;
+//   }
+//
+//   void invalidate(String gameId) {
+//     if (!state.containsKey(gameId)) return;
+//     final copy = {...state};
+//     copy.remove(gameId);
+//     state = copy;
+//   }
+// }
+//
+// final moveImpactCacheProvider = StateNotifierProvider<
+//   MoveImpactCacheNotifier,
+//   Map<String, CachedMoveImpact>
+// >((ref) => MoveImpactCacheNotifier());
 
 extension LichessMoveAnnotationTypeX on LichessMoveAnnotationType {
   String get symbol {
@@ -335,189 +338,193 @@ String? _extractLichessGameId(ChessGame game) {
   return null;
 }
 
-/// LAZY move impact provider - calculates impact for a SINGLE move only when needed
-/// This is the NEW approach that doesn't block the eval bar
-/// Returns the impact analysis for a specific move index in a game
-class LazyMoveImpactParams {
-  final ChessBoardProviderParams boardParams;
-  final int moveIndex; // Which move to calculate impact for
+// DISABLED: Local move impact calculation - we get move impact from Supabase edge function
+// This prevents phone from heating up by avoiding local Stockfish calculations for move impact
+// /// LAZY move impact provider - calculates impact for a SINGLE move only when needed
+// /// This is the NEW approach that doesn't block the eval bar
+// /// Returns the impact analysis for a specific move index in a game
+// class LazyMoveImpactParams {
+//   final ChessBoardProviderParams boardParams;
+//   final int moveIndex; // Which move to calculate impact for
+//
+//   const LazyMoveImpactParams({
+//     required this.boardParams,
+//     required this.moveIndex,
+//   });
+//
+//   @override
+//   bool operator ==(Object other) =>
+//       identical(this, other) ||
+//       other is LazyMoveImpactParams &&
+//           boardParams == other.boardParams &&
+//           moveIndex == other.moveIndex;
+//
+//   @override
+//   int get hashCode => boardParams.hashCode ^ moveIndex.hashCode;
+// }
 
-  const LazyMoveImpactParams({
-    required this.boardParams,
-    required this.moveIndex,
-  });
-
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is LazyMoveImpactParams &&
-          boardParams == other.boardParams &&
-          moveIndex == other.moveIndex;
-
-  @override
-  int get hashCode => boardParams.hashCode ^ moveIndex.hashCode;
-}
-
-final lazyMoveImpactProvider = FutureProvider.family
-    .autoDispose<MoveImpactAnalysis?, LazyMoveImpactParams>((
-      ref,
-      params,
-    ) async {
-      // Get the board state to access position FENs
-      final boardStateAsync = ref.watch(
-        chessBoardScreenProviderNew(params.boardParams),
-      );
-      final boardState = boardStateAsync.valueOrNull;
-      if (boardState == null) {
-        return null;
-      }
-
-      final allMoves = boardState.allMoves;
-      final moveSans = boardState.moveSans;
-      final startingPosition = boardState.startingPosition;
-
-      if (allMoves.isEmpty ||
-          moveSans.isEmpty ||
-          params.moveIndex >= moveSans.length) {
-        return null;
-      }
-
-      // Generate position FENs for this specific move only
-      final fensParams = PositionFensParams(
-        allMoves: allMoves,
-        startingPosition: startingPosition,
-        gameId: params.boardParams.game.gameId,
-      );
-      final positionFens = ref.watch(positionFensProvider(fensParams));
-
-      if (params.moveIndex >= positionFens.length - 1) {
-        return null; // Invalid move index
-      }
-
-      // Create single move params
-      final singleParams = SingleMoveImpactParams(
-        fenBefore: positionFens[params.moveIndex],
-        fenAfter: positionFens[params.moveIndex + 1],
-        moveSan: moveSans[params.moveIndex],
-        moveIndex: params.moveIndex,
-        gameId: params.boardParams.game.gameId,
-      );
-
-      // Use the new lazy provider that doesn't block eval bar
-      return ref.watch(singleMoveImpactProvider(singleParams).future);
-    });
-
-/// DEPRECATED: Provider that calculates move impacts - BULK ANALYSIS
-/// This approach blocks the eval bar and should not be used
-/// Use lazyMoveImpactProvider instead for individual moves
-final gameMovesImpactProvider = FutureProvider.family.autoDispose<
-  Map<int, MoveImpactAnalysis>?,
-  ChessBoardProviderParams
->((ref, params) async {
-  debugPrint(
-    '🎨 gameMovesImpactProvider: START for game ${params.game.gameId}',
-  );
-
-  final link = ref.keepAlive();
-  Timer? cleanupTimer;
-
-  ref.onCancel(() {
-    cleanupTimer = Timer(const Duration(seconds: 45), () {
-      debugPrint(
-        '🎨 gameMovesImpactProvider: releasing keepAlive for ${params.game.gameId}',
-      );
-      link.close();
-    });
-  });
-
-  ref.onResume(() {
-    cleanupTimer?.cancel();
-    cleanupTimer = null;
-  });
-
-  ref.onDispose(() {
-    cleanupTimer?.cancel();
-  });
-
-  // Use .select() to watch ONLY the moves data, not the entire state
-  final allMoves = ref.watch(
-    chessBoardScreenProviderNew(
-      params,
-    ).select((state) => state.valueOrNull?.allMoves),
-  );
-  final moveSans = ref.watch(
-    chessBoardScreenProviderNew(
-      params,
-    ).select((state) => state.valueOrNull?.moveSans),
-  );
-  final startingPosition = ref.watch(
-    chessBoardScreenProviderNew(
-      params,
-    ).select((state) => state.valueOrNull?.startingPosition),
-  );
-
-  if (allMoves == null || allMoves.isEmpty || moveSans == null) {
-    debugPrint('🎨 gameMovesImpactProvider: NULL - no moves yet');
-    return null;
-  }
-
-  debugPrint(
-    '🎨 gameMovesImpactProvider: Got ${allMoves.length} moves, ${moveSans.length} SANs',
-  );
-
-  final cacheSignature = '${moveSans.length}:${moveSans.join('|')}';
-  final cachedImpact = ref.read(moveImpactCacheProvider)[params.game.gameId];
-  if (cachedImpact != null && cachedImpact.signature == cacheSignature) {
-    debugPrint(
-      '🎨 gameMovesImpactProvider: Using cached impacts for ${params.game.gameId}',
-    );
-    return cachedImpact.impacts;
-  }
-
-  // Generate position FENs (starting position + after each move)
-  final fensParams = PositionFensParams(
-    allMoves: allMoves,
-    startingPosition: startingPosition,
-    gameId: params.game.gameId,
-  );
-  final positionFens = ref.watch(positionFensProvider(fensParams));
-  debugPrint(
-    '🎨 gameMovesImpactProvider: Generated ${positionFens.length} position FENs',
-  );
-
-  // Determine which moves are white's
-  final isWhiteMoves = List.generate(
-    allMoves.length,
-    (i) => i % 2 == 0, // Even indices = white's moves
-  );
-
-  // Use COMPREHENSIVE impact provider that analyzes alternatives
-  final simpleParams = SimpleMoveImpactParams(
-    positionFens: positionFens,
-    isWhiteMoves: isWhiteMoves,
-    moveSans: moveSans,
-    gameId: params.game.gameId,
-  );
-
-  debugPrint('🎨 gameMovesImpactProvider: Calling simpleMoveImpactProvider...');
-  final impacts = await ref.watch(
-    simpleMoveImpactProvider(simpleParams).future,
-  );
-  debugPrint(
-    '🎨 gameMovesImpactProvider: COMPLETE - got ${impacts.length} impacts',
-  );
-
-  ref
-      .read(moveImpactCacheProvider.notifier)
-      .store(
-        params.game.gameId,
-        CachedMoveImpact(
-          signature: cacheSignature,
-          impacts: Map.unmodifiable(impacts),
-        ),
-      );
-  return impacts;
-});
+// DISABLED: Local move impact calculation - we get move impact from Supabase edge function
+// This prevents phone from heating up by avoiding local Stockfish calculations for move impact
+// final lazyMoveImpactProvider = FutureProvider.family
+//     .autoDispose<MoveImpactAnalysis?, LazyMoveImpactParams>((
+//       ref,
+//       params,
+//     ) async {
+//       // Get the board state to access position FENs
+//       final boardStateAsync = ref.watch(
+//         chessBoardScreenProviderNew(params.boardParams),
+//       );
+//       final boardState = boardStateAsync.valueOrNull;
+//       if (boardState == null) {
+//         return null;
+//       }
+//
+//       final allMoves = boardState.allMoves;
+//       final moveSans = boardState.moveSans;
+//       final startingPosition = boardState.startingPosition;
+//
+//       if (allMoves.isEmpty ||
+//           moveSans.isEmpty ||
+//           params.moveIndex >= moveSans.length) {
+//         return null;
+//       }
+//
+//       // Generate position FENs for this specific move only
+//       final fensParams = PositionFensParams(
+//         allMoves: allMoves,
+//         startingPosition: startingPosition,
+//         gameId: params.boardParams.game.gameId,
+//       );
+//       final positionFens = ref.watch(positionFensProvider(fensParams));
+//
+//       if (params.moveIndex >= positionFens.length - 1) {
+//         return null; // Invalid move index
+//       }
+//
+//       // Create single move params
+//       final singleParams = SingleMoveImpactParams(
+//         fenBefore: positionFens[params.moveIndex],
+//         fenAfter: positionFens[params.moveIndex + 1],
+//         moveSan: moveSans[params.moveIndex],
+//         moveIndex: params.moveIndex,
+//         gameId: params.boardParams.game.gameId,
+//       );
+//
+//       // Use the new lazy provider that doesn't block eval bar
+//       return ref.watch(singleMoveImpactProvider(singleParams).future);
+//     });
+//
+// /// DEPRECATED: Provider that calculates move impacts - BULK ANALYSIS
+// /// This approach blocks the eval bar and should not be used
+// /// Use lazyMoveImpactProvider instead for individual moves
+// final gameMovesImpactProvider = FutureProvider.family.autoDispose<
+//   Map<int, MoveImpactAnalysis>?,
+//   ChessBoardProviderParams
+// >((ref, params) async {
+//   debugPrint(
+//     '🎨 gameMovesImpactProvider: START for game ${params.game.gameId}',
+//   );
+//
+//   final link = ref.keepAlive();
+//   Timer? cleanupTimer;
+//
+//   ref.onCancel(() {
+//     cleanupTimer = Timer(const Duration(seconds: 45), () {
+//       debugPrint(
+//         '🎨 gameMovesImpactProvider: releasing keepAlive for ${params.game.gameId}',
+//       );
+//       link.close();
+//     });
+//   });
+//
+//   ref.onResume(() {
+//     cleanupTimer?.cancel();
+//     cleanupTimer = null;
+//   });
+//
+//   ref.onDispose(() {
+//     cleanupTimer?.cancel();
+//   });
+//
+//   // Use .select() to watch ONLY the moves data, not the entire state
+//   final allMoves = ref.watch(
+//     chessBoardScreenProviderNew(
+//       params,
+//     ).select((state) => state.valueOrNull?.allMoves),
+//   );
+//   final moveSans = ref.watch(
+//     chessBoardScreenProviderNew(
+//       params,
+//     ).select((state) => state.valueOrNull?.moveSans),
+//   );
+//   final startingPosition = ref.watch(
+//     chessBoardScreenProviderNew(
+//       params,
+//     ).select((state) => state.valueOrNull?.startingPosition),
+//   );
+//
+//   if (allMoves == null || allMoves.isEmpty || moveSans == null) {
+//     debugPrint('🎨 gameMovesImpactProvider: NULL - no moves yet');
+//     return null;
+//   }
+//
+//   debugPrint(
+//     '🎨 gameMovesImpactProvider: Got ${allMoves.length} moves, ${moveSans.length} SANs',
+//   );
+//
+//   final cacheSignature = '${moveSans.length}:${moveSans.join('|')}';
+//   final cachedImpact = ref.read(moveImpactCacheProvider)[params.game.gameId];
+//   if (cachedImpact != null && cachedImpact.signature == cacheSignature) {
+//     debugPrint(
+//       '🎨 gameMovesImpactProvider: Using cached impacts for ${params.game.gameId}',
+//     );
+//     return cachedImpact.impacts;
+//   }
+//
+//   // Generate position FENs (starting position + after each move)
+//   final fensParams = PositionFensParams(
+//     allMoves: allMoves,
+//     startingPosition: startingPosition,
+//     gameId: params.game.gameId,
+//   );
+//   final positionFens = ref.watch(positionFensProvider(fensParams));
+//   debugPrint(
+//     '🎨 gameMovesImpactProvider: Generated ${positionFens.length} position FENs',
+//   );
+//
+//   // Determine which moves are white's
+//   final isWhiteMoves = List.generate(
+//     allMoves.length,
+//     (i) => i % 2 == 0, // Even indices = white's moves
+//   );
+//
+//   // Use COMPREHENSIVE impact provider that analyzes alternatives
+//   final simpleParams = SimpleMoveImpactParams(
+//     positionFens: positionFens,
+//     isWhiteMoves: isWhiteMoves,
+//     moveSans: moveSans,
+//     gameId: params.game.gameId,
+//   );
+//
+//   debugPrint('🎨 gameMovesImpactProvider: Calling simpleMoveImpactProvider...');
+//   final impacts = await ref.watch(
+//     simpleMoveImpactProvider(simpleParams).future,
+//   );
+//   debugPrint(
+//     '🎨 gameMovesImpactProvider: COMPLETE - got ${impacts.length} impacts',
+//   );
+//
+//   ref
+//       .read(moveImpactCacheProvider.notifier)
+//       .store(
+//         params.game.gameId,
+//         CachedMoveImpact(
+//           signature: cacheSignature,
+//           impacts: Map.unmodifiable(impacts),
+//         ),
+//       );
+//   return impacts;
+// });
 
 // Helper function to get move highlight color
 Color getLastMoveHighlightColor(ChessBoardStateNew state) {
@@ -663,6 +670,8 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
   ChessBoardProviderParams? _keepAliveParams;
   Timer? _pageSettleTimer;
   int _pageSettleGeneration = 0;
+  ProviderSubscription<AsyncValue<ChessBoardStateNew>>? _audioSub;
+  ChessBoardProviderParams? _audioParams;
 
   bool _hasCheckedWalkthrough = false;
   bool _showTutorialOverlay = false;
@@ -998,6 +1007,147 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     unawaited(_handlePageChange(newIndex));
   }
 
+  void _ensureAudioListener(ChessBoardProviderParams params) {
+    if (_audioParams == params) return;
+    _audioParams = params;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _audioParams != params) return;
+      _audioSub?.close();
+      _audioSub = ref.listenManual<AsyncValue<ChessBoardStateNew>>(
+        chessBoardScreenProviderNew(params),
+        _handleAudioProviderChange,
+        onError: (e, st) {
+          debugPrint("Error in chessBoardScreenProviderNew listener: $e");
+        },
+      );
+    });
+  }
+
+  void _handleAudioProviderChange(
+    AsyncValue<ChessBoardStateNew>? prev,
+    AsyncValue<ChessBoardStateNew> next,
+  ) {
+    final prevState = prev?.valueOrNull;
+    final nextState = next.valueOrNull;
+    final prevIndex =
+        prevState == null
+            ? -1
+            : (prevState.isAnalysisMode
+                ? prevState.analysisState.currentMoveIndex
+                : prevState.currentMoveIndex);
+    final currentIndex =
+        nextState == null
+            ? -1
+            : (nextState.isAnalysisMode
+                ? nextState.analysisState.currentMoveIndex
+                : nextState.currentMoveIndex);
+
+    if (prevIndex == currentIndex || nextState == null) {
+      return;
+    }
+
+    // CRITICAL FIX: Only play audio if this chess board screen is currently active
+    // This prevents audio from playing when other games in the tournament get moves
+    final route = ModalRoute.of(context);
+    if (route == null || !route.isCurrent) {
+      // Screen is not visible, don't play audio
+      return;
+    }
+
+    final state = nextState;
+
+    // ENHANCED FIX: Verify this update is for the currently viewed game
+    // Only play audio if the provider index matches the current page
+    final providerGameIndex = _currentPageIndex;
+    final viewGameId = widget.games[providerGameIndex].gameId;
+    if (state.game.gameId != viewGameId) {
+      // This update is for a different game, don't play audio
+      return;
+    }
+
+    // Additional check: Only play audio for significant move index changes
+    // This prevents audio from playing due to minor state updates
+    if ((currentIndex - prevIndex).abs() != 1 && currentIndex != -1) {
+      // Not a sequential move change, likely a background update
+      return;
+    }
+
+    // Final check: Make sure we're viewing the correct page in PageView
+    // Use a small tolerance for floating-point comparison
+    final currentPage = _pageController.page ?? _currentPageIndex.toDouble();
+    if ((currentPage - _currentPageIndex).abs() > 0.1) {
+      // PageView is not on the current game, don't play audio
+      return;
+    }
+
+    // Check if sound is enabled in user settings
+    final boardSettings = ref.read(boardSettingsProviderNew).valueOrNull;
+    if (boardSettings?.soundEnabled != true) {
+      return; // Sound disabled, skip playing
+    }
+
+    final audioService = AudioPlayerService.instance;
+
+    // Determine if we're going forward or backward
+    final isMovingForward = currentIndex > prevIndex;
+
+    // For backward navigation, we want to play the sound of the move we just "undid"
+    // For forward navigation, we want to play the sound of the move we just made
+    final moveIndexForSound = isMovingForward ? currentIndex : prevIndex;
+
+    final movesSan =
+        state.isAnalysisMode ? state.analysisState.moveSans : state.moveSans;
+
+    // Check if we have a valid move to play sound for
+    if (moveIndexForSound >= 0 && moveIndexForSound < movesSan.length) {
+      // Get the move notation for the appropriate move
+      final moveSan = movesSan[moveIndexForSound];
+
+      // Determine which sound to play based on PGN notation
+      // Priority order matters: checkmate > check > special moves > capture > regular
+      if (moveSan.contains('#')) {
+        // Checkmate notation
+        audioService.playSound(audioService.pieceCheckmateSfx);
+      } else if (moveSan.contains('+')) {
+        // Check notation (but not checkmate)
+        audioService.playSound(audioService.pieceCheckSfx);
+      } else if (moveSan == 'O-O' || moveSan == 'O-O-O') {
+        // Castling (kingside or queenside) - exact match
+        audioService.playSound(audioService.pieceCastlingSfx);
+      } else if (moveSan.contains('=')) {
+        // Pawn promotion (e.g., e8=Q)
+        audioService.playSound(audioService.piecePromotionSfx);
+      } else if (moveSan.contains('x')) {
+        // Capture notation
+        audioService.playSound(audioService.pieceTakeoverSfx);
+      } else {
+        // Regular move (no special notation)
+        audioService.playSound(audioService.pieceMoveSfx);
+      }
+    } else if (currentIndex == -1 && prevIndex >= 0) {
+      // Moving back to the starting position (before first move)
+      // Play a regular move sound for the "undo" action
+      audioService.playSound(audioService.pieceMoveSfx);
+    } else if (currentIndex == movesSan.length && movesSan.isNotEmpty) {
+      // We're at the end of the game, check for game-ending conditions
+      final lastMoveSan = movesSan.last;
+
+      if (lastMoveSan.contains('#')) {
+        // Game ended with checkmate
+        audioService.playSound(audioService.pieceCheckmateSfx);
+      } else if (state.game.gameStatus == GameStatus.draw) {
+        // Game ended in a draw
+        audioService.playSound(audioService.pieceDrawSfx);
+      } else {
+        // Other game endings (resignation, time out, etc.)
+        audioService.playSound(audioService.pieceMoveSfx);
+      }
+    } else {
+      // Fallback for edge cases (shouldn't normally happen)
+      audioService.playSound(audioService.pieceMoveSfx);
+    }
+  }
+
   Future<void> _handlePageChange(int newIndex) async {
     if (_isRevertingPage) {
       _isRevertingPage = false;
@@ -1009,10 +1159,6 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     if (_showTutorialOverlay) return;
 
     if (_currentPageIndex == newIndex) return;
-
-    // PERF: Cancel ALL pending Stockfish evaluations IMMEDIATELY on page change
-    // This prevents queue buildup during rapid swiping
-    StockfishSingleton().cancelAllEvaluations();
 
     final previousIndex = _currentPageIndex;
 
@@ -1128,6 +1274,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _boardKeepAliveSub?.close();
+    _audioSub?.close();
     _pageSettleTimer?.cancel();
     _swipeController.dispose();
     _pageController.dispose();
@@ -1171,6 +1318,10 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     debugPrint(
       '🎯 Navigating from $_currentPageIndex to $gameIndex (distance: $distance)',
     );
+
+    if (!_pageController.hasClients) {
+      return;
+    }
 
     if (distance > 1) {
       // For large jumps, use jumpToPage to avoid intermediate page triggers
@@ -1218,10 +1369,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
         }
         break;
       case ChessboardView.tour:
-        // Use a non-listening read here to avoid triggering rebuilds of the
-        // tournament list/app bar while this board is building (which caused
-        // setState during build exceptions). We still get the latest snapshot.
-        gamesAsync = ref.read(gamesTourScreenProvider);
+        gamesAsync = ref.watch(gamesTourScreenProvider);
         break;
       case ChessboardView.countryman:
         gamesAsync = ref.watch(countrymanGamesTourScreenProvider);
@@ -1318,134 +1466,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     // Use same params as watch to listen to the same provider
     final currentGame = syncedGames[_currentPageIndex.clamp(0, syncedGames.length - 1)];
     final currentParams = _createParams(currentGame, _currentPageIndex);
-    ref.listen(
-      chessBoardScreenProviderNew(currentParams),
-      (prev, next) {
-        final prevState = prev?.valueOrNull;
-        final nextState = next.valueOrNull;
-        final prevIndex =
-            prevState == null
-                ? -1
-                : (prevState.isAnalysisMode
-                    ? prevState.analysisState.currentMoveIndex
-                    : prevState.currentMoveIndex);
-        final currentIndex =
-            nextState == null
-                ? -1
-                : (nextState.isAnalysisMode
-                    ? nextState.analysisState.currentMoveIndex
-                    : nextState.currentMoveIndex);
-
-        if (prevIndex != currentIndex && next.valueOrNull != null) {
-          // CRITICAL FIX: Only play audio if this chess board screen is currently active
-          // This prevents audio from playing when other games in the tournament get moves
-          final route = ModalRoute.of(context);
-          if (route == null || !route.isCurrent) {
-            // Screen is not visible, don't play audio
-            return;
-          }
-
-          final state = nextState!;
-
-          // ENHANCED FIX: Verify this update is for the currently viewed game
-          // Only play audio if the provider index matches the current page
-          final providerGameIndex = _currentPageIndex;
-          final viewGameId = widget.games[providerGameIndex].gameId;
-          if (state.game.gameId != viewGameId) {
-            // This update is for a different game, don't play audio
-            return;
-          }
-
-          // Additional check: Only play audio for significant move index changes
-          // This prevents audio from playing due to minor state updates
-          if ((currentIndex - prevIndex).abs() != 1 && currentIndex != -1) {
-            // Not a sequential move change, likely a background update
-            return;
-          }
-
-          // Final check: Make sure we're viewing the correct page in PageView
-          // Use a small tolerance for floating-point comparison
-          final currentPage =
-              _pageController.page ?? _currentPageIndex.toDouble();
-          if ((currentPage - _currentPageIndex).abs() > 0.1) {
-            // PageView is not on the current game, don't play audio
-            return;
-          }
-
-          // Check if sound is enabled in user settings
-          final boardSettings = ref.read(boardSettingsProviderNew).valueOrNull;
-          if (boardSettings?.soundEnabled != true) {
-            return; // Sound disabled, skip playing
-          }
-
-          final audioService = AudioPlayerService.instance;
-
-          // Determine if we're going forward or backward
-          final isMovingForward = currentIndex > prevIndex;
-
-          // For backward navigation, we want to play the sound of the move we just "undid"
-          // For forward navigation, we want to play the sound of the move we just made
-          final moveIndexForSound = isMovingForward ? currentIndex : prevIndex;
-
-          final movesSan =
-              state.isAnalysisMode
-                  ? state.analysisState.moveSans
-                  : state.moveSans;
-
-          // Check if we have a valid move to play sound for
-          if (moveIndexForSound >= 0 && moveIndexForSound < movesSan.length) {
-            // Get the move notation for the appropriate move
-            final moveSan = movesSan[moveIndexForSound];
-
-            // Determine which sound to play based on PGN notation
-            // Priority order matters: checkmate > check > special moves > capture > regular
-            if (moveSan.contains('#')) {
-              // Checkmate notation
-              audioService.playSound(audioService.pieceCheckmateSfx);
-            } else if (moveSan.contains('+')) {
-              // Check notation (but not checkmate)
-              audioService.playSound(audioService.pieceCheckSfx);
-            } else if (moveSan == 'O-O' || moveSan == 'O-O-O') {
-              // Castling (kingside or queenside) - exact match
-              audioService.playSound(audioService.pieceCastlingSfx);
-            } else if (moveSan.contains('=')) {
-              // Pawn promotion (e.g., e8=Q)
-              audioService.playSound(audioService.piecePromotionSfx);
-            } else if (moveSan.contains('x')) {
-              // Capture notation
-              audioService.playSound(audioService.pieceTakeoverSfx);
-            } else {
-              // Regular move (no special notation)
-              audioService.playSound(audioService.pieceMoveSfx);
-            }
-          } else if (currentIndex == -1 && prevIndex >= 0) {
-            // Moving back to the starting position (before first move)
-            // Play a regular move sound for the "undo" action
-            audioService.playSound(audioService.pieceMoveSfx);
-          } else if (currentIndex == movesSan.length && movesSan.isNotEmpty) {
-            // We're at the end of the game, check for game-ending conditions
-            final lastMoveSan = movesSan.last;
-
-            if (lastMoveSan.contains('#')) {
-              // Game ended with checkmate
-              audioService.playSound(audioService.pieceCheckmateSfx);
-            } else if (state.game.gameStatus == GameStatus.draw) {
-              // Game ended in a draw
-              audioService.playSound(audioService.pieceDrawSfx);
-            } else {
-              // Other game endings (resignation, time out, etc.)
-              audioService.playSound(audioService.pieceMoveSfx);
-            }
-          } else {
-            // Fallback for edge cases (shouldn't normally happen)
-            audioService.playSound(audioService.pieceMoveSfx);
-          }
-        }
-      },
-      onError: (e, st) {
-        debugPrint("Error in chessBoardScreenProviderNew listener: $e");
-      },
-    );
+    _ensureAudioListener(currentParams);
     // OPTIMIZED: Only watch for updates to games that are currently visible in the PageView
     // This prevents rebuilds when other games in the tournament get updated
     final isTablet = ResponsiveHelper.isTablet;
@@ -2422,9 +2443,13 @@ class _AppBarState extends ConsumerState<_AppBar> {
       game: widget.game,
       index: widget.currentGameIndex,
     );
-    final boardState = ref.watch(chessBoardScreenProviderNew(params));
-    final state = boardState.valueOrNull;
-    final infoSheetPgn = state?.pgnData ?? widget.game.pgn;
+    final infoSheetPgn =
+        ref.watch(
+          chessBoardScreenProviderNew(params).select(
+            (state) => state.valueOrNull?.pgnData,
+          ),
+        ) ??
+        widget.game.pgn;
 
     // Debug: Log when AppBar rebuilds on tablets while popup is open
     if (ResponsiveHelper.isTablet && _ChessBoardPopupState.isAnyPopupOpen) {

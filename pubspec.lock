@@ -1493,12 +1493,11 @@ packages:
   stockfish:
     dependency: "direct main"
     description:
-      path: "."
-      ref: master
-      resolved-ref: "3f726686279b3b55bbde042d7b3d4f6ea7431fd2"
-      url: "https://github.com/TomaszBogun/Stockfish.git"
-    source: git
-    version: "1.7.1"
+      name: stockfish
+      sha256: "6f282bd7c4313262b47eabff85a23e3ee9bb63ee66d1fc57860e810621f0f9b5"
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.7.2"
   storage_client:
     dependency: transitive
     description:
@@ -1787,14 +1786,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.1.0"
-  worker_manager:
-    dependency: "direct main"
-    description:
-      name: worker_manager
-      sha256: "1bce9f894a0c187856f5fc0e150e7fe1facce326f048ca6172947754dac3d4f3"
-      url: "https://pub.dev"
-    source: hosted
-    version: "7.2.7"
   xdg_directories:
     dependency: transitive
     description:

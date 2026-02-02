@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 8.18.0+870
+version: 8.19.0+871
 
 environment:
   sdk: ^3.7.2
@@ -73,7 +73,7 @@ dependencies:
   #authentication
   google_sign_in: ^7.2.0
   sign_in_with_apple: ^7.0.1
-  sentry_flutter: ^9.4.0
+  sentry_flutter: 9.7.0
 
   #for hashing
   crypto: ^3.0.6
@@ -99,10 +99,7 @@ dependencies:
   url_launcher: ^6.3.1
 
   chess: ^0.8.1
-  stockfish:
-    git:
-      url: https://github.com/TomaszBogun/Stockfish.git
-      ref: master
+  stockfish: 1.7.2
   flutter_local_notifications: ^19.3.0
 
   permission_handler: ^12.0.0+1
@@ -118,7 +115,6 @@ dependencies:
   flutter_soloud: ^3.3.6
 
   scrollable_positioned_list: ^0.3.8
-  worker_manager: ^7.2.7
   smooth_page_indicator: ^1.2.1
   sprung: ^3.0.1
   clarity_flutter: ^1.1.0
@@ -224,9 +220,9 @@ flutter:
 
 #setting up splash screen settings
 flutter_native_splash:
-  color: "#1a1a1c"
+  color: "#0C0C0E"
   image: assets/launch.jpg
-  color_dark: "#1a1a1c"
+  color_dark: "#0C0C0E"
   image_dark: assets/launch.jpg
 
   # Platform settings
@@ -240,6 +236,18 @@ flutter_native_splash:
   # Additional settings for better fullscreen experience
   android_gravity: fill
   ios_content_mode: aspectFill
+
+  # Android 12+ specific settings (required for proper splash on modern Android)
+  android_12:
+    color: "#0C0C0E"
+    color_dark: "#0C0C0E"
+    # Use the app logo as the centered icon (Android 12 forces centered icon)
+    # Icon should be 1152x1152 pixels, will be shown in a circle
+    image: assets/pngs/new_app_logo.png
+    image_dark: assets/pngs/new_app_logo.png
+    # Dark background for the icon circle
+    icon_background_color: "#0C0C0E"
+    icon_background_color_dark: "#0C0C0E"
 
 icons_launcher:
   image_path: "assets/pngs/new_app_logo.png"

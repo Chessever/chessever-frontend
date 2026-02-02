@@ -255,7 +255,11 @@ class GameFilterHelper {
       // Time control filter
       if (filter.timeControl != GameTimeControlFilter.all) {
         final inferred = _inferTimeControl(game);
-        if (inferred != filter.timeControl) return false;
+        // If we can't determine the time control (returns 'all'), don't filter out the game
+        // This prevents games with missing time_control data from being excluded
+        if (inferred != GameTimeControlFilter.all && inferred != filter.timeControl) {
+          return false;
+        }
       }
 
       // ECO filter - uses the new class-based filter
@@ -307,9 +311,11 @@ class GameFilterHelper {
 
   /// Get time control from game data
   /// Primary source: timeControl field from group_broadcasts table
-  /// Fallback: infer from clock data (less accurate)
+  /// No fallback - we only use the authoritative time_control from the database
+  /// Using remaining clock time is unreliable (a classical game with 5min left
+  /// would be wrongly classified as blitz)
   static GameTimeControlFilter _inferTimeControl(GamesTourModel game) {
-    // Primary: use the actual time_control from group_broadcasts
+    // Use the actual time_control from group_broadcasts (via tours join)
     if (game.timeControl != null && game.timeControl!.isNotEmpty) {
       switch (game.timeControl!.toLowerCase()) {
         case 'standard':
@@ -324,23 +330,8 @@ class GameFilterHelper {
       }
     }
 
-    // Fallback: infer from clock data (less accurate, uses remaining time)
-    // Try whiteClockSeconds first (from last_clock_white DB column)
-    if (game.whiteClockSeconds != null && game.whiteClockSeconds! > 0) {
-      final baseSeconds = game.whiteClockSeconds!;
-      if (baseSeconds >= 1800) return GameTimeControlFilter.classical;
-      if (baseSeconds >= 600) return GameTimeControlFilter.rapid;
-      return GameTimeControlFilter.blitz;
-    }
-
-    // Fall back to whiteClockCentiseconds (from players JSON)
-    if (game.whiteClockCentiseconds > 0) {
-      final baseSeconds = (game.whiteClockCentiseconds / 100).round();
-      if (baseSeconds >= 1800) return GameTimeControlFilter.classical;
-      if (baseSeconds >= 600) return GameTimeControlFilter.rapid;
-      return GameTimeControlFilter.blitz;
-    }
-
+    // No fallback - if timeControl is not set in the database, we can't reliably
+    // determine it. Return 'all' which means "unknown" and won't filter out the game.
     return GameTimeControlFilter.all;
   }
 }

@@ -415,10 +415,22 @@ class BookGamesSearchNotifier
   }
 
   BookGamesTimeControlFilter _inferTimeControl(GamesTourModel game) {
-    final baseSeconds = (game.whiteClockCentiseconds / 100).round();
-    if (baseSeconds >= 1800) return BookGamesTimeControlFilter.classical;
-    if (baseSeconds >= 600) return BookGamesTimeControlFilter.rapid;
-    if (baseSeconds > 0) return BookGamesTimeControlFilter.blitz;
+    // Use the actual time_control from group_broadcasts (via tours join)
+    // Do NOT use remaining clock time - it's unreliable (a classical game
+    // with 5 minutes left would be wrongly classified as blitz)
+    if (game.timeControl != null && game.timeControl!.isNotEmpty) {
+      switch (game.timeControl!.toLowerCase()) {
+        case 'standard':
+        case 'classical':
+          return BookGamesTimeControlFilter.classical;
+        case 'rapid':
+          return BookGamesTimeControlFilter.rapid;
+        case 'blitz':
+        case 'bullet':
+          return BookGamesTimeControlFilter.blitz;
+      }
+    }
+    // If time control is not set in the database, return 'all' (unknown)
     return BookGamesTimeControlFilter.all;
   }
 

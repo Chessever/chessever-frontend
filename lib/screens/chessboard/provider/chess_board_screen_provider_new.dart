@@ -29,7 +29,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:worker_manager/worker_manager.dart';
 
 const int _minPersistDepth = 20;
 const int _minPersistFullMoves = 8;
@@ -131,6 +130,7 @@ class ChessBoardScreenNotifierNew
   int? _activeEvalRequestId;
   String? _activeEvalKey;
   DateTime? _activeEvalStartTime; // Track when active eval started
+  int _consecutiveWatchdogTimeouts = 0; // Track consecutive watchdog timeouts for force recovery
   ChessGame? _analysisGame;
   ChessGameNavigatorStateManager? _analysisStateManager;
   ProviderSubscription<ChessGameNavigatorState>? _navigatorSubscription;
@@ -384,8 +384,9 @@ class ChessBoardScreenNotifierNew
       return;
     }
 
+    _consecutiveWatchdogTimeouts++;
     _releaseLog(
-      '⚠️ EVAL WATCHDOG: Stalled evaluation for $targetFen (duration: ${evalDuration.inSeconds}s), forcing restart',
+      '⚠️ EVAL WATCHDOG: Stalled evaluation for $targetFen (duration: ${evalDuration.inSeconds}s, consecutive: $_consecutiveWatchdogTimeouts), forcing restart',
     );
     _pendingEvalFen = null;
     _cancelEvalWatchdog();
@@ -400,8 +401,25 @@ class ChessBoardScreenNotifierNew
       state = AsyncValue.data(stateSnapshot.copyWith(isEvaluating: false));
     }
 
+    // If we've had multiple consecutive watchdog timeouts, the engine might be stuck
+    // Force a complete engine recovery to fix "Multiple instances" errors on Android
+    final needsForceRecovery = _consecutiveWatchdogTimeouts >= 3;
+    final stockfish = StockfishSingleton();
+
+    if (needsForceRecovery && !stockfish.isEngineHealthy) {
+      _releaseLog(
+        '🔧 EVAL WATCHDOG: Engine unhealthy after $_consecutiveWatchdogTimeouts timeouts (state: ${stockfish.engineStateDebug}), forcing recovery',
+      );
+      unawaited(stockfish.forceRecovery());
+    }
+
     // Schedule a new evaluation after a small delay
-    Future.delayed(const Duration(milliseconds: 500), () {
+    // Use longer delay if force recovery was triggered
+    final delay = needsForceRecovery
+        ? const Duration(milliseconds: 1000)
+        : const Duration(milliseconds: 500);
+
+    Future.delayed(delay, () {
       if (mounted) {
         _evaluatePosition(force: true);
       }
@@ -416,6 +434,8 @@ class ChessBoardScreenNotifierNew
     if (_pendingEvalFen == normalizedFen) {
       _pendingEvalFen = null;
       _cancelEvalWatchdog();
+      // Reset consecutive watchdog timeouts on successful evaluation
+      _consecutiveWatchdogTimeouts = 0;
     }
   }
 
@@ -3582,34 +3602,11 @@ class ChessBoardScreenNotifierNew
               .toList(),
     };
 
-    List<Map<String, dynamic>> workerResult = const [];
-    try {
-      workerResult = await workerManager.execute<List<Map<String, dynamic>>>(
-        () => _analysisLinesWorker(payload),
-        priority: WorkPriority.high,
-      );
-      // TEMPO-01-COMMENT
-      // _releaseLog(
-      //   '🎯 BUILD PV: Worker returned ${workerResult.length} results',
-      // );
-    } catch (e) {
-      _releaseLog(
-        '⚠️ BUILD PV: Worker failed: $e, falling back to main thread',
-      );
-    }
-
+    // Run analysis on main thread - the calculation is lightweight
+    final workerResult = _analysisLinesWorker(payload);
     if (workerResult.isEmpty) {
-      // TEMPO-01-COMMENT
-      // _releaseLog('🎯 BUILD PV: Worker result empty, running on main thread');
-      workerResult = _analysisLinesWorker(payload);
-      if (workerResult.isEmpty) {
-        _releaseLog('❌ BUILD PV: Main thread also returned empty result');
-        return const [];
-      }
-      // TEMPO-01-COMMENT
-      // _releaseLog(
-      //   '🎯 BUILD PV: Main thread returned ${workerResult.length} results',
-      // );
+      _releaseLog('❌ BUILD PV: Analysis returned empty result');
+      return const [];
     }
 
     final basePosition = Position.setupPosition(
@@ -4543,7 +4540,7 @@ class ChessBoardScreenNotifierNew
       );
 
       // OPTIMIZED: Try cascade (cloud sources) FIRST for speed
-      // Cascade queries local DB → Supabase → Lichess sequentially
+      // Cascade queries local DB → Supabase sequentially (Lichess removed)
       // Each source has its own timeout, so no need for overall cascade timeout
       try {
         _releaseLog(
@@ -4555,7 +4552,6 @@ class ChessBoardScreenNotifierNew
               fen: fenToAnalyze,
               multiPV: configuredMultiPV,
               isCurrentPosition: true,
-              enableLichessFallback: false,
             ),
           ).future,
         );
