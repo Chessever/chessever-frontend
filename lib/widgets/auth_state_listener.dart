@@ -13,6 +13,7 @@ import 'package:chessever2/repository/local_storage/onboarding/onboarding_reposi
 import 'package:chessever2/repository/local_storage/sesions_manager/session_manager.dart';
 import 'package:chessever2/utils/favorites_migration.dart';
 import 'package:chessever2/services/analytics/analytics_service.dart';
+import 'package:chessever2/services/push_notifications_service.dart';
 import 'package:chessever2/revenue_cat_service/revenue_cat_service.dart';
 import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:flutter/foundation.dart';
@@ -79,6 +80,11 @@ class AuthStateListener extends ConsumerWidget {
           final shouldRunSync = wasNotAuthenticated || userChanged;
 
           unawaited(AnalyticsService.instance.syncUser(authState.user));
+          if (currentUserId != null) {
+            unawaited(
+              PushNotificationsService.instance.loginUser(currentUserId),
+            );
+          }
 
           if (shouldRunSync && currentUserId != null) {
             _lastSyncedUserId = currentUserId;
@@ -221,6 +227,7 @@ class AuthStateListener extends ConsumerWidget {
           // Clear the sync tracking when user logs out
           _lastSyncedUserId = null;
           unawaited(AnalyticsService.instance.clearUser());
+          unawaited(PushNotificationsService.instance.logoutUser());
           unawaited(
             Future(() async {
               await RevenueCatService().logOut();

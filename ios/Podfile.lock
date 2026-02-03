@@ -94,7 +94,7 @@ PODS:
   - sqflite_darwin (0.0.4):
     - Flutter
     - FlutterMacOS
-  - stockfish (1.7.1):
+  - stockfish (1.7.2):
     - Flutter
   - terminate_restart (1.0.9):
     - Flutter
@@ -228,7 +228,7 @@ SPEC CHECKSUMS:
   shared_preferences_foundation: 9e1978ff2562383bd5676f64ec4e9aa8fa06a6f7
   sign_in_with_apple: c5dcc141574c8c54d5ac99dd2163c0c72ad22418
   sqflite_darwin: 20b2a3a3b70e43edae938624ce550a3cbf66a3d0
-  stockfish: 67f9bf4f28fa261dee264b35be80c9ac11b391b6
+  stockfish: 7fab38aee83e5c9f0245b486239d074b23be1e5f
   terminate_restart: 7afc8cc5b5afc86871cdb1206a584c43262702ac
   url_launcher_ios: 694010445543906933d732453a59da0a173ae33d
 

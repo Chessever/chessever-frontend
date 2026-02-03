@@ -5,7 +5,7 @@ import 'package:chessever2/repository/local_storage/onboarding/onboarding_reposi
 import 'package:chessever2/screens/onboarding/player_selection_screen.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
-import 'package:chessever2/utils/notification_service.dart';
+import 'package:chessever2/services/push_notifications_service.dart';
 import 'package:chessever2/utils/png_asset.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/country_dropdown.dart';
@@ -159,7 +159,8 @@ class OnboardingFlowScreen extends HookConsumerWidget {
                       onSignIn: () async {
                         // Request notification permission on last page of onboarding
                         unawaited(
-                          NotificationService.requestPermissionWithDialog(),
+                          PushNotificationsService.instance
+                              .requestPermissionWithDialog(),
                         );
 
                         // Mark onboarding as seen BEFORE navigating to auth

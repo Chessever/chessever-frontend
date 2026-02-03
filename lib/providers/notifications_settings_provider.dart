@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import '../repository/local_storage/notifications_repository/notifications_repository.dart';
+import '../services/push_notifications_service.dart';
 
 class NotificationsSettings {
   final bool enabled;
@@ -26,14 +29,29 @@ class NotificationsSettingsNotifier
       final savedSettings =
           await ref.read(notificationsRepository).loadNotificationsSettings();
       state = savedSettings;
+      unawaited(
+        PushNotificationsService.instance.setPushEnabled(
+          savedSettings.enabled,
+        ),
+      );
     } catch (error, _) {
       // Keep default settings on error
     }
   }
 
-  void toggleEnabled() {
-    state = state.copyWith(enabled: !state.enabled);
+  Future<void> setEnabled(bool enabled) async {
+    state = state.copyWith(enabled: enabled);
     _saveSettings();
+    if (enabled) {
+      final granted =
+          await PushNotificationsService.instance.requestPermissionWithDialog();
+      if (!granted) {
+        state = state.copyWith(enabled: false);
+        _saveSettings();
+      }
+      return;
+    }
+    unawaited(PushNotificationsService.instance.setPushEnabled(false));
   }
 
   Future<void> _saveSettings() async {

@@ -1,5 +1,4 @@
 import 'package:chessever2/repository/supabase/game/games.dart';
-import 'package:dartchess/dartchess.dart';
 
 enum GameDisplayMode { all, hideFinishedGames, showfinishedGame }
 
@@ -236,6 +235,19 @@ class GamesTourModel {
         }
       }
 
+      final normalizedEco = _normalizeEco(game.eco);
+      final normalizedOpening = _normalizeOpeningName(game.openingName);
+      String? resolvedEco = normalizedEco;
+      String? resolvedOpening = normalizedOpening;
+
+      if ((resolvedEco == null || resolvedOpening == null) &&
+          game.pgn != null &&
+          game.pgn!.isNotEmpty) {
+        final parsed = _extractOpeningFromPgn(game.pgn);
+        resolvedEco ??= parsed.eco;
+        resolvedOpening ??= parsed.opening;
+      }
+
       return GamesTourModel(
         gameId: game.id,
         whitePlayer: PlayerCard.fromPlayer(white),
@@ -257,8 +269,8 @@ class GamesTourModel {
         boardNr: game.boardNr,
         // Prefer lastMoveTime, then gameDay (round start), then dateStart.
         lastMoveTime: game.lastMoveTime ?? game.gameDay ?? game.dateStart,
-        eco: game.eco,
-        openingName: game.openingName,
+        eco: resolvedEco,
+        openingName: resolvedOpening,
         timeControl: game.timeControl,
       );
     } catch (e) {
@@ -271,6 +283,22 @@ class GamesTourModel {
   static int? _centisecondsToSeconds(int? value) {
     if (value == null || value <= 0) return null;
     return (value / 100).round();
+  }
+
+  static String? _normalizeEco(String? eco) {
+    final trimmed = eco?.trim();
+    if (trimmed == null || trimmed.isEmpty) return null;
+    final upper = trimmed.toUpperCase();
+    if (upper == '?' || upper == 'UNKNOWN') return null;
+    return trimmed;
+  }
+
+  static String? _normalizeOpeningName(String? openingName) {
+    final trimmed = openingName?.trim();
+    if (trimmed == null || trimmed.isEmpty) return null;
+    final upper = trimmed.toUpperCase();
+    if (upper == '?' || upper == 'UNKNOWN') return null;
+    return trimmed;
   }
 
   static int? normalizeClockSeconds({
@@ -315,6 +343,20 @@ class GamesTourModel {
     }
 
     return (whiteSeconds: lastWhite, blackSeconds: lastBlack);
+  }
+
+  static ({String? eco, String? opening}) _extractOpeningFromPgn(String? pgn) {
+    if (pgn == null || pgn.isEmpty) {
+      return (eco: null, opening: null);
+    }
+
+    final ecoMatch = RegExp(r'\[ECO\s+"([^"]+)"\]').firstMatch(pgn);
+    final openingMatch = RegExp(r'\[Opening\s+"([^"]+)"\]').firstMatch(pgn);
+
+    final eco = _normalizeEco(ecoMatch?.group(1));
+    final opening = _normalizeOpeningName(openingMatch?.group(1));
+
+    return (eco: eco, opening: opening);
   }
 
   static int? _parseClockStringToSeconds(String timeString) {

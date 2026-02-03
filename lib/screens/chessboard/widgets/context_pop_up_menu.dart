@@ -13,12 +13,16 @@ class ContextPopupMenu extends StatelessWidget {
     required this.isPinned,
     required this.onPinToggle,
     required this.onShare,
+    this.isLiveEnabled,
+    this.onLiveToggle,
     this.width = 120,
   });
 
   final bool isPinned;
   final VoidCallback onPinToggle;
   final VoidCallback onShare;
+  final bool? isLiveEnabled;
+  final VoidCallback? onLiveToggle;
   final double width;
 
   @override
@@ -48,6 +52,24 @@ class ContextPopupMenu extends StatelessWidget {
             ),
 
             const MenuDivider(),
+            if (onLiveToggle != null && isLiveEnabled != null) ...[
+              InkWell(
+                onTap: onLiveToggle,
+                child: Container(
+                  width: 120.w,
+                  height: 40.h,
+                  padding: EdgeInsets.symmetric(
+                    horizontal: 12.sp,
+                    vertical: 8.sp,
+                  ),
+                  child: MenuItemContent(
+                    text: isLiveEnabled! ? "Stop Live" : "Live Updates",
+                    iconAsset: SvgAsset.active,
+                  ),
+                ),
+              ),
+              const MenuDivider(),
+            ],
             InkWell(
               onTap: onShare,
               child: Container(
