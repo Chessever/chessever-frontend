@@ -11,7 +11,8 @@ final liveGameSubscriptionProvider = AutoDisposeAsyncNotifierProviderFamily<
   LiveGameSubscriptionNotifier.new,
 );
 
-class LiveGameSubscriptionNotifier extends AutoDisposeAsyncNotifier<bool> {
+class LiveGameSubscriptionNotifier
+    extends AutoDisposeFamilyAsyncNotifier<bool, String> {
   @override
   Future<bool> build(String gameId) async {
     final user = ref.watch(currentUserProvider);
