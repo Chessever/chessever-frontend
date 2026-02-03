@@ -3,6 +3,20 @@ import SwiftUI
 import WidgetKit
 import OneSignalLiveActivities
 
+private extension Dictionary where Key == String, Value == AnyCodable {
+  func asString(_ key: String) -> String? {
+    return self[key]?.asString()
+  }
+
+  func asDouble(_ key: String) -> Double? {
+    return self[key]?.asDouble()
+  }
+
+  func asInt(_ key: String) -> Int? {
+    return self[key]?.asInt()
+  }
+}
+
 private struct LiveGameState {
   let whiteName: String
   let blackName: String
