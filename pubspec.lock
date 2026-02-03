@@ -441,6 +441,30 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "7.0.1"
+  firebase_core:
+    dependency: "direct main"
+    description:
+      name: firebase_core
+      sha256: "7be63a3f841fc9663342f7f3a011a42aef6a61066943c90b1c434d79d5c995c5"
+      url: "https://pub.dev"
+    source: hosted
+    version: "3.15.2"
+  firebase_core_platform_interface:
+    dependency: transitive
+    description:
+      name: firebase_core_platform_interface
+      sha256: cccb4f572325dc14904c02fcc7db6323ad62ba02536833dddb5c02cac7341c64
+      url: "https://pub.dev"
+    source: hosted
+    version: "6.0.2"
+  firebase_core_web:
+    dependency: transitive
+    description:
+      name: firebase_core_web
+      sha256: "0ed0dc292e8f9ac50992e2394e9d336a0275b6ae400d64163fdf0a8a8b556c37"
+      url: "https://pub.dev"
+    source: hosted
+    version: "2.24.1"
   fixnum:
     dependency: transitive
     description:
@@ -949,6 +973,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.1.0"
+  onesignal_flutter:
+    dependency: "direct main"
+    description:
+      name: onesignal_flutter
+      sha256: f3b74f0ed20923bfcb8aa1b6bcdb6be49c4574b1fbae0fdcaba189f44597db37
+      url: "https://pub.dev"
+    source: hosted
+    version: "5.4.0"
   os_detect:
     dependency: transitive
     description:
