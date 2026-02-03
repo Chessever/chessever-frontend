@@ -67,8 +67,19 @@ class _PlayerEventsTabState extends ConsumerState<PlayerEventsTab>
             return _buildEmptyState();
           }
 
+          // Filter out Fischer Random/Chess960 events
+          final filteredEvents = events.where((event) {
+            final nameLower = event.tourName.toLowerCase();
+            return !nameLower.contains('fischer random') &&
+                !nameLower.contains('chess960') &&
+                !nameLower.contains('chess 960') &&
+                !nameLower.contains('frc ') &&
+                !nameLower.contains(' frc') &&
+                !nameLower.startsWith('frc');
+          }).toList();
+
           // Sort events by start date (most recent first)
-          final sortedEvents = List<PlayerEventData>.from(events)
+          final sortedEvents = List<PlayerEventData>.from(filteredEvents)
             ..sort((a, b) {
               final aDate = a.startDate ?? DateTime(1900);
               final bDate = b.startDate ?? DateTime(1900);
