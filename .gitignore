@@ -171,3 +171,9 @@ app.*.symbols
 openapi.json
 lichessopenapi.json
 promo-video/
+
+# Firebase configuration (contains API keys)
+**/google-services.json
+**/GoogleService-Info.plist
+lib/firebase_options.dart
+firebase.json
