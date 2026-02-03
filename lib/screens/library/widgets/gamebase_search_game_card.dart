@@ -230,7 +230,7 @@ class GamebaseSearchGameCard extends ConsumerWidget {
           hideEventInfo: hideEventInfo,
           showGamebaseButton: showGamebaseButton,
           disableGamebaseOverlayByDefault: true,
-          showClock: false,
+          // showClock defaults to true - show clocks for favorites/player profile/countrymen
         ),
       ),
     );
