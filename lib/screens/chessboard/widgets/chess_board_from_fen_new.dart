@@ -668,13 +668,19 @@ class _PlayerRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Show clock if game has started OR if clock data exists (favorites/countrymen games may have clock without lastMove)
+    final hasClockData = gamesTourModel.whiteClockSeconds != null ||
+        gamesTourModel.blackClockSeconds != null ||
+        gamesTourModel.whiteClockCentiseconds > 0 ||
+        gamesTourModel.blackClockCentiseconds > 0;
+
     return PlayerFirstRowDetailWidget(
       gamesTourModel: gamesTourModel,
       isWhitePlayer: isWhitePlayer,
       isCurrentPlayer: isCurrentPlayer,
       playerView: playerView,
       isPinned: isPinned,
-      showClock: gamesTourModel.hasStarted,
+      showClock: gamesTourModel.hasStarted || hasClockData,
     );
   }
 }
