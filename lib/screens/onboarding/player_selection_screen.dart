@@ -13,12 +13,12 @@ import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen_pr
 import 'package:chessever2/services/analytics/analytics_service.dart';
 import 'package:chessever2/services/fide_photo_service.dart';
 import 'package:chessever2/utils/favorites_migration.dart';
-import 'package:chessever2/utils/notification_service.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/country_utils.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/screen_wrapper.dart';
+import 'package:chessever2/services/push_notifications_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -347,7 +347,7 @@ class PlayerSelectionContent extends HookConsumerWidget {
 
 Future<void> markOnboardingComplete(BuildContext context, WidgetRef ref) async {
   // Request notification permission on last page of onboarding (fire and forget)
-  unawaited(NotificationService.requestPermissionWithDialog());
+  unawaited(PushNotificationsService.instance.requestPermissionWithDialog());
 
   // Ensure we don't lose onboarding selections: do not navigate away if we fail here
   // (user can retry without losing in-memory providers)

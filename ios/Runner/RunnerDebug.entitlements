@@ -11,5 +11,7 @@
 		<string>applinks:chessever.com</string>
 		<string>applinks:chessever.com?mode=developer</string>
 	</array>
+	<key>aps-environment</key>
+	<string>development</string>
 </dict>
 </plist>

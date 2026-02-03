@@ -10,5 +10,7 @@
 	<array>
 		<string>applinks:chessever.com</string>
 	</array>
+	<key>aps-environment</key>
+	<string>production</string>
 </dict>
 </plist>

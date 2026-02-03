@@ -44,8 +44,10 @@ import 'package:purchases_flutter/purchases_flutter.dart';
 import 'revenue_cat_service/revenue_cat_service.dart';
 import 'services/analytics/analytics_service.dart';
 import 'services/deep_link_service.dart';
+import 'services/push_notifications_service.dart';
 import 'theme/app_theme.dart';
 import 'theme/theme_provider.dart';
+import 'providers/push_token_sync_provider.dart';
 
 final RouteObserver<ModalRoute<void>> routeObserver =
     RouteObserver<ModalRoute<void>>();
@@ -105,6 +107,10 @@ const Map<String, String> _releaseEnvValues = {
     'RevenueCatAPIKey',
     defaultValue: '',
   ),
+  'ONESIGNAL_APP_ID': String.fromEnvironment(
+    'ONESIGNAL_APP_ID',
+    defaultValue: '',
+  ),
 };
 
 String _resolveAmplitudeApiKey() {
@@ -113,6 +119,14 @@ String _resolveAmplitudeApiKey() {
     if (envApiKey.isNotEmpty) return envApiKey;
   } catch (_) {}
   return AnalyticsService.fallbackApiKey;
+}
+
+String _resolveOneSignalAppId() {
+  try {
+    final envAppId = _getEnv('ONESIGNAL_APP_ID');
+    if (envAppId.isNotEmpty) return envAppId;
+  } catch (_) {}
+  return '';
 }
 
 Future<void> main() async {
@@ -186,6 +200,13 @@ Future<void> main() async {
         url: supabaseUrl,
         anonKey: supabaseAnonKey,
         authOptions: authOptions,
+      );
+
+      // Initialize OneSignal (non-blocking)
+      unawaited(
+        PushNotificationsService.instance.initialize(
+          appId: _resolveOneSignalAppId(),
+        ),
       );
 
       // Non-critical initializers - run in parallel, don't block app startup
@@ -384,6 +405,7 @@ class MyApp extends HookConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final themeMode = ref.watch(themeModeProvider);
     final locale = ref.watch(localeProvider);
+    ref.watch(pushTokenSyncProvider);
 
     /// Initializing Responsive Unit
     ResponsiveHelper.init(context);

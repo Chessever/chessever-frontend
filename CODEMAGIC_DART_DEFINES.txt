@@ -13,7 +13,8 @@ flutter build apk --release \
   --dart-define=APPLE_BUNDLE_ID="$APPLE_BUNDLE_ID" \
   --dart-define=SENTRY_FLUTTER="$SENTRY_FLUTTER" \
   --dart-define=AMPLITUDE="$AMPLITUDE" \
-  --dart-define=CLARITY_PROJECT_ID="$CLARITY_PROJECT_ID"
+  --dart-define=CLARITY_PROJECT_ID="$CLARITY_PROJECT_ID" \
+  --dart-define=ONESIGNAL_APP_ID="$ONESIGNAL_APP_ID"
 ```
 
 ## For Android App Bundle
@@ -29,7 +30,8 @@ flutter build appbundle --release \
   --dart-define=APPLE_BUNDLE_ID="$APPLE_BUNDLE_ID" \
   --dart-define=SENTRY_FLUTTER="$SENTRY_FLUTTER" \
   --dart-define=AMPLITUDE="$AMPLITUDE" \
-  --dart-define=CLARITY_PROJECT_ID="$CLARITY_PROJECT_ID"
+  --dart-define=CLARITY_PROJECT_ID="$CLARITY_PROJECT_ID" \
+  --dart-define=ONESIGNAL_APP_ID="$ONESIGNAL_APP_ID"
 ```
 
 ## For iOS Build (IPA)
@@ -45,7 +47,8 @@ flutter build ipa --release \
   --dart-define=APPLE_BUNDLE_ID="$APPLE_BUNDLE_ID" \
   --dart-define=SENTRY_FLUTTER="$SENTRY_FLUTTER" \
   --dart-define=AMPLITUDE="$AMPLITUDE" \
-  --dart-define=CLARITY_PROJECT_ID="$CLARITY_PROJECT_ID"
+  --dart-define=CLARITY_PROJECT_ID="$CLARITY_PROJECT_ID" \
+  --dart-define=ONESIGNAL_APP_ID="$ONESIGNAL_APP_ID"
 ```
 
 ## For iOS Archive (Xcode build)
@@ -61,19 +64,20 @@ flutter build ios --release \
   --dart-define=APPLE_BUNDLE_ID="$APPLE_BUNDLE_ID" \
   --dart-define=SENTRY_FLUTTER="$SENTRY_FLUTTER" \
   --dart-define=AMPLITUDE="$AMPLITUDE" \
-  --dart-define=CLARITY_PROJECT_ID="$CLARITY_PROJECT_ID"
+  --dart-define=CLARITY_PROJECT_ID="$CLARITY_PROJECT_ID" \
+  --dart-define=ONESIGNAL_APP_ID="$ONESIGNAL_APP_ID"
 ```
 
 ## Single-Line Format (if needed)
 
 For Android APK:
 ```bash
-flutter build apk --release --dart-define=SUPABASE_URL="$SUPABASE_URL" --dart-define=SUPABASE_ANON_KEY="$SUPABASE_ANON_KEY" --dart-define=GOOGLE_WEB_CLIENT_ID="$GOOGLE_WEB_CLIENT_ID" --dart-define=RevenueCatAPIKey="$RevenueCatAPIKey" --dart-define=APPLE_SERVICE_ID="$APPLE_SERVICE_ID" --dart-define=APPLE_REDIRECT_URI="$APPLE_REDIRECT_URI" --dart-define=APPLE_BUNDLE_ID="$APPLE_BUNDLE_ID" --dart-define=SENTRY_FLUTTER="$SENTRY_FLUTTER" --dart-define=AMPLITUDE="$AMPLITUDE" --dart-define=CLARITY_PROJECT_ID="$CLARITY_PROJECT_ID"
+flutter build apk --release --dart-define=SUPABASE_URL="$SUPABASE_URL" --dart-define=SUPABASE_ANON_KEY="$SUPABASE_ANON_KEY" --dart-define=GOOGLE_WEB_CLIENT_ID="$GOOGLE_WEB_CLIENT_ID" --dart-define=RevenueCatAPIKey="$RevenueCatAPIKey" --dart-define=APPLE_SERVICE_ID="$APPLE_SERVICE_ID" --dart-define=APPLE_REDIRECT_URI="$APPLE_REDIRECT_URI" --dart-define=APPLE_BUNDLE_ID="$APPLE_BUNDLE_ID" --dart-define=SENTRY_FLUTTER="$SENTRY_FLUTTER" --dart-define=AMPLITUDE="$AMPLITUDE" --dart-define=CLARITY_PROJECT_ID="$CLARITY_PROJECT_ID" --dart-define=ONESIGNAL_APP_ID="$ONESIGNAL_APP_ID"
 ```
 
 For iOS IPA:
 ```bash
-flutter build ipa --release --dart-define=SUPABASE_URL="$SUPABASE_URL" --dart-define=SUPABASE_ANON_KEY="$SUPABASE_ANON_KEY" --dart-define=GOOGLE_WEB_CLIENT_ID="$GOOGLE_WEB_CLIENT_ID" --dart-define=RevenueCatAPIKey="$RevenueCatAPIKey" --dart-define=APPLE_SERVICE_ID="$APPLE_SERVICE_ID" --dart-define=APPLE_REDIRECT_URI="$APPLE_REDIRECT_URI" --dart-define=APPLE_BUNDLE_ID="$APPLE_BUNDLE_ID" --dart-define=SENTRY_FLUTTER="$SENTRY_FLUTTER" --dart-define=AMPLITUDE="$AMPLITUDE" --dart-define=CLARITY_PROJECT_ID="$CLARITY_PROJECT_ID"
+flutter build ipa --release --dart-define=SUPABASE_URL="$SUPABASE_URL" --dart-define=SUPABASE_ANON_KEY="$SUPABASE_ANON_KEY" --dart-define=GOOGLE_WEB_CLIENT_ID="$GOOGLE_WEB_CLIENT_ID" --dart-define=RevenueCatAPIKey="$RevenueCatAPIKey" --dart-define=APPLE_SERVICE_ID="$APPLE_SERVICE_ID" --dart-define=APPLE_REDIRECT_URI="$APPLE_REDIRECT_URI" --dart-define=APPLE_BUNDLE_ID="$APPLE_BUNDLE_ID" --dart-define=SENTRY_FLUTTER="$SENTRY_FLUTTER" --dart-define=AMPLITUDE="$AMPLITUDE" --dart-define=CLARITY_PROJECT_ID="$CLARITY_PROJECT_ID" --dart-define=ONESIGNAL_APP_ID="$ONESIGNAL_APP_ID"
 ```
 
 ## Notes:
