@@ -26,6 +26,11 @@ class SettingsDialog extends ConsumerWidget {
           width: 20.w,
           SvgAsset.boardSettings,
         ),
+        notificationSettingsIcon: Icon(
+          Icons.notifications_active_outlined,
+          color: Colors.white,
+          size: 20.h,
+        ),
         onBoardSettingsPressed: () async {
           final allowed = await requireFullAuthGuard(context);
           if (!allowed || !context.mounted) return;
