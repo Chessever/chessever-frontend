@@ -2,6 +2,7 @@ import ActivityKit
 import SwiftUI
 import WidgetKit
 import OneSignalLiveActivities
+import UIKit
 
 // MARK: - Dictionary Helper Extensions
 
@@ -65,6 +66,12 @@ private enum ChessDesign {
 private struct LiveGameState {
   let whiteName: String
   let blackName: String
+  let shortWhiteName: String
+  let shortBlackName: String
+  let whiteTitle: String?
+  let blackTitle: String?
+  let whiteFed: String?
+  let blackFed: String?
   let lastMove: String
   let lastMoveUci: String?
   let fen: String
@@ -86,6 +93,16 @@ private struct LiveGameState {
     let attrData = context.attributes.data
     whiteName = data.asString("player_white") ?? "White"
     blackName = data.asString("player_black") ?? "Black"
+    whiteTitle = data.asString("white_title") ?? attrData.asString("white_title")
+    blackTitle = data.asString("black_title") ?? attrData.asString("black_title")
+    whiteFed = LiveGameState.normalizeFed(
+      data.asString("white_fed") ?? attrData.asString("white_fed")
+    )
+    blackFed = LiveGameState.normalizeFed(
+      data.asString("black_fed") ?? attrData.asString("black_fed")
+    )
+    shortWhiteName = LiveGameState.shortDisplayName(whiteName)
+    shortBlackName = LiveGameState.shortDisplayName(blackName)
     lastMove = data.asString("last_move_numbered") ??
       data.asString("last_move_san") ??
       data.asString("last_move") ??
@@ -225,6 +242,26 @@ private struct LiveGameState {
     }
     return squares
   }
+
+  private static func shortDisplayName(_ name: String) -> String {
+    let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+    if trimmed.contains(",") {
+      let parts = trimmed.split(separator: ",")
+      if let last = parts.first {
+        return String(last).trimmingCharacters(in: .whitespaces)
+      }
+    }
+    let words = trimmed.split(separator: " ")
+    if words.count > 1 {
+      return String(words.last ?? words[0])
+    }
+    return trimmed
+  }
+
+  private static func normalizeFed(_ value: String?) -> String? {
+    guard let value, !value.isEmpty else { return nil }
+    return value.uppercased()
+  }
 }
 
 private struct ClockState {
@@ -259,16 +296,20 @@ struct ChessEverLiveActivityWidget: Widget {
       return DynamicIsland {
         // Expanded view - Beautiful full layout
         DynamicIslandExpandedRegion(.leading) {
-          DynamicIslandAvatar(
-            name: state.whiteName,
+          DynamicIslandPlayerBadge(
+            name: state.shortWhiteName,
+            title: state.whiteTitle,
+            fed: state.whiteFed,
             photoUrl: state.whitePhoto,
             isWhite: true,
             isAdvantage: state.isWhiteAdvantage
           )
         }
         DynamicIslandExpandedRegion(.trailing) {
-          DynamicIslandAvatar(
-            name: state.blackName,
+          DynamicIslandPlayerBadge(
+            name: state.shortBlackName,
+            title: state.blackTitle,
+            fed: state.blackFed,
             photoUrl: state.blackPhoto,
             isWhite: false,
             isAdvantage: !state.isWhiteAdvantage
@@ -276,8 +317,13 @@ struct ChessEverLiveActivityWidget: Widget {
         }
         DynamicIslandExpandedRegion(.center) {
           VStack(spacing: 4) {
-            EvalBarHorizontal(evalCp: state.evalCp, evalMate: state.evalMate)
-              .frame(width: 90, height: 8)
+            HStack(spacing: 6) {
+              EvalBarHorizontal(evalCp: state.evalCp, evalMate: state.evalMate)
+                .frame(width: 70, height: 8)
+              Text(state.evalText)
+                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                .foregroundStyle(ChessDesign.textSecondary)
+            }
 
             Text(state.lastMove)
               .font(.system(size: 14, weight: .heavy, design: .monospaced))
@@ -375,11 +421,13 @@ private struct LockScreenView: View {
         // Players section
         VStack(alignment: .leading, spacing: 6) {
           PlayerInfoRow(
-            name: state.whiteName,
-            photoUrl: state.whitePhoto,
-            isWhite: true,
-            isAdvantage: state.isWhiteAdvantage,
-            clock: state.clockState(isWhite: true)
+            name: state.blackName,
+            photoUrl: state.blackPhoto,
+            isWhite: false,
+            isAdvantage: !state.isWhiteAdvantage,
+            clock: state.clockState(isWhite: false),
+            title: state.blackTitle,
+            fed: state.blackFed
           )
 
           // VS divider
@@ -397,11 +445,13 @@ private struct LockScreenView: View {
           .frame(height: 12)
 
           PlayerInfoRow(
-            name: state.blackName,
-            photoUrl: state.blackPhoto,
-            isWhite: false,
-            isAdvantage: !state.isWhiteAdvantage,
-            clock: state.clockState(isWhite: false)
+            name: state.whiteName,
+            photoUrl: state.whitePhoto,
+            isWhite: true,
+            isAdvantage: state.isWhiteAdvantage,
+            clock: state.clockState(isWhite: true),
+            title: state.whiteTitle,
+            fed: state.whiteFed
           )
         }
         .padding(.bottom, 10)
@@ -447,6 +497,8 @@ private struct PlayerInfoRow: View {
   let isWhite: Bool
   let isAdvantage: Bool
   let clock: ClockState?
+  let title: String?
+  let fed: String?
 
   var body: some View {
     HStack(spacing: 8) {
@@ -456,15 +508,31 @@ private struct PlayerInfoRow: View {
             .strokeBorder(isAdvantage ? ChessDesign.accent : Color.clear, lineWidth: 2)
         )
 
-      Text(name)
-        .font(.system(size: 13, weight: isAdvantage ? .bold : .medium))
-        .foregroundStyle(isAdvantage ? ChessDesign.white : ChessDesign.textSecondary)
-        .lineLimit(1)
+      VStack(alignment: .leading, spacing: 2) {
+        Text(name)
+          .font(.system(size: 13, weight: isAdvantage ? .bold : .medium))
+          .foregroundStyle(isAdvantage ? ChessDesign.white : ChessDesign.textSecondary)
+          .lineLimit(1)
+
+        if !metaText.isEmpty {
+          Text(metaText)
+            .font(.system(size: 9, weight: .medium))
+            .foregroundStyle(ChessDesign.textSecondary)
+            .lineLimit(1)
+        }
+      }
 
       Spacer(minLength: 6)
 
       LiveClockPill(clock: clock, isWhite: isWhite)
     }
+  }
+
+  private var metaText: String {
+    [title, fed]
+      .compactMap { $0 }
+      .filter { !$0.isEmpty }
+      .joined(separator: " • ")
   }
 }
 
@@ -483,6 +551,48 @@ private struct DynamicIslandAvatar: View {
           .frame(width: 40, height: 40)
       }
     }
+  }
+}
+
+private struct DynamicIslandPlayerBadge: View {
+  let name: String
+  let title: String?
+  let fed: String?
+  let photoUrl: String?
+  let isWhite: Bool
+  let isAdvantage: Bool
+
+  var body: some View {
+    VStack(spacing: 3) {
+      DynamicIslandAvatar(
+        name: name,
+        photoUrl: photoUrl,
+        isWhite: isWhite,
+        isAdvantage: isAdvantage
+      )
+
+      Text(name)
+        .font(.system(size: 9, weight: .semibold))
+        .foregroundStyle(ChessDesign.white)
+        .lineLimit(1)
+        .minimumScaleFactor(0.6)
+
+      if !metaText.isEmpty {
+        Text(metaText)
+          .font(.system(size: 7, weight: .medium))
+          .foregroundStyle(ChessDesign.textSecondary)
+          .lineLimit(1)
+          .minimumScaleFactor(0.7)
+      }
+    }
+    .frame(maxWidth: 72)
+  }
+
+  private var metaText: String {
+    [title, fed]
+      .compactMap { $0 }
+      .filter { !$0.isEmpty }
+      .joined(separator: " • ")
   }
 }
 
@@ -529,20 +639,27 @@ private struct LiveClockPill: View {
 
     return HStack(spacing: 4) {
       if let clock {
+        let width = chipWidth(for: clock.seconds, compact: compact)
         if clock.isRunning, let endDate = clock.endDate {
           let safeEnd = endDate > Date() ? endDate : Date()
           Text(timerInterval: Date()...safeEnd, countsDown: true)
             .font(.system(size: fontSize, weight: .bold, design: .monospaced))
+            .monospacedDigit()
             .foregroundStyle(ChessDesign.white)
+            .frame(width: width, alignment: .center)
         } else {
           Text(formatSeconds(clock.seconds))
             .font(.system(size: fontSize, weight: .bold, design: .monospaced))
+            .monospacedDigit()
             .foregroundStyle(ChessDesign.white)
+            .frame(width: width, alignment: .center)
         }
       } else {
         Text("--:--")
           .font(.system(size: fontSize, weight: .medium, design: .monospaced))
+          .monospacedDigit()
           .foregroundStyle(ChessDesign.textSecondary)
+          .frame(width: chipWidth(for: 0, compact: compact), alignment: .center)
       }
     }
     .padding(.vertical, verticalPadding)
@@ -570,6 +687,14 @@ private struct LiveClockPill: View {
     }
     return String(format: "%d:%02d", minutes, secs)
   }
+
+  private func chipWidth(for seconds: Int, compact: Bool) -> CGFloat {
+    let hours = max(0, seconds) / 3600
+    if hours > 0 {
+      return compact ? 54 : 74
+    }
+    return compact ? 44 : 60
+  }
 }
 
 private struct InitialsView: View {
@@ -580,6 +705,10 @@ private struct InitialsView: View {
   var body: some View {
     Text(initials)
       .font(.system(size: size * 0.38, weight: .bold))
+      .lineLimit(1)
+      .minimumScaleFactor(0.6)
+      .allowsTightening(true)
+      .frame(width: size * 0.9, height: size * 0.9, alignment: .center)
       .foregroundStyle(isWhite ? ChessDesign.blackPiece : ChessDesign.whitePiece)
   }
 
@@ -791,27 +920,21 @@ private struct MiniBoard: View {
 
             // Draw piece
             if let piece = board.pieceAt(rank: rank, file: file) {
-              let inset = sq * 0.12
+              let inset = sq * 0.08
               let pieceRect = rect.insetBy(dx: inset, dy: inset)
-              let fillColor = piece.isWhite ? ChessDesign.whitePiece : ChessDesign.blackPiece
-              let textColor = piece.isWhite ? ChessDesign.blackPiece : ChessDesign.whitePiece
-
-              context.fill(Path(ellipseIn: pieceRect), with: .color(fillColor))
-              context.stroke(
-                Path(ellipseIn: pieceRect),
-                with: .color(Color.black.opacity(piece.isWhite ? 0.2 : 0.6)),
-                lineWidth: 1
-              )
-
-              let text = Text(piece.label)
-                .font(.system(size: sq * 0.45, weight: .bold, design: .rounded))
-                .foregroundColor(textColor)
-
-              context.draw(
-                context.resolve(text),
-                at: CGPoint(x: rect.midX, y: rect.midY + 0.2),
-                anchor: .center
-              )
+              if let uiImage = PieceImageProvider.image(for: piece) {
+                let image = Image(uiImage: uiImage)
+                context.draw(image, in: pieceRect)
+              } else if let label = piece.assetName?.suffix(1) {
+                let fallback = Text(String(label))
+                  .font(.system(size: sq * 0.45, weight: .bold, design: .rounded))
+                  .foregroundColor(piece.isWhite ? ChessDesign.whitePiece : ChessDesign.blackPiece)
+                context.draw(
+                  context.resolve(fallback),
+                  at: CGPoint(x: rect.midX, y: rect.midY + 0.2),
+                  anchor: .center
+                )
+              }
             }
           }
         }
@@ -862,15 +985,36 @@ private struct FenPiece {
     raw.isUppercase
   }
 
-  var label: String {
+  var assetName: String? {
     switch raw {
-    case "K", "k": return "K"
-    case "Q", "q": return "Q"
-    case "R", "r": return "R"
-    case "B", "b": return "B"
-    case "N", "n": return "N"
-    case "P", "p": return "P"
-    default: return "?"
+    case "K": return "wK"
+    case "Q": return "wQ"
+    case "R": return "wR"
+    case "B": return "wB"
+    case "N": return "wN"
+    case "P": return "wP"
+    case "k": return "bK"
+    case "q": return "bQ"
+    case "r": return "bR"
+    case "b": return "bB"
+    case "n": return "bN"
+    case "p": return "bP"
+    default: return nil
     }
+  }
+}
+
+private enum PieceImageProvider {
+  private static var cache: [String: UIImage] = [:]
+
+  static func image(for piece: FenPiece) -> UIImage? {
+    guard let name = piece.assetName else { return nil }
+    if let cached = cache[name] { return cached }
+    guard let path = Bundle.main.path(forResource: name, ofType: "png", inDirectory: "Pieces/cburnett") else {
+      return nil
+    }
+    guard let image = UIImage(contentsOfFile: path) else { return nil }
+    cache[name] = image
+    return image
   }
 }

@@ -82,6 +82,9 @@
         // Ensure okhttp is present for Amplitude's Android core (R8 was missing HttpUrl)
         implementation("com.squareup.okhttp3:okhttp:4.12.0")
 
+        // OneSignal Android SDK for notification service extension
+        implementation("com.onesignal:OneSignal:[5.0.0, 6.0.0)")
+
         // Core library desugaring dependency
         coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
 

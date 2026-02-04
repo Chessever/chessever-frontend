@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { Chess } from "https://esm.sh/chess.js@1.0.0";
 
 type OutboxItem = {
   id: string;
@@ -54,11 +55,19 @@ type EvalSnapshot = {
   depth: number | null;
 };
 
+type CheckState = {
+  isCheck: boolean;
+  isCheckmate: boolean;
+};
+
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_SERVICE_ROLE_KEY =
-  Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+  Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ??
+    Deno.env.get("SERVICE_ROLE_KEY") ??
+    "";
 const ONESIGNAL_APP_ID = Deno.env.get("ONESIGNAL_APP_ID") ?? "";
 const ONESIGNAL_REST_API_KEY = Deno.env.get("ONESIGNAL_REST_API_KEY") ?? "";
+const LICHESS_CLOUD_EVAL_KEY = Deno.env.get("LICHESS_CLOUD_EVAL_KEY") ?? "";
 
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
   throw new Error("Missing Supabase environment variables.");
@@ -73,6 +82,12 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
 
 const jsonHeaders = { "Content-Type": "application/json" };
 const fidePhotoCache = new Map<number, string | null>();
+const CLOUD_EVAL_MAX_REQUESTS = 3;
+const cloudEvalCache = new Map<string, EvalSnapshot | null>();
+
+type CloudEvalState = {
+  remaining: number;
+};
 
 Deno.serve(async (req) => {
   if (req.method !== "POST") {
@@ -89,9 +104,12 @@ Deno.serve(async (req) => {
 
   const items = await fetchPending(limit);
   const results: Array<Record<string, unknown>> = [];
+  const cloudEvalState: CloudEvalState = {
+    remaining: CLOUD_EVAL_MAX_REQUESTS,
+  };
 
   for (const item of items) {
-    const result = await processItem(item);
+    const result = await processItem(item, cloudEvalState);
     results.push(result);
   }
 
@@ -120,7 +138,7 @@ async function fetchPending(limit: number): Promise<OutboxItem[]> {
   return (data ?? []) as OutboxItem[];
 }
 
-async function processItem(item: OutboxItem) {
+async function processItem(item: OutboxItem, cloudEvalState: CloudEvalState) {
   const claimOk = await markProcessing(item.id, item.attempts);
   if (!claimOk) {
     return { id: item.id, status: "skipped", reason: "already_claimed" };
@@ -158,7 +176,10 @@ async function processItem(item: OutboxItem) {
       }
 
       const fen = (item.payload?.fen as string) ?? context.game?.fen ?? null;
-      const evalSnapshots = await fetchEvalSnapshots(fen ? [fen] : []);
+      const evalSnapshots = await fetchEvalSnapshots(fen ? [fen] : [], {
+        allowCloudEval: true,
+        cloudEvalState,
+      });
       const evalSnapshot = fen ? evalSnapshots.get(fen) ?? null : null;
 
       const livePayload = await buildLiveUpdatePayload({
@@ -167,15 +188,33 @@ async function processItem(item: OutboxItem) {
         evalSnapshot,
       });
 
+      const iosNotFound: string[] = [];
       for (const row of iosEligible) {
         const activityId = buildLiveActivityId(item.game_id, row.user_id);
-        await sendLiveActivityUpdate(activityId, livePayload);
+        const updateResult = await sendLiveActivityUpdate(
+          activityId,
+          livePayload,
+        );
+        if (!updateResult.ok && updateResult.notFound) {
+          iosNotFound.push(row.user_id);
+        }
+        if (livePayload.is_game_over) {
+          await sendLiveActivityEnd(activityId);
+        }
       }
 
       if (iosEligible.length > 0) {
         await markLiveSubscriptionEvent({
           gameId: item.game_id,
           userIds: iosEligible.map((row) => row.user_id),
+          platform: "ios",
+        });
+      }
+
+      if (iosNotFound.length > 0) {
+        await disableLiveSubscriptions({
+          gameId: item.game_id,
+          userIds: iosNotFound,
           platform: "ios",
         });
       }
@@ -194,31 +233,63 @@ async function processItem(item: OutboxItem) {
         androidExistingUsers,
       );
 
-      if (newSubscriptionIds.length > 0) {
-        await sendAndroidLiveNotification({
-          subscriptionIds: newSubscriptionIds,
-          livePayload,
-          event: "start",
-        });
-        await markLiveSubscriptionEvent({
-          gameId: item.game_id,
-          userIds: androidNewUsers,
-          platform: "android",
-          markStarted: true,
-        });
-      }
+      if (!livePayload.is_game_over) {
+        if (newSubscriptionIds.length > 0) {
+          await sendAndroidLiveNotification({
+            subscriptionIds: newSubscriptionIds,
+            livePayload,
+            event: "start",
+          });
+          await markLiveSubscriptionEvent({
+            gameId: item.game_id,
+            userIds: androidNewUsers,
+            platform: "android",
+            markStarted: true,
+          });
+        }
 
-      if (existingSubscriptionIds.length > 0) {
+        if (existingSubscriptionIds.length > 0) {
+          await sendAndroidLiveNotification({
+            subscriptionIds: existingSubscriptionIds,
+            livePayload,
+            event: "update",
+          });
+          await markLiveSubscriptionEvent({
+            gameId: item.game_id,
+            userIds: androidExistingUsers,
+            platform: "android",
+          });
+        }
+      } else if (existingSubscriptionIds.length > 0) {
         await sendAndroidLiveNotification({
           subscriptionIds: existingSubscriptionIds,
           livePayload,
-          event: "update",
+          event: "end",
         });
-        await markLiveSubscriptionEvent({
-          gameId: item.game_id,
-          userIds: androidExistingUsers,
-          platform: "android",
-        });
+      }
+
+      if (livePayload.is_game_over) {
+        const allUsers = [...androidNewUsers, ...androidExistingUsers];
+        if (allUsers.length > 0) {
+          await disableLiveSubscriptions({
+            gameId: item.game_id,
+            userIds: allUsers,
+            platform: "android",
+          });
+        }
+      }
+
+      const alertReason = resolveLiveAlertReason(livePayload);
+      if (alertReason) {
+        const alertUsers = Array.from(
+          new Set([
+            ...iosEligible.map((row) => row.user_id),
+            ...androidEligible.map((row) => row.user_id),
+          ]),
+        );
+        if (alertUsers.length > 0) {
+          await sendLiveGameAlert(alertUsers, livePayload, alertReason);
+        }
       }
 
       await markSent(item.id);
@@ -665,6 +736,20 @@ async function filterLiveUpdateEnabled(userIds: string[]) {
   return filtered;
 }
 
+async function disableLiveSubscriptions(args: {
+  gameId: string;
+  userIds: string[];
+  platform: "ios" | "android";
+}) {
+  if (args.userIds.length === 0) return;
+  await supabase
+    .from("user_live_game_subscriptions")
+    .update({ enabled: false })
+    .eq("game_id", args.gameId)
+    .eq("platform", args.platform)
+    .in("user_id", args.userIds);
+}
+
 async function fetchAndroidSubscriptionIds(userIds: string[]) {
   if (userIds.length === 0) return [];
 
@@ -760,6 +845,8 @@ type NotificationPayload = {
   url: string | null;
   data: Record<string, unknown>;
   androidChannelId?: string;
+  iosSound?: string;
+  androidSound?: string;
 };
 
 type LiveUpdatePayload = {
@@ -782,12 +869,21 @@ type LiveUpdatePayload = {
   black_fide_id: number | null;
   white_photo: string | null;
   black_photo: string | null;
+  white_title: string | null;
+  black_title: string | null;
+  white_fed: string | null;
+  black_fed: string | null;
+  is_check: boolean;
+  is_checkmate: boolean;
+  is_game_over: boolean;
+  status: string | null;
 };
 
 const ANDROID_CHANNELS = {
   favorites: "fav_updates",
   headsUp: "heads_up",
   live: "live_updates",
+  liveAlerts: "live_alerts",
   general: "general",
 } as const;
 
@@ -943,6 +1039,7 @@ async function buildLiveUpdatePayload(args: {
   const lastMoveUci = (payload.last_move_uci as string) ?? lastMove;
   const lastMoveTime = (payload.last_move_time as string) ??
     args.context.game?.last_move_time ?? null;
+  const status = (payload.status as string) ?? args.context.game?.status ?? null;
   const whiteClockSeconds =
     (payload.last_clock_white as number | null) ??
     args.context.game?.last_clock_white ?? null;
@@ -952,17 +1049,27 @@ async function buildLiveUpdatePayload(args: {
   const players = (payload.players as Record<string, unknown>[] | null) ??
     args.context.game?.players ?? null;
 
-  const san = uciToSan(lastMoveUci, fen);
+  const checkState = analyzePosition(fen);
+  const rawSan = uciToSan(lastMoveUci, fen);
+  const san = appendCheckSuffix(rawSan, checkState);
   const numbered = formatMoveWithNumber(san, fen);
   const { whiteFide, blackFide } = extractFideIdsFromPlayers(
     players,
     white,
     black,
   );
+  const { whiteTitle, blackTitle, whiteFed, blackFed } = extractPlayerMeta(
+    players,
+    white,
+    black,
+    whiteFide,
+    blackFide,
+  );
   const [whitePhoto, blackPhoto] = await Promise.all([
     fetchFidePhotoUrl(whiteFide),
     fetchFidePhotoUrl(blackFide),
   ]);
+  const isGameOver = isGameOverStatus(status);
 
   return {
     game_id: args.item.game_id ?? "",
@@ -984,6 +1091,14 @@ async function buildLiveUpdatePayload(args: {
     black_fide_id: blackFide,
     white_photo: whitePhoto,
     black_photo: blackPhoto,
+    white_title: whiteTitle,
+    black_title: blackTitle,
+    white_fed: whiteFed,
+    black_fed: blackFed,
+    is_check: checkState.isCheck,
+    is_checkmate: checkState.isCheckmate,
+    is_game_over: isGameOver,
+    status,
   };
 }
 
@@ -1061,6 +1176,31 @@ function uciToSan(uci: string | null, fen: string | null) {
   return move;
 }
 
+function analyzePosition(fen: string | null): CheckState {
+  if (!fen) return { isCheck: false, isCheckmate: false };
+  try {
+    const chess = new Chess(fen);
+    return { isCheck: chess.isCheck(), isCheckmate: chess.isCheckmate() };
+  } catch (_) {
+    return { isCheck: false, isCheckmate: false };
+  }
+}
+
+function appendCheckSuffix(move: string | null, checkState: CheckState) {
+  if (!move) return move;
+  if (move.includes("#") || move.includes("+")) return move;
+  if (checkState.isCheckmate) return `${move}#`;
+  if (checkState.isCheck) return `${move}+`;
+  return move;
+}
+
+function isGameOverStatus(status: string | null) {
+  if (!status) return false;
+  const trimmed = status.trim().toLowerCase();
+  if (trimmed.length === 0) return false;
+  return trimmed !== "*" && trimmed !== "ongoing";
+}
+
 function formatMoveWithNumber(move: string | null, fen: string | null) {
   if (!move || !fen) return move;
   const parts = fen.split(" ");
@@ -1095,6 +1235,47 @@ function extractFideIdsFromPlayers(
   }
 
   return { whiteFide, blackFide };
+}
+
+function extractPlayerMeta(
+  players: Record<string, unknown>[] | null,
+  whiteName: string | null,
+  blackName: string | null,
+  whiteFide: number | null,
+  blackFide: number | null,
+) {
+  let whiteTitle: string | null = null;
+  let blackTitle: string | null = null;
+  let whiteFed: string | null = null;
+  let blackFed: string | null = null;
+
+  if (Array.isArray(players)) {
+    for (const raw of players) {
+      const name = (raw?.name as string | undefined) ?? null;
+      const fideId = raw?.fideId as number | undefined;
+      const title = (raw?.title as string | undefined) ?? null;
+      const fed = (raw?.fed as string | undefined) ?? null;
+
+      if (whiteFide && fideId === whiteFide) {
+        whiteTitle = title;
+        whiteFed = fed;
+      } else if (blackFide && fideId === blackFide) {
+        blackTitle = title;
+        blackFed = fed;
+      }
+
+      if (name && whiteName && name === whiteName && whiteTitle == null) {
+        whiteTitle = title;
+        whiteFed = fed;
+      }
+      if (name && blackName && name === blackName && blackTitle == null) {
+        blackTitle = title;
+        blackFed = fed;
+      }
+    }
+  }
+
+  return { whiteTitle, blackTitle, whiteFed, blackFed };
 }
 
 async function fetchFidePhotoUrl(fideId: number | null) {
@@ -1146,18 +1327,47 @@ function extractEvalFromPvs(pvs: unknown): EvalSnapshot | null {
   return { cp, mate, depth: null };
 }
 
-async function fetchEvalSnapshots(fens: string[]) {
+async function fetchEvalSnapshots(
+  fens: string[],
+  options?: {
+    allowCloudEval?: boolean;
+    cloudEvalState?: CloudEvalState;
+  },
+) {
   const result = new Map<string, EvalSnapshot>();
   if (fens.length === 0) return result;
+
+  const uniqueFens = Array.from(new Set(fens));
 
   const { data: positions } = await supabase
     .from("positions")
     .select("id,fen")
-    .in("fen", fens);
+    .in("fen", uniqueFens);
 
-  if (!positions || positions.length === 0) return result;
+  const existingPositions = positions ?? [];
+  const existingByFen = new Map<string, number>();
+  for (const row of existingPositions) {
+    existingByFen.set(row.fen as string, row.id as number);
+  }
 
-  const posIds = positions.map((row) => row.id as number);
+  const missingFens = uniqueFens.filter((fen) => !existingByFen.has(fen));
+  if (missingFens.length > 0 && options?.allowCloudEval) {
+    await supabase
+      .from("positions")
+      .upsert(
+        missingFens.map((fen) => ({ fen })),
+        { onConflict: "fen", ignoreDuplicates: true },
+      );
+  }
+
+  const { data: refreshedPositions } = await supabase
+    .from("positions")
+    .select("id,fen")
+    .in("fen", uniqueFens);
+
+  if (!refreshedPositions || refreshedPositions.length === 0) return result;
+
+  const posIds = refreshedPositions.map((row) => row.id as number);
   const { data: evalRows } = await supabase
     .from("evals")
     .select("position_id,depth,pvs,multi_pv")
@@ -1193,7 +1403,8 @@ async function fetchEvalSnapshots(fens: string[]) {
     }
   }
 
-  for (const pos of positions) {
+  const evalByFen = new Map<string, EvalSnapshot>();
+  for (const pos of refreshedPositions) {
     const posId = pos.id as number;
     const fen = pos.fen as string;
     const best = bestByPosition.get(posId);
@@ -1202,10 +1413,134 @@ async function fetchEvalSnapshots(fens: string[]) {
     if (snapshot) {
       snapshot.depth = best.depth ?? null;
       result.set(fen, snapshot);
+      evalByFen.set(fen, snapshot);
+    }
+  }
+
+  if (!options?.allowCloudEval || !options.cloudEvalState) {
+    return result;
+  }
+
+  const missingEvalFens = uniqueFens.filter((fen) => !evalByFen.has(fen));
+  if (missingEvalFens.length === 0) {
+    return result;
+  }
+
+  for (const fen of missingEvalFens) {
+    const snapshot = await fetchCloudEvalSnapshot(fen, options.cloudEvalState);
+    if (!snapshot) continue;
+
+    const positionId = refreshedPositions.find((row) => row.fen === fen)?.id;
+    if (positionId) {
+      await storeEvalSnapshot(positionId as number, snapshot);
+      result.set(fen, snapshot);
     }
   }
 
   return result;
+}
+
+async function fetchCloudEvalSnapshot(
+  fen: string,
+  cloudEvalState: CloudEvalState,
+): Promise<EvalSnapshot | null> {
+  if (cloudEvalCache.has(fen)) {
+    return cloudEvalCache.get(fen) ?? null;
+  }
+
+  if (!LICHESS_CLOUD_EVAL_KEY || cloudEvalState.remaining <= 0) {
+    return null;
+  }
+
+  cloudEvalState.remaining -= 1;
+
+  try {
+    const url = new URL("https://lichess.org/api/cloud-eval");
+    url.searchParams.set("fen", fen);
+    url.searchParams.set("multiPv", "1");
+
+    const res = await fetch(url.toString(), {
+      headers: {
+        Accept: "application/json",
+        Authorization: `Bearer ${LICHESS_CLOUD_EVAL_KEY}`,
+      },
+    });
+
+    if (res.status === 404) {
+      cloudEvalCache.set(fen, null);
+      return null;
+    }
+
+    if (!res.ok) {
+      cloudEvalCache.set(fen, null);
+      return null;
+    }
+
+    const json = await res.json();
+    const pvs = Array.isArray(json?.pvs) ? json.pvs : [];
+    const depth = typeof json?.depth === "number" ? json.depth : null;
+
+    if (pvs.length === 0) {
+      cloudEvalCache.set(fen, null);
+      return null;
+    }
+
+    const snapshot = extractEvalFromPvs(pvs);
+    if (!snapshot) {
+      cloudEvalCache.set(fen, null);
+      return null;
+    }
+
+    snapshot.depth = depth ?? null;
+    cloudEvalCache.set(fen, snapshot);
+    return snapshot;
+  } catch (_) {
+    cloudEvalCache.set(fen, null);
+    return null;
+  }
+}
+
+async function storeEvalSnapshot(positionId: number, snapshot: EvalSnapshot) {
+  const pvs = [
+    {
+      cp: snapshot.cp,
+      mate: snapshot.mate,
+    },
+  ];
+
+  const { data: existing } = await supabase
+    .from("evals")
+    .select("id")
+    .eq("position_id", positionId)
+    .eq("multi_pv", 1)
+    .order("depth", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (existing?.id) {
+    await supabase
+      .from("evals")
+      .update({
+        depth: snapshot.depth ?? 0,
+        knodes: 0,
+        pvs,
+        multi_pv: 1,
+        pvs_count: 1,
+      })
+      .eq("id", existing.id);
+    return;
+  }
+
+  await supabase
+    .from("evals")
+    .insert({
+      position_id: positionId,
+      depth: snapshot.depth ?? 0,
+      knodes: 0,
+      pvs,
+      multi_pv: 1,
+      pvs_count: 1,
+    });
 }
 
 async function sendOneSignalPayload(payload: Record<string, unknown>) {
@@ -1250,7 +1585,36 @@ async function sendLiveActivityUpdate(
 
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(`OneSignal Live Activity error: ${res.status} ${text}`);
+    const lower = text.toLowerCase();
+    const notFound = res.status === 404 || res.status === 410 ||
+      lower.includes("not found");
+    return { ok: false, notFound };
+  }
+
+  return { ok: true, notFound: false };
+}
+
+async function sendLiveActivityEnd(activityId: string) {
+  const payload = {
+    event: "end",
+    name: `live_game_update:${activityId}`,
+  };
+
+  const res = await fetch(
+    `https://api.onesignal.com/apps/${ONESIGNAL_APP_ID}/live_activities/${activityId}/notifications`,
+    {
+      method: "POST",
+      headers: {
+        ...jsonHeaders,
+        Authorization: `Key ${ONESIGNAL_REST_API_KEY}`,
+      },
+      body: JSON.stringify(payload),
+    },
+  );
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`OneSignal Live Activity end error: ${res.status} ${text}`);
   }
 }
 
@@ -1274,6 +1638,10 @@ async function sendAndroidLiveNotification(args: {
       black_fide_id: args.livePayload.black_fide_id,
       white_photo: args.livePayload.white_photo,
       black_photo: args.livePayload.black_photo,
+      white_title: args.livePayload.white_title,
+      black_title: args.livePayload.black_title,
+      white_fed: args.livePayload.white_fed,
+      black_fed: args.livePayload.black_fed,
     },
     event_updates: {
       fen: args.livePayload.fen,
@@ -1285,6 +1653,10 @@ async function sendAndroidLiveNotification(args: {
       black_clock_seconds: args.livePayload.black_clock_seconds,
       eval_cp: args.livePayload.eval_cp,
       eval_mate: args.livePayload.eval_mate,
+      is_check: args.livePayload.is_check,
+      is_checkmate: args.livePayload.is_checkmate,
+      is_game_over: args.livePayload.is_game_over,
+      status: args.livePayload.status,
     },
   };
 
@@ -1311,6 +1683,48 @@ async function sendAndroidLiveNotification(args: {
   await sendOneSignalPayload(payload);
 }
 
+function resolveLiveAlertReason(livePayload: LiveUpdatePayload) {
+  if (livePayload.is_checkmate || livePayload.is_game_over) {
+    return "game_end" as const;
+  }
+  if (livePayload.is_check) {
+    return "check" as const;
+  }
+  return null;
+}
+
+async function sendLiveGameAlert(
+  userIds: string[],
+  payload: LiveUpdatePayload,
+  reason: "check" | "game_end",
+) {
+  const title = reason === "check" ? "Check!" : "Game Finished";
+  const move = payload.last_move_numbered ??
+    payload.last_move_san ??
+    payload.last_move ?? "";
+  const body = reason === "check"
+    ? `${payload.player_white} vs ${payload.player_black} — ${move}`
+    : `${payload.player_white} vs ${payload.player_black} — ${
+        payload.status ?? "Result"
+      }`;
+
+  const notification: NotificationPayload = {
+    title,
+    body,
+    url: `https://chessever.com/games/${payload.game_id}`,
+    data: {
+      type: "live_game_alert",
+      game_id: payload.game_id,
+      reason,
+    },
+    androidChannelId: ANDROID_CHANNELS.liveAlerts,
+    iosSound: "default",
+    androidSound: "default",
+  };
+
+  await sendOneSignal(userIds, notification);
+}
+
 async function sendOneSignal(
   userIds: string[],
   notification: NotificationPayload,
@@ -1332,6 +1746,13 @@ async function sendOneSignal(
 
     if (notification.androidChannelId) {
       payload.android_channel_id = notification.androidChannelId;
+    }
+
+    if (notification.iosSound) {
+      payload.ios_sound = notification.iosSound;
+    }
+    if (notification.androidSound) {
+      payload.android_sound = notification.androidSound;
     }
 
     await sendOneSignalPayload(payload);
