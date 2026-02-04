@@ -77,6 +77,7 @@ import 'package:chessever2/repository/local_storage/local_storage_repository.dar
 import 'package:flutter/foundation.dart';
 import 'package:chessever2/services/lichess_move_annotations_service.dart';
 import 'package:chessever2/services/live_updates_service.dart';
+import 'package:chessever2/services/fide_photo_service.dart';
 import 'package:chessever2/providers/auth_state_provider.dart';
 
 /// Spring-based curve that mimics iOS snappy motion
@@ -1251,13 +1252,14 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
 
   void _stopLiveActivityIfActive(GamesTourModel game) {
     final liveService = LiveUpdatesService.instance;
-    if (!liveService.isActive) return;
+    final activeGameId = liveService.activeGameId;
+    if (activeGameId == null) return;
 
     final user = ref.read(currentUserProvider);
     if (user == null) return;
 
-    // Stop the live activity since user is back in the app
-    unawaited(liveService.stopForGame(game.gameId, user.id));
+    // Stop the active live activity since user is back in the app
+    unawaited(liveService.stopForGame(activeGameId, user.id));
     debugPrint('[ChessBoardScreen] Stopped Live Activity - user returned to app');
   }
 
@@ -1274,10 +1276,10 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     }
 
     // Auto-start Live Activity for live games when app goes to background
-    _startLiveActivityIfEligible(currentGame);
+    unawaited(_startLiveActivityIfEligible(currentGame));
   }
 
-  void _startLiveActivityIfEligible(GamesTourModel game) {
+  Future<void> _startLiveActivityIfEligible(GamesTourModel game) async {
     // Only start for ongoing games
     if (!game.gameStatus.isOngoing) return;
 
@@ -1289,6 +1291,28 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     final liveService = LiveUpdatesService.instance;
     if (liveService.activeGameId == game.gameId) return;
 
+    // Ensure newest game wins focus
+    final activeGameId = liveService.activeGameId;
+    if (activeGameId != null && activeGameId != game.gameId) {
+      unawaited(liveService.stopForGame(activeGameId, user.id));
+    }
+
+    final whiteFideId = game.whitePlayer.fideId?.toString();
+    final blackFideId = game.blackPlayer.fideId?.toString();
+    final photos = await Future.wait<String?>([
+      FidePhotoService.getPhotoUrlOrNull(whiteFideId),
+      FidePhotoService.getPhotoUrlOrNull(blackFideId),
+    ]);
+    final whitePhoto = photos[0];
+    final blackPhoto = photos[1];
+
+    final eventName = game.tourSlug != null && game.tourSlug!.isNotEmpty
+        ? StringUtils.slugToTitle(game.tourSlug!)
+        : null;
+    final roundName = game.roundSlug != null && game.roundSlug!.isNotEmpty
+        ? StringUtils.formatRoundLabel(game.roundSlug!)
+        : null;
+
     // Start Live Activity
     unawaited(
       liveService.startForGame(
@@ -1296,13 +1320,27 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
         userId: user.id,
         playerWhite: game.whitePlayer.name,
         playerBlack: game.blackPlayer.name,
+        whiteTitle: game.whitePlayer.title.isNotEmpty
+            ? game.whitePlayer.title
+            : null,
+        blackTitle: game.blackPlayer.title.isNotEmpty
+            ? game.blackPlayer.title
+            : null,
+        whiteFed: game.whitePlayer.federation.isNotEmpty
+            ? game.whitePlayer.federation
+            : null,
+        blackFed: game.blackPlayer.federation.isNotEmpty
+            ? game.blackPlayer.federation
+            : null,
+        whitePhoto: whitePhoto,
+        blackPhoto: blackPhoto,
         fen: game.fen,
         lastMove: game.lastMove,
         lastMoveTime: game.lastMoveTime,
         whiteClockSeconds: game.whiteClockSeconds,
         blackClockSeconds: game.blackClockSeconds,
-        eventName: game.tourSlug,
-        roundName: game.roundSlug,
+        eventName: eventName,
+        roundName: roundName,
         whiteFideId: game.whitePlayer.fideId,
         blackFideId: game.blackPlayer.fideId,
       ),

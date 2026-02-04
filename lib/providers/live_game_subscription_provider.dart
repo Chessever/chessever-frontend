@@ -2,6 +2,8 @@ import 'package:chessever2/providers/auth_state_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/services/live_updates_service.dart';
 import 'package:chessever2/services/push_notifications_service.dart';
+import 'package:chessever2/services/fide_photo_service.dart';
+import 'package:chessever2/utils/string_utils.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -52,10 +54,17 @@ class LiveGameSubscriptionNotifier
         return;
       }
 
+      final whitePhoto = await FidePhotoService.getPhotoUrlOrNull(
+        game.whitePlayer.fideId?.toString(),
+      );
+      final blackPhoto = await FidePhotoService.getPhotoUrlOrNull(
+        game.blackPlayer.fideId?.toString(),
+      );
+
       await LiveUpdatesService.instance.startLiveActivity(
         activityId: _activityId(game.gameId, user.id),
         attributes: {'game_id': game.gameId},
-        content: _buildLiveContent(game),
+        content: _buildLiveContent(game, whitePhoto, blackPhoto),
       );
     } else {
       await LiveUpdatesService.instance.endLiveActivity(
@@ -85,16 +94,32 @@ class LiveGameSubscriptionNotifier
 
   String _activityId(String gameId, String userId) => 'live:$gameId:$userId';
 
-  Map<String, dynamic> _buildLiveContent(GamesTourModel game) {
+  Map<String, dynamic> _buildLiveContent(
+    GamesTourModel game,
+    String? whitePhoto,
+    String? blackPhoto,
+  ) {
     return {
       'game_id': game.gameId,
       'player_white': game.whitePlayer.name,
       'player_black': game.blackPlayer.name,
+      if (game.whitePlayer.title.isNotEmpty)
+        'white_title': game.whitePlayer.title,
+      if (game.blackPlayer.title.isNotEmpty)
+        'black_title': game.blackPlayer.title,
+      if (game.whitePlayer.federation.isNotEmpty)
+        'white_fed': game.whitePlayer.federation,
+      if (game.blackPlayer.federation.isNotEmpty)
+        'black_fed': game.blackPlayer.federation,
+      if (whitePhoto != null) 'white_photo': whitePhoto,
+      if (blackPhoto != null) 'black_photo': blackPhoto,
       'fen': game.fen,
       'last_move': game.lastMove,
       'status': game.gameStatus.name,
-      'round_name': game.roundSlug,
-      'event_name': game.tourSlug,
+      if (game.roundSlug != null && game.roundSlug!.isNotEmpty)
+        'round_name': StringUtils.formatRoundLabel(game.roundSlug),
+      if (game.tourSlug != null && game.tourSlug!.isNotEmpty)
+        'event_name': StringUtils.slugToTitle(game.tourSlug!),
     };
   }
 

@@ -109,15 +109,24 @@ class DeepLinkService {
     _lastHandledTime = now;
     _isNavigating = true;
 
-    // Check auth state - allow authenticated AND anonymous users
-    final authState = ref.read(authStateProvider);
-    final status = authState.value?.status;
+    // Check auth state - wait for loading to resolve so Universal Links stay in-app.
+    AppAuthState? resolvedState = ref.read(authStateProvider).value;
+    if (resolvedState == null) {
+      try {
+        resolvedState = await ref.read(authStateProvider.future);
+      } catch (_) {
+        resolvedState = null;
+      }
+    }
 
-    // Only block truly unauthenticated users (not logged in at all)
-    if (status != AppAuthStatus.authenticated) {
-      debugPrint('DeepLinkService: Ignoring link - user not authenticated');
+    if (resolvedState?.status != AppAuthStatus.authenticated) {
+      debugPrint('DeepLinkService: User not authenticated yet, routing to home');
+      navigatorKey.currentState?.pushNamedAndRemoveUntil(
+        '/home_screen',
+        (route) => false,
+      );
       _isNavigating = false;
-      return; // Ignore deep link - user will see auth screen
+      return;
     }
 
     try {

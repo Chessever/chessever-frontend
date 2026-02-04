@@ -16,7 +16,7 @@
 
    <application
        android:label="ChessEver"
-       android:name="${applicationName}"
+       android:name=".ChessEverApplication"
        android:icon="@mipmap/ic_launcher"
        android:requestLegacyExternalStorage="true"
        android:enableOnBackInvokedCallback="true"
@@ -61,6 +61,15 @@
                    android:host="chessever.com"
                    android:pathPattern="/games/.*" />
            </intent-filter>
+           <intent-filter android:autoVerify="true">
+               <action android:name="android.intent.action.VIEW" />
+               <category android:name="android.intent.category.DEFAULT" />
+               <category android:name="android.intent.category.BROWSABLE" />
+               <data
+                   android:scheme="https"
+                   android:host="www.chessever.com"
+                   android:pathPattern="/games/.*" />
+           </intent-filter>
            <!-- Fallback for root domain links -->
            <intent-filter android:autoVerify="true">
                <action android:name="android.intent.action.VIEW" />
@@ -69,6 +78,15 @@
                <data
                    android:scheme="https"
                    android:host="chessever.com"
+                   android:path="/" />
+           </intent-filter>
+           <intent-filter android:autoVerify="true">
+               <action android:name="android.intent.action.VIEW" />
+               <category android:name="android.intent.category.DEFAULT" />
+               <category android:name="android.intent.category.BROWSABLE" />
+               <data
+                   android:scheme="https"
+                   android:host="www.chessever.com"
                    android:path="/" />
            </intent-filter>
        </activity>

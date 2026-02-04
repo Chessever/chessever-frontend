@@ -14,6 +14,7 @@ import android.graphics.Paint
 import android.graphics.RectF
 import android.graphics.Shader
 import android.graphics.Typeface
+import android.graphics.BitmapFactory
 import android.net.Uri
 import androidx.core.app.NotificationCompat
 import com.onesignal.notifications.IDisplayableMutableNotification
@@ -69,6 +70,10 @@ class NotificationServiceExtension : INotificationServiceExtension {
 
     val white = attrs.optString("player_white", "White")
     val black = attrs.optString("player_black", "Black")
+    val whiteTitle = attrs.optString("white_title", "")
+    val blackTitle = attrs.optString("black_title", "")
+    val whiteFed = attrs.optString("white_fed", "")
+    val blackFed = attrs.optString("black_fed", "")
     val whitePhoto = attrs.optString("white_photo", "")
     val blackPhoto = attrs.optString("black_photo", "")
     val eventName = attrs.optString("event_name", "")
@@ -87,12 +92,13 @@ class NotificationServiceExtension : INotificationServiceExtension {
     ensureChannel(context)
 
     // Create large icon (chess board)
-    val boardBitmap = renderBoardBitmap(fen, 256, lastMoveUci)
+    val boardBitmap = renderBoardBitmap(context, fen, 256, lastMoveUci)
     val whiteBitmap = fetchBitmap(whitePhoto)
     val blackBitmap = fetchBitmap(blackPhoto)
 
     // Create big picture (chess board + info panel)
     val bigPictureBitmap = renderExpandedView(
+      context = context,
       fen = fen,
       white = white,
       black = black,
@@ -104,7 +110,11 @@ class NotificationServiceExtension : INotificationServiceExtension {
       blackClockSeconds = blackClockSeconds,
       whitePhoto = whiteBitmap,
       blackPhoto = blackBitmap,
-      lastMoveUci = lastMoveUci
+      lastMoveUci = lastMoveUci,
+      whiteTitle = whiteTitle,
+      blackTitle = blackTitle,
+      whiteFed = whiteFed,
+      blackFed = blackFed
     )
 
     // Intent to open the app
@@ -196,7 +206,12 @@ class NotificationServiceExtension : INotificationServiceExtension {
 
   // MARK: - Rendering
 
-  private fun renderBoardBitmap(fen: String, size: Int, lastMoveUci: String?): Bitmap {
+  private fun renderBoardBitmap(
+    context: Context,
+    fen: String,
+    size: Int,
+    lastMoveUci: String?
+  ): Bitmap {
     val board = parseFenBoard(fen)
     val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
     val canvas = Canvas(bitmap)
@@ -206,16 +221,6 @@ class NotificationServiceExtension : INotificationServiceExtension {
     val darkPaint = Paint().apply { color = DARK_SQUARE_COLOR }
     val highlightFromPaint = Paint().apply { color = HIGHLIGHT_FROM_COLOR }
     val highlightToPaint = Paint().apply { color = HIGHLIGHT_TO_COLOR }
-    val pieceTextPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-      textAlign = Paint.Align.CENTER
-      textSize = squareSize * 0.42f
-      typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
-    }
-    val pieceBgPaint = Paint(Paint.ANTI_ALIAS_FLAG)
-    val pieceStrokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-      style = Paint.Style.STROKE
-      strokeWidth = squareSize * 0.05f
-    }
     val highlights = parseUciSquares(lastMoveUci)
     val fromSquare = highlights.getOrNull(0)
     val toSquare = highlights.getOrNull(1)
@@ -237,19 +242,28 @@ class NotificationServiceExtension : INotificationServiceExtension {
         }
 
         board?.get(rank)?.get(file)?.let { piece ->
-          val x = left + squareSize / 2
-          val y = top + squareSize / 2
-          val radius = squareSize * 0.36f
-
-          val isWhitePiece = piece.isUpperCase()
-          pieceBgPaint.color = if (isWhitePiece) WHITE_PIECE_COLOR else BLACK_PIECE_COLOR
-          pieceStrokePaint.color = if (isWhitePiece) Color.argb(90, 0, 0, 0) else Color.argb(120, 255, 255, 255)
-          canvas.drawCircle(x, y, radius, pieceBgPaint)
-          canvas.drawCircle(x, y, radius, pieceStrokePaint)
-
-          pieceTextPaint.color = if (isWhitePiece) BLACK_PIECE_TEXT_COLOR else WHITE_PIECE_TEXT_COLOR
-          val textY = y - (pieceTextPaint.descent() + pieceTextPaint.ascent()) / 2
-          canvas.drawText(pieceToLetter(piece), x, textY, pieceTextPaint)
+          val pieceBitmap = loadPieceBitmap(context, piece)
+          if (pieceBitmap != null) {
+            val inset = squareSize * 0.08f
+            val rect = RectF(
+              left + inset,
+              top + inset,
+              left + squareSize - inset,
+              top + squareSize - inset
+            )
+            canvas.drawBitmap(pieceBitmap, null, rect, null)
+          } else {
+            val x = left + squareSize / 2
+            val y = top + squareSize / 2
+            val fallbackPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+              textAlign = Paint.Align.CENTER
+              textSize = squareSize * 0.42f
+              typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
+              color = if (piece.isUpperCase()) BLACK_PIECE_TEXT_COLOR else WHITE_PIECE_TEXT_COLOR
+            }
+            val textY = y - (fallbackPaint.descent() + fallbackPaint.ascent()) / 2
+            canvas.drawText(pieceToLetter(piece), x, textY, fallbackPaint)
+          }
         }
       }
     }
@@ -259,6 +273,7 @@ class NotificationServiceExtension : INotificationServiceExtension {
   }
 
   private fun renderExpandedView(
+    context: Context,
     fen: String,
     white: String,
     black: String,
@@ -270,7 +285,11 @@ class NotificationServiceExtension : INotificationServiceExtension {
     blackClockSeconds: Int?,
     whitePhoto: Bitmap?,
     blackPhoto: Bitmap?,
-    lastMoveUci: String?
+    lastMoveUci: String?,
+    whiteTitle: String?,
+    blackTitle: String?,
+    whiteFed: String?,
+    blackFed: String?
   ): Bitmap? {
     val width = 600
     val height = 280
@@ -290,7 +309,7 @@ class NotificationServiceExtension : INotificationServiceExtension {
     val boardSize = 180
     val boardX = evalBarMargin + evalBarWidth + 16f
     val boardY = (height - boardSize) / 2f
-    val boardBitmap = renderBoardBitmap(fen, boardSize, lastMoveUci)
+    val boardBitmap = renderBoardBitmap(context, fen, boardSize, lastMoveUci)
     canvas.drawBitmap(boardBitmap, boardX, boardY, null)
 
     // Text area
@@ -319,29 +338,33 @@ class NotificationServiceExtension : INotificationServiceExtension {
       typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
     }
 
-    // White player with circle indicator
+    // Black player on top
     drawPlayerRow(
       canvas,
       textX,
       85f,
-      white,
-      true,
-      isWhiteAdvantage(evalCp, evalMate),
-      textWidth,
-      whitePhoto,
-      whiteClockSeconds
-    )
-    // Black player with circle indicator
-    drawPlayerRow(
-      canvas,
-      textX,
-      125f,
       black,
       false,
       !isWhiteAdvantage(evalCp, evalMate),
       textWidth,
       blackPhoto,
-      blackClockSeconds
+      blackClockSeconds,
+      blackTitle,
+      blackFed
+    )
+    // White player on bottom
+    drawPlayerRow(
+      canvas,
+      textX,
+      125f,
+      white,
+      true,
+      isWhiteAdvantage(evalCp, evalMate),
+      textWidth,
+      whitePhoto,
+      whiteClockSeconds,
+      whiteTitle,
+      whiteFed
     )
 
     // Last move
@@ -379,7 +402,9 @@ class NotificationServiceExtension : INotificationServiceExtension {
     isAdvantage: Boolean,
     maxWidth: Float,
     photo: Bitmap?,
-    clockSeconds: Int?
+    clockSeconds: Int?,
+    title: String?,
+    fed: String?
   ) {
     val avatarRadius = 12f
     val avatarCx = x + avatarRadius
@@ -413,6 +438,19 @@ class NotificationServiceExtension : INotificationServiceExtension {
     }
     val nameX = x + avatarRadius * 2 + 8f
     canvas.drawText(name, nameX, y, namePaint)
+
+    val meta = listOfNotNull(
+      title?.takeIf { it.isNotBlank() },
+      fed?.takeIf { it.isNotBlank() }?.uppercase()
+    ).joinToString(" • ")
+    if (meta.isNotEmpty()) {
+      val metaPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = TEXT_SECONDARY_COLOR
+        textSize = 18f
+        typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+      }
+      canvas.drawText(meta, nameX, y + 20f, metaPaint)
+    }
 
     val clockText = clockSeconds?.let { formatClock(it) }
     if (clockText != null) {
@@ -669,9 +707,50 @@ class NotificationServiceExtension : INotificationServiceExtension {
     canvas.drawCircle(cx, cy, radius, paint)
   }
 
+  private fun loadPieceBitmap(context: Context, piece: Char): Bitmap? {
+    val resName = when (piece) {
+      'K' -> "piece_wk"
+      'Q' -> "piece_wq"
+      'R' -> "piece_wr"
+      'B' -> "piece_wb"
+      'N' -> "piece_wn"
+      'P' -> "piece_wp"
+      'k' -> "piece_bk"
+      'q' -> "piece_bq"
+      'r' -> "piece_br"
+      'b' -> "piece_bb"
+      'n' -> "piece_bn"
+      'p' -> "piece_bp"
+      else -> null
+    } ?: return null
+
+    val resId = context.resources.getIdentifier(resName, "drawable", context.packageName)
+    if (resId == 0) return null
+
+    synchronized(pieceBitmapCache) {
+      if (pieceBitmapCache.containsKey(resId)) {
+        return pieceBitmapCache[resId]
+      }
+    }
+
+    return try {
+      val bitmap = BitmapFactory.decodeResource(context.resources, resId)
+      synchronized(pieceBitmapCache) {
+        pieceBitmapCache[resId] = bitmap
+      }
+      bitmap
+    } catch (e: Exception) {
+      synchronized(pieceBitmapCache) {
+        pieceBitmapCache[resId] = null
+      }
+      null
+    }
+  }
+
   companion object {
     private const val CHANNEL_ID = "live_updates"
     private val photoCache = mutableMapOf<String, Bitmap?>()
+    private val pieceBitmapCache = mutableMapOf<Int, Bitmap?>()
 
     // Design colors matching iOS
     private val BACKGROUND_COLOR = Color.parseColor("#0C0C0E")
