@@ -83,8 +83,8 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
 
 const jsonHeaders = { "Content-Type": "application/json" };
 const fidePhotoCache = new Map<number, string | null>();
-const CLOUD_EVAL_MAX_REQUESTS = 3;
-const CHESS_API_MAX_REQUESTS = 3;
+const CLOUD_EVAL_MAX_REQUESTS = 5;
+const CHESS_API_MAX_REQUESTS = 10;
 const cloudEvalCache = new Map<string, EvalSnapshot | null>();
 const chessApiEvalCache = new Map<string, EvalSnapshot | null>();
 
