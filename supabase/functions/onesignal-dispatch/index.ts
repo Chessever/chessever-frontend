@@ -68,6 +68,7 @@ const SUPABASE_SERVICE_ROLE_KEY =
 const ONESIGNAL_APP_ID = Deno.env.get("ONESIGNAL_APP_ID") ?? "";
 const ONESIGNAL_REST_API_KEY = Deno.env.get("ONESIGNAL_REST_API_KEY") ?? "";
 const LICHESS_CLOUD_EVAL_KEY = Deno.env.get("LICHESS_CLOUD_EVAL_KEY") ?? "";
+const CHESS_API_URL = Deno.env.get("CHESS_API_URL") ?? "https://chess-api.com/v1";
 
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
   throw new Error("Missing Supabase environment variables.");
@@ -83,11 +84,13 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
 const jsonHeaders = { "Content-Type": "application/json" };
 const fidePhotoCache = new Map<number, string | null>();
 const CLOUD_EVAL_MAX_REQUESTS = 3;
-const CLOUD_EVAL_MIN_DEPTH = 16;
+const CHESS_API_MAX_REQUESTS = 3;
 const cloudEvalCache = new Map<string, EvalSnapshot | null>();
+const chessApiEvalCache = new Map<string, EvalSnapshot | null>();
 
 type CloudEvalState = {
   remaining: number;
+  chessApiRemaining: number;
 };
 
 Deno.serve(async (req) => {
@@ -107,6 +110,7 @@ Deno.serve(async (req) => {
   const results: Array<Record<string, unknown>> = [];
   const cloudEvalState: CloudEvalState = {
     remaining: CLOUD_EVAL_MAX_REQUESTS,
+    chessApiRemaining: CHESS_API_MAX_REQUESTS,
   };
 
   for (const item of items) {
@@ -1426,15 +1430,20 @@ async function fetchEvalSnapshots(
     const snapshot = evalByFen.get(fen);
     if (!snapshot) return true;
     if (snapshot.cp == null && snapshot.mate == null) return true;
-    const depth = snapshot.depth ?? 0;
-    return depth < CLOUD_EVAL_MIN_DEPTH;
+    return false;
   });
   if (missingEvalFens.length === 0) {
     return result;
   }
 
   for (const fen of missingEvalFens) {
-    const snapshot = await fetchCloudEvalSnapshot(fen, options.cloudEvalState);
+    let snapshot = await fetchCloudEvalSnapshot(fen, options.cloudEvalState);
+    if (!snapshot) {
+      snapshot = await fetchChessApiEvalSnapshot(
+        fen,
+        options.cloudEvalState,
+      );
+    }
     if (!snapshot) continue;
 
     const positionId = refreshedPositions.find((row) => row.fen === fen)?.id;
@@ -1503,6 +1512,62 @@ async function fetchCloudEvalSnapshot(
     return snapshot;
   } catch (_) {
     cloudEvalCache.set(fen, null);
+    return null;
+  }
+}
+
+async function fetchChessApiEvalSnapshot(
+  fen: string,
+  cloudEvalState: CloudEvalState,
+): Promise<EvalSnapshot | null> {
+  if (chessApiEvalCache.has(fen)) {
+    return chessApiEvalCache.get(fen) ?? null;
+  }
+
+  if (cloudEvalState.chessApiRemaining <= 0) {
+    return null;
+  }
+
+  cloudEvalState.chessApiRemaining -= 1;
+
+  try {
+    const res = await fetch(CHESS_API_URL, {
+      method: "POST",
+      headers: jsonHeaders,
+      body: JSON.stringify({ fen, depth: 12, variants: 1 }),
+    });
+
+    if (!res.ok) {
+      chessApiEvalCache.set(fen, null);
+      return null;
+    }
+
+    const json = await res.json();
+    const depth = typeof json?.depth === "number" ? json.depth : 12;
+    const mate = json?.mate != null ? Number(json.mate) : null;
+    let cp: number | null = null;
+
+    if (mate == null) {
+      const centipawnsRaw = json?.centipawns;
+      if (centipawnsRaw != null) {
+        const parsed = Number(centipawnsRaw);
+        if (!Number.isNaN(parsed)) cp = parsed;
+      } else if (json?.eval != null) {
+        const parsed = Number(json.eval);
+        if (!Number.isNaN(parsed)) cp = Math.round(parsed * 100);
+      }
+    }
+
+    if (cp == null && mate == null) {
+      chessApiEvalCache.set(fen, null);
+      return null;
+    }
+
+    const snapshot: EvalSnapshot = { cp, mate, depth };
+    chessApiEvalCache.set(fen, snapshot);
+    return snapshot;
+  } catch (_) {
+    chessApiEvalCache.set(fen, null);
     return null;
   }
 }
