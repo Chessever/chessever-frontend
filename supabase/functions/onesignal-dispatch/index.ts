@@ -83,6 +83,7 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
 const jsonHeaders = { "Content-Type": "application/json" };
 const fidePhotoCache = new Map<number, string | null>();
 const CLOUD_EVAL_MAX_REQUESTS = 3;
+const CLOUD_EVAL_MIN_DEPTH = 16;
 const cloudEvalCache = new Map<string, EvalSnapshot | null>();
 
 type CloudEvalState = {
@@ -1421,7 +1422,13 @@ async function fetchEvalSnapshots(
     return result;
   }
 
-  const missingEvalFens = uniqueFens.filter((fen) => !evalByFen.has(fen));
+  const missingEvalFens = uniqueFens.filter((fen) => {
+    const snapshot = evalByFen.get(fen);
+    if (!snapshot) return true;
+    if (snapshot.cp == null && snapshot.mate == null) return true;
+    const depth = snapshot.depth ?? 0;
+    return depth < CLOUD_EVAL_MIN_DEPTH;
+  });
   if (missingEvalFens.length === 0) {
     return result;
   }

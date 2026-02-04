@@ -29,6 +29,19 @@ class SettingsMenu extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    Widget buildMenuIcon(Widget? icon, IconData fallback) {
+      final Widget resolved = icon ?? Icon(fallback, color: Colors.white, size: 16.ic);
+      return Center(
+        child: SizedBox.square(
+          dimension: 16.ic,
+          child: FittedBox(
+            fit: BoxFit.contain,
+            child: resolved,
+          ),
+        ),
+      );
+    }
+
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: 10.sp, vertical: 12.sp),
       child: Column(
@@ -65,9 +78,7 @@ class SettingsMenu extends ConsumerWidget {
                 children: [
                   SizedBox(
                     width: 24.w,
-                    child:
-                        boardSettingsIcon ??
-                        Icon(Icons.grid_4x4, color: Colors.white, size: 12.ic),
+                    child: buildMenuIcon(boardSettingsIcon, Icons.grid_4x4),
                   ),
                   SizedBox(width: 4.w),
                   Expanded(
@@ -107,13 +118,10 @@ class SettingsMenu extends ConsumerWidget {
                 children: [
                   SizedBox(
                     width: 24.w,
-                    child:
-                        notificationSettingsIcon ??
-                        Icon(
-                          Icons.notifications_active_outlined,
-                          color: Colors.white,
-                          size: 12.ic,
-                        ),
+                    child: buildMenuIcon(
+                      notificationSettingsIcon,
+                      Icons.notifications_active_outlined,
+                    ),
                   ),
                   SizedBox(width: 4.w),
                   Expanded(
