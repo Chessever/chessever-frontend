@@ -76,6 +76,8 @@ import 'package:showcaseview/showcaseview.dart';
 import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
 import 'package:flutter/foundation.dart';
 import 'package:chessever2/services/lichess_move_annotations_service.dart';
+import 'package:chessever2/services/live_updates_service.dart';
+import 'package:chessever2/providers/auth_state_provider.dart';
 
 /// Spring-based curve that mimics iOS snappy motion
 /// Quick, precise animation with subtle natural settling
@@ -1242,6 +1244,21 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     } catch (e) {
       debugPrint('Error refreshing Stockfish on resume: $e');
     }
+
+    // Stop Live Activity when user returns to the app
+    _stopLiveActivityIfActive(currentGame);
+  }
+
+  void _stopLiveActivityIfActive(GamesTourModel game) {
+    final liveService = LiveUpdatesService.instance;
+    if (!liveService.isActive) return;
+
+    final user = ref.read(currentUserProvider);
+    if (user == null) return;
+
+    // Stop the live activity since user is back in the app
+    unawaited(liveService.stopForGame(game.gameId, user.id));
+    debugPrint('[ChessBoardScreen] Stopped Live Activity - user returned to app');
   }
 
   void _handleLifecyclePaused() {
@@ -1255,6 +1272,43 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     } catch (e) {
       debugPrint('Error pausing Stockfish on lifecycle change: $e');
     }
+
+    // Auto-start Live Activity for live games when app goes to background
+    _startLiveActivityIfEligible(currentGame);
+  }
+
+  void _startLiveActivityIfEligible(GamesTourModel game) {
+    // Only start for ongoing games
+    if (!game.gameStatus.isOngoing) return;
+
+    // Check if user is authenticated
+    final user = ref.read(currentUserProvider);
+    if (user == null) return;
+
+    // Don't start if already active for this game
+    final liveService = LiveUpdatesService.instance;
+    if (liveService.activeGameId == game.gameId) return;
+
+    // Start Live Activity
+    unawaited(
+      liveService.startForGame(
+        gameId: game.gameId,
+        userId: user.id,
+        playerWhite: game.whitePlayer.name,
+        playerBlack: game.blackPlayer.name,
+        fen: game.fen,
+        lastMove: game.lastMove,
+        lastMoveTime: game.lastMoveTime,
+        whiteClockSeconds: game.whiteClockSeconds,
+        blackClockSeconds: game.blackClockSeconds,
+        eventName: game.tourSlug,
+        roundName: game.roundSlug,
+        whiteFideId: game.whitePlayer.fideId,
+        blackFideId: game.blackPlayer.fideId,
+      ),
+    );
+
+    debugPrint('[ChessBoardScreen] Auto-started Live Activity for game: ${game.gameId}');
   }
 
   @override

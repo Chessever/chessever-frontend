@@ -1,5 +1,6 @@
 import 'package:chessever2/repository/authentication/auth_repository.dart';
 import 'package:chessever2/screens/chessboard/chess_board_settings_page.dart';
+import 'package:chessever2/screens/chessboard/chess_board_notification_settings_page.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -36,6 +37,18 @@ class SettingsDialog extends ConsumerWidget {
           // Navigate to the full ChessBoardSettingsPage
           Navigator.of(context).push(
             ChessBoardSettingsPage.route(),
+          );
+        },
+        onNotificationSettingsPressed: () async {
+          final allowed = await requireFullAuthGuard(context);
+          if (!allowed || !context.mounted) return;
+
+          // Close the current bottom sheet first
+          Navigator.of(context).pop();
+          if (!context.mounted) return;
+
+          Navigator.of(context).push(
+            ChessBoardNotificationSettingsPage.route(),
           );
         },
         onDeleteAccountPressed: () {

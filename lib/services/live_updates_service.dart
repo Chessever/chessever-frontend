@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:onesignal_flutter/onesignal_flutter.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class LiveUpdatesService {
   LiveUpdatesService._();
@@ -7,6 +8,13 @@ class LiveUpdatesService {
   static final LiveUpdatesService instance = LiveUpdatesService._();
 
   bool _setupDone = false;
+  String? _activeGameId;
+
+  /// Returns the currently active Live Activity game ID, if any.
+  String? get activeGameId => _activeGameId;
+
+  /// Returns true if a Live Activity is currently active.
+  bool get isActive => _activeGameId != null;
 
   Future<void> setup() async {
     if (_setupDone) return;
@@ -27,21 +35,137 @@ class LiveUpdatesService {
     required Map<String, dynamic> content,
   }) async {
     await setup();
-    if (kIsWeb || defaultTargetPlatform != TargetPlatform.iOS) return;
+    if (kIsWeb) return;
 
-    try {
-      OneSignal.LiveActivities.startDefault(activityId, attributes, content);
-    } catch (_) {
-      // Ignore failures (unsupported iOS version, etc.)
+    final gameId = attributes['game_id'] as String?;
+    if (gameId == null || gameId.isEmpty) return;
+    var started = false;
+
+    if (defaultTargetPlatform == TargetPlatform.iOS) {
+      try {
+        OneSignal.LiveActivities.startDefault(activityId, attributes, content);
+        _activeGameId = gameId;
+        started = true;
+        debugPrint('[LiveUpdates] iOS Live Activity started for game: $gameId');
+      } catch (e) {
+        debugPrint('[LiveUpdates] iOS Live Activity failed: $e');
+      }
+    } else if (defaultTargetPlatform == TargetPlatform.android) {
+      // Android: We register the subscription in Supabase
+      // The edge function will send live notifications via collapse_id
+      _activeGameId = gameId;
+      started = true;
+      debugPrint('[LiveUpdates] Android live subscription registered for game: $gameId');
+    }
+
+    // Register subscription in Supabase for server-side dispatch
+    if (started) {
+      await _registerSubscription(gameId, enabled: true);
     }
   }
 
   Future<void> endLiveActivity(String activityId) async {
-    if (kIsWeb || defaultTargetPlatform != TargetPlatform.iOS) return;
+    if (kIsWeb) return;
+
+    final gameId = _activeGameId;
+
+    if (defaultTargetPlatform == TargetPlatform.iOS) {
+      try {
+        OneSignal.LiveActivities.exitLiveActivity(activityId);
+        debugPrint('[LiveUpdates] iOS Live Activity ended');
+      } catch (_) {
+        // Ignore failures.
+      }
+    }
+
+    _activeGameId = null;
+    await _registerSubscription(gameId, enabled: false);
+  }
+
+  /// Convenience method to start live updates for a game when app goes to background.
+  Future<void> startForGame({
+    required String gameId,
+    required String userId,
+    required String playerWhite,
+    required String playerBlack,
+    String? fen,
+    String? lastMove,
+    DateTime? lastMoveTime,
+    int? whiteClockSeconds,
+    int? blackClockSeconds,
+    String? eventName,
+    String? roundName,
+    int? whiteFideId,
+    int? blackFideId,
+  }) async {
+    final activityId = 'live:$gameId:$userId';
+    final attributes = {'game_id': gameId};
+    final content = {
+      'game_id': gameId,
+      'player_white': playerWhite,
+      'player_black': playerBlack,
+      'fen': fen ?? '',
+      'last_move': lastMove ?? '',
+      'last_move_uci': lastMove ?? '',
+      if (lastMoveTime != null)
+        'last_move_time': lastMoveTime.toUtc().toIso8601String(),
+      if (whiteClockSeconds != null) 'white_clock_seconds': whiteClockSeconds,
+      if (blackClockSeconds != null) 'black_clock_seconds': blackClockSeconds,
+      'event_name': eventName,
+      'round_name': roundName,
+      'white_fide_id': whiteFideId,
+      'black_fide_id': blackFideId,
+    };
+
+    await startLiveActivity(
+      activityId: activityId,
+      attributes: attributes,
+      content: content,
+    );
+  }
+
+  /// Stop live updates for the current game.
+  Future<void> stopForGame(String gameId, String userId) async {
+    final activityId = 'live:$gameId:$userId';
+    await endLiveActivity(activityId);
+  }
+
+  Future<void> _registerSubscription(String? gameId, {required bool enabled}) async {
+    if (gameId == null) return;
+
     try {
-      OneSignal.LiveActivities.exit(activityId);
-    } catch (_) {
-      // Ignore failures.
+      final userId = Supabase.instance.client.auth.currentUser?.id;
+      if (userId == null) return;
+
+      final platform = _platformLabel();
+      if (platform == null) return;
+
+      await Supabase.instance.client
+          .from('user_live_game_subscriptions')
+          .upsert(
+            {
+              'user_id': userId,
+              'game_id': gameId,
+              'platform': platform,
+              'enabled': enabled,
+              if (enabled) 'started_at': null,
+            },
+            onConflict: 'user_id,game_id,platform',
+          );
+    } catch (e) {
+      debugPrint('[LiveUpdates] Failed to register subscription: $e');
+    }
+  }
+
+  String? _platformLabel() {
+    if (kIsWeb) return null;
+    switch (defaultTargetPlatform) {
+      case TargetPlatform.iOS:
+        return 'ios';
+      case TargetPlatform.android:
+        return 'android';
+      default:
+        return null;
     }
   }
 }

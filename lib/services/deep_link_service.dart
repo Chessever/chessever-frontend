@@ -4,8 +4,10 @@ import 'package:app_links/app_links.dart';
 import 'package:chessever2/repository/authentication/auth_repository.dart';
 import 'package:chessever2/repository/authentication/model/auth_state.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
+import 'package:chessever2/providers/auth_state_provider.dart';
 import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/services/live_updates_service.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -66,9 +68,18 @@ class DeepLinkService {
     if (uri.pathSegments.length >= 2 && uri.pathSegments[0] == 'games') {
       final gameId = uri.pathSegments[1];
       if (gameId.isNotEmpty) {
+        if (uri.queryParameters['stop_live'] == '1') {
+          _stopLiveUpdates(gameId, ref);
+        }
         _navigateToGame(gameId, navigatorKey, ref);
       }
     }
+  }
+
+  void _stopLiveUpdates(String gameId, WidgetRef ref) {
+    final user = ref.read(currentUserProvider);
+    if (user == null) return;
+    unawaited(LiveUpdatesService.instance.stopForGame(gameId, user.id));
   }
 
   /// Fetch game by ID and navigate to chess board screen

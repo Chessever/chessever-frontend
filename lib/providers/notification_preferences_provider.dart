@@ -138,6 +138,18 @@ class NotificationPreferencesNotifier
     ));
   }
 
+  Future<void> setLiveGameUpdates(bool value) async {
+    await _updatePreferences((prefs) => prefs.copyWith(
+      liveGameUpdates: value,
+    ));
+  }
+
+  Future<void> setDailyDigest(bool value) async {
+    await _updatePreferences((prefs) => prefs.copyWith(
+      dailyDigest: value,
+    ));
+  }
+
   Future<void> _updatePreferences(
     NotificationPreferences Function(NotificationPreferences) update,
   ) async {
@@ -155,6 +167,8 @@ class NotificationPreferencesNotifier
           'favorite_event_alerts': updated.favoriteEventAlerts,
           'favorite_player_alerts': updated.favoritePlayerAlerts,
           'heads_up_alerts': updated.headsUpAlerts,
+          'live_game_updates': updated.liveGameUpdates,
+          'daily_digest': updated.dailyDigest,
         },
         onConflict: 'user_id',
       );

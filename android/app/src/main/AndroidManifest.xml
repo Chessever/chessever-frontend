@@ -81,6 +81,11 @@
           android:name="com.onesignal.NotificationServiceExtension"
           android:value="com.chessEver.app.NotificationServiceExtension" />
 
+      <!-- Receiver for live notification actions -->
+      <receiver
+          android:name=".NotificationActionReceiver"
+          android:exported="false" />
+
      <!-- Boot receiver -->
        <receiver android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationBootReceiver"
            android:enabled="false"
