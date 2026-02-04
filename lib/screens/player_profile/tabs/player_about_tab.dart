@@ -62,7 +62,7 @@ class _PlayerAboutTabState extends ConsumerState<PlayerAboutTab>
   @override
   bool get wantKeepAlive => true;
 
-  GameTimeControlFilter? _previousTimeControl;
+  GameFilter? _previousFilter;
   double _filterFlashValue = 0.0;
 
   /// Get the player profile key for provider lookups
@@ -87,16 +87,17 @@ class _PlayerAboutTabState extends ConsumerState<PlayerAboutTab>
 
     // Watch filter state and trigger animation on change
     final gamesState = ref.watch(playerProfileGamesKeyProvider(_playerKey));
-    final currentTimeControl = gamesState.filter.timeControl;
-    final hasActiveFilter = currentTimeControl != GameTimeControlFilter.all;
+    final currentFilter = gamesState.filter;
+    final currentTimeControl = currentFilter.timeControl;
+    final hasActiveFilter = currentFilter.hasActiveFilters;
 
-    // Trigger flash animation when time control filter changes
-    if (_previousTimeControl != null && _previousTimeControl != currentTimeControl) {
+    // Trigger flash animation when any filter changes
+    if (_previousFilter != null && _previousFilter != currentFilter) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _triggerFilterFlash();
       });
     }
-    _previousTimeControl = currentTimeControl;
+    _previousFilter = currentFilter;
 
     // Profile data only available with fideId
     final profileDataAsync = widget.fideId != null
@@ -144,19 +145,31 @@ class _PlayerAboutTabState extends ConsumerState<PlayerAboutTab>
                   return _buildNoGamesMessage();
                 }
 
-                // Filter games by time control if a filter is active
-                final filteredGames = currentTimeControl == GameTimeControlFilter.all
-                    ? allGames
-                    : GameFilterHelper.applyFilter(
-                        allGames,
-                        GameFilter.defaultFilter().copyWith(timeControl: currentTimeControl),
-                      );
+                // Filter for opening repertoire: exclude ECO filter (you SELECT from this list)
+                final filterForOpenings = currentFilter.copyWith(eco: GameEcoFilter.all);
+                final gamesForOpenings = filterForOpenings.hasActiveFilters
+                    ? GameFilterHelper.applyFilter(allGames, filterForOpenings)
+                    : allGames;
 
-                // Show empty state if no games match filter
-                if (filteredGames.isEmpty && hasActiveFilter) {
-                  return _buildNoGamesForFilterMessage(currentTimeControl);
+                // Filter for other stats: use full filter including ECO
+                final filteredGames = currentFilter.hasActiveFilters
+                    ? GameFilterHelper.applyFilter(allGames, currentFilter)
+                    : allGames;
+
+                // Show empty state if no games match filter (but only for non-ECO filters)
+                if (gamesForOpenings.isEmpty && filterForOpenings.hasActiveFilters) {
+                  return _buildNoGamesForFilterMessage(filterForOpenings);
                 }
 
+                // Analytics for opening repertoire (without ECO filter)
+                final openingAnalyticsRequest = PlayerAnalyticsRequest(
+                  fideId: widget.fideId,
+                  playerName: widget.playerName,
+                  games: gamesForOpenings,
+                );
+                final openingAnalytics = ref.watch(playerAnalyticsProvider(openingAnalyticsRequest));
+
+                // Analytics for other stats (with full filter)
                 final analyticsRequest = PlayerAnalyticsRequest(
                   fideId: widget.fideId,
                   playerName: widget.playerName,
@@ -169,7 +182,7 @@ class _PlayerAboutTabState extends ConsumerState<PlayerAboutTab>
                     // Filter active indicator
                     if (hasActiveFilter) ...[
                       _FilterActiveBanner(
-                        timeControl: currentTimeControl,
+                        filter: currentFilter,
                         totalGames: allGames.length,
                         filteredGames: filteredGames.length,
                       ),
@@ -209,12 +222,12 @@ class _PlayerAboutTabState extends ConsumerState<PlayerAboutTab>
                       SizedBox(height: 24.h),
                     ],
 
-                    // Opening repertoire
-                    if (analytics.openingStats.isNotEmpty)
+                    // Opening repertoire (uses filter WITHOUT ECO - you select FROM this list)
+                    if (openingAnalytics.openingStats.isNotEmpty)
                       _OpeningRepertoireSection(
-                        openingStats: analytics.openingStats,
-                        openingStatsWhite: analytics.openingStatsWhite,
-                        openingStatsBlack: analytics.openingStatsBlack,
+                        openingStats: openingAnalytics.openingStats,
+                        openingStatsWhite: openingAnalytics.openingStatsWhite,
+                        openingStatsBlack: openingAnalytics.openingStatsBlack,
                         playerKey: _playerKey,
                         onOpenGames: widget.onOpenGames,
                       ),
@@ -341,9 +354,22 @@ class _PlayerAboutTabState extends ConsumerState<PlayerAboutTab>
     ).animate().fadeIn(duration: 300.ms);
   }
 
-  Widget _buildNoGamesForFilterMessage(GameTimeControlFilter timeControl) {
+  Widget _buildNoGamesForFilterMessage(GameFilter filter) {
     const filterRedColor = Color(0xFFEF4444);
-    final timeControlName = timeControl.displayText;
+
+    // Build filter description
+    final parts = <String>[];
+    if (filter.timeControl != GameTimeControlFilter.all) {
+      parts.add(filter.timeControl.displayText);
+    }
+    if (filter.color != GameColorFilter.all) {
+      parts.add(filter.color == GameColorFilter.white ? 'White' : 'Black');
+    }
+    if (!filter.eco.isAll) {
+      parts.add(filter.eco.code ?? 'this opening');
+    }
+    final filterName = parts.isNotEmpty ? parts.join(' + ') : 'matching';
+
     return Container(
       padding: EdgeInsets.all(24.sp),
       decoration: BoxDecoration(
@@ -359,12 +385,12 @@ class _PlayerAboutTabState extends ConsumerState<PlayerAboutTab>
           ),
           SizedBox(height: 12.h),
           Text(
-            'No $timeControlName games',
+            'No $filterName games',
             style: AppTypography.textMdMedium.copyWith(color: kWhiteColor),
           ),
           SizedBox(height: 4.h),
           Text(
-            'This player has no $timeControlName games in the database.\nTap the time control card again to clear the filter.',
+            'No games match the current filters.\nTap filter cards again to clear them.',
             style: AppTypography.textSmRegular.copyWith(
               color: kWhiteColor.withValues(alpha: 0.6),
             ),
@@ -481,16 +507,33 @@ String _normalizeName(String name) {
 /// Filter active banner showing which time control filter is applied
 class _FilterActiveBanner extends StatelessWidget {
   const _FilterActiveBanner({
-    required this.timeControl,
+    required this.filter,
     required this.totalGames,
     required this.filteredGames,
   });
 
-  final GameTimeControlFilter timeControl;
+  final GameFilter filter;
   final int totalGames;
   final int filteredGames;
 
   static const _filterRedColor = Color(0xFFEF4444);
+
+  String _buildFilterDescription() {
+    final parts = <String>[];
+
+    if (filter.timeControl != GameTimeControlFilter.all) {
+      parts.add(filter.timeControl.displayText);
+    }
+    if (filter.color != GameColorFilter.all) {
+      parts.add(filter.color == GameColorFilter.white ? 'White' : 'Black');
+    }
+    if (!filter.eco.isAll) {
+      parts.add(filter.eco.code ?? 'Opening');
+    }
+
+    if (parts.isEmpty) return 'Filtered games';
+    return parts.join(' • ');
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -517,7 +560,7 @@ class _FilterActiveBanner extends StatelessWidget {
           SizedBox(width: 10.w),
           Expanded(
             child: Text(
-              'Showing ${timeControl.displayText} games only',
+              _buildFilterDescription(),
               style: AppTypography.textSmMedium.copyWith(
                 color: kWhiteColor,
               ),
