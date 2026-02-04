@@ -23,7 +23,10 @@ type GameRow = {
   fen: string | null;
   players: Record<string, unknown>[] | null;
   status: string | null;
+  last_move: string | null;
   last_move_time: string | null;
+  last_clock_white: number | null;
+  last_clock_black: number | null;
 };
 
 type RoundGameRow = {
@@ -357,7 +360,9 @@ async function buildContext(item: OutboxItem) {
   if (item.game_id) {
     const { data } = await supabase
       .from("games")
-      .select("id,tour_id,player_white,player_black,player_fide_ids,fen,players,status,last_move_time")
+      .select(
+        "id,tour_id,player_white,player_black,player_fide_ids,fen,players,status,last_move,last_move_time,last_clock_white,last_clock_black",
+      )
       .eq("id", item.game_id)
       .maybeSingle();
     game = (data ?? null) as GameRow | null;
@@ -761,9 +766,12 @@ type LiveUpdatePayload = {
   game_id: string;
   fen: string | null;
   last_move: string | null;
+  last_move_uci: string | null;
   last_move_san: string | null;
   last_move_numbered: string | null;
   last_move_time: string | null;
+  white_clock_seconds: number | null;
+  black_clock_seconds: number | null;
   eval_cp: number | null;
   eval_mate: number | null;
   player_white: string;
@@ -930,12 +938,21 @@ async function buildLiveUpdatePayload(args: {
   const black = (payload.player_black as string) ??
     args.context.game?.player_black ?? "Black";
   const fen = (payload.fen as string) ?? args.context.game?.fen ?? null;
-  const lastMove = (payload.last_move as string) ?? null;
-  const lastMoveTime = (payload.last_move_time as string) ?? null;
+  const lastMove = (payload.last_move as string) ??
+    args.context.game?.last_move ?? null;
+  const lastMoveUci = (payload.last_move_uci as string) ?? lastMove;
+  const lastMoveTime = (payload.last_move_time as string) ??
+    args.context.game?.last_move_time ?? null;
+  const whiteClockSeconds =
+    (payload.last_clock_white as number | null) ??
+    args.context.game?.last_clock_white ?? null;
+  const blackClockSeconds =
+    (payload.last_clock_black as number | null) ??
+    args.context.game?.last_clock_black ?? null;
   const players = (payload.players as Record<string, unknown>[] | null) ??
     args.context.game?.players ?? null;
 
-  const san = uciToSan(lastMove, fen);
+  const san = uciToSan(lastMoveUci, fen);
   const numbered = formatMoveWithNumber(san, fen);
   const { whiteFide, blackFide } = extractFideIdsFromPlayers(
     players,
@@ -951,9 +968,12 @@ async function buildLiveUpdatePayload(args: {
     game_id: args.item.game_id ?? "",
     fen,
     last_move: lastMove,
+    last_move_uci: lastMoveUci,
     last_move_san: san,
     last_move_numbered: numbered,
     last_move_time: lastMoveTime,
+    white_clock_seconds: whiteClockSeconds,
+    black_clock_seconds: blackClockSeconds,
     eval_cp: args.evalSnapshot?.cp ?? null,
     eval_mate: args.evalSnapshot?.mate ?? null,
     player_white: white,
@@ -1210,7 +1230,10 @@ async function sendLiveActivityUpdate(
 ) {
   const payload = {
     event: "update",
-    event_updates: updateData,
+    name: `live_game_update:${activityId}`,
+    event_updates: {
+      data: updateData,
+    },
   };
 
   const res = await fetch(
@@ -1219,7 +1242,7 @@ async function sendLiveActivityUpdate(
       method: "POST",
       headers: {
         ...jsonHeaders,
-        Authorization: `Basic ${ONESIGNAL_REST_API_KEY}`,
+        Authorization: `Key ${ONESIGNAL_REST_API_KEY}`,
       },
       body: JSON.stringify(payload),
     },
@@ -1256,7 +1279,10 @@ async function sendAndroidLiveNotification(args: {
       fen: args.livePayload.fen,
       last_move: args.livePayload.last_move_numbered ??
         args.livePayload.last_move_san ?? args.livePayload.last_move,
+      last_move_uci: args.livePayload.last_move_uci,
       last_move_time: args.livePayload.last_move_time,
+      white_clock_seconds: args.livePayload.white_clock_seconds,
+      black_clock_seconds: args.livePayload.black_clock_seconds,
       eval_cp: args.livePayload.eval_cp,
       eval_mate: args.livePayload.eval_mate,
     },

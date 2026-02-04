@@ -13,10 +13,11 @@
 .svn/
 
 # Environment variables
-# .env
+.env
 .env.*
 .env.dev
-.env copy.dev
+.env.local
+.env.production
 
 lichess_openapi_structure.json
 
@@ -177,3 +178,26 @@ promo-video/
 **/GoogleService-Info.plist
 lib/firebase_options.dart
 firebase.json
+.firebaserc
+
+# APNs keys (for push notifications)
+*.p8
+*.p12
+
+# Service account keys
+**/service-account*.json
+**/serviceAccount*.json
+
+# Keystore files (Android signing)
+*.keystore
+*.jks
+**/key.properties
+
+# Fastlane secrets
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots
+fastlane/test_output
+fastlane/.env*
+**/fastlane/Appfile
+**/fastlane/metadata

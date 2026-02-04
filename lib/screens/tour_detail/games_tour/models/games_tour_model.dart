@@ -1,4 +1,5 @@
 import 'package:chessever2/repository/supabase/game/games.dart';
+import 'package:dartchess/dartchess.dart';
 
 enum GameDisplayMode { all, hideFinishedGames, showfinishedGame }
 
