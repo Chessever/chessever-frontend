@@ -1,15 +1,8 @@
 {
   "mcpServers": {
-    "supabase": {
-      "command": "npx",
-      "args": [
-        "-y",
-        "@supabase/mcp-server-supabase",
-        "--read-only",
-        "--project-ref=oelbsuggrzyqwzmvidju",
-        "--access-token",
-        "sbp_156e097624173b3f43aacd792c64f4e719d0a4dc"
-      ]
+    "supabase_chessever": {
+      "type": "http",
+      "url": "https://mcp.supabase.com/mcp?project_ref=oelbsuggrzyqwzmvidju"
     }
   }
 }

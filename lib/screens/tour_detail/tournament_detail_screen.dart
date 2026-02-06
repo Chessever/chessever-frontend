@@ -187,7 +187,7 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
                     data: (data) => _buildSuccessAppBar(data, selectedTourMode),
                     error: (error, stackTrace) => _buildErrorAppBar(error),
                     loading:
-                        () => const _LoadingAppBarWithTitle(title: "Chessever"),
+                        () => const _LoadingAppBarWithTitle(title: "ChessEver"),
                   ),
                   Expanded(
                     child: PageView.builder(

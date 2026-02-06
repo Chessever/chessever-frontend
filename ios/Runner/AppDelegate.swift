@@ -2,6 +2,7 @@ import Flutter
 import UIKit
 import UserNotifications
 import AVFoundation
+import app_links
 
 @main
 @objc class AppDelegate: FlutterAppDelegate {
@@ -11,6 +12,13 @@ import AVFoundation
   ) -> Bool {
 
     GeneratedPluginRegistrant.register(with: self)
+
+    // Forward deep link URL from launch options to app_links plugin.
+    // On cold start (app killed), iOS puts the URL in launchOptions instead of
+    // calling application(_:open:options:), so we must extract it manually.
+    if let url = AppLinks.shared.getLink(launchOptions: launchOptions) {
+      AppLinks.shared.handleLink(url: url)
+    }
 
     if #available(iOS 10.0, *) {
       UNUserNotificationCenter.current().delegate = self as? UNUserNotificationCenterDelegate

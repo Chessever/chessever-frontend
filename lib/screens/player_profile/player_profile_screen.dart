@@ -12,8 +12,10 @@ import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/png_asset.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
+import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
+import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:chessever2/widgets/segmented_switcher.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:country_flags/country_flags.dart';
@@ -127,24 +129,47 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
   /// Update filters in a combinable way.
   ///
   /// Filter logic:
+  /// - Single filter is free for all users
+  /// - Chaining 2+ filters requires premium subscription
   /// - If a filter property is provided (even if 'all'), it updates that property
   /// - Other filter properties are preserved
-  /// - This allows combining: tap Rapid → tap Win → tap opening = all 3 active
-  void _openGames({
+  Future<void> _openGames({
     GameTimeControlFilter? timeControl,
     GameColorFilter? color,
     GameEcoFilter? eco,
     PlayerResultFilter? playerResultFilter,
     String? searchQuery,
-  }) {
+  }) async {
     HapticFeedbackService.buttonPress();
     final playerKey = PlayerProfileKey(
       fideId: widget.fideId,
       playerName: widget.playerName,
     );
+    final currentState = ref.read(playerProfileGamesKeyProvider(playerKey));
     final notifier = ref.read(playerProfileGamesKeyProvider(playerKey).notifier);
 
-    // Merge filters - only update properties that are explicitly provided
+    // Compute what the resulting filter state would be after this merge
+    final newFilter = currentState.filter.copyWith(
+      timeControl: timeControl,
+      color: color,
+      eco: eco,
+    );
+    final newPlayerResult = playerResultFilter ?? currentState.playerResultFilter;
+    final newSearchQuery = searchQuery ?? currentState.searchQuery;
+    final newActiveCount = newFilter.activeFilterCount +
+        (newPlayerResult != PlayerResultFilter.all ? 1 : 0) +
+        (newSearchQuery.isNotEmpty ? 1 : 0);
+
+    // Paywall: allow 1 filter free, require premium for chaining (2+)
+    if (newActiveCount > 1) {
+      final isPremium = ref.read(subscriptionProvider).isSubscribed;
+      if (!isPremium) {
+        final subscribed = await requirePremiumGuard(context, ref);
+        if (!subscribed || !mounted) return;
+      }
+    }
+
+    // Apply the filter
     notifier.mergeFilter(
       timeControl: timeControl,
       color: color,

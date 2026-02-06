@@ -683,7 +683,7 @@ async function applyPreferences(
   const { data } = await supabase
     .from("user_notification_preferences")
     .select(
-      "user_id,push_enabled,favorite_event_alerts,favorite_player_alerts,live_game_updates,daily_digest",
+      "user_id,push_enabled,favorite_event_alerts,favorite_player_alerts,live_game_updates,daily_digest,call_to_action_alerts",
     )
     .in("user_id", ids);
 
@@ -722,6 +722,15 @@ async function applyPreferences(
       if (isEventFav || isPlayerFav) {
         filtered.add(userId);
       }
+      continue;
+    }
+
+    if (eventType === "call_to_action") {
+      // Off by default — only send to users who explicitly opted in
+      if (!prefs || prefs.call_to_action_alerts !== true) {
+        continue;
+      }
+      filtered.add(userId);
       continue;
     }
 
@@ -997,6 +1006,7 @@ const ANDROID_CHANNELS = {
   headsUp: "heads_up",
   live: "live_updates",
   liveAlerts: "live_alerts",
+  callToAction: "call_to_action",
   general: "general",
 } as const;
 
@@ -1010,6 +1020,8 @@ function channelForEvent(eventType: string) {
     case "game_started":
     case "game_finished":
       return ANDROID_CHANNELS.favorites;
+    case "call_to_action":
+      return ANDROID_CHANNELS.callToAction;
     default:
       return ANDROID_CHANNELS.general;
   }

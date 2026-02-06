@@ -121,6 +121,14 @@ class _ChessBoardNotificationSettingsPageState
                                 .read(notificationsSettingsProvider.notifier)
                                 .setEnabled(value),
                           );
+                          if (!value) {
+                            _trackPersist(
+                              ref
+                                  .read(
+                                      notificationPreferencesProvider.notifier)
+                                  .disableAll(),
+                            );
+                          }
                         },
                       ),
                     ],
@@ -183,6 +191,24 @@ class _ChessBoardNotificationSettingsPageState
                 _SettingCard(
                   child: _ToggleRow(
                     title: 'Live game updates',
+                    titleTrailing: Container(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 6.sp,
+                        vertical: 2.sp,
+                      ),
+                      decoration: BoxDecoration(
+                        color: kPrimaryColor.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(4.br),
+                      ),
+                      child: Text(
+                        'Experimental',
+                        style: AppTypography.textSmRegular.copyWith(
+                          color: kPrimaryColor,
+                          fontSize: 9.f,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
                     description: 'Receive move-by-move Live Activity and live alerts.',
                     value: prefs.liveGameUpdates,
                     onChanged: (!pushEnabled || prefsLoading)
@@ -192,6 +218,25 @@ class _ChessBoardNotificationSettingsPageState
                               ref
                                   .read(notificationPreferencesProvider.notifier)
                                   .setLiveGameUpdates(value),
+                            );
+                          },
+                  ),
+                ),
+                SizedBox(height: 18.h),
+                _SectionLabel(title: 'Updates'),
+                SizedBox(height: 12.h),
+                _SettingCard(
+                  child: _ToggleRow(
+                    title: 'Chess world updates',
+                    description: 'Get occasional highlights from the chess and ChessEver world.',
+                    value: prefs.callToActionAlerts,
+                    onChanged: (!pushEnabled || prefsLoading)
+                        ? null
+                        : (value) {
+                            _trackPersist(
+                              ref
+                                  .read(notificationPreferencesProvider.notifier)
+                                  .setCallToActionAlerts(value),
                             );
                           },
                   ),
@@ -249,12 +294,14 @@ class _ToggleRow extends StatelessWidget {
     required this.title,
     required this.description,
     required this.value,
+    this.titleTrailing,
     this.onChanged,
   });
 
   final String title;
   final String description;
   final bool value;
+  final Widget? titleTrailing;
   final ValueChanged<bool>? onChanged;
 
   @override
@@ -266,12 +313,20 @@ class _ToggleRow extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                title,
-                style: AppTypography.textMdMedium.copyWith(
-                  color: kWhiteColor,
-                  fontSize: 13.f,
-                ),
+              Row(
+                children: [
+                  Text(
+                    title,
+                    style: AppTypography.textMdMedium.copyWith(
+                      color: kWhiteColor,
+                      fontSize: 13.f,
+                    ),
+                  ),
+                  if (titleTrailing != null) ...[
+                    SizedBox(width: 6.sp),
+                    titleTrailing!,
+                  ],
+                ],
               ),
               SizedBox(height: 4.h),
               Text(
