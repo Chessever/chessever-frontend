@@ -80,9 +80,19 @@ class NotificationServiceExtension : INotificationServiceExtension {
     val roundName = attrs.optString("round_name", "")
     val gameId = attrs.optString("game_id", "")
 
-    val lastMove = updates.optString("last_move", "...")
+    val lastMove = updates.optString("last_move", "—")
     val lastMoveUci = updates.optString("last_move_uci", lastMove)
     val fen = updates.optString("fen", "")
+    val themeIndex = when {
+      updates.has("board_theme_index") -> updates.optInt("board_theme_index", 0)
+      attrs.has("board_theme_index") -> attrs.optInt("board_theme_index", 0)
+      else -> 0
+    }
+    val pieceStyleIndex = when {
+      updates.has("piece_style_index") -> updates.optInt("piece_style_index", 0)
+      attrs.has("piece_style_index") -> attrs.optInt("piece_style_index", 0)
+      else -> 0
+    }
     val evalCp = if (updates.has("eval_cp") && !updates.isNull("eval_cp")) updates.optDouble("eval_cp") else null
     val evalMate = if (updates.has("eval_mate") && !updates.isNull("eval_mate")) updates.optInt("eval_mate") else null
     val whiteClockSeconds = if (updates.has("white_clock_seconds") && !updates.isNull("white_clock_seconds")) updates.optInt("white_clock_seconds") else null
@@ -92,7 +102,7 @@ class NotificationServiceExtension : INotificationServiceExtension {
     ensureChannel(context)
 
     // Create large icon (chess board)
-    val boardBitmap = renderBoardBitmap(context, fen, 256, lastMoveUci)
+    val boardBitmap = renderBoardBitmap(context, fen, 256, lastMoveUci, themeIndex, pieceStyleIndex)
     val whiteBitmap = fetchBitmap(whitePhoto)
     val blackBitmap = fetchBitmap(blackPhoto)
 
@@ -111,6 +121,8 @@ class NotificationServiceExtension : INotificationServiceExtension {
       whitePhoto = whiteBitmap,
       blackPhoto = blackBitmap,
       lastMoveUci = lastMoveUci,
+      boardThemeIndex = themeIndex,
+      pieceStyleIndex = pieceStyleIndex,
       whiteTitle = whiteTitle,
       blackTitle = blackTitle,
       whiteFed = whiteFed,
@@ -210,15 +222,18 @@ class NotificationServiceExtension : INotificationServiceExtension {
     context: Context,
     fen: String,
     size: Int,
-    lastMoveUci: String?
+    lastMoveUci: String?,
+    boardThemeIndex: Int,
+    pieceStyleIndex: Int
   ): Bitmap {
     val board = parseFenBoard(fen)
     val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
     val canvas = Canvas(bitmap)
     val squareSize = size / 8f
 
-    val lightPaint = Paint().apply { color = LIGHT_SQUARE_COLOR }
-    val darkPaint = Paint().apply { color = DARK_SQUARE_COLOR }
+    val themeColors = boardThemeColors(boardThemeIndex)
+    val lightPaint = Paint().apply { color = themeColors.first }
+    val darkPaint = Paint().apply { color = themeColors.second }
     val highlightFromPaint = Paint().apply { color = HIGHLIGHT_FROM_COLOR }
     val highlightToPaint = Paint().apply { color = HIGHLIGHT_TO_COLOR }
     val highlights = parseUciSquares(lastMoveUci)
@@ -242,7 +257,7 @@ class NotificationServiceExtension : INotificationServiceExtension {
         }
 
         board?.get(rank)?.get(file)?.let { piece ->
-          val pieceBitmap = loadPieceBitmap(context, piece)
+          val pieceBitmap = loadPieceBitmap(context, piece, pieceStyleIndex)
           if (pieceBitmap != null) {
             val inset = squareSize * 0.08f
             val rect = RectF(
@@ -286,6 +301,8 @@ class NotificationServiceExtension : INotificationServiceExtension {
     whitePhoto: Bitmap?,
     blackPhoto: Bitmap?,
     lastMoveUci: String?,
+    boardThemeIndex: Int,
+    pieceStyleIndex: Int,
     whiteTitle: String?,
     blackTitle: String?,
     whiteFed: String?,
@@ -309,7 +326,7 @@ class NotificationServiceExtension : INotificationServiceExtension {
     val boardSize = 180
     val boardX = evalBarMargin + evalBarWidth + 16f
     val boardY = (height - boardSize) / 2f
-    val boardBitmap = renderBoardBitmap(context, fen, boardSize, lastMoveUci)
+    val boardBitmap = renderBoardBitmap(context, fen, boardSize, lastMoveUci, boardThemeIndex, pieceStyleIndex)
     canvas.drawBitmap(boardBitmap, boardX, boardY, null)
 
     // Text area
@@ -323,7 +340,15 @@ class NotificationServiceExtension : INotificationServiceExtension {
       typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
     }
     if (eventName.isNotEmpty()) {
-      canvas.drawText(truncateText(eventName, eventPaint, textWidth), textX, 40f, eventPaint)
+      drawFittedText(
+        canvas,
+        eventName,
+        textX,
+        40f,
+        textWidth,
+        eventPaint,
+        minScale = 0.6f
+      )
     }
 
     // Player names
@@ -373,7 +398,15 @@ class NotificationServiceExtension : INotificationServiceExtension {
       textSize = 40f
       typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
     }
-    canvas.drawText(lastMove, textX, 195f, movePaint)
+    drawFittedText(
+      canvas,
+      lastMove,
+      textX,
+      195f,
+      textWidth,
+      movePaint,
+      minScale = 0.6f
+    )
 
     // Eval pill
     val evalText = formatEval(evalCp, evalMate)
@@ -437,7 +470,19 @@ class NotificationServiceExtension : INotificationServiceExtension {
       typeface = if (isAdvantage) Typeface.create(Typeface.DEFAULT, Typeface.BOLD) else Typeface.DEFAULT
     }
     val nameX = x + avatarRadius * 2 + 8f
-    canvas.drawText(name, nameX, y, namePaint)
+    val clockText = clockSeconds?.let { formatClock(it) }
+    val clockWidth = clockText?.let { clockPillWidth(it) } ?: 0f
+    val baseAvailable = maxWidth - (nameX - x)
+    val availableWidth = if (clockWidth > 0f) baseAvailable - clockWidth - 8f else baseAvailable
+    drawFittedText(
+      canvas,
+      name,
+      nameX,
+      y,
+      availableWidth,
+      namePaint,
+      minScale = 0.65f
+    )
 
     val meta = listOfNotNull(
       title?.takeIf { it.isNotBlank() },
@@ -449,10 +494,17 @@ class NotificationServiceExtension : INotificationServiceExtension {
         textSize = 18f
         typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
       }
-      canvas.drawText(meta, nameX, y + 20f, metaPaint)
+      drawFittedText(
+        canvas,
+        meta,
+        nameX,
+        y + 20f,
+        availableWidth,
+        metaPaint,
+        minScale = 0.65f
+      )
     }
 
-    val clockText = clockSeconds?.let { formatClock(it) }
     if (clockText != null) {
       drawClockPill(
         canvas,
@@ -601,13 +653,37 @@ class NotificationServiceExtension : INotificationServiceExtension {
     return (evalCp ?: 0.0) >= 0
   }
 
-  private fun truncateText(text: String, paint: Paint, maxWidth: Float): String {
-    if (paint.measureText(text) <= maxWidth) return text
-    var truncated = text
-    while (paint.measureText("$truncated...") > maxWidth && truncated.isNotEmpty()) {
-      truncated = truncated.dropLast(1)
+  private fun drawFittedText(
+    canvas: Canvas,
+    text: String,
+    x: Float,
+    y: Float,
+    maxWidth: Float,
+    basePaint: Paint,
+    minScale: Float = 0.6f
+  ) {
+    if (text.isBlank()) return
+    if (maxWidth <= 0f) {
+      canvas.drawText(text, x, y, basePaint)
+      return
     }
-    return "$truncated..."
+    val paint = Paint(basePaint)
+    val measured = paint.measureText(text)
+    if (measured > maxWidth) {
+      val scale = maxWidth / measured
+      paint.textSize = paint.textSize * max(scale, minScale)
+    }
+    val finalWidth = paint.measureText(text)
+    if (finalWidth > maxWidth) {
+      val top = y - paint.textSize
+      val bottom = y + paint.textSize * 0.3f
+      canvas.save()
+      canvas.clipRect(x, top, x + maxWidth, bottom)
+      canvas.drawText(text, x, y, paint)
+      canvas.restore()
+    } else {
+      canvas.drawText(text, x, y, paint)
+    }
   }
 
   private fun roundCorners(bitmap: Bitmap, radius: Float): Bitmap {
@@ -621,14 +697,23 @@ class NotificationServiceExtension : INotificationServiceExtension {
     return output
   }
 
+  private fun clockPillWidth(text: String): Float {
+    val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+      textSize = 20f
+      typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
+    }
+    val paddingX = 8f
+    return textPaint.measureText(text) + paddingX * 2
+  }
+
   private fun drawClockPill(canvas: Canvas, rightX: Float, topY: Float, text: String) {
     val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
       color = TEXT_PRIMARY_COLOR
       textSize = 20f
       typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
     }
-    val paddingX = 10f
-    val paddingY = 6f
+    val paddingX = 8f
+    val paddingY = 5f
     val textWidth = textPaint.measureText(text)
     val height = textPaint.textSize + paddingY * 2
     val width = textWidth + paddingX * 2
@@ -639,7 +724,8 @@ class NotificationServiceExtension : INotificationServiceExtension {
     canvas.drawRoundRect(rect, height / 2, height / 2, pillPaint)
 
     val textY = topY + paddingY + textPaint.textSize - 4f
-    canvas.drawText(text, left + paddingX, textY, textPaint)
+    val textX = left + (width - textWidth) / 2f
+    canvas.drawText(text, textX, textY, textPaint)
   }
 
   private fun formatClock(seconds: Int): String {
@@ -707,7 +793,48 @@ class NotificationServiceExtension : INotificationServiceExtension {
     canvas.drawCircle(cx, cy, radius, paint)
   }
 
-  private fun loadPieceBitmap(context: Context, piece: Char): Bitmap? {
+  private fun loadPieceBitmap(context: Context, piece: Char, pieceStyleIndex: Int): Bitmap? {
+    val fileName = when (piece) {
+      'K' -> "wK.png"
+      'Q' -> "wQ.png"
+      'R' -> "wR.png"
+      'B' -> "wB.png"
+      'N' -> "wN.png"
+      'P' -> "wP.png"
+      'k' -> "bK.png"
+      'q' -> "bQ.png"
+      'r' -> "bR.png"
+      'b' -> "bB.png"
+      'n' -> "bN.png"
+      'p' -> "bP.png"
+      else -> null
+    } ?: return null
+
+    val dir = pieceSetDirectory(pieceStyleIndex)
+    val cacheKey = "$dir/$fileName"
+
+    synchronized(pieceBitmapCache) {
+      if (pieceBitmapCache.containsKey(cacheKey)) {
+        return pieceBitmapCache[cacheKey]
+      }
+    }
+
+    // Prefer Flutter assets, so native rendering matches the piece set selected in-app.
+    val assetPath = "flutter_assets/packages/chessground/assets/piece_sets/$dir/$fileName"
+    val bitmapFromAssets = try {
+      context.assets.open(assetPath).use { BitmapFactory.decodeStream(it) }
+    } catch (_: Exception) {
+      null
+    }
+
+    if (bitmapFromAssets != null) {
+      synchronized(pieceBitmapCache) {
+        pieceBitmapCache[cacheKey] = bitmapFromAssets
+      }
+      return bitmapFromAssets
+    }
+
+    // Fallback to bundled cburnett resources (keeps notifications working even if assets move).
     val resName = when (piece) {
       'K' -> "piece_wk"
       'Q' -> "piece_wq"
@@ -725,32 +852,77 @@ class NotificationServiceExtension : INotificationServiceExtension {
     } ?: return null
 
     val resId = context.resources.getIdentifier(resName, "drawable", context.packageName)
-    if (resId == 0) return null
-
-    synchronized(pieceBitmapCache) {
-      if (pieceBitmapCache.containsKey(resId)) {
-        return pieceBitmapCache[resId]
+    if (resId == 0) {
+      synchronized(pieceBitmapCache) {
+        pieceBitmapCache[cacheKey] = null
       }
+      return null
     }
 
-    return try {
-      val bitmap = BitmapFactory.decodeResource(context.resources, resId)
-      synchronized(pieceBitmapCache) {
-        pieceBitmapCache[resId] = bitmap
-      }
-      bitmap
-    } catch (e: Exception) {
-      synchronized(pieceBitmapCache) {
-        pieceBitmapCache[resId] = null
-      }
+    val bitmapFromRes = try {
+      BitmapFactory.decodeResource(context.resources, resId)
+    } catch (_: Exception) {
       null
     }
+
+    synchronized(pieceBitmapCache) {
+      pieceBitmapCache[cacheKey] = bitmapFromRes
+    }
+    return bitmapFromRes
   }
 
   companion object {
     private const val CHANNEL_ID = "live_updates"
     private val photoCache = mutableMapOf<String, Bitmap?>()
-    private val pieceBitmapCache = mutableMapOf<Int, Bitmap?>()
+    private val pieceBitmapCache = mutableMapOf<String, Bitmap?>()
+
+    // Must match PieceSet.values order in chessground:
+    // /Users/berkay/.pub-cache/hosted/pub.dev/chessground-7.3.0/lib/src/piece_set.dart
+    private val PIECE_SET_DIRS = listOf(
+      "cburnett",
+      "merida",
+      "pirouetti",
+      "chessnut",
+      "chess7",
+      "alpha",
+      "reillycraig",
+      "companion",
+      "riohacha",
+      "kosal",
+      "leipzig",
+      "fantasy",
+      "spatial",
+      "celtic",
+      "california",
+      "caliente",
+      "pixel",
+      "firi",
+      "rhosgfx",
+      "maestro",
+      "fresca",
+      "cardinal",
+      "gioco",
+      "tatiana",
+      "staunty",
+      "governor",
+      "dubrovny",
+      "icpieces",
+      "mpchess",
+      "monarchy",
+      "cooke",
+      "shapes",
+      "kiwen-suwi",
+      "horsey",
+      "anarcandy",
+      "xkcd",
+      "letter",
+      "disguised",
+      "symmetric"
+    )
+
+    private fun pieceSetDirectory(index: Int): String {
+      return if (index in 0 until PIECE_SET_DIRS.size) PIECE_SET_DIRS[index] else PIECE_SET_DIRS[0]
+    }
 
     // Design colors matching iOS
     private val BACKGROUND_COLOR = Color.parseColor("#0C0C0E")
@@ -761,9 +933,37 @@ class NotificationServiceExtension : INotificationServiceExtension {
     private val HIGHLIGHT_FROM_COLOR = Color.parseColor("#4D0FB4E5")
     private val HIGHLIGHT_TO_COLOR = Color.parseColor("#800FB4E5")
 
-    // Board colors
-    private val LIGHT_SQUARE_COLOR = Color.parseColor("#E8E3D6")
-    private val DARK_SQUARE_COLOR = Color.parseColor("#B58863")
+    private fun boardThemeColors(index: Int): Pair<Int, Int> {
+      val palettes = listOf(
+        Pair(0xfff0d9b6.toInt(), 0xffb58863.toInt()), // Brown
+        Pair(0xffdee3e6.toInt(), 0xff8ca2ad.toInt()), // Blue
+        Pair(0xffffffdd.toInt(), 0xff86a666.toInt()), // Green
+        Pair(0xffececec.toInt(), 0xffc1c18e.toInt()), // IC
+        Pair(0xff97b2c7.toInt(), 0xff546f82.toInt()), // Blue 2
+        Pair(0xffd9e0e6.toInt(), 0xff315991.toInt()), // Blue 3
+        Pair(0xffeae6dd.toInt(), 0xff7c7f87.toInt()), // Blue Marble
+        Pair(0xffd7daeb.toInt(), 0xff547388.toInt()), // Canvas
+        Pair(0xfff2f9bb.toInt(), 0xff59935d.toInt()), // Green Plastic
+        Pair(0xffb8b8b8.toInt(), 0xff7d7d7d.toInt()), // Grey
+        Pair(0xfff0d9b5.toInt(), 0xff946f51.toInt()), // Horsey
+        Pair(0xffd1d1c9.toInt(), 0xffc28e16.toInt()), // Leather
+        Pair(0xffe8ceab.toInt(), 0xffbc7944.toInt()), // Maple
+        Pair(0xffe2c89f.toInt(), 0xff996633.toInt()), // Maple 2
+        Pair(0xff93ab91.toInt(), 0xff4f644e.toInt()), // Marble
+        Pair(0xffc9c9c9.toInt(), 0xff727272.toInt()), // Metal
+        Pair(0xffffffff.toInt(), 0xff8d8d8d.toInt()), // Newspaper
+        Pair(0xffb8b19f.toInt(), 0xff6d6655.toInt()), // Olive
+        Pair(0xffe8e9b7.toInt(), 0xffed7272.toInt()), // Pink Pyramid
+        Pair(0xff9f90b0.toInt(), 0xff7d4a8d.toInt()), // Purple
+        Pair(0xffe5daf0.toInt(), 0xff957ab0.toInt()), // Purple Diag
+        Pair(0xffd8a45b.toInt(), 0xff9b4d0f.toInt()), // Wood
+        Pair(0xffa38b5d.toInt(), 0xff6c5017.toInt()), // Wood 2
+        Pair(0xffd0ceca.toInt(), 0xff755839.toInt()), // Wood 3
+        Pair(0xffcaaf7d.toInt(), 0xff7b5330.toInt()), // Wood 4
+      )
+      val safeIndex = index.coerceIn(0, palettes.size - 1)
+      return palettes[safeIndex]
+    }
 
     // Piece colors
     private val WHITE_PIECE_COLOR = Color.parseColor("#F2F2F2")

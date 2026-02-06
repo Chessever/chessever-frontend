@@ -1,6 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { Chess } from "https://esm.sh/chess.js@1.0.0";
+import { createClient } from "jsr:@supabase/supabase-js@2";
+import { Chess } from "npm:chess.js@1.0.0";
 
 type OutboxItem = {
   id: string;
@@ -69,6 +69,7 @@ const ONESIGNAL_APP_ID = Deno.env.get("ONESIGNAL_APP_ID") ?? "";
 const ONESIGNAL_REST_API_KEY = Deno.env.get("ONESIGNAL_REST_API_KEY") ?? "";
 const LICHESS_CLOUD_EVAL_KEY = Deno.env.get("LICHESS_CLOUD_EVAL_KEY") ?? "";
 const CHESS_API_URL = Deno.env.get("CHESS_API_URL") ?? "https://chess-api.com/v1";
+const STREAM_DISPATCH_TOKEN = Deno.env.get("STREAM_DISPATCH_TOKEN") ?? "";
 
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
   throw new Error("Missing Supabase environment variables.");
@@ -87,6 +88,10 @@ const CLOUD_EVAL_MAX_REQUESTS = 5;
 const CHESS_API_MAX_REQUESTS = 10;
 const cloudEvalCache = new Map<string, EvalSnapshot | null>();
 const chessApiEvalCache = new Map<string, EvalSnapshot | null>();
+const dispatchTokenCache: { token: string | null; expiresAtMs: number } = {
+  token: null,
+  expiresAtMs: 0,
+};
 
 type CloudEvalState = {
   remaining: number;
@@ -96,6 +101,13 @@ type CloudEvalState = {
 Deno.serve(async (req) => {
   if (req.method !== "POST") {
     return new Response("Method Not Allowed", { status: 405 });
+  }
+  const requiredToken = await resolveDispatchToken();
+  if (requiredToken) {
+    const provided = req.headers.get("x-stream-token") ?? "";
+    if (provided !== requiredToken) {
+      return new Response("Unauthorized", { status: 401 });
+    }
   }
 
   let limit = 25;
@@ -126,6 +138,29 @@ Deno.serve(async (req) => {
     { headers: jsonHeaders },
   );
 });
+
+async function resolveDispatchToken(): Promise<string | null> {
+  if (STREAM_DISPATCH_TOKEN) return STREAM_DISPATCH_TOKEN;
+
+  const now = Date.now();
+  if (dispatchTokenCache.expiresAtMs > now) return dispatchTokenCache.token;
+
+  const { data, error } = await supabase.rpc("get_vault_secret", {
+    secret_name: "live_dispatch_token",
+  });
+
+  if (error) {
+    // Cache the miss briefly to avoid hammering the DB on transient failures.
+    dispatchTokenCache.token = null;
+    dispatchTokenCache.expiresAtMs = now + 15_000;
+    return null;
+  }
+
+  const token = typeof data === "string" && data.length > 0 ? data : null;
+  dispatchTokenCache.token = token;
+  dispatchTokenCache.expiresAtMs = now + 60_000;
+  return token;
+}
 
 async function fetchPending(limit: number): Promise<OutboxItem[]> {
   const { data, error } = await supabase
@@ -193,12 +228,28 @@ async function processItem(item: OutboxItem, cloudEvalState: CloudEvalState) {
         evalSnapshot,
       });
 
+      const boardSettingsByUser = await fetchBoardSettings([
+        ...new Set([
+          ...iosEligible.map((row) => row.user_id),
+          ...androidEligible.map((row) => row.user_id),
+        ]),
+      ]);
+
+      const payloadForUser = (userId: string) => {
+        const settings = boardSettingsByUser.get(userId);
+        return {
+          ...livePayload,
+          board_theme_index: settings?.board_theme_index ?? 0,
+          piece_style_index: settings?.piece_style_index ?? 0,
+        };
+      };
+
       const iosNotFound: string[] = [];
       for (const row of iosEligible) {
         const activityId = buildLiveActivityId(item.game_id, row.user_id);
         const updateResult = await sendLiveActivityUpdate(
           activityId,
-          livePayload,
+          payloadForUser(row.user_id),
         );
         if (!updateResult.ok && updateResult.notFound) {
           iosNotFound.push(row.user_id);
@@ -224,63 +275,95 @@ async function processItem(item: OutboxItem, cloudEvalState: CloudEvalState) {
         });
       }
 
-      const androidNewUsers = androidEligible
-        .filter((row) => !row.started_at)
-        .map((row) => row.user_id);
-      const androidExistingUsers = androidEligible
-        .filter((row) => row.started_at)
-        .map((row) => row.user_id);
+      const androidGroups = new Map<
+        string,
+        {
+          rows: LiveSubscriptionRow[];
+          boardThemeIndex: number;
+          pieceStyleIndex: number;
+        }
+      >();
 
-      const newSubscriptionIds = await fetchAndroidSubscriptionIds(
-        androidNewUsers,
-      );
-      const existingSubscriptionIds = await fetchAndroidSubscriptionIds(
-        androidExistingUsers,
-      );
-
-      if (!livePayload.is_game_over) {
-        if (newSubscriptionIds.length > 0) {
-          await sendAndroidLiveNotification({
-            subscriptionIds: newSubscriptionIds,
-            livePayload,
-            event: "start",
-          });
-          await markLiveSubscriptionEvent({
-            gameId: item.game_id,
-            userIds: androidNewUsers,
-            platform: "android",
-            markStarted: true,
+      for (const row of androidEligible) {
+        const settings = boardSettingsByUser.get(row.user_id);
+        const boardThemeIndex = settings?.board_theme_index ?? 0;
+        const pieceStyleIndex = settings?.piece_style_index ?? 0;
+        const key = `${boardThemeIndex}:${pieceStyleIndex}`;
+        if (!androidGroups.has(key)) {
+          androidGroups.set(key, {
+            rows: [],
+            boardThemeIndex,
+            pieceStyleIndex,
           });
         }
-
-        if (existingSubscriptionIds.length > 0) {
-          await sendAndroidLiveNotification({
-            subscriptionIds: existingSubscriptionIds,
-            livePayload,
-            event: "update",
-          });
-          await markLiveSubscriptionEvent({
-            gameId: item.game_id,
-            userIds: androidExistingUsers,
-            platform: "android",
-          });
-        }
-      } else if (existingSubscriptionIds.length > 0) {
-        await sendAndroidLiveNotification({
-          subscriptionIds: existingSubscriptionIds,
-          livePayload,
-          event: "end",
-        });
+        androidGroups.get(key)!.rows.push(row);
       }
 
-      if (livePayload.is_game_over) {
-        const allUsers = [...androidNewUsers, ...androidExistingUsers];
-        if (allUsers.length > 0) {
-          await disableLiveSubscriptions({
-            gameId: item.game_id,
-            userIds: allUsers,
-            platform: "android",
+      for (const group of androidGroups.values()) {
+        const androidNewUsers = group.rows
+          .filter((row) => !row.started_at)
+          .map((row) => row.user_id);
+        const androidExistingUsers = group.rows
+          .filter((row) => row.started_at)
+          .map((row) => row.user_id);
+
+        const newSubscriptionIds = await fetchAndroidSubscriptionIds(
+          androidNewUsers,
+        );
+        const existingSubscriptionIds = await fetchAndroidSubscriptionIds(
+          androidExistingUsers,
+        );
+
+        const groupPayload = {
+          ...livePayload,
+          board_theme_index: group.boardThemeIndex,
+          piece_style_index: group.pieceStyleIndex,
+        };
+
+        if (!livePayload.is_game_over) {
+          if (newSubscriptionIds.length > 0) {
+            await sendAndroidLiveNotification({
+              subscriptionIds: newSubscriptionIds,
+              livePayload: groupPayload,
+              event: "start",
+            });
+            await markLiveSubscriptionEvent({
+              gameId: item.game_id,
+              userIds: androidNewUsers,
+              platform: "android",
+              markStarted: true,
+            });
+          }
+
+          if (existingSubscriptionIds.length > 0) {
+            await sendAndroidLiveNotification({
+              subscriptionIds: existingSubscriptionIds,
+              livePayload: groupPayload,
+              event: "update",
+            });
+            await markLiveSubscriptionEvent({
+              gameId: item.game_id,
+              userIds: androidExistingUsers,
+              platform: "android",
+            });
+          }
+        } else if (existingSubscriptionIds.length > 0) {
+          await sendAndroidLiveNotification({
+            subscriptionIds: existingSubscriptionIds,
+            livePayload: groupPayload,
+            event: "end",
           });
+        }
+
+        if (livePayload.is_game_over) {
+          const allUsers = [...androidNewUsers, ...androidExistingUsers];
+          if (allUsers.length > 0) {
+            await disableLiveSubscriptions({
+              gameId: item.game_id,
+              userIds: allUsers,
+              platform: "android",
+            });
+          }
         }
       }
 
@@ -741,6 +824,24 @@ async function filterLiveUpdateEnabled(userIds: string[]) {
   return filtered;
 }
 
+async function fetchBoardSettings(userIds: string[]) {
+  if (userIds.length === 0) return new Map<string, UserBoardSettings>();
+
+  const { data } = await supabase
+    .from("user_engine_settings")
+    .select("user_id,board_theme_index,piece_style_index")
+    .in("user_id", userIds);
+
+  const map = new Map<string, UserBoardSettings>();
+  for (const row of data ?? []) {
+    map.set(row.user_id as string, {
+      board_theme_index: (row.board_theme_index as number | null) ?? 0,
+      piece_style_index: (row.piece_style_index as number | null) ?? 0,
+    });
+  }
+  return map;
+}
+
 async function disableLiveSubscriptions(args: {
   gameId: string;
   userIds: string[];
@@ -866,6 +967,8 @@ type LiveUpdatePayload = {
   black_clock_seconds: number | null;
   eval_cp: number | null;
   eval_mate: number | null;
+  board_theme_index: number | null;
+  piece_style_index: number | null;
   player_white: string;
   player_black: string;
   event_name: string | null;
@@ -882,6 +985,11 @@ type LiveUpdatePayload = {
   is_checkmate: boolean;
   is_game_over: boolean;
   status: string | null;
+};
+
+type UserBoardSettings = {
+  board_theme_index: number | null;
+  piece_style_index: number | null;
 };
 
 const ANDROID_CHANNELS = {
@@ -1088,6 +1196,8 @@ async function buildLiveUpdatePayload(args: {
     black_clock_seconds: blackClockSeconds,
     eval_cp: args.evalSnapshot?.cp ?? null,
     eval_mate: args.evalSnapshot?.mate ?? null,
+    board_theme_index: null,
+    piece_style_index: null,
     player_white: white,
     player_black: black,
     event_name: args.context.eventName ?? null,
@@ -1332,6 +1442,57 @@ function extractEvalFromPvs(pvs: unknown): EvalSnapshot | null {
   return { cp, mate, depth: null };
 }
 
+function parseSideToMove(fen: string): "w" | "b" | null {
+  const parts = fen.split(" ");
+  if (parts.length < 2) return null;
+  const side = parts[1];
+  return side === "w" || side === "b" ? side : null;
+}
+
+function estimateMaterialCpFromFen(fen: string): number | null {
+  const grid = parseFenBoard(fen);
+  if (!grid) return null;
+
+  // Centipawn-style values (positive = white advantage).
+  const values: Record<string, number> = {
+    p: 100,
+    n: 320,
+    b: 330,
+    r: 500,
+    q: 900,
+    k: 0,
+  };
+
+  let cp = 0;
+  for (const row of grid) {
+    for (const piece of row) {
+      if (!piece) continue;
+      const val = values[piece.toLowerCase()] ?? 0;
+      cp += piece === piece.toUpperCase() ? val : -val;
+    }
+  }
+
+  // Clamp to avoid absurd spikes in the UI. Widgets clamp anyway, but keeping
+  // this bounded makes payloads predictable.
+  return Math.max(-2500, Math.min(2500, cp));
+}
+
+function estimateEvalSnapshotFromFen(fen: string): EvalSnapshot | null {
+  // Best-effort fallback: material balance (white perspective). This is only
+  // used when we have no engine/cloud evaluation available.
+  const side = parseSideToMove(fen);
+  const check = analyzePosition(fen);
+  if (check.isCheckmate && side) {
+    // Side to move is checkmated, so the other side has won.
+    const mate = side === "w" ? -1 : 1;
+    return { cp: null, mate, depth: 0 };
+  }
+
+  const cp = estimateMaterialCpFromFen(fen);
+  if (cp == null) return { cp: 0, mate: null, depth: 0 };
+  return { cp, mate: null, depth: 0 };
+}
+
 async function fetchEvalSnapshots(
   fens: string[],
   options?: {
@@ -1444,6 +1605,9 @@ async function fetchEvalSnapshots(
         options.cloudEvalState,
       );
     }
+    if (!snapshot) {
+      snapshot = estimateEvalSnapshotFromFen(fen);
+    }
     if (!snapshot) continue;
 
     const positionId = refreshedPositions.find((row) => row.fen === fen)?.id;
@@ -1464,7 +1628,7 @@ async function fetchCloudEvalSnapshot(
     return cloudEvalCache.get(fen) ?? null;
   }
 
-  if (!LICHESS_CLOUD_EVAL_KEY || cloudEvalState.remaining <= 0) {
+  if (cloudEvalState.remaining <= 0) {
     return null;
   }
 
@@ -1475,11 +1639,15 @@ async function fetchCloudEvalSnapshot(
     url.searchParams.set("fen", fen);
     url.searchParams.set("multiPv", "1");
 
+    const headers: Record<string, string> = {
+      Accept: "application/json",
+    };
+    if (LICHESS_CLOUD_EVAL_KEY) {
+      headers.Authorization = `Bearer ${LICHESS_CLOUD_EVAL_KEY}`;
+    }
+
     const res = await fetch(url.toString(), {
-      headers: {
-        Accept: "application/json",
-        Authorization: `Bearer ${LICHESS_CLOUD_EVAL_KEY}`,
-      },
+      headers,
     });
 
     if (res.status === 404) {
@@ -1714,6 +1882,8 @@ async function sendAndroidLiveNotification(args: {
       black_title: args.livePayload.black_title,
       white_fed: args.livePayload.white_fed,
       black_fed: args.livePayload.black_fed,
+      board_theme_index: args.livePayload.board_theme_index,
+      piece_style_index: args.livePayload.piece_style_index,
     },
     event_updates: {
       fen: args.livePayload.fen,
@@ -1725,6 +1895,8 @@ async function sendAndroidLiveNotification(args: {
       black_clock_seconds: args.livePayload.black_clock_seconds,
       eval_cp: args.livePayload.eval_cp,
       eval_mate: args.livePayload.eval_mate,
+      board_theme_index: args.livePayload.board_theme_index,
+      piece_style_index: args.livePayload.piece_style_index,
       is_check: args.livePayload.is_check,
       is_checkmate: args.livePayload.is_checkmate,
       is_game_over: args.livePayload.is_game_over,

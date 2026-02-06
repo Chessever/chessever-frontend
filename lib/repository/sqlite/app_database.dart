@@ -22,6 +22,8 @@ class AppDatabase {
 
   Database? _database;
   Completer<Database>? _initCompleter;
+  static const Duration _initTimeout = Duration(seconds: 4);
+  static const String _dbFileName = 'chessever_app.db';
 
   /// Table for simple key-value storage (replaces SharedPreferences)
   static const String _kvTable = 'key_value_store';
@@ -44,7 +46,12 @@ class AppDatabase {
     _initCompleter = Completer<Database>();
 
     try {
-      final db = await _initDatabase();
+      final db = await _initDatabase().timeout(
+        _initTimeout,
+        onTimeout: () {
+          throw TimeoutException('SQLite init timed out after $_initTimeout');
+        },
+      );
       _database = db;
       _initCompleter!.complete(db);
       return db;
@@ -57,7 +64,7 @@ class AppDatabase {
 
   Future<Database> _initDatabase() async {
     final documentsDirectory = await getApplicationDocumentsDirectory();
-    final path = join(documentsDirectory.path, 'chessever_app.db');
+    final path = join(documentsDirectory.path, _dbFileName);
 
     if (kDebugMode) {
       print('SQLite database path: $path');
@@ -437,6 +444,24 @@ class AppDatabase {
       await db.close();
       _database = null;
       _initCompleter = null;
+    }
+  }
+
+  /// Reset the database by closing and deleting the file.
+  /// Use to recover from corrupted SQLite files on Android.
+  Future<void> reset() async {
+    await close();
+    try {
+      final documentsDirectory = await getApplicationDocumentsDirectory();
+      final path = join(documentsDirectory.path, _dbFileName);
+      await deleteDatabase(path);
+      if (kDebugMode) {
+        print('🧹 SQLite database deleted: $path');
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print('⚠️ Failed to delete SQLite database: $e');
+      }
     }
   }
 }

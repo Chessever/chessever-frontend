@@ -103,12 +103,16 @@ class LiveUpdatesService {
     String? roundName,
     int? whiteFideId,
     int? blackFideId,
+    int? boardThemeIndex,
+    int? pieceStyleIndex,
   }) async {
     final activityId = 'live:$gameId:$userId';
     final attributes = {
       'game_id': gameId,
       'player_white': playerWhite,
       'player_black': playerBlack,
+      if (boardThemeIndex != null) 'board_theme_index': boardThemeIndex,
+      if (pieceStyleIndex != null) 'piece_style_index': pieceStyleIndex,
       if (whiteTitle != null) 'white_title': whiteTitle,
       if (blackTitle != null) 'black_title': blackTitle,
       if (whiteFed != null) 'white_fed': whiteFed,
@@ -124,6 +128,8 @@ class LiveUpdatesService {
       'game_id': gameId,
       'player_white': playerWhite,
       'player_black': playerBlack,
+      if (boardThemeIndex != null) 'board_theme_index': boardThemeIndex,
+      if (pieceStyleIndex != null) 'piece_style_index': pieceStyleIndex,
       if (whiteTitle != null) 'white_title': whiteTitle,
       if (blackTitle != null) 'black_title': blackTitle,
       if (whiteFed != null) 'white_fed': whiteFed,
