@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'package:chessever2/localization/locale_provider.dart';
 import 'package:chessever2/screens/authentication/auth_screen.dart';
@@ -135,101 +136,10 @@ Future<void> main() async {
       WidgetsBinding widgetsBinding = SentryWidgetsFlutterBinding.ensureInitialized();
       FlutterNativeSplash.preserve(widgetsBinding: widgetsBinding);
 
-      // CRITICAL: Initialize SQLite database FIRST (replaces SharedPreferences for all app storage)
-      // SQLite is now the primary storage for everything except Supabase auth token
-      await AppDatabase.instance.database;
-
       // Load environment variables (only in debug mode)
       if (kDebugMode) {
         await dotenv.load(fileName: ".env");
       }
-
-      // Get Supabase auth key name for cleanup exclusion
-      final supabaseUrl = _getEnv('SUPABASE_URL');
-      final supabaseHost = Uri.parse(supabaseUrl).host.split('.').first;
-      final persistSessionKey = 'sb-$supabaseHost-auth-token';
-
-      // ONE-TIME MIGRATION: Clean up all SharedPreferences except Supabase auth token
-      // SQLite takes over from this version onwards (non-blocking with timeout)
-      unawaited(_migrateToSqliteStorage(persistSessionKey));
-
-      // Initialize SharedPreferences for Supabase auth only (with timeout, non-blocking)
-      // If this fails, Supabase safe storage will fall back to memory
-      unawaited(
-        SharedPreferencesService.instance.initialize().timeout(
-          const Duration(seconds: 3),
-          onTimeout: () {
-            debugPrint('⚠️ SharedPreferences init timed out - using memory fallback for auth');
-            return Future.value(null);
-          },
-        ).catchError((e) {
-          debugPrint('⚠️ SharedPreferences init failed: $e');
-          return null;
-        }),
-      );
-
-      // Add lifecycle observer
-      WidgetsBinding.instance.addObserver(
-        LifecycleEventHandler(
-          onAppExit: () async {
-            StockfishSingleton().dispose();
-          },
-          onAppResume: () async {
-            // Sync purchases when app comes to foreground
-            final revenueCat = RevenueCatService();
-            if (revenueCat.onAppResumeCallback != null) {
-              unawaited(revenueCat.onAppResumeCallback!());
-            } else {
-              unawaited(revenueCat.syncPurchases());
-            }
-          },
-        ),
-      );
-
-      // Initialize Supabase FIRST - this is critical and must complete
-      // The SafeSupabaseLocalStorage has built-in 3s timeout for SharedPreferences
-      final supabaseAnonKey = _getEnv('SUPABASE_ANON_KEY');
-      final authOptions = FlutterAuthClientOptions(
-        localStorage: SafeSupabaseLocalStorage(
-          persistSessionKey: persistSessionKey,
-        ),
-        pkceAsyncStorage: SafeGotrueAsyncStorage(),
-      );
-
-      await Supabase.initialize(
-        url: supabaseUrl,
-        anonKey: supabaseAnonKey,
-        authOptions: authOptions,
-      );
-
-      // Initialize OneSignal (non-blocking)
-      unawaited(
-        PushNotificationsService.instance.initialize(
-          appId: _resolveOneSignalAppId(),
-        ),
-      );
-
-      // Non-critical initializers - run in parallel, don't block app startup
-      unawaited(Future.wait([
-        // Initialize Amplitude (with error handling)
-        () async {
-          try {
-            await AnalyticsService.instance.initialize(
-              apiKey: _resolveAmplitudeApiKey(),
-            ).timeout(const Duration(seconds: 5));
-          } catch (e) {
-            debugPrint('⚠️ Analytics init failed: $e');
-          }
-        }(),
-        // Initialize RevenueCat for subscriptions
-        _initializeRevenueCat(),
-      ]));
-
-      // Initialize TerminateRestart (for user-triggered Shorebird updates only)
-      TerminateRestart.instance.initialize();
-
-      // Non-critical: Load audio assets in background (don't block app startup)
-      unawaited(AudioPlayerService.instance.initializeAndLoadAllAssets());
 
       // Sentry init with timeout - don't let it block app startup indefinitely
       try {
@@ -279,14 +189,14 @@ Future<void> main() async {
           },
           // Don't use SentryWidget - it adds performance monitoring overhead
           // Just run the app directly
-          appRunner: () => runApp(ProviderScope(child: MyApp())),
+          appRunner: () => runApp(ProviderScope(child: StartupGate())),
         ).timeout(const Duration(seconds: 5), onTimeout: () {
           debugPrint('⚠️ SentryFlutter.init() timed out - starting app anyway');
-          runApp(ProviderScope(child: MyApp()));
+          runApp(ProviderScope(child: StartupGate()));
         });
       } catch (e) {
         debugPrint('⚠️ Sentry init failed: $e - starting app anyway');
-        runApp(ProviderScope(child: MyApp()));
+        runApp(ProviderScope(child: StartupGate()));
       }
     },
     (error, stackTrace) {
@@ -395,6 +305,366 @@ Future<void> _initializeRevenueCat() async {
     if (kDebugMode) {
       debugPrintStack(stackTrace: st);
     }
+  }
+}
+
+String _buildPersistSessionKey(String supabaseUrl) {
+  final supabaseHost = Uri.parse(supabaseUrl).host.split('.').first;
+  return 'sb-$supabaseHost-auth-token';
+}
+
+Future<void> _initializeSqliteWithRecovery() async {
+  try {
+    await AppDatabase.instance.database;
+  } catch (e) {
+    debugPrint('⚠️ SQLite init failed: $e');
+    await AppDatabase.instance.reset();
+    await AppDatabase.instance.database;
+  }
+}
+
+Future<void> _sanitizeSupabasePersistedSession(String persistSessionKey) async {
+  final prefs = await SharedPreferencesService.instance.ensureInitialized();
+  if (prefs == null) return;
+
+  final keys = <String>[
+    persistSessionKey,
+    'flutter.$persistSessionKey',
+  ];
+
+  for (final key in keys) {
+    final raw = prefs.getString(key);
+    if (raw == null || raw.isEmpty) continue;
+    try {
+      jsonDecode(raw);
+    } catch (_) {
+      await prefs.remove(key);
+      debugPrint('🧹 Cleared corrupted Supabase session token: $key');
+    }
+  }
+}
+
+Future<void> _clearSupabasePersistedSession(String persistSessionKey) async {
+  final prefs = await SharedPreferencesService.instance.ensureInitialized();
+  if (prefs == null) return;
+  await prefs.remove(persistSessionKey);
+  await prefs.remove('flutter.$persistSessionKey');
+}
+
+bool _isSupabaseInitialized() {
+  try {
+    Supabase.instance.client;
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+Future<void> _initializeSupabaseWithRecovery({
+  required String supabaseUrl,
+  required String supabaseAnonKey,
+  required String persistSessionKey,
+}) async {
+  // Clean corrupted persisted sessions before init to avoid hard crashes.
+  await _sanitizeSupabasePersistedSession(persistSessionKey);
+
+  final authOptions = FlutterAuthClientOptions(
+    localStorage: SafeSupabaseLocalStorage(
+      persistSessionKey: persistSessionKey,
+    ),
+    pkceAsyncStorage: SafeGotrueAsyncStorage(),
+  );
+
+  try {
+    await Supabase.initialize(
+      url: supabaseUrl,
+      anonKey: supabaseAnonKey,
+      authOptions: authOptions,
+    ).timeout(
+      const Duration(seconds: 6),
+      onTimeout: () {
+        throw TimeoutException('Supabase.initialize timed out');
+      },
+    );
+  } catch (e) {
+    debugPrint('⚠️ Supabase init failed: $e');
+    if (_isSupabaseInitialized()) {
+      return;
+    }
+    // One retry after clearing persisted auth tokens.
+    await _clearSupabasePersistedSession(persistSessionKey);
+    await Supabase.initialize(
+      url: supabaseUrl,
+      anonKey: supabaseAnonKey,
+      authOptions: authOptions,
+    ).timeout(
+      const Duration(seconds: 6),
+      onTimeout: () {
+        throw TimeoutException('Supabase.initialize timed out');
+      },
+    );
+  }
+}
+
+Future<void> _initializeCoreServices() async {
+  await _initializeSqliteWithRecovery();
+
+  final supabaseUrl = _getEnv('SUPABASE_URL');
+  final supabaseAnonKey = _getEnv('SUPABASE_ANON_KEY');
+  final persistSessionKey = _buildPersistSessionKey(supabaseUrl);
+
+  await _initializeSupabaseWithRecovery(
+    supabaseUrl: supabaseUrl,
+    supabaseAnonKey: supabaseAnonKey,
+    persistSessionKey: persistSessionKey,
+  );
+}
+
+void _initializePostStartupServices() {
+  final supabaseUrl = _getEnv('SUPABASE_URL');
+  final persistSessionKey = _buildPersistSessionKey(supabaseUrl);
+
+  // ONE-TIME MIGRATION: Clean up all SharedPreferences except Supabase auth token
+  unawaited(_migrateToSqliteStorage(persistSessionKey));
+
+  // Add lifecycle observer
+  WidgetsBinding.instance.addObserver(
+    LifecycleEventHandler(
+      onAppExit: () async {
+        StockfishSingleton().dispose();
+      },
+      onAppResume: () async {
+        // Sync purchases when app comes to foreground
+        final revenueCat = RevenueCatService();
+        if (revenueCat.onAppResumeCallback != null) {
+          unawaited(revenueCat.onAppResumeCallback!());
+        } else {
+          unawaited(revenueCat.syncPurchases());
+        }
+      },
+    ),
+  );
+
+  // Initialize OneSignal (non-blocking)
+  unawaited(
+    PushNotificationsService.instance.initialize(
+      appId: _resolveOneSignalAppId(),
+    ),
+  );
+
+  // Non-critical initializers - run in parallel, don't block app startup
+  unawaited(Future.wait([
+    // Initialize Amplitude (with error handling)
+    () async {
+      try {
+        await AnalyticsService.instance.initialize(
+          apiKey: _resolveAmplitudeApiKey(),
+        ).timeout(const Duration(seconds: 5));
+      } catch (e) {
+        debugPrint('⚠️ Analytics init failed: $e');
+      }
+    }(),
+    // Initialize RevenueCat for subscriptions
+    _initializeRevenueCat(),
+  ]));
+
+  // Initialize TerminateRestart (for user-triggered Shorebird updates only)
+  TerminateRestart.instance.initialize();
+
+  // Non-critical: Load audio assets in background (don't block app startup)
+  unawaited(AudioPlayerService.instance.initializeAndLoadAllAssets());
+}
+
+class StartupGate extends StatefulWidget {
+  const StartupGate({super.key});
+
+  @override
+  State<StartupGate> createState() => _StartupGateState();
+}
+
+class _StartupGateState extends State<StartupGate> {
+  bool _ready = false;
+  bool _initializing = true;
+  bool _inFlight = false;
+  bool _postStartupInitialized = false;
+  String? _errorMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    _startInitialization();
+  }
+
+  Future<void> _startInitialization() async {
+    if (!mounted || _inFlight) return;
+    _inFlight = true;
+    setState(() {
+      _initializing = true;
+      _errorMessage = null;
+    });
+
+    try {
+      await _initializeCoreServices();
+      if (!_postStartupInitialized) {
+        _initializePostStartupServices();
+        _postStartupInitialized = true;
+      }
+      if (!mounted) return;
+      FlutterNativeSplash.remove();
+      setState(() {
+        _ready = true;
+        _initializing = false;
+      });
+    } catch (e, st) {
+      debugPrint('❌ Startup failed: $e');
+      if (kDebugMode) {
+        debugPrintStack(stackTrace: st);
+      }
+      FlutterNativeSplash.remove();
+      if (!mounted) return;
+      setState(() {
+        _ready = false;
+        _initializing = false;
+        _errorMessage = _friendlyStartupError(e);
+      });
+    } finally {
+      _inFlight = false;
+    }
+  }
+
+  Future<void> _resetAndRetry() async {
+    try {
+      final supabaseUrl = _getEnv('SUPABASE_URL');
+      final persistSessionKey = _buildPersistSessionKey(supabaseUrl);
+      await AppDatabase.instance.reset();
+      await _clearSupabasePersistedSession(persistSessionKey);
+    } catch (e) {
+      debugPrint('⚠️ Failed to reset local state: $e');
+    }
+    await _startInitialization();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_ready) {
+      return const MyApp();
+    }
+
+    if (_errorMessage != null) {
+      return _StartupFailureApp(
+        message: _errorMessage!,
+        onRetry: _startInitialization,
+        onResetAndRetry: _resetAndRetry,
+      );
+    }
+
+    return const _StartupLoadingApp();
+  }
+}
+
+String _friendlyStartupError(Object error) {
+  if (error is TimeoutException) {
+    return 'Startup timed out. Please check your connection and try again.';
+  }
+  return 'Startup failed. Please retry.';
+}
+
+class _StartupLoadingApp extends StatelessWidget {
+  const _StartupLoadingApp();
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      home: Scaffold(
+        body: Stack(
+          fit: StackFit.expand,
+          children: [
+            Image.asset(
+              'assets/launch.jpg',
+              fit: BoxFit.cover,
+            ),
+            const Align(
+              alignment: Alignment.bottomCenter,
+              child: Padding(
+                padding: EdgeInsets.only(bottom: 64),
+                child: CircularProgressIndicator(),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _StartupFailureApp extends StatelessWidget {
+  const _StartupFailureApp({
+    required this.message,
+    required this.onRetry,
+    required this.onResetAndRetry,
+  });
+
+  final String message;
+  final VoidCallback onRetry;
+  final VoidCallback onResetAndRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      home: Scaffold(
+        body: Stack(
+          fit: StackFit.expand,
+          children: [
+            Image.asset(
+              'assets/launch.jpg',
+              fit: BoxFit.cover,
+            ),
+            Align(
+              alignment: Alignment.bottomCenter,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 64),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.error_outline, color: Colors.white70, size: 32),
+                    const SizedBox(height: 12),
+                    Text(
+                      message,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: Colors.white70, fontSize: 14),
+                    ),
+                    const SizedBox(height: 16),
+                    SizedBox(
+                      width: 180,
+                      height: 44,
+                      child: ElevatedButton(
+                        onPressed: onRetry,
+                        child: const Text('Retry'),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      width: 220,
+                      height: 44,
+                      child: OutlinedButton(
+                        onPressed: onResetAndRetry,
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.white70,
+                          side: const BorderSide(color: Colors.white54),
+                        ),
+                        child: const Text('Reset Local Data & Retry'),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 

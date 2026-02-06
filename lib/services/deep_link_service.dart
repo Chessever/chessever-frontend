@@ -63,16 +63,25 @@ class DeepLinkService {
   ) {
     debugPrint('DeepLinkService: Received link: $uri');
 
-    // Parse: chessever.com/games/<id>
-    // Path segments: ['games', '<id>']
+    String? gameId;
+
+    // Universal link: https://chessever.com/games/<id>
     if (uri.pathSegments.length >= 2 && uri.pathSegments[0] == 'games') {
-      final gameId = uri.pathSegments[1];
-      if (gameId.isNotEmpty) {
-        if (uri.queryParameters['stop_live'] == '1') {
-          _stopLiveUpdates(gameId, ref);
-        }
-        _navigateToGame(gameId, navigatorKey, ref);
+      gameId = uri.pathSegments[1];
+    }
+
+    // Custom scheme: com.chessever.app://games/<id>
+    if (gameId == null &&
+        uri.host == 'games' &&
+        uri.pathSegments.isNotEmpty) {
+      gameId = uri.pathSegments[0];
+    }
+
+    if (gameId != null && gameId.isNotEmpty) {
+      if (uri.queryParameters['stop_live'] == '1') {
+        _stopLiveUpdates(gameId, ref);
       }
+      _navigateToGame(gameId, navigatorKey, ref);
     }
   }
 

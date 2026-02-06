@@ -7,12 +7,31 @@ import UIKit
 // MARK: - Dictionary Helper Extensions
 
 private extension Dictionary where Key == String, Value == AnyCodable {
+  func asNonEmptyString(_ key: String) -> String? {
+    guard let value = self[key]?.asString() else { return nil }
+    let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+    return trimmed.isEmpty ? nil : value
+  }
+
   func asString(_ key: String) -> String? {
     return self[key]?.asString()
   }
 
   func asDouble(_ key: String) -> Double? {
     return self[key]?.asDouble()
+  }
+
+  func asDoubleValue(_ key: String) -> Double? {
+    if let doubleValue = self[key]?.asDouble() {
+      return doubleValue
+    }
+    if let intValue = self[key]?.asInt() {
+      return Double(intValue)
+    }
+    if let stringValue = self[key]?.asString(), let doubleValue = Double(stringValue) {
+      return doubleValue
+    }
+    return nil
   }
 
   func asInt(_ key: String) -> Int? {
@@ -61,6 +80,54 @@ private enum ChessDesign {
   static let blackPiece = Color(red: 0.08, green: 0.08, blue: 0.1)
 }
 
+// MARK: - Board Theme Palette
+
+private struct BoardThemePalette {
+  let lightSquare: Color
+  let darkSquare: Color
+
+  static func palette(for index: Int?) -> BoardThemePalette {
+    let safeIndex = max(0, min((index ?? 0), palettes.count - 1))
+    return palettes[safeIndex]
+  }
+
+  private static func color(hex: UInt32) -> Color {
+    let r = Double((hex >> 16) & 0xff) / 255.0
+    let g = Double((hex >> 8) & 0xff) / 255.0
+    let b = Double(hex & 0xff) / 255.0
+    return Color(red: r, green: g, blue: b)
+  }
+
+  // Must match kBoardThemes order in lib/utils/board_customization_utils.dart
+  private static let palettes: [BoardThemePalette] = [
+    BoardThemePalette(lightSquare: color(hex: 0xf0d9b6), darkSquare: color(hex: 0xb58863)), // Brown
+    BoardThemePalette(lightSquare: color(hex: 0xdee3e6), darkSquare: color(hex: 0x8ca2ad)), // Blue
+    BoardThemePalette(lightSquare: color(hex: 0xffffffdd), darkSquare: color(hex: 0x86a666)), // Green
+    BoardThemePalette(lightSquare: color(hex: 0xececec), darkSquare: color(hex: 0xc1c18e)), // IC
+    BoardThemePalette(lightSquare: color(hex: 0x97b2c7), darkSquare: color(hex: 0x546f82)), // Blue 2
+    BoardThemePalette(lightSquare: color(hex: 0xd9e0e6), darkSquare: color(hex: 0x315991)), // Blue 3
+    BoardThemePalette(lightSquare: color(hex: 0xeae6dd), darkSquare: color(hex: 0x7c7f87)), // Blue Marble
+    BoardThemePalette(lightSquare: color(hex: 0xd7daeb), darkSquare: color(hex: 0x547388)), // Canvas
+    BoardThemePalette(lightSquare: color(hex: 0xf2f9bb), darkSquare: color(hex: 0x59935d)), // Green Plastic
+    BoardThemePalette(lightSquare: color(hex: 0xb8b8b8), darkSquare: color(hex: 0x7d7d7d)), // Grey
+    BoardThemePalette(lightSquare: color(hex: 0xf0d9b5), darkSquare: color(hex: 0x946f51)), // Horsey
+    BoardThemePalette(lightSquare: color(hex: 0xd1d1c9), darkSquare: color(hex: 0xc28e16)), // Leather
+    BoardThemePalette(lightSquare: color(hex: 0xe8ceab), darkSquare: color(hex: 0xbc7944)), // Maple
+    BoardThemePalette(lightSquare: color(hex: 0xe2c89f), darkSquare: color(hex: 0x996633)), // Maple 2
+    BoardThemePalette(lightSquare: color(hex: 0x93ab91), darkSquare: color(hex: 0x4f644e)), // Marble
+    BoardThemePalette(lightSquare: color(hex: 0xc9c9c9), darkSquare: color(hex: 0x727272)), // Metal
+    BoardThemePalette(lightSquare: color(hex: 0xffffff), darkSquare: color(hex: 0x8d8d8d)), // Newspaper
+    BoardThemePalette(lightSquare: color(hex: 0xb8b19f), darkSquare: color(hex: 0x6d6655)), // Olive
+    BoardThemePalette(lightSquare: color(hex: 0xe8e9b7), darkSquare: color(hex: 0xed7272)), // Pink Pyramid
+    BoardThemePalette(lightSquare: color(hex: 0x9f90b0), darkSquare: color(hex: 0x7d4a8d)), // Purple
+    BoardThemePalette(lightSquare: color(hex: 0xe5daf0), darkSquare: color(hex: 0x957ab0)), // Purple Diag
+    BoardThemePalette(lightSquare: color(hex: 0xd8a45b), darkSquare: color(hex: 0x9b4d0f)), // Wood
+    BoardThemePalette(lightSquare: color(hex: 0xa38b5d), darkSquare: color(hex: 0x6c5017)), // Wood 2
+    BoardThemePalette(lightSquare: color(hex: 0xd0ceca), darkSquare: color(hex: 0x755839)), // Wood 3
+    BoardThemePalette(lightSquare: color(hex: 0xcaaf7d), darkSquare: color(hex: 0x7b5330)), // Wood 4
+  ]
+}
+
 // MARK: - Live Game State
 
 private struct LiveGameState {
@@ -87,45 +154,74 @@ private struct LiveGameState {
   let isWhiteToMove: Bool
   let gameId: String?
   let widgetURL: URL?
+  let boardThemeIndex: Int
+  let boardTheme: BoardThemePalette
+  let pieceStyleIndex: Int
+  let pieceSetDirectory: String
 
   init(context: ActivityViewContext<DefaultLiveActivityAttributes>) {
     let data = context.state.data
     let attrData = context.attributes.data
-    whiteName = data.asString("player_white") ?? "White"
-    blackName = data.asString("player_black") ?? "Black"
-    whiteTitle = data.asString("white_title") ?? attrData.asString("white_title")
-    blackTitle = data.asString("black_title") ?? attrData.asString("black_title")
+    whiteName =
+      data.asNonEmptyString("player_white") ??
+      attrData.asNonEmptyString("player_white") ??
+      "White"
+    blackName =
+      data.asNonEmptyString("player_black") ??
+      attrData.asNonEmptyString("player_black") ??
+      "Black"
+    whiteTitle =
+      data.asNonEmptyString("white_title") ??
+      attrData.asNonEmptyString("white_title")
+    blackTitle =
+      data.asNonEmptyString("black_title") ??
+      attrData.asNonEmptyString("black_title")
     whiteFed = LiveGameState.normalizeFed(
-      data.asString("white_fed") ?? attrData.asString("white_fed")
+      data.asNonEmptyString("white_fed") ?? attrData.asNonEmptyString("white_fed")
     )
     blackFed = LiveGameState.normalizeFed(
-      data.asString("black_fed") ?? attrData.asString("black_fed")
+      data.asNonEmptyString("black_fed") ?? attrData.asNonEmptyString("black_fed")
     )
     shortWhiteName = LiveGameState.shortDisplayName(whiteName)
     shortBlackName = LiveGameState.shortDisplayName(blackName)
-    lastMove = data.asString("last_move_numbered") ??
-      data.asString("last_move_san") ??
-      data.asString("last_move") ??
-      "..."
-    lastMoveUci = data.asString("last_move_uci") ?? data.asString("last_move")
-    fen = data.asString("fen") ?? "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
-    evalCp = data.asDouble("eval_cp")
-    evalMate = data.asInt("eval_mate")
-    whitePhoto = data.asString("white_photo")
-    blackPhoto = data.asString("black_photo")
+    lastMove = data.asNonEmptyString("last_move_numbered") ??
+      data.asNonEmptyString("last_move_san") ??
+      data.asNonEmptyString("last_move") ??
+      "—"
+    lastMoveUci =
+      data.asNonEmptyString("last_move_uci") ??
+      data.asNonEmptyString("last_move")
+    fen =
+      data.asNonEmptyString("fen") ??
+      attrData.asNonEmptyString("fen") ??
+      "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
+    evalCp = data.asDoubleValue("eval_cp")
+    evalMate = data.asIntValue("eval_mate")
+    whitePhoto = data.asNonEmptyString("white_photo")
+    blackPhoto = data.asNonEmptyString("black_photo")
     eventName = LiveGameState.prettifyLabel(
-      data.asString("event_name") ?? attrData.asString("event_name")
+      data.asNonEmptyString("event_name") ?? attrData.asNonEmptyString("event_name")
     )
     roundName = LiveGameState.prettifyLabel(
-      data.asString("round_name") ?? attrData.asString("round_name")
+      data.asNonEmptyString("round_name") ?? attrData.asNonEmptyString("round_name")
     )
     whiteClockSeconds = data.asIntValue("white_clock_seconds")
     blackClockSeconds = data.asIntValue("black_clock_seconds")
-    lastMoveTime = LiveGameState.parseDate(data.asString("last_move_time"))
+    lastMoveTime = LiveGameState.parseDate(data.asNonEmptyString("last_move_time"))
+    boardThemeIndex =
+      data.asIntValue("board_theme_index") ??
+      attrData.asIntValue("board_theme_index") ??
+      0
+    boardTheme = BoardThemePalette.palette(for: boardThemeIndex)
+    pieceStyleIndex =
+      data.asIntValue("piece_style_index") ??
+      attrData.asIntValue("piece_style_index") ??
+      0
+    pieceSetDirectory = PieceImageProvider.directory(for: pieceStyleIndex)
     isWhiteToMove = LiveGameState.parseSideToMove(fen)
-    gameId = data.asString("game_id") ?? attrData.asString("game_id")
+    gameId = data.asNonEmptyString("game_id") ?? attrData.asNonEmptyString("game_id")
     if let gameId, !gameId.isEmpty {
-      widgetURL = URL(string: "https://chessever.com/games/\(gameId)")
+      widgetURL = URL(string: "com.chessever.app://games/\(gameId)")
     } else {
       widgetURL = nil
     }
@@ -329,7 +425,8 @@ struct ChessEverLiveActivityWidget: Widget {
               .font(.system(size: 14, weight: .heavy, design: .monospaced))
               .foregroundStyle(ChessDesign.white)
               .lineLimit(1)
-              .minimumScaleFactor(0.7)
+              .minimumScaleFactor(0.6)
+              .allowsTightening(true)
           }
         }
       } compactLeading: {
@@ -354,6 +451,76 @@ struct ChessEverLiveActivityWidget: Widget {
     }
   }
 
+}
+
+// MARK: - Safe Lock Screen View (Crash Guard)
+
+private struct SafeLockScreenView: View {
+  let state: LiveGameState
+
+  var body: some View {
+    HStack(spacing: 12) {
+      SafeMiniBoard(lightSquare: state.boardTheme.lightSquare, darkSquare: state.boardTheme.darkSquare)
+        .frame(width: 56, height: 56)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .overlay(
+          RoundedRectangle(cornerRadius: 8)
+            .strokeBorder(ChessDesign.surfaceLight, lineWidth: 1)
+        )
+
+      VStack(alignment: .leading, spacing: 4) {
+        Text("\(state.shortWhiteName) vs \(state.shortBlackName)")
+          .font(.system(size: 14, weight: .bold))
+          .foregroundStyle(ChessDesign.white)
+          .lineLimit(1)
+          .minimumScaleFactor(0.7)
+          .allowsTightening(true)
+
+        Text(state.lastMove)
+          .font(.system(size: 16, weight: .heavy, design: .monospaced))
+          .foregroundStyle(ChessDesign.white)
+          .lineLimit(1)
+          .minimumScaleFactor(0.6)
+          .allowsTightening(true)
+
+        if let event = state.eventName ?? state.roundName {
+          Text(event)
+            .font(.system(size: 11, weight: .semibold))
+            .foregroundStyle(ChessDesign.textSecondary)
+            .lineLimit(1)
+            .minimumScaleFactor(0.7)
+            .allowsTightening(true)
+        }
+      }
+
+      Spacer(minLength: 0)
+    }
+    .padding(.horizontal, 16)
+    .padding(.vertical, 14)
+  }
+}
+
+private struct SafeMiniBoard: View {
+  let lightSquare: Color
+  let darkSquare: Color
+
+  var body: some View {
+    GeometryReader { proxy in
+      let sq = proxy.size.width / 8
+      VStack(spacing: 0) {
+        ForEach(0..<8, id: \.self) { rank in
+          HStack(spacing: 0) {
+            ForEach(0..<8, id: \.self) { file in
+              let isLight = (rank + file) % 2 == 0
+              Rectangle()
+                .fill(isLight ? lightSquare : darkSquare)
+                .frame(width: sq, height: sq)
+            }
+          }
+        }
+      }
+    }
+  }
 }
 
 // MARK: - Lock Screen View (Premium Design)
@@ -385,7 +552,13 @@ private struct LockScreenView: View {
           .blur(radius: 8)
           .offset(y: 4)
 
-        MiniBoard(fen: state.fen, highlightSquares: state.highlightSquares)
+        MiniBoard(
+          fen: state.fen,
+          highlightSquares: state.highlightSquares,
+          lightSquare: state.boardTheme.lightSquare,
+          darkSquare: state.boardTheme.darkSquare,
+          pieceSetDirectory: state.pieceSetDirectory
+        )
           .clipShape(RoundedRectangle(cornerRadius: 10))
           .overlay(
             RoundedRectangle(cornerRadius: 10)
@@ -414,6 +587,8 @@ private struct LockScreenView: View {
               .font(.system(size: 10, weight: .semibold))
               .foregroundStyle(ChessDesign.accent)
               .lineLimit(1)
+              .minimumScaleFactor(0.7)
+              .allowsTightening(true)
           }
           .padding(.bottom, 8)
         }
@@ -462,7 +637,8 @@ private struct LockScreenView: View {
             .font(.system(size: 20, weight: .black, design: .monospaced))
             .foregroundStyle(ChessDesign.white)
             .lineLimit(1)
-            .minimumScaleFactor(0.7)
+            .minimumScaleFactor(0.6)
+            .allowsTightening(true)
 
           // Eval badge
           HStack(spacing: 4) {
@@ -513,12 +689,16 @@ private struct PlayerInfoRow: View {
           .font(.system(size: 13, weight: isAdvantage ? .bold : .medium))
           .foregroundStyle(isAdvantage ? ChessDesign.white : ChessDesign.textSecondary)
           .lineLimit(1)
+          .minimumScaleFactor(0.7)
+          .allowsTightening(true)
 
         if !metaText.isEmpty {
           Text(metaText)
             .font(.system(size: 9, weight: .medium))
             .foregroundStyle(ChessDesign.textSecondary)
             .lineLimit(1)
+            .minimumScaleFactor(0.6)
+            .allowsTightening(true)
         }
       }
 
@@ -575,14 +755,16 @@ private struct DynamicIslandPlayerBadge: View {
         .font(.system(size: 9, weight: .semibold))
         .foregroundStyle(ChessDesign.white)
         .lineLimit(1)
-        .minimumScaleFactor(0.6)
+        .minimumScaleFactor(0.55)
+        .allowsTightening(true)
 
       if !metaText.isEmpty {
         Text(metaText)
           .font(.system(size: 7, weight: .medium))
           .foregroundStyle(ChessDesign.textSecondary)
           .lineLimit(1)
-          .minimumScaleFactor(0.7)
+          .minimumScaleFactor(0.6)
+          .allowsTightening(true)
       }
     }
     .frame(maxWidth: 72)
@@ -612,16 +794,9 @@ private struct PlayerAvatar: View {
             : LinearGradient(colors: [Color(white: 0.2), Color(white: 0.1)], startPoint: .topLeading, endPoint: .bottomTrailing)
         )
 
-      if let urlString = photoUrl, let url = URL(string: urlString) {
-        AsyncImage(url: url) { image in
-          image.resizable().scaledToFill()
-        } placeholder: {
-          InitialsView(name: name, isWhite: isWhite, size: size)
-        }
-        .clipShape(Circle())
-      } else {
-        InitialsView(name: name, isWhite: isWhite, size: size)
-      }
+      // Avoid network image loading inside the Live Activity extension.
+      // Remote fetches here are a common cause of black cards (extension killed/crashed).
+      InitialsView(name: name, isWhite: isWhite, size: size)
     }
     .frame(width: size, height: size)
   }
@@ -635,31 +810,30 @@ private struct LiveClockPill: View {
   var body: some View {
     let fontSize: CGFloat = compact ? 9 : 11
     let verticalPadding: CGFloat = compact ? 2 : 4
-    let horizontalPadding: CGFloat = compact ? 6 : 8
+    let horizontalPadding: CGFloat = compact ? 5 : 6
 
-    return HStack(spacing: 4) {
+    return Group {
       if let clock {
-        let width = chipWidth(for: clock.seconds, compact: compact)
-        if clock.isRunning, let endDate = clock.endDate {
-          let safeEnd = endDate > Date() ? endDate : Date()
-          Text(timerInterval: Date()...safeEnd, countsDown: true)
-            .font(.system(size: fontSize, weight: .bold, design: .monospaced))
-            .monospacedDigit()
-            .foregroundStyle(ChessDesign.white)
-            .frame(width: width, alignment: .center)
-        } else {
-          Text(formatSeconds(clock.seconds))
-            .font(.system(size: fontSize, weight: .bold, design: .monospaced))
-            .monospacedDigit()
-            .foregroundStyle(ChessDesign.white)
-            .frame(width: width, alignment: .center)
-        }
+        let displaySeconds = remainingSeconds(clock)
+        Text(formatSeconds(displaySeconds))
+          .font(.system(size: fontSize, weight: .bold, design: .monospaced))
+          .monospacedDigit()
+          .foregroundStyle(ChessDesign.white)
+          .lineLimit(1)
+          .minimumScaleFactor(0.8)
+          .allowsTightening(true)
+          .multilineTextAlignment(.center)
+          .fixedSize(horizontal: true, vertical: false)
       } else {
         Text("--:--")
           .font(.system(size: fontSize, weight: .medium, design: .monospaced))
           .monospacedDigit()
           .foregroundStyle(ChessDesign.textSecondary)
-          .frame(width: chipWidth(for: 0, compact: compact), alignment: .center)
+          .lineLimit(1)
+          .minimumScaleFactor(0.8)
+          .allowsTightening(true)
+          .multilineTextAlignment(.center)
+          .fixedSize(horizontal: true, vertical: false)
       }
     }
     .padding(.vertical, verticalPadding)
@@ -677,6 +851,16 @@ private struct LiveClockPill: View {
     )
   }
 
+  private func remainingSeconds(_ clock: ClockState) -> Int {
+    if let endDate = clock.endDate {
+      // `clock.seconds` is the snapshot value; endDate lets us compute remaining time
+      // at render time without a ticking timer (safer for Live Activities).
+      let remaining = Int(endDate.timeIntervalSinceNow.rounded(.down))
+      return max(0, remaining)
+    }
+    return max(0, clock.seconds)
+  }
+
   private func formatSeconds(_ seconds: Int) -> String {
     let clamped = max(0, seconds)
     let hours = clamped / 3600
@@ -688,13 +872,6 @@ private struct LiveClockPill: View {
     return String(format: "%d:%02d", minutes, secs)
   }
 
-  private func chipWidth(for seconds: Int, compact: Bool) -> CGFloat {
-    let hours = max(0, seconds) / 3600
-    if hours > 0 {
-      return compact ? 54 : 74
-    }
-    return compact ? 44 : 60
-  }
 }
 
 private struct InitialsView: View {
@@ -890,55 +1067,58 @@ private struct BoardSquare: Hashable {
 private struct MiniBoard: View {
   let fen: String
   let highlightSquares: [BoardSquare]
+  let lightSquare: Color
+  let darkSquare: Color
+  let pieceSetDirectory: String
 
   var body: some View {
     let board = FenBoard(fen: fen)
     let fromSquare = highlightSquares.first
     let toSquare = highlightSquares.count > 1 ? highlightSquares[1] : nil
-    GeometryReader { proxy in
-      Canvas { context, size in
-        let sq = size.width / 8
 
-        for rank in 0..<8 {
-          for file in 0..<8 {
-            let isLight = (rank + file) % 2 == 0
-            let rect = CGRect(x: CGFloat(file) * sq, y: CGFloat(rank) * sq, width: sq, height: sq)
+    // Pure SwiftUI rendering (no Canvas) to avoid widget render-path crashes.
+    return GeometryReader { proxy in
+      let side = min(proxy.size.width, proxy.size.height)
+      let sq = side / 8.0
 
-            // Draw square
-            context.fill(
-              Path(rect),
-              with: .color(isLight ? ChessDesign.lightSquare : ChessDesign.darkSquare)
-            )
+      VStack(spacing: 0) {
+        ForEach(0..<8, id: \.self) { rank in
+          HStack(spacing: 0) {
+            ForEach(0..<8, id: \.self) { file in
+              let isLight = (rank + file) % 2 == 0
+              let isFrom = (fromSquare?.file == file && fromSquare?.rank == rank)
+              let isTo = (toSquare?.file == file && toSquare?.rank == rank)
 
-            // Highlight last move squares
-            let currentSquare = BoardSquare(file: file, rank: rank)
-            if let fromSquare, currentSquare == fromSquare {
-              context.fill(Path(rect), with: .color(ChessDesign.highlightFrom))
-            } else if let toSquare, currentSquare == toSquare {
-              context.fill(Path(rect), with: .color(ChessDesign.highlightTo))
-            }
+              ZStack {
+                Rectangle()
+                  .fill(isLight ? lightSquare : darkSquare)
 
-            // Draw piece
-            if let piece = board.pieceAt(rank: rank, file: file) {
-              let inset = sq * 0.08
-              let pieceRect = rect.insetBy(dx: inset, dy: inset)
-              if let uiImage = PieceImageProvider.image(for: piece) {
-                let image = Image(uiImage: uiImage)
-                context.draw(image, in: pieceRect)
-              } else if let label = piece.assetName?.suffix(1) {
-                let fallback = Text(String(label))
-                  .font(.system(size: sq * 0.45, weight: .bold, design: .rounded))
-                  .foregroundColor(piece.isWhite ? ChessDesign.whitePiece : ChessDesign.blackPiece)
-                context.draw(
-                  context.resolve(fallback),
-                  at: CGPoint(x: rect.midX, y: rect.midY + 0.2),
-                  anchor: .center
-                )
+                if isFrom {
+                  Rectangle().fill(ChessDesign.highlightFrom)
+                } else if isTo {
+                  Rectangle().fill(ChessDesign.highlightTo)
+                }
+
+                if let piece = board.pieceAt(rank: rank, file: file) {
+                  if let uiImage = PieceImageProvider.image(for: piece, pieceSetDirectory: pieceSetDirectory) {
+                    Image(uiImage: uiImage)
+                      .resizable()
+                      .scaledToFit()
+                      .padding(sq * 0.08)
+                  } else {
+                    Text(piece.displayLetter)
+                      .font(.system(size: sq * 0.48, weight: .bold, design: .rounded))
+                      .foregroundStyle(piece.isWhite ? ChessDesign.whitePiece : ChessDesign.blackPiece)
+                  }
+                }
               }
+              .frame(width: sq, height: sq)
             }
           }
         }
       }
+      .frame(width: side, height: side)
+      .position(x: proxy.size.width / 2.0, y: proxy.size.height / 2.0)
     }
     .aspectRatio(1, contentMode: .fit)
   }
@@ -985,6 +1165,18 @@ private struct FenPiece {
     raw.isUppercase
   }
 
+  var displayLetter: String {
+    switch raw.lowercased() {
+    case "k": return "K"
+    case "q": return "Q"
+    case "r": return "R"
+    case "b": return "B"
+    case "n": return "N"
+    case "p": return "P"
+    default: return "?"
+    }
+  }
+
   var assetName: String? {
     switch raw {
     case "K": return "wK"
@@ -1005,16 +1197,80 @@ private struct FenPiece {
 }
 
 private enum PieceImageProvider {
-  private static var cache: [String: UIImage] = [:]
+  private static let cache: NSCache<NSString, UIImage> = {
+    let cache = NSCache<NSString, UIImage>()
+    cache.countLimit = 128
+    return cache
+  }()
 
-  static func image(for piece: FenPiece) -> UIImage? {
+  // Must match PieceSet.values order in chessground:
+  // lib/src/piece_set.dart (kPieceSets in lib/utils/board_customization_utils.dart).
+  private static let pieceSetDirectories: [String] = [
+    "cburnett",
+    "merida",
+    "pirouetti",
+    "chessnut",
+    "chess7",
+    "alpha",
+    "reillycraig",
+    "companion",
+    "riohacha",
+    "kosal",
+    "leipzig",
+    "fantasy",
+    "spatial",
+    "celtic",
+    "california",
+    "caliente",
+    "pixel",
+    "firi",
+    "rhosgfx",
+    "maestro",
+    "fresca",
+    "cardinal",
+    "gioco",
+    "tatiana",
+    "staunty",
+    "governor",
+    "dubrovny",
+    "icpieces",
+    "mpchess",
+    "monarchy",
+    "cooke",
+    "shapes",
+    "kiwen-suwi",
+    "horsey",
+    "anarcandy",
+    "xkcd",
+    "letter",
+    "disguised",
+    "symmetric"
+  ]
+
+  static func directory(for index: Int) -> String {
+    if index >= 0 && index < pieceSetDirectories.count {
+      return pieceSetDirectories[index]
+    }
+    return pieceSetDirectories[0]
+  }
+
+  static func image(for piece: FenPiece, pieceSetDirectory: String) -> UIImage? {
     guard let name = piece.assetName else { return nil }
-    if let cached = cache[name] { return cached }
-    guard let path = Bundle.main.path(forResource: name, ofType: "png", inDirectory: "Pieces/cburnett") else {
+    let key = "\(pieceSetDirectory)/\(name)" as NSString
+    if let cached = cache.object(forKey: key) { return cached }
+
+    let primaryDir = "Pieces/\(pieceSetDirectory)"
+    let fallbackDir = "Pieces/cburnett"
+    guard let path =
+      Bundle.main.path(forResource: name, ofType: "png", inDirectory: primaryDir) ??
+      Bundle.main.path(forResource: name, ofType: "png", inDirectory: fallbackDir)
+    else {
       return nil
     }
-    guard let image = UIImage(contentsOfFile: path) else { return nil }
-    cache[name] = image
+    guard let image = UIImage(contentsOfFile: path) else {
+      return nil
+    }
+    cache.setObject(image, forKey: key)
     return image
   }
 }

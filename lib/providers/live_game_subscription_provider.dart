@@ -1,4 +1,5 @@
 import 'package:chessever2/providers/auth_state_provider.dart';
+import 'package:chessever2/providers/board_settings_provider_new.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/services/live_updates_service.dart';
 import 'package:chessever2/services/push_notifications_service.dart';
@@ -99,10 +100,16 @@ class LiveGameSubscriptionNotifier
     String? whitePhoto,
     String? blackPhoto,
   ) {
+    final boardSettings = ref.read(boardSettingsProviderNew).valueOrNull;
+    final boardThemeIndex = boardSettings?.boardThemeIndex ?? 0;
+    final pieceStyleIndex = boardSettings?.pieceStyleIndex ?? 0;
+
     return {
       'game_id': game.gameId,
       'player_white': game.whitePlayer.name,
       'player_black': game.blackPlayer.name,
+      'board_theme_index': boardThemeIndex,
+      'piece_style_index': pieceStyleIndex,
       if (game.whitePlayer.title.isNotEmpty)
         'white_title': game.whitePlayer.title,
       if (game.blackPlayer.title.isNotEmpty)

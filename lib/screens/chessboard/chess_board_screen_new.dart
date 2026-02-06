@@ -77,7 +77,6 @@ import 'package:chessever2/repository/local_storage/local_storage_repository.dar
 import 'package:flutter/foundation.dart';
 import 'package:chessever2/services/lichess_move_annotations_service.dart';
 import 'package:chessever2/services/live_updates_service.dart';
-import 'package:chessever2/services/fide_photo_service.dart';
 import 'package:chessever2/providers/auth_state_provider.dart';
 
 /// Spring-based curve that mimics iOS snappy motion
@@ -763,15 +762,13 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
   Future<void> _checkAndShowWalkthrough(BuildContext context) async {
     final prefs = ref.read(sharedPreferencesRepository);
     final dontShow = await prefs.getBool(_kWalkthroughDontShowKey) ?? false;
-    if (dontShow && !kDebugMode) return;
+    if (dontShow) return;
 
     final lastShownMs = await prefs.getInt(_kWalkthroughShownDateKey);
     final now = DateTime.now();
 
     bool shouldShow = false;
-    if (kDebugMode) {
-      shouldShow = true;
-    } else if (lastShownMs == null) {
+    if (lastShownMs == null) {
       shouldShow = true;
     } else {
       final lastShownDate = DateTime.fromMillisecondsSinceEpoch(lastShownMs);
@@ -1297,14 +1294,8 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
       unawaited(liveService.stopForGame(activeGameId, user.id));
     }
 
-    final whiteFideId = game.whitePlayer.fideId?.toString();
-    final blackFideId = game.blackPlayer.fideId?.toString();
-    final photos = await Future.wait<String?>([
-      FidePhotoService.getPhotoUrlOrNull(whiteFideId),
-      FidePhotoService.getPhotoUrlOrNull(blackFideId),
-    ]);
-    final whitePhoto = photos[0];
-    final blackPhoto = photos[1];
+    final whitePhoto = null;
+    final blackPhoto = null;
 
     final eventName = game.tourSlug != null && game.tourSlug!.isNotEmpty
         ? StringUtils.slugToTitle(game.tourSlug!)
@@ -1312,6 +1303,10 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     final roundName = game.roundSlug != null && game.roundSlug!.isNotEmpty
         ? StringUtils.formatRoundLabel(game.roundSlug!)
         : null;
+
+    final boardSettings = ref.read(boardSettingsProviderNew).valueOrNull;
+    final boardThemeIndex = boardSettings?.boardThemeIndex ?? 0;
+    final pieceStyleIndex = boardSettings?.pieceStyleIndex ?? 0;
 
     // Start Live Activity
     unawaited(
@@ -1343,6 +1338,8 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
         roundName: roundName,
         whiteFideId: game.whitePlayer.fideId,
         blackFideId: game.blackPlayer.fideId,
+        boardThemeIndex: boardThemeIndex,
+        pieceStyleIndex: pieceStyleIndex,
       ),
     );
 
