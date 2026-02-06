@@ -78,6 +78,11 @@ private enum ChessDesign {
   // Piece colors with depth
   static let whitePiece = Color(red: 0.98, green: 0.98, blue: 0.96)
   static let blackPiece = Color(red: 0.08, green: 0.08, blue: 0.1)
+
+  // Check / game state
+  static let checkRed = Color(red: 0.95, green: 0.25, blue: 0.2)
+  static let timePressure = Color(red: 0.95, green: 0.35, blue: 0.2)
+  static let timeCritical = Color(red: 1.0, green: 0.2, blue: 0.15)
 }
 
 // MARK: - Board Theme Palette
@@ -152,6 +157,10 @@ private struct LiveGameState {
   let blackClockSeconds: Int?
   let lastMoveTime: Date?
   let isWhiteToMove: Bool
+  let isCheck: Bool
+  let isCheckmate: Bool
+  let isGameOver: Bool
+  let gameStatus: String?
   let gameId: String?
   let widgetURL: URL?
   let boardThemeIndex: Int
@@ -219,6 +228,10 @@ private struct LiveGameState {
       0
     pieceSetDirectory = PieceImageProvider.directory(for: pieceStyleIndex)
     isWhiteToMove = LiveGameState.parseSideToMove(fen)
+    isCheck = (data.asInt("is_check") ?? 0) != 0
+    isCheckmate = (data.asInt("is_checkmate") ?? 0) != 0
+    isGameOver = (data.asInt("is_game_over") ?? 0) != 0
+    gameStatus = data.asNonEmptyString("status")
     gameId = data.asNonEmptyString("game_id") ?? attrData.asNonEmptyString("game_id")
     if let gameId, !gameId.isEmpty {
       widgetURL = URL(string: "com.chessever.app://games/\(gameId)")
@@ -413,20 +426,29 @@ struct ChessEverLiveActivityWidget: Widget {
         }
         DynamicIslandExpandedRegion(.center) {
           VStack(spacing: 4) {
-            HStack(spacing: 6) {
-              EvalBarHorizontal(evalCp: state.evalCp, evalMate: state.evalMate)
-                .frame(width: 70, height: 8)
-              Text(state.evalText)
-                .font(.system(size: 11, weight: .bold, design: .monospaced))
-                .foregroundStyle(ChessDesign.textSecondary)
-            }
+            if state.isGameOver {
+              Text(state.gameStatus ?? "Final")
+                .font(.system(size: 14, weight: .heavy, design: .monospaced))
+                .foregroundStyle(ChessDesign.white)
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
+                .allowsTightening(true)
+            } else {
+              HStack(spacing: 6) {
+                EvalBarHorizontal(evalCp: state.evalCp, evalMate: state.evalMate)
+                  .frame(width: 70, height: 8)
+                Text(state.evalText)
+                  .font(.system(size: 11, weight: .bold, design: .monospaced))
+                  .foregroundStyle(ChessDesign.textSecondary)
+              }
 
-            Text(state.lastMove)
-              .font(.system(size: 14, weight: .heavy, design: .monospaced))
-              .foregroundStyle(ChessDesign.white)
-              .lineLimit(1)
-              .minimumScaleFactor(0.6)
-              .allowsTightening(true)
+              Text(state.lastMove)
+                .font(.system(size: 14, weight: .heavy, design: .monospaced))
+                .foregroundStyle(state.isCheck ? ChessDesign.checkRed : ChessDesign.white)
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
+                .allowsTightening(true)
+            }
           }
         }
       } compactLeading: {
@@ -531,17 +553,23 @@ private struct LockScreenView: View {
   var body: some View {
     HStack(spacing: 0) {
       // Left: Eval bar with glow effect
-      ZStack {
-        EvalBarVertical(evalCp: state.evalCp, evalMate: state.evalMate)
-          .frame(width: 12)
+      GeometryReader { barProxy in
+        let barHeight = barProxy.size.height
+        // Map eval ratio (0=black top, 1=white bottom) to Y offset from center
+        let glowY = barHeight * (0.5 - state.evalRatio) // positive = toward top (black), negative = toward bottom (white)
+        ZStack {
+          EvalBarVertical(evalCp: state.evalCp, evalMate: state.evalMate)
+            .frame(width: 12)
 
-        // Glow indicator for advantage
-        Circle()
-          .fill(state.isWhiteAdvantage ? ChessDesign.white : ChessDesign.evalBlack)
-          .frame(width: 8, height: 8)
-          .shadow(color: state.isWhiteAdvantage ? .white.opacity(0.6) : .clear, radius: 4)
-          .offset(y: state.isWhiteAdvantage ? 40 : -40)
+          // Glow indicator tracking eval position
+          Circle()
+            .fill(state.isWhiteAdvantage ? ChessDesign.white : ChessDesign.evalBlack)
+            .frame(width: 8, height: 8)
+            .shadow(color: state.isWhiteAdvantage ? .white.opacity(0.6) : .clear, radius: 4)
+            .offset(y: glowY * 0.85) // 85% travel to keep within bar bounds
+        }
       }
+      .frame(width: 12)
       .padding(.trailing, 14)
 
       // Center: Chess board with subtle shadow
@@ -555,6 +583,7 @@ private struct LockScreenView: View {
         MiniBoard(
           fen: state.fen,
           highlightSquares: state.highlightSquares,
+          isCheck: state.isCheck,
           lightSquare: state.boardTheme.lightSquare,
           darkSquare: state.boardTheme.darkSquare,
           pieceSetDirectory: state.pieceSetDirectory
@@ -563,12 +592,10 @@ private struct LockScreenView: View {
           .overlay(
             RoundedRectangle(cornerRadius: 10)
               .strokeBorder(
-                LinearGradient(
-                  colors: [ChessDesign.surfaceLight, ChessDesign.surface],
-                  startPoint: .topLeading,
-                  endPoint: .bottomTrailing
-                ),
-                lineWidth: 1
+                state.isCheck
+                  ? LinearGradient(colors: [ChessDesign.checkRed.opacity(0.6), ChessDesign.checkRed.opacity(0.3)], startPoint: .topLeading, endPoint: .bottomTrailing)
+                  : LinearGradient(colors: [ChessDesign.surfaceLight, ChessDesign.surface], startPoint: .topLeading, endPoint: .bottomTrailing),
+                lineWidth: state.isCheck ? 1.5 : 1
               )
           )
       }
@@ -602,7 +629,8 @@ private struct LockScreenView: View {
             isAdvantage: !state.isWhiteAdvantage,
             clock: state.clockState(isWhite: false),
             title: state.blackTitle,
-            fed: state.blackFed
+            fed: state.blackFed,
+            isActiveTurn: !state.isWhiteToMove && !state.isGameOver
           )
 
           // VS divider
@@ -626,35 +654,55 @@ private struct LockScreenView: View {
             isAdvantage: state.isWhiteAdvantage,
             clock: state.clockState(isWhite: true),
             title: state.whiteTitle,
-            fed: state.whiteFed
+            fed: state.whiteFed,
+            isActiveTurn: state.isWhiteToMove && !state.isGameOver
           )
         }
         .padding(.bottom, 10)
 
         // Move + Eval display
-        HStack(spacing: 10) {
-          Text(state.lastMove)
-            .font(.system(size: 20, weight: .black, design: .monospaced))
-            .foregroundStyle(ChessDesign.white)
-            .lineLimit(1)
-            .minimumScaleFactor(0.6)
-            .allowsTightening(true)
-
-          // Eval badge
-          HStack(spacing: 4) {
-            Circle()
-              .fill(state.isWhiteAdvantage ? ChessDesign.white : ChessDesign.evalBlack)
-              .frame(width: 8, height: 8)
-            Text(state.evalText)
-              .font(.system(size: 13, weight: .bold, design: .monospaced))
+        if state.isGameOver {
+          // Game over: show result prominently
+          VStack(alignment: .leading, spacing: 4) {
+            Text(state.gameStatus ?? "Final")
+              .font(.system(size: 18, weight: .black, design: .monospaced))
               .foregroundStyle(ChessDesign.white)
+              .lineLimit(1)
+              .minimumScaleFactor(0.6)
+              .allowsTightening(true)
+
+            Text(state.lastMove)
+              .font(.system(size: 12, weight: .semibold, design: .monospaced))
+              .foregroundStyle(ChessDesign.textSecondary)
+              .lineLimit(1)
+              .minimumScaleFactor(0.6)
+              .allowsTightening(true)
           }
-          .padding(.horizontal, 8)
-          .padding(.vertical, 4)
-          .background(
-            Capsule()
-              .fill(ChessDesign.surface)
-          )
+        } else {
+          HStack(spacing: 10) {
+            Text(state.lastMove)
+              .font(.system(size: 20, weight: .black, design: .monospaced))
+              .foregroundStyle(state.isCheck ? ChessDesign.checkRed : ChessDesign.white)
+              .lineLimit(1)
+              .minimumScaleFactor(0.6)
+              .allowsTightening(true)
+
+            // Eval badge
+            HStack(spacing: 4) {
+              Circle()
+                .fill(state.isWhiteAdvantage ? ChessDesign.white : ChessDesign.evalBlack)
+                .frame(width: 8, height: 8)
+              Text(state.evalText)
+                .font(.system(size: 13, weight: .bold, design: .monospaced))
+                .foregroundStyle(ChessDesign.white)
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(
+              Capsule()
+                .fill(state.isCheck ? ChessDesign.checkRed.opacity(0.2) : ChessDesign.surface)
+            )
+          }
         }
       }
 
@@ -675,6 +723,7 @@ private struct PlayerInfoRow: View {
   let clock: ClockState?
   let title: String?
   let fed: String?
+  var isActiveTurn: Bool = false
 
   var body: some View {
     HStack(spacing: 8) {
@@ -704,7 +753,7 @@ private struct PlayerInfoRow: View {
 
       Spacer(minLength: 6)
 
-      LiveClockPill(clock: clock, isWhite: isWhite)
+      LiveClockPill(clock: clock, isWhite: isWhite, isActiveTurn: isActiveTurn)
     }
   }
 
@@ -806,6 +855,7 @@ private struct LiveClockPill: View {
   let clock: ClockState?
   let isWhite: Bool
   var compact: Bool = false
+  var isActiveTurn: Bool = false
 
   var body: some View {
     let fontSize: CGFloat = compact ? 9 : 11
@@ -815,10 +865,11 @@ private struct LiveClockPill: View {
     return Group {
       if let clock {
         let displaySeconds = remainingSeconds(clock)
+        let textColor = clockTextColor(seconds: displaySeconds)
         Text(formatSeconds(displaySeconds))
           .font(.system(size: fontSize, weight: .bold, design: .monospaced))
           .monospacedDigit()
-          .foregroundStyle(ChessDesign.white)
+          .foregroundStyle(textColor)
           .lineLimit(1)
           .minimumScaleFactor(0.8)
           .allowsTightening(true)
@@ -840,15 +891,46 @@ private struct LiveClockPill: View {
     .padding(.horizontal, horizontalPadding)
     .background(
       Capsule()
-        .fill(ChessDesign.surface)
+        .fill(pillBackground)
     )
     .overlay(
       Capsule()
-        .strokeBorder(
-          isWhite ? ChessDesign.surfaceLight : ChessDesign.surface,
-          lineWidth: 0.5
-        )
+        .strokeBorder(pillBorder, lineWidth: isActiveTurn ? 1 : 0.5)
     )
+  }
+
+  private var pillBackground: Color {
+    if isActiveTurn {
+      if let clock {
+        let secs = remainingSeconds(clock)
+        if secs < 30 { return ChessDesign.timeCritical.opacity(0.2) }
+        if secs < 60 { return ChessDesign.timePressure.opacity(0.15) }
+      }
+      return ChessDesign.accent.opacity(0.12)
+    }
+    return ChessDesign.surface
+  }
+
+  private var pillBorder: Color {
+    if isActiveTurn {
+      if let clock {
+        let secs = remainingSeconds(clock)
+        if secs < 30 { return ChessDesign.timeCritical.opacity(0.6) }
+        if secs < 60 { return ChessDesign.timePressure.opacity(0.4) }
+      }
+      return ChessDesign.accent.opacity(0.4)
+    }
+    return isWhite ? ChessDesign.surfaceLight : ChessDesign.surface
+  }
+
+  private func clockTextColor(seconds: Int) -> Color {
+    if isActiveTurn && seconds < 30 {
+      return ChessDesign.timeCritical
+    }
+    if isActiveTurn && seconds < 60 {
+      return ChessDesign.timePressure
+    }
+    return ChessDesign.white
   }
 
   private func remainingSeconds(_ clock: ClockState) -> Int {
@@ -1067,6 +1149,7 @@ private struct BoardSquare: Hashable {
 private struct MiniBoard: View {
   let fen: String
   let highlightSquares: [BoardSquare]
+  var isCheck: Bool = false
   let lightSquare: Color
   let darkSquare: Color
   let pieceSetDirectory: String
@@ -1075,6 +1158,7 @@ private struct MiniBoard: View {
     let board = FenBoard(fen: fen)
     let fromSquare = highlightSquares.first
     let toSquare = highlightSquares.count > 1 ? highlightSquares[1] : nil
+    let kingSquare = isCheck ? board.findKingSquare(isWhiteToMove: MiniBoard.parseSide(fen)) : nil
 
     // Pure SwiftUI rendering (no Canvas) to avoid widget render-path crashes.
     return GeometryReader { proxy in
@@ -1088,12 +1172,21 @@ private struct MiniBoard: View {
               let isLight = (rank + file) % 2 == 0
               let isFrom = (fromSquare?.file == file && fromSquare?.rank == rank)
               let isTo = (toSquare?.file == file && toSquare?.rank == rank)
+              let isKingInCheck = (kingSquare?.file == file && kingSquare?.rank == rank)
 
               ZStack {
                 Rectangle()
                   .fill(isLight ? lightSquare : darkSquare)
 
-                if isFrom {
+                if isKingInCheck {
+                  // Radial red glow on the checked king's square
+                  RadialGradient(
+                    colors: [ChessDesign.checkRed.opacity(0.7), ChessDesign.checkRed.opacity(0.0)],
+                    center: .center,
+                    startRadius: 0,
+                    endRadius: sq * 0.7
+                  )
+                } else if isFrom {
                   Rectangle().fill(ChessDesign.highlightFrom)
                 } else if isTo {
                   Rectangle().fill(ChessDesign.highlightTo)
@@ -1121,6 +1214,11 @@ private struct MiniBoard: View {
       .position(x: proxy.size.width / 2.0, y: proxy.size.height / 2.0)
     }
     .aspectRatio(1, contentMode: .fit)
+  }
+
+  private static func parseSide(_ fen: String) -> Bool {
+    let parts = fen.split(separator: " ")
+    return parts.count > 1 ? parts[1] == "w" : true
   }
 }
 
@@ -1155,6 +1253,19 @@ private struct FenBoard {
   func pieceAt(rank: Int, file: Int) -> FenPiece? {
     guard rank >= 0 && rank < 8 && file >= 0 && file < 8 else { return nil }
     return grid[rank][file]
+  }
+
+  /// Find the king square for the side to move (used for check highlighting)
+  func findKingSquare(isWhiteToMove: Bool) -> BoardSquare? {
+    let target: Character = isWhiteToMove ? "K" : "k"
+    for rank in 0..<8 {
+      for file in 0..<8 {
+        if grid[rank][file]?.raw == target {
+          return BoardSquare(file: file, rank: rank)
+        }
+      }
+    }
+    return nil
   }
 }
 

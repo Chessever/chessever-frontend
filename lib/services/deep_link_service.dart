@@ -29,6 +29,17 @@ class DeepLinkService {
   // Debounce duration to prevent duplicate link events
   static const _debounceDuration = Duration(milliseconds: 500);
 
+  /// Completer that resolves when the app navigates past the splash screen.
+  /// Prevents deep link navigation from racing with splash screen navigation.
+  static Completer<void> _appReadyCompleter = Completer<void>();
+
+  /// Call after the splash screen has completed navigation.
+  static void notifyAppReady() {
+    if (!_appReadyCompleter.isCompleted) {
+      _appReadyCompleter.complete();
+    }
+  }
+
   /// Initialize the deep link service
   /// Should be called once after app startup when auth state is ready
   Future<void> initialize(
@@ -118,6 +129,14 @@ class DeepLinkService {
     _lastHandledTime = now;
     _isNavigating = true;
 
+    // Wait for the app to be past the splash screen before navigating.
+    // On warm start this resolves immediately since splash already completed.
+    try {
+      await _appReadyCompleter.future.timeout(const Duration(seconds: 30));
+    } catch (_) {
+      debugPrint('DeepLinkService: Timed out waiting for app ready, proceeding');
+    }
+
     // Check auth state - wait for loading to resolve so Universal Links stay in-app.
     AppAuthState? resolvedState = ref.read(authStateProvider).value;
     if (resolvedState == null) {
@@ -188,5 +207,6 @@ class DeepLinkService {
     _isNavigating = false;
     _lastHandledGameId = null;
     _lastHandledTime = null;
+    _appReadyCompleter = Completer<void>();
   }
 }

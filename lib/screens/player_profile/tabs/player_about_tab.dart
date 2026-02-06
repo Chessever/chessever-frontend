@@ -145,6 +145,14 @@ class _PlayerAboutTabState extends ConsumerState<PlayerAboutTab>
                   return _buildNoGamesMessage();
                 }
 
+                // Base analytics from ALL games (stable list for opening repertoire)
+                final baseAnalyticsRequest = PlayerAnalyticsRequest(
+                  fideId: widget.fideId,
+                  playerName: widget.playerName,
+                  games: allGames,
+                );
+                final baseOpeningAnalytics = ref.watch(playerAnalyticsProvider(baseAnalyticsRequest));
+
                 // Filter for opening repertoire: exclude ECO filter (you SELECT from this list)
                 final filterForOpenings = currentFilter.copyWith(eco: GameEcoFilter.all);
                 final gamesForOpenings = filterForOpenings.hasActiveFilters
@@ -161,7 +169,7 @@ class _PlayerAboutTabState extends ConsumerState<PlayerAboutTab>
                   return _buildNoGamesForFilterMessage(filterForOpenings);
                 }
 
-                // Analytics for opening repertoire (without ECO filter)
+                // Analytics for opening repertoire (without ECO filter) - used to determine active openings
                 final openingAnalyticsRequest = PlayerAnalyticsRequest(
                   fideId: widget.fideId,
                   playerName: widget.playerName,
@@ -179,15 +187,23 @@ class _PlayerAboutTabState extends ConsumerState<PlayerAboutTab>
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Filter active indicator
-                    if (hasActiveFilter) ...[
-                      _FilterActiveBanner(
-                        filter: currentFilter,
-                        totalGames: allGames.length,
-                        filteredGames: filteredGames.length,
-                      ),
-                      SizedBox(height: 16.h),
-                    ],
+                    // Filter active indicator — AnimatedSize prevents scroll jump
+                    AnimatedSize(
+                      duration: const Duration(milliseconds: 250),
+                      curve: Curves.easeInOut,
+                      alignment: Alignment.topCenter,
+                      clipBehavior: Clip.hardEdge,
+                      child: hasActiveFilter
+                          ? Padding(
+                              padding: EdgeInsets.only(bottom: 16.h),
+                              child: _FilterActiveBanner(
+                                filter: currentFilter,
+                                totalGames: allGames.length,
+                                filteredGames: filteredGames.length,
+                              ),
+                            )
+                          : const SizedBox.shrink(),
+                    ),
 
                     // Overall statistics
                     _OverallStatsSection(
@@ -222,12 +238,16 @@ class _PlayerAboutTabState extends ConsumerState<PlayerAboutTab>
                       SizedBox(height: 24.h),
                     ],
 
-                    // Opening repertoire (uses filter WITHOUT ECO - you select FROM this list)
-                    if (openingAnalytics.openingStats.isNotEmpty)
+                    // Opening repertoire - base stats for stable list, filtered for active/inactive
+                    if (baseOpeningAnalytics.openingStats.isNotEmpty)
                       _OpeningRepertoireSection(
-                        openingStats: openingAnalytics.openingStats,
-                        openingStatsWhite: openingAnalytics.openingStatsWhite,
-                        openingStatsBlack: openingAnalytics.openingStatsBlack,
+                        baseOpeningStats: baseOpeningAnalytics.openingStats,
+                        baseOpeningStatsWhite: baseOpeningAnalytics.openingStatsWhite,
+                        baseOpeningStatsBlack: baseOpeningAnalytics.openingStatsBlack,
+                        filteredOpeningStats: openingAnalytics.openingStats,
+                        filteredOpeningStatsWhite: openingAnalytics.openingStatsWhite,
+                        filteredOpeningStatsBlack: openingAnalytics.openingStatsBlack,
+                        hasNonEcoFilters: filterForOpenings.hasActiveFilters,
                         playerKey: _playerKey,
                         onOpenGames: widget.onOpenGames,
                       ),
@@ -574,7 +594,7 @@ class _FilterActiveBanner extends StatelessWidget {
           ),
         ],
       ),
-    ).animate().fadeIn(duration: 200.ms).slideY(begin: -0.1, end: 0);
+    );
   }
 }
 
@@ -1316,7 +1336,6 @@ class _ColorPerformanceSection extends StatelessWidget {
                   onOpenGames?.call(
                     color: newFilter,
                     eco: shouldClearOpening ? GameEcoFilter.all : null,
-                    searchQuery: shouldClearOpening ? '' : null,
                   );
                 },
               ),
@@ -1343,7 +1362,6 @@ class _ColorPerformanceSection extends StatelessWidget {
                   onOpenGames?.call(
                     color: newFilter,
                     eco: shouldClearOpening ? GameEcoFilter.all : null,
-                    searchQuery: shouldClearOpening ? '' : null,
                   );
                 },
               ),
@@ -1869,19 +1887,35 @@ class _ExpandableGameCard extends ConsumerWidget {
 
 enum _OpeningRepertoireFilter { all, white, black }
 
-/// Opening repertoire section with selectable opening rows
+/// Opening repertoire section with selectable opening rows.
+/// Uses base stats (from all games) for a stable card list,
+/// and filtered stats to determine which openings are active/inactive.
 class _OpeningRepertoireSection extends ConsumerStatefulWidget {
   const _OpeningRepertoireSection({
-    required this.openingStats,
-    required this.openingStatsWhite,
-    required this.openingStatsBlack,
+    required this.baseOpeningStats,
+    required this.baseOpeningStatsWhite,
+    required this.baseOpeningStatsBlack,
+    required this.filteredOpeningStats,
+    required this.filteredOpeningStatsWhite,
+    required this.filteredOpeningStatsBlack,
+    required this.hasNonEcoFilters,
     required this.playerKey,
     this.onOpenGames,
   });
 
-  final List<OpeningStatistic> openingStats;
-  final List<OpeningStatistic> openingStatsWhite;
-  final List<OpeningStatistic> openingStatsBlack;
+  /// Base stats from ALL games - used for the stable card list
+  final List<OpeningStatistic> baseOpeningStats;
+  final List<OpeningStatistic> baseOpeningStatsWhite;
+  final List<OpeningStatistic> baseOpeningStatsBlack;
+
+  /// Filtered stats (non-ECO filters applied) - used to determine active/inactive
+  final List<OpeningStatistic> filteredOpeningStats;
+  final List<OpeningStatistic> filteredOpeningStatsWhite;
+  final List<OpeningStatistic> filteredOpeningStatsBlack;
+
+  /// Whether any non-ECO filters are currently active
+  final bool hasNonEcoFilters;
+
   final PlayerProfileKey playerKey;
   final PlayerGamesOpenCallback? onOpenGames;
 
@@ -1908,35 +1942,48 @@ class _OpeningRepertoireSectionState extends ConsumerState<_OpeningRepertoireSec
     return _localFilter;
   }
 
-  List<OpeningStatistic> get _filteredOpenings {
+  /// Base openings for stable card list (from all games)
+  List<OpeningStatistic> get _baseOpenings {
     switch (_effectiveFilter) {
       case _OpeningRepertoireFilter.white:
-        return widget.openingStatsWhite;
+        return widget.baseOpeningStatsWhite;
       case _OpeningRepertoireFilter.black:
-        return widget.openingStatsBlack;
+        return widget.baseOpeningStatsBlack;
       case _OpeningRepertoireFilter.all:
-        return widget.openingStats;
+        return widget.baseOpeningStats;
     }
   }
 
-  /// Check if an opening is currently selected based on the games filter state
+  /// Filtered openings (with non-ECO filters) - used to check active/inactive
+  List<OpeningStatistic> get _filteredOpenings {
+    switch (_effectiveFilter) {
+      case _OpeningRepertoireFilter.white:
+        return widget.filteredOpeningStatsWhite;
+      case _OpeningRepertoireFilter.black:
+        return widget.filteredOpeningStatsBlack;
+      case _OpeningRepertoireFilter.all:
+        return widget.filteredOpeningStats;
+    }
+  }
+
+  /// Set of active ECO codes from filtered openings (fast lookup)
+  Set<String> get _activeEcoCodes {
+    return _filteredOpenings.map((o) => o.eco.toUpperCase()).toSet();
+  }
+
+  /// Check if an opening is active (has games matching current filters)
+  bool _isOpeningActive(OpeningStatistic opening) {
+    if (!widget.hasNonEcoFilters) return true;
+    return _activeEcoCodes.contains(opening.eco.toUpperCase());
+  }
+
+  /// Check if an opening is currently selected based on ECO filter state
   bool _isOpeningSelected(OpeningStatistic opening) {
     final gamesState = ref.watch(playerProfileGamesKeyProvider(widget.playerKey));
     final currentEco = gamesState.filter.eco.code;
-    final currentSearch = gamesState.searchQuery;
 
-    // Check if eco code matches
     if (currentEco != null && currentEco.isNotEmpty) {
-      if (opening.eco.toUpperCase() == currentEco.toUpperCase()) {
-        return true;
-      }
-    }
-
-    // Check if search query matches opening name
-    if (currentSearch.isNotEmpty && opening.openingName != null) {
-      if (opening.openingName!.toLowerCase() == currentSearch.toLowerCase()) {
-        return true;
-      }
+      return opening.eco.toUpperCase() == currentEco.toUpperCase();
     }
 
     return false;
@@ -1948,17 +1995,14 @@ class _OpeningRepertoireSectionState extends ConsumerState<_OpeningRepertoireSec
     final isCurrentlySelected = _isOpeningSelected(opening);
 
     if (isCurrentlySelected) {
-      // Deselect: clear just the eco filter and search query
+      // Deselect: clear just the eco filter
       widget.onOpenGames?.call(
         eco: GameEcoFilter.all,
-        searchQuery: '',
       );
     } else {
-      // Select: apply the opening filter
+      // Select: apply the ECO filter only (no searchQuery — ECO is the unique key)
       final eco = opening.eco.trim();
       final hasEco = RegExp(r'^[A-E]').hasMatch(eco);
-      final name = opening.openingName?.trim();
-      final searchQuery = (name != null && name.isNotEmpty) ? name : eco;
 
       // Also set matching color filter if selecting from White/Black tab
       GameColorFilter? colorToSet;
@@ -1970,7 +2014,6 @@ class _OpeningRepertoireSectionState extends ConsumerState<_OpeningRepertoireSec
 
       widget.onOpenGames?.call(
         eco: hasEco ? GameEcoFilter.forCode(eco) : null,
-        searchQuery: searchQuery.isNotEmpty ? searchQuery : null,
         color: colorToSet,
       );
     }
@@ -1994,7 +2037,7 @@ class _OpeningRepertoireSectionState extends ConsumerState<_OpeningRepertoireSec
       newColorFilter = GameColorFilter.white;
       // Check if current opening is compatible with White
       if (currentEco != null && currentEco.isNotEmpty) {
-        final inWhite = widget.openingStatsWhite.any(
+        final inWhite = widget.baseOpeningStatsWhite.any(
           (o) => o.eco.toUpperCase() == currentEco.toUpperCase(),
         );
         if (!inWhite) shouldClearOpening = true;
@@ -2003,7 +2046,7 @@ class _OpeningRepertoireSectionState extends ConsumerState<_OpeningRepertoireSec
       newColorFilter = GameColorFilter.black;
       // Check if current opening is compatible with Black
       if (currentEco != null && currentEco.isNotEmpty) {
-        final inBlack = widget.openingStatsBlack.any(
+        final inBlack = widget.baseOpeningStatsBlack.any(
           (o) => o.eco.toUpperCase() == currentEco.toUpperCase(),
         );
         if (!inBlack) shouldClearOpening = true;
@@ -2016,14 +2059,13 @@ class _OpeningRepertoireSectionState extends ConsumerState<_OpeningRepertoireSec
     widget.onOpenGames?.call(
       color: newColorFilter,
       eco: shouldClearOpening ? GameEcoFilter.all : null,
-      searchQuery: shouldClearOpening ? '' : null,
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    // Take top 10 most played openings
-    final topOpenings = _filteredOpenings.take(10).toList();
+    // Use base openings for stable list (never disappears)
+    final topOpenings = _baseOpenings.take(10).toList();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -2061,7 +2103,7 @@ class _OpeningRepertoireSectionState extends ConsumerState<_OpeningRepertoireSec
                 indent: 16.w,
                 endIndent: 16.w,
               ),
-              // Repertoire list
+              // Repertoire list - always stable, inactive cards dimmed
               if (topOpenings.isEmpty)
                 Padding(
                   padding: EdgeInsets.fromLTRB(16.w, 0, 16.w, 20.h),
@@ -2088,11 +2130,13 @@ class _OpeningRepertoireSectionState extends ConsumerState<_OpeningRepertoireSec
                   ),
                   itemBuilder: (context, index) {
                     final opening = topOpenings[index];
-                    final isSelected = _isOpeningSelected(opening);
+                    final isActive = _isOpeningActive(opening);
+                    final isSelected = isActive && _isOpeningSelected(opening);
                     return _OpeningRow(
                       opening: opening,
                       isSelected: isSelected,
-                      onTap: () => _onOpeningTapped(opening),
+                      isActive: isActive,
+                      onTap: isActive ? () => _onOpeningTapped(opening) : null,
                     );
                   },
                 ),
@@ -2134,16 +2178,18 @@ class _OpeningRepertoireSectionState extends ConsumerState<_OpeningRepertoireSec
   }
 }
 
-/// Opening row widget with motor-powered selection animation
+/// Opening row widget with motor-powered selection and active/inactive animations
 class _OpeningRow extends StatefulWidget {
   const _OpeningRow({
     required this.opening,
     this.isSelected = false,
+    this.isActive = true,
     this.onTap,
   });
 
   final OpeningStatistic opening;
   final bool isSelected;
+  final bool isActive;
   final VoidCallback? onTap;
 
   @override
@@ -2208,149 +2254,199 @@ class _OpeningRowState extends State<_OpeningRow> {
             motion: const CupertinoMotion.bouncy(),
             value: widget.isSelected ? 1.0 : 0.0,
             builder: (context, selectProgress, _) {
-              // Interpolate colors based on selection progress
-              final bgColor = Color.lerp(
-                Colors.transparent,
-                kPrimaryColor.withValues(alpha: 0.12),
-                selectProgress,
-              )!;
+              // Third layer: active/inactive spring transition
+              return SingleMotionBuilder(
+                motion: const CupertinoMotion.bouncy(),
+                value: widget.isActive ? 1.0 : 0.0,
+                builder: (context, activeProgress, _) {
+                  // Inactive state dims everything smoothly
+                  // activeProgress: 1.0 = fully active, 0.0 = fully inactive
+                  final inactiveAmount = 1.0 - activeProgress;
 
-              // Opening name color transitions to primary when selected
-              final nameColor = Color.lerp(
-                kWhiteColor,
-                kPrimaryColor,
-                selectProgress * 0.6,
-              )!;
+                  // Interpolate colors based on selection + active state
+                  final bgColor = Color.lerp(
+                    Colors.transparent,
+                    kPrimaryColor.withValues(alpha: 0.12),
+                    selectProgress * activeProgress,
+                  )!;
 
-              // ECO badge gets a subtle border when selected
-              final ecoBorderColor = Color.lerp(
-                Colors.transparent,
-                kPrimaryColor,
-                selectProgress,
-              )!;
-              final ecoBorderWidth = selectProgress * 2.0;
+                  // Name color: white when active, dimmed when inactive
+                  final activeNameColor = Color.lerp(
+                    kWhiteColor,
+                    kPrimaryColor,
+                    selectProgress * 0.6,
+                  )!;
+                  final nameColor = Color.lerp(
+                    activeNameColor,
+                    kWhiteColor.withValues(alpha: 0.22),
+                    inactiveAmount,
+                  )!;
 
-              // Score color blends with primary when selected
-              final baseScoreColor = _getScoreColor(widget.opening.score);
-              final scoreColor = Color.lerp(
-                baseScoreColor,
-                kPrimaryColor,
-                selectProgress * 0.4,
-              )!;
+                  // ECO badge border for selection
+                  final ecoBorderColor = Color.lerp(
+                    Colors.transparent,
+                    kPrimaryColor,
+                    selectProgress * activeProgress,
+                  )!;
+                  final ecoBorderWidth = selectProgress * activeProgress * 2.0;
 
-              // Subtle scale bump when selected
-              final selectScale = 1.0 + (selectProgress * 0.01);
-              final combinedScale = pressScale * selectScale;
+                  // ECO badge color desaturates when inactive
+                  final baseEcoColor = _getEcoColor(widget.opening.eco);
+                  final ecoColor = Color.lerp(
+                    baseEcoColor,
+                    kDarkGreyColor.withValues(alpha: 0.5),
+                    inactiveAmount * 0.7,
+                  )!;
 
-              return Transform.scale(
-                scale: combinedScale,
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: bgColor,
-                    // Subtle left border accent when selected
-                    border: selectProgress > 0.1
-                        ? Border(
-                            left: BorderSide(
-                              color: kPrimaryColor.withValues(alpha: selectProgress * 0.8),
-                              width: 3 * selectProgress,
-                            ),
-                          )
-                        : null,
-                  ),
-                  child: Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
-                    child: Row(
-                      children: [
-                        // ECO code badge with selection border
-                        Container(
-                          width: 42.w,
-                          padding: EdgeInsets.symmetric(vertical: 4.h),
-                          decoration: BoxDecoration(
-                            color: _getEcoColor(widget.opening.eco),
-                            borderRadius: BorderRadius.circular(6.br),
-                            border: ecoBorderWidth > 0
-                                ? Border.all(
-                                    color: ecoBorderColor,
-                                    width: ecoBorderWidth,
-                                  )
-                                : null,
-                            // Subtle glow when selected
-                            boxShadow: selectProgress > 0.5
-                                ? [
-                                    BoxShadow(
-                                      color: kPrimaryColor.withValues(alpha: 0.3 * selectProgress),
-                                      blurRadius: 8 * selectProgress,
-                                      spreadRadius: 0,
-                                    ),
-                                  ]
-                                : null,
-                          ),
-                          child: Text(
-                            widget.opening.eco,
-                            textAlign: TextAlign.center,
-                            style: AppTypography.textXsBold.copyWith(
-                              color: kWhiteColor,
-                              fontFamily: 'monospace',
-                            ),
-                          ),
-                        ),
+                  // Score color dims when inactive
+                  final baseScoreColor = _getScoreColor(widget.opening.score);
+                  final activeScoreColor = Color.lerp(
+                    baseScoreColor,
+                    kPrimaryColor,
+                    selectProgress * 0.4,
+                  )!;
+                  final scoreColor = Color.lerp(
+                    activeScoreColor,
+                    kWhiteColor.withValues(alpha: 0.18),
+                    inactiveAmount,
+                  )!;
 
-                        SizedBox(width: 12.w),
+                  // Subtle text color for secondary elements
+                  final secondaryTextAlpha = 0.4 * activeProgress + 0.12 * inactiveAmount;
 
-                        // Opening name and stats
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                widget.opening.openingName ?? widget.opening.eco,
-                                style: AppTypography.textSmMedium.copyWith(color: nameColor),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
+                  // Scale: subtle selection bump only when active
+                  final selectScale = 1.0 + (selectProgress * activeProgress * 0.01);
+                  final combinedScale = pressScale * selectScale;
+
+                  return Transform.scale(
+                    scale: combinedScale,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: bgColor,
+                        // Left border accent when selected
+                        border: selectProgress > 0.1 && activeProgress > 0.5
+                            ? Border(
+                                left: BorderSide(
+                                  color: kPrimaryColor.withValues(alpha: selectProgress * 0.8),
+                                  width: 3 * selectProgress,
+                                ),
+                              )
+                            : null,
+                      ),
+                      child: Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
+                        child: Row(
+                          children: [
+                            // ECO code badge - desaturates when inactive
+                            Container(
+                              width: 42.w,
+                              padding: EdgeInsets.symmetric(vertical: 4.h),
+                              decoration: BoxDecoration(
+                                color: ecoColor,
+                                borderRadius: BorderRadius.circular(6.br),
+                                border: ecoBorderWidth > 0
+                                    ? Border.all(
+                                        color: ecoBorderColor,
+                                        width: ecoBorderWidth,
+                                      )
+                                    : null,
+                                boxShadow: selectProgress > 0.5 && activeProgress > 0.5
+                                    ? [
+                                        BoxShadow(
+                                          color: kPrimaryColor.withValues(alpha: 0.3 * selectProgress),
+                                          blurRadius: 8 * selectProgress,
+                                          spreadRadius: 0,
+                                        ),
+                                      ]
+                                    : null,
                               ),
-                              SizedBox(height: 4.h),
-                              Row(
+                              child: Text(
+                                widget.opening.eco,
+                                textAlign: TextAlign.center,
+                                style: AppTypography.textXsBold.copyWith(
+                                  color: Color.lerp(
+                                    kWhiteColor,
+                                    kWhiteColor.withValues(alpha: 0.35),
+                                    inactiveAmount,
+                                  ),
+                                  fontFamily: 'monospace',
+                                ),
+                              ),
+                            ),
+
+                            SizedBox(width: 12.w),
+
+                            // Opening name and stats
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  _WLDIndicator(value: widget.opening.wins, type: 'W', compact: true),
-                                  SizedBox(width: 4.w),
-                                  _WLDIndicator(value: widget.opening.draws, type: 'D', compact: true),
-                                  SizedBox(width: 4.w),
-                                  _WLDIndicator(value: widget.opening.losses, type: 'L', compact: true),
-                                  SizedBox(width: 8.w),
                                   Text(
-                                    '${widget.opening.count} games',
-                                    style: AppTypography.textXsRegular.copyWith(
-                                      color: kWhiteColor.withValues(alpha: 0.4),
-                                    ),
+                                    widget.opening.openingName ?? widget.opening.eco,
+                                    style: AppTypography.textSmMedium.copyWith(color: nameColor),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  SizedBox(height: 4.h),
+                                  Row(
+                                    children: [
+                                      _WLDIndicator(
+                                        value: widget.opening.wins,
+                                        type: 'W',
+                                        compact: true,
+                                        dimAmount: inactiveAmount,
+                                      ),
+                                      SizedBox(width: 4.w),
+                                      _WLDIndicator(
+                                        value: widget.opening.draws,
+                                        type: 'D',
+                                        compact: true,
+                                        dimAmount: inactiveAmount,
+                                      ),
+                                      SizedBox(width: 4.w),
+                                      _WLDIndicator(
+                                        value: widget.opening.losses,
+                                        type: 'L',
+                                        compact: true,
+                                        dimAmount: inactiveAmount,
+                                      ),
+                                      SizedBox(width: 8.w),
+                                      Text(
+                                        '${widget.opening.count} games',
+                                        style: AppTypography.textXsRegular.copyWith(
+                                          color: kWhiteColor.withValues(alpha: secondaryTextAlpha),
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ],
                               ),
-                            ],
-                          ),
-                        ),
-
-                        // Score percentage
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          children: [
-                            Text(
-                              '${(widget.opening.score * 100).toStringAsFixed(0)}%',
-                              style: AppTypography.textSmBold.copyWith(
-                                color: scoreColor,
-                              ),
                             ),
-                            Text(
-                              'score',
-                              style: AppTypography.textXsRegular.copyWith(
-                                color: kWhiteColor.withValues(alpha: 0.4),
-                              ),
+
+                            // Score percentage
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: [
+                                Text(
+                                  '${(widget.opening.score * 100).toStringAsFixed(0)}%',
+                                  style: AppTypography.textSmBold.copyWith(
+                                    color: scoreColor,
+                                  ),
+                                ),
+                                Text(
+                                  'score',
+                                  style: AppTypography.textXsRegular.copyWith(
+                                    color: kWhiteColor.withValues(alpha: secondaryTextAlpha),
+                                  ),
+                                ),
+                              ],
                             ),
                           ],
                         ),
-                      ],
+                      ),
                     ),
-                  ),
-                ),
+                  );
+                },
               );
             },
           );
@@ -2360,38 +2456,52 @@ class _OpeningRowState extends State<_OpeningRow> {
   }
 }
 
-/// Win/Loss/Draw indicator with color
+/// Win/Loss/Draw indicator with color and optional dimming
 class _WLDIndicator extends StatelessWidget {
   const _WLDIndicator({
     required this.value,
     required this.type,
     this.compact = false,
+    this.dimAmount = 0.0,
   });
 
   final int value;
   final String type; // 'W', 'L', or 'D'
   final bool compact;
+  final double dimAmount; // 0.0 = fully active, 1.0 = fully dimmed
 
   @override
   Widget build(BuildContext context) {
-    final Color bgColor;
-    final Color textColor;
+    Color baseBgColor;
+    Color baseTextColor;
 
     switch (type) {
       case 'W':
-        bgColor = kGreenColor.withValues(alpha: 0.2);
-        textColor = kGreenColor;
+        baseBgColor = kGreenColor.withValues(alpha: 0.2);
+        baseTextColor = kGreenColor;
         break;
       case 'L':
-        bgColor = Colors.redAccent.withValues(alpha: 0.2);
-        textColor = Colors.redAccent;
+        baseBgColor = Colors.redAccent.withValues(alpha: 0.2);
+        baseTextColor = Colors.redAccent;
         break;
       case 'D':
       default:
-        bgColor = kWhiteColor.withValues(alpha: 0.15);
-        textColor = kWhiteColor.withValues(alpha: 0.7);
+        baseBgColor = kWhiteColor.withValues(alpha: 0.15);
+        baseTextColor = kWhiteColor.withValues(alpha: 0.7);
         break;
     }
+
+    // Dim colors when inactive
+    final bgColor = Color.lerp(
+      baseBgColor,
+      kWhiteColor.withValues(alpha: 0.05),
+      dimAmount,
+    )!;
+    final textColor = Color.lerp(
+      baseTextColor,
+      kWhiteColor.withValues(alpha: 0.2),
+      dimAmount,
+    )!;
 
     return Container(
       padding: EdgeInsets.symmetric(

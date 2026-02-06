@@ -226,7 +226,10 @@ final playerGamesDataProvider = FutureProvider.family
       limit: 500,
     );
 
-    final allGames = games.map((game) => GamesTourModel.fromGame(game)).toList();
+    final allGames = games
+        .map((game) => GamesTourModel.fromGame(game))
+        .where((game) => !_isVariantEvent(game.tourSlug))
+        .toList();
 
     // Sort by date descending
     final epochFallback = DateTime.fromMillisecondsSinceEpoch(0);
@@ -242,6 +245,30 @@ final playerGamesDataProvider = FutureProvider.family
     return [];
   }
 });
+
+/// Slug patterns for non-standard chess variants (Fischer Random, etc.)
+/// These events are excluded from player profile stats and game lists.
+const _variantSlugPatterns = [
+  'freestyle',
+  'chess960',
+  'fischer-random',
+  'king-of-the-hill',
+  '3check',
+  'three-check',
+  'antichess',
+  'atomic',
+  'crazyhouse',
+  'horde',
+  'racing-kings',
+  'bughouse',
+];
+
+/// Check if a tour slug belongs to a non-standard chess variant
+bool _isVariantEvent(String? tourSlug) {
+  if (tourSlug == null || tourSlug.isEmpty) return false;
+  final lower = tourSlug.toLowerCase();
+  return _variantSlugPatterns.any((p) => lower.contains(p));
+}
 
 /// Provider to fetch games for a player using PlayerProfileKey (supports both fideId and name lookup)
 final playerGamesDataKeyProvider = FutureProvider.family
@@ -262,7 +289,10 @@ final playerGamesDataKeyProvider = FutureProvider.family
       );
     }
 
-    final allGames = games.map((game) => GamesTourModel.fromGame(game)).toList();
+    final allGames = games
+        .map((game) => GamesTourModel.fromGame(game))
+        .where((game) => !_isVariantEvent(game.tourSlug))
+        .toList();
 
     // Sort by date descending
     final epochFallback = DateTime.fromMillisecondsSinceEpoch(0);
@@ -652,16 +682,20 @@ Future<List<PlayerEventData>> _getPlayerEventsFromGamesWithKey(
       return [];
     }
 
-    // Group by tour_id and calculate stats
+    // Group by tour_id and calculate stats (skip variant events)
     final tourMap = <String, Map<String, dynamic>>{};
     for (final row in response) {
       final tourId = row['tour_id'] as String?;
       if (tourId == null) continue;
 
+      // Skip non-standard chess variants
+      final tourSlug = row['tour_slug'] as String?;
+      if (_isVariantEvent(tourSlug)) continue;
+
       if (!tourMap.containsKey(tourId)) {
         tourMap[tourId] = {
           'tour_id': tourId,
-          'tour_slug': row['tour_slug'],
+          'tour_slug': tourSlug,
           'count': 0,
           'wins': 0,
           'draws': 0,
@@ -835,16 +869,20 @@ Future<List<PlayerEventData>> _getPlayerEventsFromGames(
       return [];
     }
 
-    // Group by tour_id and calculate stats
+    // Group by tour_id and calculate stats (skip variant events)
     final tourMap = <String, Map<String, dynamic>>{};
     for (final row in response) {
       final tourId = row['tour_id'] as String?;
       if (tourId == null) continue;
 
+      // Skip non-standard chess variants
+      final tourSlug = row['tour_slug'] as String?;
+      if (_isVariantEvent(tourSlug)) continue;
+
       if (!tourMap.containsKey(tourId)) {
         tourMap[tourId] = {
           'tour_id': tourId,
-          'tour_slug': row['tour_slug'],
+          'tour_slug': tourSlug,
           'count': 0,
           'wins': 0,
           'draws': 0,
@@ -1160,8 +1198,10 @@ class PlayerProfileGamesNotifier
         );
       }
 
-      final allGames =
-          games.map((game) => GamesTourModel.fromGame(game)).toList();
+      final allGames = games
+          .map((game) => GamesTourModel.fromGame(game))
+          .where((game) => !_isVariantEvent(game.tourSlug))
+          .toList();
 
       // Sort by date descending
       final epochFallback = DateTime.fromMillisecondsSinceEpoch(0);

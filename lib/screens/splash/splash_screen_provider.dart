@@ -7,6 +7,7 @@ import 'package:chessever2/repository/local_storage/onboarding/onboarding_reposi
 import 'package:chessever2/repository/local_storage/sesions_manager/session_manager.dart';
 import 'package:chessever2/screens/group_event/group_event_screen.dart';
 import 'package:chessever2/widgets/event_card/starred_provider.dart';
+import 'package:chessever2/services/deep_link_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart';
@@ -131,6 +132,7 @@ class _SplashScreenProvider {
         '/onboarding',
         (_) => false,
       );
+      DeepLinkService.notifyAppReady();
       return;
     }
 
@@ -162,5 +164,8 @@ class _SplashScreenProvider {
       // User is not logged in - go to auth screen
       Navigator.pushNamedAndRemoveUntil(context, '/auth_screen', (_) => false);
     }
+
+    // Signal that splash navigation is complete so pending deep links can proceed
+    DeepLinkService.notifyAppReady();
   }
 }
