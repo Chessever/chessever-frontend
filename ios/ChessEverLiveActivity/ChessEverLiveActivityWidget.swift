@@ -853,19 +853,28 @@ private struct LiveClockPill: View {
 
     return Group {
       if let clock {
-        if isActiveTurn, let endDate = clock.endDate, endDate > Date.now {
+        let now = Date()
+        if isActiveTurn, let endDate = clock.endDate, endDate > now {
           // System-driven countdown — ticks every second automatically
-          let remaining = Int(endDate.timeIntervalSinceNow.rounded(.down))
+          let remaining = Int(endDate.timeIntervalSince(now).rounded(.down))
           let textColor = clockTextColor(seconds: max(0, remaining))
-          Text(timerInterval: Date.now...endDate, countsDown: true, showsHours: remaining >= 3600)
-            .font(.system(size: fontSize, weight: .bold, design: .monospaced))
-            .monospacedDigit()
-            .foregroundStyle(textColor)
-            .lineLimit(1)
-            .minimumScaleFactor(0.8)
-            .allowsTightening(true)
-            .multilineTextAlignment(.center)
-            .fixedSize(horizontal: true, vertical: false)
+          Group {
+            if #available(iOS 17.0, *) {
+              Text(timerInterval: now...endDate, countsDown: true, showsHours: remaining >= 3600)
+            } else {
+              // iOS 16.x: use the older initializer (no `showsHours:`) to avoid
+              // hitting unavailable API at runtime on 16.1 Live Activity devices.
+              Text(timerInterval: now...endDate, countsDown: true)
+            }
+          }
+          .font(.system(size: fontSize, weight: .bold, design: .monospaced))
+          .monospacedDigit()
+          .foregroundStyle(textColor)
+          .lineLimit(1)
+          .minimumScaleFactor(0.8)
+          .allowsTightening(true)
+          .multilineTextAlignment(.center)
+          .fixedSize(horizontal: true, vertical: false)
         } else {
           let displaySeconds = remainingSeconds(clock)
           let textColor = clockTextColor(seconds: displaySeconds)
