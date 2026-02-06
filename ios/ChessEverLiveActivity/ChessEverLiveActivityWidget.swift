@@ -858,15 +858,9 @@ private struct LiveClockPill: View {
           // System-driven countdown — ticks every second automatically
           let remaining = Int(endDate.timeIntervalSince(now).rounded(.down))
           let textColor = clockTextColor(seconds: max(0, remaining))
-          Group {
-            if #available(iOS 17.0, *) {
-              Text(timerInterval: now...endDate, countsDown: true, showsHours: remaining >= 3600)
-            } else {
-              // iOS 16.x: use the older initializer (no `showsHours:`) to avoid
-              // hitting unavailable API at runtime on 16.1 Live Activity devices.
-              Text(timerInterval: now...endDate, countsDown: true)
-            }
-          }
+          // Prefer the `.timer` style for stability; it still counts down
+          // without requiring a Date range API (which has been fragile on some devices).
+          Text(endDate, style: .timer)
           .font(.system(size: fontSize, weight: .bold, design: .monospaced))
           .monospacedDigit()
           .foregroundStyle(textColor)
