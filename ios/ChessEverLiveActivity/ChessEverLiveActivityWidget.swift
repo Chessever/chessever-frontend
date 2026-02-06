@@ -253,7 +253,11 @@ private struct LiveGameState {
       let sign = eval >= 0 ? "+" : ""
       return "\(sign)\(String(format: "%.1f", eval))"
     }
-    return "0.0"
+    return "—"
+  }
+
+  var hasEval: Bool {
+    (evalCp != nil) || (evalMate != nil && evalMate != 0)
   }
 
   var shortEval: String {
@@ -552,25 +556,10 @@ private struct LockScreenView: View {
 
   var body: some View {
     HStack(spacing: 0) {
-      // Left: Eval bar with glow effect
-      GeometryReader { barProxy in
-        let barHeight = barProxy.size.height
-        // Map eval ratio (0=black top, 1=white bottom) to Y offset from center
-        let glowY = barHeight * (0.5 - state.evalRatio) // positive = toward top (black), negative = toward bottom (white)
-        ZStack {
-          EvalBarVertical(evalCp: state.evalCp, evalMate: state.evalMate)
-            .frame(width: 12)
-
-          // Glow indicator tracking eval position
-          Circle()
-            .fill(state.isWhiteAdvantage ? ChessDesign.white : ChessDesign.evalBlack)
-            .frame(width: 8, height: 8)
-            .shadow(color: state.isWhiteAdvantage ? .white.opacity(0.6) : .clear, radius: 4)
-            .offset(y: glowY * 0.85) // 85% travel to keep within bar bounds
-        }
-      }
-      .frame(width: 12)
-      .padding(.trailing, 14)
+      // Left: Eval bar
+      EvalBarVertical(evalCp: state.evalCp, evalMate: state.evalMate)
+        .frame(width: 12)
+        .padding(.trailing, 14)
 
       // Center: Chess board with subtle shadow
       ZStack {
@@ -864,17 +853,32 @@ private struct LiveClockPill: View {
 
     return Group {
       if let clock {
-        let displaySeconds = remainingSeconds(clock)
-        let textColor = clockTextColor(seconds: displaySeconds)
-        Text(formatSeconds(displaySeconds))
-          .font(.system(size: fontSize, weight: .bold, design: .monospaced))
-          .monospacedDigit()
-          .foregroundStyle(textColor)
-          .lineLimit(1)
-          .minimumScaleFactor(0.8)
-          .allowsTightening(true)
-          .multilineTextAlignment(.center)
-          .fixedSize(horizontal: true, vertical: false)
+        if isActiveTurn, let endDate = clock.endDate, endDate > Date.now {
+          // System-driven countdown — ticks every second automatically
+          let remaining = Int(endDate.timeIntervalSinceNow.rounded(.down))
+          let textColor = clockTextColor(seconds: max(0, remaining))
+          Text(timerInterval: Date.now...endDate, countsDown: true, showsHours: remaining >= 3600)
+            .font(.system(size: fontSize, weight: .bold, design: .monospaced))
+            .monospacedDigit()
+            .foregroundStyle(textColor)
+            .lineLimit(1)
+            .minimumScaleFactor(0.8)
+            .allowsTightening(true)
+            .multilineTextAlignment(.center)
+            .fixedSize(horizontal: true, vertical: false)
+        } else {
+          let displaySeconds = remainingSeconds(clock)
+          let textColor = clockTextColor(seconds: displaySeconds)
+          Text(formatSeconds(displaySeconds))
+            .font(.system(size: fontSize, weight: .bold, design: .monospaced))
+            .monospacedDigit()
+            .foregroundStyle(textColor)
+            .lineLimit(1)
+            .minimumScaleFactor(0.8)
+            .allowsTightening(true)
+            .multilineTextAlignment(.center)
+            .fixedSize(horizontal: true, vertical: false)
+        }
       } else {
         Text("--:--")
           .font(.system(size: fontSize, weight: .medium, design: .monospaced))
