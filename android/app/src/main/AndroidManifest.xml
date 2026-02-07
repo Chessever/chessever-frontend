@@ -2,6 +2,7 @@
    xmlns:tools="http://schemas.android.com/tools"
    package="com.chessEver.app">
    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+   <uses-permission android:name="android.permission.POST_PROMOTED_NOTIFICATIONS" />
    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
    <uses-permission android:name="android.permission.INTERNET" />
 

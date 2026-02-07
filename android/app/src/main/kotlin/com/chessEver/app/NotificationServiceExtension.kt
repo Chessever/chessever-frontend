@@ -16,6 +16,8 @@ import android.graphics.Shader
 import android.graphics.Typeface
 import android.graphics.BitmapFactory
 import android.net.Uri
+import android.os.Build
+import android.os.Bundle
 import androidx.core.app.NotificationCompat
 import com.onesignal.notifications.IDisplayableMutableNotification
 import com.onesignal.notifications.INotificationReceivedEvent
@@ -177,6 +179,13 @@ class NotificationServiceExtension : INotificationServiceExtension {
           .bigLargeIcon(null as Bitmap?)
           .setSummaryText("$lastMove  $evalText")
       )
+    }
+
+    // Request promoted ongoing for Android 16+ (Live Updates on lock screen)
+    if (eventType != "end" && Build.VERSION.SDK_INT >= 36) {
+      builder.addExtras(Bundle().apply {
+        putBoolean("android.requestPromotedOngoing", true)
+      })
     }
 
     // Add action to end updates

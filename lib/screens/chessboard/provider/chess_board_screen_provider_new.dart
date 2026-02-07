@@ -968,7 +968,9 @@ class ChessBoardScreenNotifierNew
       // This prevents resource-intensive analysis from running for off-screen games in PageView
       final currentVisiblePage = ref.read(currentlyVisiblePageIndexProvider);
       if (index == currentVisiblePage) {
-        _updateEvaluation();
+        // Force immediate evaluation on live game new moves — bypasses the
+        // 120ms debounce so the engine starts searching the new position ASAP.
+        _updateEvaluation(force: hasNewMoves);
       } else {
         _releaseLog(
           '🚫 PARSE: Skipping evaluation for non-visible game (page $index, visible: $currentVisiblePage)',

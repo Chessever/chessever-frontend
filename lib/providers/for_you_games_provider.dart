@@ -7,6 +7,7 @@ import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
 import 'package:chessever2/repository/supabase/tour/tour_repository.dart';
+import 'package:chessever2/screens/favorites/favorite_players_provider.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/screens/group_event/providers/live_group_broadcast_id_provider.dart';
 import 'package:chessever2/screens/group_event/providers/sorting_all_event_provider.dart';
@@ -164,10 +165,14 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
           .map((b) => GroupEventCardModel.fromGroupBroadcast(b, liveIds))
           .toList();
 
-      // Pre-fetch heart data for this batch
-      await _prefetchHeartData(models);
+      // Pre-fetch heart data in background — don't block page render.
+      // This prevents For You from saturating the HTTP connection pool
+      // and starving other tabs (e.g. Current) of network access.
+      _prefetchHeartData(models).then((_) {
+        if (mounted) _reSortList();
+      });
 
-      // Sort this batch
+      // Sort this batch (without heart data initially — will re-sort once heart data arrives)
       final sortedModels = await _sortModels(models);
 
       // Update state
@@ -199,19 +204,80 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
     }
   }
 
+  /// Prefetch heart (favorite-player) data for a batch of events.
+  ///
+  /// Uses a single batch query to fetch tours for ALL events at once,
+  /// then computes heart data locally. This replaces the previous N+1
+  /// pattern (20 individual Supabase queries) with 1 batch query.
   Future<void> _prefetchHeartData(List<GroupEventCardModel> models) async {
-    final futures = models.map((event) async {
-      try {
-        final data = await ref.read(eventFavoritePlayersProvider(event.id).future);
-        return MapEntry(event.id, data);
-      } catch (e) {
-        return MapEntry(event.id, const EventFavoritePlayers.empty());
-      }
-    }).toList();
+    try {
+      // 1. Get the user's favorite players
+      final favoritePlayersState =
+          await ref.read(favoritePlayersNotifierProvider.future);
+      final favoritePlayers = favoritePlayersState.players;
 
-    final results = await Future.wait(futures);
-    final map = Map.fromEntries(results);
-    ref.read(eventFavoritePlayersCacheProvider.notifier).updateCacheBatch(map);
+      if (favoritePlayers.isEmpty) {
+        // No favorites — cache empty results and return early
+        final map = {
+          for (final m in models) m.id: const EventFavoritePlayers.empty(),
+        };
+        ref.read(eventFavoritePlayersCacheProvider.notifier).updateCacheBatch(map);
+        return;
+      }
+
+      final favoriteFideIds = favoritePlayers
+          .where((p) => p.fideId != null)
+          .map((p) => p.fideId!)
+          .toSet();
+
+      if (favoriteFideIds.isEmpty) {
+        final map = {
+          for (final m in models) m.id: const EventFavoritePlayers.empty(),
+        };
+        ref.read(eventFavoritePlayersCacheProvider.notifier).updateCacheBatch(map);
+        return;
+      }
+
+      // 2. Batch-fetch tours for ALL events in ONE query
+      final eventIds = models.map((m) => m.id).toList();
+      final tourRepo = ref.read(tourRepositoryProvider);
+      final toursMap = await tourRepo.getToursByGroupBroadcastIds(eventIds);
+
+      // 3. Compute heart data locally for each event
+      final resultMap = <String, EventFavoritePlayers>{};
+
+      for (final model in models) {
+        final tours = toursMap[model.id] ?? [];
+        final eventPlayerFideIds = <int>{};
+
+        for (final tour in tours) {
+          for (final player in tour.players) {
+            if (player.fideId != null && player.fideId! > 0) {
+              eventPlayerFideIds.add(player.fideId!);
+            }
+          }
+        }
+
+        final matchingFideIds =
+            eventPlayerFideIds.intersection(favoriteFideIds).toList();
+
+        resultMap[model.id] = matchingFideIds.isEmpty
+            ? const EventFavoritePlayers.empty()
+            : EventFavoritePlayers(
+                count: matchingFideIds.length,
+                fideIds: matchingFideIds,
+              );
+      }
+
+      ref.read(eventFavoritePlayersCacheProvider.notifier).updateCacheBatch(resultMap);
+    } catch (e) {
+      debugPrint('[ForYou] Error in batch _prefetchHeartData: $e');
+      // On error, cache empty for all events so we don't retry endlessly
+      final map = {
+        for (final m in models) m.id: const EventFavoritePlayers.empty(),
+      };
+      ref.read(eventFavoritePlayersCacheProvider.notifier).updateCacheBatch(map);
+    }
   }
 
   Future<List<GroupEventCardModel>> _sortModels(List<GroupEventCardModel> models) async {

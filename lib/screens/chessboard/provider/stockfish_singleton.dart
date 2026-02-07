@@ -39,6 +39,7 @@ class StockfishSingleton {
   final Map<String, _EvalJob> _pendingJobs = {}; // Keyed by cacheKey
   bool _isProcessing = false; // Flag to prevent concurrent processing
   bool _isInitializing = false; // Lock to prevent concurrent engine initialization
+  bool _previousJobCompleted = true; // Track if last job ended via bestmove (engine idle)
   Completer<void>? _initCompleter; // Completer for waiting on initialization
   static const int _maxQueueSize = 60; // Soft cap to avoid backlog
 
@@ -552,6 +553,7 @@ class StockfishSingleton {
             requestedMultiPv: job.multiPV,
           );
           if (!completer.isCompleted) {
+            _previousJobCompleted = true;
             completer.complete(result);
             _currentSubscription?.cancel();
             _currentSubscription = null;
@@ -604,12 +606,12 @@ class StockfishSingleton {
       // Calculate timeout based on search parameters
       Duration safetyTimeout;
       if (isDynamicSearch) {
-        // For dynamic search, add 2 seconds buffer to the search duration
-        safetyTimeout = searchDuration + const Duration(seconds: 2);
+        // For dynamic search, add 1 second buffer to the search duration
+        safetyTimeout = searchDuration + const Duration(seconds: 1);
       } else {
         // For fixed depth search, use a reasonable timeout based on depth
         // Deeper searches need more time, but keep it aggressive
-        final timeoutSeconds = depth < 10 ? 5 : (depth < 20 ? 10 : 15);
+        final timeoutSeconds = depth < 10 ? 3 : (depth < 20 ? 6 : 10);
         safetyTimeout = Duration(seconds: timeoutSeconds);
       }
 
@@ -619,8 +621,8 @@ class StockfishSingleton {
       stallDetector = Timer.periodic(const Duration(seconds: 1), (_) {
         if (lastInfoReceived != null) {
           final timeSinceLastInfo = DateTime.now().difference(lastInfoReceived!);
-          // If we haven't received any info for 3 seconds, consider it stalled
-          if (timeSinceLastInfo > const Duration(seconds: 3)) {
+          // If we haven't received any info for 1.5 seconds, consider it stalled
+          if (timeSinceLastInfo > const Duration(milliseconds: 1500)) {
             debugPrint('⚠️ STOCKFISH STALL DETECTED: No response for ${timeSinceLastInfo.inSeconds}s');
             stallDetector?.cancel();
 
@@ -1018,29 +1020,26 @@ class StockfishSingleton {
     await _currentSubscription?.cancel();
     _currentSubscription = null;
 
-    try {
-      _engine!.stdin = 'stop';
-      await Future.delayed(const Duration(milliseconds: 20));
-    } catch (e) {
-      debugPrint('⚠️ STOCKFISH STOP FAILED: $e');
-      // If stop fails, the engine might be unresponsive - don't continue
-      return;
+    // If the previous job completed normally (bestmove received), engine is
+    // already idle — no need to send stop. This avoids unnecessary overhead.
+    if (!_previousJobCompleted) {
+      try {
+        _engine!.stdin = 'stop';
+        await Future.delayed(const Duration(milliseconds: 20));
+      } catch (e) {
+        debugPrint('⚠️ STOCKFISH STOP FAILED: $e');
+        return;
+      }
     }
 
-    // Only send these commands if engine is still responsive
-    if (_engine != null && _engine!.state.value == StockfishState.ready) {
-      try {
-        _engine!.stdin = 'ucinewgame';
-      } catch (e) {
-        debugPrint('⚠️ STOCKFISH ucinewgame FAILED: $e');
-      }
-      try {
-        _engine!.stdin = 'setoption name Clear Hash';
-      } catch (e) {
-        debugPrint('⚠️ STOCKFISH Clear Hash FAILED: $e');
-      }
-      await _waitForReadyOk();
-    }
+    // Mark that a new job is starting (not yet completed)
+    _previousJobCompleted = false;
+
+    // NOTE: We intentionally do NOT send 'ucinewgame', 'Clear Hash', or
+    // 'isready' here. Per UCI protocol, ucinewgame is only needed between
+    // different games — not between positions in the same analysis session.
+    // Keeping the hash table intact lets Stockfish reuse transposition data
+    // from prior searches, which significantly speeds up deepening.
   }
 
   Future<void> _waitForReadyOk() async {
@@ -1054,7 +1053,7 @@ class StockfishSingleton {
     });
     try {
       _engine!.stdin = 'isready';
-      await completer.future.timeout(const Duration(seconds: 1));
+      await completer.future.timeout(const Duration(milliseconds: 300));
     } catch (e) {
       debugPrint('⚠️ STOCKFISH READY WAIT FAILED: $e');
     } finally {
