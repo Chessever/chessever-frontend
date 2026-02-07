@@ -1526,10 +1526,10 @@ packages:
     dependency: "direct main"
     description:
       name: stockfish
-      sha256: "6f282bd7c4313262b47eabff85a23e3ee9bb63ee66d1fc57860e810621f0f9b5"
+      sha256: b27956fa6c21f8637db62411c564d1ba1d0b0e9e27ee928f42a85367da891fa0
       url: "https://pub.dev"
     source: hosted
-    version: "1.7.2"
+    version: "1.8.1"
   storage_client:
     dependency: transitive
     description:

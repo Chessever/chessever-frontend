@@ -58,6 +58,32 @@ class TourRepository extends BaseRepository {
     });
   }
 
+  /// Fetch tours for multiple group_broadcast IDs in a single query.
+  /// Returns a map of group_broadcast_id → List<Tour>.
+  Future<Map<String, List<Tour>>> getToursByGroupBroadcastIds(
+    List<String> groupBroadcastIds,
+  ) async {
+    if (groupBroadcastIds.isEmpty) return {};
+
+    return handleApiCall(() async {
+      final response = await supabase
+          .from('tours')
+          .select()
+          .inFilter('group_broadcast_id', groupBroadcastIds)
+          .order('avg_elo', ascending: false);
+
+      final result = <String, List<Tour>>{};
+      for (final json in response as List) {
+        final tour = Tour.fromJson(json);
+        final gbId = json['group_broadcast_id'] as String?;
+        if (gbId != null && gbId.isNotEmpty) {
+          result.putIfAbsent(gbId, () => []).add(tour);
+        }
+      }
+      return result;
+    });
+  }
+
   /// Fetch tours by country location.
   /// Searches the info->location field which contains "City, Country" format.
   Future<List<Tour>> getToursByCountryLocation({
