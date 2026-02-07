@@ -4,6 +4,13 @@ import WidgetKit
 import OneSignalLiveActivities
 import UIKit
 
+// MARK: - Live Activity Safety Switch
+
+// If the Live Activity shows as a fully black card, the widget extension is
+// crashing in the render path. This flag forces an ultra-safe SwiftUI-only UI
+// to ensure the extension always renders while we iterate.
+private let kForceSafeLiveActivityUI = true
+
 // MARK: - Dictionary Helper Extensions
 
 private extension Dictionary where Key == String, Value == AnyCodable {
@@ -401,11 +408,51 @@ struct ChessEverLiveActivityWidget: Widget {
   var body: some WidgetConfiguration {
     ActivityConfiguration(for: DefaultLiveActivityAttributes.self) { context in
       let state = LiveGameState(context: context)
-      LockScreenView(state: state)
+      Group {
+        if kForceSafeLiveActivityUI {
+          SafeLockScreenView(state: state)
+        } else {
+          LockScreenView(state: state)
+        }
+      }
         .activityBackgroundTint(ChessDesign.background)
         .widgetURL(state.widgetURL)
     } dynamicIsland: { context in
       let state = LiveGameState(context: context)
+      if kForceSafeLiveActivityUI {
+        return DynamicIsland {
+          DynamicIslandExpandedRegion(.center) {
+            VStack(spacing: 4) {
+              Text("\(state.shortWhiteName) vs \(state.shortBlackName)")
+                .font(.system(size: 12, weight: .bold))
+                .foregroundStyle(ChessDesign.white)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+                .allowsTightening(true)
+
+              Text(state.lastMove)
+                .font(.system(size: 14, weight: .heavy, design: .monospaced))
+                .foregroundStyle(ChessDesign.white)
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
+                .allowsTightening(true)
+            }
+          }
+        } compactLeading: {
+          Text("W")
+            .font(.system(size: 12, weight: .bold, design: .monospaced))
+            .foregroundStyle(ChessDesign.white)
+        } compactTrailing: {
+          Text("B")
+            .font(.system(size: 12, weight: .bold, design: .monospaced))
+            .foregroundStyle(ChessDesign.white)
+        } minimal: {
+          Text("CE")
+            .font(.system(size: 12, weight: .bold, design: .monospaced))
+            .foregroundStyle(ChessDesign.white)
+        }
+        .widgetURL(state.widgetURL)
+      }
       return DynamicIsland {
         // Expanded view - Beautiful full layout
         DynamicIslandExpandedRegion(.leading) {
