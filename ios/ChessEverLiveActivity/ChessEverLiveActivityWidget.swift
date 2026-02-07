@@ -853,32 +853,18 @@ private struct LiveClockPill: View {
 
     return Group {
       if let clock {
-        if isActiveTurn, let endDate = clock.endDate, endDate > Date.now {
-          // System-driven countdown — ticks every second automatically
-          let remaining = Int(endDate.timeIntervalSinceNow.rounded(.down))
-          let textColor = clockTextColor(seconds: max(0, remaining))
-          Text(timerInterval: Date.now...endDate, countsDown: true, showsHours: remaining >= 3600)
-            .font(.system(size: fontSize, weight: .bold, design: .monospaced))
-            .monospacedDigit()
-            .foregroundStyle(textColor)
-            .lineLimit(1)
-            .minimumScaleFactor(0.8)
-            .allowsTightening(true)
-            .multilineTextAlignment(.center)
-            .fixedSize(horizontal: true, vertical: false)
-        } else {
-          let displaySeconds = remainingSeconds(clock)
-          let textColor = clockTextColor(seconds: displaySeconds)
-          Text(formatSeconds(displaySeconds))
-            .font(.system(size: fontSize, weight: .bold, design: .monospaced))
-            .monospacedDigit()
-            .foregroundStyle(textColor)
-            .lineLimit(1)
-            .minimumScaleFactor(0.8)
-            .allowsTightening(true)
-            .multilineTextAlignment(.center)
-            .fixedSize(horizontal: true, vertical: false)
-        }
+        // Always use static text — Text(timerInterval:) crashes the widget extension.
+        let displaySeconds = remainingSeconds(clock)
+        let textColor = clockTextColor(seconds: displaySeconds)
+        Text(formatSeconds(displaySeconds))
+          .font(.system(size: fontSize, weight: .bold, design: .monospaced))
+          .monospacedDigit()
+          .foregroundStyle(textColor)
+          .lineLimit(1)
+          .minimumScaleFactor(0.8)
+          .allowsTightening(true)
+          .multilineTextAlignment(.center)
+          .fixedSize(horizontal: true, vertical: false)
       } else {
         Text("--:--")
           .font(.system(size: fontSize, weight: .medium, design: .monospaced))
