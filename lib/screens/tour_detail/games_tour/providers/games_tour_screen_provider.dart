@@ -720,8 +720,19 @@ class GamesTourScreenProvider
     }
   }
 
-  // Helper method to extract round number from round slug
+  // Helper method to extract round number from round slug.
+  // Named knockout stages get high numbers so they sort after numbered rounds.
   int _extractRoundNumber(String roundSlug) {
+    final slug = roundSlug.toLowerCase();
+    if (slug.contains('final') && !slug.contains('quarter') && !slug.contains('semi')) {
+      return 10000;
+    }
+    if (slug.contains('semifinal') || slug.contains('semi-final')) {
+      return 9000;
+    }
+    if (slug.contains('quarterfinal') || slug.contains('quarter-final')) {
+      return 8000;
+    }
     final match = RegExp(r'round-?(\d+)', caseSensitive: false).firstMatch(roundSlug) ??
                   RegExp(r'(\d+)').firstMatch(roundSlug);
     return int.tryParse(match?.group(1) ?? '0') ?? 0;

@@ -432,7 +432,7 @@ struct ChessEverLiveActivityWidget: Widget {
           VStack(spacing: 4) {
             if state.isGameOver {
               Text(state.gameStatus ?? "Final")
-                .font(.system(size: 14, weight: .heavy, design: .monospaced))
+                .font(.system(size: 14, weight: .bold))
                 .foregroundStyle(ChessDesign.white)
                 .lineLimit(1)
                 .minimumScaleFactor(0.6)
@@ -447,7 +447,7 @@ struct ChessEverLiveActivityWidget: Widget {
               }
 
               Text(state.lastMove)
-                .font(.system(size: 14, weight: .heavy, design: .monospaced))
+                .font(.system(size: 14, weight: .medium))
                 .foregroundStyle(state.isCheck ? ChessDesign.checkRed : ChessDesign.white)
                 .lineLimit(1)
                 .minimumScaleFactor(0.6)
@@ -503,7 +503,7 @@ private struct SafeLockScreenView: View {
           .allowsTightening(true)
 
         Text(state.lastMove)
-          .font(.system(size: 16, weight: .heavy, design: .monospaced))
+          .font(.system(size: 16, weight: .medium))
           .foregroundStyle(ChessDesign.white)
           .lineLimit(1)
           .minimumScaleFactor(0.6)
@@ -654,14 +654,14 @@ private struct LockScreenView: View {
           // Game over: show result prominently
           VStack(alignment: .leading, spacing: 4) {
             Text(state.gameStatus ?? "Final")
-              .font(.system(size: 18, weight: .black, design: .monospaced))
+              .font(.system(size: 18, weight: .bold))
               .foregroundStyle(ChessDesign.white)
               .lineLimit(1)
               .minimumScaleFactor(0.6)
               .allowsTightening(true)
 
             Text(state.lastMove)
-              .font(.system(size: 12, weight: .semibold, design: .monospaced))
+              .font(.system(size: 12, weight: .medium))
               .foregroundStyle(ChessDesign.textSecondary)
               .lineLimit(1)
               .minimumScaleFactor(0.6)
@@ -670,7 +670,7 @@ private struct LockScreenView: View {
         } else {
           HStack(spacing: 10) {
             Text(state.lastMove)
-              .font(.system(size: 20, weight: .black, design: .monospaced))
+              .font(.system(size: 20, weight: .medium))
               .foregroundStyle(state.isCheck ? ChessDesign.checkRed : ChessDesign.white)
               .lineLimit(1)
               .minimumScaleFactor(0.6)

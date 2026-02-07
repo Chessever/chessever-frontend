@@ -1048,44 +1048,31 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
       return;
     }
 
-    // CRITICAL FIX: Only play audio if this chess board screen is currently active
-    // This prevents audio from playing when other games in the tournament get moves
+    // Only play audio if this chess board screen is currently active
     final route = ModalRoute.of(context);
     if (route == null || !route.isCurrent) {
-      // Screen is not visible, don't play audio
       return;
     }
 
     final state = nextState;
 
-    // ENHANCED FIX: Verify this update is for the currently viewed game
-    // Only play audio if the provider index matches the current page
+    // Verify this update is for the currently viewed game
     final providerGameIndex = _currentPageIndex;
     final viewGameId = widget.games[providerGameIndex].gameId;
     if (state.game.gameId != viewGameId) {
-      // This update is for a different game, don't play audio
       return;
     }
 
-    // Additional check: Only play audio for significant move index changes
-    // This prevents audio from playing due to minor state updates
-    if ((currentIndex - prevIndex).abs() != 1 && currentIndex != -1) {
-      // Not a sequential move change, likely a background update
-      return;
-    }
-
-    // Final check: Make sure we're viewing the correct page in PageView
-    // Use a small tolerance for floating-point comparison
+    // Make sure we're viewing the correct page in PageView
     final currentPage = _pageController.page ?? _currentPageIndex.toDouble();
     if ((currentPage - _currentPageIndex).abs() > 0.1) {
-      // PageView is not on the current game, don't play audio
       return;
     }
 
     // Check if sound is enabled in user settings
     final boardSettings = ref.read(boardSettingsProviderNew).valueOrNull;
     if (boardSettings?.soundEnabled != true) {
-      return; // Sound disabled, skip playing
+      return;
     }
 
     final audioService = AudioPlayerService.instance;
@@ -1093,60 +1080,30 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     // Determine if we're going forward or backward
     final isMovingForward = currentIndex > prevIndex;
 
-    // For backward navigation, we want to play the sound of the move we just "undid"
-    // For forward navigation, we want to play the sound of the move we just made
+    // For backward navigation, play the sound of the move we just "undid"
+    // For forward navigation, play the sound of the move we just made
     final moveIndexForSound = isMovingForward ? currentIndex : prevIndex;
 
     final movesSan =
         state.isAnalysisMode ? state.analysisState.moveSans : state.moveSans;
 
-    // Check if we have a valid move to play sound for
     if (moveIndexForSound >= 0 && moveIndexForSound < movesSan.length) {
-      // Get the move notation for the appropriate move
-      final moveSan = movesSan[moveIndexForSound];
-
-      // Determine which sound to play based on PGN notation
-      // Priority order matters: checkmate > check > special moves > capture > regular
-      if (moveSan.contains('#')) {
-        // Checkmate notation
-        audioService.playSound(audioService.pieceCheckmateSfx);
-      } else if (moveSan.contains('+')) {
-        // Check notation (but not checkmate)
-        audioService.playSound(audioService.pieceCheckSfx);
-      } else if (moveSan == 'O-O' || moveSan == 'O-O-O') {
-        // Castling (kingside or queenside) - exact match
-        audioService.playSound(audioService.pieceCastlingSfx);
-      } else if (moveSan.contains('=')) {
-        // Pawn promotion (e.g., e8=Q)
-        audioService.playSound(audioService.piecePromotionSfx);
-      } else if (moveSan.contains('x')) {
-        // Capture notation
-        audioService.playSound(audioService.pieceTakeoverSfx);
-      } else {
-        // Regular move (no special notation)
-        audioService.playSound(audioService.pieceMoveSfx);
-      }
+      audioService.playSfxForSan(movesSan[moveIndexForSound]);
     } else if (currentIndex == -1 && prevIndex >= 0) {
-      // Moving back to the starting position (before first move)
-      // Play a regular move sound for the "undo" action
-      audioService.playSound(audioService.pieceMoveSfx);
+      // Moving back to the starting position
+      audioService.playSound(SfxType.move);
     } else if (currentIndex == movesSan.length && movesSan.isNotEmpty) {
-      // We're at the end of the game, check for game-ending conditions
+      // End of game
       final lastMoveSan = movesSan.last;
-
       if (lastMoveSan.contains('#')) {
-        // Game ended with checkmate
-        audioService.playSound(audioService.pieceCheckmateSfx);
+        audioService.playSound(SfxType.checkmate);
       } else if (state.game.gameStatus == GameStatus.draw) {
-        // Game ended in a draw
-        audioService.playSound(audioService.pieceDrawSfx);
+        audioService.playSound(SfxType.draw);
       } else {
-        // Other game endings (resignation, time out, etc.)
-        audioService.playSound(audioService.pieceMoveSfx);
+        audioService.playSound(SfxType.move);
       }
     } else {
-      // Fallback for edge cases (shouldn't normally happen)
-      audioService.playSound(audioService.pieceMoveSfx);
+      audioService.playSound(SfxType.move);
     }
   }
 

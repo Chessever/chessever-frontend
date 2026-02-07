@@ -398,14 +398,64 @@ async function processItem(item: OutboxItem, cloudEvalState: CloudEvalState) {
         return { id: item.id, status: "skipped", reason: "no_recipients" };
       }
 
+      const roundId = item.round_id ?? context.round?.id ?? "";
+      const eventName = context.eventName ?? context.round?.name ?? "Live chess";
+
+      // Send personalized player notifications grouped by player combo
       if (playerRecipients.length > 0) {
-        const playerNotification = buildRoundNotification(context, "player");
-        await sendOneSignal(playerRecipients, playerNotification);
+        const groups = groupUsersByPlayerCombo(context.playerFavoriteMap);
+        for (const [, groupUserIds] of groups) {
+          const eligible = groupUserIds.filter((id) =>
+            playerRecipients.includes(id),
+          );
+          if (eligible.length === 0) continue;
+          // Use the first user's player list (all in this group share the same set)
+          const playerNames =
+            context.playerFavoriteMap.get(eligible[0]) ?? [];
+          const playersStr = formatPlayersList(playerNames);
+          const template = pickTemplate(ROUND_STARTED_PLAYER, roundId);
+          const { title, body } = fillTemplate(template, {
+            p: playersStr,
+            e: eventName,
+          });
+          await sendOneSignal(eligible, {
+            title,
+            body,
+            url: context.groupBroadcastId ? "https://chessever.com" : null,
+            data: { type: "round_started", round_id: roundId },
+            androidChannelId: channelForEvent("round_started"),
+          });
+        }
+        // Also send to player recipients not in any group (no resolved favorite map entry)
+        const groupedUsers = new Set(
+          Array.from(context.playerFavoriteMap.keys()),
+        );
+        const ungrouped = playerRecipients.filter(
+          (id) => !groupedUsers.has(id),
+        );
+        if (ungrouped.length > 0) {
+          const template = pickTemplate(ROUND_STARTED_EVENT, roundId);
+          const { title, body } = fillTemplate(template, { e: eventName });
+          await sendOneSignal(ungrouped, {
+            title,
+            body,
+            url: context.groupBroadcastId ? "https://chessever.com" : null,
+            data: { type: "round_started", round_id: roundId },
+            androidChannelId: channelForEvent("round_started"),
+          });
+        }
       }
 
       if (eventRecipients.length > 0) {
-        const eventNotification = buildRoundNotification(context, "event");
-        await sendOneSignal(eventRecipients, eventNotification);
+        const template = pickTemplate(ROUND_STARTED_EVENT, roundId);
+        const { title, body } = fillTemplate(template, { e: eventName });
+        await sendOneSignal(eventRecipients, {
+          title,
+          body,
+          url: context.groupBroadcastId ? "https://chessever.com" : null,
+          data: { type: "round_started", round_id: roundId },
+          androidChannelId: channelForEvent("round_started"),
+        });
       }
 
       await markSent(item.id);
@@ -428,14 +478,72 @@ async function processItem(item: OutboxItem, cloudEvalState: CloudEvalState) {
         return { id: item.id, status: "skipped", reason: "no_recipients" };
       }
 
+      const roundId = item.round_id ?? context.round?.id ?? "";
+      const eventName = context.eventName ?? context.round?.name ?? "Live chess";
+      const leadMinutes = (item.payload?.lead_minutes as number) ?? 30;
+      const timeStr = `~${leadMinutes} min`;
+
+      // Send personalized player notifications grouped by player combo
       if (playerRecipients.length > 0) {
-        const playerNotification = buildHeadsUpNotification(context, "player");
-        await sendOneSignal(playerRecipients, playerNotification);
+        const groups = groupUsersByPlayerCombo(context.playerFavoriteMap);
+        for (const [, groupUserIds] of groups) {
+          const eligible = groupUserIds.filter((id) =>
+            playerRecipients.includes(id),
+          );
+          if (eligible.length === 0) continue;
+          const playerNames =
+            context.playerFavoriteMap.get(eligible[0]) ?? [];
+          const playersStr = formatPlayersList(playerNames);
+          const template = pickTemplate(ROUND_HEADS_UP_PLAYER, roundId);
+          const { title, body } = fillTemplate(template, {
+            p: playersStr,
+            e: eventName,
+            t: timeStr,
+          });
+          await sendOneSignal(eligible, {
+            title,
+            body,
+            url: context.groupBroadcastId ? "https://chessever.com" : null,
+            data: { type: "round_heads_up", round_id: roundId },
+            androidChannelId: channelForEvent("round_heads_up"),
+          });
+        }
+        // Ungrouped player recipients
+        const groupedUsers = new Set(
+          Array.from(context.playerFavoriteMap.keys()),
+        );
+        const ungrouped = playerRecipients.filter(
+          (id) => !groupedUsers.has(id),
+        );
+        if (ungrouped.length > 0) {
+          const template = pickTemplate(ROUND_HEADS_UP_EVENT, roundId);
+          const { title, body } = fillTemplate(template, {
+            e: eventName,
+            t: timeStr,
+          });
+          await sendOneSignal(ungrouped, {
+            title,
+            body,
+            url: context.groupBroadcastId ? "https://chessever.com" : null,
+            data: { type: "round_heads_up", round_id: roundId },
+            androidChannelId: channelForEvent("round_heads_up"),
+          });
+        }
       }
 
       if (eventRecipients.length > 0) {
-        const eventNotification = buildHeadsUpNotification(context, "event");
-        await sendOneSignal(eventRecipients, eventNotification);
+        const template = pickTemplate(ROUND_HEADS_UP_EVENT, roundId);
+        const { title, body } = fillTemplate(template, {
+          e: eventName,
+          t: timeStr,
+        });
+        await sendOneSignal(eventRecipients, {
+          title,
+          body,
+          url: context.groupBroadcastId ? "https://chessever.com" : null,
+          data: { type: "round_heads_up", round_id: roundId },
+          androidChannelId: channelForEvent("round_heads_up"),
+        });
       }
 
       await markSent(item.id);
@@ -593,6 +701,19 @@ async function buildContext(item: OutboxItem) {
     players: Array.from(playerNames),
   });
 
+  // Resolve per-user player favorites for round notifications
+  let playerFavoriteMap = new Map<string, string[]>();
+  if (
+    (item.event_type === "round_started" ||
+      item.event_type === "round_heads_up") &&
+    item.round_id
+  ) {
+    playerFavoriteMap = await resolvePlayerFavoriteMap(
+      item.round_id,
+      playerUserIds,
+    );
+  }
+
   return {
     game,
     round,
@@ -600,6 +721,7 @@ async function buildContext(item: OutboxItem) {
     groupBroadcastId,
     eventUserIds,
     playerUserIds,
+    playerFavoriteMap,
   };
 }
 
@@ -1010,6 +1132,234 @@ const ANDROID_CHANNELS = {
   general: "general",
 } as const;
 
+// --- Smart notification templates ---
+
+type Template = { title: string; body: string };
+
+const ROUND_STARTED_PLAYER: Template[] = [
+  { title: "{e}", body: "{p} at the board. Games are live." },
+  { title: "{e} is live", body: "{p} just started" },
+  { title: "{e}", body: "{p} playing right now" },
+  { title: "{e} started", body: "{p} at the board" },
+  { title: "It's on", body: "{p} live in {e}" },
+  { title: "{e} is live", body: "{p} at the board right now" },
+  { title: "{e}", body: "{p} just sat down. Games are live." },
+  { title: "Your move", body: "{p} live in {e}. Are you watching?" },
+  { title: "{e}", body: "{p} on the board. Watch live." },
+  { title: "{e} is live", body: "{p} already making moves" },
+  { title: "{e}", body: "The wait is over. {p} live now." },
+  { title: "{e}", body: "{p} just kicked off" },
+  { title: "{e}", body: "{p} at the board. Don't miss it." },
+  { title: "{e}", body: "{p} live now. Get in here." },
+  { title: "{e} started", body: "{p} playing. Follow along." },
+];
+
+const ROUND_STARTED_EVENT: Template[] = [
+  { title: "{e}", body: "Games are live" },
+  { title: "{e} is live", body: "First moves have been played" },
+  { title: "{e}", body: "Games just started" },
+  { title: "{e} started", body: "Watch live" },
+  { title: "{e}", body: "The wait is over. Games are live." },
+  { title: "{e} is live", body: "Don't miss it" },
+  { title: "{e}", body: "It's live. Get in here." },
+  { title: "{e} is underway", body: "Follow the games live" },
+  { title: "{e}", body: "The round just started" },
+  { title: "{e} started", body: "Games are live now" },
+];
+
+const ROUND_HEADS_UP_PLAYER: Template[] = [
+  { title: "{e}", body: "{p} at the board in {t}" },
+  { title: "Heads up", body: "{p} in {e}. {t} to go." },
+  { title: "{e} in {t}", body: "{p} on the schedule" },
+  { title: "{e}", body: "{p} in about {t}. Don't forget." },
+  { title: "Heads up", body: "{p} in {t}. {e}." },
+  { title: "{e} soon", body: "{p} in about {t}" },
+  { title: "{e}", body: "{p} at the board in {t}. Got time?" },
+  { title: "Heads up", body: "{p} in {t}. Set a reminder." },
+  { title: "{e}", body: "{t} to go. {p} on the schedule." },
+  { title: "Almost time", body: "{p} in {e}. About {t}." },
+  { title: "{e}", body: "{p} coming up in {t}" },
+  { title: "Heads up", body: "{p} in {t}. {e} almost here." },
+  { title: "{e}", body: "{p} in {t}. Clear your schedule." },
+  { title: "{e}", body: "{t} until {p} at the board" },
+  { title: "Heads up", body: "{p} in {e}. About {t} out." },
+];
+
+const ROUND_HEADS_UP_EVENT: Template[] = [
+  { title: "Heads up", body: "{e} starts in {t}" },
+  { title: "{e}", body: "Starting in {t}" },
+  { title: "{e} in {t}", body: "Games starting soon" },
+  { title: "Heads up", body: "{e} in {t}. Set a reminder." },
+  { title: "{e} soon", body: "About {t} to go" },
+  { title: "{e}", body: "Starts in {t}. Don't miss it." },
+  { title: "Heads up", body: "{e} in about {t}" },
+  { title: "{e}", body: "{t} to go" },
+  { title: "Almost time", body: "{e} in {t}" },
+  { title: "{e}", body: "{t} until games begin" },
+];
+
+function pickTemplate(templates: Template[], roundId: string): Template {
+  let hash = 0;
+  for (let i = 0; i < roundId.length; i++) {
+    hash = ((hash << 5) - hash + roundId.charCodeAt(i)) | 0;
+  }
+  return templates[Math.abs(hash) % templates.length];
+}
+
+function fillTemplate(
+  template: Template,
+  vars: { p?: string; e: string; t?: string },
+): { title: string; body: string } {
+  const replace = (s: string) =>
+    s
+      .replace(/\{p\}/g, vars.p ?? "")
+      .replace(/\{e\}/g, vars.e)
+      .replace(/\{t\}/g, vars.t ?? "");
+  return { title: replace(template.title), body: replace(template.body) };
+}
+
+function extractLastName(name: string): string {
+  const trimmed = name.trim();
+  // "Carlsen, Magnus" or "GM Carlsen, Magnus" → "Carlsen"
+  if (trimmed.includes(",")) {
+    const before = trimmed.split(",")[0].trim();
+    // Strip title prefix: "GM Carlsen" → "Carlsen"
+    const parts = before.split(/\s+/);
+    return parts.length > 1 ? parts[parts.length - 1] : parts[0];
+  }
+  // "Gukesh D" → "Gukesh" (last word is single letter)
+  const parts = trimmed.split(/\s+/);
+  if (parts.length >= 2 && parts[parts.length - 1].length <= 2) {
+    return parts[parts.length - 2];
+  }
+  // Fallback: last word
+  return parts[parts.length - 1];
+}
+
+function formatPlayersList(names: string[]): string {
+  // Deduplicate by last name
+  const seen = new Set<string>();
+  const unique: string[] = [];
+  for (const name of names) {
+    const last = extractLastName(name).toLowerCase();
+    if (!seen.has(last)) {
+      seen.add(last);
+      unique.push(extractLastName(name));
+    }
+  }
+
+  if (unique.length === 0) return "";
+  if (unique.length === 1) return unique[0];
+  if (unique.length === 2) return `${unique[0]} & ${unique[1]}`;
+  if (unique.length === 3) {
+    return `${unique[0]}, ${unique[1]} & 1 more`;
+  }
+  return `${unique[0]}, ${unique[1]} & ${unique.length - 2} more of your favorites`;
+}
+
+async function resolvePlayerFavoriteMap(
+  roundId: string,
+  playerUserIds: Set<string>,
+): Promise<Map<string, string[]>> {
+  // Returns Map<userId, playerName[]> — which specific round players each user favorited.
+  const result = new Map<string, string[]>();
+  if (playerUserIds.size === 0) return result;
+
+  // Get all games in this round to know which players are participating
+  const { data: games } = await supabase
+    .from("games")
+    .select("player_white,player_black,player_fide_ids")
+    .eq("round_id", roundId);
+
+  if (!games || games.length === 0) return result;
+
+  const roundFideIds = new Set<string>();
+  const roundPlayerNames = new Set<string>();
+  const fideIdToName = new Map<string, string>();
+
+  for (const g of games as RoundGameRow[]) {
+    if (g.player_white) {
+      roundPlayerNames.add(g.player_white);
+    }
+    if (g.player_black) {
+      roundPlayerNames.add(g.player_black);
+    }
+    if (g.player_fide_ids) {
+      for (let i = 0; i < g.player_fide_ids.length; i++) {
+        const fid = g.player_fide_ids[i].toString();
+        roundFideIds.add(fid);
+        // Map fide_id to player name for display
+        const name = i === 0 ? g.player_white : g.player_black;
+        if (name) fideIdToName.set(fid, name);
+      }
+    }
+  }
+
+  const userIds = Array.from(playerUserIds);
+
+  // Fetch by fide_id
+  if (roundFideIds.size > 0) {
+    const { data: faveByFide } = await supabase
+      .from("user_favorite_players")
+      .select("user_id,fide_id")
+      .in("user_id", userIds)
+      .in("fide_id", Array.from(roundFideIds));
+
+    for (const row of faveByFide ?? []) {
+      const userId = row.user_id as string;
+      const fideId = (row.fide_id as number).toString();
+      const name = fideIdToName.get(fideId);
+      if (name) {
+        if (!result.has(userId)) result.set(userId, []);
+        result.get(userId)!.push(name);
+      }
+    }
+  }
+
+  // Fetch by player_name (fallback for players without fide_id matches)
+  if (roundPlayerNames.size > 0) {
+    const { data: faveByName } = await supabase
+      .from("user_favorite_players")
+      .select("user_id,player_name")
+      .in("user_id", userIds)
+      .in("player_name", Array.from(roundPlayerNames));
+
+    for (const row of faveByName ?? []) {
+      const userId = row.user_id as string;
+      const name = row.player_name as string;
+      if (!result.has(userId)) result.set(userId, []);
+      const existing = result.get(userId)!;
+      // Deduplicate: don't add if last name already present from fide_id match
+      const lastNameLower = extractLastName(name).toLowerCase();
+      const alreadyHas = existing.some(
+        (n) => extractLastName(n).toLowerCase() === lastNameLower,
+      );
+      if (!alreadyHas) {
+        existing.push(name);
+      }
+    }
+  }
+
+  return result;
+}
+
+function groupUsersByPlayerCombo(
+  playerFavoriteMap: Map<string, string[]>,
+): Map<string, string[]> {
+  // Groups users who share the same set of favorite players for this round.
+  // Key: sorted player names joined by "|", Value: user IDs
+  const groups = new Map<string, string[]>();
+  for (const [userId, names] of playerFavoriteMap) {
+    const key = names
+      .map((n) => extractLastName(n).toLowerCase())
+      .sort()
+      .join("|");
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(userId);
+  }
+  return groups;
+}
+
 function channelForEvent(eventType: string) {
   switch (eventType) {
     case "round_heads_up":
@@ -1088,61 +1438,8 @@ function buildNotification(
   };
 }
 
-function buildRoundNotification(
-  context: {
-    round: RoundRow | null;
-    eventName: string | null;
-    groupBroadcastId: string | null;
-  },
-  variant: "player" | "event",
-): NotificationPayload {
-  const roundName = context.round?.name ?? "New round";
-  const eventName = context.eventName;
-  const title = eventName ?? roundName;
-  const label = [eventName, roundName].filter(Boolean).join(" ");
-
-  const body = variant === "player"
-    ? `${label || roundName} started — your favorite player(s) are playing`
-    : eventName
-    ? `Your favorite event ${label || roundName} has started`
-    : `Your favorite event ${roundName} has started`;
-
-  return {
-    title,
-    body,
-    url: context.groupBroadcastId ? `https://chessever.com` : null,
-    data: { type: "round_started", round_id: context.round?.id },
-    androidChannelId: channelForEvent("round_started"),
-  };
-}
-
-function buildHeadsUpNotification(
-  context: {
-    round: RoundRow | null;
-    eventName: string | null;
-    groupBroadcastId: string | null;
-  },
-  variant: "player" | "event",
-): NotificationPayload {
-  const roundName = context.round?.name ?? "Upcoming round";
-  const eventName = context.eventName;
-  const title = `Heads-up`;
-  const label = [eventName, roundName].filter(Boolean).join(" ");
-
-  const body = variant === "player"
-    ? `${label || roundName} starts soon — your favorite player(s) are playing`
-    : eventName
-    ? `Your favorite event ${label || roundName} starts soon`
-    : `Your favorite event ${roundName} starts soon`;
-
-  return {
-    title,
-    body,
-    url: context.groupBroadcastId ? `https://chessever.com` : null,
-    data: { type: "round_heads_up", round_id: context.round?.id },
-    androidChannelId: channelForEvent("round_heads_up"),
-  };
-}
+// buildRoundNotification and buildHeadsUpNotification replaced by
+// personalized template system in processItem() handlers above.
 
 async function buildLiveUpdatePayload(args: {
   item: OutboxItem;

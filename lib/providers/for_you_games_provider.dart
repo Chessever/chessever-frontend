@@ -412,6 +412,20 @@ List<Games> _sortGamesLikeGamesTab(List<Games> games, List<String> pinnedIds) {
 }
 
 int _extractRoundNumber(String roundSlug) {
+  final slug = roundSlug.toLowerCase();
+
+  // Named knockout stages — ranked above any numbered round.
+  // Check more-specific names first to avoid substring false-positives.
+  if (slug.contains('final') && !slug.contains('quarter') && !slug.contains('semi')) {
+    return 10000;
+  }
+  if (slug.contains('semifinal') || slug.contains('semi-final')) {
+    return 9000;
+  }
+  if (slug.contains('quarterfinal') || slug.contains('quarter-final')) {
+    return 8000;
+  }
+
   final match = RegExp(r'round-?(\d+)', caseSensitive: false).firstMatch(roundSlug) ??
                 RegExp(r'(\d+)').firstMatch(roundSlug);
   return int.tryParse(match?.group(1) ?? '0') ?? 0;
