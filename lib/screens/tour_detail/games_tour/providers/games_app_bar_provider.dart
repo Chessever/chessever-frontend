@@ -236,56 +236,66 @@ class _GamesAppBarNotifier
     final scopeId = ref.read(gamesTourScrollScopeProvider);
     print('🔵 _scrollToRound - scopeId: $scopeId');
 
-    final scrollProvider = ref.read(gamesTourScrollProvider(scopeId).notifier);
-    final controller = scrollProvider.state;
-    final itemIndex = _calculateRoundHeaderIndex(roundId);
+    // Retry with increasing delays to handle category switches where games
+    // haven't loaded yet. Re-compute the index each attempt since game data
+    // may arrive between retries.
+    const maxAttempts = 10;
+    const retryDelays = [50, 100, 150, 200, 300, 400, 500, 600, 800, 1000];
 
-    // Debug logging
-    print('🎯 Scrolling to round: $roundId, calculated index: $itemIndex');
-    print('🎯 Controller attached: ${controller.isAttached}');
+    for (int attempt = 0; attempt < maxAttempts; attempt++) {
+      if (attempt > 0) {
+        await Future.delayed(Duration(milliseconds: retryDelays[attempt]));
+      }
 
-    if (itemIndex < 0) {
-      print('❌ _scrollToRound - itemIndex < 0, round not found');
-      return;
-    }
+      final scrollProvider = ref.read(gamesTourScrollProvider(scopeId).notifier);
+      final controller = scrollProvider.state;
+      final itemIndex = _calculateRoundHeaderIndex(roundId);
 
-    if (!controller.isAttached) {
-      print('❌ _scrollToRound - controller not attached');
-      return;
-    }
+      print('🎯 Scroll attempt ${attempt + 1}: roundId=$roundId, index=$itemIndex, attached=${controller.isAttached}');
 
-    // Prevent scroll listener from updating dropdown during programmatic scroll
-    scrollProvider.startProgrammaticScroll(targetRoundId: roundId);
+      if (itemIndex < 0) {
+        // Games not loaded yet or round not found — retry
+        print('⏳ _scrollToRound - index < 0, retrying...');
+        continue;
+      }
 
-    // Small delay to ensure layout is ready
-    await Future.delayed(const Duration(milliseconds: 100));
+      if (!controller.isAttached) {
+        // Controller not ready — retry
+        print('⏳ _scrollToRound - controller not attached, retrying...');
+        continue;
+      }
 
-    if (controller.isAttached) {
-      try {
-        print('🎯 Executing jumpTo(index: $itemIndex)');
-        // Use alignment 0.0 to position round header at the very top
-        controller.jumpTo(index: itemIndex, alignment: 0.0);
-        print('✅ jumpTo completed successfully');
-      } catch (e) {
-        print('⚠️ jumpTo failed: $e, trying scrollTo...');
-        // Fallback if jumpTo fails
+      // Ready to scroll
+      scrollProvider.startProgrammaticScroll(targetRoundId: roundId);
+
+      // Small delay to ensure layout is stable
+      await Future.delayed(const Duration(milliseconds: 50));
+
+      if (controller.isAttached) {
         try {
-          controller.scrollTo(
-            index: itemIndex,
-            duration: const Duration(milliseconds: 300),
-            curve: Curves.easeInOut,
-            alignment: 0.0,
-          );
-        } catch (e2) {
-          print('❌ scrollTo also failed: $e2');
+          print('🎯 Executing jumpTo(index: $itemIndex)');
+          controller.jumpTo(index: itemIndex, alignment: 0.0);
+          print('✅ jumpTo completed successfully');
+        } catch (e) {
+          print('⚠️ jumpTo failed: $e, trying scrollTo...');
+          try {
+            controller.scrollTo(
+              index: itemIndex,
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.easeInOut,
+              alignment: 0.0,
+            );
+          } catch (e2) {
+            print('❌ scrollTo also failed: $e2');
+          }
         }
       }
 
-      // Re-enable scroll listener after scroll completes
       scrollProvider.endProgrammaticScroll();
-    } else {
-      print('❌ _scrollToRound - controller detached after delay');
+      return; // Success — exit retry loop
     }
+
+    print('❌ _scrollToRound - gave up after $maxAttempts attempts for roundId=$roundId');
   }
 
   /// Extract round number from round name (e.g., "Round 9" -> 9, "round7" -> 7)
