@@ -4,13 +4,6 @@ import WidgetKit
 import OneSignalLiveActivities
 import UIKit
 
-// MARK: - Live Activity Safety Switch
-
-// If the Live Activity shows as a fully black card, the widget extension is
-// crashing in the render path. This flag forces an ultra-safe SwiftUI-only UI
-// to ensure the extension always renders while we iterate.
-private let kForceSafeLiveActivityUI = false
-
 // MARK: - Dictionary Helper Extensions
 
 private extension Dictionary where Key == String, Value == AnyCodable {
@@ -408,51 +401,11 @@ struct ChessEverLiveActivityWidget: Widget {
   var body: some WidgetConfiguration {
     ActivityConfiguration(for: DefaultLiveActivityAttributes.self) { context in
       let state = LiveGameState(context: context)
-      Group {
-        if kForceSafeLiveActivityUI {
-          SafeLockScreenView(state: state)
-        } else {
-          LockScreenView(state: state)
-        }
-      }
+      LockScreenView(state: state)
         .activityBackgroundTint(ChessDesign.background)
         .widgetURL(state.widgetURL)
     } dynamicIsland: { context in
       let state = LiveGameState(context: context)
-      if kForceSafeLiveActivityUI {
-        return DynamicIsland {
-          DynamicIslandExpandedRegion(.center) {
-            VStack(spacing: 4) {
-              Text("\(state.shortWhiteName) vs \(state.shortBlackName)")
-                .font(.system(size: 12, weight: .bold))
-                .foregroundStyle(ChessDesign.white)
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
-                .allowsTightening(true)
-
-              Text(state.lastMove)
-                .font(.system(size: 14, weight: .heavy, design: .monospaced))
-                .foregroundStyle(ChessDesign.white)
-                .lineLimit(1)
-                .minimumScaleFactor(0.6)
-                .allowsTightening(true)
-            }
-          }
-        } compactLeading: {
-          Text("W")
-            .font(.system(size: 12, weight: .bold, design: .monospaced))
-            .foregroundStyle(ChessDesign.white)
-        } compactTrailing: {
-          Text("B")
-            .font(.system(size: 12, weight: .bold, design: .monospaced))
-            .foregroundStyle(ChessDesign.white)
-        } minimal: {
-          Text("CE")
-            .font(.system(size: 12, weight: .bold, design: .monospaced))
-            .foregroundStyle(ChessDesign.white)
-        }
-        .widgetURL(state.widgetURL)
-      }
       return DynamicIsland {
         // Expanded view - Beautiful full layout
         DynamicIslandExpandedRegion(.leading) {
@@ -608,29 +561,35 @@ private struct LockScreenView: View {
         .frame(width: 12)
         .padding(.trailing, 14)
 
-      // Center: Chess board (pre-rendered to single UIImage for widget stability)
-      Image(uiImage: BoardImageRenderer.render(
-        fen: state.fen,
-        size: 110,
-        highlightSquares: state.highlightSquares,
-        isCheck: state.isCheck,
-        lightSquare: state.boardTheme.lightSquare,
-        darkSquare: state.boardTheme.darkSquare,
-        pieceSetDirectory: state.pieceSetDirectory
-      ))
-        .resizable()
-        .frame(width: 110, height: 110)
-        .clipShape(RoundedRectangle(cornerRadius: 10))
-        .overlay(
-          RoundedRectangle(cornerRadius: 10)
-            .strokeBorder(
-              state.isCheck
-                ? LinearGradient(colors: [ChessDesign.checkRed.opacity(0.6), ChessDesign.checkRed.opacity(0.3)], startPoint: .topLeading, endPoint: .bottomTrailing)
-                : LinearGradient(colors: [ChessDesign.surfaceLight, ChessDesign.surface], startPoint: .topLeading, endPoint: .bottomTrailing),
-              lineWidth: state.isCheck ? 1.5 : 1
-            )
+      // Center: Chess board with subtle shadow
+      ZStack {
+        // Shadow layer
+        RoundedRectangle(cornerRadius: 10)
+          .fill(Color.black.opacity(0.3))
+          .blur(radius: 8)
+          .offset(y: 4)
+
+        MiniBoard(
+          fen: state.fen,
+          highlightSquares: state.highlightSquares,
+          isCheck: state.isCheck,
+          lightSquare: state.boardTheme.lightSquare,
+          darkSquare: state.boardTheme.darkSquare,
+          pieceSetDirectory: state.pieceSetDirectory
         )
-        .padding(.trailing, 14)
+          .clipShape(RoundedRectangle(cornerRadius: 10))
+          .overlay(
+            RoundedRectangle(cornerRadius: 10)
+              .strokeBorder(
+                state.isCheck
+                  ? LinearGradient(colors: [ChessDesign.checkRed.opacity(0.6), ChessDesign.checkRed.opacity(0.3)], startPoint: .topLeading, endPoint: .bottomTrailing)
+                  : LinearGradient(colors: [ChessDesign.surfaceLight, ChessDesign.surface], startPoint: .topLeading, endPoint: .bottomTrailing),
+                lineWidth: state.isCheck ? 1.5 : 1
+              )
+          )
+      }
+      .frame(width: 110, height: 110)
+      .padding(.trailing, 14)
 
       // Right: Game info
       VStack(alignment: .leading, spacing: 0) {
@@ -894,22 +853,19 @@ private struct LiveClockPill: View {
 
     return Group {
       if let clock {
-        let now = Date()
-        if isActiveTurn, let endDate = clock.endDate, endDate > now {
+        if isActiveTurn, let endDate = clock.endDate, endDate > Date.now {
           // System-driven countdown — ticks every second automatically
-          let remaining = Int(endDate.timeIntervalSince(now).rounded(.down))
+          let remaining = Int(endDate.timeIntervalSinceNow.rounded(.down))
           let textColor = clockTextColor(seconds: max(0, remaining))
-          // Prefer the `.timer` style for stability; it still counts down
-          // without requiring a Date range API (which has been fragile on some devices).
-          Text(endDate, style: .timer)
-          .font(.system(size: fontSize, weight: .bold, design: .monospaced))
-          .monospacedDigit()
-          .foregroundStyle(textColor)
-          .lineLimit(1)
-          .minimumScaleFactor(0.8)
-          .allowsTightening(true)
-          .multilineTextAlignment(.center)
-          .fixedSize(horizontal: true, vertical: false)
+          Text(timerInterval: Date.now...endDate, countsDown: true, showsHours: remaining >= 3600)
+            .font(.system(size: fontSize, weight: .bold, design: .monospaced))
+            .monospacedDigit()
+            .foregroundStyle(textColor)
+            .lineLimit(1)
+            .minimumScaleFactor(0.8)
+            .allowsTightening(true)
+            .multilineTextAlignment(.center)
+            .fixedSize(horizontal: true, vertical: false)
         } else {
           let displaySeconds = remainingSeconds(clock)
           let textColor = clockTextColor(seconds: displaySeconds)
@@ -1172,103 +1128,6 @@ private struct EvalBarHorizontal: View {
       return mate > 0 ? 10.0 : -10.0
     }
     return (evalCp ?? 0.0) / 100.0
-  }
-}
-
-// MARK: - Board Image Renderer (pre-renders to a single UIImage for widget stability)
-
-private enum BoardImageRenderer {
-  static func render(
-    fen: String,
-    size: CGFloat,
-    highlightSquares: [BoardSquare],
-    isCheck: Bool,
-    lightSquare: Color,
-    darkSquare: Color,
-    pieceSetDirectory: String
-  ) -> UIImage {
-    let board = FenBoard(fen: fen)
-    let fromSquare = highlightSquares.first
-    let toSquare = highlightSquares.count > 1 ? highlightSquares[1] : nil
-    let sideToMove = parseSide(fen)
-    let kingSquare = isCheck ? board.findKingSquare(isWhiteToMove: sideToMove) : nil
-    let sq = size / 8.0
-    let uiLight = UIColor(lightSquare)
-    let uiDark = UIColor(darkSquare)
-
-    let renderer = UIGraphicsImageRenderer(size: CGSize(width: size, height: size))
-    return renderer.image { ctx in
-      let cgCtx = ctx.cgContext
-
-      for rank in 0..<8 {
-        for file in 0..<8 {
-          let isLightSq = (rank + file) % 2 == 0
-          let rect = CGRect(
-            x: CGFloat(file) * sq,
-            y: CGFloat(rank) * sq,
-            width: sq,
-            height: sq
-          )
-
-          // Square
-          cgCtx.setFillColor((isLightSq ? uiLight : uiDark).cgColor)
-          cgCtx.fill(rect)
-
-          // Move highlights
-          let current = BoardSquare(file: file, rank: rank)
-          if let from = fromSquare, from == current {
-            cgCtx.setFillColor(
-              UIColor(red: 0.059, green: 0.706, blue: 0.898, alpha: 0.28).cgColor
-            )
-            cgCtx.fill(rect)
-          } else if let to = toSquare, to == current {
-            cgCtx.setFillColor(
-              UIColor(red: 0.059, green: 0.706, blue: 0.898, alpha: 0.5).cgColor
-            )
-            cgCtx.fill(rect)
-          }
-
-          // Check glow
-          if let king = kingSquare, king.file == file, king.rank == rank {
-            let center = CGPoint(x: rect.midX, y: rect.midY)
-            let colors = [
-              UIColor(red: 0.95, green: 0.25, blue: 0.2, alpha: 0.7).cgColor,
-              UIColor(red: 0.95, green: 0.25, blue: 0.2, alpha: 0.0).cgColor,
-            ] as CFArray
-            if let gradient = CGGradient(
-              colorsSpace: CGColorSpaceCreateDeviceRGB(),
-              colors: colors,
-              locations: [0, 1]
-            ) {
-              cgCtx.drawRadialGradient(
-                gradient,
-                startCenter: center,
-                startRadius: 0,
-                endCenter: center,
-                endRadius: sq * 0.7,
-                options: []
-              )
-            }
-          }
-
-          // Piece
-          if let piece = board.pieceAt(rank: rank, file: file) {
-            if let img = PieceImageProvider.image(
-              for: piece,
-              pieceSetDirectory: pieceSetDirectory
-            ) {
-              let inset = sq * 0.08
-              img.draw(in: rect.insetBy(dx: inset, dy: inset))
-            }
-          }
-        }
-      }
-    }
-  }
-
-  private static func parseSide(_ fen: String) -> Bool {
-    let parts = fen.split(separator: " ")
-    return parts.count > 1 ? parts[1] == "w" : true
   }
 }
 
