@@ -3813,20 +3813,7 @@ class ChessBoardScreenNotifierNew
       return; // Sound disabled, skip playing
     }
 
-    final audio = AudioPlayerService.instance;
-    if (san.contains('#')) {
-      audio.playSound(audio.pieceCheckmateSfx);
-    } else if (san.contains('+')) {
-      audio.playSound(audio.pieceCheckSfx);
-    } else if (san == 'O-O' || san == 'O-O-O') {
-      audio.playSound(audio.pieceCastlingSfx);
-    } else if (san.contains('=')) {
-      audio.playSound(audio.piecePromotionSfx);
-    } else if (san.contains('x')) {
-      audio.playSound(audio.pieceTakeoverSfx);
-    } else {
-      audio.playSound(audio.pieceMoveSfx);
-    }
+    AudioPlayerService.instance.playSfxForSan(san);
   }
 
   bool _ensureVariantSelection() {

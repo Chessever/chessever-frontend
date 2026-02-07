@@ -4,6 +4,10 @@ import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
 
+/// Sound effect types — used instead of raw AudioSource to avoid stale native
+/// handles after the SoLoud engine is torn down and reinitialized.
+enum SfxType { move, castling, check, checkmate, draw, promotion, takeover }
+
 class AudioPlayerService with WidgetsBindingObserver {
   static final AudioPlayerService _instance = AudioPlayerService._internal();
 
@@ -69,22 +73,57 @@ class AudioPlayerService with WidgetsBindingObserver {
     return _initializing!;
   }
 
-  /// Play a sound while self-healing the engine if it was torn down by the OS.
-  void playSound(AudioSource source) {
-    unawaited(_playWithRecovery(source));
+  /// Resolve the fresh AudioSource for a given [SfxType].
+  /// Must only be called AFTER [initializeAndLoadAllAssets] has completed.
+  AudioSource _resolve(SfxType type) {
+    switch (type) {
+      case SfxType.move:
+        return pieceMoveSfx;
+      case SfxType.castling:
+        return pieceCastlingSfx;
+      case SfxType.check:
+        return pieceCheckSfx;
+      case SfxType.checkmate:
+        return pieceCheckmateSfx;
+      case SfxType.draw:
+        return pieceDrawSfx;
+      case SfxType.promotion:
+        return piecePromotionSfx;
+      case SfxType.takeover:
+        return pieceTakeoverSfx;
+    }
   }
 
-  Future<void> _playWithRecovery(AudioSource source) async {
+  /// Determine the [SfxType] from a SAN move string.
+  static SfxType sfxTypeForSan(String san) {
+    if (san.contains('#')) return SfxType.checkmate;
+    if (san.contains('+')) return SfxType.check;
+    if (san == 'O-O' || san == 'O-O-O') return SfxType.castling;
+    if (san.contains('=')) return SfxType.promotion;
+    if (san.contains('x')) return SfxType.takeover;
+    return SfxType.move;
+  }
+
+  /// Play a sound effect by type. Resolves the native handle AFTER ensuring
+  /// the engine is initialized, preventing stale-handle issues.
+  void playSound(SfxType type) {
+    unawaited(_playWithRecovery(type));
+  }
+
+  /// Convenience: determine sound from SAN notation and play it.
+  void playSfxForSan(String san) => playSound(sfxTypeForSan(san));
+
+  Future<void> _playWithRecovery(SfxType type) async {
     try {
       await initializeAndLoadAllAssets();
-      // Await to surface initialization issues immediately and trigger recovery.
-      await player.play(source);
+      await player.play(_resolve(type));
     } catch (e, s) {
       debugPrint('⚠️ Audio playback failed, recovering SoLoud: $e\n$s');
       _teardownPlayer();
       try {
         await initializeAndLoadAllAssets(force: true);
-        await player.play(source);
+        // _resolve reads the freshly-loaded field — no stale handles.
+        await player.play(_resolve(type));
       } catch (err, st) {
         debugPrint('⚠️ Audio playback failed after recovery: $err\n$st');
       }
@@ -184,23 +223,26 @@ class AudioPlayerService with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     debugPrint('🎧 AudioPlayerService: lifecycle changed to $state');
     if (state == AppLifecycleState.resumed) {
-      // Always refresh after coming back to foreground; some platforms tear
-      // down the native engine while keeping the Dart flag alive.
-      debugPrint('🎧 AudioPlayerService: resuming, will reinitialize (force: true)');
-      unawaited(initializeAndLoadAllAssets(force: true));
+      // Only reinitialize if the native engine is gone. Avoids unnecessary
+      // teardown→reinit cycles that create windows of broken audio.
+      if (!player.isInitialized) {
+        debugPrint('🎧 AudioPlayerService: engine dead after resume, reinitializing');
+        unawaited(initializeAndLoadAllAssets(force: true));
+      } else {
+        debugPrint('🎧 AudioPlayerService: engine still alive after resume, no action');
+      }
       return;
     }
 
-    // Treat every non-resumed state as background to avoid stale native handles.
+    // Only tear down when truly backgrounded (paused) or detached.
+    // `inactive` is a transient state (notification shade, dialogs, split-screen)
+    // and tearing down there causes sound to disappear on Android.
     if (state == AppLifecycleState.paused ||
-        state == AppLifecycleState.detached ||
-        state == AppLifecycleState.inactive ||
-        state == AppLifecycleState.hidden) {
+        state == AppLifecycleState.detached) {
       _teardownPlayer();
       return;
     }
 
-    // Fallback for any future lifecycle states.
-    _teardownPlayer();
+    // inactive / hidden: do nothing — keep the engine alive.
   }
 }
