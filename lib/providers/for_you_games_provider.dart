@@ -16,6 +16,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_mode
 import 'package:chessever2/screens/tour_detail/games_tour/providers/game_status_stream_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_pin_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/live_rounds_id_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/live_tour_id_provider.dart';
 import 'package:collection/collection.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -323,15 +324,29 @@ final eventGamesProvider = FutureProvider.autoDispose
   final tourRepository = ref.read(tourRepositoryProvider);
   final gamesStorage = ref.read(gamesLocalStorage);
 
-  // Get all tours for this event and pick the one with highest avgElo
+  // Get all tours for this event — prefer the live tour, then highest avgElo
   String? selectedTourId;
   try {
     final tours = await tourRepository.getTourByGroupId(eventId);
     if (tours.isNotEmpty) {
-      // Sort by avgElo descending and pick the highest
-      tours.sort((a, b) => (b.avgElo ?? 0).compareTo(a.avgElo ?? 0));
-      selectedTourId = tours.first.id;
-      debugPrint('[ForYou] Selected tour "${tours.first.name}" (avgElo: ${tours.first.avgElo}) from ${tours.length} tours');
+      // Prefer a live tour (ongoing games) over highest avgElo.
+      // This ensures knockout events (e.g. Speed Chess Championship) show
+      // the current stage (finals) instead of a completed stage that had
+      // more participants and therefore a higher average Elo.
+      final liveTourIds = ref.read(liveTourIdProvider).valueOrNull ?? <String>[];
+      final liveTour = tours.firstWhereOrNull(
+        (t) => liveTourIds.contains(t.id),
+      );
+
+      if (liveTour != null) {
+        selectedTourId = liveTour.id;
+        debugPrint('[ForYou] Selected LIVE tour "${liveTour.name}" from ${tours.length} tours');
+      } else {
+        // No live tour — fall back to highest avgElo
+        tours.sort((a, b) => (b.avgElo ?? 0).compareTo(a.avgElo ?? 0));
+        selectedTourId = tours.first.id;
+        debugPrint('[ForYou] Selected tour "${tours.first.name}" (avgElo: ${tours.first.avgElo}) from ${tours.length} tours');
+      }
     }
   } catch (e) {
     debugPrint('[ForYou] Error fetching tours: $e');
