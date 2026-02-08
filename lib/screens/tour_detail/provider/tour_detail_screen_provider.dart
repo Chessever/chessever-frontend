@@ -343,35 +343,31 @@ class _TourDetailScreenNotifier
       }
     }
 
-    // 3️⃣ Select the tour with the highest avgElo
-    final toursWithElo =
-        tourModels.where((model) => model.tour.avgElo != null).toList();
-
-    if (toursWithElo.isNotEmpty) {
-      toursWithElo.sort((a, b) => b.tour.avgElo!.compareTo(a.tour.avgElo!));
-      return toursWithElo.first.tour;
-    }
-
-    // 4️⃣ Fallback: Handle live tours (if no avgElo data available)
+    // 3️⃣ Prefer live tours — a tour with active games always takes priority
     final liveModels =
         tourModels
             .where((model) => liveTourIds.contains(model.tour.id))
             .toList();
 
     if (liveModels.isNotEmpty) {
-      // If *all* are live, pick the one that started most recently
-      if (liveModels.length == tourModels.length) {
+      // If multiple are live, pick the one that started most recently
+      if (liveModels.length > 1) {
         liveModels.sort((a, b) {
-          // Handle tours with empty dates (use epoch as fallback)
           final aDate = a.tour.dates.isNotEmpty ? a.tour.dates.first : DateTime(1970);
           final bDate = b.tour.dates.isNotEmpty ? b.tour.dates.first : DateTime(1970);
           return bDate.compareTo(aDate);
         });
-        return liveModels.first.tour;
       }
-
-      // Otherwise, just pick the first live one (or apply other logic if needed)
       return liveModels.first.tour;
+    }
+
+    // 4️⃣ No live tour — select the tour with the highest avgElo
+    final toursWithElo =
+        tourModels.where((model) => model.tour.avgElo != null).toList();
+
+    if (toursWithElo.isNotEmpty) {
+      toursWithElo.sort((a, b) => b.tour.avgElo!.compareTo(a.tour.avgElo!));
+      return toursWithElo.first.tour;
     }
 
     // 5️⃣ If no live tours, pick most recently completed tour
