@@ -3781,7 +3781,7 @@ class _GameDropdownContentState extends State<_GameDropdownContent> {
     if (oldWidget.currentGameIndex != widget.currentGameIndex ||
         oldWidget.games.length != widget.games.length) {
       _currentIndex = widget.currentGameIndex.clamp(0, widget.games.length - 1);
-      _targetY = _itemBaseTop + _currentIndex * _totalItemHeight;
+      _targetY = _getTargetY(_currentIndex);
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _measureMetrics();
         _scrollToCenter();
@@ -3811,6 +3811,9 @@ class _GameDropdownContentState extends State<_GameDropdownContent> {
     final listBox = _listKey.currentContext?.findRenderObject() as RenderBox?;
     if (listBox == null) return;
 
+    final scrollAtMeasure =
+        _scrollController.hasClients ? _scrollController.offset : 0.0;
+
     double? itemHeight;
     double? firstTop;
     double? secondTop;
@@ -3835,7 +3838,10 @@ class _GameDropdownContentState extends State<_GameDropdownContent> {
     }
 
     final resolvedHeight = itemHeight ?? _itemHeight;
-    final resolvedBaseTop = firstTop ?? _itemBaseTop;
+    // Convert to content-space (viewport Y + scroll offset)
+    final resolvedBaseTop = firstTop != null
+        ? firstTop + scrollAtMeasure
+        : _itemBaseTop;
     final fallbackStride = resolvedHeight + 2.h; // margin/padding allowance
 
     double resolvedStride = _itemStride;
@@ -3852,10 +3858,34 @@ class _GameDropdownContentState extends State<_GameDropdownContent> {
       _itemHeight = resolvedHeight;
       _itemBaseTop = resolvedBaseTop;
       _itemStride = resolvedStride;
-      _targetY = _itemBaseTop + _currentIndex * _itemStride;
+      _targetY = _getTargetY(_currentIndex);
     });
 
     WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToCenter());
+  }
+
+  /// Get the content-space Y of the game row for item at [index].
+  /// Uses actual rendered position when available, falls back to stride formula.
+  /// Items with round separators are taller; this offsets to the game row.
+  double _getTargetY(int index) {
+    final listBox = _listKey.currentContext?.findRenderObject() as RenderBox?;
+    if (listBox != null && index >= 0 && index < _itemKeys.length) {
+      final ctx = _itemKeys[index].currentContext;
+      final box = ctx?.findRenderObject() as RenderBox?;
+      if (box != null && box.hasSize) {
+        final scrollOffset =
+            _scrollController.hasClients ? _scrollController.offset : 0.0;
+        final vpY =
+            listBox.globalToLocal(box.localToGlobal(Offset.zero)).dy;
+        final contentY = vpY + scrollOffset;
+        // If the item includes a round separator header, its total height
+        // exceeds _itemHeight. Offset to the game row at the bottom.
+        final separatorOffset =
+            (box.size.height - _itemHeight).clamp(0.0, double.infinity);
+        return contentY + separatorOffset;
+      }
+    }
+    return _itemBaseTop + index * _itemStride;
   }
 
   @override
@@ -3975,24 +4005,56 @@ class _GameDropdownContentState extends State<_GameDropdownContent> {
     final localPos = listBox.globalToLocal(globalPosition);
     final scrollOffset =
         _scrollController.hasClients ? _scrollController.offset : 0.0;
-    final stride =
-        _totalItemHeight <= 0 ? (_itemHeight + 2.h) : _totalItemHeight;
-    final adjustedY = localPos.dy + scrollOffset - _itemBaseTop;
-    final newIndex = (adjustedY / stride).floor().clamp(
-      0,
-      widget.games.length - 1,
-    );
+    final contentY = localPos.dy + scrollOffset;
 
-    if (newIndex != _currentIndex) {
+    // Find the nearest game row by checking actual rendered positions.
+    // Only visible items have a valid context; off-screen keys are skipped.
+    int bestIndex = _currentIndex;
+    double bestDist = double.infinity;
+    bool foundAny = false;
+
+    for (int i = 0; i < widget.games.length && i < _itemKeys.length; i++) {
+      final ctx = _itemKeys[i].currentContext;
+      final box = ctx?.findRenderObject() as RenderBox?;
+      if (box == null || !box.hasSize) continue;
+
+      final vpY =
+          listBox.globalToLocal(box.localToGlobal(Offset.zero)).dy;
+      final itemContentY = vpY + scrollOffset;
+      final separatorOffset =
+          (box.size.height - _itemHeight).clamp(0.0, double.infinity);
+      final gameRowCenter =
+          itemContentY + separatorOffset + _itemHeight / 2;
+
+      final dist = (contentY - gameRowCenter).abs();
+      if (dist < bestDist) {
+        bestDist = dist;
+        bestIndex = i;
+        foundAny = true;
+      }
+    }
+
+    // Fallback to stride-based calculation if no items were rendered
+    if (!foundAny) {
+      final stride =
+          _totalItemHeight <= 0 ? (_itemHeight + 2.h) : _totalItemHeight;
+      final adjustedY = contentY - _itemBaseTop;
+      bestIndex = (adjustedY / stride).floor().clamp(
+        0,
+        widget.games.length - 1,
+      );
+    }
+
+    if (bestIndex != _currentIndex) {
       HapticFeedback.selectionClick();
-      _animateToIndex(newIndex);
+      _animateToIndex(bestIndex);
     }
   }
 
   void _animateToIndex(int index) {
     setState(() {
       _currentIndex = index;
-      _targetY = _itemBaseTop + index * _totalItemHeight;
+      _targetY = _getTargetY(index);
     });
   }
 

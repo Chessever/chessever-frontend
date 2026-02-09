@@ -101,13 +101,20 @@ class _ChessBoardSettingsPageState extends ConsumerState<ChessBoardSettingsPage>
       tablet: 32.sp,
     );
 
+    final bottomPadding = MediaQuery.of(context).viewPadding.bottom;
+
     return Center(
       child: ConstrainedBox(
         constraints: BoxConstraints(
           maxWidth: ResponsiveHelper.contentMaxWidth,
         ),
         child: ListView(
-          padding: EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: 16.sp),
+          padding: EdgeInsets.only(
+            left: horizontalPadding,
+            right: horizontalPadding,
+            top: 16.sp,
+            bottom: 16.sp + bottomPadding,
+          ),
           children: [
         _SectionLabel(title: 'Engine Experience'),
         SizedBox(height: 12.h),

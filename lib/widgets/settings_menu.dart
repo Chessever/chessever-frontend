@@ -186,6 +186,7 @@ class SettingsMenu extends ConsumerWidget {
               ),
             ),
           if (onDeleteAccountPressed != null) SizedBox(height: 15.h),
+          SizedBox(height: MediaQuery.of(context).viewPadding.bottom),
         ],
       ),
     );
