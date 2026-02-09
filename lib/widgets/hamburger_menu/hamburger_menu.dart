@@ -1,4 +1,5 @@
 import 'package:chessever2/providers/app_version_provider.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
@@ -292,6 +293,9 @@ class _LogOutButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isAnonymous =
+        Supabase.instance.client.auth.currentUser?.isAnonymous == true;
+
     return InkWell(
       onTap:
           onLogoutPressed != null
@@ -305,10 +309,14 @@ class _LogOutButton extends StatelessWidget {
         height: 48.h,
         child: Row(
           children: [
-            Icon(Icons.logout, color: Colors.white, size: 24.ic),
+            Icon(
+              isAnonymous ? Icons.person_add_outlined : Icons.logout,
+              color: Colors.white,
+              size: 24.ic,
+            ),
             SizedBox(width: 12.w),
             Text(
-              'Log out',
+              isAnonymous ? 'Sign up' : 'Log out',
               style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
             ),
           ],

@@ -74,6 +74,28 @@ class PlayerTourScreenNotifier
       return true;
     }).toList();
 
+    // Fallback: if tour has no player roster but has games, extract players
+    // from the games themselves. This handles tournaments where the upstream
+    // source didn't populate the players array (e.g. knockout stages).
+    if (tournamentPlayers.isEmpty && gamesData.gamesTourModels.isNotEmpty) {
+      final seenKeys = <String>{};
+      for (final game in gamesData.gamesTourModels) {
+        for (final card in [game.whitePlayer, game.blackPlayer]) {
+          final key = _canonicalName(card.name);
+          if (key.isEmpty || seenKeys.contains(key)) continue;
+          seenKeys.add(key);
+          tournamentPlayers.add(TournamentPlayer(
+            name: card.name,
+            federation: card.federation.isNotEmpty ? card.federation : null,
+            title: card.title.isNotEmpty ? card.title : null,
+            fideId: card.fideId,
+            rating: card.rating > 0 ? card.rating : null,
+            played: 0,
+          ));
+        }
+      }
+    }
+
     // Step 2: Index games by normalized player name
     final gamesByPlayerKey = <String, List<_PlayerGameRef>>{};
 
