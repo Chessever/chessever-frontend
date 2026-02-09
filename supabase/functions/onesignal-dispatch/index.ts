@@ -13,6 +13,7 @@ type OutboxItem = {
   status: string;
   attempts: number;
   not_before: string;
+  created_at: string;
 };
 
 type GameRow = {
@@ -178,7 +179,16 @@ async function fetchPending(limit: number): Promise<OutboxItem[]> {
   return (data ?? []) as OutboxItem[];
 }
 
+const STALE_THRESHOLD_MS = 60 * 60 * 1000; // 1 hour
+
 async function processItem(item: OutboxItem, cloudEvalState: CloudEvalState) {
+  // Skip stale items to prevent sending outdated notifications
+  const createdAt = new Date(item.created_at);
+  if (Date.now() - createdAt.getTime() > STALE_THRESHOLD_MS) {
+    await markSkipped(item.id, "stale");
+    return { id: item.id, status: "skipped", reason: "stale" };
+  }
+
   const claimOk = await markProcessing(item.id, item.attempts);
   if (!claimOk) {
     return { id: item.id, status: "skipped", reason: "already_claimed" };
@@ -824,15 +834,11 @@ async function applyPreferences(
     const isPlayerFav = playerUserIds.has(userId);
 
     if (eventType === "game_started" || eventType === "game_finished") {
-      const eventAllowed = !prefs || prefs.favorite_event_alerts !== false;
+      // Only player-favorite users get individual game notifications.
+      // Event-favorite users only receive round-level notifications.
       const playerAllowed = !prefs || prefs.favorite_player_alerts !== false;
-      if (isEventFav && eventAllowed) {
-        filtered.add(userId);
-        continue;
-      }
       if (isPlayerFav && playerAllowed) {
         filtered.add(userId);
-        continue;
       }
       continue;
     }
@@ -2230,7 +2236,6 @@ async function sendAndroidLiveNotification(args: {
     collapse_id: `live_game:${args.livePayload.game_id}`,
     isAndroid: true,
     target_channel: "push",
-    android_channel_id: ANDROID_CHANNELS.live,
   };
 
   await sendOneSignalPayload(payload);
@@ -2278,10 +2283,13 @@ async function sendLiveGameAlert(
   await sendOneSignal(userIds, notification);
 }
 
+
 async function sendOneSignal(
   userIds: string[],
   notification: NotificationPayload,
 ) {
+  if (userIds.length === 0) return;
+
   const chunks = chunk(userIds, 1000);
 
   for (const batch of chunks) {
@@ -2297,9 +2305,8 @@ async function sendOneSignal(
       payload.url = notification.url;
     }
 
-    if (notification.androidChannelId) {
-      payload.android_channel_id = notification.androidChannelId;
-    }
+    // NOTE: android_channel_id omitted — channels are not registered in
+    // OneSignal yet.  Notifications use the default channel instead.
 
     if (notification.iosSound) {
       payload.ios_sound = notification.iosSound;

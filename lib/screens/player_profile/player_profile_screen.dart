@@ -328,6 +328,7 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
                       style: AppTypography.textLgBold.copyWith(
                         color: kWhiteColor,
                       ),
+                      maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
