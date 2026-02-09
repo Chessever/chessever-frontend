@@ -567,6 +567,12 @@ class StockfishSingleton {
         // The working commit (a85edea1a0ded3f1772efb3baf1756c793c054b0) didn't use ucinewgame
         // Stockfish is smart enough to handle position changes without clearing hash
 
+        // Initialize stall detection baseline BEFORE sending go command.
+        // Without this, if the engine produces zero output (common on Android
+        // after rapid cancel/restart), lastInfoReceived stays null and the
+        // stall detector never fires — leaving the UI stuck.
+        lastInfoReceived = DateTime.now();
+
         _engine!.stdin = 'setoption name MultiPV value $multiPV';
         _engine!.stdin = 'position fen $fen';
 
@@ -1025,7 +1031,15 @@ class StockfishSingleton {
     if (!_previousJobCompleted) {
       try {
         _engine!.stdin = 'stop';
-        await Future.delayed(const Duration(milliseconds: 20));
+        // On Android, the engine needs more time after stop before accepting
+        // new commands. Use the UCI isready/readyok handshake to guarantee
+        // the engine is truly idle. Without this, the next 'go' command can
+        // be swallowed — leaving the UI stuck in loading on Android.
+        if (_isAndroid) {
+          await _waitForReadyOk();
+        } else {
+          await Future.delayed(const Duration(milliseconds: 20));
+        }
       } catch (e) {
         debugPrint('⚠️ STOCKFISH STOP FAILED: $e');
         return;
