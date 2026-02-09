@@ -99,6 +99,7 @@ class _CalendarScreenNotifier
   final Ref ref;
   Timer? _debounceTimer;
   int _filterVersion = 0; // For cancellation of stale queries
+  bool _isInitialized = false; // Guard against filter runs before data is fetched
 
   List<GroupEventCardModel> _yearEvents = [];
   List<CalendarEventData> _yearEventsData = []; // Cached isolate-safe data
@@ -133,6 +134,7 @@ class _CalendarScreenNotifier
   Future<void> _fetchYearEvents() async {
     try {
       state = const AsyncValue.loading();
+      _isInitialized = false;
 
       final selectedYear = ref.read(selectedYearProvider);
 
@@ -157,6 +159,7 @@ class _CalendarScreenNotifier
       // Pre-build isolate-safe data for faster filtering
       _yearEventsData = _yearEvents.map(_toEventData).toList();
 
+      _isInitialized = true;
       // Run filters immediately after fetch (no debounce for initial load)
       _runFilters();
     } catch (e, st) {
@@ -201,6 +204,9 @@ class _CalendarScreenNotifier
 
   Future<void> _runFilters() async {
     try {
+      // Don't override loading state before fetch completes
+      if (!_isInitialized) return;
+
       if (_yearEventsData.isEmpty) {
         _setEmptyMonths();
         return;

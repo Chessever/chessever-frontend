@@ -91,7 +91,7 @@ class UserAvatar extends HookConsumerWidget {
                 borderWidth: 2.5,
               ),
               child: Padding(
-                padding: EdgeInsets.all(4.sp),
+                padding: EdgeInsets.all(7.sp),
                 child: child,
               ),
             );
@@ -178,7 +178,13 @@ class _PremiumBorderPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final center = Offset(size.width / 2, size.height / 2);
-    final radius = (size.width / 2) - borderWidth / 2;
+
+    // Inset the ring from the widget edge so the glow fits within bounds.
+    // Glow extends beyond the ring by: (glowStroke - borderWidth) / 2 + blurSigma
+    const glowExtraStroke = 2.0;
+    const blurSigma = 2.0;
+    final glowMargin = glowExtraStroke / 2 + blurSigma;
+    final radius = (size.width / 2) - borderWidth / 2 - glowMargin;
 
     // Save canvas state and rotate around center for smooth continuous animation
     canvas.save();
@@ -217,8 +223,8 @@ class _PremiumBorderPainter extends CustomPainter {
         Rect.fromCircle(center: center, radius: radius),
       )
       ..style = PaintingStyle.stroke
-      ..strokeWidth = borderWidth + 2
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3);
+      ..strokeWidth = borderWidth + glowExtraStroke
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, blurSigma);
 
     canvas.drawCircle(center, radius, glowPaint);
 

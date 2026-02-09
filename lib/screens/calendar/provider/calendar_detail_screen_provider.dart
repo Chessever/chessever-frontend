@@ -43,6 +43,7 @@ class _CalendarDetailScreenController
 
   Timer? _debounceTimer;
   int _filterVersion = 0; // For cancellation of stale queries
+  bool _isInitialized = false; // Guard against filter runs before data is fetched
 
   void _listenToFilters() {
     ref.listen(calendarSearchQueryProvider, (_, __) => _applyFiltersDebounced());
@@ -98,6 +99,7 @@ class _CalendarDetailScreenController
         ...calEvents.map(_calendarEventToEventData),
       ];
 
+      _isInitialized = true;
       _applyFilters();
     } catch (e, st) {
       state = AsyncValue.error(e, st);
@@ -142,6 +144,9 @@ class _CalendarDetailScreenController
 
   Future<void> _applyFilters() async {
     try {
+      // Don't override loading state before initial fetch completes
+      if (!_isInitialized) return;
+
       if (_eventsData.isEmpty) {
         state = const AsyncValue.data([]);
         return;
