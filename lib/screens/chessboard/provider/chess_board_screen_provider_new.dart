@@ -4829,10 +4829,13 @@ class ChessBoardScreenNotifierNew
             _activeEvalRequestId = null;
             _activeEvalKey = null;
             _activeEvalStartTime = null;
-          }
-          final snapshot = state.value;
-          if (snapshot != null && snapshot.isEvaluating) {
-            state = AsyncValue.data(snapshot.copyWith(isEvaluating: false));
+            // Only clear isEvaluating if THIS is still the active eval.
+            // A newer eval may already be running with isEvaluating: true;
+            // clearing it here would leave the UI stuck in "..." on Android.
+            final snapshot = state.value;
+            if (snapshot != null && snapshot.isEvaluating) {
+              state = AsyncValue.data(snapshot.copyWith(isEvaluating: false));
+            }
           }
 
           if (mounted && !_cancelEvaluation) {
