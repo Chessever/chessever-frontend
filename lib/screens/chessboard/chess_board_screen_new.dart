@@ -5870,9 +5870,12 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard> {
   bool _showDelayedGameEndingEffect = false;
   bool _wasAtEnd = false;
 
-  /// True only at the end of the original game mainline (not analysis variations)
+  /// True only at the end of the original game mainline (not analysis variations).
+  /// Uses movePointer.length == 1 because the navigator code path doesn't
+  /// maintain branchPointMoveIndex/analysisMoves fields, making isInAnalysisVariation unreliable.
+  /// movePointer: [] = initial pos, [n] = mainline move n, [n,v,m,...] = variation
   bool _isAtGameEnd(AnalysisBoardState s) =>
-      s.isAtEnd && !s.isInAnalysisVariation;
+      s.isAtEnd && s.movePointer.length == 1;
 
   @override
   void didUpdateWidget(covariant _AnalysisBoard oldWidget) {
@@ -9975,7 +9978,7 @@ class _ShareGameScreen extends ConsumerWidget {
       mate: state.mate ?? 0,
       isFlipped: state.isBoardFlipped,
       gameStatus: game.gameStatus,
-      isAtGameEnd: state.analysisState.isAtEnd && !state.analysisState.isInAnalysisVariation,
+      isAtGameEnd: state.analysisState.isAtEnd && state.analysisState.movePointer.length == 1,
       gameId: game.gameId, // Pass game ID for correct eval display
       onClose: () => Navigator.of(context).pop(),
     );
