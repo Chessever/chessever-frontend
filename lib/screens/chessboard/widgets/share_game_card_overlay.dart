@@ -142,6 +142,7 @@ class ShareGameCardOverlay extends StatefulWidget {
   final int mate;
   final bool isFlipped;
   final GameStatus gameStatus;
+  final bool isAtGameEnd; // Whether viewing the actual final position of the game
   final VoidCallback onClose;
   final String gameId; // CRITICAL: Include game ID for correct eval caching
 
@@ -170,6 +171,7 @@ class ShareGameCardOverlay extends StatefulWidget {
     required this.mate,
     required this.isFlipped,
     required this.gameStatus,
+    this.isAtGameEnd = false,
     required this.onClose,
     required this.gameId, // REQUIRED for correct eval caching
   });
@@ -762,6 +764,7 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
                             mate: widget.mate,
                             isFlipped: widget.isFlipped,
                             gameStatus: widget.gameStatus,
+                            isAtGameEnd: widget.isAtGameEnd,
                             isPreview: true,
                             showEvalBar: _showEvalBar,
                             gameId: widget.gameId,
@@ -825,6 +828,7 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
                   mate: widget.mate,
                   isFlipped: widget.isFlipped,
                   gameStatus: widget.gameStatus,
+                  isAtGameEnd: widget.isAtGameEnd,
                   isPreview: false,
                   showEvalBar: _showEvalBar,
                   gameId: widget.gameId,
@@ -864,6 +868,7 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
                   isFlipped: widget.isFlipped,
                   // Only show game ending effects (fallen king, peace icons) on final frame
                   gameStatus: _gifFrameIsFinal ? widget.gameStatus : GameStatus.ongoing,
+                  isAtGameEnd: _gifFrameIsFinal,
                   isPreview: false,
                   showEvalBar: false, // No eval bar in GIF
                   gameId: widget.gameId,
@@ -901,6 +906,7 @@ class _ShareCard extends ConsumerWidget {
   final int mate;
   final bool isFlipped;
   final GameStatus gameStatus;
+  final bool isAtGameEnd;
   final bool isPreview;
   final bool showEvalBar;
   final String gameId; // CRITICAL: Include game ID for correct eval caching
@@ -929,6 +935,7 @@ class _ShareCard extends ConsumerWidget {
     required this.mate,
     required this.isFlipped,
     required this.gameStatus,
+    this.isAtGameEnd = false,
     this.isPreview = false,
     this.showEvalBar = true,
     required this.gameId, // REQUIRED for correct eval caching
@@ -1234,9 +1241,10 @@ class _ShareCard extends ConsumerWidget {
                 final overlayWhiteToMove =
                     fenParts.length > 1 ? fenParts[1] == 'w' : true;
 
-                // Calculate game ending data for overlays
+                // Calculate game ending data for overlays — only at the actual final position
                 final gameEndingData = _calculateShareGameEndingData(positionFen, gameStatus);
-                final showGameEndingEffect = gameStatus != GameStatus.ongoing &&
+                final showGameEndingEffect = isAtGameEnd &&
+                    gameStatus != GameStatus.ongoing &&
                     gameStatus != GameStatus.unknown;
 
                 // Prepare FEN - remove loser's king if showing fallen king overlay
