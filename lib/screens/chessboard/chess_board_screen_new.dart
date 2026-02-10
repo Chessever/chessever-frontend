@@ -9620,35 +9620,27 @@ class _PrincipalVariationListState
     bool whiteToMove, {
     bool isThreatsMode = false,
   }) {
+    // In threats mode the engine analyses a flipped FEN, so the PV moves
+    // belong to the opposite side from what the position indicates.
+    final effectiveWhiteToMove = isThreatsMode ? !whiteToMove : whiteToMove;
+
     final formatted = <String>[];
     for (var i = 0; i < sanMoves.length; i++) {
-      // Determine if the current move in the PV is a white move
-      // If whiteToMove is true, then even indices (0, 2, 4...) are white moves
-      // If whiteToMove is false, then odd indices (1, 3, 5...) are white moves
-      final isWhiteMove = whiteToMove ? i.isEven : i.isOdd;
+      final isWhiteMove = effectiveWhiteToMove ? i.isEven : i.isOdd;
 
-      // Calculate the full move number
-      // When it's white to move, move i=0 is at baseMoveNumber, i=2 is at baseMoveNumber+1, etc.
-      // When it's black to move, move i=0 is black's move at baseMoveNumber, i=1 is white's move at baseMoveNumber+1
       final moveNumber =
-          whiteToMove
-              ? baseMoveNumber +
-                  (i ~/ 2) // White starts: 0,1 -> base, 2,3 -> base+1
-              : baseMoveNumber +
-                  ((i + 1) ~/ 2); // Black starts: 0 -> base, 1,2 -> base+1
+          effectiveWhiteToMove
+              ? baseMoveNumber + (i ~/ 2)
+              : baseMoveNumber + ((i + 1) ~/ 2);
 
-      // Add move number prefix for white moves and first black moves
       if (isWhiteMove) {
-        // White move: use standard notation (e.g., "1.")
         formatted.add('$moveNumber.');
-      } else if (i == 0 && isThreatsMode && !whiteToMove) {
-        // In threats mode, the first move is from the same color that just
-        // played. When black played last the PV starts with another black
-        // move, so prefix it with "N..." per standard notation.
+      } else if (i == 0 && isThreatsMode && !effectiveWhiteToMove) {
+        // Threats mode, black moves first: prefix with "N…" per standard
+        // notation (e.g. 4…Nf6 5.Nf3).
         formatted.add('$moveNumber\u2026');
       }
 
-      // Add the move notation
       formatted.add(sanMoves[i]);
     }
     return formatted;
