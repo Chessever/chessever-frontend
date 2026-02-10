@@ -4,15 +4,18 @@ import 'package:app_links/app_links.dart';
 import 'package:chessever2/repository/authentication/auth_repository.dart';
 import 'package:chessever2/repository/authentication/model/auth_state.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
+import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
 import 'package:chessever2/providers/auth_state_provider.dart';
 import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
 import 'package:chessever2/services/live_updates_service.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-/// Service to handle deep links for game sharing.
+/// Service to handle deep links and notification tap routing.
 /// Handles URLs like: `https://chessever.com/games/{id}`
+/// Handles notification data routing for games, events, and rounds.
 class DeepLinkService {
   static final DeepLinkService instance = DeepLinkService._();
   DeepLinkService._();
@@ -190,6 +193,101 @@ class DeepLinkService {
     } catch (e) {
       // On error, navigate to home screen silently
       debugPrint('DeepLinkService: Failed to load game: $e');
+      navigatorKey.currentState?.pushNamedAndRemoveUntil(
+        '/home_screen',
+        (route) => false,
+      );
+    } finally {
+      _isNavigating = false;
+    }
+  }
+
+  /// Route based on OneSignal notification data payload.
+  /// Called from the OneSignal click listener.
+  void handleNotificationData(
+    Map<String, dynamic> data,
+    GlobalKey<NavigatorState> navigatorKey,
+    WidgetRef ref,
+  ) {
+    final type = data['type'] as String?;
+    if (type == null) return;
+
+    debugPrint('DeepLinkService: Handling notification data: type=$type');
+
+    switch (type) {
+      case 'game_started':
+      case 'game_finished':
+      case 'live_game_update':
+      case 'live_game_alert':
+        final gameId = data['game_id'] as String?;
+        if (gameId != null && gameId.isNotEmpty) {
+          _navigateToGame(gameId, navigatorKey, ref);
+        }
+      case 'round_started':
+      case 'round_heads_up':
+        final broadcastId = data['group_broadcast_id'] as String?;
+        if (broadcastId != null && broadcastId.isNotEmpty) {
+          _navigateToEvent(broadcastId, navigatorKey, ref);
+        }
+    }
+  }
+
+  /// Fetch event by group_broadcast_id and navigate to tournament detail screen
+  Future<void> _navigateToEvent(
+    String groupBroadcastId,
+    GlobalKey<NavigatorState> navigatorKey,
+    WidgetRef ref,
+  ) async {
+    if (_isNavigating) {
+      debugPrint('DeepLinkService: Navigation already in progress, ignoring');
+      return;
+    }
+    _isNavigating = true;
+
+    try {
+      await _appReadyCompleter.future.timeout(const Duration(seconds: 30));
+    } catch (_) {
+      debugPrint('DeepLinkService: Timed out waiting for app ready, proceeding');
+    }
+
+    AppAuthState? resolvedState = ref.read(authStateProvider).value;
+    if (resolvedState == null) {
+      try {
+        resolvedState = await ref.read(authStateProvider.future);
+      } catch (_) {
+        resolvedState = null;
+      }
+    }
+
+    if (resolvedState?.status != AppAuthStatus.authenticated) {
+      debugPrint('DeepLinkService: User not authenticated, routing to home');
+      navigatorKey.currentState?.pushNamedAndRemoveUntil(
+        '/home_screen',
+        (route) => false,
+      );
+      _isNavigating = false;
+      return;
+    }
+
+    try {
+      debugPrint('DeepLinkService: Fetching event: $groupBroadcastId');
+
+      final broadcastRepo = ref.read(groupBroadcastRepositoryProvider);
+      final broadcast =
+          await broadcastRepo.getGroupBroadcastById(groupBroadcastId);
+
+      ref.read(selectedBroadcastModelProvider.notifier).state = broadcast;
+      ref.read(selectedTourModeProvider.notifier).state =
+          TournamentDetailScreenMode.games;
+
+      debugPrint('DeepLinkService: Event loaded, navigating to tournament detail');
+
+      navigatorKey.currentState?.pushNamedAndRemoveUntil(
+        '/tournament_detail_screen',
+        (route) => route.isFirst,
+      );
+    } catch (e) {
+      debugPrint('DeepLinkService: Failed to load event: $e');
       navigatorKey.currentState?.pushNamedAndRemoveUntil(
         '/home_screen',
         (route) => false,

@@ -432,7 +432,7 @@ async function processItem(item: OutboxItem, cloudEvalState: CloudEvalState) {
             title,
             body,
             url: context.groupBroadcastId ? "https://chessever.com" : null,
-            data: { type: "round_started", round_id: roundId },
+            data: { type: "round_started", round_id: roundId, group_broadcast_id: context.groupBroadcastId ?? null },
             androidChannelId: channelForEvent("round_started"),
           });
         }
@@ -450,7 +450,7 @@ async function processItem(item: OutboxItem, cloudEvalState: CloudEvalState) {
             title,
             body,
             url: context.groupBroadcastId ? "https://chessever.com" : null,
-            data: { type: "round_started", round_id: roundId },
+            data: { type: "round_started", round_id: roundId, group_broadcast_id: context.groupBroadcastId ?? null },
             androidChannelId: channelForEvent("round_started"),
           });
         }
@@ -463,7 +463,7 @@ async function processItem(item: OutboxItem, cloudEvalState: CloudEvalState) {
           title,
           body,
           url: context.groupBroadcastId ? "https://chessever.com" : null,
-          data: { type: "round_started", round_id: roundId },
+          data: { type: "round_started", round_id: roundId, group_broadcast_id: context.groupBroadcastId ?? null },
           androidChannelId: channelForEvent("round_started"),
         });
       }
@@ -514,7 +514,7 @@ async function processItem(item: OutboxItem, cloudEvalState: CloudEvalState) {
             title,
             body,
             url: context.groupBroadcastId ? "https://chessever.com" : null,
-            data: { type: "round_heads_up", round_id: roundId },
+            data: { type: "round_heads_up", round_id: roundId, group_broadcast_id: context.groupBroadcastId ?? null },
             androidChannelId: channelForEvent("round_heads_up"),
           });
         }
@@ -535,7 +535,7 @@ async function processItem(item: OutboxItem, cloudEvalState: CloudEvalState) {
             title,
             body,
             url: context.groupBroadcastId ? "https://chessever.com" : null,
-            data: { type: "round_heads_up", round_id: roundId },
+            data: { type: "round_heads_up", round_id: roundId, group_broadcast_id: context.groupBroadcastId ?? null },
             androidChannelId: channelForEvent("round_heads_up"),
           });
         }
@@ -551,7 +551,7 @@ async function processItem(item: OutboxItem, cloudEvalState: CloudEvalState) {
           title,
           body,
           url: context.groupBroadcastId ? "https://chessever.com" : null,
-          data: { type: "round_heads_up", round_id: roundId },
+          data: { type: "round_heads_up", round_id: roundId, group_broadcast_id: context.groupBroadcastId ?? null },
           androidChannelId: channelForEvent("round_heads_up"),
         });
       }
