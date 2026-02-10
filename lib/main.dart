@@ -25,6 +25,7 @@ import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/auth_state_listener.dart';
 import 'package:chessever2/widgets/board_color_dialog.dart';
 import 'package:chessever2/widgets/custom_upgrade_alert.dart';
+import 'package:onesignal_flutter/onesignal_flutter.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -746,6 +747,18 @@ class MyApp extends HookConsumerWidget {
             debugPrintStack(stackTrace: st);
           }
         }
+
+        // Handle OneSignal notification taps — route to correct screen
+        OneSignal.Notifications.addClickListener((event) {
+          final data = event.notification.additionalData;
+          if (data != null) {
+            DeepLinkService.instance.handleNotificationData(
+              data,
+              navigatorKey,
+              ref,
+            );
+          }
+        });
       });
 
       return () => DeepLinkService.instance.dispose();
