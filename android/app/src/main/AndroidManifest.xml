@@ -19,6 +19,7 @@
        android:label="ChessEver"
        android:name=".ChessEverApplication"
        android:icon="@mipmap/ic_launcher"
+		
        android:requestLegacyExternalStorage="true"
        android:enableOnBackInvokedCallback="true"
        android:networkSecurityConfig="@xml/network_security_config">
@@ -56,15 +57,14 @@
                <data android:scheme="com.chessever.app" />
            </intent-filter>
            <!-- Android App Links for HTTPS deep links (sharing, notifications) -->
-           <!-- Using pathPattern for explicit game URL matching -->
+           <!-- Catch-all: any path on chessever.com opens the app -->
            <intent-filter android:autoVerify="true">
                <action android:name="android.intent.action.VIEW" />
                <category android:name="android.intent.category.DEFAULT" />
                <category android:name="android.intent.category.BROWSABLE" />
                <data
                    android:scheme="https"
-                   android:host="chessever.com"
-                   android:pathPattern="/games/.*" />
+                   android:host="chessever.com" />
            </intent-filter>
            <intent-filter android:autoVerify="true">
                <action android:name="android.intent.action.VIEW" />
@@ -72,27 +72,7 @@
                <category android:name="android.intent.category.BROWSABLE" />
                <data
                    android:scheme="https"
-                   android:host="www.chessever.com"
-                   android:pathPattern="/games/.*" />
-           </intent-filter>
-           <!-- Fallback for root domain links -->
-           <intent-filter android:autoVerify="true">
-               <action android:name="android.intent.action.VIEW" />
-               <category android:name="android.intent.category.DEFAULT" />
-               <category android:name="android.intent.category.BROWSABLE" />
-               <data
-                   android:scheme="https"
-                   android:host="chessever.com"
-                   android:path="/" />
-           </intent-filter>
-           <intent-filter android:autoVerify="true">
-               <action android:name="android.intent.action.VIEW" />
-               <category android:name="android.intent.category.DEFAULT" />
-               <category android:name="android.intent.category.BROWSABLE" />
-               <data
-                   android:scheme="https"
-                   android:host="www.chessever.com"
-                   android:path="/" />
+                   android:host="www.chessever.com" />
            </intent-filter>
        </activity>
        <!-- Don't delete the meta-data below.
@@ -103,6 +83,10 @@
       <meta-data
           android:name="com.onesignal.NotificationServiceExtension"
           android:value="com.chessEver.app.NotificationServiceExtension" />
+     <!-- Custom small icon for OneSignal push notifications (status bar) -->
+     <meta-data
+          android:name="com.onesignal.NotificationDefaultSmallIcon"
+          android:resource="@drawable/ic_notification" />
 
       <!-- Receiver for live notification actions -->
       <receiver

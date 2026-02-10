@@ -154,7 +154,7 @@ class NotificationServiceExtension : INotificationServiceExtension {
       .setContentTitle("$white vs $black")
       .setContentText("$lastMove  $evalText")
       .setSubText(if (prettyEventName.isNotEmpty()) prettyEventName else null)
-      .setSmallIcon(context.applicationInfo.icon)
+      .setSmallIcon(R.drawable.ic_notification)
       .setLargeIcon(boardBitmap)
       .setOnlyAlertOnce(true)
       .setOngoing(eventType != "end")
