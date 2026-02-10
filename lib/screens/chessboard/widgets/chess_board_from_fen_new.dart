@@ -115,6 +115,7 @@ void _showShareOverlay(BuildContext context, WidgetRef ref, GamesTourModel game)
         mate: 0,
         isFlipped: false,
         gameStatus: game.gameStatus,
+        isAtGameEnd: game.gameStatus != GameStatus.ongoing && game.gameStatus != GameStatus.unknown,
         onClose: () => Navigator.of(context).pop(),
         gameId: game.gameId,
       ),

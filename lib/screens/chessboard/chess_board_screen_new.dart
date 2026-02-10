@@ -5870,21 +5870,26 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard> {
   bool _showDelayedGameEndingEffect = false;
   bool _wasAtEnd = false;
 
+  /// True only at the end of the original game mainline (not analysis variations)
+  bool _isAtGameEnd(AnalysisBoardState s) =>
+      s.isAtEnd && !s.isInAnalysisVariation;
+
   @override
   void didUpdateWidget(covariant _AnalysisBoard oldWidget) {
     super.didUpdateWidget(oldWidget);
 
-    final isAtEnd = widget.chessBoardState.analysisState.isAtEnd;
+    final analysisState = widget.chessBoardState.analysisState;
+    final isAtGameEnd = _isAtGameEnd(analysisState);
     final gameStatus = widget.game.gameStatus;
     final isGameOver = gameStatus != GameStatus.ongoing &&
                        gameStatus != GameStatus.unknown;
-    final shouldShowEffect = isGameOver && isAtEnd;
+    final shouldShowEffect = isGameOver && isAtGameEnd;
 
     // When navigating TO the final position, delay showing the effect for animation
     if (shouldShowEffect && !_wasAtEnd) {
       _showDelayedGameEndingEffect = false;
       Future.delayed(const Duration(milliseconds: 220), () {
-        if (mounted && widget.chessBoardState.analysisState.isAtEnd) {
+        if (mounted && _isAtGameEnd(widget.chessBoardState.analysisState)) {
           setState(() => _showDelayedGameEndingEffect = true);
         }
       });
@@ -5892,23 +5897,24 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard> {
     // When navigating AWAY from the final position, delay hiding the effect for animation
     else if (!shouldShowEffect && _wasAtEnd && _showDelayedGameEndingEffect) {
       Future.delayed(const Duration(milliseconds: 220), () {
-        if (mounted && !widget.chessBoardState.analysisState.isAtEnd) {
+        if (mounted && !_isAtGameEnd(widget.chessBoardState.analysisState)) {
           setState(() => _showDelayedGameEndingEffect = false);
         }
       });
     }
-    // For other cases (e.g., game not over), hide immediately
+    // For other cases (e.g., game not over, entered analysis variation), hide immediately
     else if (!shouldShowEffect && !_wasAtEnd) {
       _showDelayedGameEndingEffect = false;
     }
 
-    _wasAtEnd = isAtEnd;
+    _wasAtEnd = isAtGameEnd;
   }
 
   @override
   void initState() {
     super.initState();
-    _wasAtEnd = widget.chessBoardState.analysisState.isAtEnd;
+    final analysisState = widget.chessBoardState.analysisState;
+    _wasAtEnd = _isAtGameEnd(analysisState);
 
     // If starting at the end position, show effect immediately
     final gameStatus = widget.game.gameStatus;
@@ -5940,14 +5946,14 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard> {
       engineSettingsProviderNew.select((s) => s.valueOrNull?.showPvArrows ?? true),
     );
 
-    // Check if game has ended and we're at the final position
+    // Check if game has ended and we're at the final position of the mainline
     final gameStatus = widget.game.gameStatus;
-    final isAtEnd = widget.chessBoardState.analysisState.isAtEnd;
+    final isAtGameEnd = _isAtGameEnd(widget.chessBoardState.analysisState);
     final isGameOver = gameStatus != GameStatus.ongoing &&
                        gameStatus != GameStatus.unknown;
 
     // Use delayed flag to allow move animation to complete first
-    final showGameEndingEffect = isGameOver && isAtEnd && _showDelayedGameEndingEffect;
+    final showGameEndingEffect = isGameOver && isAtGameEnd && _showDelayedGameEndingEffect;
 
     // Calculate square highlights and annotations for game ending
     final gameEndingData = showGameEndingEffect
@@ -9969,6 +9975,7 @@ class _ShareGameScreen extends ConsumerWidget {
       mate: state.mate ?? 0,
       isFlipped: state.isBoardFlipped,
       gameStatus: game.gameStatus,
+      isAtGameEnd: state.analysisState.isAtEnd && !state.analysisState.isInAnalysisVariation,
       gameId: game.gameId, // Pass game ID for correct eval display
       onClose: () => Navigator.of(context).pop(),
     );
