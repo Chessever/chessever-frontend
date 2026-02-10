@@ -8923,6 +8923,7 @@ class _PrincipalVariationListState
         lockedLine.sanMoves,
         startMoveNumber,
         isWhiteToMove,
+        isThreatsMode: widget.state.isThreatsMode,
       );
       final evalText = _formatEvalLabel(lockedLine);
 
@@ -9057,7 +9058,10 @@ class _PrincipalVariationListState
       required bool isSelected,
       required bool hasLockedPreview,
     }) {
-      final sanMoves = _formatPv(line.sanMoves, baseMoveNumber, isWhiteToMove);
+      final sanMoves = _formatPv(
+        line.sanMoves, baseMoveNumber, isWhiteToMove,
+        isThreatsMode: widget.state.isThreatsMode,
+      );
       final evalText = _formatEvalLabel(line);
       final activeVariantColor = notifier.getVariantColor(variantIndex, true);
       final opacityScale = 0.7;
@@ -9613,8 +9617,9 @@ class _PrincipalVariationListState
   List<String> _formatPv(
     List<String> sanMoves,
     int baseMoveNumber,
-    bool whiteToMove,
-  ) {
+    bool whiteToMove, {
+    bool isThreatsMode = false,
+  }) {
     final formatted = <String>[];
     for (var i = 0; i < sanMoves.length; i++) {
       // Determine if the current move in the PV is a white move
@@ -9636,8 +9641,11 @@ class _PrincipalVariationListState
       if (isWhiteMove) {
         // White move: use standard notation (e.g., "1.")
         formatted.add('$moveNumber.');
-      } else {
-        // Black moves follow white moves without extra prefix
+      } else if (i == 0 && isThreatsMode && !whiteToMove) {
+        // In threats mode, the first move is from the same color that just
+        // played. When black played last the PV starts with another black
+        // move, so prefix it with "N..." per standard notation.
+        formatted.add('$moveNumber\u2026');
       }
 
       // Add the move notation
