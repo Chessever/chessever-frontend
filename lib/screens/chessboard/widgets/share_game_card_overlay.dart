@@ -1267,7 +1267,7 @@ class _ShareCard extends ConsumerWidget {
                   lastMove: lastMove,
                   game: null,
                   settings: boardSettings,
-                  squareHighlights: gameEndingData?.squareHighlights ?? const IMap.empty(),
+                  squareHighlights: showGameEndingEffect ? (gameEndingData?.squareHighlights ?? const IMap.empty()) : const IMap.empty(),
                 );
 
                 // Build board widget with overlays if game ended
