@@ -39,7 +39,8 @@ class LocalEvalCache {
       final db = ref.read(appDatabaseProvider);
       final storedVersion = await db.getInt(_versionKey) ?? 1;
       if (storedVersion < _currentVersion) {
-        await _clearAll();
+        // Clear old cache and set new version in a single transaction
+        await db.clearCacheByPrefix(_cacheKeyPrefix);
         await db.setInt(_versionKey, _currentVersion);
       }
       _versionVerified = true;
@@ -62,13 +63,14 @@ class LocalEvalCache {
       final effectiveMultiPv =
           (multiPV ?? eval.requestedMultiPv ?? eval.pvs.length).clamp(0, 5);
       final key = _buildKey(fen, effectiveMultiPv);
-      await db.setCache(key: key, value: jsonEncode(eval.toJson()));
+      final jsonValue = jsonEncode(eval.toJson());
 
-      // Also store legacy key so older readers (or callers without multiPV) still benefit
+      // Batch both writes (main key + legacy key) in a single transaction
+      final entries = <String, String>{key: jsonValue};
       if (effectiveMultiPv > 0) {
-        final legacyKey = '$_cacheKeyPrefix$fen';
-        await db.setCache(key: legacyKey, value: jsonEncode(eval.toJson()));
+        entries['$_cacheKeyPrefix$fen'] = jsonValue;
       }
+      await db.setCacheBatch(entries);
     } catch (e) {
       // Cache failure is not critical
     }
@@ -93,8 +95,12 @@ class LocalEvalCache {
       // Legacy fallbacks (no PV suffix)
       keysToTry.add('$_cacheKeyPrefix$fen');
 
+      // Single SQL query for all candidate keys instead of N sequential reads
+      final entries = await db.getCacheMulti(keys: keysToTry);
+
+      // Iterate in priority order (highest PV first)
       for (final key in keysToTry) {
-        final entry = await db.getCache(key: key);
+        final entry = entries[key];
         if (entry == null) continue;
 
         try {
@@ -145,7 +151,7 @@ class LocalEvalCache {
     }
   }
 
-  /// Batch fetch multiple evals at once - much faster than individual fetches
+  /// Batch fetch multiple evals at once — single SQL query instead of N reads
   Future<Map<String, CloudEval>> batchFetch(List<String> fens) async {
     final result = <String, CloudEval>{};
     if (fens.isEmpty) return result;
@@ -156,8 +162,11 @@ class LocalEvalCache {
 
       final db = ref.read(appDatabaseProvider);
 
+      final keys = fens.map((fen) => _buildKey(fen, 0)).toList();
+      final entries = await db.getCacheMulti(keys: keys);
+
       for (final fen in fens) {
-        final entry = await db.getCache(key: _buildKey(fen, 0));
+        final entry = entries[_buildKey(fen, 0)];
         if (entry != null) {
           try {
             result[fen] = CloudEval.fromJson(jsonDecode(entry.value));

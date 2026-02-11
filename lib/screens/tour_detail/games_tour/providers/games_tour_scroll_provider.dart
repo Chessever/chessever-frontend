@@ -15,19 +15,22 @@ import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provi
 
 /// Scope identifier to allow multiple tournament detail screens to coexist
 /// without sharing the same ScrollablePositionedList controller.
-final gamesTourScrollScopeProvider = Provider<String>((_) => 'global_scroll_scope');
+final gamesTourScrollScopeProvider = Provider<String>(
+  (_) => 'global_scroll_scope',
+);
 
 /// Track whether we already performed the initial auto-scroll for a given scope.
-final gamesTourAutoScrollProvider =
-    StateProvider.autoDispose.family<bool, String>((ref, scopeId) => false);
+final gamesTourAutoScrollProvider = StateProvider.autoDispose
+    .family<bool, String>((ref, scopeId) => false);
 
-final gamesTourScrollProvider =
-    StateNotifierProvider.autoDispose.family<_GamesTourScrollProvider, ItemScrollController, String>(
+final gamesTourScrollProvider = StateNotifierProvider.autoDispose
+    .family<_GamesTourScrollProvider, ItemScrollController, String>(
       (ref, scopeId) => _GamesTourScrollProvider(ref, scopeId),
     );
 
 class _GamesTourScrollProvider extends StateNotifier<ItemScrollController> {
-  _GamesTourScrollProvider(this._ref, this._scopeId) : super(ItemScrollController()) {
+  _GamesTourScrollProvider(this._ref, this._scopeId)
+    : super(ItemScrollController()) {
     _itemPositionsListener = ItemPositionsListener.create();
     _itemPositionsListener.itemPositions.addListener(_onItemPositionsChanged);
 
@@ -106,9 +109,6 @@ class _GamesTourScrollProvider extends StateNotifier<ItemScrollController> {
     for (final round in models) {
       final gamesInRound = counts[round.id] ?? 0;
       if (gamesInRound == 0) {
-        if (userSelected && round.id == selectedId) {
-          visible.add(round);
-        }
         continue;
       }
 
@@ -310,8 +310,7 @@ class _GamesTourScrollProvider extends StateNotifier<ItemScrollController> {
       return _getTeamMatchupCardsInRound(roundId);
     }
 
-    final tourId =
-        _ref.read(tourDetailScreenProvider).value?.aboutTourModel.id;
+    final tourId = _ref.read(tourDetailScreenProvider).value?.aboutTourModel.id;
     final isKnockoutTournament =
         tourId != null
             ? _ref.read(knockoutTournamentStateProvider(tourId)).isKnockout
@@ -319,8 +318,7 @@ class _GamesTourScrollProvider extends StateNotifier<ItemScrollController> {
 
     final roundGames = _getGamesForRound(roundId);
 
-    final isKnockoutRound =
-        isKnockoutTournament && _isKnockoutRoundId(roundId);
+    final isKnockoutRound = isKnockoutTournament && _isKnockoutRoundId(roundId);
 
     if (isKnockoutRound) {
       // For knockout tournaments, count match headers + games
@@ -382,7 +380,9 @@ class _GamesTourScrollProvider extends StateNotifier<ItemScrollController> {
     // For multi-stage knockout rounds (knockout-stage-{tourId}), get games from that specific stage
     if (roundId.startsWith('$kKnockoutStagePrefix-')) {
       final stageTourId = roundId.replaceFirst('$kKnockoutStagePrefix-', '');
-      final stageKnockoutState = _ref.read(knockoutTournamentStateProvider(stageTourId));
+      final stageKnockoutState = _ref.read(
+        knockoutTournamentStateProvider(stageTourId),
+      );
       return stageKnockoutState.allGames;
     }
 

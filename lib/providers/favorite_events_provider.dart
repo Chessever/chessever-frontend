@@ -21,6 +21,10 @@ class FavoriteEventsNotifier extends AsyncNotifier<List<FavoriteEvent>> {
 
   String? _getCurrentUserId() => _supabase.auth.currentUser?.id;
 
+  /// Guards concurrent fetches so only one Supabase request + cache write
+  /// happens at a time.
+  Completer<List<FavoriteEvent>>? _fetchCompleter;
+
   @override
   Future<List<FavoriteEvent>> build() async {
     return await _loadFavorites();
@@ -45,29 +49,44 @@ class FavoriteEventsNotifier extends AsyncNotifier<List<FavoriteEvent>> {
   }
 
   Future<List<FavoriteEvent>> _fetchFavoritesFromSupabase() async {
-    final userId = _getCurrentUserId();
-    if (userId == null) {
-      debugPrint('[FavoriteEvents] No user logged in, returning empty list');
-      return [];
+    // Deduplicate concurrent calls (build + unawaited refresh racing)
+    if (_fetchCompleter != null) return _fetchCompleter!.future;
+
+    _fetchCompleter = Completer<List<FavoriteEvent>>();
+    try {
+      final userId = _getCurrentUserId();
+      if (userId == null) {
+        debugPrint('[FavoriteEvents] No user logged in, returning empty list');
+        final result = <FavoriteEvent>[];
+        _fetchCompleter!.complete(result);
+        return result;
+      }
+
+      // Fetch from Supabase (source of truth)
+      final response = await _supabase
+          .from('user_favorite_events')
+          .select()
+          .eq('user_id', userId)
+          .order('created_at', ascending: false);
+
+      final events =
+          (response as List)
+              .map((json) => FavoriteEvent.fromSupabase(json))
+              .toList();
+
+      // Cache locally
+      await _cacheEvents(events, userId);
+
+      debugPrint('[FavoriteEvents] Fetched ${events.length} events from Supabase');
+      _fetchCompleter!.complete(events);
+      return events;
+    } catch (e) {
+      final cached = await _getCachedEvents();
+      _fetchCompleter!.complete(cached);
+      return cached;
+    } finally {
+      _fetchCompleter = null;
     }
-
-    // Fetch from Supabase (source of truth)
-    final response = await _supabase
-        .from('user_favorite_events')
-        .select()
-        .eq('user_id', userId)
-        .order('created_at', ascending: false);
-
-    final events =
-        (response as List)
-            .map((json) => FavoriteEvent.fromSupabase(json))
-            .toList();
-
-    // Cache locally
-    await _cacheEvents(events, userId);
-
-    debugPrint('[FavoriteEvents] Fetched ${events.length} events from Supabase');
-    return events;
   }
 
   Future<void> _refreshFromSupabase() async {

@@ -91,7 +91,9 @@ class _TourDetailScreenNotifier
     try {
       // Check if any new tour IDs appeared that we don't have yet
       final currentTourIds = currentState.tours.map((t) => t.tour.id).toSet();
-      final hasNewTours = newLiveTourIds.any((id) => !currentTourIds.contains(id));
+      final hasNewTours = newLiveTourIds.any(
+        (id) => !currentTourIds.contains(id),
+      );
 
       // If new tours appeared, reload everything to fetch them
       if (hasNewTours) {
@@ -109,9 +111,10 @@ class _TourDetailScreenNotifier
 
             // Handle tours with empty dates (common for TCEC, CCC, and some imports)
             if (tour.dates.isEmpty) {
-              final newRoundStatus = newLiveTourIds.contains(tour.id)
-                  ? RoundStatus.live
-                  : RoundStatus.completed;
+              final newRoundStatus =
+                  newLiveTourIds.contains(tour.id)
+                      ? RoundStatus.live
+                      : RoundStatus.completed;
               return TourModel(tour: tour, roundStatus: newRoundStatus);
             }
 
@@ -278,9 +281,10 @@ class _TourDetailScreenNotifier
     if (tour.dates.isEmpty) {
       logWarning('Tour ${tour.id} has empty dates, using fallback status');
       // Check if it's live first, otherwise mark as completed (most likely scenario)
-      final roundStatus = liveTourIds.contains(tour.id)
-          ? RoundStatus.live
-          : RoundStatus.completed;
+      final roundStatus =
+          liveTourIds.contains(tour.id)
+              ? RoundStatus.live
+              : RoundStatus.completed;
       return TourModel(tour: tour, roundStatus: roundStatus);
     }
 
@@ -322,11 +326,36 @@ class _TourDetailScreenNotifier
     TourDetailViewModel? currentState,
     List<String> liveTourIds,
   ) async {
+    final hasStartedTours = tourModels.any(
+      (model) => model.roundStatus != RoundStatus.upcoming,
+    );
+
+    bool canUseSelection(TourModel model) {
+      // If we already have started tours in this event, never lock into a purely upcoming tour.
+      if (!hasStartedTours) return true;
+      return model.roundStatus != RoundStatus.upcoming;
+    }
+
+    TourModel? pickHighestElo(Iterable<TourModel> models) {
+      final withElo = models.where((m) => m.tour.avgElo != null).toList();
+      if (withElo.isEmpty) return null;
+      withElo.sort((a, b) {
+        final eloCompare = b.tour.avgElo!.compareTo(a.tour.avgElo!);
+        if (eloCompare != 0) return eloCompare;
+        final aDate =
+            a.tour.dates.isNotEmpty ? a.tour.dates.last : DateTime(1970);
+        final bDate =
+            b.tour.dates.isNotEmpty ? b.tour.dates.last : DateTime(1970);
+        return bDate.compareTo(aDate);
+      });
+      return withElo.first;
+    }
+
     // 1️⃣ If user already selected a tour during this session, keep it.
     final currentSelectedId = currentState?.aboutTourModel.id;
     if (currentSelectedId != null && currentSelectedId.isNotEmpty) {
       final currentModel = findTourModel(tourModels, currentSelectedId);
-      if (currentModel != null) {
+      if (currentModel != null && canUseSelection(currentModel)) {
         return currentModel.tour;
       }
     }
@@ -338,7 +367,7 @@ class _TourDetailScreenNotifier
 
     if (savedTourId != null) {
       final savedModel = findTourModel(tourModels, savedTourId);
-      if (savedModel != null) {
+      if (savedModel != null && canUseSelection(savedModel)) {
         return savedModel.tour;
       }
     }
@@ -353,32 +382,54 @@ class _TourDetailScreenNotifier
       // If multiple are live, pick the one that started most recently
       if (liveModels.length > 1) {
         liveModels.sort((a, b) {
-          final aDate = a.tour.dates.isNotEmpty ? a.tour.dates.first : DateTime(1970);
-          final bDate = b.tour.dates.isNotEmpty ? b.tour.dates.first : DateTime(1970);
+          final aDate =
+              a.tour.dates.isNotEmpty ? a.tour.dates.first : DateTime(1970);
+          final bDate =
+              b.tour.dates.isNotEmpty ? b.tour.dates.first : DateTime(1970);
           return bDate.compareTo(aDate);
         });
       }
       return liveModels.first.tour;
     }
 
-    // 4️⃣ No live tour — select the tour with the highest avgElo
-    final toursWithElo =
-        tourModels.where((model) => model.tour.avgElo != null).toList();
-
-    if (toursWithElo.isNotEmpty) {
-      toursWithElo.sort((a, b) => b.tour.avgElo!.compareTo(a.tour.avgElo!));
-      return toursWithElo.first.tour;
+    // 4️⃣ No live tour — prefer highest avgElo among started tours first.
+    final selectableModels =
+        hasStartedTours
+            ? tourModels
+                .where((m) => m.roundStatus != RoundStatus.upcoming)
+                .toList()
+            : tourModels;
+    final bestByElo = pickHighestElo(selectableModels);
+    if (bestByElo != null) {
+      return bestByElo.tour;
     }
 
-    // 5️⃣ If no live tours, pick most recently completed tour
+    // 5️⃣ If no ELO signal, prefer started tours (ongoing first, then completed).
+    final ongoingTours =
+        tourModels
+            .where((model) => model.roundStatus == RoundStatus.ongoing)
+            .toList()
+          ..sort((a, b) {
+            final aDate =
+                a.tour.dates.isNotEmpty ? a.tour.dates.first : DateTime(1970);
+            final bDate =
+                b.tour.dates.isNotEmpty ? b.tour.dates.first : DateTime(1970);
+            return bDate.compareTo(aDate);
+          });
+    if (ongoingTours.isNotEmpty) {
+      return ongoingTours.first.tour;
+    }
+
     final completedTours =
         tourModels
             .where((model) => model.roundStatus == RoundStatus.completed)
             .toList()
           ..sort((a, b) {
             // Handle tours with empty dates (use epoch as fallback)
-            final aDate = a.tour.dates.isNotEmpty ? a.tour.dates.last : DateTime(1970);
-            final bDate = b.tour.dates.isNotEmpty ? b.tour.dates.last : DateTime(1970);
+            final aDate =
+                a.tour.dates.isNotEmpty ? a.tour.dates.last : DateTime(1970);
+            final bDate =
+                b.tour.dates.isNotEmpty ? b.tour.dates.last : DateTime(1970);
             return bDate.compareTo(aDate);
           });
 
@@ -386,7 +437,23 @@ class _TourDetailScreenNotifier
       return completedTours.first.tour;
     }
 
-    // 6️⃣ Fallback: first tour
+    // 6️⃣ If everything is upcoming, prefer the nearest one.
+    final upcomingTours =
+        tourModels
+            .where((model) => model.roundStatus == RoundStatus.upcoming)
+            .toList()
+          ..sort((a, b) {
+            final aDate =
+                a.tour.dates.isNotEmpty ? a.tour.dates.first : DateTime(1970);
+            final bDate =
+                b.tour.dates.isNotEmpty ? b.tour.dates.first : DateTime(1970);
+            return aDate.compareTo(bDate);
+          });
+    if (upcomingTours.isNotEmpty) {
+      return upcomingTours.first.tour;
+    }
+
+    // 7️⃣ Fallback: first tour
     return tourModels.first.tour;
   }
 

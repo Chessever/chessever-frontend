@@ -60,8 +60,12 @@ class GroupBroadcastLocalStorage {
 
       final db = ref.read(appDatabaseProvider);
       final encoded = _encodeGroupBroadcastsList(broadcasts);
-      await db.setCache(key: _cacheKey, value: jsonEncode(encoded));
-      await db.setInt(_cacheTimeKey, DateTime.now().millisecondsSinceEpoch);
+      await db.setCacheAndInt(
+        cacheKey: _cacheKey,
+        cacheValue: jsonEncode(encoded),
+        intKey: _cacheTimeKey,
+        intValue: DateTime.now().millisecondsSinceEpoch,
+      );
     } catch (_) {
       // Local storage failure is not critical - Supabase is source of truth
     }

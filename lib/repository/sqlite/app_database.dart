@@ -73,6 +73,12 @@ class AppDatabase {
     return openDatabase(
       path,
       version: 1,
+      onConfigure: (db) async {
+        // WAL mode allows concurrent reads during writes — prevents the
+        // "database has been locked for 0:00:10" warnings caused by
+        // multiple providers reading/writing cache simultaneously.
+        await db.rawQuery('PRAGMA journal_mode=WAL');
+      },
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
@@ -323,6 +329,53 @@ class AppDatabase {
     );
   }
 
+  /// Fetch multiple cache entries in a single SQL query.
+  /// Returns a map of key → CacheEntry for keys that exist.
+  Future<Map<String, CacheEntry>> getCacheMulti({
+    required List<String> keys,
+    String? userId,
+  }) async {
+    if (keys.isEmpty) return {};
+    final db = await database;
+    final uid = userId ?? '';
+    final placeholders = List.filled(keys.length, '?').join(', ');
+    final result = await db.query(
+      _cacheTable,
+      where: 'key IN ($placeholders) AND user_id = ?',
+      whereArgs: [...keys, uid],
+    );
+    final map = <String, CacheEntry>{};
+    for (final row in result) {
+      map[row['key'] as String] = CacheEntry(
+        value: row['value'] as String,
+        cachedAt: DateTime.fromMillisecondsSinceEpoch(row['cached_at'] as int),
+      );
+    }
+    return map;
+  }
+
+  /// Write multiple cache entries in a single transaction.
+  Future<void> setCacheBatch(Map<String, String> entries, {String? userId}) async {
+    if (entries.isEmpty) return;
+    final db = await database;
+    final uid = userId ?? '';
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final batch = db.batch();
+    for (final entry in entries.entries) {
+      batch.insert(
+        _cacheTable,
+        {
+          'key': entry.key,
+          'user_id': uid,
+          'value': entry.value,
+          'cached_at': now,
+        },
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    }
+    await batch.commit(noResult: true);
+  }
+
   // ============================================
   // LIST OPERATIONS (for starred items, favorites, etc.)
   // ============================================
@@ -366,29 +419,69 @@ class AppDatabase {
     return decoded.cast<String>();
   }
 
-  /// Add item to a list
+  /// Add item to a list (atomic read-then-write in a single transaction)
   Future<void> addToList({
     required String key,
     required String item,
     String? userId,
   }) async {
-    final items = await getList(key: key, userId: userId);
-    if (!items.contains(item)) {
-      items.add(item);
-      await setList(key: key, items: items, userId: userId);
-    }
+    final db = await database;
+    final uid = userId ?? '';
+    await db.transaction((txn) async {
+      final result = await txn.query(
+        _listTable,
+        where: 'key = ? AND user_id = ?',
+        whereArgs: [key, uid],
+      );
+
+      List<String> items = [];
+      if (result.isNotEmpty) {
+        final raw = result.first['items'] as String?;
+        if (raw != null) {
+          items = (jsonDecode(raw) as List).cast<String>();
+        }
+      }
+
+      if (!items.contains(item)) {
+        items.add(item);
+        await txn.insert(
+          _listTable,
+          {'key': key, 'user_id': uid, 'items': jsonEncode(items)},
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+      }
+    });
   }
 
-  /// Remove item from a list
+  /// Remove item from a list (atomic read-then-write in a single transaction)
   Future<void> removeFromList({
     required String key,
     required String item,
     String? userId,
   }) async {
-    final items = await getList(key: key, userId: userId);
-    if (items.remove(item)) {
-      await setList(key: key, items: items, userId: userId);
-    }
+    final db = await database;
+    final uid = userId ?? '';
+    await db.transaction((txn) async {
+      final result = await txn.query(
+        _listTable,
+        where: 'key = ? AND user_id = ?',
+        whereArgs: [key, uid],
+      );
+
+      if (result.isEmpty) return;
+
+      final raw = result.first['items'] as String?;
+      if (raw == null) return;
+
+      final items = (jsonDecode(raw) as List).cast<String>();
+      if (items.remove(item)) {
+        await txn.insert(
+          _listTable,
+          {'key': key, 'user_id': uid, 'items': jsonEncode(items)},
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+      }
+    });
   }
 
   /// Check if list contains item
@@ -409,6 +502,40 @@ class AppDatabase {
       where: 'key = ? AND user_id = ?',
       whereArgs: [key, userId ?? ''],
     );
+  }
+
+  // ============================================
+  // BATCH / TRANSACTION OPERATIONS
+  // ============================================
+
+  /// Set cache and an int key atomically in one transaction.
+  /// Avoids two separate writes that compete for the SQLite lock.
+  Future<void> setCacheAndInt({
+    required String cacheKey,
+    required String cacheValue,
+    String? userId,
+    required String intKey,
+    required int intValue,
+  }) async {
+    final db = await database;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    await db.transaction((txn) async {
+      await txn.insert(
+        _cacheTable,
+        {
+          'key': cacheKey,
+          'user_id': userId ?? '',
+          'value': cacheValue,
+          'cached_at': now,
+        },
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+      await txn.insert(
+        _kvTable,
+        {'key': intKey, 'value': intValue.toString(), 'type': 'int'},
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    });
   }
 
   // ============================================

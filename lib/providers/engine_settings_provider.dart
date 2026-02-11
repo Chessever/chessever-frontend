@@ -576,21 +576,20 @@ class EngineSettingsNotifierNew extends AsyncNotifier<EngineSettings> {
 
   Future<void> _persist(EngineSettings settings) async {
     try {
+      // Cache locally FIRST so the UI stays responsive even if Supabase fails
+      await _cacheSettings(settings);
+
       final userId = _supabase.auth.currentUser?.id;
       if (userId == null) {
-        debugPrint('[EngineSettings] No user logged in, skipping persist');
+        debugPrint('[EngineSettings] No user logged in, skipping Supabase persist');
         return;
       }
 
-      // Save to Supabase
-      await _saveToSupabase(settings, userId);
-
-      // Cache locally
-      await _cacheSettings(settings);
+      // Save to Supabase in background — don't block UI on network failure
+      unawaited(_saveToSupabase(settings, userId));
     } catch (e, st) {
       debugPrint('[EngineSettings] Error persisting settings: $e');
       debugPrint('[EngineSettings] Stack: $st');
-      rethrow;
     }
   }
 

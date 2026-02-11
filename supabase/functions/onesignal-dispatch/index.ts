@@ -409,7 +409,8 @@ async function processItem(item: OutboxItem, cloudEvalState: CloudEvalState) {
       }
 
       const roundId = item.round_id ?? context.round?.id ?? "";
-      const eventName = context.eventName ?? context.round?.name ?? "Live chess";
+      const eventName = context.eventName ?? "Live chess";
+      const roundName = context.round?.name ?? "";
 
       // Send personalized player notifications grouped by player combo
       if (playerRecipients.length > 0) {
@@ -427,6 +428,7 @@ async function processItem(item: OutboxItem, cloudEvalState: CloudEvalState) {
           const { title, body } = fillTemplate(template, {
             p: playersStr,
             e: eventName,
+            r: roundName,
           });
           await sendOneSignal(eligible, {
             title,
@@ -445,7 +447,7 @@ async function processItem(item: OutboxItem, cloudEvalState: CloudEvalState) {
         );
         if (ungrouped.length > 0) {
           const template = pickTemplate(ROUND_STARTED_EVENT, roundId);
-          const { title, body } = fillTemplate(template, { e: eventName });
+          const { title, body } = fillTemplate(template, { e: eventName, r: roundName });
           await sendOneSignal(ungrouped, {
             title,
             body,
@@ -458,7 +460,7 @@ async function processItem(item: OutboxItem, cloudEvalState: CloudEvalState) {
 
       if (eventRecipients.length > 0) {
         const template = pickTemplate(ROUND_STARTED_EVENT, roundId);
-        const { title, body } = fillTemplate(template, { e: eventName });
+        const { title, body } = fillTemplate(template, { e: eventName, r: roundName });
         await sendOneSignal(eventRecipients, {
           title,
           body,
@@ -489,7 +491,8 @@ async function processItem(item: OutboxItem, cloudEvalState: CloudEvalState) {
       }
 
       const roundId = item.round_id ?? context.round?.id ?? "";
-      const eventName = context.eventName ?? context.round?.name ?? "Live chess";
+      const eventName = context.eventName ?? "Live chess";
+      const roundName = context.round?.name ?? "";
       const leadMinutes = (item.payload?.lead_minutes as number) ?? 30;
       const timeStr = `~${leadMinutes} min`;
 
@@ -508,6 +511,7 @@ async function processItem(item: OutboxItem, cloudEvalState: CloudEvalState) {
           const { title, body } = fillTemplate(template, {
             p: playersStr,
             e: eventName,
+            r: roundName,
             t: timeStr,
           });
           await sendOneSignal(eligible, {
@@ -529,6 +533,7 @@ async function processItem(item: OutboxItem, cloudEvalState: CloudEvalState) {
           const template = pickTemplate(ROUND_HEADS_UP_EVENT, roundId);
           const { title, body } = fillTemplate(template, {
             e: eventName,
+            r: roundName,
             t: timeStr,
           });
           await sendOneSignal(ungrouped, {
@@ -545,6 +550,7 @@ async function processItem(item: OutboxItem, cloudEvalState: CloudEvalState) {
         const template = pickTemplate(ROUND_HEADS_UP_EVENT, roundId);
         const { title, body } = fillTemplate(template, {
           e: eventName,
+          r: roundName,
           t: timeStr,
         });
         await sendOneSignal(eventRecipients, {
@@ -1143,65 +1149,65 @@ const ANDROID_CHANNELS = {
 type Template = { title: string; body: string };
 
 const ROUND_STARTED_PLAYER: Template[] = [
-  { title: "{e}", body: "{p} at the board. Games are live." },
-  { title: "{e} is live", body: "{p} just started" },
-  { title: "{e}", body: "{p} playing right now" },
-  { title: "{e} started", body: "{p} at the board" },
-  { title: "It's on", body: "{p} live in {e}" },
-  { title: "{e} is live", body: "{p} at the board right now" },
-  { title: "{e}", body: "{p} just sat down. Games are live." },
-  { title: "Your move", body: "{p} live in {e}. Are you watching?" },
-  { title: "{e}", body: "{p} on the board. Watch live." },
-  { title: "{e} is live", body: "{p} already making moves" },
-  { title: "{e}", body: "The wait is over. {p} live now." },
-  { title: "{e}", body: "{p} just kicked off" },
-  { title: "{e}", body: "{p} at the board. Don't miss it." },
-  { title: "{e}", body: "{p} live now. Get in here." },
-  { title: "{e} started", body: "{p} playing. Follow along." },
+  { title: "{e} — {r}", body: "{p} at the board. Games are live." },
+  { title: "{e} is live", body: "{r}: {p} just started" },
+  { title: "{e} — {r}", body: "{p} playing right now" },
+  { title: "{e}", body: "{r} started. {p} at the board." },
+  { title: "It's on", body: "{p} live in {e} — {r}" },
+  { title: "{e} — {r}", body: "{p} at the board right now" },
+  { title: "{e}", body: "{r}: {p} just sat down. Games are live." },
+  { title: "Your move", body: "{p} live in {e} — {r}. Are you watching?" },
+  { title: "{e} — {r}", body: "{p} on the board. Watch live." },
+  { title: "{e} is live", body: "{r}: {p} already making moves" },
+  { title: "{e} — {r}", body: "The wait is over. {p} live now." },
+  { title: "{e}", body: "{r}: {p} just kicked off" },
+  { title: "{e} — {r}", body: "{p} at the board. Don't miss it." },
+  { title: "{e}", body: "{r}: {p} live now. Get in here." },
+  { title: "{e} — {r}", body: "{p} playing. Follow along." },
 ];
 
 const ROUND_STARTED_EVENT: Template[] = [
-  { title: "{e}", body: "Games are live" },
-  { title: "{e} is live", body: "First moves have been played" },
-  { title: "{e}", body: "Games just started" },
-  { title: "{e} started", body: "Watch live" },
-  { title: "{e}", body: "The wait is over. Games are live." },
-  { title: "{e} is live", body: "Don't miss it" },
-  { title: "{e}", body: "It's live. Get in here." },
-  { title: "{e} is underway", body: "Follow the games live" },
-  { title: "{e}", body: "The round just started" },
-  { title: "{e} started", body: "Games are live now" },
+  { title: "{e} — {r}", body: "Games are live" },
+  { title: "{e} is live", body: "{r}: First moves have been played" },
+  { title: "{e} — {r}", body: "Games just started" },
+  { title: "{e}", body: "{r} started. Watch live." },
+  { title: "{e} — {r}", body: "The wait is over. Games are live." },
+  { title: "{e} is live", body: "{r}. Don't miss it." },
+  { title: "{e} — {r}", body: "It's live. Get in here." },
+  { title: "{e}", body: "{r} is underway. Follow the games live." },
+  { title: "{e} — {r}", body: "The round just started" },
+  { title: "{e}", body: "{r} started. Games are live now." },
 ];
 
 const ROUND_HEADS_UP_PLAYER: Template[] = [
-  { title: "{e}", body: "{p} at the board in {t}" },
-  { title: "Heads up", body: "{p} in {e}. {t} to go." },
-  { title: "{e} in {t}", body: "{p} on the schedule" },
-  { title: "{e}", body: "{p} in about {t}. Don't forget." },
-  { title: "Heads up", body: "{p} in {t}. {e}." },
-  { title: "{e} soon", body: "{p} in about {t}" },
-  { title: "{e}", body: "{p} at the board in {t}. Got time?" },
-  { title: "Heads up", body: "{p} in {t}. Set a reminder." },
-  { title: "{e}", body: "{t} to go. {p} on the schedule." },
-  { title: "Almost time", body: "{p} in {e}. About {t}." },
-  { title: "{e}", body: "{p} coming up in {t}" },
-  { title: "Heads up", body: "{p} in {t}. {e} almost here." },
-  { title: "{e}", body: "{p} in {t}. Clear your schedule." },
-  { title: "{e}", body: "{t} until {p} at the board" },
-  { title: "Heads up", body: "{p} in {e}. About {t} out." },
+  { title: "{e} — {r}", body: "{p} at the board in {t}" },
+  { title: "Heads up", body: "{p} in {e} {r}. {t} to go." },
+  { title: "{e} in {t}", body: "{r}: {p} on the schedule" },
+  { title: "{e} — {r}", body: "{p} in about {t}. Don't forget." },
+  { title: "Heads up", body: "{p} in {t}. {e} — {r}." },
+  { title: "{e} — {r}", body: "{p} in about {t}" },
+  { title: "{e}", body: "{r}: {p} at the board in {t}. Got time?" },
+  { title: "Heads up", body: "{r} in {t}. {p} at the board." },
+  { title: "{e} — {r}", body: "{t} to go. {p} on the schedule." },
+  { title: "Almost time", body: "{p} in {e} {r}. About {t}." },
+  { title: "{e} — {r}", body: "{p} coming up in {t}" },
+  { title: "Heads up", body: "{p} in {t}. {e} — {r}." },
+  { title: "{e}", body: "{r}: {p} in {t}. Clear your schedule." },
+  { title: "{e} — {r}", body: "{t} until {p} at the board" },
+  { title: "Heads up", body: "{p} in {e} {r}. About {t} out." },
 ];
 
 const ROUND_HEADS_UP_EVENT: Template[] = [
-  { title: "Heads up", body: "{e} starts in {t}" },
-  { title: "{e}", body: "Starting in {t}" },
-  { title: "{e} in {t}", body: "Games starting soon" },
-  { title: "Heads up", body: "{e} in {t}. Set a reminder." },
-  { title: "{e} soon", body: "About {t} to go" },
-  { title: "{e}", body: "Starts in {t}. Don't miss it." },
-  { title: "Heads up", body: "{e} in about {t}" },
-  { title: "{e}", body: "{t} to go" },
-  { title: "Almost time", body: "{e} in {t}" },
-  { title: "{e}", body: "{t} until games begin" },
+  { title: "Heads up", body: "{e} {r} starts in {t}" },
+  { title: "{e} — {r}", body: "Starting in {t}" },
+  { title: "{e} in {t}", body: "{r} starting soon" },
+  { title: "Heads up", body: "{e} {r} in {t}. Set a reminder." },
+  { title: "{e} — {r}", body: "About {t} to go" },
+  { title: "{e}", body: "{r} starts in {t}. Don't miss it." },
+  { title: "Heads up", body: "{e} {r} in about {t}" },
+  { title: "{e} — {r}", body: "{t} to go" },
+  { title: "Almost time", body: "{e} {r} in {t}" },
+  { title: "{e}", body: "{r}: {t} until games begin" },
 ];
 
 function pickTemplate(templates: Template[], roundId: string): Template {
@@ -1214,13 +1220,24 @@ function pickTemplate(templates: Template[], roundId: string): Template {
 
 function fillTemplate(
   template: Template,
-  vars: { p?: string; e: string; t?: string },
+  vars: { p?: string; e: string; r?: string; t?: string },
 ): { title: string; body: string } {
-  const replace = (s: string) =>
-    s
+  const replace = (s: string) => {
+    let result = s
       .replace(/\{p\}/g, vars.p ?? "")
       .replace(/\{e\}/g, vars.e)
+      .replace(/\{r\}/g, vars.r ?? "")
       .replace(/\{t\}/g, vars.t ?? "");
+    // Clean up dangling separators when round name is empty
+    result = result
+      .replace(/ — (?=\.|,|$)/g, "")  // "Event — ." → "Event."
+      .replace(/ — \s*$/g, "")          // "Event — " → "Event"
+      .replace(/:\s*\./g, ".")           // ": ." → "."
+      .replace(/:\s*$/g, "")             // trailing ":"
+      .replace(/\s{2,}/g, " ")          // collapse double spaces
+      .trim();
+    return result;
+  };
   return { title: replace(template.title), body: replace(template.body) };
 }
 
@@ -1406,7 +1423,7 @@ function buildNotification(
       body: context.eventName
         ? `${context.eventName} is live now.`
         : "A favorite game just went live.",
-      url: item.game_id ? `https://chessever.com/games/${item.game_id}` : null,
+      url: null,
       data: { type: "game_started", game_id: item.game_id },
       androidChannelId,
     };
@@ -1416,7 +1433,7 @@ function buildNotification(
     return {
       title: `Final: ${white} vs ${black}`,
       body: status ? `Result: ${status}` : "A favorite game just finished.",
-      url: item.game_id ? `https://chessever.com/games/${item.game_id}` : null,
+      url: null,
       data: { type: "game_finished", game_id: item.game_id },
       androidChannelId,
     };
@@ -1429,7 +1446,7 @@ function buildNotification(
       body: lastMove
         ? `Latest move: ${lastMove}`
         : "Live game update.",
-      url: item.game_id ? `https://chessever.com/games/${item.game_id}` : null,
+      url: null,
       data: { type: "live_game_update", game_id: item.game_id },
       androidChannelId,
     };
@@ -2269,7 +2286,7 @@ async function sendLiveGameAlert(
   const notification: NotificationPayload = {
     title,
     body,
-    url: `https://chessever.com/games/${payload.game_id}`,
+    url: null,
     data: {
       type: "live_game_alert",
       game_id: payload.game_id,

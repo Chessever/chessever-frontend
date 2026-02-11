@@ -32,6 +32,7 @@ class GamesListView extends ConsumerWidget {
     this.isSearchMode = false,
     this.displayMode = GameDisplayMode.all,
     this.onReturnFromChessboard,
+    this.matchFormatHeader,
   });
 
   final List<GamesAppBarModel> rounds;
@@ -44,6 +45,7 @@ class GamesListView extends ConsumerWidget {
   final bool isSearchMode;
   final GameDisplayMode displayMode;
   final void Function(int)? onReturnFromChessboard;
+  final MatchHeaderModel? matchFormatHeader;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -79,6 +81,7 @@ class GamesListView extends ConsumerWidget {
       displayMode,
       matchGroupsByRound,
       isSearchMode: isSearchMode,
+      matchFormatHeader: matchFormatHeader,
     );
 
     if (itemCount == 0) {
@@ -127,10 +130,22 @@ class GamesListView extends ConsumerWidget {
             displayMode: displayMode,
             matchGroupsByRound: matchGroupsByRound,
             isSearchMode: isSearchMode,
+            matchFormatHeader: matchFormatHeader,
           );
 
           if (lookup == null) {
             return const SizedBox.shrink();
+          }
+
+          if (lookup is _MatchFormatHeaderData) {
+            return Padding(
+              padding: EdgeInsets.only(bottom: 16.sp),
+              child: MatchHeader(
+                match: lookup.matchHeader,
+                isExpanded: true,
+                onToggle: null,
+              ),
+            );
           }
 
           if (lookup is _HeaderData) {
@@ -372,6 +387,7 @@ class GamesListView extends ConsumerWidget {
       displayMode: displayMode,
       matchGroupsByRound: matchGroupsByRound,
       isSearchMode: isSearchMode,
+      matchFormatHeader: matchFormatHeader,
     );
     if (listIndex != null) {
       itemScrollController.scrollTo(
@@ -393,8 +409,9 @@ int _computeItemCount(
   GameDisplayMode displayMode,
   Map<String, Map<String, List<GamesTourModel>>> matchGroupsByRound, {
   bool isSearchMode = false,
+  MatchHeaderModel? matchFormatHeader,
 }) {
-  var count = 0;
+  var count = matchFormatHeader != null ? 1 : 0;
   final isGrid = mode == GamesListViewMode.chessBoardGrid;
 
   for (final round in rounds) {
@@ -471,8 +488,14 @@ Object? _lookupItem({
   required GameDisplayMode displayMode,
   required Map<String, Map<String, List<GamesTourModel>>> matchGroupsByRound,
   bool isSearchMode = false,
+  MatchHeaderModel? matchFormatHeader,
 }) {
-  var currentIndex = 0;
+  // Match format score card occupies index 0
+  if (matchFormatHeader != null) {
+    if (index == 0) return _MatchFormatHeaderData(matchFormatHeader);
+  }
+
+  var currentIndex = matchFormatHeader != null ? 1 : 0;
   var globalGameIndex = 0;
   final isGrid = mode == GamesListViewMode.chessBoardGrid;
 
@@ -636,10 +659,11 @@ int? _listIndexForGameIndex({
   required GameDisplayMode displayMode,
   required Map<String, Map<String, List<GamesTourModel>>> matchGroupsByRound,
   bool isSearchMode = false,
+  MatchHeaderModel? matchFormatHeader,
 }) {
   if (gameIndex < 0) return null;
 
-  var currentIndex = 0;
+  var currentIndex = matchFormatHeader != null ? 1 : 0;
   var globalGameIndex = 0;
   final isGrid = mode == GamesListViewMode.chessBoardGrid;
 
@@ -809,6 +833,12 @@ class _HeaderData {
 
 class _MatchHeaderData {
   _MatchHeaderData(this.matchHeader);
+
+  final MatchHeaderModel matchHeader;
+}
+
+class _MatchFormatHeaderData {
+  _MatchFormatHeaderData(this.matchHeader);
 
   final MatchHeaderModel matchHeader;
 }

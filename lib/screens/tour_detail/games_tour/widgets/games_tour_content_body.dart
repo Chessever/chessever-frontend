@@ -42,6 +42,33 @@ class GamesTourContentBody extends ConsumerWidget {
         ref.watch(knockoutTournamentStateProvider(tourId));
     final isKnockoutTournament = knockoutState.isKnockout;
 
+    // Detect 1v1 match format (e.g., "12-game Match") for score card
+    MatchHeaderModel? matchFormatHeader;
+    if (!isKnockoutTournament) {
+      final tourDetail = ref.read(tourDetailScreenProvider).valueOrNull;
+      final allTours = tourDetail?.tours ?? [];
+      final currentTour =
+          allTours.where((t) => t.tour.id == tourId).firstOrNull?.tour;
+      final formatString = currentTour?.info.format;
+      final allGamesForDetection = gamesScreenModel.gamesTourModels;
+
+      if (KnockoutMatchDetector.isMatchFormat(
+        formatString,
+        allGamesForDetection,
+      )) {
+        final matches = KnockoutMatchDetector.groupByMatchesAcrossAllRounds(
+          allGamesForDetection,
+        );
+        if (matches.isNotEmpty) {
+          final entry = matches.entries.first;
+          matchFormatHeader = KnockoutMatchDetector.createMatchHeader(
+            entry.key,
+            entry.value,
+          );
+        }
+      }
+    }
+
     final allGames = gamesScreenModel.gamesTourModels;
     final displayMode = gamesScreenModel.gameDisplayMode;
     final isSearchMode = gamesScreenModel.isSearchMode;
@@ -417,6 +444,7 @@ class GamesTourContentBody extends ConsumerWidget {
       itemPositionsListener: itemPositionsListener,
       isSearchMode: isSearchMode,
       displayMode: displayMode,
+      matchFormatHeader: matchFormatHeader,
       onReturnFromChessboard: (returnedIndex) {
         // The scrolling is already handled in GamesListView
         // This callback can be used for additional logic if needed

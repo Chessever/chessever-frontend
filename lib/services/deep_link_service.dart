@@ -222,14 +222,29 @@ class DeepLinkService {
         final gameId = data['game_id'] as String?;
         if (gameId != null && gameId.isNotEmpty) {
           _navigateToGame(gameId, navigatorKey, ref);
+        } else {
+          _navigateToHome(navigatorKey);
         }
       case 'round_started':
       case 'round_heads_up':
         final broadcastId = data['group_broadcast_id'] as String?;
         if (broadcastId != null && broadcastId.isNotEmpty) {
           _navigateToEvent(broadcastId, navigatorKey, ref);
+        } else {
+          _navigateToHome(navigatorKey);
         }
+      default:
+        // call_to_action and any unknown types — open the app to home
+        _navigateToHome(navigatorKey);
     }
+  }
+
+  /// Navigate to home screen — fallback for notifications without routing data
+  void _navigateToHome(GlobalKey<NavigatorState> navigatorKey) {
+    navigatorKey.currentState?.pushNamedAndRemoveUntil(
+      '/home_screen',
+      (route) => false,
+    );
   }
 
   /// Fetch event by group_broadcast_id and navigate to tournament detail screen
