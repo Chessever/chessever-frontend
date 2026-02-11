@@ -431,7 +431,7 @@ async function processItem(item: OutboxItem, cloudEvalState: CloudEvalState) {
           await sendOneSignal(eligible, {
             title,
             body,
-            url: context.groupBroadcastId ? "https://chessever.com" : null,
+            url: null,
             data: { type: "round_started", round_id: roundId, group_broadcast_id: context.groupBroadcastId ?? null },
             androidChannelId: channelForEvent("round_started"),
           });
@@ -449,7 +449,7 @@ async function processItem(item: OutboxItem, cloudEvalState: CloudEvalState) {
           await sendOneSignal(ungrouped, {
             title,
             body,
-            url: context.groupBroadcastId ? "https://chessever.com" : null,
+            url: null,
             data: { type: "round_started", round_id: roundId, group_broadcast_id: context.groupBroadcastId ?? null },
             androidChannelId: channelForEvent("round_started"),
           });
@@ -462,7 +462,7 @@ async function processItem(item: OutboxItem, cloudEvalState: CloudEvalState) {
         await sendOneSignal(eventRecipients, {
           title,
           body,
-          url: context.groupBroadcastId ? "https://chessever.com" : null,
+          url: null,
           data: { type: "round_started", round_id: roundId, group_broadcast_id: context.groupBroadcastId ?? null },
           androidChannelId: channelForEvent("round_started"),
         });
@@ -513,7 +513,7 @@ async function processItem(item: OutboxItem, cloudEvalState: CloudEvalState) {
           await sendOneSignal(eligible, {
             title,
             body,
-            url: context.groupBroadcastId ? "https://chessever.com" : null,
+            url: null,
             data: { type: "round_heads_up", round_id: roundId, group_broadcast_id: context.groupBroadcastId ?? null },
             androidChannelId: channelForEvent("round_heads_up"),
           });
@@ -534,7 +534,7 @@ async function processItem(item: OutboxItem, cloudEvalState: CloudEvalState) {
           await sendOneSignal(ungrouped, {
             title,
             body,
-            url: context.groupBroadcastId ? "https://chessever.com" : null,
+            url: null,
             data: { type: "round_heads_up", round_id: roundId, group_broadcast_id: context.groupBroadcastId ?? null },
             androidChannelId: channelForEvent("round_heads_up"),
           });
@@ -550,7 +550,7 @@ async function processItem(item: OutboxItem, cloudEvalState: CloudEvalState) {
         await sendOneSignal(eventRecipients, {
           title,
           body,
-          url: context.groupBroadcastId ? "https://chessever.com" : null,
+          url: null,
           data: { type: "round_heads_up", round_id: roundId, group_broadcast_id: context.groupBroadcastId ?? null },
           androidChannelId: channelForEvent("round_heads_up"),
         });

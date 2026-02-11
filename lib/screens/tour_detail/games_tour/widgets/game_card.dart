@@ -18,6 +18,7 @@ import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:motor/motor.dart';
 import 'package:chessever2/screens/chessboard/widgets/context_pop_up_menu.dart';
+import 'package:chessever2/screens/player_profile/player_profile_screen.dart';
 
 class GameCard extends ConsumerWidget {
   const GameCard({
@@ -245,19 +246,11 @@ class _TopSection extends ConsumerWidget {
       child: Row(
         children: [
           Expanded(
-            child: _GamesRound(
-              playerName: player1.name,
-              playerRank: '${player1.title} ${player1.rating}',
-              countryCode: player1.countryCode,
-            ),
+            child: _GamesRound(player: player1),
           ),
           Expanded(child: _CenterContent(matchWithComparison: matchComparison)),
           Expanded(
-            child: _GamesRound(
-              playerName: player2.name,
-              playerRank: '${player2.title} ${player2.rating}',
-              countryCode: player2.countryCode,
-            ),
+            child: _GamesRound(player: player2),
           ),
         ],
       ),
@@ -408,62 +401,76 @@ class _BottomSection extends ConsumerWidget {
 
 class _GamesRound extends ConsumerWidget {
   const _GamesRound({
-    required this.playerName,
-    required this.playerRank,
-    required this.countryCode,
+    required this.player,
     super.key,
   });
 
-  final String playerName;
-  final String playerRank;
-  final String countryCode;
+  final PlayerCard player;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final validCountryCode = ref
         .read(locationServiceProvider)
-        .getValidCountryCode(countryCode);
+        .getValidCountryCode(player.countryCode);
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Text(
-          ref.read(stringUtilsProvider).getTrimmedString(playerName),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: AppTypography.textXsMedium.copyWith(color: kBlackColor),
-        ),
-        Row(
-          children: [
-            if (countryCode.toUpperCase() == 'FID') ...<Widget>[
-              Image.asset(
-                PngAsset.fideLogo,
-                height: 12.h,
-                width: 16.w,
-                fit: BoxFit.cover,
-                cacheWidth: 48,
-                cacheHeight: 36,
-              ),
-              SizedBox(width: 4.w),
-            ] else if (validCountryCode.isNotEmpty) ...<Widget>[
-              CountryFlag.fromCountryCode(
-                validCountryCode,
-                height: 12.h,
-                width: 16.w,
-              ),
-              SizedBox(width: 4.w),
-            ],
-            Flexible(
-              child: Text(
-                playerRank,
-                style: AppTypography.textXsMedium.copyWith(color: kBlack2Color),
-                overflow: TextOverflow.ellipsis,
-              ),
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () {
+        HapticFeedbackService.buttonPress();
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => PlayerProfileScreen(
+              fideId: player.fideId,
+              playerName: player.name,
+              title: player.title.isNotEmpty ? player.title : null,
+              federation: player.federation,
+              rating: player.rating,
             ),
-          ],
-        ),
-      ],
+          ),
+        );
+      },
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text(
+            ref.read(stringUtilsProvider).getTrimmedString(player.name),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: AppTypography.textXsMedium.copyWith(color: kBlackColor),
+          ),
+          Row(
+            children: [
+              if (player.countryCode.toUpperCase() == 'FID') ...<Widget>[
+                Image.asset(
+                  PngAsset.fideLogo,
+                  height: 12.h,
+                  width: 16.w,
+                  fit: BoxFit.cover,
+                  cacheWidth: 48,
+                  cacheHeight: 36,
+                ),
+                SizedBox(width: 4.w),
+              ] else if (validCountryCode.isNotEmpty) ...<Widget>[
+                CountryFlag.fromCountryCode(
+                  validCountryCode,
+                  height: 12.h,
+                  width: 16.w,
+                ),
+                SizedBox(width: 4.w),
+              ],
+              Flexible(
+                child: Text(
+                  '${player.title} ${player.rating}',
+                  style: AppTypography.textXsMedium.copyWith(color: kBlack2Color),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }

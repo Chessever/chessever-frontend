@@ -13,7 +13,7 @@ import 'package:chessever2/screens/group_event/providers/live_group_broadcast_id
 import 'package:chessever2/screens/group_event/providers/sorting_all_event_provider.dart';
 import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
-import 'package:chessever2/screens/tour_detail/games_tour/providers/game_status_stream_provider.dart';
+import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_pin_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/live_rounds_id_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/live_tour_id_provider.dart';
@@ -318,7 +318,11 @@ final forYouEventsProvider = StateNotifierProvider.autoDispose<ForYouNotifier, F
 
 final eventGamesProvider = FutureProvider.autoDispose
     .family<List<Games>, String>((ref, eventId) async {
-  ref.keepAlive();
+  // Keep data cached for 2 minutes after scrolling out of view,
+  // then dispose to free RAM (PGN strings, player data, etc.)
+  final link = ref.keepAlive();
+  final timer = Timer(const Duration(minutes: 2), link.close);
+  ref.onDispose(timer.cancel);
 
   final groupBroadcastRepo = ref.read(groupBroadcastRepositoryProvider);
   final tourRepository = ref.read(tourRepositoryProvider);
@@ -573,10 +577,14 @@ final forYouEventGamesWithAutoRefreshProvider = Provider.autoDispose
         g.status == '*' || g.status == 'ongoing'
       ).toList();
 
-      // Watch status streams for all live games
+      // Watch game update streams for all live games.
+      // Reuses gameUpdatesStreamProvider (same as liveGameCardProvider in game cards)
+      // so Riverpod shares the provider instance — one Realtime channel per game
+      // instead of two separate channels (status + updates).
       for (final game in liveGames) {
-        final statusAsync = ref.watch(gameStatusStreamProvider(game.id));
-        statusAsync.whenData((status) {
+        final updatesAsync = ref.watch(gameUpdatesStreamProvider(game.id));
+        updatesAsync.whenData((data) {
+          final status = data?['status'] as String?;
           // If status changed to finished, invalidate to re-fetch
           if (status != null && _isFinishedStatus(status)) {
             debugPrint('[ForYou] Game ${game.id} finished ($status), refreshing games for event $eventId');
