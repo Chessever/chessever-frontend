@@ -131,7 +131,8 @@ class GroupBroadcastRepository extends BaseRepository {
         query = query.range(offset, offset + (limit ?? 100) - 1);
       }
 
-      final response = await query;
+      final dynamic response = await query;
+      if (response == null) return <GroupBroadcast>[];
       return (response as List)
           .map((json) => GroupBroadcast.fromJson(json))
           .toList();
@@ -158,7 +159,8 @@ class GroupBroadcastRepository extends BaseRepository {
         query = query.range(offset, offset + (limit ?? 100) - 1);
       }
 
-      final response = await query;
+      final dynamic response = await query;
+      if (response == null) return <GroupBroadcast>[];
       return (response as List)
           .map((json) => GroupBroadcast.fromJson(json))
           .toList();
@@ -181,7 +183,8 @@ class GroupBroadcastRepository extends BaseRepository {
       if (limit != null) query = query.limit(limit);
       if (offset != null) query = query.range(offset, offset + limit! - 1);
 
-      final response = await query;
+      final dynamic response = await query;
+      if (response == null) return <GroupBroadcast>[];
 
       return (response as List)
           .map((json) => GroupBroadcast.fromJson(json))
@@ -226,7 +229,8 @@ class GroupBroadcastRepository extends BaseRepository {
         query = query.range(offset, offset + limit - 1);
       }
 
-      final response = await query;
+      final dynamic response = await query;
+      if (response == null) return <GroupBroadcast>[];
 
       return (response as List)
           .map((json) => GroupBroadcast.fromJson(json))
@@ -368,7 +372,7 @@ class GroupBroadcastRepository extends BaseRepository {
       final startDateStr = startOfYear.toIso8601String();
       final endDateStr = endOfYear.toIso8601String();
 
-      final response = await supabase
+      final dynamic response = await supabase
           .from('group_broadcasts')
           .select()
           .or(
@@ -378,6 +382,7 @@ class GroupBroadcastRepository extends BaseRepository {
           .order(orderBy, ascending: ascending)
           .limit(limit);
 
+      if (response == null) return <GroupBroadcast>[];
       return (response as List)
           .map((json) => GroupBroadcast.fromJson(json))
           .toList();
@@ -498,11 +503,12 @@ class GroupBroadcastRepository extends BaseRepository {
     if (groupBroadcastIds.isEmpty) return {};
 
     return handleApiCall(() async {
-      final response = await supabase
+      final dynamic response = await supabase
           .from('group_broadcasts')
           .select('id, name, max_avg_elo, date_start, date_end, time_control, created_at, search')
           .inFilter('id', groupBroadcastIds);
 
+      if (response == null) return <String, GroupBroadcast>{};
       final result = <String, GroupBroadcast>{};
       for (final row in response as List) {
         final broadcast = GroupBroadcast.fromJson(row);

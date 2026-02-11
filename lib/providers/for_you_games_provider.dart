@@ -4,6 +4,7 @@ import 'package:chessever2/providers/event_favorite_players_provider.dart';
 import 'package:chessever2/providers/favorite_events_provider.dart';
 import 'package:chessever2/repository/local_storage/tournament/games/games_local_storage.dart';
 import 'package:chessever2/repository/supabase/game/games.dart';
+import 'package:chessever2/repository/supabase/tour/tour.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
 import 'package:chessever2/repository/supabase/tour/tour_repository.dart';
@@ -330,26 +331,30 @@ final eventGamesProvider = FutureProvider.autoDispose
 
   // Get all tours for this event — prefer the live tour, then highest avgElo
   String? selectedTourId;
+  String? tourFormatString;
+  List<Tour> eventTours = [];
   try {
-    final tours = await tourRepository.getTourByGroupId(eventId);
-    if (tours.isNotEmpty) {
+    eventTours = await tourRepository.getTourByGroupId(eventId);
+    if (eventTours.isNotEmpty) {
       // Prefer a live tour (ongoing games) over highest avgElo.
       // This ensures knockout events (e.g. Speed Chess Championship) show
       // the current stage (finals) instead of a completed stage that had
       // more participants and therefore a higher average Elo.
       final liveTourIds = ref.read(liveTourIdProvider).valueOrNull ?? <String>[];
-      final liveTour = tours.firstWhereOrNull(
+      final liveTour = eventTours.firstWhereOrNull(
         (t) => liveTourIds.contains(t.id),
       );
 
       if (liveTour != null) {
         selectedTourId = liveTour.id;
-        debugPrint('[ForYou] Selected LIVE tour "${liveTour.name}" from ${tours.length} tours');
+        tourFormatString = liveTour.info.format;
+        debugPrint('[ForYou] Selected LIVE tour "${liveTour.name}" from ${eventTours.length} tours');
       } else {
         // No live tour — fall back to highest avgElo
-        tours.sort((a, b) => (b.avgElo ?? 0).compareTo(a.avgElo ?? 0));
-        selectedTourId = tours.first.id;
-        debugPrint('[ForYou] Selected tour "${tours.first.name}" (avgElo: ${tours.first.avgElo}) from ${tours.length} tours');
+        eventTours.sort((a, b) => (b.avgElo ?? 0).compareTo(a.avgElo ?? 0));
+        selectedTourId = eventTours.first.id;
+        tourFormatString = eventTours.first.info.format;
+        debugPrint('[ForYou] Selected tour "${eventTours.first.name}" (avgElo: ${eventTours.first.avgElo}) from ${eventTours.length} tours');
       }
     }
   } catch (e) {
@@ -387,9 +392,55 @@ final eventGamesProvider = FutureProvider.autoDispose
     debugPrint('[ForYou] Error fetching games for tour $selectedTourId: $e');
   }
 
+  // If the first-choice tour had no started games, try other tours in the group.
+  // This handles events like "Classical + Rapid & Blitz" where one tour might
+  // not have started yet while another already has games.
+  if (allGames.isEmpty && eventTours.length > 1) {
+    for (final tour in eventTours) {
+      if (tour.id == selectedTourId) continue; // already tried
+      try {
+        final games = await gamesStorage.refresh(tour.id);
+        for (final game in games) {
+          if (_hasActuallyStarted(game) && game.players != null && game.players!.length >= 2) {
+            allGames.add(game);
+          }
+        }
+        if (allGames.isNotEmpty) {
+          selectedTourId = tour.id;
+          tourFormatString = tour.info.format;
+          debugPrint('[ForYou] Fallback to tour "${tour.name}" which has ${allGames.length} started games');
+          break;
+        }
+      } catch (e) {
+        debugPrint('[ForYou] Error fetching fallback tour ${tour.id}: $e');
+      }
+    }
+  }
+
   if (allGames.isEmpty) {
     debugPrint('[ForYou] No games found for event $eventId');
     return [];
+  }
+
+  // Collect pinned game IDs
+  final pinnedIds = <String>[];
+  try {
+    final pinState = ref.read(gamesPinprovider(selectedTourId!));
+    pinnedIds.addAll(pinState.allPins);
+  } catch (e) {
+    // Pin provider might not be initialized, continue without pins
+  }
+
+  // Detect 1v1 match format (e.g., "12-game Match", "6-game Match").
+  // In match events each game has its own round slug (game-1, game-2, …),
+  // so the "latest round" filter would return only 1 game. Instead, show
+  // the most recent N games across the entire match.
+  if (_isMatchFormatEvent(tourFormatString, allGames)) {
+    debugPrint('[ForYou] Match format detected for event $eventId — showing latest games across all rounds');
+    final sortedGames = _sortGamesLikeGamesTab(allGames, pinnedIds);
+    final result = sortedGames.take(kGamesPerEvent).toList();
+    debugPrint('[ForYou] Selected ${result.length} games for match event $eventId (from ${allGames.length} total)');
+    return result;
   }
 
   // Find the latest round number among games that have actually started
@@ -410,15 +461,6 @@ final eventGamesProvider = FutureProvider.autoDispose
 
   if (latestRoundGames.isEmpty) {
     return [];
-  }
-
-  // Collect pinned game IDs
-  final pinnedIds = <String>[];
-  try {
-    final pinState = ref.read(gamesPinprovider(selectedTourId));
-    pinnedIds.addAll(pinState.allPins);
-  } catch (e) {
-    // Pin provider might not be initialized, continue without pins
   }
 
   // Sort using the SAME logic as Games tab
@@ -442,6 +484,27 @@ bool _hasActuallyStarted(Games game) {
       game.status == '1/2-1/2' ||
       game.status == '½-½';
   return hasMoves || isFinished;
+}
+
+/// Detects if an event is a 1v1 match format (e.g., "12-game Match").
+/// Returns true when the tour format string contains "match" (case-insensitive)
+/// AND there are at most 2 unique players among the started games.
+bool _isMatchFormatEvent(String? formatString, List<Games> games) {
+  if (formatString == null || formatString.isEmpty || games.isEmpty) {
+    return false;
+  }
+  if (!formatString.toLowerCase().contains('match')) return false;
+
+  final players = <String>{};
+  for (final game in games) {
+    final gamePlayers = game.players;
+    if (gamePlayers == null) continue;
+    for (final p in gamePlayers) {
+      players.add(p.name);
+      if (players.length > 2) return false; // early exit
+    }
+  }
+  return players.length == 2;
 }
 
 /// Sorts games using the same algorithm as the Games tab:

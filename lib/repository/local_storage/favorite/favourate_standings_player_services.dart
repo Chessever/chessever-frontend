@@ -1,5 +1,6 @@
 // lib/repository/local_storage/favorite/favourate_standings_player_services.dart
 
+import 'dart:async';
 import 'dart:convert';
 import 'package:chessever2/repository/sqlite/app_database.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -23,6 +24,10 @@ class FavoriteStandingsPlayerService {
 
   String? _getCurrentUserId() => _supabase.auth.currentUser?.id;
 
+  /// Guards concurrent calls to _fetchFavoritePlayersFromSupabase so only
+  /// one Supabase request + cache write happens at a time.
+  Completer<List<PlayerStandingModel>>? _fetchCompleter;
+
   /// Get favorite players from Supabase (source of truth), fallback to cache
   Future<List<PlayerStandingModel>> getFavoritePlayers() async {
     final cached = await _getCachedPlayers();
@@ -42,11 +47,18 @@ class FavoriteStandingsPlayerService {
   }
 
   Future<List<PlayerStandingModel>> _fetchFavoritePlayersFromSupabase() async {
+    // Deduplicate concurrent calls — multiple providers hit this simultaneously
+    // on app startup, causing 4x redundant Supabase fetches + cache writes.
+    if (_fetchCompleter != null) return _fetchCompleter!.future;
+
+    _fetchCompleter = Completer<List<PlayerStandingModel>>();
     try {
       final userId = _getCurrentUserId();
       if (userId == null) {
         debugPrint('[FavoriteStandings] No user logged in, returning empty list');
-        return [];
+        final result = <PlayerStandingModel>[];
+        _fetchCompleter!.complete(result);
+        return result;
       }
 
       // Fetch from Supabase (source of truth)
@@ -67,13 +79,18 @@ class FavoriteStandingsPlayerService {
       debugPrint(
         '[FavoriteStandings] Fetched ${players.length} players from Supabase',
       );
+      _fetchCompleter!.complete(players);
       return players;
     } catch (e, stack) {
       debugPrint('[FavoriteStandings] Error fetching from Supabase: $e');
       debugPrint('[FavoriteStandings] Stack: $stack');
 
       // Fallback to local cache
-      return await _getCachedPlayers();
+      final cached = await _getCachedPlayers();
+      _fetchCompleter!.complete(cached);
+      return cached;
+    } finally {
+      _fetchCompleter = null;
     }
   }
 

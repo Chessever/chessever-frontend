@@ -19,6 +19,10 @@ class FavoritePlayersNotifierNew extends AsyncNotifier<List<FavoritePlayer>> {
 
   SupabaseClient get _supabase => Supabase.instance.client;
 
+  /// Guards concurrent calls to _loadFavorites so only one Supabase
+  /// request + cache write happens at a time.
+  static Completer<List<FavoritePlayer>>? _loadCompleter;
+
   /// Get user-specific cache key to prevent cross-user cache pollution
   String get _cacheKey {
     final userId = _supabase.auth.currentUser?.id;
@@ -32,11 +36,17 @@ class FavoritePlayersNotifierNew extends AsyncNotifier<List<FavoritePlayer>> {
   }
 
   Future<List<FavoritePlayer>> _loadFavorites() async {
+    // Deduplicate concurrent calls (e.g. build() + refresh() racing)
+    if (_loadCompleter != null) return _loadCompleter!.future;
+
+    _loadCompleter = Completer<List<FavoritePlayer>>();
     try {
       final userId = _supabase.auth.currentUser?.id;
       if (userId == null) {
         debugPrint('[FavoritePlayers] No user logged in, returning empty list');
-        return [];
+        final result = <FavoritePlayer>[];
+        _loadCompleter!.complete(result);
+        return result;
       }
 
       // Fetch from Supabase (source of truth)
@@ -54,13 +64,18 @@ class FavoritePlayersNotifierNew extends AsyncNotifier<List<FavoritePlayer>> {
       await _cachePlayers(players);
 
       debugPrint('[FavoritePlayers] Fetched ${players.length} players from Supabase');
+      _loadCompleter!.complete(players);
       return players;
     } catch (e, st) {
       debugPrint('[FavoritePlayers] Error fetching from Supabase: $e');
       debugPrint('[FavoritePlayers] Stack: $st');
 
       // Fallback to local cache
-      return await _getCachedPlayers();
+      final cached = await _getCachedPlayers();
+      _loadCompleter!.complete(cached);
+      return cached;
+    } finally {
+      _loadCompleter = null;
     }
   }
 

@@ -3,6 +3,28 @@ import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_mode
 /// Utility class to detect and handle knockout tournament formats
 /// where players face each other multiple times in matches
 class KnockoutMatchDetector {
+  /// Detects if this is a 1v1 match format event (e.g., "12-game Match").
+  ///
+  /// Returns true when the tour format string contains "match"
+  /// (case-insensitive) AND there are exactly 2 unique players.
+  static bool isMatchFormat(String? formatString, List<GamesTourModel> games) {
+    if (formatString == null || formatString.isEmpty || games.isEmpty) {
+      return false;
+    }
+
+    if (!formatString.toLowerCase().contains('match')) return false;
+
+    // Count unique players
+    final players = <String>{};
+    for (final game in games) {
+      players.add(game.whitePlayer.name);
+      players.add(game.blackPlayer.name);
+      if (players.length > 2) return false; // early exit
+    }
+
+    return players.length == 2;
+  }
+
   /// Detects if games follow a knockout match format
   ///
   /// A knockout match format is identified by:
@@ -34,6 +56,11 @@ class KnockoutMatchDetector {
       final key = _getMatchupKey(game.whitePlayer.name, game.blackPlayer.name);
       matchups[key] = (matchups[key] ?? 0) + 1;
     }
+
+    // A single unique matchup means a 1v1 match (e.g., World Championship,
+    // Gurel vs Van Foreest), NOT a knockout bracket. Knockouts require
+    // multiple distinct matchups (e.g., Player A vs B, Player C vs D).
+    if (matchups.length <= 1) return false;
 
     // Count matchups with 2+ games (actual matches)
     final multiGameMatchups = matchups.values.where((count) => count >= 2).length;
