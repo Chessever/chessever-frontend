@@ -180,7 +180,7 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
         vertical: 16.sp,
       ),
       itemCount: itemCount,
-      cacheExtent: 1500,
+      cacheExtent: 600,
       physics: const AlwaysScrollableScrollPhysics(
         parent: BouncingScrollPhysics(),
       ),
@@ -223,24 +223,46 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
 
   /// Tablet: 2-column grid where each column = event card + its games
   /// Creates a beautiful magazine-style layout that fills tablet width
+  /// Uses ListView.builder for lazy, on-demand rendering
   Widget _buildTabletGridLayout(List<GroupEventCardModel> events, {bool showLoadingMore = false}) {
     final horizontalPadding = ResponsiveHelper.isLandscape ? 32.sp : 24.sp;
     final columnSpacing = 16.sp;
 
-    // Build pairs of events for 2-column layout
-    final List<Widget> rows = [];
+    // Number of event-pair rows (ceil division)
+    final rowCount = (events.length + 1) ~/ 2;
+    // +1 for premium cards at top, +1 for loading indicator if showing
+    final itemCount = rowCount + 1 + (showLoadingMore ? 1 : 0);
 
-    // Premium cards row (full width)
-    rows.add(const PremiumCollectionCards());
+    return ListView.builder(
+      key: const PageStorageKey<String>('for_you_events_tablet_grid'),
+      controller: widget.scrollController,
+      padding: EdgeInsets.symmetric(
+        horizontal: horizontalPadding,
+        vertical: 16.sp,
+      ),
+      itemCount: itemCount,
+      cacheExtent: 600,
+      physics: const AlwaysScrollableScrollPhysics(
+        parent: BouncingScrollPhysics(),
+      ),
+      itemBuilder: (context, index) {
+        // Premium collection cards at top
+        if (index == 0) {
+          return const PremiumCollectionCards();
+        }
 
-    // Event pairs - 2 events per row, each with games below
-    for (int i = 0; i < events.length; i += 2) {
-      final event1 = events[i];
-      final event2 = i + 1 < events.length ? events[i + 1] : null;
+        // Loading indicator at bottom
+        if (showLoadingMore && index == itemCount - 1) {
+          return _buildLoadingMoreIndicator();
+        }
 
-      rows.add(
-        Padding(
-          padding: EdgeInsets.only(top: i == 0 ? 0 : 20.sp),
+        final rowIndex = index - 1;
+        final i = rowIndex * 2;
+        final event1 = events[i];
+        final event2 = i + 1 < events.length ? events[i + 1] : null;
+
+        return Padding(
+          padding: EdgeInsets.only(top: rowIndex == 0 ? 0 : 20.sp),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -264,27 +286,8 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
               ),
             ],
           ),
-        ),
-      );
-    }
-
-    // Add loading indicator at the bottom if loading more
-    if (showLoadingMore) {
-      rows.add(_buildLoadingMoreIndicator());
-    }
-
-    return ListView(
-      key: const PageStorageKey<String>('for_you_events_tablet_grid'),
-      controller: widget.scrollController,
-      padding: EdgeInsets.symmetric(
-        horizontal: horizontalPadding,
-        vertical: 16.sp,
-      ),
-      cacheExtent: 1500,
-      physics: const AlwaysScrollableScrollPhysics(
-        parent: BouncingScrollPhysics(),
-      ),
-      children: rows,
+        );
+      },
     );
   }
 
