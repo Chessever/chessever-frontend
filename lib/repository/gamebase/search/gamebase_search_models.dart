@@ -3,23 +3,28 @@ class GamebasePaginationMetadata {
     required this.pageNumber,
     required this.pageSize,
     this.totalCount,
+    this.hasMoreValue,
   });
 
   final int pageNumber;
   final int pageSize;
   final int? totalCount;
+  final bool? hasMoreValue;
 
   factory GamebasePaginationMetadata.fromJson(Map<String, dynamic> json) {
     return GamebasePaginationMetadata(
       pageNumber: (json['pageNumber'] as num?)?.toInt() ?? 1,
       pageSize: (json['pageSize'] as num?)?.toInt() ?? 20,
       totalCount: (json['totalCount'] as num?)?.toInt(),
+      hasMoreValue: json['hasMore'] as bool?,
     );
   }
 
   bool get hasTotal => totalCount != null;
 
   bool get hasMore {
+    // Prefer server-provided hasMore when available (avoids expensive COUNT(*) queries).
+    if (hasMoreValue != null) return hasMoreValue!;
     if (totalCount == null) return true;
     return pageNumber * pageSize < totalCount!;
   }
@@ -185,4 +190,3 @@ class GamebaseSearchQueryResponse {
     );
   }
 }
-
