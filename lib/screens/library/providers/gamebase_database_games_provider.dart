@@ -63,11 +63,6 @@ class DatabaseGamesPaginationNotifier extends StateNotifier<DatabaseGamesPaginat
   }
 
   Future<void> _loadInitialPage() async {
-    if (_query.trim().isEmpty && !_filter.hasActiveFilters) {
-      state = const DatabaseGamesPaginationState(hasMore: false);
-      return;
-    }
-
     state = state.copyWith(isLoading: true, error: null);
 
     try {
@@ -120,25 +115,55 @@ class DatabaseGamesPaginationNotifier extends StateNotifier<DatabaseGamesPaginat
   Future<_PageResult> _fetchPage(int pageNumber) async {
     final repo = _ref.read(gamebaseRepositoryProvider);
 
-    final response = await repo.globalSearch(
-      query: _query.trim().isEmpty ? '*' : _query.trim(),
-      resources: const ['game'],
-      pageNumber: pageNumber,
-      pageSize: _pageSize,
-      result: _filter.resultApiValue,
-      color: _filter.colorApiValue,
-      timeControl: _filter.timeControlApiValue,
-      yearFrom: _filter.minYear != 1800 ? _filter.minYear : null,
-      yearTo: _filter.maxYear != DateTime.now().year ? _filter.maxYear : null,
-      ratingFrom: _filter.minRating > 0 ? _filter.minRating : null,
-      ratingTo: _filter.maxRating < 3500 ? _filter.maxRating : null,
-    );
+    // Build structured where clause from filter
+    final whereConditions = <Map<String, dynamic>>[];
+    if (_filter.resultApiValue != null) {
+      whereConditions.add({
+        'field': 'result',
+        'op': 'eq',
+        'value': _filter.resultApiValue,
+      });
+    }
+    if (_filter.timeControlApiValue != null) {
+      whereConditions.add({
+        'field': 'timeControl',
+        'op': 'eq',
+        'value': _filter.timeControlApiValue,
+      });
+    }
+    if (_filter.minRating > 0) {
+      whereConditions.add({
+        'field': 'whiteElo',
+        'op': 'gte',
+        'value': _filter.minRating,
+      });
+    }
+    if (_filter.maxRating < 3500) {
+      whereConditions.add({
+        'field': 'whiteElo',
+        'op': 'lte',
+        'value': _filter.maxRating,
+      });
+    }
 
-    final gameResults = response.results
-        .where((r) => r.resource == 'game')
-        .toList();
+    final body = <String, dynamic>{
+      'resource': 'game',
+      'pageNumber': pageNumber,
+      'pageSize': _pageSize,
+      'orderBy': [
+        {'field': 'date', 'direction': 'desc'},
+      ],
+      if (_query.trim().isNotEmpty) 'q': _query.trim(),
+      if (whereConditions.length == 1)
+        'where': whereConditions.first
+      else if (whereConditions.length > 1)
+        'where': {'and': whereConditions},
+    };
 
-    if (gameResults.isEmpty) {
+    final response = await repo.queryResource(body: body);
+    final rows = response.data;
+
+    if (rows.isEmpty) {
       return _PageResult(
         games: const [],
         totalCount: response.metadata.totalCount ?? 0,
@@ -146,92 +171,15 @@ class DatabaseGamesPaginationNotifier extends StateNotifier<DatabaseGamesPaginat
       );
     }
 
-    // Collect player IDs for enrichment
-    final playerIds = <String>{};
-    for (final result in gameResults) {
-      final preview = result.preview ?? const <String, dynamic>{};
-      final w = preview['whitePlayerId']?.toString().trim();
-      final b = preview['blackPlayerId']?.toString().trim();
-      if (w != null && w.isNotEmpty) playerIds.add(w);
-      if (b != null && b.isNotEmpty) playerIds.add(b);
-    }
-
-    // Fetch player details for enrichment
-    final playerDetails = <String, GamebasePlayer>{};
-    if (playerIds.isNotEmpty) {
-      final fetched = await Future.wait(
-        playerIds.map(repo.getPlayerById),
-        eagerError: false,
-      );
-      for (final p in fetched.whereType<GamebasePlayer>()) {
-        playerDetails[p.id] = GamebasePlayer(
-          id: p.id,
-          fideId: p.fideId,
-          name: p.name,
-          gender: p.gender,
-          fed: p.fed,
-          title: ChessTitleUtils.normalize(p.title),
-          ratingClassical: p.ratingClassical,
-          ratingRapid: p.ratingRapid,
-          ratingBlitz: p.ratingBlitz,
-        );
-      }
-    }
-
-    int ratingFor(GamebasePlayer? p, String? timeControl) {
-      if (p == null) return 0;
-      final tc = (timeControl ?? '').toUpperCase();
-      switch (tc) {
-        case 'RAPID':
-          return p.ratingRapid ?? p.highestRating ?? 0;
-        case 'BLITZ':
-          return p.ratingBlitz ?? p.highestRating ?? 0;
-        case 'CLASSICAL':
-        default:
-          return p.ratingClassical ?? p.highestRating ?? 0;
-      }
-    }
-
-    DateTime? parseDate(Object? raw) {
-      if (raw == null) return null;
-      return DateTime.tryParse(raw.toString());
-    }
-
-    String coalesceName(Map<String, dynamic> row, String keyA, String keyB) {
-      final a = (row[keyA]?.toString() ?? '').trim();
-      if (a.isNotEmpty) return a;
-      final b = (row[keyB]?.toString() ?? '').trim();
-      return b.isNotEmpty ? b : (keyA.startsWith('white') ? 'White' : 'Black');
-    }
-
-    final games = gameResults.map((result) {
-      final row = <String, dynamic>{
-        'id': result.id,
-        'label': result.label,
-        'snippet': result.snippet,
-        ...?result.preview,
-      };
-
+    final games = rows.map((row) {
       final id = (row['id']?.toString() ?? '').trim();
       final safeId = id.isNotEmpty ? id : 'unknown';
       final timeControl = row['timeControl']?.toString();
-      final date = parseDate(row['date']);
+      final date = _parseDate(row['date']);
       final resultStr = row['result']?.toString() ?? '*';
 
-      final whiteName = coalesceName(row, 'white', 'whiteName');
-      final blackName = coalesceName(row, 'black', 'blackName');
-
-      final whitePlayerId = row['whitePlayerId']?.toString().trim();
-      final blackPlayerId = row['blackPlayerId']?.toString().trim();
-      final whitePlayer = (whitePlayerId != null) ? playerDetails[whitePlayerId] : null;
-      final blackPlayer = (blackPlayerId != null) ? playerDetails[blackPlayerId] : null;
-
-      final whiteTitle = ChessTitleUtils.normalize(
-        row['whiteTitle']?.toString() ?? whitePlayer?.title,
-      );
-      final blackTitle = ChessTitleUtils.normalize(
-        row['blackTitle']?.toString() ?? blackPlayer?.title,
-      );
+      final whiteName = _name(row, 'whiteName', 'White');
+      final blackName = _name(row, 'blackName', 'Black');
 
       final eco = row['eco']?.toString() ?? '';
       final opening = row['opening']?.toString() ?? '';
@@ -251,27 +199,33 @@ class DatabaseGamesPaginationNotifier extends StateNotifier<DatabaseGamesPaginat
         variation: variation,
       );
 
+      final whiteElo = (row['whiteElo'] as num?)?.toInt() ?? 0;
+      final blackElo = (row['blackElo'] as num?)?.toInt() ?? 0;
+      final whiteFideId = row['whiteFideId']?.toString();
+      final blackFideId = row['blackFideId']?.toString();
+
       final whiteCard = PlayerCard(
         name: whiteName,
         federation: '',
-        title: whiteTitle,
-        rating: ratingFor(whitePlayer, timeControl),
-        countryCode: whitePlayer?.fed ?? '',
+        title: '',
+        rating: whiteElo,
+        countryCode: row['whiteFed']?.toString() ?? '',
         team: null,
-        fideId: int.tryParse(whitePlayer?.fideId ?? ''),
+        fideId: int.tryParse(whiteFideId ?? ''),
       );
 
       final blackCard = PlayerCard(
         name: blackName,
         federation: '',
-        title: blackTitle,
-        rating: ratingFor(blackPlayer, timeControl),
-        countryCode: blackPlayer?.fed ?? '',
+        title: '',
+        rating: blackElo,
+        countryCode: row['blackFed']?.toString() ?? '',
         team: null,
-        fideId: int.tryParse(blackPlayer?.fideId ?? ''),
+        fideId: int.tryParse(blackFideId ?? ''),
       );
 
-      final formatCode = (eco.trim().isNotEmpty) ? eco.trim() : (timeControl ?? '');
+      final formatCode =
+          (eco.trim().isNotEmpty) ? eco.trim() : (timeControl ?? '');
 
       return GamesTourModel(
         gameId: safeId,
@@ -298,6 +252,16 @@ class DatabaseGamesPaginationNotifier extends StateNotifier<DatabaseGamesPaginat
       totalCount: totalCount,
       hasMore: hasMore,
     );
+  }
+
+  static DateTime? _parseDate(Object? raw) {
+    if (raw == null) return null;
+    return DateTime.tryParse(raw.toString());
+  }
+
+  static String _name(Map<String, dynamic> row, String key, String fallback) {
+    final v = (row[key]?.toString() ?? '').trim();
+    return v.isNotEmpty ? v : fallback;
   }
 }
 

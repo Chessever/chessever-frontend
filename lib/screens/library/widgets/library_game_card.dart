@@ -67,7 +67,11 @@ class LibraryGameCard extends ConsumerWidget {
             Container(
               padding: EdgeInsets.fromLTRB(14.w, 10.h, 14.w, 10.h),
               decoration: BoxDecoration(
-                color: const Color(0xFFE4E4E7),
+                gradient: const LinearGradient(
+                  begin: Alignment(-1.0, 0.26),
+                  end: Alignment(1.0, -0.26),
+                  colors: [Color(0xFFDDDDE0), Color(0xFFADAEB3)],
+                ),
                 borderRadius: BorderRadius.vertical(
                   top: Radius.circular(12.br),
                 ),
@@ -106,51 +110,62 @@ class LibraryGameCard extends ConsumerWidget {
             ),
             // Bottom section - dark background with event info
             Container(
-              padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
+              padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 3.h),
               decoration: BoxDecoration(
-                color: const Color(0xFF1C1C1C),
+                color: const Color(0xFF1A1A1C),
                 borderRadius: BorderRadius.vertical(
                   bottom: Radius.circular(12.br),
                 ),
               ),
               child: Row(
                 children: [
-                  // Left: time control icon + event name (flexible, not greedy)
-                  Image.asset(
-                    timeControlIcon,
-                    width: 14.sp,
-                    height: 14.sp,
-                  ),
-                  SizedBox(width: 8.w),
-                  Flexible(
-                    child: Text(
-                      displayEventName,
-                      style: AppTypography.textXsRegular.copyWith(
-                        color: const Color(0xFFA1A1AA),
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                  // Left: time control icon + event name
+                  Expanded(
+                    child: Row(
+                      children: [
+                        Image.asset(
+                          timeControlIcon,
+                          width: 14.sp,
+                          height: 14.sp,
+                        ),
+                        SizedBox(width: 4.w),
+                        Flexible(
+                          child: Text(
+                            displayEventName,
+                            style: AppTypography.textXsRegular.copyWith(
+                              color: kWhiteColor,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  // Right: ECO code + date
-                  if (showRound && displayEco.isNotEmpty) ...[
-                    SizedBox(width: 10.w),
-                    Text(
-                      displayEco,
-                      style: AppTypography.textXsMedium.copyWith(
-                        color: const Color(0xFFA1A1AA),
+                  // Center: ECO code
+                  if (showRound && displayEco.isNotEmpty)
+                    Expanded(
+                      child: Center(
+                        child: Text(
+                          displayEco,
+                          style: AppTypography.textXsRegular.copyWith(
+                            color: kWhiteColor,
+                          ),
+                        ),
                       ),
                     ),
-                  ],
-                  if (displayDate.isNotEmpty) ...[
-                    SizedBox(width: 8.w),
-                    Text(
-                      displayDate,
-                      style: AppTypography.textXsRegular.copyWith(
-                        color: const Color(0xFF71717A),
+                  // Right: Date
+                  if (displayDate.isNotEmpty)
+                    Expanded(
+                      child: Center(
+                        child: Text(
+                          displayDate,
+                          style: AppTypography.textXsRegular.copyWith(
+                            color: kWhiteColor,
+                          ),
+                        ),
                       ),
                     ),
-                  ],
                 ],
               ),
             ),
@@ -248,7 +263,7 @@ class LibraryGameCard extends ConsumerWidget {
 
   String _formatDate(DateTime? date) {
     if (date == null) return '';
-    return '${date.year}.${date.month.toString().padLeft(2, '0')}.${date.day.toString().padLeft(2, '0')}';
+    return '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
   }
 }
 
@@ -334,6 +349,54 @@ class _PlayerInfo extends StatelessWidget {
   }
 }
 
+/// Result score display: "½ - ½", "1 - 0", "0 - 1"
+/// Uses larger dash (18sp semibold) with smaller scores (12sp medium) per CSS spec.
+class _GameResultScore extends StatelessWidget {
+  const _GameResultScore({required this.status});
+
+  final GameStatus status;
+
+  @override
+  Widget build(BuildContext context) {
+    final (left, right) = switch (status) {
+      GameStatus.whiteWins => ('1', '0'),
+      GameStatus.blackWins => ('0', '1'),
+      GameStatus.draw => ('½', '½'),
+      _ => ('*', '*'),
+    };
+
+    final scoreStyle = TextStyle(
+      fontFamily: 'Inter',
+      fontSize: 12.sp,
+      fontWeight: FontWeight.w500,
+      letterSpacing: 0.005 * 12,
+      color: const Color(0xFF000000),
+    );
+
+    final dashStyle = TextStyle(
+      fontFamily: 'Inter',
+      fontSize: 18.sp,
+      fontWeight: FontWeight.w600,
+      height: 26 / 18,
+      letterSpacing: 0.001 * 18,
+      color: const Color(0xFF000000),
+    );
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Text(left, style: scoreStyle),
+        Padding(
+          padding: EdgeInsets.symmetric(horizontal: 4.w),
+          child: Text('-', style: dashStyle),
+        ),
+        Text(right, style: scoreStyle),
+      ],
+    );
+  }
+}
+
 /// Shows either eval bar for ongoing games or result text for finished games.
 /// Mirrors the behavior of _CenterContent in game_card.dart.
 class _ResultOrEvalBar extends StatelessWidget {
@@ -347,15 +410,9 @@ class _ResultOrEvalBar extends StatelessWidget {
     // Use effectiveGameStatus to handle DB update lag
     final effectiveStatus = game.effectiveGameStatus;
 
-    // If game is not ongoing, show result text
+    // If game is not ongoing, show result score
     if (effectiveStatus != GameStatus.ongoing) {
-      return Text(
-        effectiveStatus.displayText,
-        style: AppTypography.textSmMedium.copyWith(
-          color: const Color(0xFF09090B),
-          fontSize: 12.sp,
-        ),
-      );
+      return _GameResultScore(status: effectiveStatus);
     }
 
     // Check if engine gauge is enabled in settings
