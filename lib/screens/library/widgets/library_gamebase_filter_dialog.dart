@@ -17,6 +17,7 @@ import 'package:motor/motor.dart';
 /// - ratingFrom/ratingTo
 class GamebaseFilter {
   const GamebaseFilter({
+    this.tournamentType = GameTournamentTypeFilter.all,
     this.result = GameResultFilter.all,
     this.color = GameColorFilter.all,
     this.timeControl = GameTimeControlFilter.all,
@@ -26,6 +27,7 @@ class GamebaseFilter {
     this.maxRating = 3500,
   });
 
+  final GameTournamentTypeFilter tournamentType;
   final GameResultFilter result;
   final GameColorFilter color;
   final GameTimeControlFilter timeControl;
@@ -36,6 +38,7 @@ class GamebaseFilter {
 
   /// Check if any filter is active (not default)
   bool get hasActiveFilters =>
+      tournamentType != GameTournamentTypeFilter.all ||
       result != GameResultFilter.all ||
       color != GameColorFilter.all ||
       timeControl != GameTimeControlFilter.all ||
@@ -47,6 +50,7 @@ class GamebaseFilter {
   /// Count of active filters
   int get activeFilterCount {
     int count = 0;
+    if (tournamentType != GameTournamentTypeFilter.all) count++;
     if (result != GameResultFilter.all) count++;
     if (color != GameColorFilter.all) count++;
     if (timeControl != GameTimeControlFilter.all) count++;
@@ -56,6 +60,7 @@ class GamebaseFilter {
   }
 
   GamebaseFilter copyWith({
+    GameTournamentTypeFilter? tournamentType,
     GameResultFilter? result,
     GameColorFilter? color,
     GameTimeControlFilter? timeControl,
@@ -65,6 +70,7 @@ class GamebaseFilter {
     int? maxRating,
   }) {
     return GamebaseFilter(
+      tournamentType: tournamentType ?? this.tournamentType,
       result: result ?? this.result,
       color: color ?? this.color,
       timeControl: timeControl ?? this.timeControl,
@@ -122,6 +128,7 @@ class GamebaseFilter {
   bool operator ==(Object other) {
     if (identical(this, other)) return true;
     return other is GamebaseFilter &&
+        other.tournamentType == tournamentType &&
         other.result == result &&
         other.color == color &&
         other.timeControl == timeControl &&
@@ -133,6 +140,7 @@ class GamebaseFilter {
 
   @override
   int get hashCode => Object.hash(
+        tournamentType,
         result,
         color,
         timeControl,
@@ -167,6 +175,7 @@ class LibraryGamebaseFilterDialog extends StatefulWidget {
 
 class _LibraryGamebaseFilterDialogState
     extends State<LibraryGamebaseFilterDialog> {
+  late GameTournamentTypeFilter _tournamentType;
   late GameResultFilter _result;
   late GameColorFilter _color;
   late GameTimeControlFilter _timeControl;
@@ -179,6 +188,7 @@ class _LibraryGamebaseFilterDialogState
   @override
   void initState() {
     super.initState();
+    _tournamentType = widget.initialFilter.tournamentType;
     _result = widget.initialFilter.result;
     _color = widget.initialFilter.color;
     _timeControl = widget.initialFilter.timeControl;
@@ -244,14 +254,10 @@ class _LibraryGamebaseFilterDialogState
       insetPadding: EdgeInsets.zero,
       child: Container(
         width: dialogWidth,
-        constraints: BoxConstraints(maxHeight: 520.h),
+        constraints: BoxConstraints(maxHeight: 560.h),
         decoration: BoxDecoration(
-          color: kBlackColor,
-          borderRadius: BorderRadius.circular(16.br),
-          border: Border.all(
-            color: kDarkGreyColor.withValues(alpha: 0.3),
-            width: 1,
-          ),
+          color: kBackgroundColor,
+          borderRadius: BorderRadius.circular(4.br),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -278,7 +284,8 @@ class _LibraryGamebaseFilterDialogState
                         value: _result,
                         items: GameResultFilter.values,
                         itemLabel: (v) => v.displayText,
-                        onChanged: (v) => setState(() => _result = v),
+                        onChanged: (v) =>
+                            setState(() => _result = v),
                       ),
                       SizedBox(height: 20.h),
 
@@ -369,23 +376,20 @@ class _LibraryGamebaseFilterDialogState
 
   Widget _buildButtons() {
     return Padding(
-      padding: EdgeInsets.all(20.sp),
+      padding: EdgeInsets.fromLTRB(20.w, 12.h, 20.w, 16.h),
       child: Row(
         children: [
-          // Reset button
+          // Reset button — CSS: bg #1A1A1C, radius 4px
           Expanded(
-            child: SizedBox(
-              height: 48.h,
-              child: OutlinedButton(
-                onPressed: _resetFilters,
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: kWhiteColor,
-                  backgroundColor: kBlack2Color,
-                  side: BorderSide.none,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10.br),
-                  ),
+            child: GestureDetector(
+              onTap: _resetFilters,
+              child: Container(
+                height: 40.h,
+                decoration: BoxDecoration(
+                  color: kBlack2Color,
+                  borderRadius: BorderRadius.circular(4.br),
                 ),
+                alignment: Alignment.center,
                 child: Text(
                   'Reset',
                   style: AppTypography.textSmBold.copyWith(color: kWhiteColor),
@@ -393,21 +397,18 @@ class _LibraryGamebaseFilterDialogState
               ),
             ),
           ),
-          SizedBox(width: 12.w),
-          // Apply button
+          SizedBox(width: 16.w),
+          // Apply button — CSS: bg white, radius 4px
           Expanded(
-            child: SizedBox(
-              height: 48.h,
-              child: ElevatedButton(
-                onPressed: _applyFilters,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: kWhiteColor,
-                  foregroundColor: kBlackColor,
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10.br),
-                  ),
+            child: GestureDetector(
+              onTap: _applyFilters,
+              child: Container(
+                height: 40.h,
+                decoration: BoxDecoration(
+                  color: kWhiteColor,
+                  borderRadius: BorderRadius.circular(4.br),
                 ),
+                alignment: Alignment.center,
                 child: Text(
                   'Apply Filters',
                   style: AppTypography.textSmBold.copyWith(color: kBlackColor),
@@ -428,6 +429,7 @@ class _LibraryGamebaseFilterDialogState
   void _applyFilters() {
     HapticFeedbackService.buttonPress();
     final newFilter = GamebaseFilter(
+      tournamentType: _tournamentType,
       result: _result,
       color: _color,
       timeControl: _timeControl,
