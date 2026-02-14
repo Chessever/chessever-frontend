@@ -1,6 +1,4 @@
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
-import 'package:chessever2/repository/supabase/game/game_repository.dart';
-import 'package:chessever2/repository/supabase/game/games.dart' show Games;
 import 'package:chessever2/screens/gamebase/models/models.dart';
 import 'package:chessever2/screens/library/utils/gamebase_pgn_builder.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
@@ -69,7 +67,7 @@ class LibraryPlayerGamesState {
 }
 
 /// Provider for library player profile games
-/// Fetches from BOTH gamebase (historical) and supabase (live events)
+/// Fetches from gamebase (historical chess database) only
 final libraryPlayerGamesProvider = StateNotifierProvider.autoDispose.family<
     LibraryPlayerGamesNotifier, LibraryPlayerGamesState, LibraryPlayerProfileKey>(
   (ref, key) => LibraryPlayerGamesNotifier(ref, key),
@@ -87,32 +85,21 @@ class LibraryPlayerGamesNotifier extends StateNotifier<LibraryPlayerGamesState> 
 
   Future<void> _loadInitialGames() async {
     try {
-      // Fetch from both sources in parallel
-      final results = await Future.wait([
-        _fetchSupabaseGames(),
-        _fetchGamebaseGames(page: 1),
-      ], eagerError: false);
-
-      final supabaseGames = results[0];
-      final gamebaseGames = results[1];
-
+      final games = await _fetchGamebaseGames(page: 1);
       if (!mounted) return;
-
-      // Merge and deduplicate
-      final allGames = _mergeAndDeduplicate(supabaseGames, gamebaseGames);
 
       // Sort by date descending
       final epochFallback = DateTime.fromMillisecondsSinceEpoch(0);
-      allGames.sort((a, b) {
+      games.sort((a, b) {
         final aTime = a.lastMoveTime ?? epochFallback;
         final bTime = b.lastMoveTime ?? epochFallback;
         return bTime.compareTo(aTime);
       });
 
       state = state.copyWith(
-        games: allGames,
+        games: games,
         isLoading: false,
-        hasMore: gamebaseGames.length >= _pageSize,
+        hasMore: games.length >= _pageSize,
         currentPage: 1,
         error: null,
       );
@@ -130,25 +117,13 @@ class LibraryPlayerGamesNotifier extends StateNotifier<LibraryPlayerGamesState> 
 
     try {
       final nextPage = state.currentPage + 1;
-      final newGamebaseGames = await _fetchGamebaseGames(page: nextPage);
+      final newGames = await _fetchGamebaseGames(page: nextPage);
       if (!mounted) return;
 
-      // Merge new games with existing, deduplicate
-      final existingGames = List<GamesTourModel>.from(state.games);
-      final merged = _mergeAndDeduplicate(existingGames, newGamebaseGames);
-
-      // Sort by date descending
-      final epochFallback = DateTime.fromMillisecondsSinceEpoch(0);
-      merged.sort((a, b) {
-        final aTime = a.lastMoveTime ?? epochFallback;
-        final bTime = b.lastMoveTime ?? epochFallback;
-        return bTime.compareTo(aTime);
-      });
-
       state = state.copyWith(
-        games: merged,
+        games: [...state.games, ...newGames],
         isLoading: false,
-        hasMore: newGamebaseGames.length >= _pageSize,
+        hasMore: newGames.length >= _pageSize,
         currentPage: nextPage,
       );
     } catch (e) {
@@ -161,66 +136,6 @@ class LibraryPlayerGamesNotifier extends StateNotifier<LibraryPlayerGamesState> 
   Future<void> refreshGames() async {
     state = state.copyWith(isLoading: true, error: null);
     await _loadInitialGames();
-  }
-
-  /// Fetch games from Supabase (live events tracked by the app)
-  /// Uses comprehensive querying:
-  /// 1. If FIDE ID available: query by FIDE ID (most accurate)
-  /// 2. Also query by player name to catch games where FIDE ID might be missing
-  /// 3. Merge and deduplicate results
-  Future<List<GamesTourModel>> _fetchSupabaseGames() async {
-    try {
-      final gameRepo = _ref.read(gameRepositoryProvider);
-      final allGames = <Games>[];
-      final seenIds = <String>{};
-
-      // Helper to add unique games
-      void addUniqueGames(List<Games> games) {
-        for (final game in games) {
-          if (seenIds.add(game.id)) {
-            allGames.add(game);
-          }
-        }
-      }
-
-      // Query by FIDE ID if available (most accurate - uses indexed column)
-      if (_playerKey.hasFideId) {
-        try {
-          final fideIdGames = await gameRepo.getGamesByFideId(
-            _playerKey.fideId.toString(),
-            limit: 500,
-          );
-          addUniqueGames(fideIdGames);
-          debugPrint('[LibraryPlayerGames] Fetched ${fideIdGames.length} games by FIDE ID');
-        } catch (e) {
-          debugPrint('[LibraryPlayerGames] FIDE ID query error: $e');
-        }
-      }
-
-      // Also query by player name to catch games where FIDE ID might be missing
-      // This is especially useful for older games or games with data entry issues
-      final playerName = _playerKey.playerName.trim();
-      if (playerName.isNotEmpty) {
-        try {
-          final nameGames = await gameRepo.getGamesByPlayerName(
-            playerName,
-            limit: 300,
-          );
-          final beforeCount = allGames.length;
-          addUniqueGames(nameGames);
-          final addedByName = allGames.length - beforeCount;
-          debugPrint('[LibraryPlayerGames] Fetched ${nameGames.length} games by name, added $addedByName new');
-        } catch (e) {
-          debugPrint('[LibraryPlayerGames] Name query error: $e');
-        }
-      }
-
-      debugPrint('[LibraryPlayerGames] Total supabase games: ${allGames.length}');
-      return allGames.map((game) => GamesTourModel.fromGame(game)).toList();
-    } catch (e) {
-      debugPrint('[LibraryPlayerGames] Supabase fetch error: $e');
-      return [];
-    }
   }
 
   /// Fetch games from Gamebase (historical chess database)
@@ -425,58 +340,6 @@ class LibraryPlayerGamesNotifier extends StateNotifier<LibraryPlayerGamesState> 
         lastMoveTime: date,
       );
     }).toList(growable: false);
-  }
-
-  /// Merge games from both sources and remove duplicates
-  List<GamesTourModel> _mergeAndDeduplicate(
-    List<GamesTourModel> supabaseGames,
-    List<GamesTourModel> gamebaseGames,
-  ) {
-    final seen = <String>{};
-    final result = <GamesTourModel>[];
-
-    // Add supabase games first (higher priority - more accurate data)
-    for (final game in supabaseGames) {
-      final key = _createDeduplicationKey(game);
-      if (!seen.contains(key)) {
-        seen.add(key);
-        result.add(game);
-      }
-    }
-
-    // Add gamebase games that aren't duplicates
-    for (final game in gamebaseGames) {
-      final key = _createDeduplicationKey(game);
-      if (!seen.contains(key)) {
-        seen.add(key);
-        result.add(game);
-      }
-    }
-
-    return result;
-  }
-
-  /// Create a composite key for deduplication
-  String _createDeduplicationKey(GamesTourModel game) {
-    final whiteName = _normalizeName(game.whitePlayer.name);
-    final blackName = _normalizeName(game.blackPlayer.name);
-    final date = game.lastMoveTime?.toIso8601String().split('T').first ?? '';
-    final result = game.gameStatus.displayText;
-
-    return '$whiteName|$blackName|$date|$result';
-  }
-
-  /// Normalize player name for comparison (deduplication)
-  String _normalizeName(String name) {
-    final parts = name
-        .toLowerCase()
-        .replaceAll(',', '')
-        .replaceAll('.', '')
-        .split(' ')
-        .where((s) => s.isNotEmpty)
-        .toList()
-      ..sort();
-    return parts.join('|');
   }
 
   /// Normalize player name for search matching

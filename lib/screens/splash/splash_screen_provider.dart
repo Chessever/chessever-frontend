@@ -45,46 +45,77 @@ class _SplashScreenProvider {
   }
 
   Future<void> runAuthenticationPreProcessor(BuildContext context) async {
-    // Check network connectivity first - we need it for critical services
-    final hasNetwork = await _hasNetworkConnectivity();
-    if (!hasNetwork) {
-      throw NoNetworkException('No internet connection. Please check your network and try again.');
-    }
+    // Tournament data: use local cache when available to avoid blocking on
+    // slow network / auth-token refresh race during cold start.
+    final currentStorage =
+        ref.read(groupBroadcastLocalStorage(GroupEventCategory.current));
+    final forYouStorage =
+        ref.read(groupBroadcastLocalStorage(GroupEventCategory.forYou));
 
-    // Fetch critical tournament data - this MUST succeed for proper app experience
-    // Using 15 second timeout to allow for slow networks
+    bool hasCachedData = false;
     try {
-      await Future.wait([
-        ref
-            .read(groupBroadcastLocalStorage(GroupEventCategory.current))
-            .fetchAndSaveGroupBroadcasts(),
-        ref
-            .read(groupBroadcastLocalStorage(GroupEventCategory.forYou))
-            .fetchAndSaveGroupBroadcasts(),
-        ref
-            .read(starredProvider(GroupEventCategory.current.name).notifier)
-            .init(),
-        ref
-            .read(starredProvider(GroupEventCategory.forYou.name).notifier)
-            .init(),
-      ]).timeout(const Duration(seconds: 15));
-    } on TimeoutException {
-      throw NoNetworkException('Connection timed out. Please try again.');
-    } catch (e) {
-      if (kDebugMode) {
-        print('⚠️ Tournament data fetch failed: $e');
+      hasCachedData =
+          (await currentStorage.getGroupBroadcasts()).isNotEmpty;
+    } catch (_) {}
+
+    if (!hasCachedData) {
+      // No cache (first launch or cleared data) — need network fetch.
+      final hasNetwork = await _hasNetworkConnectivity();
+      if (!hasNetwork) {
+        throw NoNetworkException(
+          'No internet connection. Please check your network and try again.',
+        );
       }
-      // Check if it's a network-related error
-      if (e.toString().contains('SocketException') ||
-          e.toString().contains('Failed host lookup') ||
-          e.toString().contains('No address associated')) {
-        throw NoNetworkException('Network error. Please check your connection.');
+
+      try {
+        await Future.wait([
+          currentStorage.fetchAndSaveGroupBroadcasts(),
+          forYouStorage.fetchAndSaveGroupBroadcasts(),
+          ref
+              .read(starredProvider(GroupEventCategory.current.name).notifier)
+              .init(),
+          ref
+              .read(starredProvider(GroupEventCategory.forYou.name).notifier)
+              .init(),
+        ]).timeout(const Duration(seconds: 15));
+      } on TimeoutException {
+        throw NoNetworkException('Connection timed out. Please try again.');
+      } catch (e) {
+        if (kDebugMode) {
+          print('⚠️ Tournament data fetch failed: $e');
+        }
+        if (e.toString().contains('SocketException') ||
+            e.toString().contains('Failed host lookup') ||
+            e.toString().contains('No address associated')) {
+          throw NoNetworkException(
+            'Network error. Please check your connection.',
+          );
+        }
+        rethrow;
       }
-      // For other errors, rethrow to be handled by splash screen
-      rethrow;
+    } else {
+      // Cache exists — proceed immediately, refresh in background.
+      // Warm up starred providers (constructor calls init).
+      ref.read(starredProvider(GroupEventCategory.current.name).notifier);
+      ref.read(starredProvider(GroupEventCategory.forYou.name).notifier);
+
+      unawaited(
+        Future(() async {
+          try {
+            await Future.wait([
+              currentStorage.fetchAndSaveGroupBroadcasts(),
+              forYouStorage.fetchAndSaveGroupBroadcasts(),
+            ]);
+          } catch (e) {
+            if (kDebugMode) {
+              print('⚠️ Background tournament refresh failed: $e');
+            }
+          }
+        }),
+      );
     }
 
-    // Non-critical: Load past tournaments in background (defer to improve perceived speed)
+    // Non-critical: Load past tournaments in background
     unawaited(
       Future(() async {
         try {

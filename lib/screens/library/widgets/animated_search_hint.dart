@@ -12,10 +12,17 @@ class AnimatedSearchHint extends StatefulWidget {
   /// Text style for the hint (color will be overridden)
   final TextStyle? textStyle;
 
+  /// Phrases to cycle through
+  final List<String> phrases;
+
   const AnimatedSearchHint({
     super.key,
     this.textColor = const Color(0xFFA1A1AA),
     this.textStyle,
+    this.phrases = const [
+      'Search books',
+      'Find a book...',
+    ],
   });
 
   @override
@@ -24,13 +31,7 @@ class AnimatedSearchHint extends StatefulWidget {
 
 class _AnimatedSearchHintState extends State<AnimatedSearchHint>
     with SingleTickerProviderStateMixin {
-  // Hint text phrases to cycle through
-  static const List<String> _hintPhrases = [
-    'Search games...',
-    'Search players...',
-    'Search openings...',
-    'Search among millions...',
-  ];
+  late final List<String> _hintPhrases;
 
   late AnimationController _controller;
   late Animation<double> _fadeOutAnimation;
@@ -51,6 +52,7 @@ class _AnimatedSearchHintState extends State<AnimatedSearchHint>
   @override
   void initState() {
     super.initState();
+    _hintPhrases = widget.phrases;
 
     _controller = AnimationController(
       vsync: this,

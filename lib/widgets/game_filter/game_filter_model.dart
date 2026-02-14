@@ -97,6 +97,26 @@ extension GameTimeControlFilterX on GameTimeControlFilter {
   }
 }
 
+/// Tournament type filter options
+enum GameTournamentTypeFilter { all, roundRobin, swiss, knockout, team }
+
+extension GameTournamentTypeFilterX on GameTournamentTypeFilter {
+  String get displayText {
+    switch (this) {
+      case GameTournamentTypeFilter.all:
+        return 'All Types';
+      case GameTournamentTypeFilter.roundRobin:
+        return 'Round Robin';
+      case GameTournamentTypeFilter.swiss:
+        return 'Swiss';
+      case GameTournamentTypeFilter.knockout:
+        return 'Knockout';
+      case GameTournamentTypeFilter.team:
+        return 'Team';
+    }
+  }
+}
+
 /// ECO opening filter - supports individual ECO codes (A00-E99)
 class GameEcoFilter {
   const GameEcoFilter({this.code});

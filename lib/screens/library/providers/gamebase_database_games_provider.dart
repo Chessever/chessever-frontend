@@ -115,55 +115,27 @@ class DatabaseGamesPaginationNotifier extends StateNotifier<DatabaseGamesPaginat
   Future<_PageResult> _fetchPage(int pageNumber) async {
     final repo = _ref.read(gamebaseRepositoryProvider);
 
-    // Build structured where clause from filter
-    final whereConditions = <Map<String, dynamic>>[];
-    if (_filter.resultApiValue != null) {
-      whereConditions.add({
-        'field': 'result',
-        'op': 'eq',
-        'value': _filter.resultApiValue,
-      });
-    }
-    if (_filter.timeControlApiValue != null) {
-      whereConditions.add({
-        'field': 'timeControl',
-        'op': 'eq',
-        'value': _filter.timeControlApiValue,
-      });
-    }
-    if (_filter.minRating > 0) {
-      whereConditions.add({
-        'field': 'whiteElo',
-        'op': 'gte',
-        'value': _filter.minRating,
-      });
-    }
-    if (_filter.maxRating < 3500) {
-      whereConditions.add({
-        'field': 'whiteElo',
-        'op': 'lte',
-        'value': _filter.maxRating,
-      });
-    }
+    // Use GET /api/search (token-based + FTS) because it is indexed and fast.
+    // POST /api/search/query currently can be very slow for free-text search.
+    final response = await repo.globalSearch(
+      query: _query.trim().isEmpty ? '*' : _query.trim(),
+      resources: const ['game'],
+      pageNumber: pageNumber,
+      pageSize: _pageSize,
+      result: _filter.resultApiValue,
+      color: _filter.colorApiValue,
+      timeControl: _filter.timeControlApiValue,
+      yearFrom: _filter.minYear != 1800 ? _filter.minYear : null,
+      yearTo: _filter.maxYear != DateTime.now().year ? _filter.maxYear : null,
+      ratingFrom: _filter.minRating > 0 ? _filter.minRating : null,
+      ratingTo: _filter.maxRating < 3500 ? _filter.maxRating : null,
+    );
 
-    final body = <String, dynamic>{
-      'resource': 'game',
-      'pageNumber': pageNumber,
-      'pageSize': _pageSize,
-      'orderBy': [
-        {'field': 'date', 'direction': 'desc'},
-      ],
-      if (_query.trim().isNotEmpty) 'q': _query.trim(),
-      if (whereConditions.length == 1)
-        'where': whereConditions.first
-      else if (whereConditions.length > 1)
-        'where': {'and': whereConditions},
-    };
+    final gameResults = response.results
+        .where((r) => r.resource == 'game')
+        .toList(growable: false);
 
-    final response = await repo.queryResource(body: body);
-    final rows = response.data;
-
-    if (rows.isEmpty) {
+    if (gameResults.isEmpty) {
       return _PageResult(
         games: const [],
         totalCount: response.metadata.totalCount ?? 0,
@@ -171,25 +143,28 @@ class DatabaseGamesPaginationNotifier extends StateNotifier<DatabaseGamesPaginat
       );
     }
 
-    final games = rows.map((row) {
-      final id = (row['id']?.toString() ?? '').trim();
+    final games = gameResults.map((result) {
+      final preview = result.preview ?? const <String, dynamic>{};
+
+      final id = (preview['id']?.toString() ?? result.id).trim();
       final safeId = id.isNotEmpty ? id : 'unknown';
-      final timeControl = row['timeControl']?.toString();
-      final date = _parseDate(row['date']);
-      final resultStr = row['result']?.toString() ?? '*';
 
-      final whiteName = _name(row, 'whiteName', 'White');
-      final blackName = _name(row, 'blackName', 'Black');
+      final timeControl = preview['timeControl']?.toString();
+      final date = _parseDate(preview['date']);
+      final resultStr = preview['result']?.toString() ?? '*';
 
-      final eco = row['eco']?.toString() ?? '';
-      final opening = row['opening']?.toString() ?? '';
-      final variation = row['variation']?.toString() ?? '';
-      final event = row['event']?.toString() ?? 'Gamebase';
-      final site = row['site']?.toString();
+      final whiteName = (preview['white']?.toString() ?? '').trim();
+      final blackName = (preview['black']?.toString() ?? '').trim();
+
+      final eco = preview['eco']?.toString() ?? '';
+      final opening = preview['opening']?.toString() ?? '';
+      final variation = preview['variation']?.toString() ?? '';
+      final event = preview['event']?.toString() ?? 'Gamebase';
+      final site = preview['site']?.toString();
 
       final pgn = buildHeaderOnlyPgn(
-        whiteName: whiteName,
-        blackName: blackName,
+        whiteName: whiteName.isNotEmpty ? whiteName : 'White',
+        blackName: blackName.isNotEmpty ? blackName : 'Black',
         result: resultStr,
         event: event,
         site: site,
@@ -199,29 +174,29 @@ class DatabaseGamesPaginationNotifier extends StateNotifier<DatabaseGamesPaginat
         variation: variation,
       );
 
-      final whiteElo = (row['whiteElo'] as num?)?.toInt() ?? 0;
-      final blackElo = (row['blackElo'] as num?)?.toInt() ?? 0;
-      final whiteFideId = row['whiteFideId']?.toString();
-      final blackFideId = row['blackFideId']?.toString();
+      final whiteElo = (preview['whiteElo'] as num?)?.toInt() ?? 0;
+      final blackElo = (preview['blackElo'] as num?)?.toInt() ?? 0;
+      final whiteFed = preview['whiteFed']?.toString() ?? '';
+      final blackFed = preview['blackFed']?.toString() ?? '';
 
       final whiteCard = PlayerCard(
-        name: whiteName,
+        name: whiteName.isNotEmpty ? whiteName : 'White',
         federation: '',
         title: '',
         rating: whiteElo,
-        countryCode: row['whiteFed']?.toString() ?? '',
+        countryCode: whiteFed,
         team: null,
-        fideId: int.tryParse(whiteFideId ?? ''),
+        fideId: null,
       );
 
       final blackCard = PlayerCard(
-        name: blackName,
+        name: blackName.isNotEmpty ? blackName : 'Black',
         federation: '',
         title: '',
         rating: blackElo,
-        countryCode: row['blackFed']?.toString() ?? '',
+        countryCode: blackFed,
         team: null,
-        fideId: int.tryParse(blackFideId ?? ''),
+        fideId: null,
       );
 
       final formatCode =
@@ -257,11 +232,6 @@ class DatabaseGamesPaginationNotifier extends StateNotifier<DatabaseGamesPaginat
   static DateTime? _parseDate(Object? raw) {
     if (raw == null) return null;
     return DateTime.tryParse(raw.toString());
-  }
-
-  static String _name(Map<String, dynamic> row, String key, String fallback) {
-    final v = (row[key]?.toString() ?? '').trim();
-    return v.isNotEmpty ? v : fallback;
   }
 }
 

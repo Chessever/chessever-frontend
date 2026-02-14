@@ -46,7 +46,7 @@ class _LibraryPlayerAboutTabState extends ConsumerState<LibraryPlayerAboutTab>
         ? ref.watch(playerProfileDataProvider(_fideIdInt!))
         : const AsyncValue<PlayerProfileData?>.data(null);
 
-    // Watch games from library provider (combined gamebase + supabase)
+    // Watch games from library provider (gamebase)
     final gamesState = ref.watch(libraryPlayerGamesProvider(widget.playerKey));
 
     return RefreshIndicator(

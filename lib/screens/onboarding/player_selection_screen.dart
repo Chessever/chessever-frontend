@@ -549,6 +549,7 @@ Widget _buildPlayerList(
       final delay = shouldAnimate ? (index * 18).ms : Duration.zero;
 
       final tile = _PlayerTile(
+        key: ValueKey(fideId),
         player: player,
         isSelected: isSelected,
         onTap: () => onToggle(player),
@@ -711,6 +712,7 @@ void _performToggle(
 
 class _PlayerTile extends HookWidget {
   const _PlayerTile({
+    super.key,
     required this.player,
     required this.isSelected,
     required this.onTap,
@@ -865,6 +867,7 @@ class _PlayerAvatar extends HookWidget {
     final photoUrl = useState<String?>(null);
 
     useEffect(() {
+      photoUrl.value = null;
       if (fideId.isNotEmpty) {
         FidePhotoService.getPhotoUrlOrNull(fideId).then((url) {
           if (url != null) {

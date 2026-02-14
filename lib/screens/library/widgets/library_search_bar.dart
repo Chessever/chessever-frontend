@@ -5,6 +5,8 @@ import 'package:chessever2/screens/library/widgets/animated_search_hint.dart';
 import 'package:chessever2/screens/library/widgets/library_search_overlay.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/utils/svg_asset.dart';
+import 'package:chessever2/widgets/svg_widget.dart';
 
 import 'package:easy_debounce/easy_debounce.dart';
 import 'package:flutter/material.dart';
@@ -14,27 +16,31 @@ import 'package:motor/motor.dart';
 class LibrarySearchBar extends ConsumerStatefulWidget {
   final TextEditingController controller;
   final Function(String) onChanged;
-  final Function(LibraryFolder) onFolderTap;
-  final Function(SavedAnalysis) onAnalysisTap;
-  final Function(GamebasePlayer) onPlayerTap;
-  final Function(Map<String, dynamic>) onGameTap;
+  final Function(LibraryFolder)? onFolderTap;
+  final Function(SavedAnalysis)? onAnalysisTap;
+  final Function(GamebasePlayer)? onPlayerTap;
+  final Function(Map<String, dynamic>)? onGameTap;
   final VoidCallback? onProfileTap;
+  final VoidCallback? onFilterTap;
   final bool enableOverlay;
   final String hintText;
   final FocusNode? focusNode;
+  final List<String>? hintPhrases;
 
   const LibrarySearchBar({
     super.key,
     required this.controller,
     required this.onChanged,
-    required this.onFolderTap,
-    required this.onAnalysisTap,
-    required this.onPlayerTap,
-    required this.onGameTap,
+    this.onFolderTap,
+    this.onAnalysisTap,
+    this.onPlayerTap,
+    this.onGameTap,
     this.onProfileTap,
+    this.onFilterTap,
     this.enableOverlay = true,
-    this.hintText = 'Search',
+    this.hintText = 'Search books',
     this.focusNode,
+    this.hintPhrases,
   });
 
   @override
@@ -81,7 +87,6 @@ class _LibrarySearchBarState extends ConsumerState<LibrarySearchBar> {
       setState(() => _showOverlay = shouldShowOverlay);
     }
 
-    // Debounce handled by parent or provider usually, but we call onChanged
     EasyDebounce.debounce(
       'lib_search_debounce',
       const Duration(milliseconds: 100),
@@ -115,32 +120,18 @@ class _LibrarySearchBarState extends ConsumerState<LibrarySearchBar> {
           ),
         Column(
           children: [
+            // CSS: bg #1A1A1C, radius 12px, height 40px, no border
             SingleMotionBuilder(
               motion: CupertinoMotion.snappy(),
               value: _effectiveFocusNode.hasFocus ? 1.0 : 0.0,
               builder: (context, value, child) {
+                final clamped = value.clamp(0.0, 1.0);
                 return Transform.scale(
-                  scale: 0.98 + (value * 0.02),
+                  scale: 0.98 + (clamped * 0.02),
                   child: Container(
                     decoration: BoxDecoration(
-                      color: const Color(0xFF09090B), // Zinc 950
+                      color: const Color(0xFF1A1A1C),
                       borderRadius: BorderRadius.circular(12.br),
-                      border: Border.all(
-                        color:
-                            _effectiveFocusNode.hasFocus
-                                ? const Color(0xFF52525B) // Zinc 600
-                                : const Color(0xFF27272A), // Zinc 800
-                      ),
-                      boxShadow:
-                          _effectiveFocusNode.hasFocus
-                              ? [
-                                BoxShadow(
-                                  color: Colors.black.withOpacity(0.25),
-                                  blurRadius: 12,
-                                  offset: const Offset(0, 4),
-                                ),
-                              ]
-                              : [],
                     ),
                     child: child,
                   ),
@@ -175,19 +166,19 @@ class _LibrarySearchBarState extends ConsumerState<LibrarySearchBar> {
                   query: widget.controller.text,
                   onFolderTap: (f) {
                     _hideOverlay();
-                    widget.onFolderTap(f);
+                    widget.onFolderTap?.call(f);
                   },
                   onAnalysisTap: (a) {
                     _hideOverlay();
-                    widget.onAnalysisTap(a);
+                    widget.onAnalysisTap?.call(a);
                   },
                   onPlayerTap: (p) {
                     _hideOverlay();
-                    widget.onPlayerTap(p);
+                    widget.onPlayerTap?.call(p);
                   },
                   onGameTap: (g) {
                     _hideOverlay();
-                    widget.onGameTap(g);
+                    widget.onGameTap?.call(g);
                   },
                 ),
               ),
@@ -200,39 +191,42 @@ class _LibrarySearchBarState extends ConsumerState<LibrarySearchBar> {
   Widget _buildInputRow() {
     final isEmpty = widget.controller.text.isEmpty;
 
+    // CSS: height 40px, padding 4px 12px
     return SizedBox(
-      height: 44.h,
+      height: 40.h,
       child: Row(
         children: [
           SizedBox(width: 12.w),
+          // CSS: search icon 16x16, rgba(255,255,255,0.7)
           Icon(
             Icons.search,
-            size: 20.sp,
-            color: const Color(0xFFA1A1AA), // Zinc 400
+            size: 16.sp,
+            color: const Color(0xFFFFFFFF).withValues(alpha: 0.7),
           ),
-          SizedBox(width: 8.w),
+          SizedBox(width: 4.w),
           Expanded(
             child: Stack(
               alignment: Alignment.centerLeft,
               children: [
                 // Animated hint text (shown when empty and not focused)
                 if (isEmpty && !_effectiveFocusNode.hasFocus)
-                  const AnimatedSearchHint(
-                    textColor: Color(0xFFA1A1AA), // Zinc 400
+                  AnimatedSearchHint(
+                    textColor: const Color(0xFFFFFFFF).withValues(alpha: 0.7),
+                    textStyle: AppTypography.textXsRegular,
+                    phrases: widget.hintPhrases ?? const ['Search books', 'Find a book...'],
                   ),
-                // TextField (always present but transparent hint when animated)
+                // CSS: 12px, Inter, rgba(255,255,255,0.7)
                 TextField(
                   controller: widget.controller,
                   focusNode: _effectiveFocusNode,
-                  style: AppTypography.textSmRegular.copyWith(
-                    color: const Color(0xFFFAFAFA), // Zinc 50
+                  style: AppTypography.textXsRegular.copyWith(
+                    color: const Color(0xFFFAFAFA),
                   ),
                   decoration: InputDecoration(
                     isDense: true,
-                    // Show static hint only when focused and empty
                     hintText: _effectiveFocusNode.hasFocus ? widget.hintText : null,
-                    hintStyle: AppTypography.textSmRegular.copyWith(
-                      color: const Color(0xFFA1A1AA), // Zinc 400
+                    hintStyle: AppTypography.textXsRegular.copyWith(
+                      color: const Color(0xFFFFFFFF).withValues(alpha: 0.7),
                     ),
                     border: InputBorder.none,
                     contentPadding: EdgeInsets.zero,
@@ -246,11 +240,31 @@ class _LibrarySearchBarState extends ConsumerState<LibrarySearchBar> {
               onTap: _clearSearch,
               child: Icon(
                 Icons.close,
-                size: 20.sp,
-                color: const Color(0xFFA1A1AA),
+                size: 16.sp,
+                color: const Color(0xFFFFFFFF).withValues(alpha: 0.7),
+              ),
+            )
+          else if (!_effectiveFocusNode.hasFocus)
+            // CSS: list-filter icon 24x24 in 32x32 container, radius 4px
+            GestureDetector(
+              onTap: widget.onFilterTap,
+              child: Container(
+                width: 32.h,
+                height: 32.h,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1A1A1C),
+                  borderRadius: BorderRadius.circular(4.br),
+                ),
+                child: Center(
+                  child: SvgWidget(
+                    SvgAsset.listFilterIcon,
+                    width: 24.sp,
+                    height: 24.sp,
+                  ),
+                ),
               ),
             ),
-          SizedBox(width: 12.w),
+          SizedBox(width: isEmpty && !_effectiveFocusNode.hasFocus ? 4.w : 12.w),
         ],
       ),
     );
