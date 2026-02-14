@@ -57,4 +57,5 @@ class SvgAsset {
   static const chat = 'assets/svgs/chat.svg';
   static const check = 'assets/svgs/check.svg';
   static const twemoji_notebook = 'assets/svgs/twemoji_notebook.svg';
+  static const folderOutline = 'assets/svgs/folder_outline.svg';
 }

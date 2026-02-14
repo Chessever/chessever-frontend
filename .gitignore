@@ -170,8 +170,12 @@ app.*.symbols
 # MCP configuration (personal development tools)
 .mcp.json
 openapi.json
+openapi.yaml
 lichessopenapi.json
 promo-video/
+
+# Supabase CLI local state
+supabase/.temp/
 
 # Firebase configuration (contains API keys)
 **/google-services.json

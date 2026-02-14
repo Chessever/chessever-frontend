@@ -1,15 +1,20 @@
 import 'dart:async';
 
+import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
+import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/screens/library/widgets/add_to_folder_sheet.dart';
 import 'package:chessever2/screens/library/widgets/live_gamebase_search_game_card.dart';
 import 'package:chessever2/screens/player_profile/provider/player_profile_provider.dart';
+import 'package:chessever2/screens/player_profile/tabs/player_events_tab.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/board_game_card_wrapper_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/grid_game_card_wrapper_widget.dart';
+import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
 import 'package:chessever2/theme/app_theme.dart';
+import 'package:chessever2/widgets/event_card/event_card.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
@@ -22,7 +27,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:intl/intl.dart';
 
 /// Games tab showing all games of a player with comprehensive filters
 class PlayerGamesTab extends ConsumerStatefulWidget {
@@ -45,9 +49,6 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
   Timer? _debounceTimer;
-
-  /// Track collapsed state for date sections
-  final Set<String> _collapsedDates = {};
 
   @override
   bool get wantKeepAlive => true;
@@ -100,54 +101,64 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
     }
   }
 
-  /// Group games by date
-  Map<String, List<GamesTourModel>> _groupGamesByDate(List<GamesTourModel> games) {
+  /// Group games by event (tourId).
+  /// Input games are already sorted by date descending, so insertion order
+  /// in the LinkedHashMap gives events ordered by most-recent game first.
+  Map<String, List<GamesTourModel>> _groupGamesByEvent(List<GamesTourModel> games) {
     final grouped = <String, List<GamesTourModel>>{};
-    const unknownDateKey = '0000-00-00';
-
     for (final game in games) {
-      final date = game.lastMoveTime;
-      final dateKey = date != null
-          ? DateFormat('yyyy-MM-dd').format(date)
-          : unknownDateKey;
-      grouped.putIfAbsent(dateKey, () => []).add(game);
+      grouped.putIfAbsent(game.tourId, () => []).add(game);
     }
-
-    final sortedKeys = grouped.keys.toList()..sort((a, b) => b.compareTo(a));
-    return Map.fromEntries(
-      sortedKeys.map((key) => MapEntry(key, grouped[key]!)),
-    );
+    return grouped;
   }
 
-  String _formatDateHeader(String dateKey) {
-    if (dateKey == '0000-00-00') {
-      return 'Unknown date';
-    }
+  /// Compute the player's score in a set of games (wins=1, draws=0.5).
+  double _computePlayerScore(List<GamesTourModel> eventGames) {
+    double score = 0;
+    final fideId = widget.fideId;
+    final playerName = widget.playerName.trim().toLowerCase();
 
-    final date = DateTime.parse(dateKey);
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final yesterday = today.subtract(const Duration(days: 1));
-    final gameDate = DateTime(date.year, date.month, date.day);
+    for (final game in eventGames) {
+      bool isWhite = false;
+      bool isBlack = false;
 
-    if (gameDate == today) {
-      return 'Today';
-    } else if (gameDate == yesterday) {
-      return 'Yesterday';
-    } else {
-      return DateFormat('EEEE, MMM d, yyyy').format(date);
-    }
-  }
-
-  void _toggleDateSection(String dateKey) {
-    HapticFeedback.lightImpact();
-    setState(() {
-      if (_collapsedDates.contains(dateKey)) {
-        _collapsedDates.remove(dateKey);
-      } else {
-        _collapsedDates.add(dateKey);
+      if (fideId != null) {
+        isWhite = game.whitePlayer.fideId == fideId;
+        isBlack = game.blackPlayer.fideId == fideId;
       }
-    });
+      if (!isWhite && !isBlack) {
+        isWhite = game.whitePlayer.name.toLowerCase().contains(playerName);
+        isBlack = game.blackPlayer.name.toLowerCase().contains(playerName);
+      }
+      if (!isWhite && !isBlack) continue;
+
+      if ((isWhite && game.gameStatus == GameStatus.whiteWins) ||
+          (isBlack && game.gameStatus == GameStatus.blackWins)) {
+        score += 1.0;
+      } else if (game.gameStatus == GameStatus.draw) {
+        score += 0.5;
+      }
+    }
+    return score;
+  }
+
+  Future<void> _navigateToEvent(String tourId) async {
+    HapticFeedbackService.buttonPress();
+    try {
+      final broadcast = await ref
+          .read(groupBroadcastRepositoryProvider)
+          .getGroupBroadcastById(tourId);
+      ref.read(selectedBroadcastModelProvider.notifier).state = broadcast;
+      if (!mounted) return;
+      if (ref.read(selectedBroadcastModelProvider) != null) {
+        Navigator.pushNamed(context, '/tournament_detail_screen');
+      }
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Unable to open event')),
+      );
+    }
   }
 
   @override
@@ -157,6 +168,12 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
     final state = ref.watch(playerProfileGamesKeyProvider(_playerKey));
     final viewMode = ref.watch(gamesListViewModeProvider);
     final horizontalPadding = ResponsiveHelper.adaptive(phone: 16.w, tablet: 24.w);
+
+    // Watch event data for event-grouped display
+    final eventCardsAsync = widget.fideId != null
+        ? ref.watch(playerEventCardsProvider(widget.fideId!))
+        : const AsyncValue<Map<String, GroupEventCardModel>>.data({});
+    final eventsAsync = ref.watch(playerEventsKeyProvider(_playerKey));
 
     Widget content = RefreshIndicator(
       onRefresh: () async {
@@ -199,7 +216,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
           ),
 
           // Content
-          _buildContentSliver(state, viewMode),
+          _buildContentSliver(state, viewMode, eventCardsAsync, eventsAsync),
 
           // Bottom padding
           SliverToBoxAdapter(child: SizedBox(height: 24.h)),
@@ -466,7 +483,12 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
     );
   }
 
-  Widget _buildContentSliver(PlayerProfileGamesState state, GamesListViewMode viewMode) {
+  Widget _buildContentSliver(
+    PlayerProfileGamesState state,
+    GamesListViewMode viewMode,
+    AsyncValue<Map<String, GroupEventCardModel>> eventCardsAsync,
+    AsyncValue<List<PlayerEventData>> eventsAsync,
+  ) {
     if (state.isLoading && state.allGames.isEmpty) {
       return SliverFillRemaining(
         hasScrollBody: false,
@@ -506,132 +528,129 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
     final isGridMode = viewMode == GamesListViewMode.chessBoardGrid;
     final isChessBoardVisible = viewMode == GamesListViewMode.chessBoard;
 
-    // Create GamesScreenModel for GameCardWrapperWidget
-    final gamesData = GamesScreenModel(
-      gamesTourModels: games,
-      pinnedGamedIs: const [],
-    );
-
-    // Group games by date
-    final gamesByDate = _groupGamesByDate(games);
+    // Group games by event (tourId)
+    final gamesByEvent = _groupGamesByEvent(games);
+    final eventCards = eventCardsAsync.valueOrNull ?? {};
+    final eventDataList = eventsAsync.valueOrNull ?? [];
+    final eventDataMap = {for (final e in eventDataList) e.tourId: e};
 
     // Build list items
     final items = <Widget>[];
     bool isFirstGameCard = true;
+    bool isFirstEvent = true;
 
-    for (final entry in gamesByDate.entries) {
-      final dateKey = entry.key;
-      final dateGames = entry.value;
-      final isCollapsed = _collapsedDates.contains(dateKey);
+    for (final entry in gamesByEvent.entries) {
+      final tourId = entry.key;
+      final eventGames = entry.value;
+      final eventCard = eventCards[tourId];
+      final eventData = eventDataMap[tourId];
+      final playerScore = _computePlayerScore(eventGames);
 
-      // Date header
+      // Event header (card + stats row)
       items.add(
         Padding(
-          padding: EdgeInsets.only(bottom: 12.h, top: items.isEmpty ? 8.h : 0),
-          child: _DateHeader(
-            dateLabel: _formatDateHeader(dateKey),
-            gameCount: dateGames.length,
-            isExpanded: !isCollapsed,
-            onToggle: () => _toggleDateSection(dateKey),
+          padding: EdgeInsets.only(
+            top: isFirstEvent ? 8.h : 20.h,
+            bottom: 12.h,
+          ),
+          child: _EventSection(
+            eventCard: eventCard,
+            eventData: eventData,
+            tourId: tourId,
+            tourSlug: eventGames.first.tourSlug,
+            gameCount: eventGames.length,
+            playerScore: playerScore,
+            onTap: () => _navigateToEvent(tourId),
           ),
         ),
       );
+      isFirstEvent = false;
 
-      // Games under this date
-      if (!isCollapsed) {
-        if (isGridMode) {
-          // Grid mode: dynamic columns based on device/orientation
-          // Tablet landscape: 4 columns, Tablet portrait: 2 columns, Phone: 2 columns
-          final int gridColumns = ResponsiveHelper.isTablet && ResponsiveHelper.isLandscape ? 4 : 2;
+      // Games under this event
+      if (isGridMode) {
+        final int gridColumns = ResponsiveHelper.isTablet && ResponsiveHelper.isLandscape ? 4 : 2;
 
-          for (int i = 0; i < dateGames.length; i += gridColumns) {
-            final isLast = i + gridColumns >= dateGames.length;
+        for (int i = 0; i < eventGames.length; i += gridColumns) {
+          final isLast = i + gridColumns >= eventGames.length;
 
-            // Gather games for this row
-            final rowGames = <GamesTourModel>[];
-            for (int j = 0; j < gridColumns && i + j < dateGames.length; j++) {
-              rowGames.add(dateGames[i + j]);
-            }
+          final rowGames = <GamesTourModel>[];
+          for (int j = 0; j < gridColumns && i + j < eventGames.length; j++) {
+            rowGames.add(eventGames[i + j]);
+          }
 
+          items.add(
+            Padding(
+              padding: EdgeInsets.only(bottom: isLast ? 0 : 12.h),
+              child: Row(
+                children: [
+                  for (int j = 0; j < gridColumns; j++) ...[
+                    if (j > 0) SizedBox(width: 12.sp),
+                    Expanded(
+                      child: j < rowGames.length
+                          ? _buildGridGame(
+                              rowGames[j],
+                              gameIdToIndex[rowGames[j].gameId] ?? 0,
+                              games,
+                            )
+                          : const SizedBox.shrink(),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          );
+        }
+      } else {
+        for (int i = 0; i < eventGames.length; i++) {
+          final game = eventGames[i];
+          final isLast = i == eventGames.length - 1;
+          final globalIndex = gameIdToIndex[game.gameId] ?? 0;
+          final showHint = isFirstGameCard && viewMode == GamesListViewMode.gamesCard;
+          if (isFirstGameCard) isFirstGameCard = false;
+
+          if (isChessBoardVisible) {
             items.add(
               Padding(
-                padding: EdgeInsets.only(bottom: isLast ? 16.h : 12.h),
-                child: Row(
-                  children: [
-                    for (int j = 0; j < gridColumns; j++) ...[
-                      if (j > 0) SizedBox(width: 12.sp),
-                      Expanded(
-                        child: j < rowGames.length
-                            ? _buildGridGame(
-                                rowGames[j],
-                                gameIdToIndex[rowGames[j].gameId] ?? 0,
-                                games,
-                              )
-                            : const SizedBox.shrink(),
-                      ),
-                    ],
-                  ],
+                padding: EdgeInsets.only(bottom: isLast ? 0 : 12.h),
+                child: BoardGameCardWrapperWidget(
+                  key: ValueKey('player_board_game_${game.gameId}'),
+                  game: game,
+                  orderedGames: games,
+                  gameIndex: globalIndex,
+                  onChangedWithLiveGames: (updatedGames) async {
+                    final hasPremium = await requirePremiumGuard(context, ref);
+                    if (!hasPremium) return;
+                    if (!mounted) return;
+
+                    ref.read(gameCardWrapperProvider).navigateToChessBoard(
+                          context: context,
+                          orderedGames: updatedGames,
+                          gameIndex: globalIndex,
+                          onReturnFromChessboard: (_) {},
+                          viewSource: ChessboardView.playerProfile,
+                        );
+                  },
+                  pinnedIds: const [],
+                  onPinToggle: (_) {},
                 ),
               ),
             );
-          }
-        } else {
-          // Card mode or Board mode
-          for (int i = 0; i < dateGames.length; i++) {
-            final game = dateGames[i];
-            final isLast = i == dateGames.length - 1;
-            // Use reliable index lookup by game ID
-            final globalIndex = gameIdToIndex[game.gameId] ?? 0;
-            final showHint = isFirstGameCard && viewMode == GamesListViewMode.gamesCard;
-            if (isFirstGameCard) isFirstGameCard = false;
-
-            if (isChessBoardVisible) {
-              // Board mode: use BoardGameCardWrapperWidget for live position updates
-              items.add(
-                Padding(
-                  padding: EdgeInsets.only(bottom: isLast ? 16.h : 12.h),
-                  child: BoardGameCardWrapperWidget(
-                    key: ValueKey('player_board_game_${game.gameId}'),
-                    game: game,
-                    orderedGames: games,
-                    gameIndex: globalIndex,
-                    onChangedWithLiveGames: (updatedGames) async {
-                      // Premium guard - show paywall if not subscribed
-                      final hasPremium = await requirePremiumGuard(context, ref);
-                      if (!hasPremium) return;
-                      if (!mounted) return;
-
-                      ref.read(gameCardWrapperProvider).navigateToChessBoard(
-                            context: context,
-                            orderedGames: updatedGames,
-                            gameIndex: globalIndex,
-                            onReturnFromChessboard: (_) {},
-                            viewSource: ChessboardView.playerProfile,
-                          );
-                    },
-                    pinnedIds: gamesData.pinnedGamedIs,
-                    onPinToggle: (_) {},
-                  ),
+          } else {
+            items.add(
+              Padding(
+                padding: EdgeInsets.only(bottom: isLast ? 0 : 12.h),
+                child: LiveGamebaseSearchGameCard(
+                  game: game,
+                  allGames: games,
+                  gameIndex: globalIndex,
+                  animationIndex: items.length,
+                  showRound: true,
+                  showSwipeHint: showHint,
+                  showGamebaseButton: false,
+                  onAdd: () => _showAddToFolderSheet(game),
                 ),
-              );
-            } else {
-              // Card mode: use LiveGamebaseSearchGameCard for live position updates
-              items.add(
-                Padding(
-                  padding: EdgeInsets.only(bottom: isLast ? 16.h : 12.h),
-                  child: LiveGamebaseSearchGameCard(
-                    game: game,
-                    allGames: games,
-                    gameIndex: globalIndex,
-                    animationIndex: items.length,
-                    showRound: true,
-                    showSwipeHint: showHint,
-                    showGamebaseButton: false,
-                    onAdd: () => _showAddToFolderSheet(game),
-                  ),
-                ),
-              );
-            }
+              ),
+            );
           }
         }
       }
@@ -861,76 +880,138 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
   }
 }
 
-/// Date section header
-class _DateHeader extends StatelessWidget {
-  final String dateLabel;
-  final int gameCount;
-  final bool isExpanded;
-  final VoidCallback? onToggle;
-
-  const _DateHeader({
-    required this.dateLabel,
+/// Event section header: EventCard (or fallback) + player stats row
+class _EventSection extends StatelessWidget {
+  const _EventSection({
+    this.eventCard,
+    this.eventData,
+    required this.tourId,
+    this.tourSlug,
     required this.gameCount,
-    required this.isExpanded,
-    this.onToggle,
+    required this.playerScore,
+    this.onTap,
   });
+
+  final GroupEventCardModel? eventCard;
+  final PlayerEventData? eventData;
+  final String tourId;
+  final String? tourSlug;
+  final int gameCount;
+  final double playerScore;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onToggle,
-      borderRadius: BorderRadius.circular(12.br),
-      child: Container(
-        padding: EdgeInsets.symmetric(horizontal: 16.sp, vertical: 14.sp),
-        decoration: BoxDecoration(
-          color: kDarkGreyColor,
-          borderRadius: BorderRadius.circular(12.br),
-          border: Border.all(color: kWhiteColor.withValues(alpha: 0.1)),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.1),
-              blurRadius: 4,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            Container(
-              width: 4.w,
-              height: 20.h,
-              decoration: BoxDecoration(
-                color: kPrimaryColor,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            SizedBox(width: 12.w),
-            Expanded(
-              child: Text(
-                '$dateLabel • $gameCount ${gameCount == 1 ? 'game' : 'games'}',
-                style: TextStyle(
-                  color: kWhiteColor,
-                  fontSize: 16.sp,
-                  fontWeight: FontWeight.w600,
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-            if (onToggle != null) ...[
-              SizedBox(width: 12.w),
-              Icon(
-                isExpanded
-                    ? Icons.keyboard_arrow_up_rounded
-                    : Icons.keyboard_arrow_down_rounded,
-                color: kWhiteColor.withValues(alpha: 0.5),
-                size: 20.sp,
-              ),
-            ],
-          ],
-        ),
+    return GestureDetector(
+      onTap: onTap,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Event card or fallback
+          if (eventCard != null)
+            EventCard(
+              tourEventCardModel: eventCard!,
+              heroTagSuffix: '_player_games_$tourId',
+            )
+          else
+            _buildFallbackCard(),
+
+          // Player stats row
+          _buildStatsRow(),
+        ],
       ),
     );
+  }
+
+  Widget _buildFallbackCard() {
+    final eventName = eventData?.tourName ?? _formatSlug(tourSlug ?? tourId);
+    return Container(
+      decoration: BoxDecoration(
+        color: kBlack2Color,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(8.br)),
+      ),
+      padding: EdgeInsets.symmetric(horizontal: 14.sp, vertical: 16.sp),
+      child: Text(
+        eventName,
+        style: AppTypography.textSmMedium.copyWith(
+          color: kWhiteColor,
+          height: 1.2,
+        ),
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+      ),
+    );
+  }
+
+  Widget _buildStatsRow() {
+    return Container(
+      margin: EdgeInsets.only(top: 1.h),
+      padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
+      decoration: BoxDecoration(
+        color: kBlack2Color,
+        borderRadius: BorderRadius.only(
+          bottomLeft: Radius.circular(8.br),
+          bottomRight: Radius.circular(8.br),
+        ),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.sports_esports_outlined,
+                size: 14.sp,
+                color: kWhiteColor.withValues(alpha: 0.5),
+              ),
+              SizedBox(width: 4.w),
+              Text(
+                '$gameCount ${gameCount == 1 ? 'game' : 'games'}',
+                style: AppTypography.textXsRegular.copyWith(
+                  color: kWhiteColor.withValues(alpha: 0.5),
+                ),
+              ),
+            ],
+          ),
+          if (gameCount > 0)
+            Container(
+              padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 3.h),
+              decoration: BoxDecoration(
+                color: _getScoreColor().withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(4.br),
+              ),
+              child: Text(
+                '${_formatScore(playerScore)}/$gameCount',
+                style: AppTypography.textXsBold.copyWith(
+                  color: _getScoreColor(),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  String _formatScore(double score) {
+    if (score == score.truncateToDouble()) {
+      return score.toInt().toString();
+    }
+    return score.toStringAsFixed(1);
+  }
+
+  String _formatSlug(String slug) {
+    return slug
+        .split('-')
+        .where((w) => w.isNotEmpty)
+        .map((w) => '${w[0].toUpperCase()}${w.substring(1)}')
+        .join(' ');
+  }
+
+  Color _getScoreColor() {
+    if (gameCount == 0) return kWhiteColor;
+    final percentage = playerScore / gameCount;
+    if (percentage >= 0.6) return kGreenColor;
+    if (percentage >= 0.4) return kWhiteColor;
+    return Colors.redAccent;
   }
 }

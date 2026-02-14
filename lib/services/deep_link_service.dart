@@ -7,6 +7,7 @@ import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
 import 'package:chessever2/providers/auth_state_provider.dart';
 import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
+import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
 import 'package:chessever2/services/live_updates_service.dart';
@@ -169,6 +170,12 @@ class DeepLinkService {
       final gameTourModel = GamesTourModel.fromGame(game);
 
       debugPrint('DeepLinkService: Game loaded, navigating to chess board');
+
+      // Set view to forYou so PlayerFirstRowDetailWidget uses the correct
+      // single-game context path (passes tourId for full event fetch in ScoreCardScreen)
+      // instead of the tour path which assumes selectedBroadcastModelProvider is set.
+      ref.read(chessboardViewFromProviderNew.notifier).state =
+          ChessboardView.forYou;
 
       // Navigate to chess board - pop all existing routes first to prevent stacking
       // This ensures we don't stack multiple game screens

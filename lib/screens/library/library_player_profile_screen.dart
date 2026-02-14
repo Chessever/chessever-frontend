@@ -36,7 +36,7 @@ final selectedLibraryPlayerProfileTabProvider =
     );
 
 /// Library player profile screen showing detailed player information
-/// with three tabs: About, Games (combined gamebase+supabase), and Events.
+/// with three tabs: About, Games (gamebase), and Events.
 class LibraryPlayerProfileScreen extends ConsumerStatefulWidget {
   const LibraryPlayerProfileScreen({super.key, required this.player});
 

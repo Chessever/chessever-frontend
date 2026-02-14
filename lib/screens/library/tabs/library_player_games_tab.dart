@@ -10,7 +10,7 @@ import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 /// Games tab for library player profile
-/// Displays games from BOTH gamebase (historical) and supabase (live events)
+/// Displays games from gamebase (historical chess database)
 class LibraryPlayerGamesTab extends ConsumerStatefulWidget {
   const LibraryPlayerGamesTab({
     super.key,
@@ -135,29 +135,11 @@ class _LibraryPlayerGamesTabState extends ConsumerState<LibraryPlayerGamesTab>
           // Games count header
           Padding(
             padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
-            child: Row(
-              children: [
-                Text(
-                  '${state.games.length} games',
-                  style: AppTypography.textSmMedium.copyWith(
-                    color: kWhiteColor.withValues(alpha: 0.7),
-                  ),
-                ),
-                const Spacer(),
-                Container(
-                  padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 4.h),
-                  decoration: BoxDecoration(
-                    color: kPrimaryColor.withValues(alpha: 0.2),
-                    borderRadius: BorderRadius.circular(4.br),
-                  ),
-                  child: Text(
-                    'Combined',
-                    style: AppTypography.textXsMedium.copyWith(
-                      color: kPrimaryColor,
-                    ),
-                  ),
-                ),
-              ],
+            child: Text(
+              '${state.games.length} games',
+              style: AppTypography.textSmMedium.copyWith(
+                color: kWhiteColor.withValues(alpha: 0.7),
+              ),
             ),
           ),
 
