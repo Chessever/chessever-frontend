@@ -1,6 +1,7 @@
 import 'package:chessever2/repository/library/library_repository.dart';
 import 'package:chessever2/repository/library/models/library_folder.dart';
 import 'package:chessever2/screens/library/folder_contents_screen.dart';
+import 'package:chessever2/screens/gamebase/gamebase_explorer_screen.dart';
 import 'package:chessever2/screens/library/providers/library_folders_provider.dart';
 import 'package:chessever2/screens/board_editor/board_editor_screen.dart';
 import 'package:chessever2/screens/library/twic_contents_screen.dart';
@@ -54,11 +55,16 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
 
   void _navigateToEmptyBoard() {
     HapticFeedback.mediumImpact();
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => const BoardEditorScreen(),
-      ),
-    );
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const BoardEditorScreen()));
+  }
+
+  void _navigateToOpeningExplorer() {
+    HapticFeedback.mediumImpact();
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const GamebaseExplorerScreen()));
   }
 
   List<LibraryFolder> _filterFolders(List<LibraryFolder> folders) {
@@ -126,16 +132,14 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     HapticFeedback.mediumImpact();
 
     if (folder.id == kTwicBookId) {
-      Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => const TwicContentsScreen()),
-      );
+      Navigator.of(
+        context,
+      ).push(MaterialPageRoute(builder: (_) => const TwicContentsScreen()));
       return;
     }
 
     final shouldFocusSearch = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(
-        builder: (_) => FolderContentsScreen(folder: folder),
-      ),
+      MaterialPageRoute(builder: (_) => FolderContentsScreen(folder: folder)),
     );
     if (shouldFocusSearch == true && mounted) {
       _searchFocusNode.requestFocus();
@@ -169,8 +173,8 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
         value: _isSearchFocused ? 1.0 : 0.0,
         builder: (context, value, child) {
           final clamped = value.clamp(0.0, 1.0);
-          // CSS: board=32, plus=36, total buttons area ~76px + 8px gap
-          final buttonsMaxWidth = (76.w + 8.w) * (1 - clamped);
+          // CSS: explorer=32, board=32, plus=36, gaps=8+8, total ~116px + 8px gap
+          final buttonsMaxWidth = (116.w + 8.w) * (1 - clamped);
           final gapWidth = (8.w * (1 - clamped)).clamp(0.0, 8.w);
           final opacity = (1 - clamped).clamp(0.0, 1.0);
 
@@ -186,20 +190,26 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                   opacity: opacity,
                   child: SizedBox(
                     width: buttonsMaxWidth.clamp(0.0, double.infinity),
-                    child: buttonsMaxWidth > 1
-                        ? Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              // CSS: 32x32, bg #1D1D1D, border 0.1px #444444, radius 4px
-                              _BoardSettingsButton(
-                                onTap: _navigateToEmptyBoard,
-                              ),
-                              SizedBox(width: 8.w),
-                              // CSS: 36x36, bg #262626, radius 10px
-                              _PlusButton(onTap: _handleCreateFolder),
-                            ],
-                          )
-                        : const SizedBox.shrink(),
+                    child:
+                        buttonsMaxWidth > 1
+                            ? Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                // Opening explorer: 32x32
+                                _OpeningExplorerButton(
+                                  onTap: _navigateToOpeningExplorer,
+                                ),
+                                SizedBox(width: 8.w),
+                                // CSS: 32x32, bg #1D1D1D, border 0.1px #444444, radius 4px
+                                _BoardSettingsButton(
+                                  onTap: _navigateToEmptyBoard,
+                                ),
+                                SizedBox(width: 8.w),
+                                // CSS: 36x36, bg #262626, radius 10px
+                                _PlusButton(onTap: _handleCreateFolder),
+                              ],
+                            )
+                            : const SizedBox.shrink(),
                   ),
                 ),
               ),
@@ -215,6 +225,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       controller: _searchController,
       focusNode: _searchFocusNode,
       enableOverlay: false,
+      showFilterIcon: false,
       hintText: 'Search books',
       onChanged: (query) {
         setState(() => _searchQuery = query.trim().toLowerCase());
@@ -232,9 +243,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       children: [
         // Subtle background decoration - only when user has personal folders
         if (hasFolders)
-          const Positioned.fill(
-            child: _LibraryBackgroundDecoration(),
-          ),
+          const Positioned.fill(child: _LibraryBackgroundDecoration()),
         // Main content
         RefreshIndicator(
           onRefresh: () async {
@@ -280,7 +289,10 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     if (ResponsiveHelper.isTablet) {
       final crossAxisCount = ResponsiveHelper.tabletGridColumns.clamp(2, 3);
       return SliverPadding(
-        padding: EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: 8.h),
+        padding: EdgeInsets.symmetric(
+          horizontal: horizontalPadding,
+          vertical: 8.h,
+        ),
         sliver: SliverGrid(
           gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: crossAxisCount,
@@ -391,6 +403,37 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
 }
 
 /// CSS: 32x32, bg #1D1D1D, border 0.1px #444444, radius 4px
+/// Opening explorer button
+class _OpeningExplorerButton extends StatelessWidget {
+  final VoidCallback onTap;
+
+  const _OpeningExplorerButton({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 32.h,
+        height: 32.h,
+        decoration: BoxDecoration(
+          color: const Color(0xFF1D1D1D),
+          borderRadius: BorderRadius.circular(4.br),
+          border: Border.all(color: const Color(0xFF444444), width: 0.1),
+        ),
+        child: Center(
+          child: Icon(
+            Icons.explore_outlined,
+            size: 20.sp,
+            color: const Color(0xFFFAFAFA),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// CSS: 32x32, bg #1D1D1D, border 0.1px #444444, radius 4px
 /// Contains a 2x2 mini chessboard icon (20x20)
 class _BoardSettingsButton extends StatelessWidget {
   final VoidCallback onTap;
@@ -407,17 +450,10 @@ class _BoardSettingsButton extends StatelessWidget {
         decoration: BoxDecoration(
           color: const Color(0xFF1D1D1D),
           borderRadius: BorderRadius.circular(4.br),
-          border: Border.all(
-            color: const Color(0xFF444444),
-            width: 0.1,
-          ),
+          border: Border.all(color: const Color(0xFF444444), width: 0.1),
         ),
         child: Center(
-          child: SvgWidget(
-            SvgAsset.boardSettings,
-            width: 20.sp,
-            height: 20.sp,
-          ),
+          child: SvgWidget(SvgAsset.boardSettings, width: 20.sp, height: 20.sp),
         ),
       ),
     );
@@ -442,11 +478,7 @@ class _PlusButton extends StatelessWidget {
           color: const Color(0xFF262626),
           borderRadius: BorderRadius.circular(10.br),
         ),
-        child: Icon(
-          Icons.add,
-          size: 20.sp,
-          color: const Color(0xFFFFFFFF),
-        ),
+        child: Icon(Icons.add, size: 20.sp, color: const Color(0xFFFFFFFF)),
       ),
     );
   }

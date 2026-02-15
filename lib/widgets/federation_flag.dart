@@ -1,4 +1,3 @@
-import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/country_utils.dart';
 import 'package:chessever2/utils/png_asset.dart';
 import 'package:country_flags/country_flags.dart';
@@ -23,6 +22,9 @@ class FederationFlag extends StatelessWidget {
 
   static const Set<String> _restrictedFideCodes = {'RUS', 'BLR', 'FID'};
 
+  /// Restricted country names (from Gamebase API which returns full names).
+  static const Set<String> _restrictedCountryNames = {'russia', 'belarus'};
+
   /// UK constituent countries that need special flag handling.
   /// Maps FIDE codes to flutter_country_flags Country enum.
   static const Map<String, fcf.Country> _ukSubdivisions = {
@@ -40,8 +42,12 @@ class FederationFlag extends StatelessWidget {
       return _fallback();
     }
 
-    // Countries that show white/blank flags due to sanctions or restrictions.
-    if (_restrictedFideCodes.contains(normalized)) {
+    final lowerRaw = raw.toLowerCase();
+
+    // Countries that show FIDE logo due to sanctions or restrictions.
+    // Check both 3-letter FIDE codes and full country names from Gamebase API.
+    if (_restrictedFideCodes.contains(normalized) ||
+        _restrictedCountryNames.contains(lowerRaw)) {
       return _fideLogo();
     }
 
@@ -49,9 +55,6 @@ class FederationFlag extends StatelessWidget {
     if (_ukSubdivisions.containsKey(normalized)) {
       return _ukSubdivisionFlag(normalized);
     }
-
-    // Also check for country names like "England", "Scotland", "Wales".
-    final lowerRaw = raw.toLowerCase();
     if (lowerRaw == 'england') return _ukSubdivisionFlag('ENG');
     if (lowerRaw == 'scotland') return _ukSubdivisionFlag('SCO');
     if (lowerRaw == 'wales') return _ukSubdivisionFlag('WLS');
@@ -62,7 +65,10 @@ class FederationFlag extends StatelessWidget {
     } else if (normalized.length == 3) {
       iso2 = CountryUtils.toIso2Code(normalized);
     } else {
-      iso2 = CountryUtils.getCountryCode(raw);
+      // Country name (e.g. "Norway", "Austria") — use manual mapping first
+      // (more reliable), then fall back to country_picker's name lookup.
+      final manual = CountryUtils.countryNameToIso2(raw);
+      iso2 = manual.isNotEmpty ? manual : CountryUtils.getCountryCode(raw);
     }
 
     if (iso2 == null || iso2.length != 2) {
@@ -104,18 +110,12 @@ class FederationFlag extends StatelessWidget {
         width: w,
         height: h,
         fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => _fallback(),
+        errorBuilder: (_, __, ___) => SizedBox(width: w, height: h),
       ),
     );
   }
 
   Widget _fallback() {
-    final size = (height ?? width ?? 16).clamp(10, 24).toDouble();
-    return Icon(
-      Icons.flag_rounded,
-      size: size,
-      color: kWhiteColor.withValues(alpha: 0.35),
-    );
+    return _fideLogo();
   }
 }
-

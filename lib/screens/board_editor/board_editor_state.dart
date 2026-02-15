@@ -29,18 +29,31 @@ class BoardEditorState {
   final EditorPointerMode pointerMode;
   final bool isDeleteMode;
 
-  /// Whether the position has both kings — minimum requirement for engine eval.
+  /// Whether the position is a legal chess position that can be evaluated.
+  ///
+  /// Validates using dartchess to ensure the FEN won't crash Stockfish.
+  /// Requires both kings, no pawns on back ranks, and the side not to move
+  /// must not have their king in check.
   bool get isEvaluatable {
+    // Quick pre-check: need both kings
     bool hasWhiteKing = false;
     bool hasBlackKing = false;
     for (final piece in pieces.values) {
       if (piece.role == Role.king) {
         if (piece.color == Side.white) hasWhiteKing = true;
         if (piece.color == Side.black) hasBlackKing = true;
-        if (hasWhiteKing && hasBlackKing) return true;
       }
     }
-    return false;
+    if (!hasWhiteKing || !hasBlackKing) return false;
+
+    // Full legality check via dartchess
+    try {
+      final setup = Setup.parseFen(fullFen);
+      Chess.fromSetup(setup, ignoreImpossibleCheck: true);
+      return true;
+    } catch (_) {
+      return false;
+    }
   }
 
   String get boardFen => writeFen(pieces);
@@ -82,7 +95,8 @@ class BoardEditorState {
       whiteQueensideCastle: whiteQueensideCastle ?? this.whiteQueensideCastle,
       blackKingsideCastle: blackKingsideCastle ?? this.blackKingsideCastle,
       blackQueensideCastle: blackQueensideCastle ?? this.blackQueensideCastle,
-      selectedPiece: selectedPiece != null ? selectedPiece() : this.selectedPiece,
+      selectedPiece:
+          selectedPiece != null ? selectedPiece() : this.selectedPiece,
       pointerMode: pointerMode ?? this.pointerMode,
       isDeleteMode: isDeleteMode ?? this.isDeleteMode,
     );
@@ -90,18 +104,19 @@ class BoardEditorState {
 }
 
 class BoardEditorNotifier extends StateNotifier<BoardEditorState> {
-  BoardEditorNotifier() : super(const BoardEditorState(
-    pieces: {},
-    whiteKingsideCastle: false,
-    whiteQueensideCastle: false,
-    blackKingsideCastle: false,
-    blackQueensideCastle: false,
-  ));
+  BoardEditorNotifier()
+    : super(
+        const BoardEditorState(
+          pieces: {},
+          whiteKingsideCastle: false,
+          whiteQueensideCastle: false,
+          blackKingsideCastle: false,
+          blackQueensideCastle: false,
+        ),
+      );
 
   void reset() {
-    state = BoardEditorState(
-      pieces: readFen(_startingFen),
-    );
+    state = BoardEditorState(pieces: readFen(_startingFen));
   }
 
   void clear() {
@@ -208,9 +223,8 @@ class BoardEditorNotifier extends StateNotifier<BoardEditorState> {
     if (parts.isEmpty) return;
 
     final pieces = readFen(parts[0]);
-    final sideToMove = parts.length > 1 && parts[1] == 'b'
-        ? Side.black
-        : Side.white;
+    final sideToMove =
+        parts.length > 1 && parts[1] == 'b' ? Side.black : Side.white;
 
     bool wK = false, wQ = false, bK = false, bQ = false;
     if (parts.length > 2) {
@@ -237,5 +251,5 @@ class BoardEditorNotifier extends StateNotifier<BoardEditorState> {
 
 final boardEditorProvider =
     StateNotifierProvider.autoDispose<BoardEditorNotifier, BoardEditorState>(
-  (ref) => BoardEditorNotifier(),
-);
+      (ref) => BoardEditorNotifier(),
+    );

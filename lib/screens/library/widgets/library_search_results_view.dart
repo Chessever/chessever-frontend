@@ -17,6 +17,7 @@ import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/chess_title_utils.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
+import 'package:chessever2/utils/number_format_utils.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:flutter/material.dart';
@@ -45,10 +46,12 @@ class LibrarySearchResultsView extends ConsumerStatefulWidget {
   });
 
   @override
-  ConsumerState<LibrarySearchResultsView> createState() => _LibrarySearchResultsViewState();
+  ConsumerState<LibrarySearchResultsView> createState() =>
+      _LibrarySearchResultsViewState();
 }
 
-class _LibrarySearchResultsViewState extends ConsumerState<LibrarySearchResultsView> {
+class _LibrarySearchResultsViewState
+    extends ConsumerState<LibrarySearchResultsView> {
   final ScrollController _scrollController = ScrollController();
 
   @override
@@ -91,7 +94,9 @@ class _LibrarySearchResultsViewState extends ConsumerState<LibrarySearchResultsV
     final data = row['data'];
     final mdRaw = data is Map ? (data['md'] ?? data['metadata']) : null;
     final md =
-        mdRaw is Map ? Map<String, dynamic>.from(mdRaw) : const <String, dynamic>{};
+        mdRaw is Map
+            ? Map<String, dynamic>.from(mdRaw)
+            : const <String, dynamic>{};
 
     // Headers fallback
     final whiteName =
@@ -127,7 +132,7 @@ class _LibrarySearchResultsViewState extends ConsumerState<LibrarySearchResultsV
                 row['tournament']?.toString() ??
                 'Gamebase');
 
-    DateTime? _parseMdDate(String? raw) {
+    DateTime? parseMdDate(String? raw) {
       if (raw == null) return null;
       final value = raw.trim();
       if (value.isEmpty || value.startsWith('????')) return null;
@@ -138,7 +143,7 @@ class _LibrarySearchResultsViewState extends ConsumerState<LibrarySearchResultsV
     final date =
         row['date'] != null ? DateTime.tryParse(row['date'].toString()) : null;
 
-    final dateFromMd = _parseMdDate(md['Date'] as String?);
+    final dateFromMd = parseMdDate(md['Date'] as String?);
 
     final timeControl =
         row['timeControl']?.toString() ?? md['TimeControl']?.toString();
@@ -146,7 +151,8 @@ class _LibrarySearchResultsViewState extends ConsumerState<LibrarySearchResultsV
         (md['ECO'] as String?)?.trim().isNotEmpty == true
             ? md['ECO'].toString()
             : (row['eco']?.toString() ?? row['ECO']?.toString());
-    final formatCode = (eco != null && eco.isNotEmpty) ? eco : (timeControl ?? '');
+    final formatCode =
+        (eco != null && eco.isNotEmpty) ? eco : (timeControl ?? '');
 
     int parseRating(dynamic value) {
       if (value is int) return value;
@@ -229,7 +235,8 @@ class _LibrarySearchResultsViewState extends ConsumerState<LibrarySearchResultsV
 
   @override
   Widget build(BuildContext context) {
-    final fallbackGameModels = widget.results.games.map(_mapToGameModel).toList();
+    final fallbackGameModels =
+        widget.results.games.map(_mapToGameModel).toList();
 
     // Watch the paginated provider for database games
     final paginationState = ref.watch(gamebaseDatabaseGamesPaginatedProvider);
@@ -241,8 +248,7 @@ class _LibrarySearchResultsViewState extends ConsumerState<LibrarySearchResultsV
           error: (_, __) => true,
           orElse: () => false,
         ) ??
-        paginationState.games.isNotEmpty ||
-        fallbackGameModels.isNotEmpty;
+        paginationState.games.isNotEmpty || fallbackGameModels.isNotEmpty;
 
     final hasAnyResults =
         widget.results.folders.isNotEmpty ||
@@ -290,9 +296,10 @@ class _LibrarySearchResultsViewState extends ConsumerState<LibrarySearchResultsV
         if (widget.results.players.isNotEmpty) ...[
           _SectionHeader(
             title: 'Players',
-            count: widget.results.playerTotalCount > 0
-                ? widget.results.playerTotalCount
-                : widget.results.players.length,
+            count:
+                widget.results.playerTotalCount > 0
+                    ? widget.results.playerTotalCount
+                    : widget.results.players.length,
           ),
           ListView.separated(
             shrinkWrap: true,
@@ -350,18 +357,22 @@ class _LibrarySearchResultsViewState extends ConsumerState<LibrarySearchResultsV
     required GamesListViewMode viewMode,
   }) {
     // Use paginated games if available, otherwise fall back to legacy
-    final games = paginationState.games.isNotEmpty
-        ? paginationState.games
-        : (databaseGamesAsync?.valueOrNull ?? fallbackGames);
+    final games =
+        paginationState.games.isNotEmpty
+            ? paginationState.games
+            : (databaseGamesAsync?.valueOrNull ?? fallbackGames);
 
-    if (games.isEmpty && !paginationState.isLoading && databaseGamesAsync == null) {
+    if (games.isEmpty &&
+        !paginationState.isLoading &&
+        databaseGamesAsync == null) {
       return const [];
     }
 
     return [
       _SectionHeader(
         title: 'Database Games',
-        count: paginationState.totalCount > 0 ? paginationState.totalCount : null,
+        count:
+            paginationState.totalCount > 0 ? paginationState.totalCount : null,
       ),
       if (games.isEmpty && paginationState.isLoading)
         Padding(
@@ -379,11 +390,7 @@ class _LibrarySearchResultsViewState extends ConsumerState<LibrarySearchResultsV
           ),
         )
       else
-        _buildGamesList(
-          context: context,
-          games: games,
-          viewMode: viewMode,
-        ),
+        _buildGamesList(context: context, games: games, viewMode: viewMode),
 
       // Load more indicator
       if (paginationState.hasMore && games.isNotEmpty) ...[
@@ -391,9 +398,10 @@ class _LibrarySearchResultsViewState extends ConsumerState<LibrarySearchResultsV
         _LoadMoreButton(
           isLoading: paginationState.isLoading,
           onTap: _loadMoreGames,
-          remainingCount: paginationState.totalCount > 0
-              ? paginationState.totalCount - games.length
-              : null,
+          remainingCount:
+              paginationState.totalCount > 0
+                  ? paginationState.totalCount - games.length
+                  : null,
         ),
       ],
 
@@ -428,7 +436,8 @@ class _LibrarySearchResultsViewState extends ConsumerState<LibrarySearchResultsV
     if (isGrid) {
       // Grid mode: dynamic columns based on device/orientation
       // Tablet landscape: 4 columns, Tablet portrait: 2 columns, Phone: 2 columns
-      final int gridColumns = ResponsiveHelper.isTablet && ResponsiveHelper.isLandscape ? 4 : 2;
+      final int gridColumns =
+          ResponsiveHelper.isTablet && ResponsiveHelper.isLandscape ? 4 : 2;
       final items = <Widget>[];
 
       for (int i = 0; i < games.length; i += gridColumns) {
@@ -448,13 +457,14 @@ class _LibrarySearchResultsViewState extends ConsumerState<LibrarySearchResultsV
                 for (int j = 0; j < gridColumns; j++) ...[
                   if (j > 0) SizedBox(width: 12.sp),
                   Expanded(
-                    child: j < rowGames.length
-                        ? _LibraryGridGame(
-                            game: rowGames[j],
-                            gameIndex: i + j,
-                            allGames: games,
-                          )
-                        : const SizedBox.shrink(),
+                    child:
+                        j < rowGames.length
+                            ? _LibraryGridGame(
+                              game: rowGames[j],
+                              gameIndex: i + j,
+                              allGames: games,
+                            )
+                            : const SizedBox.shrink(),
                   ),
                 ],
               ],
@@ -521,18 +531,19 @@ class _LoadMoreButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: isLoading ? null : () {
-        HapticFeedbackService.light();
-        onTap();
-      },
+      onTap:
+          isLoading
+              ? null
+              : () {
+                HapticFeedbackService.light();
+                onTap();
+              },
       child: Container(
         padding: EdgeInsets.symmetric(vertical: 14.h, horizontal: 20.w),
         decoration: BoxDecoration(
           color: const Color(0xFF18181B),
           borderRadius: BorderRadius.circular(12.br),
-          border: Border.all(
-            color: const Color(0xFF27272A),
-          ),
+          border: Border.all(color: const Color(0xFF27272A)),
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -552,8 +563,8 @@ class _LoadMoreButton extends StatelessWidget {
               isLoading
                   ? 'Loading...'
                   : remainingCount != null
-                      ? 'Load more ($remainingCount remaining)'
-                      : 'Load more games',
+                  ? 'Load more (${formatCompactCount(remainingCount!)} remaining)'
+                  : 'Load more games',
               style: AppTypography.textSmMedium.copyWith(
                 color: kWhiteColor.withValues(alpha: 0.9),
               ),
@@ -592,14 +603,15 @@ class _LibraryGridGame extends ConsumerWidget {
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (_) => ChessBoardScreenNew(
-              games: allGames,
-              currentIndex: gameIndex,
-              hideEventInfo: true,
-              showGamebaseButton: false,
-              disableGamebaseOverlayByDefault: true,
-              showClock: false,
-            ),
+            builder:
+                (_) => ChessBoardScreenNew(
+                  games: allGames,
+                  currentIndex: gameIndex,
+                  hideEventInfo: true,
+                  showGamebaseButton: false,
+                  disableGamebaseOverlayByDefault: true,
+                  showClock: false,
+                ),
           ),
         );
       },
@@ -636,14 +648,15 @@ class _LibraryBoardGame extends ConsumerWidget {
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (_) => ChessBoardScreenNew(
-              games: allGames,
-              currentIndex: gameIndex,
-              hideEventInfo: true,
-              showGamebaseButton: false,
-              disableGamebaseOverlayByDefault: true,
-              showClock: false,
-            ),
+            builder:
+                (_) => ChessBoardScreenNew(
+                  games: allGames,
+                  currentIndex: gameIndex,
+                  hideEventInfo: true,
+                  showGamebaseButton: false,
+                  disableGamebaseOverlayByDefault: true,
+                  showClock: false,
+                ),
           ),
         );
       },
@@ -678,7 +691,7 @@ class _SectionHeader extends StatelessWidget {
                 borderRadius: BorderRadius.circular(10.br),
               ),
               child: Text(
-                count.toString(),
+                formatCompactCount(count!),
                 style: AppTypography.textXsRegular.copyWith(
                   color: const Color(0xFFA1A1AA),
                 ),

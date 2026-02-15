@@ -24,6 +24,21 @@ class GamebaseExplorerScreen extends ConsumerStatefulWidget {
 class _GamebaseExplorerScreenState
     extends ConsumerState<GamebaseExplorerScreen> {
   @override
+  void initState() {
+    super.initState();
+
+    // Ensure we have a valid starting position and kick off the initial fetch.
+    // Without this, the explorer can render with an empty FEN and never load stats.
+    final state = ref.read(gamebaseExplorerProvider);
+    if (state.currentFen.trim().isEmpty) {
+      ref.read(gamebaseExplorerProvider.notifier).goToStart();
+    } else if (state.moveAggregates.isEmpty) {
+      // If we ever add an "open explorer at FEN" entrypoint, make sure it loads.
+      ref.read(gamebaseExplorerProvider.notifier).refresh();
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     final state = ref.watch(gamebaseExplorerProvider);
     final screenWidth = MediaQuery.of(context).size.width;
@@ -54,13 +69,21 @@ class _GamebaseExplorerScreenState
                   canGoBack: state.canGoBack,
                   canGoForward: state.canGoForward,
                   onGoToStart:
-                      () => ref.read(gamebaseExplorerProvider.notifier).goToStart(),
+                      () =>
+                          ref
+                              .read(gamebaseExplorerProvider.notifier)
+                              .goToStart(),
                   onGoBack:
-                      () => ref.read(gamebaseExplorerProvider.notifier).goBack(),
+                      () =>
+                          ref.read(gamebaseExplorerProvider.notifier).goBack(),
                   onGoForward:
-                      () => ref.read(gamebaseExplorerProvider.notifier).goForward(),
+                      () =>
+                          ref
+                              .read(gamebaseExplorerProvider.notifier)
+                              .goForward(),
                   onGoToEnd:
-                      () => ref.read(gamebaseExplorerProvider.notifier).goToEnd(),
+                      () =>
+                          ref.read(gamebaseExplorerProvider.notifier).goToEnd(),
                   onReset:
                       () => ref.read(gamebaseExplorerProvider.notifier).reset(),
                 ),

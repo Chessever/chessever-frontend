@@ -23,6 +23,7 @@ class LibrarySearchBar extends ConsumerStatefulWidget {
   final VoidCallback? onProfileTap;
   final VoidCallback? onFilterTap;
   final bool enableOverlay;
+  final bool showFilterIcon;
   final String hintText;
   final FocusNode? focusNode;
   final List<String>? hintPhrases;
@@ -38,6 +39,7 @@ class LibrarySearchBar extends ConsumerStatefulWidget {
     this.onProfileTap,
     this.onFilterTap,
     this.enableOverlay = true,
+    this.showFilterIcon = true,
     this.hintText = 'Search books',
     this.focusNode,
     this.hintPhrases,
@@ -213,7 +215,9 @@ class _LibrarySearchBarState extends ConsumerState<LibrarySearchBar> {
                   AnimatedSearchHint(
                     textColor: const Color(0xFFFFFFFF).withValues(alpha: 0.7),
                     textStyle: AppTypography.textXsRegular,
-                    phrases: widget.hintPhrases ?? const ['Search books', 'Find a book...'],
+                    phrases:
+                        widget.hintPhrases ??
+                        const ['Search books', 'Find a book...'],
                   ),
                 // CSS: 12px, Inter, rgba(255,255,255,0.7)
                 TextField(
@@ -224,7 +228,8 @@ class _LibrarySearchBarState extends ConsumerState<LibrarySearchBar> {
                   ),
                   decoration: InputDecoration(
                     isDense: true,
-                    hintText: _effectiveFocusNode.hasFocus ? widget.hintText : null,
+                    hintText:
+                        _effectiveFocusNode.hasFocus ? widget.hintText : null,
                     hintStyle: AppTypography.textXsRegular.copyWith(
                       color: const Color(0xFFFFFFFF).withValues(alpha: 0.7),
                     ),
@@ -244,7 +249,7 @@ class _LibrarySearchBarState extends ConsumerState<LibrarySearchBar> {
                 color: const Color(0xFFFFFFFF).withValues(alpha: 0.7),
               ),
             )
-          else if (!_effectiveFocusNode.hasFocus)
+          else if (widget.showFilterIcon && !_effectiveFocusNode.hasFocus)
             // CSS: list-filter icon 24x24 in 32x32 container, radius 4px
             GestureDetector(
               onTap: widget.onFilterTap,
@@ -264,7 +269,14 @@ class _LibrarySearchBarState extends ConsumerState<LibrarySearchBar> {
                 ),
               ),
             ),
-          SizedBox(width: isEmpty && !_effectiveFocusNode.hasFocus ? 4.w : 12.w),
+          SizedBox(
+            width:
+                isEmpty &&
+                        widget.showFilterIcon &&
+                        !_effectiveFocusNode.hasFocus
+                    ? 4.w
+                    : 12.w,
+          ),
         ],
       ),
     );

@@ -48,6 +48,16 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
 
   void _scheduleFetch([Duration delay = const Duration(milliseconds: 200)]) {
     _debounceTimer?.cancel();
+
+    // Immediately reflect loading state so the UI doesn't flash "No games found"
+    // during the debounce window.
+    state = state.copyWith(isLoading: true, error: null);
+
+    if (delay == Duration.zero) {
+      Future.microtask(_fetchMoveAggregates);
+      return;
+    }
+
     _debounceTimer = Timer(delay, _fetchMoveAggregates);
   }
 
@@ -67,7 +77,9 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
               ? state.filters.timeControls.first
               : null;
       final playerIdFilter =
-          state.filters.playerIds.isNotEmpty ? state.filters.playerIds.first : null;
+          state.filters.playerIds.isNotEmpty
+              ? state.filters.playerIds.first
+              : null;
 
       final response = await repository.getMoveAggregates(
         fen: state.currentFen,
@@ -276,8 +288,11 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
   /// Reset to initial position
   void reset() {
     _chess = Chess();
-    state = const GamebaseExplorerState();
-    _scheduleFetch();
+    state = const GamebaseExplorerState(
+      currentFen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+      currentMoveIndex: -1,
+    );
+    _scheduleFetch(Duration.zero);
   }
 
   /// Set position from FEN (for loading a specific position)
@@ -291,7 +306,9 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
         return;
       }
 
-      debugPrint('[GamebaseExplorer] setPosition: ${normalized.split(' ').take(2).join(' ')}...');
+      debugPrint(
+        '[GamebaseExplorer] setPosition: ${normalized.split(' ').take(2).join(' ')}...',
+      );
       _chess = Chess.fromFEN(normalized);
       state = state.copyWith(
         currentFen: normalized,
@@ -331,10 +348,7 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
   /// Add a player filter
   void addPlayerFilter(GamebasePlayer player) {
     updateFilters(
-      state.filters.copyWith(
-        playerIds: [player.id],
-        selectedPlayers: [player],
-      ),
+      state.filters.copyWith(playerIds: [player.id], selectedPlayers: [player]),
     );
   }
 

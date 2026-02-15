@@ -28,7 +28,8 @@ class _BoardEditorScreenState extends ConsumerState<BoardEditorScreen> {
     final fen = editorState.fullFen;
     final timestamp = DateTime.now().millisecondsSinceEpoch;
 
-    final pgn = '[Event "Board Editor"]\n'
+    final pgn =
+        '[Event "Board Editor"]\n'
         '[Site "ChessEver"]\n'
         '[Date "${DateTime.now().toIso8601String().split('T')[0]}"]\n'
         '[White "White"]\n'
@@ -77,13 +78,14 @@ class _BoardEditorScreenState extends ConsumerState<BoardEditorScreen> {
 
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(
-        builder: (_) => ChessBoardScreenNew(
-          currentIndex: 0,
-          games: [game],
-          hideEventInfo: true,
-          showGamebaseButton: false,
-          disableGamebaseOverlayByDefault: true,
-        ),
+        builder:
+            (_) => ChessBoardScreenNew(
+              currentIndex: 0,
+              games: [game],
+              hideEventInfo: true,
+              showGamebaseButton: false,
+              disableGamebaseOverlayByDefault: true,
+            ),
       ),
     );
   }
@@ -115,10 +117,7 @@ class _BoardEditorScreenState extends ConsumerState<BoardEditorScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(
-              'Invalid FEN',
-              style: TextStyle(color: kWhiteColor),
-            ),
+            content: Text('Invalid FEN', style: TextStyle(color: kWhiteColor)),
             backgroundColor: kRedColor.withValues(alpha: 0.9),
             behavior: SnackBarBehavior.floating,
           ),
@@ -205,9 +204,10 @@ class _BoardEditorScreenState extends ConsumerState<BoardEditorScreen> {
       final game = PgnGame.parsePgn(pgn.trim());
       // Determine starting position
       final fenHeader = game.headers['FEN'];
-      final startPos = fenHeader != null
-          ? Chess.fromSetup(Setup.parseFen(fenHeader))
-          : Chess.initial;
+      final startPos =
+          fenHeader != null
+              ? Chess.fromSetup(Setup.parseFen(fenHeader))
+              : Chess.initial;
 
       // Replay moves to reach final position
       var pos = startPos;
@@ -239,10 +239,7 @@ class _BoardEditorScreenState extends ConsumerState<BoardEditorScreen> {
     HapticFeedback.lightImpact();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(
-          'FEN copied',
-          style: TextStyle(color: kWhiteColor),
-        ),
+        content: Text('FEN copied', style: TextStyle(color: kWhiteColor)),
         backgroundColor: kBlack2Color.withValues(alpha: 0.95),
         behavior: SnackBarBehavior.floating,
         duration: const Duration(seconds: 1),
@@ -270,119 +267,82 @@ class _BoardEditorScreenState extends ConsumerState<BoardEditorScreen> {
             _buildAppBar(),
 
             Expanded(
-              child: SingleChildScrollView(
-                child: Column(
-                  children: [
-                    // Top controls: Reset/Clear, Side-to-move, Castling
-                    _TopControls(
-                      editorState: editorState,
-                      onReset: () {
-                        HapticFeedback.mediumImpact();
-                        ref.read(boardEditorProvider.notifier).reset();
-                      },
-                      onClear: () {
-                        HapticFeedback.mediumImpact();
-                        ref.read(boardEditorProvider.notifier).clear();
-                      },
-                      onSideToMove: (side) {
-                        HapticFeedback.selectionClick();
-                        ref
-                            .read(boardEditorProvider.notifier)
-                            .setSideToMove(side);
-                      },
-                      onToggleCastling: ({
-                        bool? whiteKingside,
-                        bool? whiteQueenside,
-                        bool? blackKingside,
-                        bool? blackQueenside,
-                      }) {
-                        HapticFeedback.selectionClick();
-                        ref
-                            .read(boardEditorProvider.notifier)
-                            .toggleCastling(
-                              whiteKingside: whiteKingside,
-                              whiteQueenside: whiteQueenside,
-                              blackKingside: blackKingside,
-                              blackQueenside: blackQueenside,
-                            );
-                      },
-                    ),
+              child: Column(
+                children: [
+                  // Top controls: Reset/Clear, Side-to-move, Castling
+                  _TopControls(
+                    editorState: editorState,
+                    onReset: () {
+                      HapticFeedback.mediumImpact();
+                      ref.read(boardEditorProvider.notifier).reset();
+                    },
+                    onClear: () {
+                      HapticFeedback.mediumImpact();
+                      ref.read(boardEditorProvider.notifier).clear();
+                    },
+                    onSideToMove: (side) {
+                      HapticFeedback.selectionClick();
+                      ref
+                          .read(boardEditorProvider.notifier)
+                          .setSideToMove(side);
+                    },
+                    onToggleCastling: ({
+                      bool? whiteKingside,
+                      bool? whiteQueenside,
+                      bool? blackKingside,
+                      bool? blackQueenside,
+                    }) {
+                      HapticFeedback.selectionClick();
+                      ref
+                          .read(boardEditorProvider.notifier)
+                          .toggleCastling(
+                            whiteKingside: whiteKingside,
+                            whiteQueenside: whiteQueenside,
+                            blackKingside: blackKingside,
+                            blackQueenside: blackQueenside,
+                          );
+                    },
+                  ),
 
-                    // Board + Eval bar row
-                    _BoardWithEvalBar(
-                      editorState: editorState,
-                      boardSettings: boardSettings,
-                      screenWidth: screenWidth,
-                      evalBarWidth: evalBarWidth,
-                      showEval: showEval,
-                    ),
+                  // Board + Eval bar row
+                  _BoardWithEvalBar(
+                    editorState: editorState,
+                    boardSettings: boardSettings,
+                    screenWidth: screenWidth,
+                    evalBarWidth: evalBarWidth,
+                    showEval: showEval,
+                  ),
 
-                    // Piece Tray
-                    _PieceTray(
-                      pieceAssets: boardSettings.pieceAssets,
-                      squareSize: squareSize,
-                      selectedPiece: editorState.selectedPiece,
-                      isDeleteMode: editorState.isDeleteMode,
-                      onSelectPiece: (piece) {
-                        HapticFeedback.selectionClick();
-                        ref.read(boardEditorProvider.notifier).selectPiece(piece);
-                      },
-                      onToggleDeleteMode: () {
-                        HapticFeedback.selectionClick();
-                        ref.read(boardEditorProvider.notifier).toggleDeleteMode();
-                      },
-                      onDeleteLongPress: () {
-                        HapticFeedback.heavyImpact();
-                        ref.read(boardEditorProvider.notifier).clear();
-                      },
-                      onFlipBoard: () {
-                        HapticFeedback.mediumImpact();
-                        ref.read(boardEditorProvider.notifier).flipBoard();
-                      },
-                    ),
+                  // Piece Tray
+                  _PieceTray(
+                    pieceAssets: boardSettings.pieceAssets,
+                    squareSize: squareSize,
+                    selectedPiece: editorState.selectedPiece,
+                    isDeleteMode: editorState.isDeleteMode,
+                    onSelectPiece: (piece) {
+                      HapticFeedback.selectionClick();
+                      ref.read(boardEditorProvider.notifier).selectPiece(piece);
+                    },
+                    onToggleDeleteMode: () {
+                      HapticFeedback.selectionClick();
+                      ref.read(boardEditorProvider.notifier).toggleDeleteMode();
+                    },
+                    onDeleteLongPress: () {
+                      HapticFeedback.heavyImpact();
+                      ref.read(boardEditorProvider.notifier).clear();
+                    },
+                    onFlipBoard: () {
+                      HapticFeedback.mediumImpact();
+                      ref.read(boardEditorProvider.notifier).flipBoard();
+                    },
+                  ),
 
-                    // FEN Bar
-                    _FenBar(
-                      fen: editorState.fullFen,
-                      onCopy: _copyFen,
-                    ),
+                  // FEN Bar
+                  _FenBar(fen: editorState.fullFen, onCopy: _copyFen),
 
-                    // Action buttons
-                    _ActionRow(
-                      onPasteFen: _pasteFen,
-                      onPastePgn: _pastePgn,
-                    ),
-
-                    SizedBox(height: 12.h),
-
-                    // Done CTA
-                    Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 16.w),
-                      child: SizedBox(
-                        width: double.infinity,
-                        child: ElevatedButton(
-                          onPressed: _onDone,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: kWhiteColor,
-                            foregroundColor: kBackgroundColor,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12.br),
-                            ),
-                            padding: EdgeInsets.symmetric(vertical: 16.h),
-                          ),
-                          child: Text(
-                            'Done',
-                            style: AppTypography.textMdMedium.copyWith(
-                              color: kBackgroundColor,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-
-                    SizedBox(height: 16.h),
-                  ],
-                ),
+                  // Action buttons
+                  _ActionRow(onPasteFen: _pasteFen, onPastePgn: _pastePgn),
+                ],
               ),
             ),
           ],
@@ -411,7 +371,23 @@ class _BoardEditorScreenState extends ConsumerState<BoardEditorScreen> {
               textAlign: TextAlign.center,
             ),
           ),
-          SizedBox(width: 48.w), // Balance the back button
+          GestureDetector(
+            onTap: _onDone,
+            child: Container(
+              padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 8.h),
+              decoration: BoxDecoration(
+                color: kWhiteColor,
+                borderRadius: BorderRadius.circular(8.br),
+              ),
+              child: Text(
+                'Analyze',
+                style: AppTypography.textSmMedium.copyWith(
+                  color: kBackgroundColor,
+                ),
+              ),
+            ),
+          ),
+          SizedBox(width: 4.w),
         ],
       ),
     );
@@ -534,7 +510,8 @@ class _TopControls extends StatelessWidget {
     bool? whiteQueenside,
     bool? blackKingside,
     bool? blackQueenside,
-  }) onToggleCastling;
+  })
+  onToggleCastling;
 
   const _TopControls({
     required this.editorState,
@@ -606,10 +583,7 @@ class _SideToMoveToggle extends StatelessWidget {
   final Side sideToMove;
   final void Function(Side) onChanged;
 
-  const _SideToMoveToggle({
-    required this.sideToMove,
-    required this.onChanged,
-  });
+  const _SideToMoveToggle({required this.sideToMove, required this.onChanged});
 
   @override
   Widget build(BuildContext context) {
@@ -675,7 +649,8 @@ class _CastlingRow extends StatelessWidget {
     bool? whiteQueenside,
     bool? blackKingside,
     bool? blackQueenside,
-  }) onToggleCastling;
+  })
+  onToggleCastling;
 
   const _CastlingRow({
     required this.editorState,
@@ -826,7 +801,8 @@ class _PieceTray extends StatelessWidget {
                   piece: piece,
                   pieceAssets: pieceAssets,
                   size: trayPieceSize,
-                  isSelected: !isDeleteMode &&
+                  isSelected:
+                      !isDeleteMode &&
                       selectedPiece?.color == Side.white &&
                       selectedPiece?.role == role,
                   onTap: () => onSelectPiece(piece),
@@ -852,7 +828,8 @@ class _PieceTray extends StatelessWidget {
                   piece: piece,
                   pieceAssets: pieceAssets,
                   size: trayPieceSize,
-                  isSelected: !isDeleteMode &&
+                  isSelected:
+                      !isDeleteMode &&
                       selectedPiece?.color == Side.black &&
                       selectedPiece?.role == role,
                   onTap: () => onSelectPiece(piece),
@@ -890,13 +867,18 @@ class _TrayActionButton extends StatelessWidget {
         width: size,
         height: size,
         decoration: BoxDecoration(
-          color: isActive
-              ? kWhiteColor.withValues(alpha: 0.3)
-              : Colors.transparent,
+          color:
+              isActive
+                  ? kWhiteColor.withValues(alpha: 0.3)
+                  : Colors.transparent,
           borderRadius: BorderRadius.circular(6.br),
-          border: isActive
-              ? Border.all(color: kWhiteColor.withValues(alpha: 0.6), width: 1.5)
-              : null,
+          border:
+              isActive
+                  ? Border.all(
+                    color: kWhiteColor.withValues(alpha: 0.6),
+                    width: 1.5,
+                  )
+                  : null,
         ),
         child: Center(
           child: Icon(
@@ -947,16 +929,18 @@ class _TrayPiece extends StatelessWidget {
           ),
           child: Container(
             decoration: BoxDecoration(
-              color: isSelected
-                  ? kWhiteColor.withValues(alpha: 0.3)
-                  : Colors.transparent,
+              color:
+                  isSelected
+                      ? kWhiteColor.withValues(alpha: 0.3)
+                      : Colors.transparent,
               borderRadius: BorderRadius.circular(6.br),
-              border: isSelected
-                  ? Border.all(
-                      color: kWhiteColor.withValues(alpha: 0.6),
-                      width: 1.5,
-                    )
-                  : null,
+              border:
+                  isSelected
+                      ? Border.all(
+                        color: kWhiteColor.withValues(alpha: 0.6),
+                        width: 1.5,
+                      )
+                      : null,
             ),
             child: PieceWidget(
               piece: piece,
@@ -1028,13 +1012,9 @@ class _ActionRow extends StatelessWidget {
       padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
       child: Row(
         children: [
-          Expanded(
-            child: _ActionButton(label: 'Paste FEN', onTap: onPasteFen),
-          ),
+          Expanded(child: _ActionButton(label: 'Paste FEN', onTap: onPasteFen)),
           SizedBox(width: 12.w),
-          Expanded(
-            child: _ActionButton(label: 'Paste PGN', onTap: onPastePgn),
-          ),
+          Expanded(child: _ActionButton(label: 'Paste PGN', onTap: onPastePgn)),
         ],
       ),
     );
@@ -1060,9 +1040,7 @@ class _ActionButton extends StatelessWidget {
         child: Center(
           child: Text(
             label,
-            style: AppTypography.textSmMedium.copyWith(
-              color: kBackgroundColor,
-            ),
+            style: AppTypography.textSmMedium.copyWith(color: kBackgroundColor),
           ),
         ),
       ),

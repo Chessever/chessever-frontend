@@ -7,6 +7,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_mode
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
+import 'package:chessever2/utils/number_format_utils.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -256,7 +257,7 @@ class _MetaRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final subtitle =
         state.pagination.totalCount != null
-            ? '${state.pagination.totalCount} results'
+            ? '${formatCompactCount(state.pagination.totalCount!)} results'
             : 'Results';
 
     return Padding(
@@ -388,7 +389,7 @@ class _PaginationBar extends StatelessWidget {
     final rightText =
         totalCount == null
             ? 'Page $pageNumber'
-            : 'Page $pageNumber • $pageSize / $totalCount';
+            : 'Page $pageNumber • $pageSize / ${formatCompactCount(totalCount!)}';
 
     return Container(
       padding: EdgeInsets.fromLTRB(16.w, 10.h, 16.w, 10.h),
