@@ -387,6 +387,53 @@ class GamebaseRepository {
       throw Exception('Failed to perform global search: $e');
     }
   }
+
+  /// List example games for a given position (and optionally a specific move from that position).
+  ///
+  /// Pagination is 0-indexed per the API spec for this endpoint.
+  Future<GamebaseSearchQueryResponse> getPositionGames({
+    required String fen,
+    String? uci,
+    TimeControl? timeControl,
+    String? playerId,
+    int? minRating,
+    int? maxRating,
+    int pageNumber = 0,
+    int pageSize = 20,
+  }) async {
+    try {
+      final normalizedFen = _normalizeFenForLookup(fen);
+      final queryParams = {
+        'fen': normalizedFen,
+        'pageNumber': pageNumber,
+        'pageSize': pageSize,
+        if (uci != null && uci.trim().isNotEmpty) 'uci': uci.trim(),
+        if (playerId != null && playerId.trim().isNotEmpty)
+          'playerId': playerId.trim(),
+        if (timeControl != null) 'timeControl': timeControl.name.toUpperCase(),
+        if (minRating != null) 'minRating': minRating,
+        if (maxRating != null) 'maxRating': maxRating,
+      };
+
+      final response = await _dio.get(
+        '$_baseUrl/api/game-position/games',
+        queryParameters: queryParams,
+        options: Options(
+          headers: {'X-API-Key': _apiKey, 'Accept': 'application/json'},
+        ),
+      );
+
+      final data = response.data;
+      if (data is! Map) {
+        throw Exception('Unexpected response format');
+      }
+      return GamebaseSearchQueryResponse.fromJson(
+        Map<String, dynamic>.from(data),
+      );
+    } catch (e) {
+      throw Exception('Failed to load position games: $e');
+    }
+  }
 }
 
 final gamebaseRepositoryProvider = Provider<GamebaseRepository>((ref) {

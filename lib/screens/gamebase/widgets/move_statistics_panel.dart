@@ -6,6 +6,7 @@ import '../../../theme/app_theme.dart';
 import '../../../utils/responsive_helper.dart';
 import '../models/models.dart';
 import '../providers/gamebase_providers.dart';
+import 'position_games_sheet.dart';
 
 /// Panel displaying move statistics for the current position.
 /// Shows each possible move with game count and win/draw/loss bar.
@@ -86,6 +87,7 @@ class MoveStatisticsPanel extends ConsumerWidget {
               return _MoveStatisticsRow(
                 aggregate: aggregate,
                 currentFen: state.currentFen,
+                filters: state.filters,
                 onTap: () {
                   ref
                       .read(gamebaseExplorerProvider.notifier)
@@ -114,11 +116,13 @@ class _MoveStatisticsRow extends StatelessWidget {
   const _MoveStatisticsRow({
     required this.aggregate,
     required this.currentFen,
+    required this.filters,
     required this.onTap,
   });
 
   final MoveAggregate aggregate;
   final String currentFen;
+  final GamebaseFilters filters;
   final VoidCallback onTap;
 
   @override
@@ -155,11 +159,43 @@ class _MoveStatisticsRow extends StatelessWidget {
             SizedBox(width: 8.sp),
             // Game count
             SizedBox(
-              width: 44.w,
-              child: Text(
-                aggregate.formattedTotal,
-                style: TextStyle(color: kSecondaryTextColor, fontSize: 12.f),
-                textAlign: TextAlign.right,
+              width: 84.w,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  Text(
+                    aggregate.formattedTotal,
+                    style: TextStyle(
+                      color: kSecondaryTextColor,
+                      fontSize: 12.f,
+                    ),
+                  ),
+                  SizedBox(width: 6.sp),
+                  IconButton(
+                    visualDensity: VisualDensity.compact,
+                    padding: EdgeInsets.zero,
+                    constraints: BoxConstraints.tightFor(width: 28.w, height: 28.h),
+                    icon: Icon(
+                      Icons.list_alt_rounded,
+                      color: kSecondaryTextColor,
+                      size: 18.ic,
+                    ),
+                    tooltip: 'Games',
+                    onPressed: () {
+                      showModalBottomSheet(
+                        context: context,
+                        backgroundColor: Colors.transparent,
+                        isScrollControlled: true,
+                        builder: (_) => PositionGamesSheet(
+                          fen: currentFen,
+                          uci: aggregate.uci,
+                          filters: filters,
+                          title: 'Games for $sanMove',
+                        ),
+                      );
+                    },
+                  ),
+                ],
               ),
             ),
           ],

@@ -1,4 +1,5 @@
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
+import 'package:chessever2/repository/gamebase/search/gamebase_search_models.dart';
 import 'package:chessever2/screens/gamebase/models/models.dart';
 import 'package:chess/chess.dart' hide State;
 import 'package:flutter/foundation.dart';
@@ -461,3 +462,61 @@ final gameWithPgnByIdProvider = FutureProvider.autoDispose
       final repository = ref.read(gamebaseRepositoryProvider);
       return repository.getGameWithPgn(gameId.trim());
     });
+
+class GamebasePositionGamesQuery {
+  final String fen;
+  final String? uci;
+  final TimeControl? timeControl;
+  final String? playerId;
+  final int? minRating;
+  final int? maxRating;
+  final int pageNumber; // 0-indexed
+  final int pageSize;
+
+  const GamebasePositionGamesQuery({
+    required this.fen,
+    this.uci,
+    this.timeControl,
+    this.playerId,
+    this.minRating,
+    this.maxRating,
+    this.pageNumber = 0,
+    this.pageSize = 20,
+  });
+
+  @override
+  bool operator ==(Object other) {
+    return other is GamebasePositionGamesQuery &&
+        other.fen == fen &&
+        other.uci == uci &&
+        other.timeControl == timeControl &&
+        other.playerId == playerId &&
+        other.minRating == minRating &&
+        other.maxRating == maxRating &&
+        other.pageNumber == pageNumber &&
+        other.pageSize == pageSize;
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(fen, uci, timeControl, playerId, minRating, maxRating,
+          pageNumber, pageSize);
+}
+
+final positionGamesProvider = FutureProvider.autoDispose
+    .family<GamebaseSearchQueryResponse, GamebasePositionGamesQuery>((
+  ref,
+  query,
+) async {
+  final repository = ref.read(gamebaseRepositoryProvider);
+  return repository.getPositionGames(
+    fen: query.fen,
+    uci: query.uci,
+    timeControl: query.timeControl,
+    playerId: query.playerId,
+    minRating: query.minRating,
+    maxRating: query.maxRating,
+    pageNumber: query.pageNumber,
+    pageSize: query.pageSize,
+  );
+});
