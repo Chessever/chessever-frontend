@@ -27,15 +27,24 @@ class _GamebaseExplorerScreenState
   void initState() {
     super.initState();
 
-    // Ensure we have a valid starting position and kick off the initial fetch.
-    // Without this, the explorer can render with an empty FEN and never load stats.
-    final state = ref.read(gamebaseExplorerProvider);
-    if (state.currentFen.trim().isEmpty) {
-      ref.read(gamebaseExplorerProvider.notifier).goToStart();
-    } else if (state.moveAggregates.isEmpty) {
-      // If we ever add an "open explorer at FEN" entrypoint, make sure it loads.
-      ref.read(gamebaseExplorerProvider.notifier).refresh();
-    }
+    // Riverpod best practice: never modify providers synchronously in widget
+    // lifecycles (can happen while the widget tree is building).
+    // Defer to post-frame to keep provider updates safe.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+
+      // Ensure we have a valid starting position and kick off the initial fetch.
+      // Without this, the explorer can render with an empty FEN and never load stats.
+      final state = ref.read(gamebaseExplorerProvider);
+      final notifier = ref.read(gamebaseExplorerProvider.notifier);
+
+      if (state.currentFen.trim().isEmpty) {
+        notifier.goToStart();
+      } else if (state.moveAggregates.isEmpty) {
+        // If we ever add an "open explorer at FEN" entrypoint, make sure it loads.
+        notifier.refresh();
+      }
+    });
   }
 
   @override
