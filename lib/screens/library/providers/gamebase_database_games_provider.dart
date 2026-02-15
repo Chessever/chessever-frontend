@@ -178,25 +178,39 @@ class DatabaseGamesPaginationNotifier extends StateNotifier<DatabaseGamesPaginat
       final blackElo = (preview['blackElo'] as num?)?.toInt() ?? 0;
       final whiteFed = preview['whiteFed']?.toString() ?? '';
       final blackFed = preview['blackFed']?.toString() ?? '';
+      final whiteTitle = ChessTitleUtils.normalize(
+        preview['whiteTitle']?.toString(),
+      );
+      final blackTitle = ChessTitleUtils.normalize(
+        preview['blackTitle']?.toString(),
+      );
+      final whitePlayerId = preview['whitePlayerId']?.toString().trim();
+      final blackPlayerId = preview['blackPlayerId']?.toString().trim();
 
       final whiteCard = PlayerCard(
         name: whiteName.isNotEmpty ? whiteName : 'White',
         federation: '',
-        title: '',
+        title: whiteTitle,
         rating: whiteElo,
         countryCode: whiteFed,
         team: null,
         fideId: null,
+        gamebasePlayerId: (whitePlayerId != null && whitePlayerId.isNotEmpty)
+            ? whitePlayerId
+            : null,
       );
 
       final blackCard = PlayerCard(
         name: blackName.isNotEmpty ? blackName : 'Black',
         federation: '',
-        title: '',
+        title: blackTitle,
         rating: blackElo,
         countryCode: blackFed,
         team: null,
         fideId: null,
+        gamebasePlayerId: (blackPlayerId != null && blackPlayerId.isNotEmpty)
+            ? blackPlayerId
+            : null,
       );
 
       final formatCode =
@@ -214,6 +228,7 @@ class DatabaseGamesPaginationNotifier extends StateNotifier<DatabaseGamesPaginat
         roundId: 'gamebase_search',
         roundSlug: formatCode.isNotEmpty ? formatCode : null,
         tourId: event.trim().isNotEmpty ? event.trim() : 'Gamebase',
+        timeControl: timeControl,
         pgn: pgn,
         lastMoveTime: date,
       );
@@ -440,6 +455,7 @@ final gamebaseDatabaseGamesProvider = FutureProvider.autoDispose<
         roundId: 'gamebase_search',
         roundSlug: formatCode.isNotEmpty ? formatCode : null,
         tourId: event.trim().isNotEmpty ? event.trim() : 'Gamebase',
+        timeControl: timeControl,
         pgn: pgn,
         lastMoveTime: date,
       );
