@@ -115,12 +115,21 @@ class GamebaseRepository {
   /// first 4 fields (piece placement, side to move, castling rights, en
   /// passant). In that case, append halfmove/fullmove counters.
   ///
+  /// NOTE: Our Gamebase DB currently stores `fen` values with en-passant always
+  /// set to `-` (see `game_position_*` partitions). Canonicalize lookups to
+  /// match that, otherwise positions after a 2-square pawn move (e.g. `e3`)
+  /// would miss and appear as "No games found".
+  ///
   /// When counters are present, preserve them. Some backends index/look up
   /// positions using the full FEN string; clamping counters can cause misses
   /// for progressed positions.
   static String _normalizeFenForLookup(String fen) {
     final parts = fen.trim().split(RegExp(r'\s+'));
     if (parts.length < 4) return fen.trim();
+
+    // Canonicalize en-passant square (field 4).
+    parts[3] = '-';
+
     if (parts.length == 4) return '${parts.join(' ')} 0 1';
     return parts.take(6).join(' ');
   }
@@ -140,7 +149,9 @@ class GamebaseRepository {
       };
 
       if (kDebugMode) {
-        debugPrint('[GamebaseRepository] getPlayers: name="$name" page=$pageNumber');
+        debugPrint(
+          '[GamebaseRepository] getPlayers: name="$name" page=$pageNumber',
+        );
       }
 
       final response = await _dio.get(
@@ -160,7 +171,9 @@ class GamebaseRepository {
         debugPrint('  Message: ${e.message}');
         debugPrint('  Response: ${e.response?.data}');
       }
-      throw Exception('Failed to search players: ${e.response?.statusCode ?? 'network error'} - ${e.message}');
+      throw Exception(
+        'Failed to search players: ${e.response?.statusCode ?? 'network error'} - ${e.message}',
+      );
     } catch (e) {
       throw Exception('Failed to search players: $e');
     }
@@ -221,13 +234,21 @@ class GamebaseRepository {
 
       if (kDebugMode) {
         final dataMap = Map<String, dynamic>.from(data);
-        debugPrint('[GamebaseRepository] API response keys: ${dataMap.keys.toList()}');
-        debugPrint('[GamebaseRepository] pgn present: ${dataMap['pgn'] != null}, length: ${(dataMap['pgn'] as String?)?.length ?? 0}');
-        debugPrint('[GamebaseRepository] data field present: ${dataMap['data'] != null}');
+        debugPrint(
+          '[GamebaseRepository] API response keys: ${dataMap.keys.toList()}',
+        );
+        debugPrint(
+          '[GamebaseRepository] pgn present: ${dataMap['pgn'] != null}, length: ${(dataMap['pgn'] as String?)?.length ?? 0}',
+        );
+        debugPrint(
+          '[GamebaseRepository] data field present: ${dataMap['data'] != null}',
+        );
         if (dataMap['data'] != null) {
           final innerData = dataMap['data'];
           if (innerData is Map) {
-            debugPrint('[GamebaseRepository] inner data keys: ${innerData.keys.toList()}');
+            debugPrint(
+              '[GamebaseRepository] inner data keys: ${innerData.keys.toList()}',
+            );
           }
         }
       }
@@ -332,7 +353,9 @@ class GamebaseRepository {
       };
 
       if (kDebugMode) {
-        debugPrint('[GamebaseRepository] globalSearch: q="$query" page=$pageNumber');
+        debugPrint(
+          '[GamebaseRepository] globalSearch: q="$query" page=$pageNumber',
+        );
       }
 
       final response = await _dio.get(
@@ -357,7 +380,9 @@ class GamebaseRepository {
         debugPrint('  Message: ${e.message}');
         debugPrint('  Response: ${e.response?.data}');
       }
-      throw Exception('Failed to perform global search: ${e.response?.statusCode ?? 'network error'} - ${e.message}');
+      throw Exception(
+        'Failed to perform global search: ${e.response?.statusCode ?? 'network error'} - ${e.message}',
+      );
     } catch (e) {
       throw Exception('Failed to perform global search: $e');
     }
