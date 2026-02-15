@@ -2,7 +2,7 @@ openapi: 3.1.0
 info:
   title: Chess Database API
   description: API for querying chess game positions and player data
-  version: 1.0.5
+  version: 1.0.6
 
 servers:
   - url: http://localhost:3232
@@ -101,6 +101,108 @@ paths:
                       draws: 90
                       total: 360
                       gameId: "550e8400-e29b-41d4-a716-446655440000"
+        "400":
+          description: Invalid request (e.g., invalid FEN)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/game-position/games:
+    get:
+      summary: List games for a position
+      description: |
+        Returns a paginated list of games where the given position occurred.
+        If `uci` is provided, only returns games where that move was played from
+        the position.
+
+        This endpoint is intended for Opening Explorer UI previews and avoids
+        expensive `COUNT(*)` queries by relying on `hasMore` pagination.
+
+        **Coverage:** Position data is indexed for the first 21 plies (~10-11 full moves) of each game.
+        Queries for positions beyond this depth will return an empty list.
+      operationId: getPositionGames
+      tags:
+        - Game Position
+      parameters:
+        - name: fen
+          in: query
+          required: true
+          description: |
+            FEN string representing the chess position.
+            The halfmove clock and fullmove number (last two FEN fields) are ignored for matching.
+          schema:
+            type: string
+          example: "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
+        - name: uci
+          in: query
+          required: false
+          description: Filter by next move in UCI notation (e.g. "e2e4", "e7e8q")
+          schema:
+            type: string
+            pattern: "^[a-h][1-8][a-h][1-8][qrbn]?$"
+          example: "e2e4"
+        - name: playerId
+          in: query
+          required: false
+          description: Filter by player UUID (matches the player who played the move from this position)
+          schema:
+            type: string
+            format: uuid
+        - name: timeControl
+          in: query
+          required: false
+          description: Filter by time control
+          schema:
+            type: string
+            enum:
+              - CLASSICAL
+              - RAPID
+              - BLITZ
+        - name: minRating
+          in: query
+          required: false
+          description: Minimum player rating filter
+          schema:
+            type: integer
+            minimum: 1
+        - name: maxRating
+          in: query
+          required: false
+          description: Maximum player rating filter
+          schema:
+            type: integer
+            minimum: 1
+        - name: pageNumber
+          in: query
+          required: false
+          description: Page number (0-indexed)
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - name: pageSize
+          in: query
+          required: false
+          description: Number of results per page (max 50)
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 20
+      responses:
+        "200":
+          description: Successful response with games
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PositionGamesResponse"
         "400":
           description: Invalid request (e.g., invalid FEN)
           content:
@@ -710,6 +812,24 @@ components:
         data:
           type: array
           items: { $ref: "#/components/schemas/PlayerGamePreview" }
+        metadata:
+          type: object
+          required: [pageNumber, pageSize, hasMore]
+          properties:
+            pageNumber: { type: integer }
+            pageSize: { type: integer }
+            hasMore: { type: boolean }
+
+    PositionGamesResponse:
+      type: object
+      required: [status, data, metadata]
+      properties:
+        status:
+          type: string
+          enum: [success]
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/GameSearchPreview" }
         metadata:
           type: object
           required: [pageNumber, pageSize, hasMore]
