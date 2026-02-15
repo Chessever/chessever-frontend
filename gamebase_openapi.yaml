@@ -2,7 +2,7 @@ openapi: 3.1.0
 info:
   title: Chess Database API
   description: API for querying chess game positions and player data
-  version: 1.0.6
+  version: 1.0.8
 
 servers:
   - url: http://localhost:3232
@@ -22,8 +22,9 @@ paths:
         For each move, returns win/draw/loss counts and total games.
         If only one game exists for a move, includes the gameId.
 
-        **Coverage:** Position data is indexed for the first 21 plies (~10-11 full moves) of each game.
-        Queries for positions beyond this depth will return an empty moves array.
+        **Coverage:** This GET endpoint uses the pre-indexed `game_position` table (opening window).
+        For deeper exploration (beyond the indexed window), use `POST /api/game-position/aggregates/query`
+        and include the explored move list.
       operationId: getPositionAggregates
       tags:
         - Game Position
@@ -101,6 +102,57 @@ paths:
                       draws: 90
                       total: 360
                       gameId: "550e8400-e29b-41d4-a716-446655440000"
+        "400":
+          description: Invalid request (e.g., invalid FEN)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/game-position/aggregates/query:
+    post:
+      summary: Query move aggregates (supports deep lines)
+      description: |
+        Returns aggregated statistics for all moves played from a given FEN position.
+        Same response shape as `GET /api/game-position/aggregates`.
+
+        This endpoint supports deep exploration by accepting the explored move list (`moves`).
+        When the position is beyond the indexed opening window, the server computes aggregates
+        from the stored move lists in `game.data` using a precomputed key for the first 21 moves,
+        and caches results in Redis.
+      operationId: postPositionAggregatesQuery
+      tags:
+        - Game Position
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PositionAggregatesQueryRequest"
+      responses:
+        "200":
+          description: Successful response with move aggregates
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [success]
+                  data:
+                    type: object
+                    properties:
+                      moves:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/MoveAggregate"
         "400":
           description: Invalid request (e.g., invalid FEN)
           content:
@@ -700,6 +752,41 @@ components:
       description: API key for authentication
 
   schemas:
+    PositionAggregatesQueryRequest:
+      type: object
+      required:
+        - fen
+      properties:
+        fen:
+          type: string
+          description: |
+            FEN string representing the chess position.
+            The halfmove clock and fullmove number (last two FEN fields) are ignored for matching.
+        moves:
+          type: array
+          description: |
+            Explored mainline moves (UCI), from the start position to the current position.
+            Required for deep exploration beyond the indexed opening window.
+          items:
+            type: string
+            pattern: "^[a-h][1-8][a-h][1-8][qrbn]?$"
+          example: ["e2e4", "e7e5", "g1f3", "b8c6"]
+        playerId:
+          type: string
+          format: uuid
+          description: Filter by player UUID (player to move at this position)
+        timeControl:
+          type: string
+          enum: [CLASSICAL, RAPID, BLITZ]
+          description: Filter by time control
+        minRating:
+          type: integer
+          minimum: 1
+          description: Minimum rating filter (player to move at this position)
+        maxRating:
+          type: integer
+          minimum: 1
+          description: Maximum rating filter (player to move at this position)
     SearchColumn:
       type: object
       required: [name, type, nullable, searchable, filterable, sortable, operators]

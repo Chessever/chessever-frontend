@@ -59,6 +59,7 @@ class GamebaseRepository {
 
   Future<GamebaseResponse> getMoveAggregates({
     required String fen,
+    List<String> moves = const [],
     String? playerId,
     TimeControl? timeControl,
     int? minRating,
@@ -66,8 +67,9 @@ class GamebaseRepository {
   }) async {
     try {
       final normalizedFen = _normalizeFenForLookup(fen);
-      final queryParams = {
+      final body = <String, dynamic>{
         'fen': normalizedFen,
+        'moves': moves.map((m) => m.trim().toLowerCase()).toList(growable: false),
         if (playerId != null && playerId.isNotEmpty) 'playerId': playerId,
         if (timeControl != null) 'timeControl': timeControl.name.toUpperCase(),
         if (minRating != null) 'minRating': minRating,
@@ -76,13 +78,19 @@ class GamebaseRepository {
 
       if (kDebugMode) {
         debugPrint('[GamebaseRepository] getMoveAggregates:');
-        debugPrint('  URL: $_baseUrl/api/game-position/aggregates');
-        debugPrint('  Params: $queryParams');
+        debugPrint('  URL: $_baseUrl/api/game-position/aggregates/query');
+        debugPrint('  Body: ${{
+          ...body,
+          // Avoid dumping huge move lists in logs
+          if (moves.length > 8) 'moves': '[${moves.length} moves]',
+        }}');
       }
 
-      final response = await _dio.get(
-        '$_baseUrl/api/game-position/aggregates',
-        queryParameters: queryParams,
+      // Use POST /aggregates/query so the backend can compute deep move trees
+      // beyond the pre-indexed opening window.
+      final response = await _dio.post(
+        '$_baseUrl/api/game-position/aggregates/query',
+        data: body,
         options: Options(
           headers: {'X-API-Key': _apiKey, 'Accept': 'application/json'},
         ),

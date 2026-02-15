@@ -82,8 +82,16 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
               ? state.filters.playerIds.first
               : null;
 
+      // Only send the explored line up to the current position.
+      // moveHistory may contain "future" moves when the user navigates back.
+      final exploredMoves =
+          state.currentMoveIndex >= 0
+              ? state.moveHistory.sublist(0, state.currentMoveIndex + 1)
+              : const <String>[];
+
       final response = await repository.getMoveAggregates(
         fen: state.currentFen,
+        moves: exploredMoves,
         timeControl: timeControlFilter,
         minRating: state.filters.minRating,
         maxRating: state.filters.maxRating,
