@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:dart_mappable/dart_mappable.dart';
 import '../models/models.dart';
 
@@ -33,6 +35,13 @@ class GamebaseFilters with GamebaseFiltersMappable {
 /// State for the Gamebase explorer screen.
 @MappableClass()
 class GamebaseExplorerState with GamebaseExplorerStateMappable {
+  /// Maximum ply depth indexed by the backend opening explorer.
+  ///
+  /// `move_number` in the backend equals "plies played + 1", so the maximum
+  /// playable move index is `maxIndexedMoveNumber - 2`.
+  static const int maxIndexedMoveNumber = 21;
+  static const int maxIndexedMoveIndex = maxIndexedMoveNumber - 2;
+
   const GamebaseExplorerState({
     this.currentFen = '', // Empty by default; setPosition() sets the real FEN
     this.moveHistory = const [],
@@ -72,13 +81,23 @@ class GamebaseExplorerState with GamebaseExplorerStateMappable {
   bool get isAtInitialPosition => currentMoveIndex == -1;
 
   /// Check if at latest move
-  bool get isAtLatestMove => currentMoveIndex == moveHistory.length - 1;
+  bool get isAtLatestMove => currentMoveIndex == maxNavigableMoveIndex;
 
   /// Check if can go back
   bool get canGoBack => currentMoveIndex >= 0;
 
   /// Check if can go forward
-  bool get canGoForward => currentMoveIndex < moveHistory.length - 1;
+  bool get canGoForward => currentMoveIndex < maxNavigableMoveIndex;
+
+  /// Current backend move_number (1-indexed ply position).
+  int get currentMoveNumber => currentMoveIndex + 2;
+
+  /// Last move index that is safe to navigate within explorer aggregation coverage.
+  int get maxNavigableMoveIndex =>
+      math.min(moveHistory.length - 1, maxIndexedMoveIndex);
+
+  /// True when we've reached the explorer coverage edge (next position would be unindexed).
+  bool get isAtIndexedDepthLimit => currentMoveIndex >= maxIndexedMoveIndex;
 
   /// Get total games in current position
   int get totalGames => moveAggregates.fold(0, (sum, agg) => sum + agg.total);
