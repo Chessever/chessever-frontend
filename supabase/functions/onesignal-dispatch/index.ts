@@ -111,15 +111,7 @@ Deno.serve(async (req) => {
     }
   }
 
-  let limit = 25;
-  try {
-    const body = await req.json();
-    if (typeof body?.limit === "number") limit = body.limit;
-  } catch (_) {
-    // Ignore body parsing errors; use default limit.
-  }
-
-  const items = await fetchPending(limit);
+  const items = await fetchPending();
   const results: Array<Record<string, unknown>> = [];
   const cloudEvalState: CloudEvalState = {
     remaining: CLOUD_EVAL_MAX_REQUESTS,
@@ -163,14 +155,13 @@ async function resolveDispatchToken(): Promise<string | null> {
   return token;
 }
 
-async function fetchPending(limit: number): Promise<OutboxItem[]> {
+async function fetchPending(): Promise<OutboxItem[]> {
   const { data, error } = await supabase
     .from("notification_outbox")
     .select("*")
     .eq("status", "pending")
     .lte("not_before", new Date().toISOString())
-    .order("created_at", { ascending: true })
-    .limit(limit);
+    .order("created_at", { ascending: true });
 
   if (error) {
     throw error;
