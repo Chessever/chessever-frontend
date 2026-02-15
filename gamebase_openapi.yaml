@@ -2,7 +2,7 @@ openapi: 3.1.0
 info:
   title: Chess Database API
   description: API for querying chess game positions and player data
-  version: 1.0.0
+  version: 1.0.5
 
 servers:
   - url: http://localhost:3232
@@ -153,7 +153,11 @@ paths:
         - name: q
           in: query
           required: true
-          description: Search query string
+          description: |
+            Search query string.
+
+            Note: clients may send `*` to represent an "empty query" while still applying filters
+            (e.g. `timeControl`, `result`, `yearFrom/yearTo`, `ratingFrom/ratingTo`).
           schema:
             type: string
         - name: resources
@@ -399,6 +403,133 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /api/player/{id}/games:
+    get:
+      summary: List games for a player
+      description: >
+        List games for a player, with fast server-side filtering (color, time control, outcome, opening, event, opponent).
+        Returns lightweight game previews. Fetch full game data via `GET /api/game/{id}` when needed.
+      operationId: getPlayerGames
+      tags:
+        - Player
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Player UUID
+          schema:
+            type: string
+            format: uuid
+        - name: color
+          in: query
+          required: false
+          description: Filter by the player's color in the game
+          schema:
+            type: string
+            enum: [all, white, black]
+            default: all
+        - name: timeControl
+          in: query
+          required: false
+          description: Filter by time control bucket
+          schema:
+            type: string
+            enum: [CLASSICAL, RAPID, BLITZ]
+        - name: outcome
+          in: query
+          required: false
+          description: Filter by outcome from the player's perspective
+          schema:
+            type: string
+            enum: [win, loss, draw]
+        - name: opponentId
+          in: query
+          required: false
+          description: Filter by opponent player UUID
+          schema:
+            type: string
+            format: uuid
+        - name: eco
+          in: query
+          required: false
+          description: ECO prefix or substring (e.g. `B9`, `C45`)
+          schema:
+            type: string
+        - name: opening
+          in: query
+          required: false
+          description: Opening name substring (case-insensitive)
+          schema:
+            type: string
+        - name: variation
+          in: query
+          required: false
+          description: Variation substring (case-insensitive)
+          schema:
+            type: string
+        - name: event
+          in: query
+          required: false
+          description: Event substring (case-insensitive)
+          schema:
+            type: string
+        - name: site
+          in: query
+          required: false
+          description: Site substring (case-insensitive)
+          schema:
+            type: string
+        - name: dateFrom
+          in: query
+          required: false
+          description: Start date (inclusive)
+          schema:
+            type: string
+            format: date-time
+        - name: dateTo
+          in: query
+          required: false
+          description: End date (exclusive)
+          schema:
+            type: string
+            format: date-time
+        - name: pageNumber
+          in: query
+          required: false
+          description: Page number (0-indexed)
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - name: pageSize
+          in: query
+          required: false
+          description: Number of results per page (max 100)
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        "200":
+          description: Successful response with player games
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlayerGamesResponse"
+        "401":
+          description: Missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Player not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /api/game/{id}:
     get:
       summary: Get game by ID
@@ -554,6 +685,39 @@ components:
         whiteFed: { type: string, nullable: true, description: "White player's country/federation" }
         blackFed: { type: string, nullable: true, description: "Black player's country/federation" }
 
+    PlayerGamePreview:
+      allOf:
+        - $ref: "#/components/schemas/GameSearchPreview"
+        - type: object
+          required: [color, outcome]
+          properties:
+            color:
+              type: string
+              enum: [white, black]
+              description: The player's color in this game
+            outcome:
+              type: string
+              enum: [win, loss, draw]
+              description: Outcome from the player's perspective
+
+    PlayerGamesResponse:
+      type: object
+      required: [status, data, metadata]
+      properties:
+        status:
+          type: string
+          enum: [success]
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/PlayerGamePreview" }
+        metadata:
+          type: object
+          required: [pageNumber, pageSize, hasMore]
+          properties:
+            pageNumber: { type: integer }
+            pageSize: { type: integer }
+            hasMore: { type: boolean }
+
     SearchResult:
       oneOf:
         - allOf:
@@ -585,11 +749,15 @@ components:
               items: { $ref: "#/components/schemas/SearchResult" }
             metadata:
               type: object
-              required: [pageNumber, pageSize, totalCount]
+              required: [pageNumber, pageSize, totalCount, hasMore]
               properties:
                 pageNumber: { type: integer }
                 pageSize: { type: integer }
                 totalCount: { type: integer }
+                totalCountIsEstimate:
+                  type: boolean
+                  description: When true, totalCount is an estimate (used to avoid expensive COUNT(*) on broad queries).
+                hasMore: { type: boolean }
 
     SearchQueryRequest:
       type: object
@@ -631,11 +799,15 @@ components:
           items: { type: object }
         metadata:
           type: object
-          required: [pageNumber, pageSize, totalCount]
+          required: [pageNumber, pageSize, totalCount, hasMore]
           properties:
             pageNumber: { type: integer }
             pageSize: { type: integer }
             totalCount: { type: integer }
+            totalCountIsEstimate:
+              type: boolean
+              description: When true, totalCount is an estimate (used to avoid expensive COUNT(*) on broad queries).
+            hasMore: { type: boolean }
 
     MoveAggregate:
       type: object
