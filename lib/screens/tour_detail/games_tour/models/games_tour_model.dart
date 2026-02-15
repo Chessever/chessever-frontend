@@ -68,7 +68,8 @@ class GamesTourModel {
   final DateTime? lastMoveTime;
   final String? eco;
   final String? openingName;
-  final String? timeControl; // From group_broadcasts: 'standard', 'rapid', 'blitz'
+  final String?
+  timeControl; // From group_broadcasts: 'standard', 'rapid', 'blitz'
 
   GamesTourModel({
     required this.gameId,
@@ -601,6 +602,7 @@ class PlayerCard {
   final String countryCode;
   final int? fideId;
   final String? team;
+  final String? gamebasePlayerId;
 
   PlayerCard({
     required this.name,
@@ -610,6 +612,7 @@ class PlayerCard {
     required this.countryCode,
     required this.team,
     this.fideId,
+    this.gamebasePlayerId,
   });
 
   factory PlayerCard.fromPlayer(Player player) {
@@ -637,6 +640,7 @@ class PlayerCard {
     String? countryCode,
     int? fideId,
     String? team,
+    String? gamebasePlayerId,
   }) {
     return PlayerCard(
       name: name ?? this.name,
@@ -646,6 +650,7 @@ class PlayerCard {
       countryCode: countryCode ?? this.countryCode,
       fideId: fideId ?? this.fideId,
       team: team ?? this.team,
+      gamebasePlayerId: gamebasePlayerId ?? this.gamebasePlayerId,
     );
   }
 
@@ -661,7 +666,8 @@ class PlayerCard {
         other.federation == federation &&
         other.title == title &&
         other.rating == rating &&
-        other.countryCode == countryCode;
+        other.countryCode == countryCode &&
+        other.gamebasePlayerId == gamebasePlayerId;
   }
 
   @override
@@ -670,7 +676,8 @@ class PlayerCard {
         federation.hashCode ^
         title.hashCode ^
         rating.hashCode ^
-        countryCode.hashCode;
+        countryCode.hashCode ^
+        (gamebasePlayerId?.hashCode ?? 0);
   }
 }
 

@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:chessever2/utils/number_format_utils.dart';
 import 'package:chessever2/screens/library/providers/gamebase_database_games_provider.dart';
 import 'package:chessever2/screens/library/providers/gamebase_filter_provider.dart';
 import 'package:chessever2/screens/library/widgets/add_to_folder_sheet.dart';
@@ -59,7 +60,9 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen> {
         _scrollController.position.maxScrollExtent - 200) {
       final state = ref.read(gamebaseDatabaseGamesPaginatedProvider);
       if (!state.isLoading && state.hasMore) {
-        ref.read(gamebaseDatabaseGamesPaginatedProvider.notifier).loadNextPage();
+        ref
+            .read(gamebaseDatabaseGamesPaginatedProvider.notifier)
+            .loadNextPage();
       }
     }
   }
@@ -96,15 +99,13 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen> {
         child: Center(
           child: ConstrainedBox(
             constraints: BoxConstraints(
-              maxWidth: ResponsiveHelper.isTablet
-                  ? ResponsiveHelper.contentMaxWidth
-                  : double.infinity,
+              maxWidth:
+                  ResponsiveHelper.isTablet
+                      ? ResponsiveHelper.contentMaxWidth
+                      : double.infinity,
             ),
             child: Column(
-              children: [
-                _buildTopArea(),
-                Expanded(child: _buildContent()),
-              ],
+              children: [_buildTopArea(), Expanded(child: _buildContent())],
             ),
           ),
         ),
@@ -118,7 +119,6 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen> {
 
   Widget _buildTopArea() {
     final topPadding = MediaQuery.of(context).viewPadding.top;
-    final filtersActive = ref.watch(hasActiveGamebaseFiltersProvider);
 
     return Container(
       padding: EdgeInsets.only(top: topPadding + 8.h, bottom: 6.h),
@@ -129,12 +129,7 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen> {
           colors: [kBlackColor, kBackgroundColor],
         ),
       ),
-      child: Column(
-        children: [
-          _buildHeader(),
-          _buildSearchRow(filtersActive),
-        ],
-      ),
+      child: Column(children: [_buildHeader(), _buildSearchRow()]),
     );
   }
 
@@ -144,7 +139,12 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen> {
       tablet: 16.w,
     );
     return Padding(
-      padding: EdgeInsets.fromLTRB(horizontalPadding, 0, horizontalPadding, 8.h),
+      padding: EdgeInsets.fromLTRB(
+        horizontalPadding,
+        0,
+        horizontalPadding,
+        8.h,
+      ),
       child: Stack(
         alignment: Alignment.center,
         children: [
@@ -177,35 +177,30 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen> {
     );
   }
 
-  Widget _buildSearchRow(bool filtersActive) {
+  Widget _buildSearchRow() {
     final horizontalPadding = ResponsiveHelper.adaptive(
       phone: 16.w,
       tablet: 24.w,
     );
     return Padding(
-      padding: EdgeInsets.fromLTRB(horizontalPadding, 0, horizontalPadding, 8.h),
-      child: Row(
-        children: [
-          Expanded(
-            child: LibrarySearchBar(
-              controller: _searchController,
-              focusNode: _searchFocusNode,
-              enableOverlay: false,
-              hintText: 'Search games',
-              hintPhrases: const [
-                'Search players...',
-                'Search openings...',
-                'Search among millions...',
-              ],
-              onChanged: _onSearchChanged,
-            ),
-          ),
-          SizedBox(width: 8.w),
-          _FilterButton(
-            isActive: filtersActive,
-            onTap: _openFilters,
-          ),
+      padding: EdgeInsets.fromLTRB(
+        horizontalPadding,
+        0,
+        horizontalPadding,
+        8.h,
+      ),
+      child: LibrarySearchBar(
+        controller: _searchController,
+        focusNode: _searchFocusNode,
+        enableOverlay: false,
+        hintText: 'Search games',
+        hintPhrases: const [
+          'Search players...',
+          'Search openings...',
+          'Search among millions...',
         ],
+        onChanged: _onSearchChanged,
+        onFilterTap: _openFilters,
       ),
     );
   }
@@ -220,9 +215,7 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen> {
 
     // Loading state (no games yet)
     if (games.isEmpty && paginationState.isLoading) {
-      return const Center(
-        child: CircularProgressIndicator(color: kWhiteColor),
-      );
+      return const Center(child: CircularProgressIndicator(color: kWhiteColor));
     }
 
     // Error state
@@ -277,10 +270,13 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen> {
         if (paginationState.totalCount > 0)
           Padding(
             padding: EdgeInsets.fromLTRB(
-              horizontalPadding, 4.h, horizontalPadding, 8.h,
+              horizontalPadding,
+              4.h,
+              horizontalPadding,
+              8.h,
             ),
             child: Text(
-              '${paginationState.totalCount} games',
+              '${formatCompactCount(paginationState.totalCount)} games',
               style: AppTypography.textXsRegular.copyWith(
                 color: kWhiteColor.withValues(alpha: 0.5),
               ),
@@ -292,7 +288,10 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen> {
           child: ListView.separated(
             controller: _scrollController,
             padding: EdgeInsets.fromLTRB(
-              horizontalPadding, 0, horizontalPadding, 100.h,
+              horizontalPadding,
+              0,
+              horizontalPadding,
+              100.h,
             ),
             itemCount: itemCount,
             separatorBuilder: (_, __) => SizedBox(height: 12.h),
@@ -320,10 +319,7 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen> {
                 allGames: games,
                 gameIndex: index,
                 animationIndex: index,
-                onAdd: () => showAddToFolderSheet(
-                  context: context,
-                  game: game,
-                ),
+                onAdd: () => showAddToFolderSheet(context: context, game: game),
                 showSwipeHint: index == 0,
                 hideEventInfo: true,
               );
@@ -331,43 +327,6 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen> {
           ),
         ),
       ],
-    );
-  }
-
-}
-
-/// Filter button with active indicator
-class _FilterButton extends StatelessWidget {
-  final bool isActive;
-  final VoidCallback onTap;
-
-  const _FilterButton({
-    required this.isActive,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 40.h,
-        height: 40.h,
-        decoration: BoxDecoration(
-          color: const Color(0xFF1A1A1C),
-          borderRadius: BorderRadius.circular(4.br),
-          border: isActive
-              ? Border.all(color: const Color(0xFF52525B))
-              : null,
-        ),
-        child: Center(
-          child: Icon(
-            Icons.tune_rounded,
-            size: 20.sp,
-            color: kWhiteColor.withValues(alpha: 0.7),
-          ),
-        ),
-      ),
     );
   }
 }

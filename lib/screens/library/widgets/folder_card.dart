@@ -6,6 +6,7 @@ import 'package:chessever2/screens/library/widgets/create_folder_dialog.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
+import 'package:chessever2/utils/number_format_utils.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
@@ -17,17 +18,7 @@ import 'package:motor/motor.dart';
 String _formatGameCount(int count) {
   if (count == 0) return 'Empty';
   if (count == 1) return '1 game';
-  if (count >= 1000) {
-    // Format with commas: 80,000 games
-    final s = count.toString();
-    final buf = StringBuffer();
-    for (var i = 0; i < s.length; i++) {
-      if (i > 0 && (s.length - i) % 3 == 0) buf.write(',');
-      buf.write(s[i]);
-    }
-    return '$buf games';
-  }
-  return '$count games';
+  return '${formatCompactCount(count)} games';
 }
 
 class FolderCard extends ConsumerWidget {
@@ -55,9 +46,10 @@ class FolderCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     return Material(
       type: MaterialType.transparency,
-      child: isExpanded
-          ? _buildExpandedCard(context, ref)
-          : _buildCompactCard(context),
+      child:
+          isExpanded
+              ? _buildExpandedCard(context, ref)
+              : _buildCompactCard(context),
     );
   }
 
@@ -127,19 +119,21 @@ class FolderCard extends ConsumerWidget {
     } else {
       final countAsync = ref.watch(folderAnalysisCountProvider(folder.id));
       countWidget = countAsync.when(
-        data: (count) => Text(
-          _formatGameCount(count),
-          style: AppTypography.textXsRegular.copyWith(
-            color: const Color(0xFFA1A1A1),
-            height: 16 / 12,
-          ),
-        ),
-        loading: () => Text(
-          '...',
-          style: AppTypography.textXsRegular.copyWith(
-            color: const Color(0xFFA1A1A1),
-          ),
-        ),
+        data:
+            (count) => Text(
+              _formatGameCount(count),
+              style: AppTypography.textXsRegular.copyWith(
+                color: const Color(0xFFA1A1A1),
+                height: 16 / 12,
+              ),
+            ),
+        loading:
+            () => Text(
+              '...',
+              style: AppTypography.textXsRegular.copyWith(
+                color: const Color(0xFFA1A1A1),
+              ),
+            ),
         error: (_, __) => const SizedBox.shrink(),
       );
     }
@@ -196,15 +190,17 @@ class FolderCard extends ConsumerWidget {
 
             // Right arrow for TWIC, 3-dot menu for other books
             if (isTwic)
-              Icon(
-                Icons.arrow_forward_ios_rounded,
-                color: kWhiteColor.withValues(alpha: 0.5),
-                size: 16.ic,
+              Padding(
+                padding: EdgeInsets.only(left: 8.w),
+                child: Icon(
+                  Icons.arrow_forward_ios_rounded,
+                  color: const Color(0xFFFFFFFF).withValues(alpha: 0.7),
+                  size: 20.sp,
+                  weight: 700,
+                ),
               )
             else
-              _DotsMenuButton(
-                onTap: () => _showOverlayMenu(context, ref),
-              ),
+              _DotsMenuButton(onTap: () => _showOverlayMenu(context, ref)),
           ],
         ),
       ),
@@ -287,47 +283,50 @@ class FolderCard extends ConsumerWidget {
   Future<void> _deleteFolder(BuildContext context, WidgetRef ref) async {
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (_) => Center(
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-            maxWidth: ResponsiveHelper.isTablet ? 400 : double.infinity,
-          ),
-          child: AlertDialog(
-            backgroundColor: kBlack2Color,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16.br),
-            ),
-            title: Text(
-              'Delete book?',
-              style: AppTypography.textSmBold.copyWith(color: kWhiteColor),
-            ),
-            content: Text(
-              'This removes the book. Games in it will stay saved but become unassigned.',
-              style: AppTypography.textXsRegular.copyWith(
-                color: kWhiteColor.withValues(alpha: 0.7),
+      builder:
+          (_) => Center(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxWidth: ResponsiveHelper.isTablet ? 400 : double.infinity,
               ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(false),
-                child: Text(
-                  'Cancel',
-                  style: AppTypography.textSmMedium.copyWith(
+              child: AlertDialog(
+                backgroundColor: kBlack2Color,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16.br),
+                ),
+                title: Text(
+                  'Delete book?',
+                  style: AppTypography.textSmBold.copyWith(color: kWhiteColor),
+                ),
+                content: Text(
+                  'This removes the book. Games in it will stay saved but become unassigned.',
+                  style: AppTypography.textXsRegular.copyWith(
                     color: kWhiteColor.withValues(alpha: 0.7),
                   ),
                 ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(false),
+                    child: Text(
+                      'Cancel',
+                      style: AppTypography.textSmMedium.copyWith(
+                        color: kWhiteColor.withValues(alpha: 0.7),
+                      ),
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(true),
+                    child: Text(
+                      'Delete',
+                      style: AppTypography.textSmMedium.copyWith(
+                        color: kRedColor,
+                      ),
+                    ),
+                  ),
+                ],
               ),
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(true),
-                child: Text(
-                  'Delete',
-                  style: AppTypography.textSmMedium.copyWith(color: kRedColor),
-                ),
-              ),
-            ],
+            ),
           ),
-        ),
-      ),
     );
 
     if (confirmed != true) return;
@@ -452,22 +451,23 @@ void showFolderOverlayMenu({
   late OverlayEntry entry;
 
   entry = OverlayEntry(
-    builder: (_) => _FolderOverlayMenu(
-      anchorRect: cardRect,
-      onDismiss: () => entry.remove(),
-      onShare: () {
-        entry.remove();
-        onShare();
-      },
-      onRename: () {
-        entry.remove();
-        onRename();
-      },
-      onDelete: () {
-        entry.remove();
-        onDelete();
-      },
-    ),
+    builder:
+        (_) => _FolderOverlayMenu(
+          anchorRect: cardRect,
+          onDismiss: () => entry.remove(),
+          onShare: () {
+            entry.remove();
+            onShare();
+          },
+          onRename: () {
+            entry.remove();
+            onRename();
+          },
+          onDelete: () {
+            entry.remove();
+            onDelete();
+          },
+        ),
   );
 
   overlay.insert(entry);
@@ -509,10 +509,7 @@ class _FolderOverlayMenuState extends State<_FolderOverlayMenu>
       parent: _controller,
       curve: Curves.easeOutCubic,
     );
-    _opacityAnim = CurvedAnimation(
-      parent: _controller,
-      curve: Curves.easeOut,
-    );
+    _opacityAnim = CurvedAnimation(parent: _controller, curve: Curves.easeOut);
     _controller.forward();
   }
 
@@ -549,70 +546,70 @@ class _FolderOverlayMenuState extends State<_FolderOverlayMenu>
     return Material(
       type: MaterialType.transparency,
       child: Stack(
-      children: [
-        // Scrim
-        Positioned.fill(
-          child: GestureDetector(
-            behavior: HitTestBehavior.translucent,
-            onTap: _dismiss,
-            child: FadeTransition(
-              opacity: _opacityAnim,
-              child: Container(color: Colors.black.withValues(alpha: 0.3)),
+        children: [
+          // Scrim
+          Positioned.fill(
+            child: GestureDetector(
+              behavior: HitTestBehavior.translucent,
+              onTap: _dismiss,
+              child: FadeTransition(
+                opacity: _opacityAnim,
+                child: Container(color: Colors.black.withValues(alpha: 0.3)),
+              ),
             ),
           ),
-        ),
-        // Menu
-        Positioned(
-          left: left,
-          top: top,
-          child: FadeTransition(
-            opacity: _opacityAnim,
-            child: ScaleTransition(
-              scale: _scaleAnim,
-              alignment: Alignment.topRight,
-              child: Container(
-                width: menuWidth,
-                decoration: BoxDecoration(
-                  color: const Color(0xFF111111),
-                  borderRadius: BorderRadius.circular(12.br),
-                  boxShadow: const [
-                    BoxShadow(
-                      color: Color(0x40000000),
-                      blurRadius: 12,
-                      offset: Offset(0, 6),
-                    ),
-                  ],
-                ),
-                clipBehavior: Clip.antiAlias,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    _OverlayMenuItem(
-                      icon: Icons.ios_share_rounded,
-                      label: 'Share',
-                      onTap: widget.onShare,
-                      position: _MenuItemPosition.top,
-                    ),
-                    _OverlayMenuItem(
-                      icon: Icons.edit_rounded,
-                      label: 'Rename Folder',
-                      onTap: widget.onRename,
-                      position: _MenuItemPosition.middle,
-                    ),
-                    _OverlayMenuItem(
-                      icon: Icons.delete_outline_rounded,
-                      label: 'Delete Folder',
-                      onTap: widget.onDelete,
-                      position: _MenuItemPosition.bottom,
-                    ),
-                  ],
+          // Menu
+          Positioned(
+            left: left,
+            top: top,
+            child: FadeTransition(
+              opacity: _opacityAnim,
+              child: ScaleTransition(
+                scale: _scaleAnim,
+                alignment: Alignment.topRight,
+                child: Container(
+                  width: menuWidth,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF111111),
+                    borderRadius: BorderRadius.circular(12.br),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Color(0x40000000),
+                        blurRadius: 12,
+                        offset: Offset(0, 6),
+                      ),
+                    ],
+                  ),
+                  clipBehavior: Clip.antiAlias,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _OverlayMenuItem(
+                        icon: Icons.ios_share_rounded,
+                        label: 'Share',
+                        onTap: widget.onShare,
+                        position: _MenuItemPosition.top,
+                      ),
+                      _OverlayMenuItem(
+                        icon: Icons.edit_rounded,
+                        label: 'Rename Folder',
+                        onTap: widget.onRename,
+                        position: _MenuItemPosition.middle,
+                      ),
+                      _OverlayMenuItem(
+                        icon: Icons.delete_outline_rounded,
+                        label: 'Delete Folder',
+                        onTap: widget.onDelete,
+                        position: _MenuItemPosition.bottom,
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
           ),
-        ),
-      ],
-    ),
+        ],
+      ),
     );
   }
 }
@@ -653,16 +650,15 @@ class _OverlayMenuItemState extends State<_OverlayMenuItem> {
       onTap: widget.onTap,
       child: Container(
         decoration: BoxDecoration(
-          color: _isPressed
-              ? const Color(0xFF1A1A1C)
-              : const Color(0xFF111111),
-          border: widget.position != _MenuItemPosition.top
-              ? const Border(
-                  top: BorderSide(
-                    color: Color(0x13E2E2E2), // rgba(226,226,226,0.075)
-                  ),
-                )
-              : null,
+          color: _isPressed ? const Color(0xFF1A1A1C) : const Color(0xFF111111),
+          border:
+              widget.position != _MenuItemPosition.top
+                  ? const Border(
+                    top: BorderSide(
+                      color: Color(0x13E2E2E2), // rgba(226,226,226,0.075)
+                    ),
+                  )
+                  : null,
         ),
         padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 8.h),
         child: Row(
@@ -676,19 +672,13 @@ class _OverlayMenuItemState extends State<_OverlayMenuItem> {
                 borderRadius: BorderRadius.circular(3.br),
               ),
               child: Center(
-                child: Icon(
-                  widget.icon,
-                  color: kWhiteColor,
-                  size: 15.sp,
-                ),
+                child: Icon(widget.icon, color: kWhiteColor, size: 15.sp),
               ),
             ),
             SizedBox(width: 11.w),
             Text(
               widget.label,
-              style: AppTypography.textMdMedium.copyWith(
-                color: kWhiteColor,
-              ),
+              style: AppTypography.textMdMedium.copyWith(color: kWhiteColor),
             ),
           ],
         ),

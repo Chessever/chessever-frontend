@@ -40,7 +40,7 @@ class LibraryGameCard extends ConsumerWidget {
       eventName ?? game.tourSlug ?? game.tourId,
     );
     final timeControlIcon = _getTimeControlIcon(game, displayEventName);
-    final displayEco = eco ?? '';  // Only ECO code, never round info
+    final displayEco = eco ?? ''; // Only ECO code, never round info
     final displayDate = _formatDate(date ?? game.lastMoveTime);
 
     return TappableScale(
@@ -50,127 +50,120 @@ class LibraryGameCard extends ConsumerWidget {
       },
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
-        onLongPress: onLongPress != null
-            ? () {
-                HapticFeedbackService.buttonPress();
-                onLongPress!();
-              }
-            : null,
+        onLongPress:
+            onLongPress != null
+                ? () {
+                  HapticFeedbackService.buttonPress();
+                  onLongPress!();
+                }
+                : null,
         child: Container(
-        decoration: BoxDecoration(
-          color: const Color(0xFF2E2E2E),
-          borderRadius: BorderRadius.circular(12.br),
-        ),
-        child: Column(
-          children: [
-            // Top section - light background with player info
-            Container(
-              padding: EdgeInsets.fromLTRB(14.w, 10.h, 14.w, 10.h),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  begin: Alignment(-1.0, 0.26),
-                  end: Alignment(1.0, -0.26),
-                  colors: [Color(0xFFDDDDE0), Color(0xFFADAEB3)],
+          decoration: BoxDecoration(
+            color: const Color(0xFF2E2E2E),
+            borderRadius: BorderRadius.circular(12.br),
+          ),
+          child: Column(
+            children: [
+              // Top section - light background with player info
+              Container(
+                padding: EdgeInsets.fromLTRB(14.w, 10.h, 14.w, 10.h),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    begin: Alignment(-1.0, 0.26),
+                    end: Alignment(1.0, -0.26),
+                    colors: [Color(0xFFDDDDE0), Color(0xFFADAEB3)],
+                  ),
+                  borderRadius: BorderRadius.vertical(
+                    top: Radius.circular(12.br),
+                  ),
                 ),
-                borderRadius: BorderRadius.vertical(
-                  top: Radius.circular(12.br),
-                ),
-              ),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Expanded(
-                    child: _PlayerInfo(
-                      name: game.whitePlayer.name,
-                      title: ChessTitleUtils.normalize(game.whitePlayer.title),
-                      rating: game.whitePlayer.rating > 0
-                          ? game.whitePlayer.displayRating
-                          : '',
-                      federation: game.whitePlayer.countryCode,
-                      alignment: CrossAxisAlignment.start,
-                    ),
-                  ),
-                  Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 10.w),
-                    child: _ResultOrEvalBar(game: game, ref: ref),
-                  ),
-                  Expanded(
-                    child: _PlayerInfo(
-                      name: game.blackPlayer.name,
-                      title: ChessTitleUtils.normalize(game.blackPlayer.title),
-                      rating: game.blackPlayer.rating > 0
-                          ? game.blackPlayer.displayRating
-                          : '',
-                      federation: game.blackPlayer.countryCode,
-                      alignment: CrossAxisAlignment.end,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            // Bottom section - dark background with event info
-            Container(
-              padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 3.h),
-              decoration: BoxDecoration(
-                color: const Color(0xFF1A1A1C),
-                borderRadius: BorderRadius.vertical(
-                  bottom: Radius.circular(12.br),
-                ),
-              ),
-              child: Row(
-                children: [
-                  // Left: time control icon + event name
-                  Expanded(
-                    child: Row(
-                      children: [
-                        Image.asset(
-                          timeControlIcon,
-                          width: 14.sp,
-                          height: 14.sp,
-                        ),
-                        SizedBox(width: 4.w),
-                        Flexible(
-                          child: Text(
-                            displayEventName,
-                            style: AppTypography.textXsRegular.copyWith(
-                              color: kWhiteColor,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  // Center: ECO code
-                  if (showRound && displayEco.isNotEmpty)
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
                     Expanded(
-                      child: Center(
-                        child: Text(
-                          displayEco,
-                          style: AppTypography.textXsRegular.copyWith(
-                            color: kWhiteColor,
-                          ),
+                      child: _PlayerInfo(
+                        name: game.whitePlayer.name,
+                        title: ChessTitleUtils.normalize(
+                          game.whitePlayer.title,
                         ),
+                        rating:
+                            game.whitePlayer.rating > 0
+                                ? game.whitePlayer.displayRating
+                                : '',
+                        federation: game.whitePlayer.countryCode,
+                        alignment: CrossAxisAlignment.start,
                       ),
                     ),
-                  // Right: Date
-                  if (displayDate.isNotEmpty)
+                    Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 10.w),
+                      child: _ResultOrEvalBar(game: game, ref: ref),
+                    ),
                     Expanded(
-                      child: Center(
-                        child: Text(
-                          displayDate,
-                          style: AppTypography.textXsRegular.copyWith(
-                            color: kWhiteColor,
-                          ),
+                      child: _PlayerInfo(
+                        name: game.blackPlayer.name,
+                        title: ChessTitleUtils.normalize(
+                          game.blackPlayer.title,
                         ),
+                        rating:
+                            game.blackPlayer.rating > 0
+                                ? game.blackPlayer.displayRating
+                                : '',
+                        federation: game.blackPlayer.countryCode,
+                        alignment: CrossAxisAlignment.end,
                       ),
                     ),
-                ],
+                  ],
+                ),
               ),
-            ),
-          ],
-        ),
+              // Bottom section - dark background with event info
+              Container(
+                padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 3.h),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1A1A1C),
+                  borderRadius: BorderRadius.vertical(
+                    bottom: Radius.circular(12.br),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    // Left: time control icon + event name
+                    Image.asset(timeControlIcon, width: 14.sp, height: 14.sp),
+                    SizedBox(width: 4.w),
+                    Expanded(
+                      child: Text(
+                        displayEventName,
+                        style: AppTypography.textXsRegular.copyWith(
+                          color: kWhiteColor,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    // ECO code (only if available)
+                    if (showRound && displayEco.isNotEmpty) ...[
+                      SizedBox(width: 8.w),
+                      Text(
+                        displayEco,
+                        style: AppTypography.textXsRegular.copyWith(
+                          color: kWhiteColor,
+                        ),
+                      ),
+                    ],
+                    // Date (always right-most)
+                    if (displayDate.isNotEmpty) ...[
+                      SizedBox(width: 8.w),
+                      Text(
+                        displayDate,
+                        style: AppTypography.textXsRegular.copyWith(
+                          color: kWhiteColor,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -193,15 +186,50 @@ class LibraryGameCard extends ConsumerWidget {
 
     // Words that should stay lowercase in titles (unless first word)
     const lowercaseWords = {
-      'a', 'an', 'the', 'and', 'but', 'or', 'for', 'nor', 'on', 'at',
-      'to', 'from', 'by', 'of', 'in', 'vs', 'vs.'
+      'a',
+      'an',
+      'the',
+      'and',
+      'but',
+      'or',
+      'for',
+      'nor',
+      'on',
+      'at',
+      'to',
+      'from',
+      'by',
+      'of',
+      'in',
+      'vs',
+      'vs.',
     };
 
     // Words/abbreviations that should stay uppercase
     const uppercaseWords = {
-      'gm', 'im', 'fm', 'cm', 'wgm', 'wim', 'wfm', 'wcm',
-      'usa', 'uk', 'ussr', 'fide', 'ecf', 'uscf',
-      'ii', 'iii', 'iv', 'vi', 'vii', 'viii', 'ix', 'xi', 'xii'
+      'gm',
+      'im',
+      'fm',
+      'cm',
+      'wgm',
+      'wim',
+      'wfm',
+      'wcm',
+      'usa',
+      'uk',
+      'ussr',
+      'fide',
+      'ecf',
+      'uscf',
+      'ii',
+      'iii',
+      'iv',
+      'vi',
+      'vii',
+      'viii',
+      'ix',
+      'xi',
+      'xii',
     };
 
     final words = text.split(RegExp(r'\s+'));
@@ -223,7 +251,9 @@ class LibraryGameCard extends ConsumerWidget {
       }
       // Otherwise capitalize first letter
       else {
-        result.add('${word[0].toUpperCase()}${word.substring(1).toLowerCase()}');
+        result.add(
+          '${word[0].toUpperCase()}${word.substring(1).toLowerCase()}',
+        );
       }
     }
 
@@ -255,6 +285,8 @@ class LibraryGameCard extends ConsumerWidget {
     if (event.contains('blitz') || event.contains('bullet')) {
       return PngAsset.blitzIcon;
     }
+    if (event.contains('titled')) return PngAsset.blitzIcon;
+    if (event.contains('speed chess')) return PngAsset.blitzIcon;
     if (event.contains('rapid')) return PngAsset.rapidIcon;
 
     // Default to classical for standard/unknown events
@@ -293,9 +325,10 @@ class _PlayerInfo extends StatelessWidget {
       crossAxisAlignment: alignment,
       children: [
         Row(
-          mainAxisAlignment: alignment == CrossAxisAlignment.end
-              ? MainAxisAlignment.end
-              : MainAxisAlignment.start,
+          mainAxisAlignment:
+              alignment == CrossAxisAlignment.end
+                  ? MainAxisAlignment.end
+                  : MainAxisAlignment.start,
           children: [
             if (alignment != CrossAxisAlignment.end &&
                 federation.trim().isNotEmpty) ...[
@@ -315,9 +348,10 @@ class _PlayerInfo extends StatelessWidget {
                 ),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                textAlign: alignment == CrossAxisAlignment.end
-                    ? TextAlign.right
-                    : TextAlign.left,
+                textAlign:
+                    alignment == CrossAxisAlignment.end
+                        ? TextAlign.right
+                        : TextAlign.left,
               ),
             ),
             if (alignment == CrossAxisAlignment.end &&
@@ -342,7 +376,9 @@ class _PlayerInfo extends StatelessWidget {
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           textAlign:
-              alignment == CrossAxisAlignment.end ? TextAlign.right : TextAlign.left,
+              alignment == CrossAxisAlignment.end
+                  ? TextAlign.right
+                  : TextAlign.left,
         ),
       ],
     );
