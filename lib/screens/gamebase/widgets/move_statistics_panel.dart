@@ -191,33 +191,32 @@ class _MoveStatisticsRow extends StatelessWidget {
             SizedBox(width: 8.sp),
             // Game count
             SizedBox(
-              width: 84.w,
+              width: 80.w,
               child: Row(
+                mainAxisAlignment: MainAxisAlignment.end,
                 children: [
-                  Expanded(
-                    child: Align(
-                      alignment: Alignment.centerRight,
-                      child: Text(
-                        aggregate.formattedTotal,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        softWrap: false,
-                        style: TextStyle(
-                          color: kSecondaryTextColor,
-                          fontSize: 12.f,
-                        ),
+                  Flexible(
+                    child: Text(
+                      aggregate.formattedTotal,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      softWrap: false,
+                      textAlign: TextAlign.right,
+                      style: TextStyle(
+                        color: kSecondaryTextColor,
+                        fontSize: 12.f,
                       ),
                     ),
                   ),
-                  SizedBox(width: 4.sp),
+                  SizedBox(width: 2.sp),
                   IconButton(
                     visualDensity: VisualDensity.compact,
                     padding: EdgeInsets.zero,
-                    constraints: BoxConstraints.tightFor(width: 24.w, height: 24.h),
+                    constraints: BoxConstraints.tightFor(width: 22.w, height: 22.h),
                     icon: Icon(
                       Icons.list_alt_rounded,
                       color: kSecondaryTextColor,
-                      size: 18.ic,
+                      size: 16.ic,
                     ),
                     tooltip: 'Games',
                     onPressed: () {
