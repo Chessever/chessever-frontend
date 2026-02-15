@@ -1,5 +1,4 @@
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
-import 'package:chessever2/repository/gamebase/search/gamebase_search_models.dart';
 import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/library/utils/gamebase_pgn_builder.dart';
@@ -10,7 +9,7 @@ import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-import '../models/models.dart';
+import '../providers/gamebase_explorer_state.dart';
 import '../providers/gamebase_providers.dart';
 
 class PositionGamesSheet extends ConsumerWidget {
@@ -55,7 +54,8 @@ class PositionGamesSheet extends ConsumerWidget {
           borderRadius: BorderRadius.vertical(top: Radius.circular(16.br)),
         ),
         child: ConstrainedBox(
-          constraints: ResponsiveHelper.bottomSheetConstraints,
+          constraints:
+              ResponsiveHelper.bottomSheetConstraints ?? const BoxConstraints(),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -319,4 +319,3 @@ class _Empty extends StatelessWidget {
     );
   }
 }
-

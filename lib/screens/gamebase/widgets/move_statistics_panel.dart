@@ -5,6 +5,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import '../../../theme/app_theme.dart';
 import '../../../utils/responsive_helper.dart';
 import '../models/models.dart';
+import '../providers/gamebase_explorer_state.dart';
 import '../providers/gamebase_providers.dart';
 import 'position_games_sheet.dart';
 
@@ -66,9 +67,40 @@ class MoveStatisticsPanel extends ConsumerWidget {
                   fontWeight: FontWeight.w600,
                 ),
               ),
-              Text(
-                '${_formatNumber(state.totalGames)} games',
-                style: TextStyle(color: kSecondaryTextColor, fontSize: 12.f),
+              InkWell(
+                borderRadius: BorderRadius.circular(6.br),
+                onTap: () {
+                  showModalBottomSheet(
+                    context: context,
+                    backgroundColor: Colors.transparent,
+                    isScrollControlled: true,
+                    builder: (_) => PositionGamesSheet(
+                      fen: state.currentFen,
+                      filters: state.filters,
+                      title: 'Games in this position',
+                    ),
+                  );
+                },
+                child: Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 4.h),
+                  child: Row(
+                    children: [
+                      Text(
+                        '${_formatNumber(state.totalGames)} games',
+                        style: TextStyle(
+                          color: kSecondaryTextColor,
+                          fontSize: 12.f,
+                        ),
+                      ),
+                      SizedBox(width: 6.sp),
+                      Icon(
+                        Icons.list_alt_rounded,
+                        color: kSecondaryTextColor,
+                        size: 16.ic,
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ],
           ),
