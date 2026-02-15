@@ -107,6 +107,15 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
       aggregates.sort((a, b) => b.total.compareTo(a.total));
 
       state = state.copyWith(moveAggregates: aggregates, isLoading: false);
+
+      // Opportunistically prefetch a few likely next positions to make the
+      // explorer feel instantaneous even when backend caches are cold.
+      _prefetchNextPositions(
+        repository: repository,
+        baseFen: state.currentFen,
+        exploredMoves: exploredMoves,
+        aggregates: aggregates,
+      );
     } catch (e) {
       if (fetchId != _fetchToken) return;
       state = state.copyWith(
@@ -114,6 +123,58 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
         error: e.toString(),
         moveAggregates: [],
       );
+    }
+  }
+
+  void _prefetchNextPositions({
+    required GamebaseRepository repository,
+    required String baseFen,
+    required List<String> exploredMoves,
+    required List<MoveAggregate> aggregates,
+  }) {
+    // Keep this conservative: it's a perf win, but we don't want to DDOS our own API.
+    const int maxPrefetch = 3;
+    final timeControlFilter =
+        state.filters.timeControls.isNotEmpty
+            ? state.filters.timeControls.first
+            : null;
+    final playerIdFilter =
+        state.filters.playerIds.isNotEmpty ? state.filters.playerIds.first : null;
+
+    for (final a in aggregates.take(maxPrefetch)) {
+      try {
+        final chess = Chess.fromFEN(baseFen);
+        final from = a.uci.substring(0, 2);
+        final to = a.uci.substring(2, 4);
+        final promotion = a.uci.length > 4 ? a.uci[4] : null;
+        final dynamic moved = chess.move({
+          'from': from,
+          'to': to,
+          if (promotion != null) 'promotion': promotion,
+        });
+        if (moved == null) continue;
+
+        final nextFen = normalizeFenForGamebase(chess.fen);
+        final nextMoves = <String>[...exploredMoves, a.uci];
+
+        // Fire-and-forget; cache fill only.
+        unawaited(() async {
+          try {
+            await repository.getMoveAggregates(
+              fen: nextFen,
+              moves: nextMoves,
+              timeControl: timeControlFilter,
+              minRating: state.filters.minRating,
+              maxRating: state.filters.maxRating,
+              playerId: playerIdFilter,
+            );
+          } catch (_) {
+            // Ignore prefetch failures.
+          }
+        }());
+      } catch (_) {
+        // Ignore prefetch failures.
+      }
     }
   }
 
