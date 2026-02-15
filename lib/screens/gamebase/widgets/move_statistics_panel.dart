@@ -38,6 +38,33 @@ class MoveStatisticsPanel extends ConsumerWidget {
     }
 
     if (state.moveAggregates.isEmpty) {
+      // The backend only indexes the first N plies for the opening explorer.
+      // If the user navigates beyond that, aggregates will be empty even though
+      // games exist. Make this explicit so it doesn't look like missing data.
+      if (state.currentMoveNumber > GamebaseExplorerState.maxIndexedMoveNumber) {
+        return Center(
+          child: Padding(
+            padding: EdgeInsets.all(16.sp),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'Opening Explorer covers the first ${GamebaseExplorerState.maxIndexedMoveNumber} plies.',
+                  style: TextStyle(color: kSecondaryTextColor, fontSize: 14.f),
+                  textAlign: TextAlign.center,
+                ),
+                SizedBox(height: 10.h),
+                Text(
+                  'Open a game from this line to continue.',
+                  style: TextStyle(color: kSecondaryTextColor, fontSize: 12.f),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
+          ),
+        );
+      }
+
       return Center(
         child: Padding(
           padding: EdgeInsets.all(16.sp),
@@ -121,6 +148,26 @@ class MoveStatisticsPanel extends ConsumerWidget {
                 currentFen: state.currentFen,
                 filters: state.filters,
                 onTap: () {
+                  // When we reach the indexed depth limit, don't "advance" into
+                  // a position we cannot aggregate. Instead, offer example games
+                  // for that move so the user can continue in a real game view.
+                  if (state.isAtIndexedDepthLimit) {
+                    final sanMove = uciToSan(aggregate.uci, state.currentFen);
+
+                    showModalBottomSheet(
+                      context: context,
+                      backgroundColor: Colors.transparent,
+                      isScrollControlled: true,
+                      builder: (_) => PositionGamesSheet(
+                        fen: state.currentFen,
+                        uci: aggregate.uci,
+                        filters: state.filters,
+                        title: 'Continue with $sanMove',
+                      ),
+                    );
+                    return;
+                  }
+
                   ref
                       .read(gamebaseExplorerProvider.notifier)
                       .makeMove(aggregate.uci);
@@ -159,7 +206,7 @@ class _MoveStatisticsRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final sanMove = _uciToSan(aggregate.uci, currentFen);
+    final sanMove = uciToSan(aggregate.uci, currentFen);
 
     return InkWell(
       onTap: onTap,
@@ -193,20 +240,27 @@ class _MoveStatisticsRow extends StatelessWidget {
             SizedBox(
               width: 84.w,
               child: Row(
-                mainAxisAlignment: MainAxisAlignment.end,
                 children: [
-                  Text(
-                    aggregate.formattedTotal,
-                    style: TextStyle(
-                      color: kSecondaryTextColor,
-                      fontSize: 12.f,
+                  Expanded(
+                    child: Align(
+                      alignment: Alignment.centerRight,
+                      child: Text(
+                        aggregate.formattedTotal,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        softWrap: false,
+                        style: TextStyle(
+                          color: kSecondaryTextColor,
+                          fontSize: 12.f,
+                        ),
+                      ),
                     ),
                   ),
-                  SizedBox(width: 6.sp),
+                  SizedBox(width: 4.sp),
                   IconButton(
                     visualDensity: VisualDensity.compact,
                     padding: EdgeInsets.zero,
-                    constraints: BoxConstraints.tightFor(width: 28.w, height: 28.h),
+                    constraints: BoxConstraints.tightFor(width: 24.w, height: 24.h),
                     icon: Icon(
                       Icons.list_alt_rounded,
                       color: kSecondaryTextColor,
@@ -235,26 +289,25 @@ class _MoveStatisticsRow extends StatelessWidget {
       ),
     );
   }
+}
 
-  /// Convert UCI move notation to SAN (Standard Algebraic Notation).
-  String _uciToSan(String uci, String fen) {
-    try {
-      final position = Chess.fromSetup(Setup.parseFen(fen));
+/// Convert UCI move notation to SAN (Standard Algebraic Notation) for display.
+String uciToSan(String uci, String fen) {
+  try {
+    final position = Chess.fromSetup(Setup.parseFen(fen));
 
-      final from = Square.fromName(uci.substring(0, 2));
-      final to = Square.fromName(uci.substring(2, 4));
-      Role? promotion;
-      if (uci.length > 4) {
-        promotion = Role.fromChar(uci[4]);
-      }
-
-      final move = NormalMove(from: from, to: to, promotion: promotion);
-      final result = position.makeSan(move);
-      return result.$2;
-    } catch (e) {
-      // Fallback to UCI if conversion fails
-      return uci;
+    final from = Square.fromName(uci.substring(0, 2));
+    final to = Square.fromName(uci.substring(2, 4));
+    Role? promotion;
+    if (uci.length > 4) {
+      promotion = Role.fromChar(uci[4]);
     }
+
+    final move = NormalMove(from: from, to: to, promotion: promotion);
+    final result = position.makeSan(move);
+    return result.$2;
+  } catch (_) {
+    return uci;
   }
 }
 

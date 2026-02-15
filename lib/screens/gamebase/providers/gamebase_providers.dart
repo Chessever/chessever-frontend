@@ -238,24 +238,11 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
   void goToEnd() {
     if (state.moveHistory.isEmpty) return;
 
-    _chess = Chess();
-    for (final uci in state.moveHistory) {
-      final from = uci.substring(0, 2);
-      final to = uci.substring(2, 4);
-      final promotion = uci.length > 4 ? uci[4] : null;
-      chess.move({
-        'from': from,
-        'to': to,
-        if (promotion != null) 'promotion': promotion,
-      });
-    }
-
-    state = state.copyWith(
-      currentMoveIndex: state.moveHistory.length - 1,
-      currentFen: normalizeFenForGamebase(chess.fen),
-    );
-
-    _scheduleFetch();
+    // The opening explorer backend only indexes the first N plies.
+    // Clamp navigation to the deepest position we can still aggregate.
+    final targetIndex = state.maxNavigableMoveIndex;
+    if (targetIndex == state.currentMoveIndex) return;
+    goToMove(targetIndex);
   }
 
   /// Go to specific move index
