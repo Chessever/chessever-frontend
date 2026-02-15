@@ -38,33 +38,6 @@ class MoveStatisticsPanel extends ConsumerWidget {
     }
 
     if (state.moveAggregates.isEmpty) {
-      // The backend only indexes the first N plies for the opening explorer.
-      // If the user navigates beyond that, aggregates will be empty even though
-      // games exist. Make this explicit so it doesn't look like missing data.
-      if (state.currentMoveNumber > GamebaseExplorerState.maxIndexedMoveNumber) {
-        return Center(
-          child: Padding(
-            padding: EdgeInsets.all(16.sp),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  'Opening Explorer covers the first ${GamebaseExplorerState.maxIndexedMoveNumber} plies.',
-                  style: TextStyle(color: kSecondaryTextColor, fontSize: 14.f),
-                  textAlign: TextAlign.center,
-                ),
-                SizedBox(height: 10.h),
-                Text(
-                  'Open a game from this line to continue.',
-                  style: TextStyle(color: kSecondaryTextColor, fontSize: 12.f),
-                  textAlign: TextAlign.center,
-                ),
-              ],
-            ),
-          ),
-        );
-      }
-
       return Center(
         child: Padding(
           padding: EdgeInsets.all(16.sp),
@@ -148,26 +121,6 @@ class MoveStatisticsPanel extends ConsumerWidget {
                 currentFen: state.currentFen,
                 filters: state.filters,
                 onTap: () {
-                  // When we reach the indexed depth limit, don't "advance" into
-                  // a position we cannot aggregate. Instead, offer example games
-                  // for that move so the user can continue in a real game view.
-                  if (state.isAtIndexedDepthLimit) {
-                    final sanMove = uciToSan(aggregate.uci, state.currentFen);
-
-                    showModalBottomSheet(
-                      context: context,
-                      backgroundColor: Colors.transparent,
-                      isScrollControlled: true,
-                      builder: (_) => PositionGamesSheet(
-                        fen: state.currentFen,
-                        uci: aggregate.uci,
-                        filters: state.filters,
-                        title: 'Continue with $sanMove',
-                      ),
-                    );
-                    return;
-                  }
-
                   ref
                       .read(gamebaseExplorerProvider.notifier)
                       .makeMove(aggregate.uci);

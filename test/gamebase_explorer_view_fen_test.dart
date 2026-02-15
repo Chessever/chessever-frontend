@@ -17,6 +17,7 @@ class _FakeGamebaseRepository extends GamebaseRepository {
   @override
   Future<GamebaseResponse> getMoveAggregates({
     required String fen,
+    List<String> moves = const [],
     String? playerId,
     TimeControl? timeControl,
     int? minRating,
