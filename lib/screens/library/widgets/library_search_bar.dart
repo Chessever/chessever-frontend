@@ -212,7 +212,8 @@ class _LibrarySearchBarState extends ConsumerState<LibrarySearchBar> {
               children: [
                 // Animated hint text (shown when empty and not focused)
                 if (isEmpty && !_effectiveFocusNode.hasFocus)
-                  if (widget.hintPhrases != null && widget.hintPhrases!.length > 1)
+                  if (widget.hintPhrases != null &&
+                      widget.hintPhrases!.length > 1)
                     AnimatedSearchHint(
                       textColor: const Color(0xFFFFFFFF).withValues(alpha: 0.7),
                       textStyle: AppTypography.textXsRegular,
@@ -229,6 +230,7 @@ class _LibrarySearchBarState extends ConsumerState<LibrarySearchBar> {
                 TextField(
                   controller: widget.controller,
                   focusNode: _effectiveFocusNode,
+                  onTapOutside: (_) => _effectiveFocusNode.unfocus(),
                   style: AppTypography.textXsRegular.copyWith(
                     color: const Color(0xFFFAFAFA),
                   ),

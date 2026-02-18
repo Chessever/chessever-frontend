@@ -8,6 +8,7 @@ import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/chessboard/provider/current_eval_provider.dart';
 import 'package:chessever2/screens/chessboard/widgets/evaluation_bar_widget.dart';
+import 'package:chessever2/repository/lichess/cloud_eval/cloud_eval.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
@@ -203,8 +204,7 @@ class _GamebaseExplorerScreenState
     // so we can't rely on verbose move maps (`move['san']`). Use `dartchess`
     // instead (same helper we use in the move list) to produce SAN + advance FEN.
     final sanMoves = <String>[];
-    var currentFen =
-        'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+    var currentFen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
     for (final uci in exploredMoves) {
       final (san, nextFen) = uciToSanAndFen(uci, currentFen);
       sanMoves.add(san);
@@ -359,8 +359,7 @@ class _ExplorerEvalBar extends ConsumerWidget {
       return SizedBox(width: width, height: height);
     }
 
-    final evalAsync =
-        ref.watch(gameCardEvalWithStockfishFallbackProvider(fen));
+    final evalAsync = ref.watch(gameCardEvalWithStockfishFallbackProvider(fen));
 
     return evalAsync.when(
       data: (cloud) {
@@ -376,8 +375,12 @@ class _ExplorerEvalBar extends ConsumerWidget {
           );
         }
 
-        final eval = pv.cp / 100.0;
-        final mate = (pv.isMate && pv.mate != null) ? pv.mate : null;
+        final normalized = _normalizePvToWhitePerspective(pv);
+        final eval = normalized.eval;
+        final mate =
+            (normalized.isMate && normalized.mate != 0)
+                ? normalized.mate
+                : null;
 
         return EvaluationBarWidget(
           width: width,
@@ -389,17 +392,26 @@ class _ExplorerEvalBar extends ConsumerWidget {
           positionKey: fen,
         );
       },
-      loading: () => EvaluationBarWidget(
-        width: width,
-        height: height,
-        isFlipped: false,
-        evaluation: null,
-        mate: null,
-        isEvaluating: true,
-      ),
+      loading:
+          () => EvaluationBarWidget(
+            width: width,
+            height: height,
+            isFlipped: false,
+            evaluation: null,
+            mate: null,
+            isEvaluating: true,
+          ),
       error: (_, __) => SizedBox(width: width, height: height),
     );
   }
+}
+
+({double eval, bool isMate, int mate}) _normalizePvToWhitePerspective(Pv pv) {
+  final sign = pv.whitePerspective ? 1 : -1;
+  final isMate = pv.isMate && pv.mate != null;
+  final normalizedMate = (pv.mate ?? 0) * sign;
+  final normalizedEval = (pv.cp * sign) / 100.0;
+  return (eval: normalizedEval, isMate: isMate, mate: normalizedMate);
 }
 
 /// Navigation controls for move history.

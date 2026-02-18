@@ -265,7 +265,7 @@ class _FeaturesList extends StatelessWidget {
     final features = [
       (Icons.people_rounded, 'Countrymen & Favorites'),
       (Icons.sports_esports_rounded, 'Opponent Prep Tools'),
-      (Icons.auto_stories_rounded, 'Create Unlimited Studies'),
+      (Icons.auto_stories_rounded, 'Unlimited Database Storage'),
       (Icons.filter_alt_rounded, 'Advanced Search & Filters'),
     ];
 

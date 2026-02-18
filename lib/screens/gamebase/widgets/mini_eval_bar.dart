@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:chessever2/repository/lichess/cloud_eval/cloud_eval.dart';
 import 'package:chessever2/screens/chessboard/provider/current_eval_provider.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -21,9 +22,7 @@ class MiniEvalBar extends ConsumerWidget {
     if (fen == null || fen!.isEmpty) return const SizedBox.shrink();
 
     final evalAsync = ref.watch(
-      cascadeEvalProviderForBoard(
-        CascadeEvalParams(fen: fen!, multiPV: 1),
-      ),
+      cascadeEvalProviderForBoard(CascadeEvalParams(fen: fen!, multiPV: 1)),
     );
 
     return evalAsync.when(
@@ -31,17 +30,19 @@ class MiniEvalBar extends ConsumerWidget {
         final pv = cloud.pvs.firstOrNull;
         if (pv == null) return const SizedBox.shrink();
 
-        final eval = pv.cp / 100.0;
-        final isMate = pv.isMate && pv.mate != null;
-        final mate = pv.mate ?? 0;
+        final normalized = _normalizePvToWhitePerspective(pv);
+        final eval = normalized.eval;
+        final isMate = normalized.isMate;
+        final mate = normalized.mate;
 
         final effectiveEval =
             (isMate && mate != 0) ? (mate > 0 ? 10.0 : -10.0) : eval;
         final whiteRatio = _normalizedEvalToRatio(effectiveEval);
 
-        final evalText = isMate && mate != 0
-            ? '#${mate.abs()}'
-            : '${eval >= 0 ? '+' : ''}${eval.toStringAsFixed(1)}';
+        final evalText =
+            isMate && mate != 0
+                ? (mate > 0 ? '#${mate.abs()}' : '#-${mate.abs()}')
+                : '${eval >= 0 ? '+' : ''}${eval.toStringAsFixed(1)}';
 
         return SizedBox(
           height: 16.h,
@@ -53,7 +54,10 @@ class MiniEvalBar extends ConsumerWidget {
                 child: Text(
                   evalText,
                   style: TextStyle(
-                    color: eval >= 0 ? kWhiteColor : kWhiteColor.withValues(alpha: 0.6),
+                    color:
+                        effectiveEval >= 0
+                            ? kWhiteColor
+                            : kWhiteColor.withValues(alpha: 0.6),
                     fontSize: 9.f,
                     fontWeight: FontWeight.w600,
                   ),
@@ -103,4 +107,12 @@ double _normalizedEvalToRatio(double eval) {
   final double clampedEval = eval.clamp(-20.0, 20.0);
   final double logistic = 1.0 / (1.0 + math.exp(-clampedEval / scale));
   return logistic.clamp(minRatio, maxRatio);
+}
+
+({double eval, bool isMate, int mate}) _normalizePvToWhitePerspective(Pv pv) {
+  final sign = pv.whitePerspective ? 1 : -1;
+  final isMate = pv.isMate && pv.mate != null;
+  final normalizedMate = ((pv.mate ?? 0) * sign);
+  final normalizedEval = (pv.cp * sign) / 100.0;
+  return (eval: normalizedEval, isMate: isMate, mate: normalizedMate);
 }

@@ -33,6 +33,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 const int _minPersistDepth = 20;
 const int _minPersistFullMoves = 8;
 const Duration _evalWatchdogInterval = Duration(milliseconds: 1600);
+const Duration _cascadeEvalSoftTimeout = Duration(milliseconds: 180);
 
 bool _shouldPersistCloudEval(CloudEval eval) {
   return eval.meetsPersistenceThreshold(
@@ -522,7 +523,7 @@ class ChessBoardScreenNotifierNew
       '🔧 STREAM SETUP: game ${game.gameId}, index: $index, status: ${game.gameStatus}',
     );
 
-    if (!game.gameStatus.isFinished) {
+    if (game.gameStatus.isOngoing) {
       _releaseLog('✅ LISTENER ACTIVE for game ${game.gameId}');
       // CONSOLIDATED: One stream for ALL game data (PGN, clocks, status, etc.)
       ref.listen(gameUpdatesStreamProvider(game.gameId), (previous, next) {
@@ -541,6 +542,7 @@ class ChessBoardScreenNotifierNew
           // Check if PGN has changed (new moves)
           final newPgn = gameData['pgn'] as String?;
           final pgnChanged = newPgn != null && newPgn != game.pgn;
+          final streamStatus = gameData['status'] as String?;
 
           // Update game data with ALL stream values including PGN
           game = game.copyWith(
@@ -553,7 +555,9 @@ class ChessBoardScreenNotifierNew
                     : game.lastMoveTime,
             whiteClockSeconds: (gameData['last_clock_white'] as num?)?.round(),
             blackClockSeconds: (gameData['last_clock_black'] as num?)?.round(),
-            gameStatus: _parseGameStatus(gameData['status'] as String? ?? '*'),
+            gameStatus: streamStatus != null
+                ? _parseGameStatus(streamStatus)
+                : game.gameStatus,
           );
 
           // CRITICAL: Update state immediately with new game object to show clock changes
@@ -842,18 +846,18 @@ class ChessBoardScreenNotifierNew
           hasNewMoves && !shouldForceLatestPosition && !wasViewingLastMove;
 
       // Determine which move index to display:
-      // - For finished games on initial load: start from beginning (move index -1)
-      // - For ongoing games on initial load: show latest move
+      // - For live games on initial load: show latest move
+      // - For non-live games on initial load: start from beginning (move index -1)
       // - If user was viewing last move: jump to new last move
       // - If user was viewing an earlier move AND it's not initial load: stay at current position (don't jump)
       final isPreviewActive = currentState?.isPvPreviewActive == true;
-      final isGameFinished = game.gameStatus.isFinished;
+      final isLiveGame = game.gameStatus.isOngoing;
 
       final newMoveIndex =
           isPreviewActive
               ? (currentState?.analysisState.currentMoveIndex ?? lastMoveIndex)
               : shouldForceLatestPosition
-              ? (isGameFinished ? -1 : lastMoveIndex) // For finished games, start at beginning; for ongoing games, show latest
+              ? (isLiveGame ? lastMoveIndex : -1)
               : (wasViewingLastMove
                   ? lastMoveIndex // Jump to new last move if user was already viewing last
                   : currentState?.analysisState.currentMoveIndex ??
@@ -4565,22 +4569,32 @@ class ChessBoardScreenNotifierNew
         '🎯 EVAL START: Evaluating position $fen (requesting $configuredMultiPV PVs)',
       );
 
-      // OPTIMIZED: Try cascade (cloud sources) FIRST for speed
-      // Cascade queries local DB → Supabase sequentially (Lichess removed)
-      // Each source has its own timeout, so no need for overall cascade timeout
+      // Fast-path local/Supabase cache lookup, but do not block Stockfish startup
+      // for long network waits. This keeps the engine responsive on cache misses.
       try {
         _releaseLog(
           '🎯 EVAL: Requesting cascade evaluation (local → Supabase cache only) with $configuredMultiPV PVs...',
         );
-        final cascadeEval = await ref.read(
-          cascadeEvalProviderForBoard(
-            CascadeEvalParams(
-              fen: fenToAnalyze,
-              multiPV: configuredMultiPV,
-              isCurrentPosition: true,
-            ),
-          ).future,
-        );
+        final cascadeEval = await ref
+            .read(
+              cascadeEvalProviderForBoard(
+                CascadeEvalParams(
+                  fen: fenToAnalyze,
+                  multiPV: configuredMultiPV,
+                  isCurrentPosition: true,
+                ),
+              ).future,
+            )
+            .timeout(
+              _cascadeEvalSoftTimeout,
+              onTimeout: () => CloudEval(
+                fen: fenToAnalyze,
+                knodes: 0,
+                depth: 0,
+                pvs: const [],
+                requestedMultiPv: configuredMultiPV,
+              ),
+            );
         if (cascadeEval.pvs.isNotEmpty) {
           primaryEval = cascadeEval;
           final rawCp = cascadeEval.pvs.first.cp;
@@ -5426,10 +5440,19 @@ class ChessBoardScreenNotifierNew
               .toList() ??
           const <Move>[];
 
-      // Derive current index from the concrete navigator line length.
-      // This avoids off-by-one drift from move number/turn arithmetic and keeps
-      // Gamebase deep-line queries aligned with the board path.
-      final currentMoveIndex = movesFromNavigator.length - 1;
+      int currentMoveIndex;
+      final chessMove = navigatorState.currentMove;
+      if (chessMove == null) {
+        currentMoveIndex = -1;
+      } else {
+        var moveNumber = chessMove.num;
+        final whiteJustMoved = chessMove.turn == ChessColor.black;
+        if (!whiteJustMoved) {
+          moveNumber = (moveNumber - 1).clamp(1, moveNumber);
+        }
+        currentMoveIndex =
+            whiteJustMoved ? (moveNumber - 1) * 2 : (moveNumber - 1) * 2 + 1;
+      }
 
       final nextState = current.copyWith(
         analysisState: current.analysisState.copyWith(

@@ -1,4 +1,5 @@
 import 'package:chessever2/providers/board_settings_provider_new.dart';
+import 'package:chessever2/repository/lichess/cloud_eval/cloud_eval.dart';
 import 'package:chessever2/screens/board_editor/board_editor_state.dart';
 import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
@@ -427,9 +428,10 @@ class _BoardWithEvalBar extends ConsumerWidget {
         data: (cloud) {
           final pv = cloud.pvs.firstOrNull;
           if (pv != null) {
-            evaluation = pv.cp / 100.0;
-            if (pv.isMate && pv.mate != null) {
-              mate = pv.mate;
+            final normalized = _normalizePvToWhitePerspective(pv);
+            evaluation = normalized.eval;
+            if (normalized.isMate && normalized.mate != 0) {
+              mate = normalized.mate;
             }
           }
         },
@@ -495,6 +497,14 @@ class _BoardWithEvalBar extends ConsumerWidget {
       },
     );
   }
+}
+
+({double eval, bool isMate, int mate}) _normalizePvToWhitePerspective(Pv pv) {
+  final sign = pv.whitePerspective ? 1 : -1;
+  final isMate = pv.isMate && pv.mate != null;
+  final normalizedMate = (pv.mate ?? 0) * sign;
+  final normalizedEval = (pv.cp * sign) / 100.0;
+  return (eval: normalizedEval, isMate: isMate, mate: normalizedMate);
 }
 
 // ---------------------------------------------------------------------------

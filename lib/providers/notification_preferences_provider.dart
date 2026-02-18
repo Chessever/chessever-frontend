@@ -44,11 +44,11 @@ class NotificationPreferences {
   }
 
   static const defaults = NotificationPreferences(
-    favoriteEventAlerts: true,
+    favoriteEventAlerts: false,
     favoritePlayerAlerts: true,
     headsUpAlerts: false,
     liveGameUpdates: false,
-    dailyDigest: true,
+    dailyDigest: false,
     callToActionAlerts: false,
   );
 }

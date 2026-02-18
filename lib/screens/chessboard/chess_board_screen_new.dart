@@ -915,21 +915,21 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
       return; // Wait until we have at least one move before syncing
     }
 
-    // For finished games, start from the beginning position
-    // For ongoing games, sync to the latest move
-    final isFinished = state.game.gameStatus.isFinished;
-    final targetMoveIndex = isFinished ? -1 : totalMoves - 1;
+    // For live games, sync to the latest move.
+    // For non-live games, start from the beginning position.
+    final isLive = state.game.gameStatus.isOngoing;
+    final targetMoveIndex = isLive ? totalMoves - 1 : -1;
     final currentIndex = state.analysisState.currentMoveIndex;
 
     // Check if we're already at the target position
-    if (isFinished) {
-      // For finished games, we want to be at the start (index -1)
+    if (!isLive) {
+      // For non-live games, we want to be at the start (index -1)
       if (currentIndex == -1) {
         _syncedLatestPositions.add(gameId);
         return;
       }
     } else {
-      // For ongoing games, we want to be at the latest move
+      // For live games, we want to be at the latest move
       if (currentIndex >= totalMoves - 1) {
         _syncedLatestPositions.add(gameId);
         return;
