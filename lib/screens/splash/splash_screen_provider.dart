@@ -34,8 +34,9 @@ class _SplashScreenProvider {
   /// Check if we have network connectivity by attempting DNS lookup
   Future<bool> _hasNetworkConnectivity() async {
     try {
-      final result = await InternetAddress.lookup('google.com')
-          .timeout(const Duration(seconds: 3));
+      final result = await InternetAddress.lookup(
+        'google.com',
+      ).timeout(const Duration(seconds: 3));
       return result.isNotEmpty && result[0].rawAddress.isNotEmpty;
     } on SocketException catch (_) {
       return false;
@@ -45,17 +46,34 @@ class _SplashScreenProvider {
   }
 
   Future<void> runAuthenticationPreProcessor(BuildContext context) async {
+    final sessionManager = ref.read(sessionManagerProvider);
+
+    // Resolve auth token state up-front so subsequent Supabase calls don't race
+    // against token refresh on cold start.
+    bool isLoggedIn = false;
+    try {
+      isLoggedIn = await sessionManager.isLoggedIn().timeout(
+        const Duration(seconds: 5),
+      );
+    } catch (e) {
+      if (kDebugMode) {
+        print('⚠️ Startup session warm-up failed/timeout: $e');
+      }
+      isLoggedIn = false;
+    }
+
     // Tournament data: use local cache when available to avoid blocking on
     // slow network / auth-token refresh race during cold start.
-    final currentStorage =
-        ref.read(groupBroadcastLocalStorage(GroupEventCategory.current));
-    final forYouStorage =
-        ref.read(groupBroadcastLocalStorage(GroupEventCategory.forYou));
+    final currentStorage = ref.read(
+      groupBroadcastLocalStorage(GroupEventCategory.current),
+    );
+    final forYouStorage = ref.read(
+      groupBroadcastLocalStorage(GroupEventCategory.forYou),
+    );
 
     bool hasCachedData = false;
     try {
-      hasCachedData =
-          (await currentStorage.getGroupBroadcasts()).isNotEmpty;
+      hasCachedData = (await currentStorage.getGroupBroadcasts()).isNotEmpty;
     } catch (_) {}
 
     if (!hasCachedData) {
@@ -143,9 +161,9 @@ class _SplashScreenProvider {
     final onboardingRepo = ref.read(onboardingRepositoryProvider);
     bool hasSeenOnboarding = true;
     try {
-      hasSeenOnboarding = await onboardingRepo
-          .hasSeenOnboarding()
-          .timeout(const Duration(seconds: 3));
+      hasSeenOnboarding = await onboardingRepo.hasSeenOnboarding().timeout(
+        const Duration(seconds: 3),
+      );
     } catch (e) {
       if (kDebugMode) {
         print('⚠️ Onboarding check failed/timeout: $e');
@@ -158,30 +176,12 @@ class _SplashScreenProvider {
       // New user - show onboarding (handles both signed-in and guest on last page)
       ref.read(countryDropdownProvider);
       FlutterNativeSplash.remove();
-      Navigator.pushNamedAndRemoveUntil(
-        context,
-        '/onboarding',
-        (_) => false,
-      );
+      Navigator.pushNamedAndRemoveUntil(context, '/onboarding', (_) => false);
       DeepLinkService.notifyAppReady();
       return;
     }
 
     // PRIORITY 2: User has seen onboarding - check auth state
-    final sessionManager = ref.read(sessionManagerProvider);
-    bool isLoggedIn = false;
-    try {
-      isLoggedIn = await sessionManager
-          .isLoggedIn()
-          .timeout(const Duration(seconds: 5));
-    } catch (e) {
-      if (kDebugMode) {
-        print('⚠️ Session check failed/timeout: $e');
-      }
-      // Fall back to auth screen if session recovery stalls.
-      isLoggedIn = false;
-    }
-
     if (!context.mounted) return;
 
     // Remove native splash right before navigation

@@ -53,10 +53,10 @@ class NotificationPreferences {
   );
 }
 
-final notificationPreferencesProvider =
-    AsyncNotifierProvider<NotificationPreferencesNotifier, NotificationPreferences>(
-  NotificationPreferencesNotifier.new,
-);
+final notificationPreferencesProvider = AsyncNotifierProvider<
+  NotificationPreferencesNotifier,
+  NotificationPreferences
+>(NotificationPreferencesNotifier.new);
 
 class NotificationPreferencesNotifier
     extends AsyncNotifier<NotificationPreferences> {
@@ -93,13 +93,14 @@ class NotificationPreferencesNotifier
     }
 
     try {
-      final response = await _supabase
-          .from('user_notification_preferences')
-          .select(
-            'favorite_event_alerts,favorite_player_alerts,heads_up_alerts,live_game_updates,daily_digest,call_to_action_alerts',
-          )
-          .eq('user_id', userId)
-          .maybeSingle();
+      final response =
+          await _supabase
+              .from('user_notification_preferences')
+              .select(
+                'favorite_event_alerts,favorite_player_alerts,heads_up_alerts,live_game_updates,daily_digest,call_to_action_alerts',
+              )
+              .eq('user_id', userId)
+              .maybeSingle();
 
       if (response == null) {
         return NotificationPreferences.defaults;
@@ -126,8 +127,8 @@ class NotificationPreferencesNotifier
             NotificationPreferences.defaults.callToActionAlerts,
       );
 
-      // Cache locally for offline fallback
-      await _cachePreferences(prefs);
+      // Cache locally for offline fallback (non-blocking)
+      unawaited(_cachePreferences(prefs));
       return prefs;
     } catch (e, st) {
       debugPrint('[NotificationPreferences] Error: $e');
@@ -138,50 +139,46 @@ class NotificationPreferencesNotifier
   }
 
   Future<void> setFavoriteEventAlerts(bool value) async {
-    await _updatePreferences((prefs) => prefs.copyWith(
-      favoriteEventAlerts: value,
-    ));
+    await _updatePreferences(
+      (prefs) => prefs.copyWith(favoriteEventAlerts: value),
+    );
   }
 
   Future<void> setFavoritePlayerAlerts(bool value) async {
-    await _updatePreferences((prefs) => prefs.copyWith(
-      favoritePlayerAlerts: value,
-    ));
+    await _updatePreferences(
+      (prefs) => prefs.copyWith(favoritePlayerAlerts: value),
+    );
   }
 
   Future<void> setHeadsUpAlerts(bool value) async {
-    await _updatePreferences((prefs) => prefs.copyWith(
-      headsUpAlerts: value,
-    ));
+    await _updatePreferences((prefs) => prefs.copyWith(headsUpAlerts: value));
   }
 
   Future<void> setLiveGameUpdates(bool value) async {
-    await _updatePreferences((prefs) => prefs.copyWith(
-      liveGameUpdates: value,
-    ));
+    await _updatePreferences((prefs) => prefs.copyWith(liveGameUpdates: value));
   }
 
   Future<void> setDailyDigest(bool value) async {
-    await _updatePreferences((prefs) => prefs.copyWith(
-      dailyDigest: value,
-    ));
+    await _updatePreferences((prefs) => prefs.copyWith(dailyDigest: value));
   }
 
   Future<void> setCallToActionAlerts(bool value) async {
-    await _updatePreferences((prefs) => prefs.copyWith(
-      callToActionAlerts: value,
-    ));
+    await _updatePreferences(
+      (prefs) => prefs.copyWith(callToActionAlerts: value),
+    );
   }
 
   Future<void> disableAll() async {
-    await _updatePreferences((_) => const NotificationPreferences(
-      favoriteEventAlerts: false,
-      favoritePlayerAlerts: false,
-      headsUpAlerts: false,
-      liveGameUpdates: false,
-      dailyDigest: false,
-      callToActionAlerts: false,
-    ));
+    await _updatePreferences(
+      (_) => const NotificationPreferences(
+        favoriteEventAlerts: false,
+        favoritePlayerAlerts: false,
+        headsUpAlerts: false,
+        liveGameUpdates: false,
+        dailyDigest: false,
+        callToActionAlerts: false,
+      ),
+    );
   }
 
   Future<void> _updatePreferences(
@@ -191,25 +188,22 @@ class NotificationPreferencesNotifier
     final updated = update(current);
     state = AsyncValue.data(updated);
 
-    // Cache locally first (fast, immediate)
-    await _cachePreferences(updated);
+    // Cache locally in background (best-effort fallback only)
+    unawaited(_cachePreferences(updated));
 
     final userId = _currentUserId();
     if (userId == null) return;
 
     try {
-      await _supabase.from('user_notification_preferences').upsert(
-        {
-          'user_id': userId,
-          'favorite_event_alerts': updated.favoriteEventAlerts,
-          'favorite_player_alerts': updated.favoritePlayerAlerts,
-          'heads_up_alerts': updated.headsUpAlerts,
-          'live_game_updates': updated.liveGameUpdates,
-          'daily_digest': updated.dailyDigest,
-          'call_to_action_alerts': updated.callToActionAlerts,
-        },
-        onConflict: 'user_id',
-      );
+      await _supabase.from('user_notification_preferences').upsert({
+        'user_id': userId,
+        'favorite_event_alerts': updated.favoriteEventAlerts,
+        'favorite_player_alerts': updated.favoritePlayerAlerts,
+        'heads_up_alerts': updated.headsUpAlerts,
+        'live_game_updates': updated.liveGameUpdates,
+        'daily_digest': updated.dailyDigest,
+        'call_to_action_alerts': updated.callToActionAlerts,
+      }, onConflict: 'user_id');
     } catch (e, st) {
       debugPrint('[NotificationPreferences] Update failed: $e');
       debugPrintStack(stackTrace: st);
@@ -243,17 +237,23 @@ class NotificationPreferencesNotifier
 
       final map = jsonDecode(json) as Map<String, dynamic>;
       return NotificationPreferences(
-        favoriteEventAlerts: map['favoriteEventAlerts'] as bool? ??
+        favoriteEventAlerts:
+            map['favoriteEventAlerts'] as bool? ??
             NotificationPreferences.defaults.favoriteEventAlerts,
-        favoritePlayerAlerts: map['favoritePlayerAlerts'] as bool? ??
+        favoritePlayerAlerts:
+            map['favoritePlayerAlerts'] as bool? ??
             NotificationPreferences.defaults.favoritePlayerAlerts,
-        headsUpAlerts: map['headsUpAlerts'] as bool? ??
+        headsUpAlerts:
+            map['headsUpAlerts'] as bool? ??
             NotificationPreferences.defaults.headsUpAlerts,
-        liveGameUpdates: map['liveGameUpdates'] as bool? ??
+        liveGameUpdates:
+            map['liveGameUpdates'] as bool? ??
             NotificationPreferences.defaults.liveGameUpdates,
-        dailyDigest: map['dailyDigest'] as bool? ??
+        dailyDigest:
+            map['dailyDigest'] as bool? ??
             NotificationPreferences.defaults.dailyDigest,
-        callToActionAlerts: map['callToActionAlerts'] as bool? ??
+        callToActionAlerts:
+            map['callToActionAlerts'] as bool? ??
             NotificationPreferences.defaults.callToActionAlerts,
       );
     } catch (e) {

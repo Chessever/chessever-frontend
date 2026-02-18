@@ -11,8 +11,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 /// Business logic lives here, not in a separate repository
 final favoriteEventsProvider =
     AsyncNotifierProvider<FavoriteEventsNotifier, List<FavoriteEvent>>(
-  FavoriteEventsNotifier.new,
-);
+      FavoriteEventsNotifier.new,
+    );
 
 class FavoriteEventsNotifier extends AsyncNotifier<List<FavoriteEvent>> {
   static const String _cacheKey = 'cached_favorite_events';
@@ -74,10 +74,12 @@ class FavoriteEventsNotifier extends AsyncNotifier<List<FavoriteEvent>> {
               .map((json) => FavoriteEvent.fromSupabase(json))
               .toList();
 
-      // Cache locally
-      await _cacheEvents(events, userId);
+      // Cache locally in background (Supabase stays primary path)
+      unawaited(_cacheEvents(events, userId));
 
-      debugPrint('[FavoriteEvents] Fetched ${events.length} events from Supabase');
+      debugPrint(
+        '[FavoriteEvents] Fetched ${events.length} events from Supabase',
+      );
       _fetchCompleter!.complete(events);
       return events;
     } catch (e) {
@@ -140,16 +142,18 @@ class FavoriteEventsNotifier extends AsyncNotifier<List<FavoriteEvent>> {
 
     try {
       // STEP 2: Sync to Supabase in background (upsert prevents duplicates)
-      await _supabase.from('user_favorite_events').upsert(
-        {
-          'user_id': userId,
-          'event_id': eventId,
-          'event_name': eventName,
-          'metadata': metadata,
-        },
-        onConflict: 'user_id,event_id',
-        ignoreDuplicates: true,
-      );
+      await _supabase
+          .from('user_favorite_events')
+          .upsert(
+            {
+              'user_id': userId,
+              'event_id': eventId,
+              'event_name': eventName,
+              'metadata': metadata,
+            },
+            onConflict: 'user_id,event_id',
+            ignoreDuplicates: true,
+          );
 
       debugPrint('[FavoriteEvents] Added event $eventId to Supabase');
 
@@ -177,7 +181,8 @@ class FavoriteEventsNotifier extends AsyncNotifier<List<FavoriteEvent>> {
 
     // STEP 1: Optimistic update - update state immediately
     final currentEvents = state.valueOrNull ?? [];
-    final updatedEvents = currentEvents.where((e) => e.eventId != eventId).toList();
+    final updatedEvents =
+        currentEvents.where((e) => e.eventId != eventId).toList();
     state = AsyncValue.data(updatedEvents);
 
     // Cache immediately
@@ -308,8 +313,7 @@ class FavoriteEventsNotifier extends AsyncNotifier<List<FavoriteEvent>> {
 }
 
 /// Provider to check if a specific event is favorited
-final isEventFavoritedProvider =
-    Provider.family<bool, String>((ref, eventId) {
+final isEventFavoritedProvider = Provider.family<bool, String>((ref, eventId) {
   final favorites = ref.watch(favoriteEventsProvider);
   return favorites.maybeWhen(
     data: (events) => events.any((e) => e.eventId == eventId),

@@ -8,11 +8,11 @@ import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-final favoriteStandingsPlayerService = Provider<FavoriteStandingsPlayerService>((
-    ref,
-    ) {
-  return FavoriteStandingsPlayerService(ref);
-});
+final favoriteStandingsPlayerService = Provider<FavoriteStandingsPlayerService>(
+  (ref) {
+    return FavoriteStandingsPlayerService(ref);
+  },
+);
 
 class FavoriteStandingsPlayerService {
   static const String _cacheKey = 'cached_favorite_players';
@@ -55,7 +55,9 @@ class FavoriteStandingsPlayerService {
     try {
       final userId = _getCurrentUserId();
       if (userId == null) {
-        debugPrint('[FavoriteStandings] No user logged in, returning empty list');
+        debugPrint(
+          '[FavoriteStandings] No user logged in, returning empty list',
+        );
         final result = <PlayerStandingModel>[];
         _fetchCompleter!.complete(result);
         return result;
@@ -68,13 +70,14 @@ class FavoriteStandingsPlayerService {
           .eq('user_id', userId)
           .order('created_at', ascending: false);
 
-      final players = (response as List)
-          .map((json) => _playerFromSupabase(json))
-          .whereType<PlayerStandingModel>()
-          .toList();
+      final players =
+          (response as List)
+              .map((json) => _playerFromSupabase(json))
+              .whereType<PlayerStandingModel>()
+              .toList();
 
-      // Cache locally
-      await _cachePlayers(players, userId);
+      // Cache locally in background (Supabase stays primary path)
+      unawaited(_cachePlayers(players, userId));
 
       debugPrint(
         '[FavoriteStandings] Fetched ${players.length} players from Supabase',
@@ -96,8 +99,8 @@ class FavoriteStandingsPlayerService {
 
   /// Save favorite players to Supabase and cache
   Future<void> saveFavoritePlayers(
-      List<PlayerStandingModel> favoritePlayers,
-      ) async {
+    List<PlayerStandingModel> favoritePlayers,
+  ) async {
     final userId = _getCurrentUserId();
     await _cachePlayers(favoritePlayers, userId);
   }
@@ -121,29 +124,36 @@ class FavoriteStandingsPlayerService {
             .eq('user_id', userId)
             .eq('player_name', player.name);
 
-        debugPrint('[FavoriteStandings] Removed player ${player.name} from Supabase');
+        debugPrint(
+          '[FavoriteStandings] Removed player ${player.name} from Supabase',
+        );
       } else {
         // Add to Supabase
         final metadata = player.toJson();
 
-        await _supabase.from('user_favorite_players').upsert(
-          {
-            'user_id': userId,
-            'fide_id': player.fideId?.toString(),
-            'player_name': player.name,
-            'metadata': metadata,
-          },
-          onConflict: 'user_id,player_name',
-          ignoreDuplicates: true,
-        );
+        await _supabase
+            .from('user_favorite_players')
+            .upsert(
+              {
+                'user_id': userId,
+                'fide_id': player.fideId?.toString(),
+                'player_name': player.name,
+                'metadata': metadata,
+              },
+              onConflict: 'user_id,player_name',
+              ignoreDuplicates: true,
+            );
 
-        debugPrint('[FavoriteStandings] Added player ${player.name} to Supabase');
+        debugPrint(
+          '[FavoriteStandings] Added player ${player.name} to Supabase',
+        );
       }
 
       // Update cache
-      final updatedFavorites = existingIndex != -1
-          ? (favorites..removeAt(existingIndex))
-          : (favorites..add(player));
+      final updatedFavorites =
+          existingIndex != -1
+              ? (favorites..removeAt(existingIndex))
+              : (favorites..add(player));
       await _cachePlayers(updatedFavorites, userId);
     } catch (e, stack) {
       debugPrint('[FavoriteStandings] Error toggling favorite: $e');
@@ -165,7 +175,8 @@ class FavoriteStandingsPlayerService {
     try {
       final metadata = json['metadata'] as Map<String, dynamic>?;
 
-      final hasCompleteMetadata = metadata != null &&
+      final hasCompleteMetadata =
+          metadata != null &&
           metadata.containsKey('name') &&
           metadata.containsKey('score') &&
           metadata.containsKey('scoreChange');
@@ -181,7 +192,10 @@ class FavoriteStandingsPlayerService {
         score: metadata?['rating'] as int? ?? 0,
         scoreChange: 0,
         matchScore: null,
-        fideId: json['fide_id'] != null ? int.tryParse(json['fide_id'] as String) : null,
+        fideId:
+            json['fide_id'] != null
+                ? int.tryParse(json['fide_id'] as String)
+                : null,
       );
     } catch (e) {
       debugPrint('[FavoriteStandings] Error parsing player: $e');
@@ -191,12 +205,17 @@ class FavoriteStandingsPlayerService {
   }
 
   /// Cache players locally in SQLite
-  Future<void> _cachePlayers(List<PlayerStandingModel> players, String? userId) async {
+  Future<void> _cachePlayers(
+    List<PlayerStandingModel> players,
+    String? userId,
+  ) async {
     try {
       final db = ref.read(appDatabaseProvider);
       final json = jsonEncode(players.map((p) => p.toJson()).toList());
       await db.setCache(key: _cacheKey, value: json, userId: userId);
-      debugPrint('[FavoriteStandings] Cached ${players.length} players locally');
+      debugPrint(
+        '[FavoriteStandings] Cached ${players.length} players locally',
+      );
     } catch (e) {
       debugPrint('[FavoriteStandings] Error caching players: $e');
     }
