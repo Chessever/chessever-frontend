@@ -75,8 +75,12 @@ class MoveStatisticsPanel extends ConsumerWidget {
                     context: context,
                     backgroundColor: Colors.transparent,
                     isScrollControlled: true,
+                    constraints: BoxConstraints(
+                      maxHeight: MediaQuery.of(context).size.height * 0.88,
+                    ),
                     builder: (_) => PositionGamesSheet(
                       fen: state.currentFen,
+                      moves: state.exploredMoves,
                       filters: state.filters,
                       title: 'Games in this position',
                     ),
@@ -120,6 +124,7 @@ class MoveStatisticsPanel extends ConsumerWidget {
               return _MoveStatisticsRow(
                 aggregate: aggregate,
                 currentFen: state.currentFen,
+                exploredMoves: state.exploredMoves,
                 filters: state.filters,
                 onTap: () {
                   ref
@@ -149,19 +154,20 @@ class _MoveStatisticsRow extends StatelessWidget {
   const _MoveStatisticsRow({
     required this.aggregate,
     required this.currentFen,
+    required this.exploredMoves,
     required this.filters,
     required this.onTap,
   });
 
   final MoveAggregate aggregate;
   final String currentFen;
+  final List<String> exploredMoves;
   final GamebaseFilters filters;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final (sanMove, resultingFen) =
-        uciToSanAndFen(aggregate.uci, currentFen);
+    final (sanMove, resultingFen) = uciToSanAndFen(aggregate.uci, currentFen);
 
     return InkWell(
       onTap: onTap,
@@ -183,10 +189,7 @@ class _MoveStatisticsRow extends StatelessWidget {
             ),
             SizedBox(width: 4.sp),
             // Mini eval bar
-            SizedBox(
-              width: 64.w,
-              child: MiniEvalBar(fen: resultingFen),
-            ),
+            SizedBox(width: 56.w, child: MiniEvalBar(fen: resultingFen)),
             SizedBox(width: 4.sp),
             // Statistics bar
             Expanded(
@@ -197,52 +200,45 @@ class _MoveStatisticsRow extends StatelessWidget {
               ),
             ),
             SizedBox(width: 8.sp),
-            // Game count
-            SizedBox(
-              width: 80.w,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  Flexible(
-                    child: Text(
-                      aggregate.formattedTotal,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      softWrap: false,
-                      textAlign: TextAlign.right,
-                      style: TextStyle(
-                        color: kSecondaryTextColor,
-                        fontSize: 12.f,
-                      ),
-                    ),
-                  ),
-                  SizedBox(width: 2.sp),
-                  IconButton(
-                    visualDensity: VisualDensity.compact,
-                    padding: EdgeInsets.zero,
-                    constraints: BoxConstraints.tightFor(width: 22.w, height: 22.h),
-                    icon: Icon(
-                      Icons.list_alt_rounded,
-                      color: kSecondaryTextColor,
-                      size: 16.ic,
-                    ),
-                    tooltip: 'Games',
-                    onPressed: () {
-                      showModalBottomSheet(
-                        context: context,
-                        backgroundColor: Colors.transparent,
-                        isScrollControlled: true,
-                        builder: (_) => PositionGamesSheet(
-                          fen: currentFen,
-                          uci: aggregate.uci,
-                          filters: filters,
-                          title: 'Games for $sanMove',
-                        ),
-                      );
-                    },
-                  ),
-                ],
+            // Game count + list button — natural width, never truncates
+            Text(
+              aggregate.formattedTotal,
+              style: TextStyle(
+                color: kSecondaryTextColor,
+                fontSize: 12.f,
               ),
+            ),
+            SizedBox(width: 2.sp),
+            IconButton(
+              visualDensity: VisualDensity.compact,
+              padding: EdgeInsets.zero,
+              constraints: BoxConstraints.tightFor(
+                width: 22.w,
+                height: 22.h,
+              ),
+              icon: Icon(
+                Icons.list_alt_rounded,
+                color: kSecondaryTextColor,
+                size: 16.ic,
+              ),
+              tooltip: 'Games',
+              onPressed: () {
+                showModalBottomSheet(
+                  context: context,
+                  backgroundColor: Colors.transparent,
+                  isScrollControlled: true,
+                  constraints: BoxConstraints(
+                    maxHeight: MediaQuery.of(context).size.height * 0.88,
+                  ),
+                  builder: (_) => PositionGamesSheet(
+                    fen: currentFen,
+                    moves: exploredMoves,
+                    uci: aggregate.uci,
+                    filters: filters,
+                    title: 'Games for $sanMove',
+                  ),
+                );
+              },
             ),
           ],
         ),

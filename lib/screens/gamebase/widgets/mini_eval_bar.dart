@@ -49,7 +49,7 @@ class MiniEvalBar extends ConsumerWidget {
             children: [
               // Eval text
               SizedBox(
-                width: 32.w,
+                width: 26.w,
                 child: Text(
                   evalText,
                   style: TextStyle(

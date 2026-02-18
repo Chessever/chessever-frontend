@@ -18,12 +18,14 @@ class PositionGamesSheet extends ConsumerWidget {
     required this.fen,
     required this.title,
     this.uci,
+    this.moves = const <String>[],
     this.filters = const GamebaseFilters(),
   });
 
   final String fen;
   final String title;
   final String? uci;
+  final List<String> moves;
   final GamebaseFilters filters;
 
   @override
@@ -35,6 +37,7 @@ class PositionGamesSheet extends ConsumerWidget {
 
     final query = GamebasePositionGamesQuery(
       fen: fen,
+      moves: moves,
       uci: uci,
       timeControl: timeControlFilter,
       playerId: playerIdFilter,
@@ -91,8 +94,7 @@ class PositionGamesSheet extends ConsumerWidget {
                         horizontal: 12.sp,
                       ),
                       itemCount: games.length,
-                      separatorBuilder:
-                          (_, __) => SizedBox(height: 8.sp),
+                      separatorBuilder: (_, __) => SizedBox(height: 8.sp),
                       itemBuilder: (context, index) {
                         final game = games[index];
                         final eventName =
@@ -147,7 +149,8 @@ class PositionGamesSheet extends ConsumerWidget {
     final whitePlayerId = row['whitePlayerId']?.toString().trim();
     final blackPlayerId = row['blackPlayerId']?.toString().trim();
 
-    final formatCode = (eco.trim().isNotEmpty) ? eco.trim() : (timeControl ?? '');
+    final formatCode =
+        (eco.trim().isNotEmpty) ? eco.trim() : (timeControl ?? '');
     final openingName =
         (variation.trim().isNotEmpty)
             ? '$opening: $variation'
@@ -203,7 +206,8 @@ class PositionGamesSheet extends ConsumerWidget {
     GamesTourModel game,
   ) async {
     // Ensure the chessboard screen renders as a "tour game" view.
-    ref.read(chessboardViewFromProviderNew.notifier).state = ChessboardView.tour;
+    ref.read(chessboardViewFromProviderNew.notifier).state =
+        ChessboardView.tour;
 
     if (!context.mounted) return;
     showDialog(
@@ -259,9 +263,9 @@ class PositionGamesSheet extends ConsumerWidget {
       if (!context.mounted) return;
       Navigator.of(context).pop(); // loading
       // Keep errors non-fatal; user can continue exploring.
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Failed to open game')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Failed to open game')));
     }
   }
 }

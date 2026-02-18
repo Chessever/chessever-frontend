@@ -1,4 +1,5 @@
 import 'package:chessever2/repository/supabase/chess_player/chess_player_repository.dart';
+import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/utils/chess_title_utils.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -14,37 +15,140 @@ final chessPlayerByFideIdProvider = FutureProvider.family
 /// using the canonical `chess_players` row for the player's FIDE ID.
 final backfilledStandingPlayerProvider = FutureProvider.family
     .autoDispose<PlayerStandingModel, PlayerStandingModel>((ref, player) async {
-      final fideId = player.fideId;
-      if (fideId == null || fideId <= 0) return player;
-
       final needsBackfill =
+          player.fideId == null ||
+          player.fideId! <= 0 ||
           (player.title?.trim().isEmpty ?? true) ||
           player.countryCode.trim().isEmpty ||
           player.score <= 0;
       if (!needsBackfill) return player;
 
+      int? resolvedFideId =
+          (player.fideId != null && player.fideId! > 0) ? player.fideId : null;
+      var mergedPlayer = player;
+
+      if (resolvedFideId == null) {
+        final gamebasePlayerId = player.gamebasePlayerId?.trim();
+        if (gamebasePlayerId != null && gamebasePlayerId.isNotEmpty) {
+          try {
+            final gamebasePlayer = await ref
+                .read(gamebaseRepositoryProvider)
+                .getPlayerById(gamebasePlayerId);
+            if (gamebasePlayer != null) {
+              final parsedFide = int.tryParse(gamebasePlayer.fideId);
+              if (parsedFide != null && parsedFide > 0) {
+                resolvedFideId = parsedFide;
+              }
+              final normalizedTitle = ChessTitleUtils.normalize(
+                gamebasePlayer.title,
+              );
+              mergedPlayer = mergedPlayer.copyWith(
+                fideId: resolvedFideId,
+                title:
+                    (mergedPlayer.title?.trim().isNotEmpty ?? false)
+                        ? mergedPlayer.title
+                        : (normalizedTitle.isNotEmpty ? normalizedTitle : null),
+                countryCode:
+                    mergedPlayer.countryCode.trim().isNotEmpty
+                        ? mergedPlayer.countryCode
+                        : gamebasePlayer.fed,
+                score:
+                    mergedPlayer.score > 0
+                        ? mergedPlayer.score
+                        : (gamebasePlayer.ratingClassical ??
+                            gamebasePlayer.highestRating ??
+                            mergedPlayer.score),
+              );
+            }
+          } catch (_) {
+            // Best effort only.
+          }
+        }
+      }
+
+      if (resolvedFideId == null) {
+        final query = player.name.trim();
+        if (query.isNotEmpty) {
+          try {
+            final candidates = await ref
+                .read(chessPlayerRepositoryProvider)
+                .searchAllPlayers(query: query, limit: 20);
+            ChessPlayer? best;
+            final target = _normalizePlayerName(query);
+            for (final candidate in candidates) {
+              final candidateNorm = _normalizePlayerName(candidate.name);
+              if (candidateNorm == target) {
+                best = candidate;
+                break;
+              }
+              if (best == null && candidateNorm.contains(target)) {
+                best = candidate;
+              }
+            }
+            if (best != null && best.fideid > 0) {
+              resolvedFideId = best.fideid;
+              mergedPlayer = mergedPlayer.copyWith(
+                fideId: resolvedFideId,
+                title:
+                    (mergedPlayer.title?.trim().isNotEmpty ?? false)
+                        ? mergedPlayer.title
+                        : best.title,
+                countryCode:
+                    mergedPlayer.countryCode.trim().isNotEmpty
+                        ? mergedPlayer.countryCode
+                        : (best.country ?? ''),
+                score:
+                    mergedPlayer.score > 0
+                        ? mergedPlayer.score
+                        : (best.rating ?? mergedPlayer.score),
+              );
+            }
+          } catch (_) {
+            // Best effort only.
+          }
+        }
+      }
+
+      if (resolvedFideId == null || resolvedFideId <= 0) {
+        return mergedPlayer;
+      }
+
       final chessPlayer = await ref.watch(
-        chessPlayerByFideIdProvider(fideId).future,
+        chessPlayerByFideIdProvider(resolvedFideId).future,
       );
-      if (chessPlayer == null) return player;
+      if (chessPlayer == null) return mergedPlayer;
 
       final normalizedTitle = ChessTitleUtils.normalize(chessPlayer.title);
       final mergedTitle =
-          (player.title?.trim().isNotEmpty ?? false)
-              ? player.title
-              : (normalizedTitle.isNotEmpty ? normalizedTitle : player.title);
+          (mergedPlayer.title?.trim().isNotEmpty ?? false)
+              ? mergedPlayer.title
+              : (normalizedTitle.isNotEmpty
+                  ? normalizedTitle
+                  : mergedPlayer.title);
       final mergedCountry =
-          player.countryCode.trim().isNotEmpty
-              ? player.countryCode.trim()
+          mergedPlayer.countryCode.trim().isNotEmpty
+              ? mergedPlayer.countryCode.trim()
               : (chessPlayer.country?.trim() ?? '');
       final mergedScore =
-          player.score > 0
-              ? player.score
-              : (chessPlayer.rating ?? player.score);
+          mergedPlayer.score > 0
+              ? mergedPlayer.score
+              : (chessPlayer.rating ?? mergedPlayer.score);
 
-      return player.copyWith(
+      return mergedPlayer.copyWith(
+        fideId: resolvedFideId,
         title: mergedTitle,
         countryCode: mergedCountry,
         score: mergedScore,
       );
     });
+
+String _normalizePlayerName(String raw) {
+  return raw
+      .toLowerCase()
+      .replaceAll(',', ' ')
+      .replaceAll('.', ' ')
+      .split(RegExp(r'\s+'))
+      .where((part) => part.isNotEmpty)
+      .join(' ')
+      .trim();
+}

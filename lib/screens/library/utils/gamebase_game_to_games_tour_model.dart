@@ -58,21 +58,27 @@ GamesTourModel mapGamebaseGameToGamesTourModel(GamebaseGame game) {
   final whitePlayer = PlayerCard(
     name: whiteName,
     federation: '',
-    title: ChessTitleUtils.normalize((md['WhiteTitle']?.toString() ?? '').trim()),
+    title: ChessTitleUtils.normalize(
+      (md['WhiteTitle']?.toString() ?? '').trim(),
+    ),
     rating: parseRating(md['WhiteElo']),
     countryCode: countryCodeFromMetadata(isWhite: true),
     team: null,
     fideId: parseFideId(md['WhiteFideId']),
+    gamebasePlayerId: game.whitePlayerId?.trim(),
   );
 
   final blackPlayer = PlayerCard(
     name: blackName,
     federation: '',
-    title: ChessTitleUtils.normalize((md['BlackTitle']?.toString() ?? '').trim()),
+    title: ChessTitleUtils.normalize(
+      (md['BlackTitle']?.toString() ?? '').trim(),
+    ),
     rating: parseRating(md['BlackElo']),
     countryCode: countryCodeFromMetadata(isWhite: false),
     team: null,
     fideId: parseFideId(md['BlackFideId']),
+    gamebasePlayerId: game.blackPlayerId?.trim(),
   );
 
   final eventRaw = (md['Event']?.toString() ?? '').trim();
