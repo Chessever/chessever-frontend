@@ -24,6 +24,7 @@ class AppDatabase {
   Completer<Database>? _initCompleter;
   static const Duration _initTimeout = Duration(seconds: 4);
   static const String _dbFileName = 'chessever_app.db';
+  String? _cachedDbPath;
 
   /// Table for simple key-value storage (replaces SharedPreferences)
   static const String _kvTable = 'key_value_store';
@@ -63,8 +64,7 @@ class AppDatabase {
   }
 
   Future<Database> _initDatabase() async {
-    final documentsDirectory = await getApplicationDocumentsDirectory();
-    final path = join(documentsDirectory.path, _dbFileName);
+    final path = await _resolveDatabasePath();
 
     if (kDebugMode) {
       print('SQLite database path: $path');
@@ -73,15 +73,52 @@ class AppDatabase {
     return openDatabase(
       path,
       version: 1,
-      onConfigure: (db) async {
-        // WAL mode allows concurrent reads during writes — prevents the
-        // "database has been locked for 0:00:10" warnings caused by
-        // multiple providers reading/writing cache simultaneously.
-        await db.rawQuery('PRAGMA journal_mode=WAL');
-      },
+      singleInstance: true,
+      onConfigure: _configureDatabase,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
+  }
+
+  Future<String> _resolveDatabasePath() async {
+    if (_cachedDbPath != null) return _cachedDbPath!;
+    try {
+      final dbDirectory = await getDatabasesPath();
+      _cachedDbPath = join(dbDirectory, _dbFileName);
+      return _cachedDbPath!;
+    } catch (_) {
+      // Fallback path if platform DB directory lookup fails.
+      final documentsDirectory = await getApplicationDocumentsDirectory();
+      _cachedDbPath = join(documentsDirectory.path, _dbFileName);
+      return _cachedDbPath!;
+    }
+  }
+
+  Future<void> _configureDatabase(Database db) async {
+    // Keep pragma setup best-effort so a platform-specific pragma issue does
+    // not fail DB initialization on either Android or iOS.
+    await _executePragmaSafe(db, 'PRAGMA foreign_keys=ON');
+    try {
+      // sqflite helper uses platform-safe internals for journal mode setup.
+      await db.setJournalMode('WAL');
+    } catch (e) {
+      if (kDebugMode) {
+        print('⚠️ SQLite journal mode WAL unavailable: $e');
+      }
+    }
+    await _executePragmaSafe(db, 'PRAGMA synchronous=NORMAL');
+    await _executePragmaSafe(db, 'PRAGMA temp_store=MEMORY');
+    await _executePragmaSafe(db, 'PRAGMA busy_timeout=1000');
+  }
+
+  Future<void> _executePragmaSafe(Database db, String statement) async {
+    try {
+      await db.execute(statement);
+    } catch (e) {
+      if (kDebugMode) {
+        print('⚠️ SQLite pragma failed ($statement): $e');
+      }
+    }
   }
 
   Future<void> _onCreate(Database db, int version) async {
@@ -116,18 +153,14 @@ class AppDatabase {
     ''');
 
     // Create indexes for faster lookups
-    await db.execute(
-      'CREATE INDEX idx_cache_key ON $_cacheTable (key)',
-    );
-    await db.execute(
-      'CREATE INDEX idx_cache_user ON $_cacheTable (user_id)',
-    );
-    await db.execute(
-      'CREATE INDEX idx_list_key ON $_listTable (key)',
-    );
+    await db.execute('CREATE INDEX idx_cache_key ON $_cacheTable (key)');
+    await db.execute('CREATE INDEX idx_cache_user ON $_cacheTable (user_id)');
+    await db.execute('CREATE INDEX idx_list_key ON $_listTable (key)');
 
     if (kDebugMode) {
-      print('SQLite database created with tables: $_kvTable, $_cacheTable, $_listTable');
+      print(
+        'SQLite database created with tables: $_kvTable, $_cacheTable, $_listTable',
+      );
     }
   }
 
@@ -145,11 +178,11 @@ class AppDatabase {
   /// Set a string value
   Future<void> setString(String key, String value) async {
     final db = await database;
-    await db.insert(
-      _kvTable,
-      {'key': key, 'value': value, 'type': 'string'},
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    await db.insert(_kvTable, {
+      'key': key,
+      'value': value,
+      'type': 'string',
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
   /// Get a string value
@@ -157,8 +190,10 @@ class AppDatabase {
     final db = await database;
     final result = await db.query(
       _kvTable,
+      columns: ['value'],
       where: 'key = ?',
       whereArgs: [key],
+      limit: 1,
     );
     if (result.isEmpty) return null;
     return result.first['value'] as String?;
@@ -167,11 +202,11 @@ class AppDatabase {
   /// Set an integer value
   Future<void> setInt(String key, int value) async {
     final db = await database;
-    await db.insert(
-      _kvTable,
-      {'key': key, 'value': value.toString(), 'type': 'int'},
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    await db.insert(_kvTable, {
+      'key': key,
+      'value': value.toString(),
+      'type': 'int',
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
   /// Get an integer value
@@ -179,8 +214,10 @@ class AppDatabase {
     final db = await database;
     final result = await db.query(
       _kvTable,
+      columns: ['value'],
       where: 'key = ?',
       whereArgs: [key],
+      limit: 1,
     );
     if (result.isEmpty) return null;
     return int.tryParse(result.first['value'] as String? ?? '');
@@ -189,11 +226,11 @@ class AppDatabase {
   /// Set a boolean value
   Future<void> setBool(String key, bool value) async {
     final db = await database;
-    await db.insert(
-      _kvTable,
-      {'key': key, 'value': value ? '1' : '0', 'type': 'bool'},
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    await db.insert(_kvTable, {
+      'key': key,
+      'value': value ? '1' : '0',
+      'type': 'bool',
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
   /// Get a boolean value
@@ -201,8 +238,10 @@ class AppDatabase {
     final db = await database;
     final result = await db.query(
       _kvTable,
+      columns: ['value'],
       where: 'key = ?',
       whereArgs: [key],
+      limit: 1,
     );
     if (result.isEmpty) return null;
     return result.first['value'] == '1';
@@ -211,11 +250,11 @@ class AppDatabase {
   /// Set a JSON-encodable object
   Future<void> setJson(String key, Object value) async {
     final db = await database;
-    await db.insert(
-      _kvTable,
-      {'key': key, 'value': jsonEncode(value), 'type': 'json'},
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    await db.insert(_kvTable, {
+      'key': key,
+      'value': jsonEncode(value),
+      'type': 'json',
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
   /// Get a JSON-decoded object
@@ -223,8 +262,10 @@ class AppDatabase {
     final db = await database;
     final result = await db.query(
       _kvTable,
+      columns: ['value'],
       where: 'key = ?',
       whereArgs: [key],
+      limit: 1,
     );
     if (result.isEmpty) return null;
     final value = result.first['value'] as String?;
@@ -243,8 +284,10 @@ class AppDatabase {
     final db = await database;
     final result = await db.query(
       _kvTable,
+      columns: ['key'],
       where: 'key = ?',
       whereArgs: [key],
+      limit: 1,
     );
     return result.isNotEmpty;
   }
@@ -260,16 +303,12 @@ class AppDatabase {
     String? userId,
   }) async {
     final db = await database;
-    await db.insert(
-      _cacheTable,
-      {
-        'key': key,
-        'user_id': userId ?? '',
-        'value': value,
-        'cached_at': DateTime.now().millisecondsSinceEpoch,
-      },
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    await db.insert(_cacheTable, {
+      'key': key,
+      'user_id': userId ?? '',
+      'value': value,
+      'cached_at': DateTime.now().millisecondsSinceEpoch,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
   /// Get cached data with optional staleness check
@@ -281,8 +320,10 @@ class AppDatabase {
     final db = await database;
     final result = await db.query(
       _cacheTable,
+      columns: ['value', 'cached_at'],
       where: 'key = ? AND user_id = ?',
       whereArgs: [key, userId ?? ''],
+      limit: 1,
     );
 
     if (result.isEmpty) return null;
@@ -322,11 +363,7 @@ class AppDatabase {
   /// Clear cache entries matching a key pattern
   Future<void> clearCacheByPrefix(String prefix) async {
     final db = await database;
-    await db.delete(
-      _cacheTable,
-      where: 'key LIKE ?',
-      whereArgs: ['$prefix%'],
-    );
+    await db.delete(_cacheTable, where: 'key LIKE ?', whereArgs: ['$prefix%']);
   }
 
   /// Fetch multiple cache entries in a single SQL query.
@@ -341,6 +378,7 @@ class AppDatabase {
     final placeholders = List.filled(keys.length, '?').join(', ');
     final result = await db.query(
       _cacheTable,
+      columns: ['key', 'value', 'cached_at'],
       where: 'key IN ($placeholders) AND user_id = ?',
       whereArgs: [...keys, uid],
     );
@@ -355,23 +393,22 @@ class AppDatabase {
   }
 
   /// Write multiple cache entries in a single transaction.
-  Future<void> setCacheBatch(Map<String, String> entries, {String? userId}) async {
+  Future<void> setCacheBatch(
+    Map<String, String> entries, {
+    String? userId,
+  }) async {
     if (entries.isEmpty) return;
     final db = await database;
     final uid = userId ?? '';
     final now = DateTime.now().millisecondsSinceEpoch;
     final batch = db.batch();
     for (final entry in entries.entries) {
-      batch.insert(
-        _cacheTable,
-        {
-          'key': entry.key,
-          'user_id': uid,
-          'value': entry.value,
-          'cached_at': now,
-        },
-        conflictAlgorithm: ConflictAlgorithm.replace,
-      );
+      batch.insert(_cacheTable, {
+        'key': entry.key,
+        'user_id': uid,
+        'value': entry.value,
+        'cached_at': now,
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
     }
     await batch.commit(noResult: true);
   }
@@ -387,27 +424,22 @@ class AppDatabase {
     String? userId,
   }) async {
     final db = await database;
-    await db.insert(
-      _listTable,
-      {
-        'key': key,
-        'user_id': userId ?? '',
-        'items': jsonEncode(items),
-      },
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    await db.insert(_listTable, {
+      'key': key,
+      'user_id': userId ?? '',
+      'items': jsonEncode(items),
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
   /// Get a list of strings
-  Future<List<String>> getList({
-    required String key,
-    String? userId,
-  }) async {
+  Future<List<String>> getList({required String key, String? userId}) async {
     final db = await database;
     final result = await db.query(
       _listTable,
+      columns: ['items'],
       where: 'key = ? AND user_id = ?',
       whereArgs: [key, userId ?? ''],
+      limit: 1,
     );
 
     if (result.isEmpty) return [];
@@ -444,11 +476,11 @@ class AppDatabase {
 
       if (!items.contains(item)) {
         items.add(item);
-        await txn.insert(
-          _listTable,
-          {'key': key, 'user_id': uid, 'items': jsonEncode(items)},
-          conflictAlgorithm: ConflictAlgorithm.replace,
-        );
+        await txn.insert(_listTable, {
+          'key': key,
+          'user_id': uid,
+          'items': jsonEncode(items),
+        }, conflictAlgorithm: ConflictAlgorithm.replace);
       }
     });
   }
@@ -475,11 +507,11 @@ class AppDatabase {
 
       final items = (jsonDecode(raw) as List).cast<String>();
       if (items.remove(item)) {
-        await txn.insert(
-          _listTable,
-          {'key': key, 'user_id': uid, 'items': jsonEncode(items)},
-          conflictAlgorithm: ConflictAlgorithm.replace,
-        );
+        await txn.insert(_listTable, {
+          'key': key,
+          'user_id': uid,
+          'items': jsonEncode(items),
+        }, conflictAlgorithm: ConflictAlgorithm.replace);
       }
     });
   }
@@ -520,21 +552,17 @@ class AppDatabase {
     final db = await database;
     final now = DateTime.now().millisecondsSinceEpoch;
     await db.transaction((txn) async {
-      await txn.insert(
-        _cacheTable,
-        {
-          'key': cacheKey,
-          'user_id': userId ?? '',
-          'value': cacheValue,
-          'cached_at': now,
-        },
-        conflictAlgorithm: ConflictAlgorithm.replace,
-      );
-      await txn.insert(
-        _kvTable,
-        {'key': intKey, 'value': intValue.toString(), 'type': 'int'},
-        conflictAlgorithm: ConflictAlgorithm.replace,
-      );
+      await txn.insert(_cacheTable, {
+        'key': cacheKey,
+        'user_id': userId ?? '',
+        'value': cacheValue,
+        'cached_at': now,
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+      await txn.insert(_kvTable, {
+        'key': intKey,
+        'value': intValue.toString(),
+        'type': 'int',
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
     });
   }
 
@@ -579,8 +607,7 @@ class AppDatabase {
   Future<void> reset() async {
     await close();
     try {
-      final documentsDirectory = await getApplicationDocumentsDirectory();
-      final path = join(documentsDirectory.path, _dbFileName);
+      final path = await _resolveDatabasePath();
       await deleteDatabase(path);
       if (kDebugMode) {
         print('🧹 SQLite database deleted: $path');

@@ -11,8 +11,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 /// Business logic lives here, not in a separate repository
 final favoritePlayersProviderNew =
     AsyncNotifierProvider<FavoritePlayersNotifierNew, List<FavoritePlayer>>(
-  FavoritePlayersNotifierNew.new,
-);
+      FavoritePlayersNotifierNew.new,
+    );
 
 class FavoritePlayersNotifierNew extends AsyncNotifier<List<FavoritePlayer>> {
   static const String _cacheKeyPrefix = 'cached_favorite_players_';
@@ -56,14 +56,17 @@ class FavoritePlayersNotifierNew extends AsyncNotifier<List<FavoritePlayer>> {
           .eq('user_id', userId)
           .order('created_at', ascending: false);
 
-      final players = (response as List)
-          .map((json) => FavoritePlayer.fromSupabase(json))
-          .toList();
+      final players =
+          (response as List)
+              .map((json) => FavoritePlayer.fromSupabase(json))
+              .toList();
 
-      // Cache locally
-      await _cachePlayers(players);
+      // Cache locally in background (Supabase stays primary path)
+      unawaited(_cachePlayers(players));
 
-      debugPrint('[FavoritePlayers] Fetched ${players.length} players from Supabase');
+      debugPrint(
+        '[FavoritePlayers] Fetched ${players.length} players from Supabase',
+      );
       _loadCompleter!.complete(players);
       return players;
     } catch (e, st) {
@@ -95,15 +98,18 @@ class FavoritePlayersNotifierNew extends AsyncNotifier<List<FavoritePlayer>> {
 
       // Check if already exists by fide_id to prevent duplicates
       if (fideId != null && fideId.isNotEmpty) {
-        final existing = await _supabase
-            .from('user_favorite_players')
-            .select('id')
-            .eq('user_id', userId)
-            .eq('fide_id', fideId)
-            .maybeSingle();
+        final existing =
+            await _supabase
+                .from('user_favorite_players')
+                .select('id')
+                .eq('user_id', userId)
+                .eq('fide_id', fideId)
+                .maybeSingle();
 
         if (existing != null) {
-          debugPrint('[FavoritePlayers] Player $playerName already favorited (fide_id: $fideId)');
+          debugPrint(
+            '[FavoritePlayers] Player $playerName already favorited (fide_id: $fideId)',
+          );
           return;
         }
       }
@@ -115,16 +121,18 @@ class FavoritePlayersNotifierNew extends AsyncNotifier<List<FavoritePlayer>> {
       };
 
       // Insert to Supabase (upsert prevents duplicates by player_name as fallback)
-      await _supabase.from('user_favorite_players').upsert(
-        {
-          'user_id': userId,
-          'fide_id': fideId,
-          'player_name': playerName,
-          'metadata': metadata,
-        },
-        onConflict: 'user_id,player_name',
-        ignoreDuplicates: true,
-      );
+      await _supabase
+          .from('user_favorite_players')
+          .upsert(
+            {
+              'user_id': userId,
+              'fide_id': fideId,
+              'player_name': playerName,
+              'metadata': metadata,
+            },
+            onConflict: 'user_id,player_name',
+            ignoreDuplicates: true,
+          );
 
       debugPrint('[FavoritePlayers] Added player $playerName to Supabase');
 
@@ -266,8 +274,10 @@ class FavoritePlayersNotifierNew extends AsyncNotifier<List<FavoritePlayer>> {
 }
 
 /// Provider to check if a specific player is favorited
-final isPlayerFavoritedProvider =
-    Provider.family<bool, String>((ref, playerName) {
+final isPlayerFavoritedProvider = Provider.family<bool, String>((
+  ref,
+  playerName,
+) {
   final favorites = ref.watch(favoritePlayersProviderNew);
   return favorites.maybeWhen(
     data: (players) => players.any((p) => p.playerName == playerName),

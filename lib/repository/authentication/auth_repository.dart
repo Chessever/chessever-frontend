@@ -55,15 +55,20 @@ class AuthController extends AutoDisposeAsyncNotifier<AppAuthState> {
 
     _startAuthListener();
 
+    // Validate/refresh any recovered session before reporting authenticated.
+    // This prevents startup races where an expired JWT briefly appears valid.
+    final loggedIn = await _sessionManager.isLoggedIn().timeout(
+      const Duration(seconds: 5),
+      onTimeout: () => false,
+    );
+
     final currentUser = _supabase.auth.currentUser;
-    if (currentUser != null) {
+    if (loggedIn && currentUser != null) {
       return AppAuthState.authenticated(AppUser.fromSupabaseUser(currentUser));
     }
 
     return const AppAuthState.unauthenticated();
   }
-
-
 
   void _startAuthListener() {
     _authSubscription?.cancel();
@@ -100,7 +105,9 @@ class AuthController extends AutoDisposeAsyncNotifier<AppAuthState> {
           // This runs in the background and doesn't block the auth flow
           // Runs on all auth state changes to ensure settings stay synced
           unawaited(
-            ref.read(settingsMigrationServiceProvider).migrateSettingsToSupabase(),
+            ref
+                .read(settingsMigrationServiceProvider)
+                .migrateSettingsToSupabase(),
           );
         }
         break;
@@ -212,24 +219,33 @@ class AuthController extends AutoDisposeAsyncNotifier<AppAuthState> {
       // Step 2: Try to get authorization (might already be authorized)
       GoogleSignInClientAuthorization? authorization;
       try {
-        authorization = await account.authorizationClient.authorizationForScopes(_scopes);
+        authorization = await account.authorizationClient
+            .authorizationForScopes(_scopes);
       } catch (e) {
         if (kDebugMode) {
-          debugPrint('⚠️ [GOOGLE AUTH] authorizationForScopes failed, trying authorizeScopes: $e');
+          debugPrint(
+            '⚠️ [GOOGLE AUTH] authorizationForScopes failed, trying authorizeScopes: $e',
+          );
         }
       }
 
       // If not authorized, request authorization (this will show UI)
       if (authorization == null) {
         if (kDebugMode) {
-          debugPrint('🔵 [GOOGLE AUTH] Not authorized yet, requesting authorization...');
+          debugPrint(
+            '🔵 [GOOGLE AUTH] Not authorized yet, requesting authorization...',
+          );
         }
-        authorization = await account.authorizationClient.authorizeScopes(_scopes);
+        authorization = await account.authorizationClient.authorizeScopes(
+          _scopes,
+        );
       }
 
       final accessToken = authorization.accessToken;
       if (accessToken.isEmpty) {
-        throw Exception('Failed to obtain Google access token. Please try again.');
+        throw Exception(
+          'Failed to obtain Google access token. Please try again.',
+        );
       }
 
       if (kDebugMode) {
@@ -279,7 +295,9 @@ class AuthController extends AutoDisposeAsyncNotifier<AppAuthState> {
       );
 
       if (kDebugMode) {
-        debugPrint('❌ [GOOGLE AUTH] GoogleSignInException: ${e.code} - ${e.description}');
+        debugPrint(
+          '❌ [GOOGLE AUTH] GoogleSignInException: ${e.code} - ${e.description}',
+        );
       }
 
       if (e.code == GoogleSignInExceptionCode.canceled) {
@@ -525,9 +543,10 @@ class AuthController extends AutoDisposeAsyncNotifier<AppAuthState> {
       signOutErrorReason = e.toString();
       await ref.read(errorLoggerProvider).logError(e, st);
       final rawMessage = _exceptionMessage(e);
-      final message = rawMessage.isEmpty
-          ? 'Failed to sign out. Please try again.'
-          : rawMessage;
+      final message =
+          rawMessage.isEmpty
+              ? 'Failed to sign out. Please try again.'
+              : rawMessage;
       // Log the error but continue with local sign-out to avoid sticky sessions.
       state = AsyncValue.data(AppAuthState.error(message));
     } finally {
@@ -559,10 +578,9 @@ class AuthController extends AutoDisposeAsyncNotifier<AppAuthState> {
       await _googleSignIn.disconnect();
     } catch (e, st) {
       // Log but don't block overall sign-out flow.
-      await ref.read(errorLoggerProvider).logError(
-        'Google sign out failed: $e',
-        st,
-      );
+      await ref
+          .read(errorLoggerProvider)
+          .logError('Google sign out failed: $e', st);
     }
   }
 
@@ -583,7 +601,7 @@ class AuthController extends AutoDisposeAsyncNotifier<AppAuthState> {
         final account = await _googleSignIn.authenticate();
         final tokenData = await account?.authentication;
         final idToken = tokenData?.idToken;
-        
+
         if (idToken == null) {
           throw Exception('Failed to get Google ID token.');
         }
@@ -607,10 +625,9 @@ class AuthController extends AutoDisposeAsyncNotifier<AppAuthState> {
 
         await _sessionManager.saveSession(session, user);
         final appUser = AppUser.fromSupabaseUser(user);
-        
+
         state = AsyncValue.data(AppAuthState.authenticated(appUser));
         return appUser;
-
       } catch (e, st) {
         await ref.read(errorLoggerProvider).logError(e, st);
         // Ensure Google is signed out on error
@@ -662,7 +679,8 @@ class AuthController extends AutoDisposeAsyncNotifier<AppAuthState> {
 
         // Update user metadata with Apple credential info if available
         final fullName =
-            '${credential.givenName ?? ''} ${credential.familyName ?? ''}'.trim();
+            '${credential.givenName ?? ''} ${credential.familyName ?? ''}'
+                .trim();
         final data = <String, dynamic>{};
         if (fullName.isNotEmpty) data['full_name'] = fullName;
         if (credential.email != null) data['email'] = credential.email;
@@ -727,9 +745,7 @@ class AuthController extends AutoDisposeAsyncNotifier<AppAuthState> {
     }
 
     try {
-      final user = await completer.future.timeout(
-        const Duration(seconds: 90),
-      );
+      final user = await completer.future.timeout(const Duration(seconds: 90));
       state = AsyncValue.data(AppAuthState.authenticated(user));
       return user;
     } on TimeoutException {
@@ -797,9 +813,10 @@ class AuthController extends AutoDisposeAsyncNotifier<AppAuthState> {
       state = const AsyncValue.data(AppAuthState.unauthenticated());
 
       final rawMessage = _exceptionMessage(e);
-      final message = rawMessage.isEmpty
-          ? 'Failed to delete account. Please contact support.'
-          : rawMessage;
+      final message =
+          rawMessage.isEmpty
+              ? 'Failed to delete account. Please contact support.'
+              : rawMessage;
       throw Exception(message);
     }
   }

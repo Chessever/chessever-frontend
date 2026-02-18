@@ -38,26 +38,7 @@ class GroupBroadcastLocalStorage {
 
   Future<void> fetchAndSaveGroupBroadcasts() async {
     try {
-      List<GroupBroadcast> broadcasts = [];
-      switch (category) {
-        case GroupEventCategory.forYou:
-        case GroupEventCategory.search:
-          broadcasts = [];
-          break;
-        case GroupEventCategory.current:
-          broadcasts =
-              await ref
-                  .read(groupBroadcastRepositoryProvider)
-                  .getCurrentGroupBroadcasts();
-          break;
-        case GroupEventCategory.past:
-          final events = await ref
-              .read(groupBroadcastRepositoryProvider)
-              .getPastGroupBroadcasts(limit: 300);
-          broadcasts = await _ensureStarredEventsIncluded(events);
-          break;
-      }
-
+      final broadcasts = await _fetchGroupBroadcastsFromSource();
       final db = ref.read(appDatabaseProvider);
       final encoded = _encodeGroupBroadcastsList(broadcasts);
       await db.setCacheAndInt(
@@ -71,28 +52,66 @@ class GroupBroadcastLocalStorage {
     }
   }
 
+  Future<List<GroupBroadcast>> _fetchGroupBroadcastsFromSource() async {
+    switch (category) {
+      case GroupEventCategory.forYou:
+      case GroupEventCategory.search:
+        return <GroupBroadcast>[];
+      case GroupEventCategory.current:
+        return ref
+            .read(groupBroadcastRepositoryProvider)
+            .getCurrentGroupBroadcasts();
+      case GroupEventCategory.past:
+        final events = await ref
+            .read(groupBroadcastRepositoryProvider)
+            .getPastGroupBroadcasts(limit: 300);
+        return _ensureStarredEventsIncluded(events);
+    }
+  }
+
+  Future<List<GroupBroadcast>> _fetchSaveAndReturnGroupBroadcasts() async {
+    final broadcasts = await _fetchGroupBroadcastsFromSource();
+    final db = ref.read(appDatabaseProvider);
+    final encoded = _encodeGroupBroadcastsList(broadcasts);
+    await db.setCacheAndInt(
+      cacheKey: _cacheKey,
+      cacheValue: jsonEncode(encoded),
+      intKey: _cacheTimeKey,
+      intValue: DateTime.now().millisecondsSinceEpoch,
+    );
+    return broadcasts;
+  }
+
   Future<List<GroupBroadcast>> fetchGroupBroadcasts() async {
     try {
       final db = ref.read(appDatabaseProvider);
       final lastFetched = await db.getInt(_cacheTimeKey);
-      final totalValues = await getGroupBroadcasts();
+      final cachedBroadcasts = await getGroupBroadcasts();
+      final shouldRefresh =
+          lastFetched == null ||
+          cachedBroadcasts.isEmpty ||
+          (DateTime.now().millisecondsSinceEpoch - lastFetched) >
+              25 * 60 * 1000;
 
-      if (lastFetched != null) {
-        final currentTime = DateTime.now().millisecondsSinceEpoch;
-        final difference = currentTime - lastFetched;
-        // If data is older than 25 minutes, refresh it
-        if (difference > 25 * 60 * 1000 || totalValues.isEmpty) {
-          await fetchAndSaveGroupBroadcasts();
-          return getGroupBroadcasts();
-        } else {
-          return getGroupBroadcasts();
+      if (!shouldRefresh) {
+        return cachedBroadcasts;
+      }
+
+      try {
+        final fresh = await _fetchSaveAndReturnGroupBroadcasts();
+        return fresh;
+      } catch (_) {
+        if (cachedBroadcasts.isNotEmpty) {
+          return cachedBroadcasts;
         }
-      } else {
-        await fetchAndSaveGroupBroadcasts();
-        return getGroupBroadcasts();
+        return <GroupBroadcast>[];
       }
     } catch (_) {
-      return <GroupBroadcast>[];
+      try {
+        return await getGroupBroadcasts();
+      } catch (_) {
+        return <GroupBroadcast>[];
+      }
     }
   }
 
@@ -144,10 +163,9 @@ class GroupBroadcastLocalStorage {
 
   Future<List<GroupBroadcast>> refresh() async {
     try {
-      await fetchAndSaveGroupBroadcasts();
-      return getGroupBroadcasts();
+      return await _fetchSaveAndReturnGroupBroadcasts();
     } catch (_) {
-      return <GroupBroadcast>[];
+      return getGroupBroadcasts();
     }
   }
 

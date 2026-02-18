@@ -1,7 +1,9 @@
 import 'dart:convert';
+import 'dart:async';
 import 'package:chessever2/providers/country_dropdown_provider.dart';
 import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
 import 'package:chessever2/screens/authentication/auth_screen_provider.dart';
+import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -13,6 +15,7 @@ class SessionManager {
   SessionManager(this.ref);
 
   final Ref ref;
+  Completer<bool>? _loginCheckCompleter;
 
   static const _keyPersistSession = 'supabase_session';
   static const _keyPersistUser = 'supabase_user';
@@ -21,15 +24,12 @@ class SessionManager {
   Future<void> saveSession(Session session, User user) async {
     final prefs = await SharedPreferencesService.instance.ensureInitialized();
     if (prefs == null) {
-      print('⚠️ Cannot save session: SharedPreferences unavailable');
+      debugPrint('⚠️ Cannot save session: SharedPreferences unavailable');
       return;
     }
-    print('Saving session: ${session.toJson()}');
 
     await prefs.setString(_keyPersistSession, jsonEncode(session.toJson()));
     await prefs.setString(_keyPersistUser, jsonEncode(user.toJson()));
-
-    print('Session saved: ${session.toJson()}');
   }
 
   /// Clear only local storage without calling signOut
@@ -65,10 +65,60 @@ class SessionManager {
   /// Note: The auth state stream (authStateProvider) is the primary source of truth
   /// This method is only used for initial checks in splash screen
   Future<bool> isLoggedIn() async {
-    // First check if Supabase already has an active session
-    final currentSession = Supabase.instance.client.auth.currentSession;
+    final inFlight = _loginCheckCompleter;
+    if (inFlight != null) {
+      return inFlight.future;
+    }
+
+    final completer = Completer<bool>();
+    _loginCheckCompleter = completer;
+
+    () async {
+      try {
+        final result = await _isLoggedInInternal();
+        completer.complete(result);
+      } catch (e, st) {
+        completer.completeError(e, st);
+      } finally {
+        if (identical(_loginCheckCompleter, completer)) {
+          _loginCheckCompleter = null;
+        }
+      }
+    }();
+
+    return completer.future;
+  }
+
+  Future<bool> _isLoggedInInternal() async {
+    final auth = Supabase.instance.client.auth;
+
+    // First check if Supabase already has an active, non-expired session.
+    final currentSession = auth.currentSession;
     if (currentSession != null) {
-      return true;
+      if (!currentSession.isExpired) {
+        return true;
+      }
+
+      // Expired session found in memory. Try refresh before declaring unauthenticated.
+      try {
+        final refreshed = await auth.refreshSession(
+          currentSession.refreshToken,
+        );
+        final refreshedUser = refreshed.user;
+        final refreshedSession = refreshed.session;
+        if (refreshedUser != null &&
+            refreshedSession != null &&
+            !refreshedSession.isExpired) {
+          await saveSession(refreshedSession, refreshedUser);
+          return true;
+        }
+      } catch (_) {
+        // Ignore and fall through to local recovery/cleanup.
+      }
+
+      // Ensure stale token is removed so app requests don't send expired JWTs.
+      await _clearStaleSession();
+      return false;
     }
 
     // If no current session, try to recover from local storage
@@ -80,25 +130,40 @@ class SessionManager {
     if (sessionStr == null) return false;
 
     try {
-      final response = await Supabase.instance.client.auth.recoverSession(
-        sessionStr,
-      );
+      final response = await auth.recoverSession(sessionStr);
 
-      final user = response.user;
-      if (user != null && response.session != null) {
-        // Session recovered successfully - save updated session
-        await saveSession(response.session!, user);
+      var user = response.user;
+      var session = response.session;
+
+      if (user != null && session != null && session.isExpired) {
+        // Recovered session exists but access token is already expired. Refresh it.
+        final refreshed = await auth.refreshSession(session.refreshToken);
+        user = refreshed.user;
+        session = refreshed.session;
+      }
+
+      if (user != null && session != null && !session.isExpired) {
+        await saveSession(session, user);
         return true;
       }
 
       // Session invalid - clear local storage
-      await clearLocalStorage();
+      await _clearStaleSession();
       return false;
     } catch (e) {
       // Session recovery failed - clear local storage
-      await clearLocalStorage();
+      await _clearStaleSession();
       return false;
     }
+  }
+
+  Future<void> _clearStaleSession() async {
+    try {
+      await Supabase.instance.client.auth.signOut(scope: SignOutScope.local);
+    } catch (_) {
+      // Best effort. Local storage cleanup below is the critical step.
+    }
+    await clearLocalStorage();
   }
 
   Future<String?> getUserInitials() async {

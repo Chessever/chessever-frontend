@@ -39,12 +39,38 @@ class CascadeEvalParams {
 
 const int _minPersistDepth = 20;
 const int _minPersistFullMoves = 8;
+const Duration _localEvalLookupTimeout = Duration(milliseconds: 120);
 
 bool _shouldPersistCloudEval(CloudEval eval) {
   return eval.meetsPersistenceThreshold(
     minDepth: _minPersistDepth,
     minFullMoves: _minPersistFullMoves,
   );
+}
+
+Future<CloudEval?> _readLocalEvalFast({
+  required LocalEvalCache local,
+  required String fen,
+  required int multiPV,
+  required String sourceTag,
+}) async {
+  try {
+    final cached = await local
+        .fetch(fen, multiPV: multiPV)
+        .timeout(_localEvalLookupTimeout, onTimeout: () => null);
+    if (cached != null && _isValidEvaluation(cached)) {
+      final fenParts = fen.split(' ');
+      final sideToMove = fenParts.length >= 2 ? fenParts[1] : 'w';
+      final cp = cached.pvs.isNotEmpty ? cached.pvs.first.cp : 0;
+      debugPrint(
+        "🔵 EVAL SOURCE ($sourceTag): LOCAL CACHE - fen=$fen, side=$sideToMove, cp=$cp",
+      );
+      return cached;
+    }
+  } catch (e) {
+    debugPrint('⚠️ $sourceTag: Local cache error: $e');
+  }
+  return null;
 }
 
 /// 1. local → 2. Supabase → 3. Stockfish (Lichess removed)
@@ -70,19 +96,14 @@ final cascadeEvalProvider = FutureProvider.family.autoDispose<
   }
 
   // 1️⃣  Local cache (with multiPV in key)
-  try {
-    final cached = await local.fetch(fen, multiPV: multiPV);
-    if (cached != null && _isValidEvaluation(cached)) {
-      final fenParts = fen.split(' ');
-      final sideToMove = fenParts.length >= 2 ? fenParts[1] : 'w';
-      final cp = cached.pvs.isNotEmpty ? cached.pvs.first.cp : 0;
-      debugPrint(
-        "🔵 EVAL SOURCE (cascadeEval): LOCAL CACHE - fen=$fen, side=$sideToMove, cp=$cp",
-      );
-      return cached;
-    }
-  } catch (e) {
-    debugPrint('⚠️ cascadeEval: Local cache error: $e');
+  final cachedLocal = await _readLocalEvalFast(
+    local: local,
+    fen: fen,
+    multiPV: multiPV,
+    sourceTag: 'cascadeEval',
+  );
+  if (cachedLocal != null) {
+    return cachedLocal;
   }
 
   // 2️⃣  Supabase
@@ -124,7 +145,8 @@ final cascadeEvalProvider = FutureProvider.family.autoDispose<
 
   // Clamp stockfish MultiPV to user preference and request (1-5)
   final settingsMultiPv = resolvedSettings.multiPvForStockfish();
-  final resolvedMultiPv = multiPV <= settingsMultiPv ? multiPV : settingsMultiPv;
+  final resolvedMultiPv =
+      multiPV <= settingsMultiPv ? multiPV : settingsMultiPv;
 
   final searchDuration = resolvedSettings.searchDurationFor(
     EngineComponent.cascadeEval,
@@ -153,7 +175,9 @@ final cascadeEvalProvider = FutureProvider.family.autoDispose<
 
     // Handle cancelled/empty results gracefully - don't throw, return empty
     if (sfEval.pvs.isEmpty || sfEval.pvs.first.moves.isEmpty) {
-      debugPrint('⚠️ cascadeEval: Stockfish returned empty result for $fen (likely cancelled)');
+      debugPrint(
+        '⚠️ cascadeEval: Stockfish returned empty result for $fen (likely cancelled)',
+      );
       return CloudEval(
         fen: fen,
         knodes: 0,
@@ -199,9 +223,7 @@ final cascadeEvalProvider = FutureProvider.family.autoDispose<
 
     return cloudFromSf;
   } catch (engineError, engineStack) {
-    debugPrint(
-      '❌ cascadeEval: Stockfish failed for $fen: $engineError',
-    );
+    debugPrint('❌ cascadeEval: Stockfish failed for $fen: $engineError');
     debugPrint(engineStack.toString());
     // Return empty result instead of throwing - prevents UI errors on rapid navigation
     return CloudEval(
@@ -257,28 +279,20 @@ final cascadeEvalProviderForBoard = FutureProvider.family.autoDispose<
   }
 
   // 1️⃣ Check local cache first (instant, with multiPV in key)
-  try {
-    final cached = await local.fetch(fen, multiPV: multiPV);
-    if (cached != null && _isValidEvaluation(cached)) {
-      final fenParts = fen.split(' ');
-      final sideToMove = fenParts.length >= 2 ? fenParts[1] : 'w';
-      final cp = cached.pvs.isNotEmpty ? cached.pvs.first.cp : 0;
-      debugPrint(
-        "🔵 EVAL SOURCE (board): LOCAL CACHE - fen=$fen, side=$sideToMove, cp=$cp",
-      );
-      return cached;
-    }
-  } catch (e) {
-    debugPrint('⚠️ cascadeEvalForBoard: Local cache error: $e');
+  final cachedLocal = await _readLocalEvalFast(
+    local: local,
+    fen: fen,
+    multiPV: multiPV,
+    sourceTag: 'board',
+  );
+  if (cachedLocal != null) {
+    return cachedLocal;
   }
 
   // 2️⃣ Query Supabase (our database, no rate limits)
   try {
     final supabaseEval = await evalsRepo
-        .fetchFromSupabase(
-          fen,
-          desiredMultiPv: multiPV,
-        )
+        .fetchFromSupabase(fen, desiredMultiPv: multiPV)
         .timeout(const Duration(milliseconds: 600), onTimeout: () => null);
     if (supabaseEval != null) {
       final cloud = evalsRepo.evalsToCloudEval(fen, supabaseEval);
@@ -311,7 +325,9 @@ final cascadeEvalProviderForBoard = FutureProvider.family.autoDispose<
   // 3️⃣ Return empty - Stockfish is managed by board notifier directly
   // This provider is for quick cache/Supabase lookups only
   // The board notifier handles Stockfish evaluation separately to avoid duplicate jobs
-  debugPrint('⚠️ cascadeEvalForBoard: No cached eval for $fen, board notifier will use Stockfish');
+  debugPrint(
+    '⚠️ cascadeEvalForBoard: No cached eval for $fen, board notifier will use Stockfish',
+  );
   return CloudEval(
     fen: fen,
     knodes: 0,
@@ -341,100 +357,111 @@ final cascadeEvalProviderForBoard = FutureProvider.family.autoDispose<
 /// - Auto-disposes when card scrolls out of view (via autoDispose)
 /// - Low priority Stockfish (isCurrentPosition: false) to not interfere with active board
 /// - Depth 8 is fast enough for responsive UI fallback
-final gameCardEvalWithStockfishFallbackProvider = FutureProvider.family.autoDispose<
-  CloudEval,
-  String // FEN string
->((ref, fen) async {
-  if (fen.isEmpty) {
-    return CloudEval(
-      fen: fen,
-      knodes: 0,
-      depth: 0,
-      pvs: const [],
-      requestedMultiPv: 1,
-    );
-  }
+final gameCardEvalWithStockfishFallbackProvider = FutureProvider.family
+    .autoDispose<
+      CloudEval,
+      String // FEN string
+    >((ref, fen) async {
+      if (fen.isEmpty) {
+        return CloudEval(
+          fen: fen,
+          knodes: 0,
+          depth: 0,
+          pvs: const [],
+          requestedMultiPv: 1,
+        );
+      }
 
-  const multiPV = 1;
-  final local = ref.watch(localEvalCacheProvider);
-  final evalsRepo = ref.watch(evalsRepositoryProvider);
+      const multiPV = 1;
+      final local = ref.watch(localEvalCacheProvider);
+      final evalsRepo = ref.watch(evalsRepositoryProvider);
 
-  // 1️⃣ Check local cache first (instant hit)
-  try {
-    final cached = await local.fetch(fen, multiPV: multiPV);
-    if (cached != null && _isValidEvaluation(cached)) {
-      return cached;
-    }
-  } catch (e) {
-    debugPrint('⚠️ gameCardEval: Local cache error: $e');
-  }
+      // 1️⃣ Check local cache first (instant hit)
+      final cachedLocal = await _readLocalEvalFast(
+        local: local,
+        fen: fen,
+        multiPV: multiPV,
+        sourceTag: 'gameCardEval',
+      );
+      if (cachedLocal != null) {
+        return cachedLocal;
+      }
 
-  // 2️⃣ Try Supabase
-  try {
-    final supabaseEval = await evalsRepo
-        .fetchFromSupabase(fen, desiredMultiPv: multiPV)
-        .timeout(const Duration(milliseconds: 600), onTimeout: () => null);
-    if (supabaseEval != null) {
-      final cloud = evalsRepo.evalsToCloudEval(fen, supabaseEval);
-      if (_isValidEvaluation(cloud)) {
-        // Background cache save
+      // 2️⃣ Try Supabase
+      try {
+        final supabaseEval = await evalsRepo
+            .fetchFromSupabase(fen, desiredMultiPv: multiPV)
+            .timeout(const Duration(milliseconds: 600), onTimeout: () => null);
+        if (supabaseEval != null) {
+          final cloud = evalsRepo.evalsToCloudEval(fen, supabaseEval);
+          if (_isValidEvaluation(cloud)) {
+            // Background cache save
+            unawaited(
+              local
+                  .save(
+                    fen,
+                    cloud,
+                    multiPV: cloud.requestedMultiPv ?? cloud.pvs.length,
+                  )
+                  .catchError((_) => null),
+            );
+            return cloud;
+          }
+        }
+      } catch (e) {
+        debugPrint('⚠️ gameCardEval: Supabase error: $e');
+      }
+
+      // 3️⃣ Stockfish fallback at depth 8 (Lichess removed)
+      const fallbackDepth = 8;
+      try {
+        final sfEval = await StockfishSingleton().evaluatePosition(
+          fen,
+          depth: fallbackDepth,
+          multiPV: multiPV,
+          isCurrentPosition: false, // Low priority for background game cards
+          allowCache: true,
+        );
+
+        // Handle cancelled/empty results gracefully
+        if (sfEval.pvs.isEmpty || sfEval.pvs.first.moves.isEmpty) {
+          debugPrint(
+            '⚠️ gameCardEval: Stockfish returned empty result for $fen',
+          );
+          return CloudEval(
+            fen: fen,
+            knodes: 0,
+            depth: 0,
+            pvs: const [],
+            requestedMultiPv: multiPV,
+          );
+        }
+
+        final cloudFromSf = CloudEval(
+          fen: fen,
+          knodes: sfEval.knodes,
+          depth: sfEval.depth,
+          pvs: sfEval.pvs,
+          requestedMultiPv: multiPV,
+        );
+
+        // Cache Stockfish result for future use (fire-and-forget)
         unawaited(
-          local.save(fen, cloud, multiPV: cloud.requestedMultiPv ?? cloud.pvs.length)
+          local
+              .save(fen, cloudFromSf, multiPV: multiPV)
               .catchError((_) => null),
         );
-        return cloud;
+
+        return cloudFromSf;
+      } catch (e) {
+        debugPrint('⚠️ gameCardEval: Stockfish error for $fen: $e');
+        // Return empty result on error - don't block the UI
+        return CloudEval(
+          fen: fen,
+          knodes: 0,
+          depth: 0,
+          pvs: const [],
+          requestedMultiPv: multiPV,
+        );
       }
-    }
-  } catch (e) {
-    debugPrint('⚠️ gameCardEval: Supabase error: $e');
-  }
-
-  // 3️⃣ Stockfish fallback at depth 8 (Lichess removed)
-  const fallbackDepth = 8;
-  try {
-    final sfEval = await StockfishSingleton().evaluatePosition(
-      fen,
-      depth: fallbackDepth,
-      multiPV: multiPV,
-      isCurrentPosition: false, // Low priority for background game cards
-      allowCache: true,
-    );
-
-    // Handle cancelled/empty results gracefully
-    if (sfEval.pvs.isEmpty || sfEval.pvs.first.moves.isEmpty) {
-      debugPrint('⚠️ gameCardEval: Stockfish returned empty result for $fen');
-      return CloudEval(
-        fen: fen,
-        knodes: 0,
-        depth: 0,
-        pvs: const [],
-        requestedMultiPv: multiPV,
-      );
-    }
-
-    final cloudFromSf = CloudEval(
-      fen: fen,
-      knodes: sfEval.knodes,
-      depth: sfEval.depth,
-      pvs: sfEval.pvs,
-      requestedMultiPv: multiPV,
-    );
-
-    // Cache Stockfish result for future use (fire-and-forget)
-    unawaited(
-      local.save(fen, cloudFromSf, multiPV: multiPV).catchError((_) => null),
-    );
-
-    return cloudFromSf;
-  } catch (e) {
-    debugPrint('⚠️ gameCardEval: Stockfish error for $fen: $e');
-    // Return empty result on error - don't block the UI
-    return CloudEval(
-      fen: fen,
-      knodes: 0,
-      depth: 0,
-      pvs: const [],
-      requestedMultiPv: multiPV,
-    );
-  }
-});
+    });
