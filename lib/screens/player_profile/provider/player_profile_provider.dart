@@ -1725,12 +1725,18 @@ class _SearchClauseTerm {
 }
 
 class PlayerProfileGamesState {
+  static const Object _unset = Object();
+
   PlayerProfileGamesState({
     required this.playerKey,
     this.allGames = const [],
     GameFilter? filter,
     this.playerResultFilter = PlayerResultFilter.all,
     this.isLoading = false,
+    this.isLoadingMore = false,
+    this.hasMorePages = false,
+    this.nextPageNumber = 0,
+    this.totalCount,
     this.error,
     this.searchQuery = '',
   }) : filter = filter ?? GameFilter();
@@ -1740,6 +1746,10 @@ class PlayerProfileGamesState {
   final GameFilter filter;
   final PlayerResultFilter playerResultFilter;
   final bool isLoading;
+  final bool isLoadingMore;
+  final bool hasMorePages;
+  final int nextPageNumber;
+  final int? totalCount;
   final String? error;
   final String searchQuery;
 
@@ -2076,6 +2086,10 @@ class PlayerProfileGamesState {
     GameFilter? filter,
     PlayerResultFilter? playerResultFilter,
     bool? isLoading,
+    bool? isLoadingMore,
+    bool? hasMorePages,
+    int? nextPageNumber,
+    Object? totalCount = _unset,
     String? error,
     String? searchQuery,
   }) {
@@ -2085,6 +2099,11 @@ class PlayerProfileGamesState {
       filter: filter ?? this.filter,
       playerResultFilter: playerResultFilter ?? this.playerResultFilter,
       isLoading: isLoading ?? this.isLoading,
+      isLoadingMore: isLoadingMore ?? this.isLoadingMore,
+      hasMorePages: hasMorePages ?? this.hasMorePages,
+      nextPageNumber: nextPageNumber ?? this.nextPageNumber,
+      totalCount:
+          identical(totalCount, _unset) ? this.totalCount : totalCount as int?,
       error: error,
       searchQuery: searchQuery ?? this.searchQuery,
     );
@@ -2190,6 +2209,11 @@ final twicPlayerStatsProvider = FutureProvider.family.autoDispose<
   Future<PlayerAnalytics?> fallbackFromLoadedGames() async {
     final gamesState = ref.read(playerProfileGamesKeyProvider(playerKey));
     if (gamesState.allGames.isEmpty) return null;
+    if (gamesState.hasMorePages) return null;
+    final totalCount = gamesState.totalCount;
+    if (totalCount != null && gamesState.allGames.length < totalCount) {
+      return null;
+    }
 
     var filter = gamesState.filter;
     if (request.scope == TwicStatsScope.allGames) {
@@ -2369,6 +2393,20 @@ final twicPlayerStatsProvider = FutureProvider.family.autoDispose<
 });
 
 /// Notifier for player profile games state
+class _TwicGamesPageResult {
+  const _TwicGamesPageResult({
+    required this.games,
+    required this.hasMore,
+    required this.nextPageNumber,
+    this.totalCount,
+  });
+
+  final List<GamesTourModel> games;
+  final bool hasMore;
+  final int nextPageNumber;
+  final int? totalCount;
+}
+
 class PlayerProfileGamesNotifier
     extends StateNotifier<PlayerProfileGamesState> {
   PlayerProfileGamesNotifier(this._ref, this._playerKey)
@@ -2379,11 +2417,32 @@ class PlayerProfileGamesNotifier
   final Ref _ref;
   final PlayerProfileKey _playerKey;
   int _loadToken = 0;
+  static const int _twicPageSize = 60;
+  List<GamesTourModel>? _globalSearchFallbackCache;
+
+  List<GamesTourModel> _mergeGames(
+    List<GamesTourModel> base,
+    List<GamesTourModel> incoming,
+  ) {
+    final merged = <String, GamesTourModel>{};
+    for (final game in base) {
+      merged[game.gameId] = game;
+    }
+    for (final game in incoming) {
+      merged[game.gameId] = game;
+    }
+    return merged.values.toList(growable: false);
+  }
 
   Future<void> _loadGames() async {
     final token = ++_loadToken;
+    _globalSearchFallbackCache = null;
     state = state.copyWith(
       isLoading: true,
+      isLoadingMore: false,
+      hasMorePages: false,
+      nextPageNumber: 0,
+      totalCount: null,
       error: null,
       allGames:
           _playerKey.source == PlayerProfileDataSource.twic ? const [] : null,
@@ -2391,9 +2450,19 @@ class PlayerProfileGamesNotifier
 
     try {
       List<GamesTourModel> allGames;
+      bool hasMorePages = false;
+      int nextPageNumber = 0;
+      int? totalCount;
 
       if (_playerKey.source == PlayerProfileDataSource.twic) {
-        allGames = await _loadTwicGamesFiltered();
+        final page = await _loadTwicGamesFilteredPage(
+          pageNumber: 0,
+          pageSize: _twicPageSize,
+        );
+        allGames = page.games;
+        hasMorePages = page.hasMore;
+        nextPageNumber = page.nextPageNumber;
+        totalCount = page.totalCount;
       } else {
         final gameRepo = _ref.read(gameRepositoryProvider);
         List<Games> games;
@@ -2426,10 +2495,20 @@ class PlayerProfileGamesNotifier
       });
 
       if (!mounted || token != _loadToken) return;
-      state = state.copyWith(allGames: allGames, isLoading: false);
+      state = state.copyWith(
+        allGames: allGames,
+        isLoading: false,
+        hasMorePages: hasMorePages,
+        nextPageNumber: nextPageNumber,
+        totalCount: totalCount,
+      );
     } catch (e) {
       if (!mounted || token != _loadToken) return;
-      state = state.copyWith(error: e.toString(), isLoading: false);
+      state = state.copyWith(
+        error: e.toString(),
+        isLoading: false,
+        isLoadingMore: false,
+      );
     }
   }
 
@@ -2437,13 +2516,21 @@ class PlayerProfileGamesNotifier
   // TWIC: Pure server-side filtered loading
   // ---------------------------------------------------------------------------
 
-  Future<List<GamesTourModel>> _loadTwicGamesFiltered() async {
+  Future<_TwicGamesPageResult> _loadTwicGamesFilteredPage({
+    required int pageNumber,
+    required int pageSize,
+  }) async {
     final repo = _ref.read(gamebaseRepositoryProvider);
     final pid = await _ref.read(twicPlayerIdProvider(_playerKey).future);
 
     if (pid != null && pid.isNotEmpty) {
       try {
-        return _fetchViaPlayerGamesEndpoint(repo, pid);
+        return _fetchViaPlayerGamesEndpointPage(
+          repo,
+          pid,
+          pageNumber: pageNumber,
+          pageSize: pageSize,
+        );
       } on DioException catch (e) {
         if (e.response?.statusCode != 404) rethrow;
         final refreshed = await _resolveTwicPlayerId(
@@ -2453,17 +2540,29 @@ class PlayerProfileGamesNotifier
         );
         if (refreshed != null && refreshed.isNotEmpty && refreshed != pid) {
           _ref.invalidate(twicPlayerIdProvider(_playerKey));
-          return _fetchViaPlayerGamesEndpoint(repo, refreshed);
+          return _fetchViaPlayerGamesEndpointPage(
+            repo,
+            refreshed,
+            pageNumber: pageNumber,
+            pageSize: pageSize,
+          );
         }
       }
     }
-    return _fetchViaGlobalSearch(repo);
+    return _fetchViaGlobalSearchPage(
+      repo,
+      pageNumber: pageNumber,
+      pageSize: pageSize,
+    );
   }
 
   /// Path A: Has gamebasePlayerId → GET /api/player/{id}/games with filters.
-  Future<List<GamesTourModel>> _fetchViaPlayerGamesEndpoint(
+  Future<_TwicGamesPageResult> _fetchViaPlayerGamesEndpointPage(
     GamebaseRepository repo,
-    String playerId,
+    String playerId, {
+    required int pageNumber,
+    required int pageSize,
+  }
   ) async {
     final filter = state.filter;
     final color = _colorToApi(filter.color) ?? 'all';
@@ -2479,41 +2578,35 @@ class PlayerProfileGamesNotifier
     final dateFrom = _yearMinToDateFrom(filter);
     final dateTo = _yearMaxToExclusiveDateTo(filter);
 
-    // Load full result set page-by-page.
-    final allRows = <Map<String, dynamic>>[];
-    var page = 0;
-    while (true) {
-      final response = await repo.getPlayerGames(
-        playerId: playerId,
-        color: color,
-        timeControl: timeControl,
-        outcome: outcome,
-        eco: eco,
-        opening: null,
-        variation: null,
-        dateFrom: dateFrom,
-        dateTo: dateTo,
-        pageNumber: page,
-        pageSize: 100,
-      );
+    final response = await repo.getPlayerGames(
+      playerId: playerId,
+      color: color,
+      timeControl: timeControl,
+      outcome: outcome,
+      eco: eco,
+      opening: null,
+      variation: null,
+      dateFrom: dateFrom,
+      dateTo: dateTo,
+      pageNumber: pageNumber,
+      pageSize: pageSize,
+    );
 
-      final data = response['data'];
-      if (data is List) {
-        for (final item in data) {
-          allRows.add(Map<String, dynamic>.from(item as Map));
-        }
+    final rows = <Map<String, dynamic>>[];
+    final data = response['data'];
+    if (data is List) {
+      for (final item in data.whereType<Map>()) {
+        rows.add(Map<String, dynamic>.from(item));
       }
-
-      final metadata = response['metadata'];
-      final hasMore = metadata is Map ? (metadata['hasMore'] == true) : false;
-      if (!hasMore) break;
-      if (data is! List || data.isEmpty) break;
-      page += 1;
-      if (page >= 1000) break;
     }
 
-    final gamebasePlayersById = await _fetchGamebasePlayersByIds(allRows, repo);
-    var games = allRows
+    final metadata = response['metadata'];
+    final hasMore = metadata is Map ? (metadata['hasMore'] == true) : false;
+    final totalCount =
+        metadata is Map ? (metadata['totalCount'] as num?)?.toInt() : null;
+
+    final gamebasePlayersById = await _fetchGamebasePlayersByIds(rows, repo);
+    var games = rows
         .map((row) => _gamePreviewRowToModel(row, gamebasePlayersById))
         .toList(growable: false);
     final fideIds = collectFideIdsFromGames(games);
@@ -2523,7 +2616,51 @@ class PlayerProfileGamesNotifier
           .getPlayersByFideIds(fideIds);
       games = enrichGamesWithChessPlayers(games, playersByFideId);
     }
-    return games;
+    return _TwicGamesPageResult(
+      games: games,
+      hasMore: hasMore,
+      nextPageNumber: pageNumber + 1,
+      totalCount: totalCount,
+    );
+  }
+
+  Future<_TwicGamesPageResult> _fetchViaGlobalSearchPage(
+    GamebaseRepository repo, {
+    required int pageNumber,
+    required int pageSize,
+  }) async {
+    final cached = _globalSearchFallbackCache;
+    if (cached == null) {
+      _globalSearchFallbackCache = await _fetchViaGlobalSearch(repo);
+    }
+    final all = _globalSearchFallbackCache ?? const <GamesTourModel>[];
+    if (all.isEmpty) {
+      return const _TwicGamesPageResult(
+        games: [],
+        hasMore: false,
+        nextPageNumber: 0,
+        totalCount: 0,
+      );
+    }
+
+    final start = pageNumber * pageSize;
+    if (start >= all.length) {
+      return _TwicGamesPageResult(
+        games: const [],
+        hasMore: false,
+        nextPageNumber: pageNumber + 1,
+        totalCount: all.length,
+      );
+    }
+    final end = (start + pageSize).clamp(0, all.length).toInt();
+    final hasMore = end < all.length;
+
+    return _TwicGamesPageResult(
+      games: all.sublist(start, end),
+      hasMore: hasMore,
+      nextPageNumber: pageNumber + 1,
+      totalCount: all.length,
+    );
   }
 
   /// Path B: No gamebasePlayerId → globalSearch fallback with filters.
@@ -2820,6 +2957,36 @@ class PlayerProfileGamesNotifier
     }
   }
 
+  Future<void> loadMore() async {
+    if (_playerKey.source != PlayerProfileDataSource.twic) return;
+    if (state.isLoading || state.isLoadingMore || !state.hasMorePages) return;
+
+    final token = _loadToken;
+    state = state.copyWith(isLoadingMore: true, error: null);
+    try {
+      final page = await _loadTwicGamesFilteredPage(
+        pageNumber: state.nextPageNumber,
+        pageSize: _twicPageSize,
+      );
+      if (!mounted || token != _loadToken) return;
+
+      final merged = _mergeGames(state.allGames, page.games);
+      state = state.copyWith(
+        allGames: merged,
+        isLoadingMore: false,
+        hasMorePages: page.hasMore,
+        nextPageNumber: page.nextPageNumber,
+        totalCount: page.totalCount ?? state.totalCount,
+      );
+    } catch (e) {
+      if (!mounted || token != _loadToken) return;
+      state = state.copyWith(
+        isLoadingMore: false,
+        error: state.allGames.isEmpty ? e.toString() : state.error,
+      );
+    }
+  }
+
   void applyFilter(GameFilter filter) {
     state = state.copyWith(filter: filter);
     if (_playerKey.source == PlayerProfileDataSource.twic) _loadGames();
@@ -2885,6 +3052,10 @@ class PlayerProfileGamesNotifier
 
   void setSearchQuery(String query) {
     state = state.copyWith(searchQuery: query);
+    if (_playerKey.source != PlayerProfileDataSource.twic) return;
+    final trimmed = query.trim();
+    if (trimmed.isEmpty) return;
+    unawaited(_primeSearchPages());
   }
 
   void setPlayerResultFilter(PlayerResultFilter filter) {
@@ -2894,6 +3065,18 @@ class PlayerProfileGamesNotifier
 
   Future<void> refresh() async {
     await _loadGames();
+  }
+
+  Future<void> _primeSearchPages() async {
+    var pagesLoaded = 0;
+    while (mounted &&
+        state.searchQuery.trim().isNotEmpty &&
+        state.filteredGames.isEmpty &&
+        state.hasMorePages &&
+        pagesLoaded < 3) {
+      await loadMore();
+      pagesLoaded += 1;
+    }
   }
 }
 

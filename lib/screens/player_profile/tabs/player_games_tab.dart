@@ -58,6 +58,12 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
   @override
   bool get wantKeepAlive => true;
 
+  @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(_onScroll);
+  }
+
   /// Get the player profile key for provider lookups
   PlayerProfileKey get _playerKey => PlayerProfileKey(
     fideId: widget.fideId,
@@ -69,10 +75,19 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
   @override
   void dispose() {
     _debounceTimer?.cancel();
+    _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
     _searchController.dispose();
     _searchFocusNode.dispose();
     super.dispose();
+  }
+
+  void _onScroll() {
+    if (widget.dataSource != PlayerProfileDataSource.twic) return;
+    if (!_scrollController.hasClients) return;
+    final position = _scrollController.position;
+    if (position.pixels < position.maxScrollExtent - 560) return;
+    ref.read(playerProfileGamesKeyProvider(_playerKey).notifier).loadMore();
   }
 
   void _onSearchChanged(String value) {
@@ -477,18 +492,28 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
   }
 
   Widget _buildGamesCount(PlayerProfileGamesState state) {
+    final isTwic = widget.dataSource == PlayerProfileDataSource.twic;
     final isTwicLoading =
-        widget.dataSource == PlayerProfileDataSource.twic && state.isLoading;
+        isTwic && state.isLoading && state.allGames.isEmpty;
     final filteredCount = state.filteredGames.length;
     final totalCount = state.allGames.length;
     final isFiltered = state.hasActiveFilters || state.searchQuery.isNotEmpty;
+    final serverTotal = state.totalCount;
 
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         Text(
           isTwicLoading
-              ? 'Updating games...'
+              ? 'Loading games...'
+              : isTwic
+              ? (isFiltered
+                  ? (serverTotal != null
+                      ? '$filteredCount shown • $totalCount/$serverTotal loaded'
+                      : '$filteredCount shown • $totalCount loaded')
+                  : (serverTotal != null
+                      ? '$totalCount of $serverTotal games loaded'
+                      : '$totalCount games'))
               : (isFiltered
                   ? '$filteredCount of $totalCount games'
                   : '$totalCount games'),
@@ -496,7 +521,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
             color: kWhiteColor.withValues(alpha: 0.5),
           ),
         ),
-        if (isFiltered && filteredCount != totalCount)
+        if (isFiltered && filteredCount != totalCount && !isTwic)
           Text(
             '(filtered)',
             style: AppTypography.textXsRegular.copyWith(
@@ -545,6 +570,19 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
     }
 
     if (games.isEmpty) {
+      final isTwic = widget.dataSource == PlayerProfileDataSource.twic;
+      if (isTwic &&
+          state.searchQuery.trim().isNotEmpty &&
+          (state.hasMorePages || state.isLoadingMore)) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          ref.read(playerProfileGamesKeyProvider(_playerKey).notifier).loadMore();
+        });
+        return SliverFillRemaining(
+          hasScrollBody: false,
+          child: _buildSearchingMoreState(),
+        );
+      }
       return SliverFillRemaining(
         hasScrollBody: false,
         child: _buildNoFilterResultsState(),
@@ -688,6 +726,15 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
       }
     }
 
+    if (widget.dataSource == PlayerProfileDataSource.twic) {
+      items.add(
+        Padding(
+          padding: EdgeInsets.only(top: 12.h),
+          child: _buildTwicPaginationFooter(state),
+        ),
+      );
+    }
+
     final horizontalPadding = ResponsiveHelper.adaptive(
       phone: 16.w,
       tablet: 24.w,
@@ -735,6 +782,71 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
       pinnedIds: const [],
       onPinToggle: (_) {},
     );
+  }
+
+  Widget _buildTwicPaginationFooter(PlayerProfileGamesState state) {
+    if (state.isLoadingMore) {
+      return Container(
+        padding: EdgeInsets.symmetric(vertical: 14.h),
+        alignment: Alignment.center,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(
+              width: 16.w,
+              height: 16.h,
+              child: const CircularProgressIndicator(
+                strokeWidth: 2,
+                color: kWhiteColor70,
+              ),
+            ),
+            SizedBox(width: 10.w),
+            Text(
+              'Loading more games...',
+              style: AppTypography.textXsRegular.copyWith(color: kWhiteColor70),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (state.hasMorePages) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        ref.read(playerProfileGamesKeyProvider(_playerKey).notifier).loadMore();
+      });
+
+      return GestureDetector(
+        onTap:
+            () =>
+                ref
+                    .read(playerProfileGamesKeyProvider(_playerKey).notifier)
+                    .loadMore(),
+        child: Container(
+          padding: EdgeInsets.symmetric(vertical: 14.h),
+          alignment: Alignment.center,
+          child: Text(
+            'Load more games',
+            style: AppTypography.textXsMedium.copyWith(color: kWhiteColor70),
+          ),
+        ),
+      );
+    }
+
+    if (state.totalCount != null && state.totalCount! > 0) {
+      return Container(
+        padding: EdgeInsets.symmetric(vertical: 14.h),
+        alignment: Alignment.center,
+        child: Text(
+          'Loaded all ${state.totalCount} games',
+          style: AppTypography.textXsRegular.copyWith(
+            color: kWhiteColor.withValues(alpha: 0.45),
+          ),
+        ),
+      );
+    }
+
+    return const SizedBox.shrink();
   }
 
   void _showAddToFolderSheet(GamesTourModel game) {
@@ -927,6 +1039,29 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
         ],
       ),
     ).animate().fadeIn(duration: 300.ms);
+  }
+
+  Widget _buildSearchingMoreState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          SizedBox(
+            width: 24.w,
+            height: 24.h,
+            child: const CircularProgressIndicator(
+              strokeWidth: 2,
+              color: kWhiteColor70,
+            ),
+          ),
+          SizedBox(height: 12.h),
+          Text(
+            'Searching more games...',
+            style: AppTypography.textSmRegular.copyWith(color: kWhiteColor70),
+          ),
+        ],
+      ),
+    ).animate().fadeIn(duration: 220.ms);
   }
 }
 
