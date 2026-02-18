@@ -32,17 +32,11 @@ class GamebaseExplorerView extends HookConsumerWidget {
     // library game, live game, etc.).
     final currentPosition = state.analysisState.position;
     final currentFen = currentPosition.fen;
-    final currentMoveIndex = state.analysisState.currentMoveIndex;
-    final combinedMoves = state.analysisState.combinedMoves;
-    final takeCount =
-        (currentMoveIndex + 1).clamp(0, combinedMoves.length).toInt();
     final lineToCurrent =
-        currentMoveIndex >= 0
-            ? combinedMoves
-                .take(takeCount)
-                .map((m) => m.uci)
-                .toList(growable: false)
-            : const <String>[];
+        state.analysisState.combinedMoves
+            .map((m) => m.uci.trim().toLowerCase())
+            .where((uci) => RegExp(r'^[a-h][1-8][a-h][1-8][qrbn]?$').hasMatch(uci))
+            .toList(growable: false);
     final lineKey = lineToCurrent.join(' ');
 
     // Sync Gamebase provider with current board position AND explored line.

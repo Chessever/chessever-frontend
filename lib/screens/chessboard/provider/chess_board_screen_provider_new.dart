@@ -5415,20 +5415,6 @@ class ChessBoardScreenNotifierNew
         }
       }
 
-      int currentMoveIndex;
-      final chessMove = navigatorState.currentMove;
-      if (chessMove == null) {
-        currentMoveIndex = -1;
-      } else {
-        var moveNumber = chessMove.num;
-        final whiteJustMoved = chessMove.turn == ChessColor.black;
-        if (!whiteJustMoved) {
-          moveNumber = (moveNumber - 1).clamp(1, moveNumber);
-        }
-        currentMoveIndex =
-            whiteJustMoved ? (moveNumber - 1) * 2 : (moveNumber - 1) * 2 + 1;
-      }
-
       // CRITICAL: Sync allMoves from navigator to ensure move history is displayed
       final movesFromNavigator =
           navigatorState.currentLine
@@ -5439,6 +5425,11 @@ class ChessBoardScreenNotifierNew
               .whereType<Move>()
               .toList() ??
           const <Move>[];
+
+      // Derive current index from the concrete navigator line length.
+      // This avoids off-by-one drift from move number/turn arithmetic and keeps
+      // Gamebase deep-line queries aligned with the board path.
+      final currentMoveIndex = movesFromNavigator.length - 1;
 
       final nextState = current.copyWith(
         analysisState: current.analysisState.copyWith(

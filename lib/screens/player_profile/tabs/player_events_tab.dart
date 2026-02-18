@@ -1,5 +1,6 @@
 import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
+import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/screens/player_profile/player_profile_data_source.dart';
 import 'package:chessever2/screens/player_profile/provider/player_profile_provider.dart';
@@ -36,6 +37,17 @@ class PlayerEventsTab extends ConsumerStatefulWidget {
 
 class _PlayerEventsTabState extends ConsumerState<PlayerEventsTab>
     with AutomaticKeepAliveClientMixin {
+  final ScrollController _scrollController = ScrollController();
+  static const int _twicPageSize = 24;
+  List<PlayerEventData> _twicEvents = const [];
+  bool _twicIsLoading = false;
+  bool _twicIsLoadingMore = false;
+  bool _twicHasMore = true;
+  int _twicNextPage = 1;
+  int? _twicTotalEvents;
+  String? _twicError;
+  int _loadToken = 0;
+
   @override
   bool get wantKeepAlive => true;
 
@@ -47,55 +59,219 @@ class _PlayerEventsTabState extends ConsumerState<PlayerEventsTab>
     gamebasePlayerId: widget.gamebasePlayerId,
   );
 
+  bool get _isTwic => widget.dataSource == PlayerProfileDataSource.twic;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(_onScroll);
+    if (_isTwic) {
+      _loadTwicEvents(reset: true);
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant PlayerEventsTab oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final oldKey = PlayerProfileKey(
+      fideId: oldWidget.fideId,
+      playerName: oldWidget.playerName,
+      source: oldWidget.dataSource,
+      gamebasePlayerId: oldWidget.gamebasePlayerId,
+    );
+    if (oldKey != _playerKey && _isTwic) {
+      _loadTwicEvents(reset: true);
+    }
+  }
+
+  @override
+  void dispose() {
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    if (!_isTwic || !_scrollController.hasClients) return;
+    final position = _scrollController.position;
+    if (position.pixels < position.maxScrollExtent - 520) return;
+    _loadTwicEvents();
+  }
+
+  Future<void> _loadTwicEvents({bool reset = false}) async {
+    if (!_isTwic) return;
+    if (reset) {
+      _loadToken += 1;
+      _twicNextPage = 1;
+      _twicHasMore = true;
+      _twicTotalEvents = null;
+      _twicError = null;
+      _twicEvents = const [];
+      _twicIsLoading = true;
+      _twicIsLoadingMore = false;
+      if (mounted) setState(() {});
+    } else {
+      if (_twicIsLoading || _twicIsLoadingMore || !_twicHasMore) return;
+      _twicIsLoadingMore = true;
+      _twicError = null;
+      if (mounted) setState(() {});
+    }
+
+    final token = _loadToken;
+    final repo = ref.read(gamebaseRepositoryProvider);
+    final escapedName = _playerKey.playerName.trim().replaceAll('"', r'\"');
+    if (escapedName.isEmpty) {
+      _twicIsLoading = false;
+      _twicIsLoadingMore = false;
+      _twicHasMore = false;
+      if (mounted) setState(() {});
+      return;
+    }
+
+    try {
+      final response = await repo.searchEvents(
+        query: 'player:"$escapedName"',
+        pageNumber: _twicNextPage,
+        pageSize: _twicPageSize,
+      );
+      if (!mounted || token != _loadToken) return;
+
+      final incoming =
+          response.events
+              .where((item) => item.event.trim().isNotEmpty)
+              .map(
+                (item) => PlayerEventData(
+                  tourId: item.event.trim(),
+                  tourName: item.event.trim(),
+                  tourSlug: item.event.trim(),
+                  gamesPlayed: item.gameCount,
+                  score: null,
+                  startDate: item.startDate,
+                  endDate: item.endDate,
+                  site: item.site,
+                  dominantTimeControl: item.dominantTimeControl,
+                  avgElo: item.avgElo,
+                  maxElo: item.maxElo,
+                ),
+              )
+              .toList(growable: false);
+
+      final byTourId = <String, PlayerEventData>{
+        for (final event in _twicEvents) event.tourId: event,
+      };
+      for (final event in incoming) {
+        byTourId[event.tourId] = event;
+      }
+      _twicEvents = byTourId.values.toList(growable: false)
+        ..sort((a, b) {
+          final aDate = a.startDate ?? DateTime(1900);
+          final bDate = b.startDate ?? DateTime(1900);
+          return bDate.compareTo(aDate);
+        });
+
+      _twicHasMore = response.metadata.hasMore;
+      _twicTotalEvents ??= response.metadata.totalCount;
+      if (response.events.isEmpty) {
+        _twicHasMore = false;
+      }
+      _twicNextPage += 1;
+      _twicIsLoading = false;
+      _twicIsLoadingMore = false;
+      setState(() {});
+    } catch (e) {
+      if (!mounted || token != _loadToken) return;
+      _twicError = e.toString();
+      _twicIsLoading = false;
+      _twicIsLoadingMore = false;
+      setState(() {});
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     super.build(context);
-
-    final eventsAsync = ref.watch(playerEventsKeyProvider(_playerKey));
 
     // Watch the current time control filter
     final gamesState = ref.watch(playerProfileGamesKeyProvider(_playerKey));
     final currentTimeControl = gamesState.filter.timeControl;
     final hasActiveFilter = currentTimeControl != GameTimeControlFilter.all;
 
-    Widget content = RefreshIndicator(
-      onRefresh: () async {
-        HapticFeedbackService.medium();
-        ref.invalidate(playerEventsKeyProvider(_playerKey));
-        if (widget.dataSource == PlayerProfileDataSource.twic) {
-          ref.invalidate(playerTwicEventCardsProvider(_playerKey));
-        } else if (widget.fideId != null) {
-          ref.invalidate(playerEventCardsProvider(widget.fideId!));
-        }
-      },
-      color: kWhiteColor,
-      backgroundColor: kBlack2Color,
-      child: eventsAsync.when(
-        data: (events) {
-          if (events.isEmpty) {
-            return _buildEmptyState();
-          }
-
-          // Sort events by start date (most recent first)
-          final sortedEvents = List<PlayerEventData>.from(events)..sort((a, b) {
-            final aDate = a.startDate ?? DateTime(1900);
-            final bDate = b.startDate ?? DateTime(1900);
-            return bDate.compareTo(aDate);
-          });
-
-          return _EventsListContent(
-            events: sortedEvents,
-            fideId: widget.fideId,
-            playerKey: _playerKey,
-            dataSource: widget.dataSource,
-            timeControlFilter: currentTimeControl,
-            hasActiveFilter: hasActiveFilter,
+    Widget content;
+    if (_isTwic) {
+      content = RefreshIndicator(
+        onRefresh: () async {
+          HapticFeedbackService.medium();
+          ref.invalidate(
+            twicPlayerStatsProvider(
+              TwicPlayerStatsRequest(
+                playerKey: _playerKey,
+                scope: TwicStatsScope.filtered,
+              ),
+            ),
           );
+          await _loadTwicEvents(reset: true);
         },
-        loading: () => _buildLoadingState(),
-        error: (error, _) => _buildErrorState(error.toString()),
-      ),
-    );
+        color: kWhiteColor,
+        backgroundColor: kBlack2Color,
+        child:
+            _twicIsLoading && _twicEvents.isEmpty
+                ? _buildLoadingState()
+                : (_twicError != null && _twicEvents.isEmpty)
+                ? _buildErrorState(_twicError!)
+                : (_twicEvents.isEmpty)
+                ? _buildEmptyState()
+                : _EventsListContent(
+                  events: _twicEvents,
+                  fideId: widget.fideId,
+                  playerKey: _playerKey,
+                  dataSource: widget.dataSource,
+                  timeControlFilter: currentTimeControl,
+                  hasActiveFilter: hasActiveFilter,
+                  scrollController: _scrollController,
+                  hasMorePages: _twicHasMore,
+                  isLoadingMore: _twicIsLoadingMore,
+                  totalEventsOverride: _twicTotalEvents,
+                  onLoadMore: () => _loadTwicEvents(),
+                ),
+      );
+    } else {
+      final eventsAsync = ref.watch(playerEventsKeyProvider(_playerKey));
+      content = RefreshIndicator(
+        onRefresh: () async {
+          HapticFeedbackService.medium();
+          ref.invalidate(playerEventsKeyProvider(_playerKey));
+          if (widget.fideId != null) {
+            ref.invalidate(playerEventCardsProvider(widget.fideId!));
+          }
+        },
+        color: kWhiteColor,
+        backgroundColor: kBlack2Color,
+        child: eventsAsync.when(
+          data: (events) {
+            if (events.isEmpty) {
+              return _buildEmptyState();
+            }
+
+            final sortedEvents = List<PlayerEventData>.from(events)..sort((a, b) {
+              final aDate = a.startDate ?? DateTime(1900);
+              final bDate = b.startDate ?? DateTime(1900);
+              return bDate.compareTo(aDate);
+            });
+
+            return _EventsListContent(
+              events: sortedEvents,
+              fideId: widget.fideId,
+              playerKey: _playerKey,
+              dataSource: widget.dataSource,
+              timeControlFilter: currentTimeControl,
+              hasActiveFilter: hasActiveFilter,
+            );
+          },
+          loading: () => _buildLoadingState(),
+          error: (error, _) => _buildErrorState(error.toString()),
+        ),
+      );
+    }
 
     // Apply tablet max-width constraint
     if (ResponsiveHelper.isTablet) {
@@ -235,7 +411,11 @@ class _PlayerEventsTabState extends ConsumerState<PlayerEventsTab>
               GestureDetector(
                 onTap: () {
                   HapticFeedbackService.buttonPress();
-                  ref.invalidate(playerEventsKeyProvider(_playerKey));
+                  if (_isTwic) {
+                    _loadTwicEvents(reset: true);
+                  } else {
+                    ref.invalidate(playerEventsKeyProvider(_playerKey));
+                  }
                 },
                 child: Container(
                   padding: EdgeInsets.symmetric(
@@ -271,6 +451,11 @@ class _EventsListContent extends ConsumerWidget {
     required this.dataSource,
     this.timeControlFilter = GameTimeControlFilter.all,
     this.hasActiveFilter = false,
+    this.scrollController,
+    this.hasMorePages = false,
+    this.isLoadingMore = false,
+    this.totalEventsOverride,
+    this.onLoadMore,
   });
 
   final List<PlayerEventData> events;
@@ -279,15 +464,23 @@ class _EventsListContent extends ConsumerWidget {
   final PlayerProfileDataSource dataSource;
   final GameTimeControlFilter timeControlFilter;
   final bool hasActiveFilter;
+  final ScrollController? scrollController;
+  final bool hasMorePages;
+  final bool isLoadingMore;
+  final int? totalEventsOverride;
+  final Future<void> Function()? onLoadMore;
 
   /// Check if an event matches the time control filter
-  bool _eventMatchesTimeControl(GroupEventCardModel? eventCard) {
+  bool _eventMatchesTimeControl(
+    PlayerEventData event,
+    GroupEventCardModel? eventCard,
+  ) {
     if (timeControlFilter == GameTimeControlFilter.all) return true;
-    if (eventCard == null) {
-      return true; // Show events without card data when filtering
-    }
-
-    final eventTimeControl = eventCard.timeControl.toLowerCase();
+    final eventTimeControl =
+        (eventCard?.timeControl.isNotEmpty ?? false)
+            ? eventCard!.timeControl.toLowerCase()
+            : (event.dominantTimeControl ?? '').toLowerCase();
+    if (eventTimeControl.isEmpty) return true;
 
     switch (timeControlFilter) {
       case GameTimeControlFilter.classical:
@@ -305,7 +498,19 @@ class _EventsListContent extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // Watch the event cards provider (only if fideId is available)
+    final twicStatsAsync =
+        dataSource == PlayerProfileDataSource.twic
+            ? ref.watch(
+              twicPlayerStatsProvider(
+                TwicPlayerStatsRequest(
+                  playerKey: playerKey,
+                  scope: TwicStatsScope.filtered,
+                ),
+              ),
+            )
+            : const AsyncValue<PlayerAnalytics?>.data(null);
+    final twicStats = twicStatsAsync.valueOrNull;
+
     final eventCardsAsync =
         dataSource == PlayerProfileDataSource.twic
             ? ref.watch(playerTwicEventCardsProvider(playerKey))
@@ -313,213 +518,115 @@ class _EventsListContent extends ConsumerWidget {
             ? ref.watch(playerEventCardsProvider(fideId!))
             : const AsyncValue<Map<String, GroupEventCardModel>>.data({});
 
+    Widget buildEventList(Map<String, GroupEventCardModel> eventCards) {
+      final filteredEvents =
+          hasActiveFilter
+              ? events.where((event) {
+                final eventCard = eventCards[event.tourId];
+                return _eventMatchesTimeControl(event, eventCard);
+              }).toList(growable: false)
+              : events;
+
+      final computedTotalGames = filteredEvents.fold<int>(
+        0,
+        (sum, e) => sum + e.gamesPlayed,
+      );
+      final computedTotalScore = filteredEvents.fold<double>(
+        0,
+        (sum, e) => sum + (e.score ?? 0),
+      );
+      final computedAvgScore =
+          computedTotalGames > 0 ? computedTotalScore / computedTotalGames : 0.0;
+
+      final totalGames = twicStats?.resultStats.totalGames ?? computedTotalGames;
+      final avgScore = twicStats?.resultStats.score ?? computedAvgScore;
+
+      final horizontalPadding = ResponsiveHelper.adaptive(
+        phone: 16.w,
+        tablet: 24.w,
+      );
+      final headerItemCount = hasActiveFilter ? 2 : 1;
+      final showFooter = hasMorePages || isLoadingMore;
+      final emptyFiltered = filteredEvents.isEmpty && hasActiveFilter;
+      final baseItemCount =
+          emptyFiltered
+              ? headerItemCount + 1
+              : filteredEvents.length + headerItemCount;
+      final totalItems = baseItemCount + (showFooter ? 1 : 0);
+
+      return ListView.builder(
+        controller: scrollController,
+        physics: const AlwaysScrollableScrollPhysics(
+          parent: BouncingScrollPhysics(),
+        ),
+        padding: EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: 16.h),
+        itemCount: totalItems,
+        itemBuilder: (context, index) {
+          if (showFooter && index == totalItems - 1) {
+            if (hasMorePages && !isLoadingMore && onLoadMore != null) {
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                onLoadMore!.call();
+              });
+            }
+            return _EventsPaginationFooter(
+              hasMorePages: hasMorePages,
+              isLoadingMore: isLoadingMore,
+              loadedEvents: events.length,
+            );
+          }
+
+          if (hasActiveFilter && index == 0) {
+            return _FilterActiveBanner(
+              timeControl: timeControlFilter,
+              totalEvents: events.length,
+              filteredEvents: filteredEvents.length,
+            );
+          }
+
+          final statsHeaderIndex = hasActiveFilter ? 1 : 0;
+          if (index == statsHeaderIndex) {
+            return _StatsHeader(
+              totalEvents: totalEventsOverride ?? filteredEvents.length,
+              totalGames: totalGames,
+              avgScore: avgScore,
+            );
+          }
+
+          if (emptyFiltered) {
+            return _buildNoFilterResultsState(context, timeControlFilter);
+          }
+
+          final eventIndex = index - headerItemCount;
+          final event = filteredEvents[eventIndex];
+          final eventCard = eventCards[event.tourId];
+
+          if (eventCard != null) {
+            return Padding(
+              padding: EdgeInsets.only(bottom: 12.h),
+              child: _PlayerEventCard(
+                eventCard: eventCard,
+                playerEventData: event,
+                index: eventIndex,
+              ),
+            );
+          }
+
+          return Padding(
+            padding: EdgeInsets.only(bottom: 12.h),
+            child: _FallbackEventCard(
+              event: event,
+              index: eventIndex,
+              onTap: () => _navigateToTournament(context, ref, event),
+            ),
+          );
+        },
+      );
+    }
+
     return eventCardsAsync.when(
-      data: (eventCards) {
-        // Filter events based on time control
-        final filteredEvents =
-            hasActiveFilter
-                ? events.where((event) {
-                  final eventCard = eventCards[event.tourId];
-                  return _eventMatchesTimeControl(eventCard);
-                }).toList()
-                : events;
-
-        // Calculate statistics from filtered events
-        final totalGames = filteredEvents.fold<int>(
-          0,
-          (sum, e) => sum + e.gamesPlayed,
-        );
-        final totalScore = filteredEvents.fold<double>(
-          0,
-          (sum, e) => sum + (e.score ?? 0),
-        );
-        final avgScore = totalGames > 0 ? totalScore / totalGames : 0.0;
-
-        final horizontalPadding = ResponsiveHelper.adaptive(
-          phone: 16.w,
-          tablet: 24.w,
-        );
-
-        // Build list items
-        final headerItemCount =
-            hasActiveFilter ? 2 : 1; // Filter banner + stats header
-
-        return ListView.builder(
-          physics: const AlwaysScrollableScrollPhysics(
-            parent: BouncingScrollPhysics(),
-          ),
-          padding: EdgeInsets.symmetric(
-            horizontal: horizontalPadding,
-            vertical: 16.h,
-          ),
-          itemCount:
-              filteredEvents.isEmpty && hasActiveFilter
-                  ? headerItemCount +
-                      1 // header + empty state
-                  : filteredEvents.length + headerItemCount,
-          itemBuilder: (context, index) {
-            // Filter banner
-            if (hasActiveFilter && index == 0) {
-              return _FilterActiveBanner(
-                timeControl: timeControlFilter,
-                totalEvents: events.length,
-                filteredEvents: filteredEvents.length,
-              );
-            }
-
-            // Stats header
-            final statsHeaderIndex = hasActiveFilter ? 1 : 0;
-            if (index == statsHeaderIndex) {
-              return _StatsHeader(
-                totalEvents: filteredEvents.length,
-                totalGames: totalGames,
-                avgScore: avgScore,
-              );
-            }
-
-            // Empty state for filtered results
-            if (filteredEvents.isEmpty && hasActiveFilter) {
-              return _buildNoFilterResultsState(context, timeControlFilter);
-            }
-
-            final eventIndex = index - headerItemCount;
-            final event = filteredEvents[eventIndex];
-            final eventCard = eventCards[event.tourId];
-
-            if (eventCard != null) {
-              return Padding(
-                padding: EdgeInsets.only(bottom: 12.h),
-                child: _PlayerEventCard(
-                  eventCard: eventCard,
-                  playerEventData: event,
-                  index: eventIndex,
-                ),
-              );
-            }
-            // Fallback to custom card if GroupEventCardModel not available
-            return Padding(
-              padding: EdgeInsets.only(bottom: 12.h),
-              child: _FallbackEventCard(
-                event: event,
-                index: eventIndex,
-                onTap: () => _navigateToTournament(context, ref, event),
-              ),
-            );
-          },
-        );
-      },
-      loading: () {
-        // Calculate statistics from all events while loading cards
-        final totalGames = events.fold<int>(0, (sum, e) => sum + e.gamesPlayed);
-        final totalScore = events.fold<double>(
-          0,
-          (sum, e) => sum + (e.score ?? 0),
-        );
-        final avgScore = totalGames > 0 ? totalScore / totalGames : 0.0;
-
-        final horizontalPadding = ResponsiveHelper.adaptive(
-          phone: 16.w,
-          tablet: 24.w,
-        );
-        final headerItemCount = hasActiveFilter ? 2 : 1;
-
-        return ListView.builder(
-          physics: const AlwaysScrollableScrollPhysics(
-            parent: BouncingScrollPhysics(),
-          ),
-          padding: EdgeInsets.symmetric(
-            horizontal: horizontalPadding,
-            vertical: 16.h,
-          ),
-          itemCount: events.length + headerItemCount,
-          itemBuilder: (context, index) {
-            if (hasActiveFilter && index == 0) {
-              return _FilterActiveBanner(
-                timeControl: timeControlFilter,
-                totalEvents: events.length,
-                filteredEvents: events.length, // Show all while loading
-              );
-            }
-
-            final statsHeaderIndex = hasActiveFilter ? 1 : 0;
-            if (index == statsHeaderIndex) {
-              return _StatsHeader(
-                totalEvents: events.length,
-                totalGames: totalGames,
-                avgScore: avgScore,
-              );
-            }
-
-            final eventIndex = index - headerItemCount;
-            final event = events[eventIndex];
-
-            return Padding(
-              padding: EdgeInsets.only(bottom: 12.h),
-              child: _FallbackEventCard(
-                event: event,
-                index: eventIndex,
-                onTap: () => _navigateToTournament(context, ref, event),
-              ),
-            );
-          },
-        );
-      },
-      error: (_, __) {
-        // Same as loading - show fallback cards
-        final totalGames = events.fold<int>(0, (sum, e) => sum + e.gamesPlayed);
-        final totalScore = events.fold<double>(
-          0,
-          (sum, e) => sum + (e.score ?? 0),
-        );
-        final avgScore = totalGames > 0 ? totalScore / totalGames : 0.0;
-
-        final horizontalPadding = ResponsiveHelper.adaptive(
-          phone: 16.w,
-          tablet: 24.w,
-        );
-        final headerItemCount = hasActiveFilter ? 2 : 1;
-
-        return ListView.builder(
-          physics: const AlwaysScrollableScrollPhysics(
-            parent: BouncingScrollPhysics(),
-          ),
-          padding: EdgeInsets.symmetric(
-            horizontal: horizontalPadding,
-            vertical: 16.h,
-          ),
-          itemCount: events.length + headerItemCount,
-          itemBuilder: (context, index) {
-            if (hasActiveFilter && index == 0) {
-              return _FilterActiveBanner(
-                timeControl: timeControlFilter,
-                totalEvents: events.length,
-                filteredEvents: events.length,
-              );
-            }
-
-            final statsHeaderIndex = hasActiveFilter ? 1 : 0;
-            if (index == statsHeaderIndex) {
-              return _StatsHeader(
-                totalEvents: events.length,
-                totalGames: totalGames,
-                avgScore: avgScore,
-              );
-            }
-
-            final eventIndex = index - headerItemCount;
-            final event = events[eventIndex];
-
-            return Padding(
-              padding: EdgeInsets.only(bottom: 12.h),
-              child: _FallbackEventCard(
-                event: event,
-                index: eventIndex,
-                onTap: () => _navigateToTournament(context, ref, event),
-              ),
-            );
-          },
-        );
-      },
+      data: buildEventList,
+      loading: () => buildEventList(const {}),
+      error: (_, __) => buildEventList(const {}),
     );
   }
 
@@ -740,6 +847,69 @@ class _StatBox extends StatelessWidget {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _EventsPaginationFooter extends StatelessWidget {
+  const _EventsPaginationFooter({
+    required this.hasMorePages,
+    required this.isLoadingMore,
+    required this.loadedEvents,
+  });
+
+  final bool hasMorePages;
+  final bool isLoadingMore;
+  final int loadedEvents;
+
+  @override
+  Widget build(BuildContext context) {
+    if (isLoadingMore) {
+      return Padding(
+        padding: EdgeInsets.symmetric(vertical: 16.h),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            SizedBox(
+              width: 16.w,
+              height: 16.h,
+              child: const CircularProgressIndicator(
+                strokeWidth: 2,
+                color: kWhiteColor70,
+              ),
+            ),
+            SizedBox(width: 10.w),
+            Text(
+              'Loading more events...',
+              style: AppTypography.textXsRegular.copyWith(color: kWhiteColor70),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (!hasMorePages) {
+      return Padding(
+        padding: EdgeInsets.symmetric(vertical: 14.h),
+        child: Center(
+          child: Text(
+            'Loaded $loadedEvents events',
+            style: AppTypography.textXsRegular.copyWith(
+              color: kWhiteColor.withValues(alpha: 0.45),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Padding(
+      padding: EdgeInsets.symmetric(vertical: 14.h),
+      child: Center(
+        child: Text(
+          'Loading more events...',
+          style: AppTypography.textXsRegular.copyWith(color: kWhiteColor70),
         ),
       ),
     );

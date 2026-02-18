@@ -12,7 +12,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import '../providers/gamebase_explorer_state.dart';
 import '../providers/gamebase_providers.dart';
 
-class PositionGamesSheet extends ConsumerWidget {
+class PositionGamesSheet extends ConsumerStatefulWidget {
   const PositionGamesSheet({
     super.key,
     required this.fen,
@@ -29,25 +29,148 @@ class PositionGamesSheet extends ConsumerWidget {
   final GamebaseFilters filters;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final timeControlFilter =
-        filters.timeControls.isNotEmpty ? filters.timeControls.first : null;
-    final playerIdFilter =
-        filters.playerIds.isNotEmpty ? filters.playerIds.first : null;
+  ConsumerState<PositionGamesSheet> createState() => _PositionGamesSheetState();
+}
 
-    final query = GamebasePositionGamesQuery(
-      fen: fen,
-      moves: moves,
-      uci: uci,
+class _PositionGamesSheetState extends ConsumerState<PositionGamesSheet> {
+  static const int _pageSize = 50;
+  static const int _eagerPrefetchCap = 1000;
+  final ScrollController _scrollController = ScrollController();
+
+  final List<Map<String, dynamic>> _rows = <Map<String, dynamic>>[];
+  bool _isInitialLoading = true;
+  bool _isLoadingMore = false;
+  bool _hasMore = true;
+  int _nextPageNumber = 0;
+  int _requestToken = 0;
+  int? _totalCount;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(_onScroll);
+    _fetchPage(reset: true);
+  }
+
+  @override
+  void dispose() {
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    if (!_scrollController.hasClients) return;
+    final position = _scrollController.position;
+    if (position.pixels < position.maxScrollExtent - 420) return;
+    _fetchPage();
+  }
+
+  GamebasePositionGamesQuery _buildQuery(int pageNumber) {
+    final timeControlFilter =
+        widget.filters.timeControls.isNotEmpty
+            ? widget.filters.timeControls.first
+            : null;
+    final playerIdFilter =
+        widget.filters.playerIds.isNotEmpty
+            ? widget.filters.playerIds.first
+            : null;
+
+    return GamebasePositionGamesQuery(
+      fen: widget.fen,
+      moves: widget.moves,
+      uci: widget.uci,
       timeControl: timeControlFilter,
       playerId: playerIdFilter,
-      minRating: filters.minRating,
-      maxRating: filters.maxRating,
-      pageNumber: 0,
-      pageSize: 20,
+      minRating: widget.filters.minRating,
+      maxRating: widget.filters.maxRating,
+      pageNumber: pageNumber,
+      pageSize: _pageSize,
     );
+  }
 
-    final async = ref.watch(positionGamesProvider(query));
+  Future<void> _fetchPage({bool reset = false}) async {
+    if (reset) {
+      setState(() {
+        _rows.clear();
+        _isInitialLoading = true;
+        _isLoadingMore = false;
+        _hasMore = true;
+        _nextPageNumber = 0;
+        _totalCount = null;
+        _error = null;
+      });
+    } else {
+      if (_isInitialLoading || _isLoadingMore || !_hasMore) return;
+      setState(() {
+        _isLoadingMore = true;
+        _error = null;
+      });
+    }
+
+    final requestToken = ++_requestToken;
+    try {
+      final response = await ref.read(
+        positionGamesProvider(_buildQuery(_nextPageNumber)).future,
+      );
+      if (!mounted || requestToken != _requestToken) return;
+
+      final mergedRows = List<Map<String, dynamic>>.from(_rows);
+      final existingIds = <String>{};
+      for (final row in _rows) {
+        final id = row['id']?.toString().trim();
+        if (id != null && id.isNotEmpty) {
+          existingIds.add(id);
+        }
+      }
+
+      for (final row in response.data) {
+        final id = row['id']?.toString().trim();
+        if (id != null && id.isNotEmpty) {
+          if (existingIds.add(id)) {
+            mergedRows.add(row);
+          }
+        } else {
+          mergedRows.add(row);
+        }
+      }
+
+      final addedCount = mergedRows.length - _rows.length;
+      final hasMoreRows = response.metadata.hasMore && addedCount > 0;
+
+      setState(() {
+        _rows
+          ..clear()
+          ..addAll(mergedRows);
+        _hasMore = hasMoreRows;
+        _nextPageNumber += 1;
+        _totalCount = response.metadata.totalCount;
+        _isInitialLoading = false;
+        _isLoadingMore = false;
+      });
+
+      final eagerTarget =
+          (_totalCount != null && _totalCount! < _eagerPrefetchCap)
+              ? _totalCount!
+              : _eagerPrefetchCap;
+      final shouldEagerPrefetch = _hasMore && _rows.length < eagerTarget;
+      if (shouldEagerPrefetch) {
+        Future<void>.microtask(() => _fetchPage());
+      }
+    } catch (e) {
+      if (!mounted || requestToken != _requestToken) return;
+      setState(() {
+        _error = e.toString().replaceAll('Exception: ', '');
+        _isInitialLoading = false;
+        _isLoadingMore = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final games = _rows.map(_mapPreviewToTourModel).toList(growable: false);
 
     return SafeArea(
       top: false,
@@ -62,59 +185,57 @@ class PositionGamesSheet extends ConsumerWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _Header(title: title),
+              _Header(title: widget.title),
               Divider(color: kDividerColor, height: 1),
               Expanded(
-                child: async.when(
-                  loading:
-                      () => const Center(
-                        child: CircularProgressIndicator(
-                          color: kWhiteColor,
-                          strokeWidth: 2,
+                child:
+                    _isInitialLoading && games.isEmpty
+                        ? const Center(
+                          child: CircularProgressIndicator(
+                            color: kWhiteColor,
+                            strokeWidth: 2,
+                          ),
+                        )
+                        : (_error != null && games.isEmpty)
+                        ? _Empty(message: 'Failed to load games.\n$_error')
+                        : (games.isEmpty)
+                        ? const _Empty(message: 'No games found for this position.')
+                        : ListView.separated(
+                          controller: _scrollController,
+                          padding: EdgeInsets.symmetric(
+                            vertical: 8.sp,
+                            horizontal: 12.sp,
+                          ),
+                          itemCount: games.length + 1,
+                          separatorBuilder: (_, __) => SizedBox(height: 8.sp),
+                          itemBuilder: (context, index) {
+                            if (index == games.length) {
+                              return _PositionGamesFooter(
+                                isLoadingMore: _isLoadingMore,
+                                hasMore: _hasMore,
+                                loadedCount: games.length,
+                                totalCount: _totalCount,
+                                onLoadMore: _fetchPage,
+                              );
+                            }
+
+                            final game = games[index];
+                            final eventName =
+                                (game.tourId.trim().isNotEmpty)
+                                    ? game.tourId
+                                    : 'Gamebase';
+
+                            return LibraryGameCard(
+                              game: game,
+                              eventName: eventName,
+                              eco: game.roundSlug,
+                              date: game.lastMoveTime,
+                              showRound: true,
+                              onTap: () => _openGame(context, ref, game),
+                              onLongPress: null,
+                            );
+                          },
                         ),
-                      ),
-                  error:
-                      (e, _) => _Empty(
-                        message:
-                            'Failed to load games.\n${e.toString().replaceAll('Exception: ', '')}',
-                      ),
-                  data: (response) {
-                    if (response.data.isEmpty) {
-                      return const _Empty(
-                        message: 'No games found for this position.',
-                      );
-                    }
-
-                    final games =
-                        response.data.map(_mapPreviewToTourModel).toList();
-
-                    return ListView.separated(
-                      padding: EdgeInsets.symmetric(
-                        vertical: 8.sp,
-                        horizontal: 12.sp,
-                      ),
-                      itemCount: games.length,
-                      separatorBuilder: (_, __) => SizedBox(height: 8.sp),
-                      itemBuilder: (context, index) {
-                        final game = games[index];
-                        final eventName =
-                            (game.tourId.trim().isNotEmpty)
-                                ? game.tourId
-                                : 'Gamebase';
-
-                        return LibraryGameCard(
-                          game: game,
-                          eventName: eventName,
-                          eco: game.roundSlug,
-                          date: game.lastMoveTime,
-                          showRound: true,
-                          onTap: () => _openGame(context, ref, game),
-                          onLongPress: null,
-                        );
-                      },
-                    );
-                  },
-                ),
               ),
             ],
           ),
@@ -267,6 +388,92 @@ class PositionGamesSheet extends ConsumerWidget {
         context,
       ).showSnackBar(const SnackBar(content: Text('Failed to open game')));
     }
+  }
+}
+
+class _PositionGamesFooter extends StatelessWidget {
+  const _PositionGamesFooter({
+    required this.isLoadingMore,
+    required this.hasMore,
+    required this.loadedCount,
+    required this.totalCount,
+    required this.onLoadMore,
+  });
+
+  final bool isLoadingMore;
+  final bool hasMore;
+  final int loadedCount;
+  final int? totalCount;
+  final Future<void> Function({bool reset}) onLoadMore;
+
+  @override
+  Widget build(BuildContext context) {
+    if (isLoadingMore) {
+      return Padding(
+        padding: EdgeInsets.symmetric(vertical: 14.h),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            SizedBox(
+              width: 16.w,
+              height: 16.h,
+              child: const CircularProgressIndicator(
+                color: kWhiteColor70,
+                strokeWidth: 2,
+              ),
+            ),
+            SizedBox(width: 10.w),
+            Text(
+              'Loading more games...',
+              style: TextStyle(color: kWhiteColor70, fontSize: 12.f),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (hasMore) {
+      return Padding(
+        padding: EdgeInsets.symmetric(vertical: 12.h),
+        child: Center(
+          child: TextButton(
+            onPressed: () => onLoadMore(),
+            style: TextButton.styleFrom(
+              foregroundColor: kWhiteColor70,
+              padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 8.h),
+            ),
+            child: Text(
+              totalCount != null
+                  ? 'Load more ($loadedCount / $totalCount)'
+                  : 'Load more',
+              style: TextStyle(fontSize: 12.f, fontWeight: FontWeight.w500),
+            ),
+          ),
+        ),
+      );
+    }
+
+    if (totalCount != null) {
+      return Padding(
+        padding: EdgeInsets.symmetric(vertical: 12.h),
+        child: Center(
+          child: Text(
+            'Loaded all $totalCount games',
+            style: TextStyle(color: kSecondaryTextColor, fontSize: 12.f),
+          ),
+        ),
+      );
+    }
+
+    return Padding(
+      padding: EdgeInsets.symmetric(vertical: 12.h),
+      child: Center(
+        child: Text(
+          'Loaded $loadedCount games',
+          style: TextStyle(color: kSecondaryTextColor, fontSize: 12.f),
+        ),
+      ),
+    );
   }
 }
 
