@@ -2,6 +2,8 @@ import 'package:chessever2/screens/chessboard/widgets/context_pop_up_menu.dart';
 import 'package:chessever2/providers/board_settings_provider_new.dart';
 import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/providers/live_game_subscription_provider.dart';
+import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
+import 'package:chessever2/screens/library/utils/gamebase_pgn_builder.dart';
 import 'package:chessever2/screens/chessboard/widgets/evaluation_bar_widget.dart';
 import 'package:chessever2/screens/chessboard/widgets/player_first_row_detail_widget.dart';
 import 'package:chessever2/screens/chessboard/widgets/share_game_card_overlay.dart';
@@ -31,6 +33,51 @@ String _resolveFen(String? fen) {
   final rawFen = (fen ?? '').trim();
   return _tryParseFen(rawFen) != null ? rawFen : _kStartFen;
 }
+
+String? _finalFenFromPgn(String? pgn) {
+  final raw = pgn?.trim();
+  if (raw == null || raw.isEmpty) return null;
+  try {
+    final game = PgnGame.parsePgn(raw);
+    var position = PgnGame.startingPosition(game.headers);
+    var moveCount = 0;
+    for (final node in game.moves.mainline()) {
+      final move = position.parseSan(node.san);
+      if (move == null) break;
+      position = position.play(move);
+      moveCount++;
+    }
+    if (moveCount == 0) return null;
+    return position.fen;
+  } catch (_) {
+    return null;
+  }
+}
+
+bool _isGamebasePreviewGame(GamesTourModel game) {
+  final marker = game.roundId.trim().toLowerCase();
+  return marker == 'gamebase_search' ||
+      marker == 'twic_profile' ||
+      marker == 'twic_event';
+}
+
+final _gamebaseFinalFenProvider = FutureProvider.autoDispose
+    .family<String?, String>((ref, gameId) async {
+      final normalizedGameId = gameId.trim();
+      if (normalizedGameId.isEmpty) return null;
+
+      final repo = ref.read(gamebaseRepositoryProvider);
+      final gameWithPgn = await repo.getGameWithPgn(normalizedGameId);
+      if (gameWithPgn == null) return null;
+
+      final pgn =
+          (gameWithPgn.pgn?.trim().isNotEmpty ?? false)
+              ? gameWithPgn.pgn!.trim()
+              : buildPgnFromGamebaseData(gameWithPgn.data);
+      final resolvedFen = _finalFenFromPgn(pgn);
+      if (resolvedFen == null) return null;
+      return _tryParseFen(resolvedFen) != null ? resolvedFen : null;
+    });
 
 bool _shouldShowEvalBar(WidgetRef ref) {
   final settings = ref.watch(engineSettingsProviderNew).valueOrNull;
@@ -743,7 +790,7 @@ class _PlayerRow extends StatelessWidget {
   }
 }
 
-class _ChessBoardWithEvaluation extends StatelessWidget {
+class _ChessBoardWithEvaluation extends ConsumerWidget {
   const _ChessBoardWithEvaluation({
     required this.gamesTourModel,
     required this.lastMove,
@@ -763,10 +810,23 @@ class _ChessBoardWithEvaluation extends StatelessWidget {
   final bool showCoordinates;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     // Get effective game status for ended games
     final gameStatus = gamesTourModel.gameStatus;
-    final resolvedFen = _resolveFen(gamesTourModel.fen);
+    final localFen = _tryParseFen(gamesTourModel.fen?.trim() ?? '') != null
+        ? gamesTourModel.fen
+        : null;
+    final fenFromPgn = _finalFenFromPgn(gamesTourModel.pgn);
+    final shouldLoadGamebaseFen =
+        localFen == null &&
+        fenFromPgn == null &&
+        _isGamebasePreviewGame(gamesTourModel) &&
+        !pgnHasMoves(gamesTourModel.pgn);
+    final remoteFen =
+        shouldLoadGamebaseFen
+            ? ref.watch(_gamebaseFinalFenProvider(gamesTourModel.gameId)).valueOrNull
+            : null;
+    final resolvedFen = _resolveFen(remoteFen ?? fenFromPgn ?? localFen);
 
     if (!showEvalBar || !gamesTourModel.hasStarted) {
       return _ChessBoardWidget(

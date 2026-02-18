@@ -103,8 +103,9 @@ class LibraryPlayerGamesNotifier extends StateNotifier<LibraryPlayerGamesState> 
         currentPage: 1,
         error: null,
       );
-    } catch (e) {
+    } catch (e, st) {
       debugPrint('[LibraryPlayerGames] Initial load error: $e');
+      debugPrintStack(stackTrace: st, label: '[LibraryPlayerGames] Initial load');
       if (!mounted) return;
       state = state.copyWith(isLoading: false, error: e.toString());
     }
@@ -126,8 +127,9 @@ class LibraryPlayerGamesNotifier extends StateNotifier<LibraryPlayerGamesState> 
         hasMore: newGames.length >= _pageSize,
         currentPage: nextPage,
       );
-    } catch (e) {
+    } catch (e, st) {
       debugPrint('[LibraryPlayerGames] Load more error: $e');
+      debugPrintStack(stackTrace: st, label: '[LibraryPlayerGames] Load more');
       if (!mounted) return;
       state = state.copyWith(isLoading: false);
     }
@@ -151,7 +153,9 @@ class LibraryPlayerGamesNotifier extends StateNotifier<LibraryPlayerGamesState> 
 
       // Always search by player name - gamebase text search is optimized for names
       // Searching by numeric FIDE ID often yields poor results
-      debugPrint('[LibraryPlayerGames] Fetching gamebase games for: "$playerName", page $page');
+      debugPrint('[LibraryPlayerGames] Fetching gamebase games for: "$playerName", '
+          'page=$page, gamebasePlayerId=${_playerKey.gamebasePlayerId}, '
+          'fideId=${_playerKey.fideId}');
 
       // Fetch more results to compensate for filtering
       final fetchSize = (_pageSize * 4).clamp(40, 150);
@@ -216,8 +220,16 @@ class LibraryPlayerGamesNotifier extends StateNotifier<LibraryPlayerGamesState> 
 
       final byId = <String, GamebasePlayer>{};
       if (playerIds.isNotEmpty) {
+        debugPrint('[LibraryPlayerGames] Enriching ${playerIds.length} player IDs');
         final fetched = await Future.wait(
-          playerIds.map(repo.getPlayerById),
+          playerIds.map((id) async {
+            try {
+              return await repo.getPlayerById(id);
+            } catch (e) {
+              debugPrint('[LibraryPlayerGames] Failed to fetch player $id: $e');
+              return null;
+            }
+          }),
           eagerError: false,
         );
         for (final p in fetched.whereType<GamebasePlayer>()) {
@@ -238,8 +250,9 @@ class LibraryPlayerGamesNotifier extends StateNotifier<LibraryPlayerGamesState> 
       final games = _convertGamebaseRows(rows, byId);
       debugPrint('[LibraryPlayerGames] Fetched ${games.length} gamebase games');
       return games;
-    } catch (e) {
+    } catch (e, st) {
       debugPrint('[LibraryPlayerGames] Gamebase fetch error: $e');
+      debugPrintStack(stackTrace: st, label: '[LibraryPlayerGames] Gamebase fetch');
       return [];
     }
   }

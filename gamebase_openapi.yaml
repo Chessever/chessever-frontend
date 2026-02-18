@@ -392,6 +392,96 @@ paths:
               schema:
                 $ref: "#/components/schemas/GlobalSearchResponse"
 
+  /api/search/events:
+    get:
+      summary: Search Aggregated Events
+      description: |
+        Returns aggregated TWIC events for the same query/filter semantics used by `GET /api/search` game search.
+
+        Fielded query tokens in `q` are supported (`event:`, `player:`, `white:`, `black:`, `opening:`, `site:`, etc).
+        Response is grouped by event and optimized for "top event chips/cards" UX.
+      operationId: searchEvents
+      tags:
+        - Search
+      parameters:
+        - name: q
+          in: query
+          required: false
+          description: |
+            Search query string.
+
+            Supports the same fielded token syntax as `GET /api/search`.
+            Use `*` (or omit) to fetch events with only structured filters.
+          schema:
+            type: string
+            default: "*"
+        - name: result
+          in: query
+          required: false
+          description: Filter games by result (accepts `1-0`, `0-1`, `1/2-1/2`, `½-½` or `W/B/D`)
+          schema:
+            type: string
+        - name: color
+          in: query
+          required: false
+          description: |
+            Color filter used for rating filters.
+            Values: `all`, `white`, `black`.
+          schema:
+            type: string
+            enum: [all, white, black]
+            default: all
+        - name: timeControl
+          in: query
+          required: false
+          description: Filter games by time control
+          schema:
+            type: string
+            enum: [CLASSICAL, RAPID, BLITZ]
+        - name: yearFrom
+          in: query
+          required: false
+          description: Minimum game year (inclusive)
+          schema:
+            type: integer
+        - name: yearTo
+          in: query
+          required: false
+          description: Maximum game year (inclusive)
+          schema:
+            type: integer
+        - name: ratingFrom
+          in: query
+          required: false
+          description: Minimum Elo (inclusive)
+          schema:
+            type: integer
+        - name: ratingTo
+          in: query
+          required: false
+          description: Maximum Elo (inclusive)
+          schema:
+            type: integer
+        - name: pageNumber
+          in: query
+          description: Page number
+          schema:
+            type: integer
+            default: 1
+        - name: pageSize
+          in: query
+          description: Page size
+          schema:
+            type: integer
+            default: 20
+      responses:
+        "200":
+          description: Aggregated event search results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventSearchResponse"
+
   /api/search/metadata:
     get:
       summary: Get Search Metadata
@@ -965,6 +1055,76 @@ components:
                   type: boolean
                   description: When true, totalCount is an estimate (used to avoid expensive COUNT(*) on broad queries).
                 hasMore: { type: boolean }
+
+    EventSearchItem:
+      type: object
+      required:
+        [id, event, gameCount, startDate, endDate, dominantTimeControl, avgElo, maxElo, ratingSummary]
+      properties:
+        id:
+          type: string
+          description: Deterministic ID derived from event name (stable hash)
+        event:
+          type: string
+        site:
+          type: string
+          nullable: true
+        gameCount:
+          type: integer
+        startDate:
+          type: string
+          format: date-time
+          nullable: true
+        endDate:
+          type: string
+          format: date-time
+          nullable: true
+        dominantTimeControl:
+          type: string
+          nullable: true
+          enum: [CLASSICAL, RAPID, BLITZ]
+        avgElo:
+          type: integer
+          nullable: true
+        maxElo:
+          type: integer
+          nullable: true
+        ratingSummary:
+          type: object
+          required: [avgElo, maxElo]
+          properties:
+            avgElo:
+              type: integer
+              nullable: true
+            maxElo:
+              type: integer
+              nullable: true
+
+    EventSearchResponse:
+      type: object
+      required: [status, data]
+      properties:
+        status:
+          type: string
+          enum: [success]
+        data:
+          type: object
+          required: [events, metadata]
+          properties:
+            events:
+              type: array
+              items:
+                $ref: "#/components/schemas/EventSearchItem"
+            metadata:
+              type: object
+              required: [pageNumber, pageSize, hasMore]
+              properties:
+                pageNumber:
+                  type: integer
+                pageSize:
+                  type: integer
+                hasMore:
+                  type: boolean
 
     SearchQueryRequest:
       type: object

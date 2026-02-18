@@ -1,8 +1,6 @@
-import 'package:chessever2/utils/location_service_provider.dart';
-import 'package:chessever2/utils/png_asset.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/federation_flag.dart';
 import 'package:flutter/material.dart';
-import 'package:country_flags/country_flags.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import '../../../theme/app_theme.dart';
 import '../../../utils/app_typography.dart';
@@ -39,10 +37,6 @@ class ScoreboardCardWidget extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final validCountryCode = ref
-        .read(locationServiceProvider)
-        .getValidCountryCode(countryCode);
-
     final Color backgroundColor = const Color(0xFF0F0F0F);
     BorderRadius? borderRadius;
     if (isFirst) {
@@ -82,28 +76,15 @@ class ScoreboardCardWidget extends ConsumerWidget {
               style: AppTypography.textMdBold.copyWith(color: kWhiteColor),
             ),
             SizedBox(width: 10.w),
-            if (countryCode.toUpperCase() == 'FID') ...[
+            if (countryCode.trim().isNotEmpty) ...[
               SizedBox(
                 width: 20.w,
                 height: 14.h,
-                child: Image.asset(
-                  PngAsset.fideLogo,
+                child: FederationFlag(
+                  federation: countryCode,
                   height: 14.h,
                   width: 20.w,
-                  fit: BoxFit.cover,
-                  cacheWidth: 64,
-                  cacheHeight: 48,
-                ),
-              ),
-              SizedBox(width: 10.w),
-            ] else if (validCountryCode.isNotEmpty) ...[
-              SizedBox(
-                width: 20.w,
-                height: 14.h,
-                child: CountryFlag.fromCountryCode(
-                  validCountryCode,
-                  height: 14.h,
-                  width: 20.w,
+                  borderRadius: BorderRadius.circular(2.br),
                 ),
               ),
               SizedBox(width: 10.w),

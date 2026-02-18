@@ -8,6 +8,7 @@ class PlayerStandingModel {
   final int scoreChange;
   final String? matchScore;
   final int? fideId;
+  final String? gamebasePlayerId;
 
   const PlayerStandingModel({
     required this.countryCode,
@@ -17,6 +18,7 @@ class PlayerStandingModel {
     required this.scoreChange,
     required this.matchScore,
     this.fideId,
+    this.gamebasePlayerId,
   });
 
   factory PlayerStandingModel.fromPlayer(TournamentPlayer player) {
@@ -28,6 +30,7 @@ class PlayerStandingModel {
       scoreChange: player.ratingDiff ?? 0,
       matchScore: _formatTournamentScore(player.score, player.played),
       fideId: player.fideId,
+      gamebasePlayerId: null,
     );
   }
 
@@ -51,6 +54,7 @@ class PlayerStandingModel {
     int? scoreChange,
     String? matchScore,
     int? fideId,
+    String? gamebasePlayerId,
   }) {
     return PlayerStandingModel(
       countryCode: countryCode ?? this.countryCode,
@@ -60,6 +64,7 @@ class PlayerStandingModel {
       scoreChange: scoreChange ?? this.scoreChange,
       matchScore: matchScore ?? this.matchScore,
       fideId: fideId ?? this.fideId,
+      gamebasePlayerId: gamebasePlayerId ?? this.gamebasePlayerId,
     );
   }
 
@@ -72,6 +77,7 @@ class PlayerStandingModel {
       scoreChange: (json['scoreChange'] as int?) ?? 0,
       matchScore: json['matchScore'] as String?,
       fideId: json['fideId'] as int?,
+      gamebasePlayerId: json['gamebasePlayerId'] as String?,
     );
   }
 
@@ -85,6 +91,7 @@ class PlayerStandingModel {
       'scoreChange': scoreChange,
       'matchScore': matchScore,
       'fideId': fideId,
+      'gamebasePlayerId': gamebasePlayerId,
     };
   }
 
@@ -98,7 +105,8 @@ class PlayerStandingModel {
         other.score == score &&
         other.scoreChange == scoreChange &&
         other.matchScore == matchScore &&
-        other.fideId == fideId;
+        other.fideId == fideId &&
+        other.gamebasePlayerId == gamebasePlayerId;
   }
 
   @override
@@ -111,6 +119,7 @@ class PlayerStandingModel {
       scoreChange,
       matchScore,
       fideId,
+      gamebasePlayerId,
     );
   }
 }

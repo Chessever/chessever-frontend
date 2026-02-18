@@ -22,7 +22,9 @@ class LibraryGamebaseFiltersSheet extends ConsumerWidget {
             child: Container(
               decoration: BoxDecoration(
                 color: kBlack2Color,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(16.br)),
+                borderRadius: BorderRadius.vertical(
+                  top: Radius.circular(16.br),
+                ),
               ),
               padding: EdgeInsets.symmetric(vertical: 32.h),
               child: const Center(
@@ -35,7 +37,9 @@ class LibraryGamebaseFiltersSheet extends ConsumerWidget {
             child: Container(
               decoration: BoxDecoration(
                 color: kBlack2Color,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(16.br)),
+                borderRadius: BorderRadius.vertical(
+                  top: Radius.circular(16.br),
+                ),
               ),
               padding: EdgeInsets.fromLTRB(16.w, 12.h, 16.w, 16.h),
               child: _InlineError(message: error.toString()),
@@ -49,16 +53,17 @@ class LibraryGamebaseFiltersSheet extends ConsumerWidget {
                 ? filterable.first.name
                 : state.resource.primaryKey;
         final defaultOperators =
-            state.resource.columnByName(defaultField)?.operators ?? const ['eq'];
+            state.resource.columnByName(defaultField)?.operators ??
+            const ['eq'];
         final defaultOp =
             defaultOperators.isNotEmpty ? defaultOperators.first : 'eq';
 
         return SafeArea(
           child: Container(
-              decoration: BoxDecoration(
-                color: kBlack2Color,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(16.br)),
-              ),
+            decoration: BoxDecoration(
+              color: kBlack2Color,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(16.br)),
+            ),
             padding: EdgeInsets.fromLTRB(16.w, 12.h, 16.w, 16.h),
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -83,9 +88,11 @@ class LibraryGamebaseFiltersSheet extends ConsumerWidget {
                     const Spacer(),
                     _SmallTextButton(
                       label: 'Clear',
-                      onTap: () => ref
-                          .read(gamebaseDatabaseSearchProvider.notifier)
-                          .clearFilters(),
+                      onTap:
+                          () =>
+                              ref
+                                  .read(gamebaseDatabaseSearchProvider.notifier)
+                                  .clearFilters(),
                       color: kRedColor,
                     ),
                   ],
@@ -107,9 +114,10 @@ class LibraryGamebaseFiltersSheet extends ConsumerWidget {
                         GamebaseFilterGroupMode.or,
                       ],
                       labels: const ['All', 'Any'],
-                      onChanged: ref
-                          .read(gamebaseDatabaseSearchProvider.notifier)
-                          .setFilterMode,
+                      onChanged:
+                          ref
+                              .read(gamebaseDatabaseSearchProvider.notifier)
+                              .setFilterMode,
                     ),
                   ],
                 ),
@@ -124,12 +132,14 @@ class LibraryGamebaseFiltersSheet extends ConsumerWidget {
                         key: ValueKey('library-filter-$index'),
                         state: state,
                         rule: state.filters[index],
-                        onChanged: (rule) => ref
-                            .read(gamebaseDatabaseSearchProvider.notifier)
-                            .updateFilterRule(index, rule),
-                        onRemove: () => ref
-                            .read(gamebaseDatabaseSearchProvider.notifier)
-                            .removeFilterRule(index),
+                        onChanged:
+                            (rule) => ref
+                                .read(gamebaseDatabaseSearchProvider.notifier)
+                                .updateFilterRule(index, rule),
+                        onRemove:
+                            () => ref
+                                .read(gamebaseDatabaseSearchProvider.notifier)
+                                .removeFilterRule(index),
                       );
                     },
                   ),
@@ -141,7 +151,10 @@ class LibraryGamebaseFiltersSheet extends ConsumerWidget {
                     ref
                         .read(gamebaseDatabaseSearchProvider.notifier)
                         .addFilterRule(
-                          GamebaseFilterRule(field: defaultField, op: defaultOp),
+                          GamebaseFilterRule(
+                            field: defaultField,
+                            op: defaultOp,
+                          ),
                         );
                   },
                 ),
@@ -350,7 +363,11 @@ class _ValueEditor extends StatelessWidget {
       hint: label,
       onChanged: (v) {
         final parts =
-            v.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+            v
+                .split(',')
+                .map((e) => e.trim())
+                .where((e) => e.isNotEmpty)
+                .toList();
         onChanged(rule.copyWith(values: parts, overrideValues: true));
       },
     );
@@ -385,10 +402,7 @@ class _ToggleChip extends StatelessWidget {
       child: Container(
         padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 10.h),
         decoration: BoxDecoration(
-          color:
-              isActive
-                  ? kWhiteColor.withValues(alpha: 0.14)
-                  : kBlack2Color,
+          color: isActive ? kWhiteColor.withValues(alpha: 0.14) : kBlack2Color,
           borderRadius: BorderRadius.circular(12.br),
           border: Border.all(
             color:
@@ -400,8 +414,7 @@ class _ToggleChip extends StatelessWidget {
         child: Text(
           label,
           style: AppTypography.textXsMedium.copyWith(
-            color:
-                isActive ? kWhiteColor : kWhiteColor.withValues(alpha: 0.7),
+            color: isActive ? kWhiteColor : kWhiteColor.withValues(alpha: 0.7),
           ),
         ),
       ),
@@ -513,7 +526,9 @@ class _Dropdown<T> extends StatelessWidget {
                 value: item.value,
                 child: Text(
                   item.label,
-                  style: AppTypography.textSmRegular.copyWith(color: kWhiteColor),
+                  style: AppTypography.textSmRegular.copyWith(
+                    color: kWhiteColor,
+                  ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),

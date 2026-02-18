@@ -1,5 +1,7 @@
 import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/screens/favorites/favorite_players_provider.dart';
+import 'package:chessever2/providers/player_backfill_provider.dart';
+import 'package:chessever2/screens/player_profile/player_profile_data_source.dart';
 import 'package:chessever2/screens/player_profile/provider/player_profile_provider.dart';
 import 'package:chessever2/screens/player_profile/tabs/player_about_tab.dart';
 import 'package:chessever2/screens/player_profile/tabs/player_events_tab.dart';
@@ -8,6 +10,7 @@ import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/country_utils.dart';
+import 'package:chessever2/utils/number_format_utils.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/png_asset.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -49,6 +52,8 @@ class PlayerProfileScreen extends ConsumerStatefulWidget {
     this.title,
     this.federation,
     this.rating,
+    this.dataSource = PlayerProfileDataSource.supabase,
+    this.gamebasePlayerId,
   });
 
   /// FIDE ID - can be null for players without official FIDE registration
@@ -57,6 +62,8 @@ class PlayerProfileScreen extends ConsumerStatefulWidget {
   final String? title;
   final String? federation;
   final int? rating;
+  final PlayerProfileDataSource dataSource;
+  final String? gamebasePlayerId;
 
   /// Create from SearchPlayer model
   factory PlayerProfileScreen.fromSearchPlayer(SearchPlayer player) {
@@ -66,6 +73,7 @@ class PlayerProfileScreen extends ConsumerStatefulWidget {
       title: player.title,
       federation: player.fed,
       rating: player.rating,
+      dataSource: PlayerProfileDataSource.supabase,
     );
   }
 
@@ -79,10 +87,14 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
   late PageController _pageController;
   late AnimationController _favoriteAnimationController;
   late Animation<double> _favoriteScaleAnimation;
+  late PlayerProfileDataSource _currentDataSource;
+  String? _currentGamebasePlayerId;
 
   @override
   void initState() {
     super.initState();
+    _currentDataSource = widget.dataSource;
+    _currentGamebasePlayerId = _normalizePlayerId(widget.gamebasePlayerId);
     final initialTab = ref.read(selectedPlayerProfileTabProvider);
     _pageController = PageController(
       initialPage: PlayerProfileTab.values.indexOf(initialTab),
@@ -105,6 +117,26 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
     _pageController.dispose();
     _favoriteAnimationController.dispose();
     super.dispose();
+  }
+
+  String? _normalizePlayerId(String? raw) {
+    final id = raw?.trim();
+    return (id == null || id.isEmpty) ? null : id;
+  }
+
+  void _setDataSource(
+    PlayerProfileDataSource source, {
+    String? gamebasePlayerId,
+  }) {
+    if (_currentDataSource == source) return;
+    HapticFeedbackService.light();
+    setState(() {
+      final normalizedId = _normalizePlayerId(gamebasePlayerId);
+      if (normalizedId != null && normalizedId.isNotEmpty) {
+        _currentGamebasePlayerId = normalizedId;
+      }
+      _currentDataSource = source;
+    });
   }
 
   void _handleTabSelection(int index) {
@@ -144,9 +176,13 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
     final playerKey = PlayerProfileKey(
       fideId: widget.fideId,
       playerName: widget.playerName,
+      source: _currentDataSource,
+      gamebasePlayerId: _currentGamebasePlayerId,
     );
     final currentState = ref.read(playerProfileGamesKeyProvider(playerKey));
-    final notifier = ref.read(playerProfileGamesKeyProvider(playerKey).notifier);
+    final notifier = ref.read(
+      playerProfileGamesKeyProvider(playerKey).notifier,
+    );
 
     // Compute what the resulting filter state would be after this merge
     final newFilter = currentState.filter.copyWith(
@@ -154,9 +190,11 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
       color: color,
       eco: eco,
     );
-    final newPlayerResult = playerResultFilter ?? currentState.playerResultFilter;
+    final newPlayerResult =
+        playerResultFilter ?? currentState.playerResultFilter;
     final newSearchQuery = searchQuery ?? currentState.searchQuery;
-    final newActiveCount = newFilter.activeFilterCount +
+    final newActiveCount =
+        newFilter.activeFilterCount +
         (newPlayerResult != PlayerResultFilter.all ? 1 : 0) +
         (newSearchQuery.isNotEmpty ? 1 : 0);
 
@@ -223,10 +261,54 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
   @override
   Widget build(BuildContext context) {
     final selectedTab = ref.watch(selectedPlayerProfileTabProvider);
+    final activePlayerKey = PlayerProfileKey(
+      fideId: widget.fideId,
+      playerName: widget.playerName,
+      source: _currentDataSource,
+      gamebasePlayerId: _currentGamebasePlayerId,
+    );
+    final activeProfileAsync = ref.watch(
+      playerProfileDataKeyProvider(activePlayerKey),
+    );
+    final activeProfile = activeProfileAsync.valueOrNull;
+    final fallbackChessPlayer =
+        ref.watch(chessPlayerByFideIdProvider(widget.fideId)).valueOrNull;
+    final effectiveName =
+        (activeProfile?.name.trim().isNotEmpty ?? false)
+            ? activeProfile!.name
+            : ((fallbackChessPlayer?.name.trim().isNotEmpty ?? false)
+                ? fallbackChessPlayer!.name
+                : widget.playerName);
+    final effectiveTitle =
+        (activeProfile?.title?.trim().isNotEmpty ?? false)
+            ? activeProfile!.title
+            : ((widget.title?.trim().isNotEmpty ?? false)
+                ? widget.title
+                : ((fallbackChessPlayer?.title?.trim().isNotEmpty ?? false)
+                    ? fallbackChessPlayer!.title
+                    : widget.title));
+    final effectiveFederation =
+        (activeProfile?.federation?.trim().isNotEmpty ?? false)
+            ? activeProfile!.federation
+            : ((widget.federation?.trim().isNotEmpty ?? false)
+                ? widget.federation
+                : ((fallbackChessPlayer?.country?.trim().isNotEmpty ?? false)
+                    ? fallbackChessPlayer!.country
+                    : widget.federation));
     final countryCode =
-        widget.federation != null
-            ? CountryUtils.toIso2Code(widget.federation!) ?? ''
+        effectiveFederation != null
+            ? CountryUtils.toIso2Code(effectiveFederation)
             : '';
+    final twicLookupKey = PlayerProfileKey(
+      fideId: widget.fideId,
+      playerName: widget.playerName,
+      source: PlayerProfileDataSource.supabase,
+      gamebasePlayerId: _currentGamebasePlayerId,
+    );
+    // Always watch so the source selector stays visible in both modes.
+    final twicSummaryAsync = ref.watch(
+      twicProfileSummaryProvider(twicLookupKey),
+    );
 
     // Watch favorites to show correct state
     final favoritesAsync = ref.watch(favoritePlayersNotifierProvider);
@@ -250,16 +332,29 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
               SizedBox(height: MediaQuery.of(context).viewPadding.top + 4.h),
 
               // App bar
-              _buildAppBar(context, countryCode, isFavorite),
+              _buildAppBar(
+                context,
+                countryCode,
+                isFavorite,
+                effectiveFederation: effectiveFederation,
+                effectiveName: effectiveName,
+                effectiveTitle: effectiveTitle,
+              ),
 
               SizedBox(height: 8.h),
 
               // Tab switcher
               _buildTabSwitcher(selectedTab),
 
+              _buildDataSourceSelector(twicSummaryAsync),
+
               // Tab content with filter indicator bar
               Expanded(
-                child: _buildTabContentWithFilterBar(),
+                child: _buildTabContentWithFilterBar(
+                  effectiveTitle: effectiveTitle,
+                  effectiveFederation: effectiveFederation,
+                  selectedTab: selectedTab,
+                ),
               ),
             ],
           ),
@@ -271,8 +366,11 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
   Widget _buildAppBar(
     BuildContext context,
     String countryCode,
-    bool isFavorite,
-  ) {
+    bool isFavorite, {
+    required String? effectiveFederation,
+    required String effectiveName,
+    required String? effectiveTitle,
+  }) {
     final horizontalPadding = ResponsiveHelper.adaptive(
       phone: 16.w,
       tablet: 24.w,
@@ -300,7 +398,7 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   // Country flag
-                  if (widget.federation?.toUpperCase() == 'FID')
+                  if (effectiveFederation?.toUpperCase() == 'FID')
                     Image.asset(
                       PngAsset.fideLogo,
                       height: 16.h,
@@ -318,13 +416,16 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
                     ),
 
                   if (countryCode.isNotEmpty ||
-                      widget.federation?.toUpperCase() == 'FID')
+                      effectiveFederation?.toUpperCase() == 'FID')
                     SizedBox(width: 8.w),
 
                   // Title and name
                   Flexible(
                     child: Text(
-                      _formatDisplayName(),
+                      _formatDisplayName(
+                        name: effectiveName,
+                        title: effectiveTitle,
+                      ),
                       style: AppTypography.textLgBold.copyWith(
                         color: kWhiteColor,
                       ),
@@ -381,13 +482,55 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
     );
   }
 
-  Widget _buildTabContentWithFilterBar() {
+  Widget _buildTabContentWithFilterBar({
+    String? effectiveTitle,
+    String? effectiveFederation,
+    required PlayerProfileTab selectedTab,
+  }) {
     final playerKey = PlayerProfileKey(
       fideId: widget.fideId,
       playerName: widget.playerName,
+      source: _currentDataSource,
+      gamebasePlayerId: _currentGamebasePlayerId,
     );
     final gamesState = ref.watch(playerProfileGamesKeyProvider(playerKey));
     final hasActiveFilter = gamesState.hasActiveFilters;
+    final isTwicSource = _currentDataSource == PlayerProfileDataSource.twic;
+
+    var isTwicStatsLoading = false;
+    if (isTwicSource && selectedTab == PlayerProfileTab.about) {
+      final allGamesStats = ref.watch(
+        twicPlayerStatsProvider(
+          TwicPlayerStatsRequest(
+            playerKey: playerKey,
+            scope: TwicStatsScope.allGames,
+          ),
+        ),
+      );
+      final openingStats = ref.watch(
+        twicPlayerStatsProvider(
+          TwicPlayerStatsRequest(
+            playerKey: playerKey,
+            scope: TwicStatsScope.filteredIgnoringEco,
+          ),
+        ),
+      );
+      final filteredStats = ref.watch(
+        twicPlayerStatsProvider(
+          TwicPlayerStatsRequest(
+            playerKey: playerKey,
+            scope: TwicStatsScope.filtered,
+          ),
+        ),
+      );
+      isTwicStatsLoading =
+          allGamesStats.isLoading ||
+          openingStats.isLoading ||
+          filteredStats.isLoading;
+    }
+
+    final isTwicLoading =
+        isTwicSource && (gamesState.isLoading || isTwicStatsLoading);
 
     return Stack(
       children: [
@@ -402,20 +545,26 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
                 return PlayerAboutTab(
                   fideId: widget.fideId,
                   playerName: widget.playerName,
-                  title: widget.title,
-                  federation: widget.federation,
+                  title: effectiveTitle,
+                  federation: effectiveFederation,
                   fallbackRating: widget.rating,
+                  dataSource: _currentDataSource,
+                  gamebasePlayerId: _currentGamebasePlayerId,
                   onOpenGames: _openGames,
                 );
               case PlayerProfileTab.games:
                 return PlayerGamesTab(
                   fideId: widget.fideId,
                   playerName: widget.playerName,
+                  dataSource: _currentDataSource,
+                  gamebasePlayerId: _currentGamebasePlayerId,
                 );
               case PlayerProfileTab.events:
                 return PlayerEventsTab(
                   fideId: widget.fideId,
                   playerName: widget.playerName,
+                  dataSource: _currentDataSource,
+                  gamebasePlayerId: _currentGamebasePlayerId,
                 );
             }
           },
@@ -448,12 +597,37 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
             );
           },
         ),
+        // TWIC loading indicator — keeps filter transitions visually alive.
+        SingleMotionBuilder(
+          motion: const CupertinoMotion.snappy(),
+          value: isTwicLoading ? 1.0 : 0.0,
+          builder: (context, loadingProgress, _) {
+            if (loadingProgress < 0.01) return const SizedBox.shrink();
+            return Positioned(
+              top: 3.h,
+              left: 0,
+              right: 0,
+              child: Opacity(
+                opacity: loadingProgress,
+                child: SizedBox(
+                  height: 2.h,
+                  child: LinearProgressIndicator(
+                    backgroundColor: kPrimaryColor.withValues(alpha: 0.12),
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                      kPrimaryColor.withValues(alpha: 0.92),
+                    ),
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
       ],
     );
   }
 
-  String _formatDisplayName() {
-    String displayName = widget.playerName;
+  String _formatDisplayName({String? name, String? title}) {
+    String displayName = name ?? widget.playerName;
 
     // Handle "Lastname, Firstname" format
     if (displayName.contains(',')) {
@@ -464,11 +638,190 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
     }
 
     // Prepend title if present
-    if (widget.title != null && widget.title!.isNotEmpty) {
-      return '${widget.title} $displayName';
+    if (title != null && title.isNotEmpty) {
+      return '$title $displayName';
     }
 
     return displayName;
+  }
+
+  Widget _buildDataSourceSelector(
+    AsyncValue<TwicProfileSummary?> twicSummaryAsync,
+  ) {
+    final summary = twicSummaryAsync.valueOrNull;
+    if (summary == null) return const SizedBox.shrink();
+
+    final horizontalPadding = ResponsiveHelper.adaptive(
+      phone: 20.sp,
+      tablet: 32.sp,
+    );
+    final isTwic = _currentDataSource == PlayerProfileDataSource.twic;
+
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        horizontalPadding,
+        10.h,
+        horizontalPadding,
+        0,
+      ),
+      child: _DataSourceSegment(
+        isTwicSelected: isTwic,
+        twicGameCount: formatCompactCount(summary.totalGames),
+        onSelectRegular: () => _setDataSource(PlayerProfileDataSource.supabase),
+        onSelectTwic:
+            () => _setDataSource(
+              PlayerProfileDataSource.twic,
+              gamebasePlayerId: summary.gamebasePlayerId,
+            ),
+      ),
+    );
+  }
+}
+
+/// Sliding segmented control for switching between Regular and TWIC data sources.
+/// Shows the TWIC game count as a badge so the user understands what they're switching to.
+class _DataSourceSegment extends StatelessWidget {
+  const _DataSourceSegment({
+    required this.isTwicSelected,
+    required this.twicGameCount,
+    required this.onSelectRegular,
+    required this.onSelectTwic,
+  });
+
+  final bool isTwicSelected;
+  final String twicGameCount;
+  final VoidCallback onSelectRegular;
+  final VoidCallback onSelectTwic;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final halfWidth = constraints.maxWidth / 2;
+        return Container(
+          height: 36.h,
+          decoration: BoxDecoration(
+            color: kPopUpColor,
+            borderRadius: BorderRadius.circular(10.br),
+            border: Border.all(color: kWhiteColor.withValues(alpha: 0.08)),
+          ),
+          child: Stack(
+            children: [
+              // Smooth sliding selected-segment highlight
+              AnimatedPositioned(
+                duration: const Duration(milliseconds: 220),
+                curve: Curves.easeOutCubic,
+                left: isTwicSelected ? halfWidth : 0,
+                top: 0,
+                bottom: 0,
+                width: halfWidth,
+                child: Padding(
+                  padding: EdgeInsets.all(3.sp),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: kPrimaryColor.withValues(alpha: 0.14),
+                      borderRadius: BorderRadius.circular(7.br),
+                    ),
+                  ),
+                ),
+              ),
+              // Tappable segment labels
+              Row(
+                children: [
+                  // Regular segment
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: onSelectRegular,
+                      behavior: HitTestBehavior.opaque,
+                      child: SizedBox(
+                        height: 36.h,
+                        child: Center(
+                          child: AnimatedDefaultTextStyle(
+                            duration: const Duration(milliseconds: 200),
+                            curve: Curves.easeOutCubic,
+                            style: AppTypography.textSmBold.copyWith(
+                              color:
+                                  !isTwicSelected
+                                      ? kPrimaryColor
+                                      : kWhiteColor.withValues(alpha: 0.38),
+                            ),
+                            child: const Text('Regular'),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  // Subtle divider
+                  Container(
+                    width: 1,
+                    height: 16.h,
+                    color: kWhiteColor.withValues(alpha: 0.07),
+                  ),
+                  // TWIC segment with game count badge
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: onSelectTwic,
+                      behavior: HitTestBehavior.opaque,
+                      child: SizedBox(
+                        height: 36.h,
+                        child: Center(
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              AnimatedDefaultTextStyle(
+                                duration: const Duration(milliseconds: 200),
+                                curve: Curves.easeOutCubic,
+                                style: AppTypography.textSmBold.copyWith(
+                                  color:
+                                      isTwicSelected
+                                          ? kPrimaryColor
+                                          : kWhiteColor.withValues(alpha: 0.38),
+                                ),
+                                child: const Text('TWIC'),
+                              ),
+                              SizedBox(width: 5.w),
+                              AnimatedContainer(
+                                duration: const Duration(milliseconds: 200),
+                                curve: Curves.easeOutCubic,
+                                padding: EdgeInsets.symmetric(
+                                  horizontal: 5.w,
+                                  vertical: 2.h,
+                                ),
+                                decoration: BoxDecoration(
+                                  color:
+                                      isTwicSelected
+                                          ? kPrimaryColor.withValues(
+                                            alpha: 0.22,
+                                          )
+                                          : kWhiteColor.withValues(alpha: 0.07),
+                                  borderRadius: BorderRadius.circular(4.br),
+                                ),
+                                child: Text(
+                                  twicGameCount,
+                                  style: AppTypography.textXsBold.copyWith(
+                                    color:
+                                        isTwicSelected
+                                            ? kPrimaryColor
+                                            : kWhiteColor.withValues(
+                                              alpha: 0.30,
+                                            ),
+                                    fontSize: 9.5.f,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
+    );
   }
 }
 

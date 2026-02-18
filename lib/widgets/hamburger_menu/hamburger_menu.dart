@@ -22,6 +22,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 class HamburgerMenuCallbacks {
   final VoidCallback onPlayersPressed;
   final VoidCallback onAnalysisBoardPressed;
+  final VoidCallback onOpeningExplorerPressed;
   final VoidCallback onSupportPressed;
   final VoidCallback onPremiumPressed;
   final VoidCallback onLogoutPressed;
@@ -29,6 +30,7 @@ class HamburgerMenuCallbacks {
   const HamburgerMenuCallbacks({
     required this.onPlayersPressed,
     required this.onAnalysisBoardPressed,
+    required this.onOpeningExplorerPressed,
     required this.onSupportPressed,
     required this.onPremiumPressed,
     required this.onLogoutPressed,
@@ -105,6 +107,24 @@ class HamburgerMenu extends StatelessWidget {
                       ),
                       title: 'Settings',
                       onPressed: () => showSettingsDialog(context),
+                      showChevron: true,
+                    ),
+                    _MenuItem(
+                      icon: Icons.explore_outlined,
+                      title: 'Opening Explorer',
+                      onPressed: () {
+                        Navigator.of(context).pop();
+                        callbacks.onOpeningExplorerPressed();
+                      },
+                      showChevron: true,
+                    ),
+                    _MenuItem(
+                      icon: Icons.grid_view_rounded,
+                      title: 'Analysis Board',
+                      onPressed: () {
+                        Navigator.of(context).pop();
+                        callbacks.onAnalysisBoardPressed();
+                      },
                       showChevron: true,
                     ),
                     _MenuItem(

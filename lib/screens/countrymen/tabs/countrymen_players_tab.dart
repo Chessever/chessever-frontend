@@ -286,7 +286,7 @@ class _CountrymenPlayersTabState extends ConsumerState<CountrymenPlayersTab>
             child: Padding(
               padding: EdgeInsets.fromLTRB(horizontalPadding, 12.h, horizontalPadding, 8.h),
               child: SearchBarWidget(
-                hintText: 'Search players',
+                hintText: 'Search',
                 margin: 0.sp,
                 autoFocus: false,
                 controller: _searchController,

@@ -1,4 +1,5 @@
 import 'package:chessever2/screens/favorites/favorite_players_provider.dart';
+import 'package:chessever2/screens/player_profile/player_profile_data_source.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/screens/standings/score_card_screen.dart';
 import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen_provider.dart';
@@ -90,6 +91,12 @@ class PlayerTourScreen extends ConsumerWidget {
                                                   scoreCardGamesContextProvider.notifier,
                                                 )
                                                 .state = null;
+                                            ref
+                                                .read(
+                                                  scoreCardPlayerProfileDataSourceProvider
+                                                      .notifier,
+                                                )
+                                                .state = PlayerProfileDataSource.supabase;
                                             Navigator.of(
                                               context,
                                             ).pushNamed('/scorecard_screen');

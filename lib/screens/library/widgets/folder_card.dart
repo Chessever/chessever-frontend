@@ -14,6 +14,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:motor/motor.dart';
+import 'package:share_plus/share_plus.dart';
 
 String _formatGameCount(int count) {
   if (count == 0) return 'Empty';
@@ -138,6 +139,20 @@ class FolderCard extends ConsumerWidget {
       );
     }
 
+    // Subtitle for subscribed books: show owner name
+    Widget? subtitleWidget;
+    if (folder.isSubscribed && folder.ownerDisplayName != null) {
+      subtitleWidget = Text(
+        'by ${folder.ownerDisplayName}',
+        style: AppTypography.textXsRegular.copyWith(
+          color: const Color(0xFFA1A1A1),
+          height: 16 / 12,
+        ),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      );
+    }
+
     return _PressableMotionCard(
       onTap: onTap ?? () => _navigateToFolder(context),
       onLongPress: isTwic ? null : () => _showOverlayMenu(context, ref),
@@ -150,21 +165,51 @@ class FolderCard extends ConsumerWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            // Folder icon squircle
-            Container(
-              width: iconSize,
-              height: iconSize,
-              decoration: BoxDecoration(
-                color: const Color(0xFF262626),
-                borderRadius: BorderRadius.circular(iconRadius),
-              ),
-              child: Center(
-                child: SvgWidget(
-                  SvgAsset.folderOutline,
-                  width: svgSize,
-                  height: svgSize,
+            // Folder icon squircle with optional shared badge
+            Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Container(
+                  width: iconSize,
+                  height: iconSize,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF262626),
+                    borderRadius: BorderRadius.circular(iconRadius),
+                  ),
+                  child: Center(
+                    child: SvgWidget(
+                      SvgAsset.folderOutline,
+                      width: svgSize,
+                      height: svgSize,
+                    ),
+                  ),
                 ),
-              ),
+                // Shared link badge for subscribed books
+                if (folder.isSubscribed)
+                  Positioned(
+                    right: -4,
+                    bottom: -4,
+                    child: Container(
+                      width: 18.sp,
+                      height: 18.sp,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF262626),
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: const Color(0xFF1A1A1C),
+                          width: 2,
+                        ),
+                      ),
+                      child: Center(
+                        child: Icon(
+                          Icons.link_rounded,
+                          size: 10.sp,
+                          color: const Color(0xFFA1A1A1),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
             ),
 
             SizedBox(width: 8.w),
@@ -183,6 +228,7 @@ class FolderCard extends ConsumerWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
+                  if (subtitleWidget != null) subtitleWidget,
                   countWidget,
                 ],
               ),
@@ -209,24 +255,148 @@ class FolderCard extends ConsumerWidget {
 
   void _showOverlayMenu(BuildContext context, WidgetRef ref) {
     HapticFeedbackService.light();
-    showFolderOverlayMenu(
-      context: context,
-      onShare: () {
-        HapticFeedbackService.light();
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Share coming soon',
-              style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
-            ),
-            backgroundColor: kBlack2Color.withValues(alpha: 0.95),
-            behavior: SnackBarBehavior.floating,
+
+    if (folder.isSubscribed) {
+      // Subscribed books: only show Unsubscribe
+      showSubscribedFolderOverlayMenu(
+        context: context,
+        onUnsubscribe: () => _unsubscribeFromBook(context, ref),
+      );
+    } else if (folder.shareToken != null) {
+      // Already shared: show Copy Link, Stop Sharing, Rename, Delete
+      showSharedFolderOverlayMenu(
+        context: context,
+        onCopyLink: () => _copyShareLink(context, folder.shareToken!),
+        onStopSharing: () => _stopSharing(context, ref),
+        onRename: () => _renameFolder(context, ref),
+        onDelete: () => _deleteFolder(context, ref),
+      );
+    } else {
+      // Not shared: show Share, Rename, Delete
+      showFolderOverlayMenu(
+        context: context,
+        onShare: () => _shareFolder(context, ref),
+        onRename: () => _renameFolder(context, ref),
+        onDelete: () => _deleteFolder(context, ref),
+      );
+    }
+  }
+
+  Future<void> _shareFolder(BuildContext context, WidgetRef ref) async {
+    try {
+      final repo = ref.read(libraryRepositoryProvider);
+      final updatedFolder = await repo.generateShareToken(folder.id);
+      ref.invalidate(libraryFoldersStreamProvider);
+
+      if (!context.mounted) return;
+      final url = 'https://chessever.com/books/${updatedFolder.shareToken}';
+      final box = context.findRenderObject() as RenderBox?;
+      final origin = box != null
+          ? box.localToGlobal(Offset.zero) & box.size
+          : const Rect.fromLTWH(0, 0, 1, 1);
+      await Share.share(url, sharePositionOrigin: origin);
+    } catch (e) {
+      if (!context.mounted) return;
+      HapticFeedbackService.error();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Failed to share: $e',
+            style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
           ),
-        );
-      },
-      onRename: () => _renameFolder(context, ref),
-      onDelete: () => _deleteFolder(context, ref),
+          backgroundColor: kRedColor,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
+  void _copyShareLink(BuildContext context, String shareToken) {
+    final url = 'https://chessever.com/books/$shareToken';
+    Clipboard.setData(ClipboardData(text: url));
+    HapticFeedbackService.success();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'Link copied',
+          style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+        ),
+        backgroundColor: kBlack2Color.withValues(alpha: 0.95),
+        behavior: SnackBarBehavior.floating,
+      ),
     );
+  }
+
+  Future<void> _stopSharing(BuildContext context, WidgetRef ref) async {
+    try {
+      final repo = ref.read(libraryRepositoryProvider);
+      await repo.revokeShareToken(folder.id);
+      ref.invalidate(libraryFoldersStreamProvider);
+
+      if (!context.mounted) return;
+      HapticFeedbackService.success();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Sharing stopped',
+            style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+          ),
+          backgroundColor: kBlack2Color.withValues(alpha: 0.95),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } catch (e) {
+      if (!context.mounted) return;
+      HapticFeedbackService.error();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Failed to stop sharing: $e',
+            style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+          ),
+          backgroundColor: kRedColor,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
+  Future<void> _unsubscribeFromBook(
+    BuildContext context,
+    WidgetRef ref,
+  ) async {
+    try {
+      final repo = ref.read(libraryRepositoryProvider);
+      await repo.unsubscribeFromBook(folder.id);
+      ref.invalidate(subscribedBooksProvider);
+      ref.invalidate(combinedLibraryFoldersProvider);
+
+      if (!context.mounted) return;
+      HapticFeedbackService.success();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Unsubscribed from "${folder.name}"',
+            style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+          ),
+          backgroundColor: kBlack2Color.withValues(alpha: 0.95),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } catch (e) {
+      if (!context.mounted) return;
+      HapticFeedbackService.error();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Failed to unsubscribe: $e',
+            style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+          ),
+          backgroundColor: kRedColor,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
   }
 
   Future<void> _renameFolder(BuildContext context, WidgetRef ref) async {
@@ -433,16 +603,69 @@ class _DotsMenuButton extends StatelessWidget {
   }
 }
 
-/// Shows the folder overlay menu anchored near the tap position.
-///
-/// CSS: 240px wide, 120px tall, bg #111111, radius 12px,
-/// drop-shadow 0px 6px 12px rgba(0,0,0,0.25).
-/// Items: Share, Rename Folder, Delete Folder — each 40px.
+// ============ OVERLAY MENUS ============
+
+/// Shows the folder overlay menu for unshared folders: Share, Rename, Delete.
 void showFolderOverlayMenu({
   required BuildContext context,
   required VoidCallback onShare,
   required VoidCallback onRename,
   required VoidCallback onDelete,
+}) {
+  _showOverlay(
+    context: context,
+    items: [
+      _OverlayMenuItemData(Icons.ios_share_rounded, 'Share', onShare, _MenuItemPosition.top),
+      _OverlayMenuItemData(Icons.edit_rounded, 'Rename Folder', onRename, _MenuItemPosition.middle),
+      _OverlayMenuItemData(Icons.delete_outline_rounded, 'Delete Folder', onDelete, _MenuItemPosition.bottom),
+    ],
+  );
+}
+
+/// Shows the overlay menu for already-shared folders: Copy Link, Stop Sharing, Rename, Delete.
+void showSharedFolderOverlayMenu({
+  required BuildContext context,
+  required VoidCallback onCopyLink,
+  required VoidCallback onStopSharing,
+  required VoidCallback onRename,
+  required VoidCallback onDelete,
+}) {
+  _showOverlay(
+    context: context,
+    items: [
+      _OverlayMenuItemData(Icons.copy_rounded, 'Copy Link', onCopyLink, _MenuItemPosition.top),
+      _OverlayMenuItemData(Icons.link_off_rounded, 'Stop Sharing', onStopSharing, _MenuItemPosition.middle),
+      _OverlayMenuItemData(Icons.edit_rounded, 'Rename Folder', onRename, _MenuItemPosition.middle),
+      _OverlayMenuItemData(Icons.delete_outline_rounded, 'Delete Folder', onDelete, _MenuItemPosition.bottom),
+    ],
+  );
+}
+
+/// Shows the overlay menu for subscribed folders: just Unsubscribe.
+void showSubscribedFolderOverlayMenu({
+  required BuildContext context,
+  required VoidCallback onUnsubscribe,
+}) {
+  _showOverlay(
+    context: context,
+    items: [
+      _OverlayMenuItemData(Icons.link_off_rounded, 'Unsubscribe', onUnsubscribe, _MenuItemPosition.top),
+    ],
+  );
+}
+
+class _OverlayMenuItemData {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  final _MenuItemPosition position;
+
+  _OverlayMenuItemData(this.icon, this.label, this.onTap, this.position);
+}
+
+void _showOverlay({
+  required BuildContext context,
+  required List<_OverlayMenuItemData> items,
 }) {
   final overlay = Overlay.of(context);
   final renderBox = context.findRenderObject() as RenderBox;
@@ -451,23 +674,19 @@ void showFolderOverlayMenu({
   late OverlayEntry entry;
 
   entry = OverlayEntry(
-    builder:
-        (_) => _FolderOverlayMenu(
-          anchorRect: cardRect,
-          onDismiss: () => entry.remove(),
-          onShare: () {
-            entry.remove();
-            onShare();
-          },
-          onRename: () {
-            entry.remove();
-            onRename();
-          },
-          onDelete: () {
-            entry.remove();
-            onDelete();
-          },
-        ),
+    builder: (_) => _FolderOverlayMenu(
+      anchorRect: cardRect,
+      onDismiss: () => entry.remove(),
+      items: items.map((item) => _OverlayMenuItemData(
+        item.icon,
+        item.label,
+        () {
+          entry.remove();
+          item.onTap();
+        },
+        item.position,
+      )).toList(),
+    ),
   );
 
   overlay.insert(entry);
@@ -476,16 +695,12 @@ void showFolderOverlayMenu({
 class _FolderOverlayMenu extends StatefulWidget {
   final Rect anchorRect;
   final VoidCallback onDismiss;
-  final VoidCallback onShare;
-  final VoidCallback onRename;
-  final VoidCallback onDelete;
+  final List<_OverlayMenuItemData> items;
 
   const _FolderOverlayMenu({
     required this.anchorRect,
     required this.onDismiss,
-    required this.onShare,
-    required this.onRename,
-    required this.onDelete,
+    required this.items,
   });
 
   @override
@@ -528,7 +743,7 @@ class _FolderOverlayMenuState extends State<_FolderOverlayMenu>
   Widget build(BuildContext context) {
     final screenSize = MediaQuery.of(context).size;
     const menuWidth = 240.0;
-    const menuHeight = 120.0;
+    final menuHeight = widget.items.length * 40.0;
 
     // Position: right-aligned to the card, below the anchor
     double left = widget.anchorRect.right - menuWidth;
@@ -584,24 +799,13 @@ class _FolderOverlayMenuState extends State<_FolderOverlayMenu>
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      _OverlayMenuItem(
-                        icon: Icons.ios_share_rounded,
-                        label: 'Share',
-                        onTap: widget.onShare,
-                        position: _MenuItemPosition.top,
-                      ),
-                      _OverlayMenuItem(
-                        icon: Icons.edit_rounded,
-                        label: 'Rename Folder',
-                        onTap: widget.onRename,
-                        position: _MenuItemPosition.middle,
-                      ),
-                      _OverlayMenuItem(
-                        icon: Icons.delete_outline_rounded,
-                        label: 'Delete Folder',
-                        onTap: widget.onDelete,
-                        position: _MenuItemPosition.bottom,
-                      ),
+                      for (final item in widget.items)
+                        _OverlayMenuItem(
+                          icon: item.icon,
+                          label: item.label,
+                          onTap: item.onTap,
+                          position: item.position,
+                        ),
                     ],
                   ),
                 ),

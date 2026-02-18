@@ -7,6 +7,7 @@ import '../../../utils/responsive_helper.dart';
 import '../models/models.dart';
 import '../providers/gamebase_explorer_state.dart';
 import '../providers/gamebase_providers.dart';
+import 'mini_eval_bar.dart';
 import 'position_games_sheet.dart';
 
 /// Panel displaying move statistics for the current position.
@@ -159,7 +160,8 @@ class _MoveStatisticsRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final sanMove = uciToSan(aggregate.uci, currentFen);
+    final (sanMove, resultingFen) =
+        uciToSanAndFen(aggregate.uci, currentFen);
 
     return InkWell(
       onTap: onTap,
@@ -179,7 +181,13 @@ class _MoveStatisticsRow extends StatelessWidget {
                 ),
               ),
             ),
-            SizedBox(width: 8.sp),
+            SizedBox(width: 4.sp),
+            // Mini eval bar
+            SizedBox(
+              width: 64.w,
+              child: MiniEvalBar(fen: resultingFen),
+            ),
+            SizedBox(width: 4.sp),
             // Statistics bar
             Expanded(
               child: _StatisticsBar(
@@ -260,6 +268,28 @@ String uciToSan(String uci, String fen) {
     return result.$2;
   } catch (_) {
     return uci;
+  }
+}
+
+/// Like [uciToSan] but also returns the resulting FEN after the move.
+/// Returns `(san, resultingFen)`. `resultingFen` is null on parse failure.
+(String san, String? resultingFen) uciToSanAndFen(String uci, String fen) {
+  try {
+    final position = Chess.fromSetup(Setup.parseFen(fen));
+
+    final from = Square.fromName(uci.substring(0, 2));
+    final to = Square.fromName(uci.substring(2, 4));
+    Role? promotion;
+    if (uci.length > 4) {
+      promotion = Role.fromChar(uci[4]);
+    }
+
+    final move = NormalMove(from: from, to: to, promotion: promotion);
+    final result = position.makeSan(move);
+    // result.$1 is the new Position, result.$2 is the SAN string
+    return (result.$2, result.$1.fen);
+  } catch (_) {
+    return (uci, null);
   }
 }
 

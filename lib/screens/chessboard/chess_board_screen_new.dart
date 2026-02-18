@@ -71,6 +71,7 @@ import 'package:chessever2/screens/gamebase/models/models.dart';
 import 'package:chessever2/screens/gamebase/providers/gamebase_providers.dart';
 import 'package:chessever2/screens/library/utils/gamebase_pgn_builder.dart';
 import 'package:chessever2/screens/library/utils/gamebase_game_to_games_tour_model.dart';
+import 'package:chessever2/screens/player_profile/player_profile_data_source.dart';
 import 'package:chessever2/utils/chess_title_utils.dart';
 import 'package:showcaseview/showcaseview.dart';
 import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
@@ -624,6 +625,7 @@ class ChessBoardScreenNew extends ConsumerStatefulWidget {
   /// When true, hides the event info button in the app bar.
   /// Use this when navigating from library for position analysis where event info is not relevant.
   final bool hideEventInfo;
+  final PlayerProfileDataSource playerProfileDataSource;
   final bool showGamebaseButton;
 
   /// When true, the gamebase overlay will be disabled by default on screen init.
@@ -636,6 +638,7 @@ class ChessBoardScreenNew extends ConsumerStatefulWidget {
     required this.games,
     this.savedAnalysisData,
     this.hideEventInfo = false,
+    this.playerProfileDataSource = PlayerProfileDataSource.supabase,
     this.showGamebaseButton = false,
     this.disableGamebaseOverlayByDefault = false,
     this.showClock = true,
@@ -700,6 +703,13 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     // Note: We'll enable streaming in didChangeDependencies when ref is available
     WidgetsBinding.instance.addObserver(this);
     _setupSwipeAnimation();
+
+    // Store all games for score card context (used by player name tap → score card)
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        ref.read(chessBoardAllGamesProvider.notifier).state = widget.games;
+      }
+    });
   }
 
   void _setupSwipeAnimation() {
@@ -1319,8 +1329,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     if (!mounted) return;
     if (state == AppLifecycleState.resumed) {
       _handleLifecycleResume();
-    } else if (state == AppLifecycleState.inactive ||
-        state == AppLifecycleState.paused ||
+    } else if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.detached) {
       _handleLifecyclePaused();
     }
@@ -1609,6 +1618,8 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
                                       onGameChanged: _navigateToGame,
                                       lastViewedIndex: _lastViewedIndex,
                                       hideEventInfo: widget.hideEventInfo,
+                                      playerProfileDataSource:
+                                          widget.playerProfileDataSource,
                                       onToggleGamebase: _toggleGamebase,
                                       showGamebaseButton:
                                           widget.showGamebaseButton,
@@ -2066,6 +2077,7 @@ class _GamePage extends StatelessWidget {
   final void Function(int) onGameChanged;
   final int? lastViewedIndex;
   final bool hideEventInfo;
+  final PlayerProfileDataSource playerProfileDataSource;
   final VoidCallback onToggleGamebase;
   final bool showGamebaseButton;
   final bool showClock;
@@ -2080,6 +2092,7 @@ class _GamePage extends StatelessWidget {
     required this.onToggleGamebase,
     this.lastViewedIndex,
     this.hideEventInfo = false,
+    this.playerProfileDataSource = PlayerProfileDataSource.supabase,
     this.showGamebaseButton = false,
     this.showClock = true,
   });
@@ -2109,6 +2122,7 @@ class _GamePage extends StatelessWidget {
         currentPageIndex: currentPageIndex,
         game: game,
         state: state,
+        playerProfileDataSource: playerProfileDataSource,
         showGamebaseButton: showGamebaseButton,
         showClock: showClock,
       ),
@@ -4897,6 +4911,7 @@ class _GameBody extends StatelessWidget {
   final int currentPageIndex;
   final GamesTourModel game;
   final ChessBoardStateNew state;
+  final PlayerProfileDataSource playerProfileDataSource;
   final bool showGamebaseButton;
   final bool showClock;
 
@@ -4905,6 +4920,7 @@ class _GameBody extends StatelessWidget {
     required this.currentPageIndex,
     required this.game,
     required this.state,
+    this.playerProfileDataSource = PlayerProfileDataSource.supabase,
     this.showGamebaseButton = false,
     this.showClock = true,
   });
@@ -4917,6 +4933,7 @@ class _GameBody extends StatelessWidget {
       currentPageIndex: currentPageIndex,
       game: game,
       state: state,
+      playerProfileDataSource: playerProfileDataSource,
       showGamebaseButton: showGamebaseButton,
       showClock: showClock,
     );
@@ -4928,6 +4945,7 @@ class _AnalysisGameBody extends ConsumerWidget {
   final int currentPageIndex;
   final GamesTourModel game;
   final ChessBoardStateNew state;
+  final PlayerProfileDataSource playerProfileDataSource;
   final bool showGamebaseButton;
   final bool showClock;
 
@@ -4936,6 +4954,7 @@ class _AnalysisGameBody extends ConsumerWidget {
     required this.currentPageIndex,
     required this.game,
     required this.state,
+    this.playerProfileDataSource = PlayerProfileDataSource.supabase,
     this.showGamebaseButton = false,
     this.showClock = true,
   });
@@ -4981,13 +5000,25 @@ class _AnalysisGameBody extends ConsumerWidget {
           }
         }
 
+        ValueChanged<String> editNameCallback(bool isWhite) {
+          return (newName) {
+            final params = ChessBoardProviderParams(game: game, index: index);
+            ref.read(chessBoardScreenProviderNew(params).notifier).updatePlayerName(
+              isWhite: isWhite,
+              newName: newName,
+            );
+          };
+        }
+
         final headerChildren = <Widget>[
           _PlayerWidget(
             game: game,
             isFlipped: state.isBoardFlipped,
             blackPlayer: false,
             state: state,
+            playerProfileDataSource: playerProfileDataSource,
             showClock: showClock,
+            onEditName: showGamebaseButton ? editNameCallback(state.isBoardFlipped) : null,
           ),
           SizedBox(height: 1.h),
           _BoardWithSidebar(
@@ -5002,7 +5033,9 @@ class _AnalysisGameBody extends ConsumerWidget {
             isFlipped: state.isBoardFlipped,
             blackPlayer: true,
             state: state,
+            playerProfileDataSource: playerProfileDataSource,
             showClock: showClock,
+            onEditName: showGamebaseButton ? editNameCallback(!state.isBoardFlipped) : null,
           ),
           ...pvSection,
         ];
@@ -5252,7 +5285,10 @@ class _AnalysisGameBody extends ConsumerWidget {
                           (_) => ChessBoardScreenNew(
                             games: [resolvedForOpen],
                             currentIndex: 0,
-                            hideEventInfo: true,
+                            hideEventInfo:
+                                playerProfileDataSource !=
+                                PlayerProfileDataSource.twic,
+                            playerProfileDataSource: playerProfileDataSource,
                             showGamebaseButton: true,
                             disableGamebaseOverlayByDefault: true,
                             showClock: false,
@@ -5366,6 +5402,7 @@ class _AnalysisGameBody extends ConsumerWidget {
                         blackPlayer: false,
                         state: state,
                         showClock: showClock,
+                        onEditName: showGamebaseButton ? editNameCallback(state.isBoardFlipped) : null,
                       ),
                       SizedBox(height: verticalSpacing),
                       // Board with evaluation bar
@@ -5385,6 +5422,7 @@ class _AnalysisGameBody extends ConsumerWidget {
                         blackPlayer: true,
                         state: state,
                         showClock: showClock,
+                        onEditName: showGamebaseButton ? editNameCallback(!state.isBoardFlipped) : null,
                       ),
                     ],
                   ),
@@ -5454,6 +5492,7 @@ class _AnalysisGameBody extends ConsumerWidget {
                         blackPlayer: false,
                         state: state,
                         showClock: showClock,
+                        onEditName: showGamebaseButton ? editNameCallback(state.isBoardFlipped) : null,
                       ),
                     ),
                     SizedBox(height: 4.sp),
@@ -5474,6 +5513,7 @@ class _AnalysisGameBody extends ConsumerWidget {
                         blackPlayer: true,
                         state: state,
                         showClock: showClock,
+                        onEditName: showGamebaseButton ? editNameCallback(!state.isBoardFlipped) : null,
                       ),
                     ),
                     // PV section
@@ -5549,14 +5589,18 @@ class _PlayerWidget extends StatelessWidget {
   final bool isFlipped;
   final bool blackPlayer;
   final ChessBoardStateNew state;
+  final PlayerProfileDataSource playerProfileDataSource;
   final bool showClock;
+  final ValueChanged<String>? onEditName;
 
   const _PlayerWidget({
     required this.game,
     required this.isFlipped,
     required this.blackPlayer,
     required this.state,
+    this.playerProfileDataSource = PlayerProfileDataSource.supabase,
     this.showClock = true,
+    this.onEditName,
   });
 
   @override
@@ -5580,7 +5624,9 @@ class _PlayerWidget extends StatelessWidget {
       playerView: PlayerView.boardView,
       gamesTourModel: game,
       chessBoardState: state, // Pass the state for move time calculation
+      playerProfileDataSource: playerProfileDataSource,
       showClock: showClock,
+      onEditName: onEditName,
     );
   }
 }
@@ -5597,14 +5643,18 @@ class _TabletPlayerCard extends StatelessWidget {
   final bool isFlipped;
   final bool blackPlayer;
   final ChessBoardStateNew state;
+  final PlayerProfileDataSource playerProfileDataSource;
   final bool showClock;
+  final ValueChanged<String>? onEditName;
 
   const _TabletPlayerCard({
     required this.game,
     required this.isFlipped,
     required this.blackPlayer,
     required this.state,
+    this.playerProfileDataSource = PlayerProfileDataSource.supabase,
     this.showClock = true,
+    this.onEditName,
   });
 
   @override
@@ -5642,7 +5692,9 @@ class _TabletPlayerCard extends StatelessWidget {
         playerView: PlayerView.boardView,
         gamesTourModel: game,
         chessBoardState: state,
+        playerProfileDataSource: playerProfileDataSource,
         showClock: showClock,
+        onEditName: onEditName,
       ),
     );
   }

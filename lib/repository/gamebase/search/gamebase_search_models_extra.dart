@@ -62,3 +62,78 @@ class GamebaseGlobalSearchResponse {
     );
   }
 }
+
+class GamebaseEventSearchItem {
+  const GamebaseEventSearchItem({
+    required this.id,
+    required this.event,
+    required this.gameCount,
+    this.site,
+    this.startDate,
+    this.endDate,
+    this.dominantTimeControl,
+    this.avgElo,
+    this.maxElo,
+  });
+
+  final String id;
+  final String event;
+  final int gameCount;
+  final String? site;
+  final DateTime? startDate;
+  final DateTime? endDate;
+  final String? dominantTimeControl;
+  final int? avgElo;
+  final int? maxElo;
+
+  factory GamebaseEventSearchItem.fromJson(Map<String, dynamic> json) {
+    DateTime? parseDate(Object? value) {
+      if (value == null) return null;
+      return DateTime.tryParse(value.toString());
+    }
+
+    return GamebaseEventSearchItem(
+      id: json['id'] as String? ?? '',
+      event: json['event'] as String? ?? '',
+      gameCount: (json['gameCount'] as num?)?.toInt() ?? 0,
+      site: json['site'] as String?,
+      startDate: parseDate(json['startDate']),
+      endDate: parseDate(json['endDate']),
+      dominantTimeControl: json['dominantTimeControl'] as String?,
+      avgElo: (json['avgElo'] as num?)?.toInt(),
+      maxElo: (json['maxElo'] as num?)?.toInt(),
+    );
+  }
+}
+
+class GamebaseEventSearchResponse {
+  const GamebaseEventSearchResponse({
+    required this.status,
+    required this.events,
+    required this.metadata,
+  });
+
+  final String status;
+  final List<GamebaseEventSearchItem> events;
+  final GamebasePaginationMetadata metadata;
+
+  factory GamebaseEventSearchResponse.fromJson(Map<String, dynamic> json) {
+    final data = json['data'] as Map<String, dynamic>? ?? const {};
+    return GamebaseEventSearchResponse(
+      status: json['status'] as String? ?? 'unknown',
+      events:
+          (data['events'] as List?)
+              ?.whereType<Map>()
+              .map(
+                (e) => GamebaseEventSearchItem.fromJson(
+                  Map<String, dynamic>.from(e),
+                ),
+              )
+              .toList() ??
+          const [],
+      metadata: GamebasePaginationMetadata.fromJson(
+        Map<String, dynamic>.from(data['metadata'] as Map? ?? const {}),
+      ),
+    );
+  }
+}

@@ -103,7 +103,7 @@ class _FavoritesListTabState extends ConsumerState<FavoritesListTab>
                 animation: _searchController,
                 builder: (context, _) {
                   return SearchBarWidget(
-                    hintText: 'Search favorites',
+                    hintText: 'Search',
                     margin: 0.sp,
                     autoFocus: false,
                     controller: _searchController,

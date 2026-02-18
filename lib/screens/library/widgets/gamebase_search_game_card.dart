@@ -2,6 +2,7 @@ import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
+import 'package:chessever2/screens/player_profile/player_profile_data_source.dart';
 import 'package:chessever2/screens/library/utils/gamebase_pgn_builder.dart';
 import 'package:chessever2/screens/library/widgets/library_game_card.dart';
 import 'package:chessever2/screens/library/widgets/swipe_action_card.dart';
@@ -27,6 +28,7 @@ class GamebaseSearchGameCard extends ConsumerWidget {
     // this.showGamebaseButton = true,
     this.showGamebaseButton = false,
     this.hideEventInfo = false,
+    this.playerProfileDataSource = PlayerProfileDataSource.supabase,
     this.onTap,
   });
 
@@ -47,6 +49,8 @@ class GamebaseSearchGameCard extends ConsumerWidget {
   /// If true, hides the event info button in ChessBoardScreenNew.
   /// Set to true for library/position analysis where event info is not relevant.
   final bool hideEventInfo;
+
+  final PlayerProfileDataSource playerProfileDataSource;
 
   /// Optional tap callback. If provided, overrides default chessboard navigation.
   final VoidCallback? onTap;
@@ -228,9 +232,10 @@ class GamebaseSearchGameCard extends ConsumerWidget {
           games: games,
           currentIndex: index,
           hideEventInfo: hideEventInfo,
+          playerProfileDataSource: playerProfileDataSource,
           showGamebaseButton: showGamebaseButton,
           disableGamebaseOverlayByDefault: true,
-          // showClock defaults to true - show clocks for favorites/player profile/countrymen
+          showClock: playerProfileDataSource != PlayerProfileDataSource.twic,
         ),
       ),
     );

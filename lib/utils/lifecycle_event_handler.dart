@@ -9,8 +9,9 @@ class LifecycleEventHandler extends WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    // IMPORTANT: `inactive` can be a transient transition state (for example
+    // during notification taps). Treat only paused/detached as true background.
     if (state == AppLifecycleState.detached ||
-        state == AppLifecycleState.inactive ||
         state == AppLifecycleState.paused) {
       onAppExit?.call();
     } else if (state == AppLifecycleState.resumed) {

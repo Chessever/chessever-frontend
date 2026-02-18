@@ -8,6 +8,7 @@ import 'package:chessever2/repository/supabase/group_broadcast/group_tour_reposi
 import 'package:chessever2/providers/auth_state_provider.dart';
 import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
+import 'package:chessever2/screens/library/book_preview_screen.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
 import 'package:chessever2/services/live_updates_service.dart';
@@ -79,10 +80,16 @@ class DeepLinkService {
     debugPrint('DeepLinkService: Received link: $uri');
 
     String? gameId;
+    String? bookShareToken;
 
     // Universal link: https://chessever.com/games/<id>
     if (uri.pathSegments.length >= 2 && uri.pathSegments[0] == 'games') {
       gameId = uri.pathSegments[1];
+    }
+
+    // Universal link: https://chessever.com/books/<shareToken>
+    if (uri.pathSegments.length >= 2 && uri.pathSegments[0] == 'books') {
+      bookShareToken = uri.pathSegments[1];
     }
 
     // Custom scheme: com.chessever.app://games/<id>
@@ -92,11 +99,20 @@ class DeepLinkService {
       gameId = uri.pathSegments[0];
     }
 
+    // Custom scheme: com.chessever.app://books/<shareToken>
+    if (bookShareToken == null &&
+        uri.host == 'books' &&
+        uri.pathSegments.isNotEmpty) {
+      bookShareToken = uri.pathSegments[0];
+    }
+
     if (gameId != null && gameId.isNotEmpty) {
       if (uri.queryParameters['stop_live'] == '1') {
         _stopLiveUpdates(gameId, ref);
       }
       _navigateToGame(gameId, navigatorKey, ref);
+    } else if (bookShareToken != null && bookShareToken.isNotEmpty) {
+      _navigateToBookPreview(bookShareToken, navigatorKey, ref);
     }
   }
 
@@ -104,6 +120,62 @@ class DeepLinkService {
     final user = ref.read(currentUserProvider);
     if (user == null) return;
     unawaited(LiveUpdatesService.instance.stopForGame(gameId, user.id));
+  }
+
+  /// Navigate to the book preview screen for a shared book deep link.
+  Future<void> _navigateToBookPreview(
+    String shareToken,
+    GlobalKey<NavigatorState> navigatorKey,
+    WidgetRef ref,
+  ) async {
+    if (_isNavigating) return;
+    _isNavigating = true;
+
+    try {
+      await _appReadyCompleter.future.timeout(const Duration(seconds: 30));
+    } catch (_) {
+      debugPrint('DeepLinkService: Timed out waiting for app ready, proceeding');
+    }
+
+    AppAuthState? resolvedState = ref.read(authStateProvider).value;
+    if (resolvedState == null) {
+      try {
+        resolvedState = await ref.read(authStateProvider.future);
+      } catch (_) {
+        resolvedState = null;
+      }
+    }
+
+    if (resolvedState?.status != AppAuthStatus.authenticated) {
+      debugPrint('DeepLinkService: User not authenticated, routing to home');
+      navigatorKey.currentState?.pushNamedAndRemoveUntil(
+        '/home_screen',
+        (route) => false,
+      );
+      _isNavigating = false;
+      return;
+    }
+
+    try {
+      debugPrint('DeepLinkService: Opening book preview: $shareToken');
+
+      final navigator = navigatorKey.currentState;
+      if (navigator != null) {
+        navigator.push(
+          MaterialPageRoute(
+            builder: (_) => BookPreviewScreen(shareToken: shareToken),
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('DeepLinkService: Failed to open book preview: $e');
+      navigatorKey.currentState?.pushNamedAndRemoveUntil(
+        '/home_screen',
+        (route) => false,
+      );
+    } finally {
+      _isNavigating = false;
+    }
   }
 
   /// Fetch game by ID and navigate to chess board screen

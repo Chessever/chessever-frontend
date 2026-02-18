@@ -4,6 +4,8 @@ import 'package:chessever2/repository/authentication/auth_repository.dart';
 import 'package:chessever2/screens/authentication/auth_screen_provider.dart';
 import 'package:chessever2/screens/calendar/calendar_screen.dart';
 import 'package:chessever2/screens/library/library_screen.dart';
+import 'package:chessever2/screens/board_editor/board_editor_screen.dart';
+import 'package:chessever2/screens/gamebase/gamebase_explorer_screen.dart';
 import 'package:chessever2/screens/premium/premium_screen.dart';
 import 'package:chessever2/providers/favorite_events_provider.dart';
 import 'package:chessever2/providers/favorite_players_provider.dart';
@@ -121,7 +123,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       // Navigate to players screen
       Navigator.pushNamed(context, '/player_list_screen');
     },
-    onAnalysisBoardPressed: () {},
+    onAnalysisBoardPressed: () {
+      Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => const BoardEditorScreen()),
+      );
+    },
+    onOpeningExplorerPressed: () {
+      Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => const GamebaseExplorerScreen()),
+      );
+    },
     onSupportPressed: () {
       // Handle support action
     },
