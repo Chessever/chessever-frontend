@@ -149,12 +149,12 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
         final from = a.uci.substring(0, 2);
         final to = a.uci.substring(2, 4);
         final promotion = a.uci.length > 4 ? a.uci[4] : null;
-        final dynamic moved = chess.move({
+        final moved = chess.move({
           'from': from,
           'to': to,
           if (promotion != null) 'promotion': promotion,
         });
-        if (moved == null) continue;
+        if (!moved) continue;
 
         final nextFen = normalizeFenForGamebase(chess.fen);
         final nextMoves = <String>[...exploredMoves, a.uci];
@@ -192,13 +192,13 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
       _rebuildChessPosition();
 
       // Make the move
-      final dynamic move = chess.move({
+      final moved = chess.move({
         'from': from,
         'to': to,
         if (promotion != null) 'promotion': promotion,
       });
 
-      if (move != null) {
+      if (moved) {
         // If we're not at the end of history, truncate
         final newHistory = state.moveHistory.sublist(
           0,
@@ -212,6 +212,8 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
         );
 
         _scheduleFetch();
+      } else {
+        state = state.copyWith(error: 'Invalid move: $uci');
       }
     } catch (e) {
       state = state.copyWith(error: 'Invalid move: $uci');

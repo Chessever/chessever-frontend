@@ -1,6 +1,5 @@
-import 'package:chess/chess.dart' as chess_lib hide State;
 import 'package:chessground/chessground.dart';
-import 'package:dartchess/dartchess.dart';
+import 'package:dartchess/dartchess.dart' show Side;
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -199,18 +198,18 @@ class _GamebaseExplorerScreenState
     final timestamp = DateTime.now().millisecondsSinceEpoch;
 
     // Convert UCI moves to SAN by replaying from the start.
-    final chessInstance = chess_lib.Chess();
+    //
+    // NOTE: `package:chess`'s `move()` returns a `bool` in our current version,
+    // so we can't rely on verbose move maps (`move['san']`). Use `dartchess`
+    // instead (same helper we use in the move list) to produce SAN + advance FEN.
     final sanMoves = <String>[];
+    var currentFen =
+        'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
     for (final uci in exploredMoves) {
-      final from = uci.substring(0, 2);
-      final to = uci.substring(2, 4);
-      final promotion = uci.length > 4 ? uci[4] : null;
-      final move = chessInstance.move({
-        'from': from,
-        'to': to,
-        if (promotion != null) 'promotion': promotion,
-      });
-      if (move != null) sanMoves.add(move['san'] as String);
+      final (san, nextFen) = uciToSanAndFen(uci, currentFen);
+      sanMoves.add(san);
+      if (nextFen == null) break;
+      currentFen = nextFen;
     }
 
     // Build PGN move text.
