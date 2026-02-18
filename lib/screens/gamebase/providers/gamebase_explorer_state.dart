@@ -77,8 +77,9 @@ class GamebaseExplorerState with GamebaseExplorerStateMappable {
   /// Check if can go back
   bool get canGoBack => currentMoveIndex >= 0;
 
-  /// Check if can go forward
-  bool get canGoForward => currentMoveIndex < maxNavigableMoveIndex;
+  /// Check if can go forward (either replay a stored move or play the most-played aggregate)
+  bool get canGoForward =>
+      currentMoveIndex < maxNavigableMoveIndex || moveAggregates.isNotEmpty;
 
   /// Current backend move_number (1-indexed ply position).
   int get currentMoveNumber => currentMoveIndex + 2;

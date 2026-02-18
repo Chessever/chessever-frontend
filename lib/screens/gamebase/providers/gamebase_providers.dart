@@ -269,30 +269,39 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
     _scheduleFetch();
   }
 
-  /// Go to next move
+  /// Go to next move.
+  ///
+  /// If there is a stored next move in the explored line, replay it.
+  /// Otherwise, automatically play the most-played move from the current
+  /// position's aggregates (so the forward button is always usable).
   void goForward() {
     if (!state.canGoForward) return;
 
-    final newIndex = state.currentMoveIndex + 1;
-    _rebuildChessPosition();
+    if (state.currentMoveIndex < state.maxNavigableMoveIndex) {
+      // Replay the next stored move in history.
+      final newIndex = state.currentMoveIndex + 1;
+      _rebuildChessPosition();
 
-    // Make one more move
-    final uci = state.moveHistory[newIndex];
-    final from = uci.substring(0, 2);
-    final to = uci.substring(2, 4);
-    final promotion = uci.length > 4 ? uci[4] : null;
-    chess.move({
-      'from': from,
-      'to': to,
-      if (promotion != null) 'promotion': promotion,
-    });
+      final uci = state.moveHistory[newIndex];
+      final from = uci.substring(0, 2);
+      final to = uci.substring(2, 4);
+      final promotion = uci.length > 4 ? uci[4] : null;
+      chess.move({
+        'from': from,
+        'to': to,
+        if (promotion != null) 'promotion': promotion,
+      });
 
-    state = state.copyWith(
-      currentMoveIndex: newIndex,
-      currentFen: normalizeFenForGamebase(chess.fen),
-    );
+      state = state.copyWith(
+        currentMoveIndex: newIndex,
+        currentFen: normalizeFenForGamebase(chess.fen),
+      );
 
-    _scheduleFetch();
+      _scheduleFetch();
+    } else if (state.moveAggregates.isNotEmpty) {
+      // At the frontier — play the most-played move from current position.
+      makeMove(state.moveAggregates.first.uci);
+    }
   }
 
   /// Go to first position
@@ -305,15 +314,18 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
     _scheduleFetch();
   }
 
-  /// Go to last position
+  /// Go to last position.
+  ///
+  /// If not already at the frontier of the explored line, jump there.
+  /// If already at the frontier, play the most-played aggregate move (same
+  /// behaviour as [goForward]).
   void goToEnd() {
-    if (state.moveHistory.isEmpty) return;
-
-    // Navigate to the deepest move in the currently explored line.
-    // Deep lines are supported when `moves` are provided to the backend.
     final targetIndex = state.maxNavigableMoveIndex;
-    if (targetIndex == state.currentMoveIndex) return;
-    goToMove(targetIndex);
+    if (targetIndex > state.currentMoveIndex) {
+      goToMove(targetIndex);
+    } else if (state.moveAggregates.isNotEmpty) {
+      makeMove(state.moveAggregates.first.uci);
+    }
   }
 
   /// Go to specific move index

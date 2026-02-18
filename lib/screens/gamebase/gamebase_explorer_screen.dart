@@ -1,12 +1,17 @@
+import 'package:chess/chess.dart' as chess_lib hide State;
 import 'package:chessground/chessground.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 import 'package:chessever2/providers/board_settings_provider_new.dart';
+import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
+import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/chessboard/provider/current_eval_provider.dart';
 import 'package:chessever2/screens/chessboard/widgets/evaluation_bar_widget.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/theme/app_theme.dart';
+import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/screen_wrapper.dart';
 import 'package:chessever2/screens/gamebase/providers/gamebase_providers.dart';
@@ -167,7 +172,112 @@ class _GamebaseExplorerScreenState
           onPressed: () => _showFilterSheet(context),
           tooltip: 'Filters',
         ),
+        GestureDetector(
+          onTap: () => _openAnalysis(context),
+          child: Container(
+            margin: EdgeInsets.only(right: 12.sp),
+            padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 6.sp),
+            decoration: BoxDecoration(
+              color: kWhiteColor,
+              borderRadius: BorderRadius.circular(8.br),
+            ),
+            child: Text(
+              'Analyze',
+              style: AppTypography.textSmMedium.copyWith(
+                color: kBackgroundColor,
+              ),
+            ),
+          ),
+        ),
       ],
+    );
+  }
+
+  void _openAnalysis(BuildContext context) {
+    final state = ref.read(gamebaseExplorerProvider);
+    final exploredMoves = state.exploredMoves;
+    final timestamp = DateTime.now().millisecondsSinceEpoch;
+
+    // Convert UCI moves to SAN by replaying from the start.
+    final chessInstance = chess_lib.Chess();
+    final sanMoves = <String>[];
+    for (final uci in exploredMoves) {
+      final from = uci.substring(0, 2);
+      final to = uci.substring(2, 4);
+      final promotion = uci.length > 4 ? uci[4] : null;
+      final move = chessInstance.move({
+        'from': from,
+        'to': to,
+        if (promotion != null) 'promotion': promotion,
+      });
+      if (move != null) sanMoves.add(move['san'] as String);
+    }
+
+    // Build PGN move text.
+    final moveText = StringBuffer();
+    for (var i = 0; i < sanMoves.length; i++) {
+      if (i % 2 == 0) moveText.write('${(i ~/ 2) + 1}. ');
+      moveText.write(sanMoves[i]);
+      if (i < sanMoves.length - 1) moveText.write(' ');
+    }
+
+    final pgn =
+        '[Event "Opening Explorer"]\n'
+        '[Site "ChessEver"]\n'
+        '[Date "${DateTime.now().toIso8601String().split('T')[0]}"]\n'
+        '[White "White"]\n'
+        '[Black "Black"]\n'
+        '[Result "*"]\n'
+        '\n${moveText.isEmpty ? '*' : '$moveText *'}';
+
+    final whitePlayer = PlayerCard(
+      name: 'White',
+      federation: '',
+      title: '',
+      rating: 0,
+      countryCode: '',
+      team: null,
+      fideId: null,
+    );
+
+    final blackPlayer = PlayerCard(
+      name: 'Black',
+      federation: '',
+      title: '',
+      rating: 0,
+      countryCode: '',
+      team: null,
+      fideId: null,
+    );
+
+    final game = GamesTourModel(
+      gameId: 'explorer_$timestamp',
+      whitePlayer: whitePlayer,
+      blackPlayer: blackPlayer,
+      whiteTimeDisplay: '--:--',
+      blackTimeDisplay: '--:--',
+      whiteClockCentiseconds: 0,
+      blackClockCentiseconds: 0,
+      gameStatus: GameStatus.unknown,
+      roundId: 'opening_explorer',
+      tourId: 'opening_explorer',
+      pgn: pgn,
+    );
+
+    ref.read(chessboardViewFromProviderNew.notifier).state =
+        ChessboardView.tour;
+
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder:
+            (_) => ChessBoardScreenNew(
+              currentIndex: 0,
+              games: [game],
+              hideEventInfo: true,
+              showGamebaseButton: false,
+              disableGamebaseOverlayByDefault: true,
+            ),
+      ),
     );
   }
 
