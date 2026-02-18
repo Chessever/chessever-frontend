@@ -61,16 +61,20 @@ class _GamesProcessingArgs {
 List<GamesTourModel> _processGamesWorker(_GamesProcessingArgs args) {
   // 1. Pre-parse numbers to avoid repeated regex operations during sort
   final gameInfo = <String, (int, int)>{};
-  
+
   // Helper to extract numbers (copied here to be accessible in isolate)
   int extractRound(String roundSlug) {
-    final match = RegExp(r'round-?(\d+)', caseSensitive: false).firstMatch(roundSlug) ??
-                  RegExp(r'(\d+)').firstMatch(roundSlug);
+    final match =
+        RegExp(r'round-?(\d+)', caseSensitive: false).firstMatch(roundSlug) ??
+        RegExp(r'(\d+)').firstMatch(roundSlug);
     return int.tryParse(match?.group(1) ?? '0') ?? 0;
   }
 
   int extractGame(String roundSlug) {
-    final match = RegExp(r'game-?(\d+)', caseSensitive: false).firstMatch(roundSlug);
+    final match = RegExp(
+      r'game-?(\d+)',
+      caseSensitive: false,
+    ).firstMatch(roundSlug);
     return int.tryParse(match?.group(1) ?? '0') ?? 0;
   }
 
@@ -169,15 +173,14 @@ class GamesTourScreenProvider
       final previousGames = previous?.valueOrNull ?? [];
       final nextGames = next.valueOrNull ?? [];
 
-      if (next.hasValue) {
-        final _ = ref.refresh(gamesPinprovider(aboutTourModel!.id));
-      }
-
       // ALWAYS recompute if we don't have any model data yet
       // This ensures we don't miss the initial load
-      final needsInitialData = current == null || current.gamesTourModels.isEmpty;
+      final needsInitialData =
+          current == null || current.gamesTourModels.isEmpty;
       if (needsInitialData && nextGames.isNotEmpty) {
-        debugPrint('🎮 GamesTourScreen: Initial data load - triggering recompute with ${nextGames.length} games');
+        debugPrint(
+          '🎮 GamesTourScreen: Initial data load - triggering recompute with ${nextGames.length} games',
+        );
         _recompute();
         await ref
             .read(gamesPinprovider(aboutTourModel!.id).notifier)
@@ -216,7 +219,11 @@ class GamesTourScreenProvider
         if (displayMode != null && displayMode != GameDisplayMode.all) {
           // Check if any game status changed (finished/started)
           bool statusChanged = false;
-          for (int i = 0; i < nextGames.length && i < previousGames.length; i++) {
+          for (
+            int i = 0;
+            i < nextGames.length && i < previousGames.length;
+            i++
+          ) {
             if (previousGames[i].status != nextGames[i].status) {
               statusChanged = true;
               break;
@@ -224,7 +231,9 @@ class GamesTourScreenProvider
           }
 
           if (statusChanged) {
-            debugPrint('🎮 GamesTourScreen: Game status changed during filter mode - re-applying filter');
+            debugPrint(
+              '🎮 GamesTourScreen: Game status changed during filter mode - re-applying filter',
+            );
             // Re-apply the current filter
             if (displayMode == GameDisplayMode.hideFinishedGames) {
               hideFinishedGames();
@@ -293,9 +302,9 @@ class GamesTourScreenProvider
 
     try {
       final gamesAsync = ref.read(gamesTourProvider(aboutTourModel!.id));
-       if (gamesAsync.isLoading) {
-      return;
-    }
+      if (gamesAsync.isLoading) {
+        return;
+      }
       final pins = ref.read(gamesPinprovider(aboutTourModel!.id));
 
       final allGames = gamesAsync.value ?? <Games>[];
@@ -317,16 +326,21 @@ class GamesTourScreenProvider
       // Check if there are any live games
       final hasLiveGames = allGames.any((g) => g.status == "*");
 
-      debugPrint('🎮 GamesTourScreen: Total games: ${allGames.length}, Live games: ${allGames.where((g) => g.status == "*").length}');
+      debugPrint(
+        '🎮 GamesTourScreen: Total games: ${allGames.length}, Live games: ${allGames.where((g) => g.status == "*").length}',
+      );
       if (allGames.where((g) => g.status == "*").isNotEmpty) {
-        debugPrint('🎮 GamesTourScreen: Live game rounds: ${allGames.where((g) => g.status == "*").map((g) => g.roundSlug).join(", ")}');
+        debugPrint(
+          '🎮 GamesTourScreen: Live game rounds: ${allGames.where((g) => g.status == "*").map((g) => g.roundSlug).join(", ")}',
+        );
       }
 
       // Find the upcoming round if no live games exist
       int? upcomingRoundNumber;
       if (!hasLiveGames && allGames.isNotEmpty) {
         // Find the highest round number with all games finished
-        final roundNumbers = gameInfo.values.map((info) => info.$1).toSet().toList()..sort();
+        final roundNumbers =
+            gameInfo.values.map((info) => info.$1).toSet().toList()..sort();
         if (roundNumbers.isNotEmpty) {
           final maxRound = roundNumbers.last;
           // The upcoming round is the next one
@@ -525,7 +539,8 @@ class GamesTourScreenProvider
     }
 
     final baseGames =
-        ref.read(gamesTourProvider(aboutTourModel!.id)).value ?? const <Games>[];
+        ref.read(gamesTourProvider(aboutTourModel!.id)).value ??
+        const <Games>[];
     final gamesAppBar = ref.read(gamesAppBarProvider);
 
     if (!gamesAppBar.hasValue) {
@@ -537,8 +552,7 @@ class GamesTourScreenProvider
     final stageTourIds =
         rounds
             .where((round) => round.id.startsWith('$kKnockoutStagePrefix-'))
-            .map((round) =>
-                round.id.replaceFirst('$kKnockoutStagePrefix-', ''))
+            .map((round) => round.id.replaceFirst('$kKnockoutStagePrefix-', ''))
             .where((id) => id.isNotEmpty)
             .toSet();
 
@@ -570,10 +584,7 @@ class GamesTourScreenProvider
     return aggregatedGames.isEmpty ? baseGames : aggregatedGames;
   }
 
-  List<Games> _sortGamesForFilters(
-    List<Games> games,
-    List<String> pinnedIds,
-  ) {
+  List<Games> _sortGamesForFilters(List<Games> games, List<String> pinnedIds) {
     if (games.isEmpty) return const <Games>[];
 
     final gameInfo = <String, (int, int)>{};
@@ -661,12 +672,15 @@ class GamesTourScreenProvider
       final gamesAppBar = ref.read(gamesAppBarProvider);
       if (gamesAppBar.hasValue) {
         final rounds = gamesAppBar.value?.gamesAppBarModels ?? [];
-        final stageTourIds = rounds
-            .where((r) => r.id.startsWith('$kKnockoutStagePrefix-'))
-            .map((r) => r.id.replaceFirst('$kKnockoutStagePrefix-', ''))
-            .where((id) => id != aboutTourModel!.id) // Don't search main tour twice
-            .toSet()
-            .toList();
+        final stageTourIds =
+            rounds
+                .where((r) => r.id.startsWith('$kKnockoutStagePrefix-'))
+                .map((r) => r.id.replaceFirst('$kKnockoutStagePrefix-', ''))
+                .where(
+                  (id) => id != aboutTourModel!.id,
+                ) // Don't search main tour twice
+                .toSet()
+                .toList();
 
         // Search each stage
         for (final stageTourId in stageTourIds) {
@@ -691,7 +705,9 @@ class GamesTourScreenProvider
         } catch (_) {}
       }
 
-      debugPrint('🔍 Search completed: Found ${models.length} games across all stages for query "$query"');
+      debugPrint(
+        '🔍 Search completed: Found ${models.length} games across all stages for query "$query"',
+      );
 
       if (mounted) {
         state = AsyncValue.data(
@@ -724,7 +740,9 @@ class GamesTourScreenProvider
   // Named knockout stages get high numbers so they sort after numbered rounds.
   int _extractRoundNumber(String roundSlug) {
     final slug = roundSlug.toLowerCase();
-    if (slug.contains('final') && !slug.contains('quarter') && !slug.contains('semi')) {
+    if (slug.contains('final') &&
+        !slug.contains('quarter') &&
+        !slug.contains('semi')) {
       return 10000;
     }
     if (slug.contains('semifinal') || slug.contains('semi-final')) {
@@ -733,14 +751,18 @@ class GamesTourScreenProvider
     if (slug.contains('quarterfinal') || slug.contains('quarter-final')) {
       return 8000;
     }
-    final match = RegExp(r'round-?(\d+)', caseSensitive: false).firstMatch(roundSlug) ??
-                  RegExp(r'(\d+)').firstMatch(roundSlug);
+    final match =
+        RegExp(r'round-?(\d+)', caseSensitive: false).firstMatch(roundSlug) ??
+        RegExp(r'(\d+)').firstMatch(roundSlug);
     return int.tryParse(match?.group(1) ?? '0') ?? 0;
   }
 
   // Helper method to extract game number from round slug (e.g., "round-6--game-2" -> 2)
   int _extractGameNumber(String roundSlug) {
-    final match = RegExp(r'game-?(\d+)', caseSensitive: false).firstMatch(roundSlug);
+    final match = RegExp(
+      r'game-?(\d+)',
+      caseSensitive: false,
+    ).firstMatch(roundSlug);
     return int.tryParse(match?.group(1) ?? '0') ?? 0;
   }
 }

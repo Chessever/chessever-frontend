@@ -1739,10 +1739,7 @@ class _ColorStatCardState extends State<_ColorStatCard> {
                     selectProgress,
                   )!;
 
-              final defaultBorderColor =
-                  widget.color == Colors.white
-                      ? kWhiteColor.withValues(alpha: 0.2)
-                      : kBlackColor;
+              final defaultBorderColor = kWhiteColor.withValues(alpha: 0.08);
               final selectedBorderColor = accentColor;
               final borderColor =
                   Color.lerp(

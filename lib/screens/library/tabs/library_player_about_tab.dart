@@ -711,9 +711,7 @@ class _ColorStatCard extends StatelessWidget {
         color: kBlack2Color,
         borderRadius: BorderRadius.circular(12.br),
         border: Border.all(
-          color: color == Colors.white
-              ? kWhiteColor.withValues(alpha: 0.2)
-              : kBlackColor,
+          color: kWhiteColor.withValues(alpha: 0.08),
           width: 1,
         ),
       ),
