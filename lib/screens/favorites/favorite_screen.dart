@@ -1,4 +1,5 @@
 import 'package:chessever2/screens/favorites/favorite_players_provider.dart';
+import 'package:chessever2/screens/player_profile/player_profile_data_source.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/screens/standings/score_card_screen.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
@@ -223,6 +224,9 @@ class _FavoriteScreenState extends ConsumerState<FavoriteScreen> {
                       ref.read(scoreCardGamesContextProvider.notifier).state = null;
                       // No event context from favorites screen
                       ref.read(scoreCardHasEventContextProvider.notifier).state = false;
+                      ref
+                          .read(scoreCardPlayerProfileDataSourceProvider.notifier)
+                          .state = PlayerProfileDataSource.supabase;
                       Navigator.pushNamed(context, '/scorecard_screen');
                     },
                     onToggleFavorite: () => _removeFavoritePlayer(player),

@@ -40,7 +40,7 @@ class LibrarySearchBar extends ConsumerStatefulWidget {
     this.onFilterTap,
     this.enableOverlay = true,
     this.showFilterIcon = true,
-    this.hintText = 'Search books',
+    this.hintText = 'Search',
     this.focusNode,
     this.hintPhrases,
   });
@@ -212,13 +212,19 @@ class _LibrarySearchBarState extends ConsumerState<LibrarySearchBar> {
               children: [
                 // Animated hint text (shown when empty and not focused)
                 if (isEmpty && !_effectiveFocusNode.hasFocus)
-                  AnimatedSearchHint(
-                    textColor: const Color(0xFFFFFFFF).withValues(alpha: 0.7),
-                    textStyle: AppTypography.textXsRegular,
-                    phrases:
-                        widget.hintPhrases ??
-                        const ['Search books', 'Find a book...'],
-                  ),
+                  if (widget.hintPhrases != null && widget.hintPhrases!.length > 1)
+                    AnimatedSearchHint(
+                      textColor: const Color(0xFFFFFFFF).withValues(alpha: 0.7),
+                      textStyle: AppTypography.textXsRegular,
+                      phrases: widget.hintPhrases!,
+                    )
+                  else
+                    Text(
+                      widget.hintText,
+                      style: AppTypography.textXsRegular.copyWith(
+                        color: const Color(0xFFFFFFFF).withValues(alpha: 0.7),
+                      ),
+                    ),
                 // CSS: 12px, Inter, rgba(255,255,255,0.7)
                 TextField(
                   controller: widget.controller,

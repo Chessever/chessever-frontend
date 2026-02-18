@@ -432,9 +432,18 @@ void _initializePostStartupServices() {
   WidgetsBinding.instance.addObserver(
     LifecycleEventHandler(
       onAppExit: () async {
-        StockfishSingleton().dispose();
+        // Keep lifecycle transitions deterministic by clearing pending engine
+        // work whenever app truly backgrounds.
+        await StockfishSingleton().cancelAllEvaluations();
       },
       onAppResume: () async {
+        // If engine exists in terminal state after lifecycle change, recover it
+        // before new board evaluations start.
+        final stockfish = StockfishSingleton();
+        if (stockfish.requiresRecovery) {
+          unawaited(stockfish.forceRecovery());
+        }
+
         // Sync purchases when app comes to foreground
         final revenueCat = RevenueCatService();
         if (revenueCat.onAppResumeCallback != null) {

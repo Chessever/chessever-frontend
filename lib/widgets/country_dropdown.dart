@@ -183,7 +183,7 @@ class _CountryDropdownState extends ConsumerState<CountryDropdown> {
                       horizontal: 12.w,
                       vertical: 10.h,
                     ),
-                    hintText: 'Search country...',
+                    hintText: 'Search',
                     hintStyle: AppTypography.textSmRegular.copyWith(
                       color: kWhiteColor.withValues(alpha: 0.5),
                     ),

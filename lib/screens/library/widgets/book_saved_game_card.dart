@@ -6,9 +6,14 @@ import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
 import 'package:flutter/material.dart';
 
 class BookSavedGameCard extends StatelessWidget {
-  const BookSavedGameCard({super.key, required this.analysis});
+  const BookSavedGameCard({
+    super.key,
+    required this.analysis,
+    this.onTap,
+  });
 
   final SavedAnalysis analysis;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -18,7 +23,7 @@ class BookSavedGameCard extends StatelessWidget {
     return LibraryGameCard(
       game: game,
       eventName: eventName,
-      onTap: () => loadSavedAnalysis(context, analysis),
+      onTap: onTap ?? () => loadSavedAnalysis(context, analysis),
     );
   }
 

@@ -49,6 +49,25 @@ class LibraryFolderMapper extends ClassMapperBase<LibraryFolder> {
     'updatedAt',
     _$updatedAt,
   );
+  static String? _$shareToken(LibraryFolder v) => v.shareToken;
+  static const Field<LibraryFolder, String> _f$shareToken = Field(
+    'shareToken',
+    _$shareToken,
+    opt: true,
+  );
+  static String? _$ownerDisplayName(LibraryFolder v) => v.ownerDisplayName;
+  static const Field<LibraryFolder, String> _f$ownerDisplayName = Field(
+    'ownerDisplayName',
+    _$ownerDisplayName,
+    opt: true,
+  );
+  static bool _$isSubscribed(LibraryFolder v) => v.isSubscribed;
+  static const Field<LibraryFolder, bool> _f$isSubscribed = Field(
+    'isSubscribed',
+    _$isSubscribed,
+    opt: true,
+    def: false,
+  );
 
   @override
   final MappableFields<LibraryFolder> fields = const {
@@ -60,6 +79,9 @@ class LibraryFolderMapper extends ClassMapperBase<LibraryFolder> {
     #orderIndex: _f$orderIndex,
     #createdAt: _f$createdAt,
     #updatedAt: _f$updatedAt,
+    #shareToken: _f$shareToken,
+    #ownerDisplayName: _f$ownerDisplayName,
+    #isSubscribed: _f$isSubscribed,
   };
 
   static LibraryFolder _instantiate(DecodingData data) {
@@ -72,6 +94,9 @@ class LibraryFolderMapper extends ClassMapperBase<LibraryFolder> {
       orderIndex: data.dec(_f$orderIndex),
       createdAt: data.dec(_f$createdAt),
       updatedAt: data.dec(_f$updatedAt),
+      shareToken: data.dec(_f$shareToken),
+      ownerDisplayName: data.dec(_f$ownerDisplayName),
+      isSubscribed: data.dec(_f$isSubscribed),
     );
   }
 
@@ -146,6 +171,9 @@ abstract class LibraryFolderCopyWith<$R, $In extends LibraryFolder, $Out>
     int? orderIndex,
     DateTime? createdAt,
     DateTime? updatedAt,
+    String? shareToken,
+    String? ownerDisplayName,
+    bool? isSubscribed,
   });
   LibraryFolderCopyWith<$R2, $In, $Out2> $chain<$R2, $Out2>(Then<$Out2, $R2> t);
 }
@@ -168,6 +196,9 @@ class _LibraryFolderCopyWithImpl<$R, $Out>
     int? orderIndex,
     DateTime? createdAt,
     DateTime? updatedAt,
+    Object? shareToken = $none,
+    Object? ownerDisplayName = $none,
+    bool? isSubscribed,
   }) => $apply(
     FieldCopyWithData({
       if (id != null) #id: id,
@@ -178,6 +209,9 @@ class _LibraryFolderCopyWithImpl<$R, $Out>
       if (orderIndex != null) #orderIndex: orderIndex,
       if (createdAt != null) #createdAt: createdAt,
       if (updatedAt != null) #updatedAt: updatedAt,
+      if (shareToken != $none) #shareToken: shareToken,
+      if (ownerDisplayName != $none) #ownerDisplayName: ownerDisplayName,
+      if (isSubscribed != null) #isSubscribed: isSubscribed,
     }),
   );
   @override
@@ -190,6 +224,9 @@ class _LibraryFolderCopyWithImpl<$R, $Out>
     orderIndex: data.get(#orderIndex, or: $value.orderIndex),
     createdAt: data.get(#createdAt, or: $value.createdAt),
     updatedAt: data.get(#updatedAt, or: $value.updatedAt),
+    shareToken: data.get(#shareToken, or: $value.shareToken),
+    ownerDisplayName: data.get(#ownerDisplayName, or: $value.ownerDisplayName),
+    isSubscribed: data.get(#isSubscribed, or: $value.isSubscribed),
   );
 
   @override
@@ -197,4 +234,3 @@ class _LibraryFolderCopyWithImpl<$R, $Out>
     Then<$Out2, $R2> t,
   ) => _LibraryFolderCopyWithImpl<$R2, $Out2>($value, $cast, t);
 }
-

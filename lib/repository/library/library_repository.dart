@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:math';
 import 'package:chessever2/repository/library/models/library_folder.dart';
 import 'package:chessever2/repository/library/models/saved_analysis.dart';
+import 'package:chessever2/repository/library/models/shared_book_preview.dart';
 import 'package:chessever2/repository/supabase/base_repository.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -128,6 +130,160 @@ class LibraryRepository extends BaseRepository {
 
     if (response == null) return 0;
     return (response['order_index'] as int) + 1;
+  }
+
+  // ============ SHARING METHODS ============
+
+  static final _random = Random.secure();
+  static const _tokenChars =
+      'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+
+  static String _generateToken([int length = 10]) {
+    return List.generate(
+      length,
+      (_) => _tokenChars[_random.nextInt(_tokenChars.length)],
+    ).join();
+  }
+
+  /// Generate a share token for a folder and store the owner's display name.
+  /// Returns the updated folder with the new share_token.
+  Future<LibraryFolder> generateShareToken(String folderId) =>
+      handleApiCall(() async {
+    final user = supabase.auth.currentUser;
+    if (user == null) throw Exception('User not authenticated');
+
+    final displayName = user.userMetadata?['full_name'] as String? ??
+        user.userMetadata?['name'] as String? ??
+        user.email?.split('@').first ??
+        'Unknown';
+
+    final token = _generateToken();
+
+    final response = await supabase
+        .from('user_folders')
+        .update({
+      'share_token': token,
+      'owner_display_name': displayName,
+    })
+        .eq('id', folderId)
+        .eq('user_id', user.id)
+        .select()
+        .single();
+
+    return LibraryFolder.fromSupabase(response);
+  });
+
+  /// Revoke sharing for a folder by clearing its share_token.
+  Future<void> revokeShareToken(String folderId) => handleApiCall(() async {
+    final userId = supabase.auth.currentUser?.id;
+    if (userId == null) throw Exception('User not authenticated');
+
+    await supabase
+        .from('user_folders')
+        .update({'share_token': null})
+        .eq('id', folderId)
+        .eq('user_id', userId);
+  });
+
+  /// Fetch a shared book preview by token (works with anon key for web).
+  Future<SharedBookPreview?> getBookByShareToken(String token) =>
+      handleApiCall(() async {
+    final response =
+        await supabase.rpc('get_shared_book', params: {'p_token': token});
+
+    if (response == null) return null;
+    return SharedBookPreview.fromJson(response as Map<String, dynamic>);
+  });
+
+  /// Subscribe the current user to a shared folder.
+  Future<void> subscribeToBook(String folderId) => handleApiCall(() async {
+    final userId = supabase.auth.currentUser?.id;
+    if (userId == null) throw Exception('User not authenticated');
+
+    await supabase.from('book_subscriptions').insert({
+      'folder_id': folderId,
+      'subscriber_id': userId,
+    });
+  });
+
+  /// Unsubscribe the current user from a shared folder.
+  Future<void> unsubscribeFromBook(String folderId) =>
+      handleApiCall(() async {
+    final userId = supabase.auth.currentUser?.id;
+    if (userId == null) throw Exception('User not authenticated');
+
+    await supabase
+        .from('book_subscriptions')
+        .delete()
+        .eq('folder_id', folderId)
+        .eq('subscriber_id', userId);
+  });
+
+  /// Get all folders the current user is subscribed to.
+  Future<List<LibraryFolder>> getSubscribedBooks() =>
+      handleApiCall(() async {
+    final userId = supabase.auth.currentUser?.id;
+    if (userId == null) throw Exception('User not authenticated');
+
+    // Fetch subscription folder IDs
+    final subs = await supabase
+        .from('book_subscriptions')
+        .select('folder_id')
+        .eq('subscriber_id', userId);
+
+    final folderIds =
+        (subs as List).map((s) => s['folder_id'] as String).toList();
+    if (folderIds.isEmpty) return [];
+
+    // Fetch the actual folders (RLS grants access via subscription)
+    final folders = await supabase
+        .from('user_folders')
+        .select()
+        .inFilter('id', folderIds)
+        .order('name', ascending: true);
+
+    return (folders as List)
+        .map((json) => LibraryFolder.fromSupabase(json)
+            .copyWith(isSubscribed: true))
+        .toList();
+  });
+
+  /// Check if the current user is subscribed to a folder.
+  Future<bool> isSubscribedToBook(String folderId) =>
+      handleApiCall(() async {
+    final userId = supabase.auth.currentUser?.id;
+    if (userId == null) return false;
+
+    final response = await supabase
+        .from('book_subscriptions')
+        .select()
+        .eq('folder_id', folderId)
+        .eq('subscriber_id', userId)
+        .maybeSingle();
+
+    return response != null;
+  });
+
+  /// Stream analyses in a subscribed (shared) folder.
+  /// Uses a polling-based approach since Supabase streams filter by user_id
+  /// which won't work for shared folders.
+  Stream<List<SavedAnalysis>> subscribeSharedFolderAnalyses(String folderId) {
+    // Poll every 10 seconds for updates. Supabase realtime streams
+    // filter by the authenticated user's rows, so we can't use stream()
+    // for another user's data. Regular select() works via RLS.
+    return Stream.periodic(const Duration(seconds: 10))
+        .asyncMap((_) async {
+      final response = await supabase
+          .from('user_saved_analyses')
+          .select()
+          .eq('folder_id', folderId)
+          .order('created_at', ascending: false);
+
+      return (response as List)
+          .map((json) => SavedAnalysis.fromSupabase(json))
+          .toList();
+    }).distinct((a, b) => a.length == b.length &&
+        a.map((e) => e.id).join() == b.map((e) => e.id).join());
   }
 
   // ============ SAVED ANALYSIS METHODS ============

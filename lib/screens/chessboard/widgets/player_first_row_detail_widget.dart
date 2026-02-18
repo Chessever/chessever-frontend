@@ -1,26 +1,28 @@
 import 'package:chessever2/providers/engine_settings_provider.dart';
-import 'package:chessever2/providers/for_you_games_provider.dart';
+import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
+import 'package:chessever2/repository/supabase/chess_player/chess_player_repository.dart';
 import 'package:chessever2/screens/chessboard/view_model/chess_board_state_new.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/group_event/providers/countryman_games_tour_screen_provider.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/screens/standings/score_card_screen.dart';
+import 'package:chessever2/screens/player_profile/player_profile_data_source.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
+import 'package:chessever2/utils/chess_title_utils.dart';
 import 'package:chessever2/utils/location_service_provider.dart';
-import 'package:chessever2/utils/png_asset.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/utils/twic_player_enrichment.dart';
 import 'package:chessever2/widgets/atomic_countdown_text.dart';
-import 'package:country_flags/country_flags.dart';
+import 'package:chessever2/widgets/federation_flag.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/utils/svg_asset.dart';
-import 'dart:ui';
 
 enum PlayerView { listView, gridView, boardView }
 
@@ -31,7 +33,9 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
   final bool isWhitePlayer;
   final ChessBoardStateNew? chessBoardState;
   final bool isPinned;
+  final PlayerProfileDataSource playerProfileDataSource;
   final bool showClock;
+  final ValueChanged<String>? onEditName;
 
   const PlayerFirstRowDetailWidget({
     super.key,
@@ -41,7 +45,9 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
     this.isCurrentPlayer = false,
     this.chessBoardState,
     this.isPinned = false,
+    this.playerProfileDataSource = PlayerProfileDataSource.supabase,
     this.showClock = true,
+    this.onEditName,
   });
 
   @override
@@ -51,9 +57,102 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
           ? gamesTourModel.whitePlayer
           : gamesTourModel.blackPlayer;
     }, [gamesTourModel, isWhitePlayer]);
+    final enrichedPlayerFuture = useMemoized(
+      () async {
+        final fideId = playerCard.fideId;
+        final gamebasePlayerId = playerCard.gamebasePlayerId?.trim();
+        final needsEnrichment =
+            playerCard.title.trim().isEmpty ||
+            playerCard.countryCode.trim().isEmpty ||
+            fideId == null ||
+            fideId <= 0;
+        if (!needsEnrichment) {
+          return playerCard;
+        }
+
+        var enrichedCard = playerCard;
+        if (fideId != null && fideId > 0) {
+          final supabasePlayer = await ref
+              .read(chessPlayerRepositoryProvider)
+              .getPlayerByFideId(fideId);
+          if (supabasePlayer != null) {
+            enrichedCard = enrichPlayerCardFromChessPlayers(enrichedCard, {
+              fideId: supabasePlayer,
+            });
+          }
+        }
+
+        final stillMissingSurfaceData =
+            enrichedCard.title.trim().isEmpty ||
+            enrichedCard.countryCode.trim().isEmpty ||
+            enrichedCard.fideId == null ||
+            enrichedCard.fideId! <= 0;
+        if (stillMissingSurfaceData &&
+            gamebasePlayerId != null &&
+            gamebasePlayerId.isNotEmpty) {
+          final gamebasePlayer = await ref
+              .read(gamebaseRepositoryProvider)
+              .getPlayerById(gamebasePlayerId);
+          if (gamebasePlayer != null) {
+            final resolvedFideId = int.tryParse(gamebasePlayer.fideId);
+            enrichedCard = enrichedCard.copyWith(
+              title:
+                  enrichedCard.title.trim().isNotEmpty
+                      ? enrichedCard.title
+                      : ChessTitleUtils.normalize(gamebasePlayer.title),
+              countryCode:
+                  enrichedCard.countryCode.trim().isNotEmpty
+                      ? enrichedCard.countryCode
+                      : gamebasePlayer.fed,
+              rating:
+                  enrichedCard.rating > 0
+                      ? enrichedCard.rating
+                      : (gamebasePlayer.ratingClassical ??
+                          gamebasePlayer.highestRating ??
+                          0),
+              fideId:
+                  (enrichedCard.fideId != null && enrichedCard.fideId! > 0)
+                      ? enrichedCard.fideId
+                      : (resolvedFideId != null && resolvedFideId > 0)
+                      ? resolvedFideId
+                      : enrichedCard.fideId,
+            );
+          }
+        }
+
+        final resolvedFideId = enrichedCard.fideId;
+        final stillMissingFromSupabase =
+            resolvedFideId != null &&
+            resolvedFideId > 0 &&
+            (enrichedCard.title.trim().isEmpty ||
+                enrichedCard.countryCode.trim().isEmpty);
+        if (stillMissingFromSupabase) {
+          final supabasePlayer = await ref
+              .read(chessPlayerRepositoryProvider)
+              .getPlayerByFideId(resolvedFideId);
+          if (supabasePlayer != null) {
+            enrichedCard = enrichPlayerCardFromChessPlayers(enrichedCard, {
+              resolvedFideId: supabasePlayer,
+            });
+          }
+        }
+
+        return enrichedCard;
+      },
+      [
+        playerCard.fideId,
+        playerCard.title,
+        playerCard.countryCode,
+        playerCard.gamebasePlayerId,
+        playerCard.name,
+        playerCard.rating,
+      ],
+    );
+    final enrichedPlayerSnapshot = useFuture(enrichedPlayerFuture);
+    final effectivePlayerCard = enrichedPlayerSnapshot.data ?? playerCard;
     final validCountryCode = ref
         .read(locationServiceProvider)
-        .getValidCountryCode(playerCard.countryCode);
+        .getValidCountryCode(effectivePlayerCard.countryCode);
 
     // Calculate move time from state if available, otherwise use game model's time
     final moveTime = useMemoized(() {
@@ -234,9 +333,12 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
     // GridView: 0 (no container padding)
     // BoardView: 16.sp (matches container margin in chess_board_screen_new)
     final boardMargin =
-        playerView == PlayerView.listView ? 0.sp :  // NO margin - container has padding!
-        playerView == PlayerView.gridView ? 0.sp :
-        16.sp; // BoardView needs margin
+        playerView == PlayerView.listView
+            ? 0.sp
+            : // NO margin - container has padding!
+            playerView == PlayerView.gridView
+            ? 0.sp
+            : 16.sp; // BoardView needs margin
 
     final endPadding = boardMargin; // Right margin matches left margin
 
@@ -266,35 +368,130 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
     final clockPadding = playerView == PlayerView.gridView ? 4.w : 6.w;
 
     return GestureDetector(
-      onTap: () {
+      onTap: () async {
         final standingsAsync = ref.read(playerTourScreenProvider);
 
         // Create fallback player model from game data - always has fideId if available
         final fallbackPlayer = PlayerStandingModel(
-          countryCode: playerCard.countryCode,
-          title: playerCard.title.isNotEmpty ? playerCard.title : null,
-          name: playerCard.name,
-          score: playerCard.rating,
+          countryCode: effectivePlayerCard.countryCode,
+          title:
+              effectivePlayerCard.title.isNotEmpty
+                  ? effectivePlayerCard.title
+                  : null,
+          name: effectivePlayerCard.name,
+          score: effectivePlayerCard.rating,
           scoreChange: 0,
           matchScore: null,
-          fideId: playerCard.fideId,
+          fideId: effectivePlayerCard.fideId,
+          gamebasePlayerId: effectivePlayerCard.gamebasePlayerId,
         );
 
         // Try to find player in tournament standings, otherwise use fallback
-        var playerStanding = standingsAsync.whenOrNull(
-          data: (standings) => standings.firstWhere(
-            (player) => player.name == playerCard.name,
-            orElse: () => fallbackPlayer,
-          ),
-        ) ?? fallbackPlayer;
+        var playerStanding =
+            standingsAsync.whenOrNull(
+              data:
+                  (standings) => standings.firstWhere(
+                    (player) => player.name == effectivePlayerCard.name,
+                    orElse: () => fallbackPlayer,
+                  ),
+            ) ??
+            fallbackPlayer;
 
         // IMPORTANT: If standings player has null fideId but game data has it,
         // use the fideId from game data (playerCard) - this is more reliable
         // since games.players always has fideId from broadcast while tours.players
         // may sometimes be missing it
-        if (playerStanding.fideId == null && playerCard.fideId != null) {
-          playerStanding = playerStanding.copyWith(fideId: playerCard.fideId);
+        if (playerStanding.fideId == null &&
+            effectivePlayerCard.fideId != null) {
+          playerStanding = playerStanding.copyWith(
+            fideId: effectivePlayerCard.fideId,
+          );
         }
+        if (playerStanding.gamebasePlayerId == null &&
+            effectivePlayerCard.gamebasePlayerId != null &&
+            effectivePlayerCard.gamebasePlayerId!.isNotEmpty) {
+          playerStanding = playerStanding.copyWith(
+            gamebasePlayerId: effectivePlayerCard.gamebasePlayerId,
+          );
+        }
+
+        // Fill missing title/federation from chess_players by FIDE ID.
+        if (playerStanding.fideId != null &&
+            ((playerStanding.title?.trim().isEmpty ?? true) ||
+                playerStanding.countryCode.trim().isEmpty)) {
+          try {
+            final chessPlayer = await ref
+                .read(chessPlayerRepositoryProvider)
+                .getPlayerByFideId(playerStanding.fideId!);
+            if (chessPlayer != null) {
+              playerStanding = playerStanding.copyWith(
+                title:
+                    (playerStanding.title?.trim().isNotEmpty ?? false)
+                        ? playerStanding.title
+                        : chessPlayer.title,
+                countryCode:
+                    playerStanding.countryCode.trim().isNotEmpty
+                        ? playerStanding.countryCode
+                        : (chessPlayer.country ?? ''),
+                score:
+                    playerStanding.score > 0
+                        ? playerStanding.score
+                        : (chessPlayer.rating ?? playerStanding.score),
+              );
+            }
+          } catch (_) {
+            // Non-critical: score card can still render with existing values.
+          }
+        }
+
+        // TWIC/Gamebase route: resolve fideId from gamebasePlayerId if missing.
+        // The gamebase search API may not include fideId in preview data, but
+        // the player record has it. Resolve it so ScoreCardScreen can fetch
+        // ratings per time control and player photo.
+        if (playerStanding.fideId == null &&
+            playerStanding.gamebasePlayerId != null &&
+            playerStanding.gamebasePlayerId!.isNotEmpty) {
+          try {
+            final gamebaseRepo = ref.read(gamebaseRepositoryProvider);
+            final gamebasePlayer = await gamebaseRepo.getPlayerById(
+              playerStanding.gamebasePlayerId!,
+            );
+            if (gamebasePlayer != null) {
+              final resolvedFideId = int.tryParse(gamebasePlayer.fideId);
+              final normalizedTitle = ChessTitleUtils.normalize(
+                gamebasePlayer.title,
+              );
+              final currentCountry = playerStanding.countryCode.trim();
+              final fallbackRating =
+                  gamebasePlayer.ratingClassical ??
+                  gamebasePlayer.highestRating ??
+                  0;
+
+              playerStanding = playerStanding.copyWith(
+                fideId:
+                    (resolvedFideId != null && resolvedFideId > 0)
+                        ? resolvedFideId
+                        : playerStanding.fideId,
+                title:
+                    (playerStanding.title?.trim().isNotEmpty ?? false)
+                        ? playerStanding.title
+                        : (normalizedTitle.isNotEmpty ? normalizedTitle : null),
+                countryCode:
+                    currentCountry.isNotEmpty
+                        ? currentCountry
+                        : gamebasePlayer.fed,
+                score:
+                    playerStanding.score > 0
+                        ? playerStanding.score
+                        : fallbackRating,
+              );
+            }
+          } catch (_) {
+            // Non-critical: score card will fall back to name-based lookup
+          }
+        }
+
+        if (!context.mounted) return;
 
         ref.read(selectedPlayerProvider.notifier).state = playerStanding;
 
@@ -310,25 +507,51 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
             // For favorites/player profile, show ALL player games (no event context)
             // Clear tournament context to avoid ScoreCardScreen using stale tournament data
             ref.read(selectedBroadcastModelProvider.notifier).state = null;
-            gamesContext = null; // Let ScoreCardScreen fetch via playerGamesProvider
+            gamesContext =
+                null; // Let ScoreCardScreen fetch via playerGamesProvider
             hasEventContext = false;
             break;
           case ChessboardView.tour:
-            // For tournament view, selectedBroadcastModelProvider will be set
-            // ScoreCardScreen will use gamesTourScreenProvider directly
-            gamesContext = null;
-            hasEventContext = true; // Tournament context
+            if (playerProfileDataSource == PlayerProfileDataSource.twic) {
+              // TWIC route: no broadcast model, use board screen's game list
+              // filtered to the current event for score card context.
+              ref.read(selectedBroadcastModelProvider.notifier).state = null;
+              final allBoardGames = ref.read(chessBoardAllGamesProvider);
+              final currentEvent = gamesTourModel.tourId;
+              if (currentEvent.isNotEmpty && allBoardGames.isNotEmpty) {
+                gamesContext =
+                    allBoardGames
+                        .where((g) => g.tourId == currentEvent)
+                        .toList();
+              }
+              gamesContext =
+                  (gamesContext != null && gamesContext.isNotEmpty)
+                      ? gamesContext
+                      : [gamesTourModel];
+              hasEventContext = true;
+            } else {
+              // For tournament view, selectedBroadcastModelProvider will be set
+              // ScoreCardScreen will use gamesTourScreenProvider directly
+              gamesContext = null;
+              hasEventContext = true; // Tournament context
+            }
             break;
           case ChessboardView.countryman:
             // For countrymen view, filter games by the current game's tournament
             // This ensures ScoreCardScreen shows only games from that specific event
             ref.read(selectedBroadcastModelProvider.notifier).state = null;
-            final allCountrymanGames = ref.read(countrymanGamesTourScreenProvider).valueOrNull?.gamesTourModels ?? [];
+            final allCountrymanGames =
+                ref
+                    .read(countrymanGamesTourScreenProvider)
+                    .valueOrNull
+                    ?.gamesTourModels ??
+                [];
             final currentTourIdCountryman = gamesTourModel.tourId;
             if (currentTourIdCountryman.isNotEmpty) {
-              gamesContext = allCountrymanGames
-                  .where((g) => g.tourId == currentTourIdCountryman)
-                  .toList();
+              gamesContext =
+                  allCountrymanGames
+                      .where((g) => g.tourId == currentTourIdCountryman)
+                      .toList();
               hasEventContext = true; // Filtered to specific event
             } else {
               gamesContext = allCountrymanGames;
@@ -357,15 +580,20 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
         // This handles cases where:
         // - view might not match expected case
         // - gamesContext filter returned empty (e.g., For You only has few games from event)
-        if ((gamesContext == null || gamesContext!.isEmpty) && gamesTourModel.tourId.isNotEmpty) {
+        if ((gamesContext == null || gamesContext.isEmpty) &&
+            gamesTourModel.tourId.isNotEmpty) {
           gamesContext = [gamesTourModel];
           hasEventContext = true;
         }
 
         // Set the games context and event context flag for ScoreCardScreen
         ref.read(scoreCardGamesContextProvider.notifier).state = gamesContext;
-        ref.read(scoreCardHasEventContextProvider.notifier).state = hasEventContext;
+        ref.read(scoreCardHasEventContextProvider.notifier).state =
+            hasEventContext;
+        ref.read(scoreCardPlayerProfileDataSourceProvider.notifier).state =
+            playerProfileDataSource;
 
+        if (!context.mounted) return;
         Navigator.pushNamed(context, '/scorecard_screen');
       },
       child: SizedBox(
@@ -374,194 +602,294 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
           mainAxisAlignment: MainAxisAlignment.start,
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-          SizedBox(width: boardMargin),
-          // Game result score - centered in eval bar width
-          SizedBox(
-            width: engineGaugeWidth,
-            child: gamesTourModel.gameStatus.isFinished
-                ? Center(
-                    child: Text(
-                      gamesTourModel.gameStatus == GameStatus.whiteWins
-                          ? (isWhitePlayer ? '1' : '0')
-                          : gamesTourModel.gameStatus == GameStatus.blackWins
-                          ? (isWhitePlayer ? '0' : '1')
-                          : '½',
-                      style: TextStyle(
-                        fontSize: playerView == PlayerView.gridView ? 9.f : 10.f,
-                        fontWeight: FontWeight.w700,
-                        color: kWhiteColor,
-                        height: 1.0,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                  )
-                : null,
-          ),
-          if (playerCard.countryCode.toUpperCase() == 'FID') ...[
-            Image.asset(
-              PngAsset.fideLogo,
-              height: flagHeight,
-              width: flagWidth,
-              fit: BoxFit.cover,
-              cacheWidth: 48,
-              cacheHeight: 36,
+            SizedBox(width: boardMargin),
+            // Game result score - centered in eval bar width
+            SizedBox(
+              width: engineGaugeWidth,
+              child:
+                  gamesTourModel.gameStatus.isFinished
+                      ? Center(
+                        child: Text(
+                          gamesTourModel.gameStatus == GameStatus.whiteWins
+                              ? (isWhitePlayer ? '1' : '0')
+                              : gamesTourModel.gameStatus ==
+                                  GameStatus.blackWins
+                              ? (isWhitePlayer ? '0' : '1')
+                              : '½',
+                          style: TextStyle(
+                            fontSize:
+                                playerView == PlayerView.gridView ? 9.f : 10.f,
+                            fontWeight: FontWeight.w700,
+                            color: kWhiteColor,
+                            height: 1.0,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      )
+                      : null,
             ),
-            SizedBox(width: elementSpacing),
-          ] else if (validCountryCode.isNotEmpty) ...[
-            CountryFlag.fromCountryCode(
-              validCountryCode,
-              height: flagHeight,
-              width: flagWidth,
-            ),
-            SizedBox(width: elementSpacing),
-          ] else
-            SizedBox(width: elementSpacing),
-          Expanded(
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                // Parse name parts - format is "Surname, Given Names"
-                final fullName = playerCard.name;
-                final nameParts =
-                    fullName.split(',').map((e) => e.trim()).toList();
-                final surname =
-                    nameParts.isNotEmpty
-                        ? nameParts[0]
-                        : ''; // Part before comma
-                final firstName =
-                    nameParts.length > 1
-                        ? nameParts[1]
-                        : ''; // Part after comma
+            if (effectivePlayerCard.countryCode.trim().isNotEmpty ||
+                validCountryCode.isNotEmpty) ...[
+              FederationFlag(
+                federation:
+                    effectivePlayerCard.countryCode.trim().isNotEmpty
+                        ? effectivePlayerCard.countryCode
+                        : validCountryCode,
+                height: flagHeight,
+                width: flagWidth,
+                borderRadius: BorderRadius.circular(2.br),
+              ),
+              SizedBox(width: elementSpacing),
+            ] else
+              SizedBox(width: elementSpacing),
+            Expanded(
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  // Reserve space for edit icon if present
+                  final editIconSpace = onEditName != null ? 4.w + 14.ic : 0.0;
+                  final availableWidth = constraints.maxWidth - editIconSpace;
 
-                // Build static parts
-                final rating = ' ${playerCard.rating}';
+                  // Parse name parts - format is "Surname, Given Names"
+                  final fullName = effectivePlayerCard.name;
+                  final nameParts =
+                      fullName.split(',').map((e) => e.trim()).toList();
+                  final surname =
+                      nameParts.isNotEmpty
+                          ? nameParts[0]
+                          : ''; // Part before comma
+                  final firstName =
+                      nameParts.length > 1
+                          ? nameParts[1]
+                          : ''; // Part after comma
 
-                // DEBUG: Log title value
-                if (playerView == PlayerView.boardView) {
-                  debugPrint('[PlayerTitle] ${playerCard.name}: title="${playerCard.title}", isEmpty=${playerCard.title.isEmpty}');
-                }
+                  // Build static parts
+                  final rating = ' ${effectivePlayerCard.rating}';
 
-                // Create text painter to measure text width
-                final textPainter = TextPainter(
-                  textDirection: TextDirection.ltr,
-                  maxLines: 1,
-                );
-
-                // Smart truncation: ALWAYS prioritize showing full surname
-                // Only abbreviate/truncate other parts, never reduce surname to initials
-                String displaySurname = surname;
-                String displayFirstName = firstName.isNotEmpty ? ', $firstName' : '';
-
-                if (surname.isNotEmpty) {
-                  // Strategy 1: Try full surname + full first name
-                  textPainter.text = TextSpan(
-                    children: [
-                      TextSpan(text: '${playerCard.title} ', style: rankStyle),
-                      TextSpan(text: surname, style: nameStyle),
-                      if (firstName.isNotEmpty)
-                        TextSpan(text: ', $firstName', style: nameStyle),
-                      TextSpan(text: rating, style: ratingStyle),
-                    ],
+                  // Create text painter to measure text width
+                  final textPainter = TextPainter(
+                    textDirection: TextDirection.ltr,
+                    maxLines: 1,
                   );
-                  textPainter.layout();
 
-                  // If doesn't fit, start trimming (but keep full surname!)
-                  if (textPainter.width > constraints.maxWidth && firstName.isNotEmpty) {
-                    // Strategy 2: Keep full surname + abbreviate first name
-                    final firstNameParts = firstName.split(' ');
-                    final abbreviatedFirst = firstNameParts
-                        .where((part) => part.isNotEmpty)
-                        .map((part) => '${part[0]}.')
-                        .join(' ');
-                    displayFirstName = ', $abbreviatedFirst';
+                  // Smart truncation: ALWAYS prioritize showing full surname
+                  // Only abbreviate/truncate other parts, never reduce surname to initials
+                  String displaySurname = surname;
+                  String displayFirstName =
+                      firstName.isNotEmpty ? ', $firstName' : '';
 
+                  if (surname.isNotEmpty) {
+                    // Strategy 1: Try full surname + full first name
                     textPainter.text = TextSpan(
                       children: [
-                        TextSpan(text: '${playerCard.title} ', style: rankStyle),
+                        TextSpan(
+                          text: '${effectivePlayerCard.title} ',
+                          style: rankStyle,
+                        ),
                         TextSpan(text: surname, style: nameStyle),
-                        TextSpan(text: displayFirstName, style: nameStyle),
+                        if (firstName.isNotEmpty)
+                          TextSpan(text: ', $firstName', style: nameStyle),
                         TextSpan(text: rating, style: ratingStyle),
                       ],
                     );
                     textPainter.layout();
 
-                    // Strategy 3: If still doesn't fit, drop first name entirely
-                    if (textPainter.width > constraints.maxWidth) {
-                      displayFirstName = '';
+                    // If doesn't fit, start trimming (but keep full surname!)
+                    if (textPainter.width > availableWidth &&
+                        firstName.isNotEmpty) {
+                      // Strategy 2: Keep full surname + abbreviate first name
+                      final firstNameParts = firstName.split(' ');
+                      final abbreviatedFirst = firstNameParts
+                          .where((part) => part.isNotEmpty)
+                          .map((part) => '${part[0]}.')
+                          .join(' ');
+                      displayFirstName = ', $abbreviatedFirst';
 
                       textPainter.text = TextSpan(
                         children: [
-                          TextSpan(text: '${playerCard.title} ', style: rankStyle),
+                          TextSpan(
+                            text: '${effectivePlayerCard.title} ',
+                            style: rankStyle,
+                          ),
                           TextSpan(text: surname, style: nameStyle),
+                          TextSpan(text: displayFirstName, style: nameStyle),
                           TextSpan(text: rating, style: ratingStyle),
                         ],
                       );
                       textPainter.layout();
 
-                      // Strategy 4: If STILL doesn't fit, let ellipsis truncate surname
-                      // This is the last resort - RichText will handle the truncation
-                      // We keep displaySurname as the full surname, RichText will add "..."
+                      // Strategy 3: If still doesn't fit, drop first name entirely
+                      if (textPainter.width > availableWidth) {
+                        displayFirstName = '';
+
+                        textPainter.text = TextSpan(
+                          children: [
+                            TextSpan(
+                              text: '${effectivePlayerCard.title} ',
+                              style: rankStyle,
+                            ),
+                            TextSpan(text: surname, style: nameStyle),
+                            TextSpan(text: rating, style: ratingStyle),
+                          ],
+                        );
+                        textPainter.layout();
+
+                        // Strategy 4: If STILL doesn't fit, let ellipsis truncate surname
+                        // This is the last resort - RichText will handle the truncation
+                        // We keep displaySurname as the full surname, RichText will add "..."
+                      }
                     }
                   }
-                }
 
-                return RichText(
-                  overflow: TextOverflow.ellipsis,
-                  maxLines: 1,
-                  softWrap: false,
-                  textAlign: TextAlign.left,
-                  text: TextSpan(
-                    style: nameStyle, // Add base style for inheritance
-                    children: [
-                      // Always render title (with trailing space) like old code
-                      TextSpan(text: '${playerCard.title} ', style: rankStyle),
-                      if (displaySurname.isNotEmpty)
-                        TextSpan(text: displaySurname, style: nameStyle),
-                      if (displayFirstName.isNotEmpty)
-                        TextSpan(text: displayFirstName, style: nameStyle),
-                      TextSpan(text: rating, style: ratingStyle),
-                    ],
-                  ),
-                );
-              },
+                  final nameWidget = RichText(
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 1,
+                    softWrap: false,
+                    textAlign: TextAlign.left,
+                    text: TextSpan(
+                      style: nameStyle, // Add base style for inheritance
+                      children: [
+                        // Always render title (with trailing space) like old code
+                        TextSpan(
+                          text: '${effectivePlayerCard.title} ',
+                          style: rankStyle,
+                        ),
+                        if (displaySurname.isNotEmpty)
+                          TextSpan(text: displaySurname, style: nameStyle),
+                        if (displayFirstName.isNotEmpty)
+                          TextSpan(text: displayFirstName, style: nameStyle),
+                        TextSpan(text: rating, style: ratingStyle),
+                      ],
+                    ),
+                  );
+
+                  if (onEditName != null) {
+                    return Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Flexible(child: nameWidget),
+                        SizedBox(width: 4.w),
+                        GestureDetector(
+                          onTap:
+                              () => _showEditNameDialog(
+                                context,
+                                effectivePlayerCard.name,
+                                onEditName!,
+                              ),
+                          child: Icon(
+                            Icons.edit,
+                            size: 14.ic,
+                            color: Colors.white.withValues(alpha: 0.4),
+                          ),
+                        ),
+                      ],
+                    );
+                  }
+
+                  return nameWidget;
+                },
+              ),
             ),
-          ),
-          if (isPinned) ...[
-            SvgPicture.asset(
-              SvgAsset.pin,
-              colorFilter: ColorFilter.mode(kpinColor, BlendMode.srcIn),
-              height: playerView == PlayerView.gridView ? 12.h : 12.h,
-              width: playerView == PlayerView.gridView ? 12.w : 12.w,
-            ),
-            SizedBox(width: playerView == PlayerView.gridView ? 3.w : 4.w),
+            if (isPinned) ...[
+              SvgPicture.asset(
+                SvgAsset.pin,
+                colorFilter: ColorFilter.mode(kpinColor, BlendMode.srcIn),
+                height: playerView == PlayerView.gridView ? 12.h : 12.h,
+                width: playerView == PlayerView.gridView ? 12.w : 12.w,
+              ),
+              SizedBox(width: playerView == PlayerView.gridView ? 3.w : 4.w),
+            ],
+            // Always show clock/time on the right - simplified structure to prevent overflow
+            if (showClock)
+              Container(
+                padding: EdgeInsets.symmetric(
+                  horizontal: clockPadding,
+                  vertical: playerView == PlayerView.gridView ? 1.sp : 0,
+                ),
+                decoration: BoxDecoration(
+                  color: isCurrentPlayer ? kDarkBlue : Colors.transparent,
+                  borderRadius:
+                      playerView == PlayerView.gridView
+                          ? BorderRadius.circular(2)
+                          : null,
+                ),
+                child: _PlayerClock(
+                  isWhitePlayer: isWhitePlayer,
+                  gamesTourModel: gamesTourModel,
+                  chessBoardState: chessBoardState,
+                  isCurrentPlayer: isCurrentPlayer,
+                  timeStyle: timeStyle,
+                  moveTime: moveTime,
+                ),
+              ),
+            SizedBox(width: endPadding),
           ],
-          // Always show clock/time on the right - simplified structure to prevent overflow
-          if (showClock)
-            Container(
-              padding: EdgeInsets.symmetric(
-                horizontal: clockPadding,
-                vertical: playerView == PlayerView.gridView ? 1.sp : 0,
-              ),
-              decoration: BoxDecoration(
-                color: isCurrentPlayer ? kDarkBlue : Colors.transparent,
-                borderRadius: playerView == PlayerView.gridView
-                    ? BorderRadius.circular(2)
-                    : null,
-              ),
-              child: _PlayerClock(
-                isWhitePlayer: isWhitePlayer,
-                gamesTourModel: gamesTourModel,
-                chessBoardState: chessBoardState,
-                isCurrentPlayer: isCurrentPlayer,
-                timeStyle: timeStyle,
-                moveTime: moveTime,
-              ),
-            ),
-          SizedBox(width: endPadding),
-        ],
         ),
       ),
     );
   }
+}
+
+void _showEditNameDialog(
+  BuildContext context,
+  String currentName,
+  ValueChanged<String> onSave,
+) {
+  final controller = TextEditingController(text: currentName);
+  showDialog<void>(
+    context: context,
+    builder:
+        (context) => AlertDialog(
+          backgroundColor: const Color(0xFF1E1E1E),
+          title: Text(
+            'Edit Player Name',
+            style: TextStyle(color: Colors.white, fontSize: 16.f),
+          ),
+          content: TextField(
+            controller: controller,
+            autofocus: true,
+            style: TextStyle(color: Colors.white, fontSize: 14.f),
+            decoration: InputDecoration(
+              hintText: 'Player name',
+              hintStyle: TextStyle(color: Colors.white38, fontSize: 14.f),
+              enabledBorder: UnderlineInputBorder(
+                borderSide: BorderSide(color: Colors.white24),
+              ),
+              focusedBorder: UnderlineInputBorder(
+                borderSide: BorderSide(color: Colors.white70),
+              ),
+            ),
+            onSubmitted: (value) {
+              final trimmed = value.trim();
+              if (trimmed.isNotEmpty && trimmed != currentName) {
+                onSave(trimmed);
+              }
+              Navigator.of(context).pop();
+            },
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: Text(
+                'Cancel',
+                style: TextStyle(color: Colors.white54, fontSize: 14.f),
+              ),
+            ),
+            TextButton(
+              onPressed: () {
+                final trimmed = controller.text.trim();
+                if (trimmed.isNotEmpty && trimmed != currentName) {
+                  onSave(trimmed);
+                }
+                Navigator.of(context).pop();
+              },
+              child: Text(
+                'Save',
+                style: TextStyle(color: Colors.white, fontSize: 14.f),
+              ),
+            ),
+          ],
+        ),
+  );
 }
 
 class _PlayerClock extends StatelessWidget {

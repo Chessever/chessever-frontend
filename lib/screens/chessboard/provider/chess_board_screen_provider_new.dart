@@ -50,6 +50,12 @@ final chessboardViewFromProviderNew = StateProvider<ChessboardView>((ref) {
   return ChessboardView.tour;
 });
 
+/// All games currently loaded in the board screen.
+/// Used by the player name tap → score card flow to pass full event context
+/// (especially for TWIC where no broadcast model is available).
+final chessBoardAllGamesProvider =
+    StateProvider<List<GamesTourModel>>((ref) => const []);
+
 // Global provider to track the currently visible page index
 // This prevents off-screen games from playing audio or triggering unnecessary updates
 final currentlyVisiblePageIndexProvider = StateProvider<int>((ref) {
@@ -3441,6 +3447,19 @@ class ChessBoardScreenNotifierNew
     );
   }
 
+  void updatePlayerName({required bool isWhite, required String newName}) {
+    final currentState = state.value;
+    if (currentState == null) return;
+    final updatedGame = isWhite
+        ? currentState.game.copyWith(
+            whitePlayer: currentState.game.whitePlayer.copyWith(name: newName),
+          )
+        : currentState.game.copyWith(
+            blackPlayer: currentState.game.blackPlayer.copyWith(name: newName),
+          );
+    state = AsyncValue.data(currentState.copyWith(game: updatedGame));
+  }
+
   void toggleEngineVisibility() {
     final currentState = state.value;
     if (currentState == null) return;
@@ -3486,6 +3505,7 @@ class ChessBoardScreenNotifierNew
   }
 
   Future<void> onBecameInvisible() async {
+    EasyDebounce.cancel('evaluation-$index');
     _cancelEvaluation = true;
     _cancelEvalWatchdog(resetPending: true);
     _clearActiveEvalState();
@@ -3495,9 +3515,26 @@ class ChessBoardScreenNotifierNew
   }
 
   Future<void> onBecameVisible({bool force = true}) async {
+    EasyDebounce.cancel('evaluation-$index');
+
+    final stockfish = StockfishSingleton();
     // Cancel only THIS provider's stale jobs before starting new evaluation
-    await StockfishSingleton().cancelEvaluationsForOwner(_stockfishOwnerId);
+    await stockfish.cancelEvaluationsForOwner(_stockfishOwnerId);
+
+    // Recover engine when lifecycle transitions leave it in a bad state.
+    if (stockfish.requiresRecovery) {
+      _releaseLog(
+        '🔧 LIFECYCLE: Recovering Stockfish (state: ${stockfish.engineStateDebug})',
+      );
+      try {
+        await stockfish.forceRecovery();
+      } catch (e) {
+        _releaseLog('⚠️ LIFECYCLE: Stockfish recovery failed: $e');
+      }
+    }
+
     _cancelEvaluation = false;
+    _cancelEvalWatchdog(resetPending: true);
     _clearActiveEvalState();
     _updateEvaluation(force: force);
   }
@@ -5892,8 +5929,9 @@ class ChessBoardProviderParams {
 
 /// Data needed to restore a saved analysis state
 class SavedAnalysisData {
-  /// Unique ID of the saved analysis (for tracking)
-  final String analysisId;
+  /// Unique ID of the saved analysis (for tracking).
+  /// Null when opening a shared/read-only game (no save-back).
+  final String? analysisId;
 
   /// Pre-built ChessGame with all variations
   final ChessGame chessGame;
@@ -5911,7 +5949,7 @@ class SavedAnalysisData {
   final int lastViewedPosition;
 
   const SavedAnalysisData({
-    required this.analysisId,
+    this.analysisId,
     required this.chessGame,
     required this.variationComments,
     this.movePointer,

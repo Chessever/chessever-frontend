@@ -365,7 +365,7 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
                       onChanged: _onSearchChanged,
                       decoration: InputDecoration(
                         isDense: true,
-                        hintText: 'Search games',
+                        hintText: 'Search',
                         hintStyle: AppTypography.textSmRegular.copyWith(
                           color: const Color(0xFFA1A1AA),
                         ),

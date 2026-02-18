@@ -5,6 +5,7 @@ import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provid
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/screens/library/widgets/add_to_folder_sheet.dart';
 import 'package:chessever2/screens/library/widgets/live_gamebase_search_game_card.dart';
+import 'package:chessever2/screens/player_profile/player_profile_data_source.dart';
 import 'package:chessever2/screens/player_profile/provider/player_profile_provider.dart';
 import 'package:chessever2/screens/player_profile/tabs/player_events_tab.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
@@ -34,10 +35,14 @@ class PlayerGamesTab extends ConsumerStatefulWidget {
     super.key,
     this.fideId,
     required this.playerName,
+    this.dataSource = PlayerProfileDataSource.supabase,
+    this.gamebasePlayerId,
   });
 
   final int? fideId;
   final String playerName;
+  final PlayerProfileDataSource dataSource;
+  final String? gamebasePlayerId;
 
   @override
   ConsumerState<PlayerGamesTab> createState() => _PlayerGamesTabState();
@@ -55,9 +60,11 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
 
   /// Get the player profile key for provider lookups
   PlayerProfileKey get _playerKey => PlayerProfileKey(
-        fideId: widget.fideId,
-        playerName: widget.playerName,
-      );
+    fideId: widget.fideId,
+    playerName: widget.playerName,
+    source: widget.dataSource,
+    gamebasePlayerId: widget.gamebasePlayerId,
+  );
 
   @override
   void dispose() {
@@ -104,7 +111,9 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
   /// Group games by event (tourId).
   /// Input games are already sorted by date descending, so insertion order
   /// in the LinkedHashMap gives events ordered by most-recent game first.
-  Map<String, List<GamesTourModel>> _groupGamesByEvent(List<GamesTourModel> games) {
+  Map<String, List<GamesTourModel>> _groupGamesByEvent(
+    List<GamesTourModel> games,
+  ) {
     final grouped = <String, List<GamesTourModel>>{};
     for (final game in games) {
       grouped.putIfAbsent(game.tourId, () => []).add(game);
@@ -155,9 +164,9 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
       }
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Unable to open event')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Unable to open event')));
     }
   }
 
@@ -167,12 +176,18 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
 
     final state = ref.watch(playerProfileGamesKeyProvider(_playerKey));
     final viewMode = ref.watch(gamesListViewModeProvider);
-    final horizontalPadding = ResponsiveHelper.adaptive(phone: 16.w, tablet: 24.w);
+    final horizontalPadding = ResponsiveHelper.adaptive(
+      phone: 16.w,
+      tablet: 24.w,
+    );
 
     // Watch event data for event-grouped display
-    final eventCardsAsync = widget.fideId != null
-        ? ref.watch(playerEventCardsProvider(widget.fideId!))
-        : const AsyncValue<Map<String, GroupEventCardModel>>.data({});
+    final eventCardsAsync =
+        widget.dataSource == PlayerProfileDataSource.twic
+            ? ref.watch(playerTwicEventCardsProvider(_playerKey))
+            : widget.fideId != null
+            ? ref.watch(playerEventCardsProvider(widget.fideId!))
+            : const AsyncValue<Map<String, GroupEventCardModel>>.data({});
     final eventsAsync = ref.watch(playerEventsKeyProvider(_playerKey));
 
     Widget content = RefreshIndicator(
@@ -193,7 +208,12 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
           // Search bar with filter button
           SliverToBoxAdapter(
             child: Padding(
-              padding: EdgeInsets.fromLTRB(horizontalPadding, 12.h, horizontalPadding, 8.h),
+              padding: EdgeInsets.fromLTRB(
+                horizontalPadding,
+                12.h,
+                horizontalPadding,
+                8.h,
+              ),
               child: _buildSearchBar(state),
             ),
           ),
@@ -210,7 +230,12 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
           // Games count
           SliverToBoxAdapter(
             child: Padding(
-              padding: EdgeInsets.fromLTRB(horizontalPadding, 8.h, horizontalPadding, 0),
+              padding: EdgeInsets.fromLTRB(
+                horizontalPadding,
+                8.h,
+                horizontalPadding,
+                0,
+              ),
               child: _buildGamesCount(state),
             ),
           ),
@@ -285,7 +310,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
                       onChanged: _onSearchChanged,
                       decoration: InputDecoration(
                         isDense: true,
-                        hintText: 'Search opponent, opening...',
+                        hintText: 'Search',
                         hintStyle: AppTypography.textSmRegular.copyWith(
                           color: const Color(0xFFA1A1AA),
                         ),
@@ -320,14 +345,16 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
               width: searchBarHeight,
               height: searchBarHeight,
               decoration: BoxDecoration(
-                color: hasActiveFilters
-                    ? const Color(0xFFEF4444).withValues(alpha: 0.15)
-                    : const Color(0xFF09090B),
+                color:
+                    hasActiveFilters
+                        ? const Color(0xFFEF4444).withValues(alpha: 0.15)
+                        : const Color(0xFF09090B),
                 borderRadius: BorderRadius.circular(12.br),
                 border: Border.all(
-                  color: hasActiveFilters
-                      ? const Color(0xFFEF4444).withValues(alpha: 0.5)
-                      : const Color(0xFF27272A),
+                  color:
+                      hasActiveFilters
+                          ? const Color(0xFFEF4444).withValues(alpha: 0.5)
+                          : const Color(0xFF27272A),
                 ),
               ),
               child: Stack(
@@ -336,9 +363,10 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
                   Icon(
                     Icons.tune_rounded,
                     size: 20.sp,
-                    color: hasActiveFilters
-                        ? const Color(0xFFEF4444)
-                        : const Color(0xFFA1A1AA),
+                    color:
+                        hasActiveFilters
+                            ? const Color(0xFFEF4444)
+                            : const Color(0xFFA1A1AA),
                   ),
                   if (hasActiveFilters)
                     Positioned(
@@ -418,11 +446,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              Icons.filter_list_rounded,
-              size: 16.sp,
-              color: filterRedColor,
-            ),
+            Icon(Icons.filter_list_rounded, size: 16.sp, color: filterRedColor),
             SizedBox(width: 6.w),
             Text(
               '${state.activeFilterCount} filter${state.activeFilterCount > 1 ? 's' : ''} active',
@@ -445,11 +469,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
               ),
             ],
             SizedBox(width: 8.w),
-            Icon(
-              Icons.close_rounded,
-              size: 14.sp,
-              color: filterRedColor,
-            ),
+            Icon(Icons.close_rounded, size: 14.sp, color: filterRedColor),
           ],
         ),
       ),
@@ -457,6 +477,8 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
   }
 
   Widget _buildGamesCount(PlayerProfileGamesState state) {
+    final isTwicLoading =
+        widget.dataSource == PlayerProfileDataSource.twic && state.isLoading;
     final filteredCount = state.filteredGames.length;
     final totalCount = state.allGames.length;
     final isFiltered = state.hasActiveFilters || state.searchQuery.isNotEmpty;
@@ -465,9 +487,11 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         Text(
-          isFiltered
-              ? '$filteredCount of $totalCount games'
-              : '$totalCount games',
+          isTwicLoading
+              ? 'Updating games...'
+              : (isFiltered
+                  ? '$filteredCount of $totalCount games'
+                  : '$totalCount games'),
           style: AppTypography.textXsMedium.copyWith(
             color: kWhiteColor.withValues(alpha: 0.5),
           ),
@@ -489,7 +513,9 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
     AsyncValue<Map<String, GroupEventCardModel>> eventCardsAsync,
     AsyncValue<List<PlayerEventData>> eventsAsync,
   ) {
-    if (state.isLoading && state.allGames.isEmpty) {
+    final isTwicBlockingLoading =
+        widget.dataSource == PlayerProfileDataSource.twic && state.isLoading;
+    if (isTwicBlockingLoading || (state.isLoading && state.allGames.isEmpty)) {
       return SliverFillRemaining(
         hasScrollBody: false,
         child: _buildLoadingState(),
@@ -568,7 +594,8 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
 
       // Games under this event
       if (isGridMode) {
-        final int gridColumns = ResponsiveHelper.isTablet && ResponsiveHelper.isLandscape ? 4 : 2;
+        final int gridColumns =
+            ResponsiveHelper.isTablet && ResponsiveHelper.isLandscape ? 4 : 2;
 
         for (int i = 0; i < eventGames.length; i += gridColumns) {
           final isLast = i + gridColumns >= eventGames.length;
@@ -586,13 +613,14 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
                   for (int j = 0; j < gridColumns; j++) ...[
                     if (j > 0) SizedBox(width: 12.sp),
                     Expanded(
-                      child: j < rowGames.length
-                          ? _buildGridGame(
-                              rowGames[j],
-                              gameIdToIndex[rowGames[j].gameId] ?? 0,
-                              games,
-                            )
-                          : const SizedBox.shrink(),
+                      child:
+                          j < rowGames.length
+                              ? _buildGridGame(
+                                rowGames[j],
+                                gameIdToIndex[rowGames[j].gameId] ?? 0,
+                                games,
+                              )
+                              : const SizedBox.shrink(),
                     ),
                   ],
                 ],
@@ -605,7 +633,8 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
           final game = eventGames[i];
           final isLast = i == eventGames.length - 1;
           final globalIndex = gameIdToIndex[game.gameId] ?? 0;
-          final showHint = isFirstGameCard && viewMode == GamesListViewMode.gamesCard;
+          final showHint =
+              isFirstGameCard && viewMode == GamesListViewMode.gamesCard;
           if (isFirstGameCard) isFirstGameCard = false;
 
           if (isChessBoardVisible) {
@@ -622,7 +651,9 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
                     if (!hasPremium) return;
                     if (!mounted) return;
 
-                    ref.read(gameCardWrapperProvider).navigateToChessBoard(
+                    ref
+                        .read(gameCardWrapperProvider)
+                        .navigateToChessBoard(
                           context: context,
                           orderedGames: updatedGames,
                           gameIndex: globalIndex,
@@ -647,6 +678,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
                   showRound: true,
                   showSwipeHint: showHint,
                   showGamebaseButton: false,
+                  playerProfileDataSource: widget.dataSource,
                   onAdd: () => _showAddToFolderSheet(game),
                 ),
               ),
@@ -656,9 +688,15 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
       }
     }
 
-    final horizontalPadding = ResponsiveHelper.adaptive(phone: 16.w, tablet: 24.w);
+    final horizontalPadding = ResponsiveHelper.adaptive(
+      phone: 16.w,
+      tablet: 24.w,
+    );
     return SliverPadding(
-      padding: EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: 8.h),
+      padding: EdgeInsets.symmetric(
+        horizontal: horizontalPadding,
+        vertical: 8.h,
+      ),
       sliver: SliverList(
         delegate: SliverChildBuilderDelegate(
           (context, index) => items[index],
@@ -684,7 +722,9 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
         if (!hasPremium) return;
         if (!mounted) return;
 
-        ref.read(gameCardWrapperProvider).navigateToChessBoard(
+        ref
+            .read(gameCardWrapperProvider)
+            .navigateToChessBoard(
               context: context,
               orderedGames: updatedGames,
               gameIndex: gameIndex,
@@ -702,28 +742,34 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
   }
 
   Widget _buildLoadingState() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          SizedBox(
-            width: 48.w,
-            height: 48.h,
-            child: const CircularProgressIndicator(
-              color: kWhiteColor,
-              strokeWidth: 2.5,
-            ),
+    return Padding(
+          padding: EdgeInsets.symmetric(horizontal: 16.w),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              for (int i = 0; i < 4; i++) ...[
+                Container(
+                  width: double.infinity,
+                  height: 96.h,
+                  margin: EdgeInsets.only(bottom: i == 3 ? 0 : 12.h),
+                  decoration: BoxDecoration(
+                    color: kBlack2Color,
+                    borderRadius: BorderRadius.circular(12.br),
+                  ),
+                ),
+              ],
+              SizedBox(height: 16.h),
+              Text(
+                'Loading games...',
+                style: AppTypography.textSmRegular.copyWith(
+                  color: const Color(0xFFA1A1AA),
+                ),
+              ),
+            ],
           ),
-          SizedBox(height: 16.h),
-          Text(
-            'Loading games...',
-            style: AppTypography.textSmRegular.copyWith(
-              color: const Color(0xFFA1A1AA),
-            ),
-          ),
-        ],
-      ),
-    ).animate().fadeIn(duration: 300.ms);
+        )
+        .animate(onPlay: (controller) => controller.repeat())
+        .shimmer(duration: 1400.ms, color: kWhiteColor.withValues(alpha: 0.1));
   }
 
   Widget _buildErrorState(String error) {
@@ -762,9 +808,13 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
           ),
           SizedBox(height: 24.h),
           TextButton(
-            onPressed: () => ref
-                .read(playerProfileGamesKeyProvider(_playerKey).notifier)
-                .refresh(),
+            onPressed:
+                () =>
+                    ref
+                        .read(
+                          playerProfileGamesKeyProvider(_playerKey).notifier,
+                        )
+                        .refresh(),
             style: TextButton.styleFrom(
               backgroundColor: kWhiteColor.withValues(alpha: 0.1),
               padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 12.h),

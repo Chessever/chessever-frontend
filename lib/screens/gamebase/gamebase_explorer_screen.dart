@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 import 'package:chessever2/providers/board_settings_provider_new.dart';
+import 'package:chessever2/screens/chessboard/provider/current_eval_provider.dart';
+import 'package:chessever2/screens/chessboard/widgets/evaluation_bar_widget.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/screen_wrapper.dart';
@@ -47,11 +49,14 @@ class _GamebaseExplorerScreenState
     });
   }
 
+  static final double _evalBarWidth = 20.sp;
+
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(gamebaseExplorerProvider);
     final screenWidth = MediaQuery.of(context).size.width;
-    final boardSize = screenWidth - 48.sp; // Account for padding
+    final boardSize =
+        screenWidth - 48.sp - _evalBarWidth - 4.sp; // padding + eval bar + gap
 
     return ScreenWrapper(
       child: Scaffold(
@@ -64,12 +69,23 @@ class _GamebaseExplorerScreenState
             ),
             child: Column(
               children: [
-                // Chess board section
+                // Chess board section with eval bar
                 Padding(
                   padding: EdgeInsets.all(24.sp),
-                  child: _GamebaseChessBoard(
-                    fen: state.currentFen,
-                    boardSize: boardSize,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      _ExplorerEvalBar(
+                        fen: state.currentFen,
+                        height: boardSize,
+                        width: _evalBarWidth,
+                      ),
+                      SizedBox(width: 4.sp),
+                      _GamebaseChessBoard(
+                        fen: state.currentFen,
+                        boardSize: boardSize,
+                      ),
+                    ],
                   ),
                 ),
 
@@ -211,6 +227,68 @@ class _GamebaseChessBoard extends ConsumerWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Eval bar for the standalone gamebase explorer, powered by
+/// [gameCardEvalWithStockfishFallbackProvider] (local → Supabase → Stockfish depth 8).
+class _ExplorerEvalBar extends ConsumerWidget {
+  const _ExplorerEvalBar({
+    required this.fen,
+    required this.height,
+    required this.width,
+  });
+
+  final String fen;
+  final double height;
+  final double width;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    if (fen.isEmpty) {
+      return SizedBox(width: width, height: height);
+    }
+
+    final evalAsync =
+        ref.watch(gameCardEvalWithStockfishFallbackProvider(fen));
+
+    return evalAsync.when(
+      data: (cloud) {
+        final pv = cloud.pvs.firstOrNull;
+        if (pv == null) {
+          return EvaluationBarWidget(
+            width: width,
+            height: height,
+            isFlipped: false,
+            evaluation: null,
+            mate: null,
+            isEvaluating: true,
+          );
+        }
+
+        final eval = pv.cp / 100.0;
+        final mate = (pv.isMate && pv.mate != null) ? pv.mate : null;
+
+        return EvaluationBarWidget(
+          width: width,
+          height: height,
+          isFlipped: false,
+          evaluation: eval,
+          mate: mate,
+          isEvaluating: false,
+          positionKey: fen,
+        );
+      },
+      loading: () => EvaluationBarWidget(
+        width: width,
+        height: height,
+        isFlipped: false,
+        evaluation: null,
+        mate: null,
+        isEvaluating: true,
+      ),
+      error: (_, __) => SizedBox(width: width, height: height),
     );
   }
 }

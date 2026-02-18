@@ -69,7 +69,9 @@ class GamebaseRepository {
       final normalizedFen = _normalizeFenForLookup(fen);
       final body = <String, dynamic>{
         'fen': normalizedFen,
-        'moves': moves.map((m) => m.trim().toLowerCase()).toList(growable: false),
+        'moves': moves
+            .map((m) => m.trim().toLowerCase())
+            .toList(growable: false),
         if (playerId != null && playerId.isNotEmpty) 'playerId': playerId,
         if (timeControl != null) 'timeControl': timeControl.name.toUpperCase(),
         if (minRating != null) 'minRating': minRating,
@@ -79,11 +81,13 @@ class GamebaseRepository {
       if (kDebugMode) {
         debugPrint('[GamebaseRepository] getMoveAggregates:');
         debugPrint('  URL: $_baseUrl/api/game-position/aggregates/query');
-        debugPrint('  Body: ${{
-          ...body,
-          // Avoid dumping huge move lists in logs
-          if (moves.length > 8) 'moves': '[${moves.length} moves]',
-        }}');
+        debugPrint(
+          '  Body: ${{
+            ...body,
+            // Avoid dumping huge move lists in logs
+            if (moves.length > 8) 'moves': '[${moves.length} moves]',
+          }}',
+        );
       }
 
       // Use POST /aggregates/query so the backend can compute deep move trees
@@ -146,6 +150,7 @@ class GamebaseRepository {
   /// Note: pageNumber is 0-indexed per the API spec.
   Future<List<GamebasePlayer>> getPlayers({
     String? name,
+    String? fideId,
     int pageNumber = 0,
     int pageSize = 20,
   }) async {
@@ -154,6 +159,7 @@ class GamebaseRepository {
         'pageNumber': pageNumber,
         'pageSize': pageSize,
         if (name != null && name.isNotEmpty) 'name': name,
+        if (fideId != null && fideId.isNotEmpty) 'fideId': fideId,
       };
 
       if (kDebugMode) {
@@ -394,6 +400,157 @@ class GamebaseRepository {
     } catch (e) {
       throw Exception('Failed to perform global search: $e');
     }
+  }
+
+  Future<GamebaseEventSearchResponse> searchEvents({
+    required String query,
+    int pageNumber = 1,
+    int pageSize = 20,
+    String? result,
+    String? color,
+    String? timeControl,
+    int? yearFrom,
+    int? yearTo,
+    int? ratingFrom,
+    int? ratingTo,
+  }) async {
+    try {
+      final queryParams = {
+        'q': query,
+        'pageNumber': pageNumber,
+        'pageSize': pageSize,
+        if (result != null) 'result': result,
+        if (color != null) 'color': color,
+        if (timeControl != null) 'timeControl': timeControl,
+        if (yearFrom != null) 'yearFrom': yearFrom,
+        if (yearTo != null) 'yearTo': yearTo,
+        if (ratingFrom != null) 'ratingFrom': ratingFrom,
+        if (ratingTo != null) 'ratingTo': ratingTo,
+      };
+
+      final response = await _dio.get(
+        '$_baseUrl/api/search/events',
+        queryParameters: queryParams,
+        options: Options(
+          headers: {'X-API-Key': _apiKey, 'Accept': 'application/json'},
+        ),
+      );
+
+      final data = response.data;
+      if (data is! Map) {
+        throw Exception('Unexpected response format');
+      }
+      return GamebaseEventSearchResponse.fromJson(
+        Map<String, dynamic>.from(data),
+      );
+    } on DioException catch (e) {
+      if (kDebugMode) {
+        debugPrint('[GamebaseRepository] searchEvents DioException:');
+        debugPrint('  Status: ${e.response?.statusCode}');
+        debugPrint('  Message: ${e.message}');
+        debugPrint('  Response: ${e.response?.data}');
+      }
+      throw Exception(
+        'Failed to search events: ${e.response?.statusCode ?? 'network error'} - ${e.message}',
+      );
+    } catch (e) {
+      throw Exception('Failed to search events: $e');
+    }
+  }
+
+  /// Fetch games for a specific player with server-side filtering.
+  /// Maps to GET /api/player/{playerId}/games.
+  ///
+  /// [pageNumber] is 0-indexed (unlike globalSearch which is 1-indexed).
+  /// [outcome] uses 'win'/'loss'/'draw' (player perspective, not W/B/D).
+  Future<Map<String, dynamic>> getPlayerGames({
+    required String playerId,
+    String color = 'all',
+    String? timeControl,
+    String? outcome,
+    String? eco,
+    String? opening,
+    String? variation,
+    String? event,
+    String? site,
+    String? dateFrom,
+    String? dateTo,
+    String? opponentId,
+    int pageNumber = 0,
+    int pageSize = 100,
+  }) async {
+    final queryParams = <String, dynamic>{
+      'color': color,
+      'pageNumber': pageNumber,
+      'pageSize': pageSize,
+      if (timeControl != null) 'timeControl': timeControl,
+      if (outcome != null) 'outcome': outcome,
+      if (eco != null) 'eco': eco,
+      if (opening != null) 'opening': opening,
+      if (variation != null) 'variation': variation,
+      if (event != null) 'event': event,
+      if (site != null) 'site': site,
+      if (dateFrom != null) 'dateFrom': dateFrom,
+      if (dateTo != null) 'dateTo': dateTo,
+      if (opponentId != null) 'opponentId': opponentId,
+    };
+
+    if (kDebugMode) {
+      debugPrint(
+        '[GamebaseRepository] getPlayerGames: playerId=$playerId filters=$queryParams',
+      );
+    }
+
+    final response = await _dio.get(
+      '$_baseUrl/api/player/$playerId/games',
+      queryParameters: queryParams,
+      options: Options(
+        headers: {'X-API-Key': _apiKey, 'Accept': 'application/json'},
+      ),
+    );
+
+    return Map<String, dynamic>.from(response.data);
+  }
+
+  /// Fetch exact aggregated stats for a specific player with server-side filters.
+  /// Maps to GET /api/player/{playerId}/stats.
+  Future<Map<String, dynamic>> getPlayerStats({
+    required String playerId,
+    String color = 'all',
+    String? timeControl,
+    String? outcome,
+    String? eco,
+    String? opening,
+    String? variation,
+    String? event,
+    String? site,
+    String? dateFrom,
+    String? dateTo,
+    String? opponentId,
+  }) async {
+    final queryParams = <String, dynamic>{
+      'color': color,
+      if (timeControl != null) 'timeControl': timeControl,
+      if (outcome != null) 'outcome': outcome,
+      if (eco != null) 'eco': eco,
+      if (opening != null) 'opening': opening,
+      if (variation != null) 'variation': variation,
+      if (event != null) 'event': event,
+      if (site != null) 'site': site,
+      if (dateFrom != null) 'dateFrom': dateFrom,
+      if (dateTo != null) 'dateTo': dateTo,
+      if (opponentId != null) 'opponentId': opponentId,
+    };
+
+    final response = await _dio.get(
+      '$_baseUrl/api/player/$playerId/stats',
+      queryParameters: queryParams,
+      options: Options(
+        headers: {'X-API-Key': _apiKey, 'Accept': 'application/json'},
+      ),
+    );
+
+    return Map<String, dynamic>.from(response.data);
   }
 
   /// List example games for a given position (and optionally a specific move from that position).

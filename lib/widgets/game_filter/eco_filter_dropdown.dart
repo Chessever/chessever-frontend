@@ -248,7 +248,7 @@ class _EcoFilterDropdownState extends State<EcoFilterDropdown>
         onChanged: (value) => setState(() => _searchQuery = value),
         style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
         decoration: InputDecoration(
-          hintText: 'Search code or opening name...',
+          hintText: 'Search',
           hintStyle: AppTypography.textSmRegular.copyWith(
             color: kSecondaryTextColor.withValues(alpha: 0.6),
           ),

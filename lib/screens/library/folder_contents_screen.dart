@@ -1,8 +1,12 @@
 import 'package:chessever2/repository/library/library_repository.dart';
 import 'package:chessever2/repository/library/models/library_folder.dart';
 import 'package:chessever2/repository/library/models/saved_analysis.dart';
+import 'package:chessever2/screens/library/providers/library_folders_provider.dart';
 import 'package:chessever2/screens/library/widgets/book_saved_game_card.dart';
 import 'package:chessever2/screens/library/widgets/swipe_action_card.dart';
+import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
+import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
@@ -30,6 +34,8 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
   final Set<String> _removingIds = {};
+
+  bool get _isSubscribed => widget.folder.isSubscribed;
 
   @override
   void dispose() {
@@ -98,9 +104,98 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
     }
   }
 
+  Future<void> _unsubscribeFromBook() async {
+    try {
+      final repo = ref.read(libraryRepositoryProvider);
+      await repo.unsubscribeFromBook(widget.folder.id);
+      ref.invalidate(subscribedBooksProvider);
+      ref.invalidate(combinedLibraryFoldersProvider);
+
+      if (!mounted) return;
+      HapticFeedbackService.success();
+      Navigator.of(context).pop();
+    } catch (e) {
+      if (!mounted) return;
+      HapticFeedbackService.error();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Failed to unsubscribe: $e',
+            style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+          ),
+          backgroundColor: kRedColor,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
+  /// Open a shared game in read-only analysis mode (no analysisId → no save-back).
+  void _openSharedGame(SavedAnalysis analysis) {
+    final md = analysis.chessGame.metadata;
+    final whiteName = md['White'] as String? ?? 'White';
+    final blackName = md['Black'] as String? ?? 'Black';
+    final result = md['Result'] as String? ?? '*';
+    final whiteTitle = (md['WhiteTitle'] ?? '').toString().trim();
+    final blackTitle = (md['BlackTitle'] ?? '').toString().trim();
+
+    final game = GamesTourModel(
+      gameId: 'shared_${analysis.id}',
+      whitePlayer: PlayerCard(
+        name: whiteName,
+        federation: '',
+        title: whiteTitle,
+        rating: 0,
+        countryCode: '',
+        team: null,
+      ),
+      blackPlayer: PlayerCard(
+        name: blackName,
+        federation: '',
+        title: blackTitle,
+        rating: 0,
+        countryCode: '',
+        team: null,
+      ),
+      whiteTimeDisplay: '--:--',
+      blackTimeDisplay: '--:--',
+      whiteClockCentiseconds: 0,
+      blackClockCentiseconds: 0,
+      gameStatus: GameStatus.fromString(result),
+      roundId: 'shared',
+      tourId: 'library',
+      pgn: '',
+    );
+
+    // Create SavedAnalysisData WITHOUT analysisId so board won't save back
+    final savedData = SavedAnalysisData(
+      analysisId: null,
+      chessGame: analysis.chessGame,
+      variationComments: analysis.variationComments,
+      movePointer: null,
+      isBoardFlipped: false,
+      lastViewedPosition: analysis.lastViewedPosition,
+    );
+
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ChessBoardScreenNew(
+          currentIndex: 0,
+          games: [game],
+          savedAnalysisData: savedData,
+          showGamebaseButton: false,
+          disableGamebaseOverlayByDefault: true,
+          showClock: false,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final analysesAsync = ref.watch(_folderAnalysesProvider(widget.folder.id));
+    final analysesAsync = _isSubscribed
+        ? ref.watch(subscribedFolderAnalysesProvider(widget.folder.id))
+        : ref.watch(_folderAnalysesProvider(widget.folder.id));
     final query = _searchController.text.trim().toLowerCase();
 
     return Scaffold(
@@ -173,14 +268,40 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
           ),
           Padding(
             padding: EdgeInsets.symmetric(horizontal: 56.w),
-            child: Text(
-              widget.folder.name,
-              style: AppTypography.textLgBold.copyWith(color: kWhiteColor),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.center,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  widget.folder.name,
+                  style: AppTypography.textLgBold.copyWith(color: kWhiteColor),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                ),
+                if (_isSubscribed && widget.folder.ownerDisplayName != null)
+                  Text(
+                    'by ${widget.folder.ownerDisplayName}',
+                    style: AppTypography.textXsRegular.copyWith(
+                      color: kWhiteColor.withValues(alpha: 0.5),
+                    ),
+                  ),
+              ],
             ),
           ),
+          // Unsubscribe button for subscribed books
+          if (_isSubscribed)
+            Align(
+              alignment: Alignment.centerRight,
+              child: IconButton(
+                onPressed: _unsubscribeFromBook,
+                icon: Icon(
+                  Icons.link_off_rounded,
+                  color: kWhiteColor.withValues(alpha: 0.7),
+                  size: 20.ic,
+                ),
+                tooltip: 'Unsubscribe',
+              ),
+            ),
         ],
       ),
     );
@@ -254,10 +375,14 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
     AsyncValue<List<SavedAnalysis>> analysesAsync,
     String query,
   ) {
+    final providerToInvalidate = _isSubscribed
+        ? subscribedFolderAnalysesProvider(widget.folder.id)
+        : _folderAnalysesProvider(widget.folder.id);
+
     return RefreshIndicator(
       onRefresh: () async {
         HapticFeedbackService.medium();
-        ref.invalidate(_folderAnalysesProvider(widget.folder.id));
+        ref.invalidate(providerToInvalidate);
       },
       color: kWhiteColor,
       backgroundColor: kBlack2Color,
@@ -280,14 +405,34 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
           if (analyses.isEmpty) return _buildEmptySavedState();
           if (filtered.isEmpty) return _buildEmptySearchState();
 
-          // Use a regular ListView instead of AnimatedList to avoid sync issues
-          // AnimatedList requires manual insertItem/removeItem calls which
-          // conflict with stream-based data updates
           return ListView.builder(
             padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
             itemCount: filtered.length,
             itemBuilder: (context, index) {
               final analysis = filtered[index];
+
+              // Subscribed: read-only cards (no swipe-to-remove)
+              if (_isSubscribed) {
+                return Padding(
+                  padding: EdgeInsets.only(bottom: 12.h),
+                  child: BookSavedGameCard(
+                    analysis: analysis,
+                    onTap: () => _openSharedGame(analysis),
+                  ).animate()
+                      .fadeIn(
+                        duration: 200.ms,
+                        delay: Duration(milliseconds: (index % 10) * 30),
+                      )
+                      .slideY(
+                        begin: 0.05,
+                        end: 0,
+                        duration: 200.ms,
+                        curve: Curves.easeOut,
+                      ),
+                );
+              }
+
+              // Owned: swipeable cards
               return Padding(
                 padding: EdgeInsets.only(bottom: 12.h),
                 child: SwipeActionCard(
@@ -329,6 +474,39 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
   }
 
   Widget _buildEmptySavedState() {
+    if (_isSubscribed) {
+      return Center(
+        child: Padding(
+          padding: EdgeInsets.all(32.sp),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.menu_book_outlined,
+                size: 64.sp,
+                color: kWhiteColor.withValues(alpha: 0.35),
+              ),
+              SizedBox(height: 12.h),
+              Text(
+                'No games yet',
+                style: AppTypography.textMdMedium.copyWith(
+                  color: kWhiteColor.withValues(alpha: 0.85),
+                ),
+              ),
+              SizedBox(height: 6.h),
+              Text(
+                'The owner hasn\'t added any games to this book yet.',
+                style: AppTypography.textSmRegular.copyWith(
+                  color: kWhiteColor.withValues(alpha: 0.55),
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     return Center(
       child: Padding(
         padding: EdgeInsets.all(32.sp),

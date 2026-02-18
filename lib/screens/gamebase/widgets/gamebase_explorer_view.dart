@@ -3,6 +3,7 @@ import 'package:chessever2/screens/gamebase/models/models.dart';
 import 'package:chessever2/screens/gamebase/providers/gamebase_providers.dart';
 import 'package:chessever2/screens/gamebase/providers/gamebase_explorer_state.dart';
 import 'package:chessever2/screens/gamebase/widgets/gamebase_filter_panel.dart';
+import 'package:chessever2/screens/gamebase/widgets/mini_eval_bar.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -259,7 +260,8 @@ class _GamebaseMovesTable extends StatelessWidget {
           color: kBlackColor,
           child: Row(
             children: [
-              Expanded(flex: 2, child: Text('Moves', style: _headerStyle)),
+              Expanded(flex: 2, child: Text('Move', style: _headerStyle)),
+              Expanded(flex: 2, child: Text('Eval', style: _headerStyle)),
               Expanded(
                 flex: 2,
                 child: Text(
@@ -443,8 +445,9 @@ class _MoveRow extends ConsumerWidget {
       error: (_, __) => '—',
     );
 
-    // Convert UCI to SAN
+    // Convert UCI to SAN and capture resulting FEN
     String san = move.uci;
+    String? resultingFen;
     try {
       if (move.uci.length >= 4) {
         final from = Square.fromName(move.uci.substring(0, 2));
@@ -456,6 +459,7 @@ class _MoveRow extends ConsumerWidget {
         final moveObj = NormalMove(from: from, to: to, promotion: promotion);
         final result = position.makeSan(moveObj);
         san = result.$2;
+        resultingFen = result.$1.fen;
       }
     } catch (e) {
       // Fallback to UCI
@@ -485,6 +489,12 @@ class _MoveRow extends ConsumerWidget {
                   ),
                 ],
               ),
+            ),
+
+            // Eval
+            Expanded(
+              flex: 2,
+              child: MiniEvalBar(fen: resultingFen),
             ),
 
             // Count

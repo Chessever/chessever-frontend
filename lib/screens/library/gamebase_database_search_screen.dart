@@ -1,10 +1,11 @@
-import 'package:chessever2/screens/library/providers/gamebase_database_games_provider.dart';
 import 'package:chessever2/screens/library/providers/gamebase_database_search_provider.dart';
+import 'package:chessever2/screens/library/utils/gamebase_pgn_builder.dart';
 import 'package:chessever2/screens/library/widgets/add_to_folder_sheet.dart';
 import 'package:chessever2/screens/library/widgets/gamebase_search_game_card.dart';
 import 'package:chessever2/screens/library/widgets/library_gamebase_filters_sheet.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/theme/app_theme.dart';
+import 'package:chessever2/utils/chess_title_utils.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/number_format_utils.dart';
@@ -94,7 +95,13 @@ class _GamebaseDatabaseSearchScreenState
                     },
                     onFilterTap: _openFilters,
                   ),
-                  _MetaRow(state: state),
+                  _MetaRow(
+                    state: state,
+                    onRequestExactCount:
+                        () => ref
+                            .read(gamebaseDatabaseSearchProvider.notifier)
+                            .requestExactCount(),
+                  ),
                   Expanded(
                     child: _GamesList(
                       state: state,
@@ -249,38 +256,59 @@ class _SearchBar extends StatelessWidget {
 }
 
 class _MetaRow extends StatelessWidget {
-  const _MetaRow({required this.state});
+  const _MetaRow({required this.state, required this.onRequestExactCount});
 
   final GamebaseDatabaseSearchState state;
+  final VoidCallback onRequestExactCount;
 
   @override
   Widget build(BuildContext context) {
+    final estimated = state.pagination.totalCountIsEstimate;
     final subtitle =
         state.pagination.totalCount != null
-            ? '${formatCompactCount(state.pagination.totalCount!)} results'
+            ? '${estimated ? '~' : ''}${formatCompactCount(state.pagination.totalCount!)} results'
             : 'Results';
 
     return Padding(
       padding: EdgeInsets.fromLTRB(16.w, 2.h, 16.w, 10.h),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(
-            child: Text(
-              subtitle,
-              style: AppTypography.textSmMedium.copyWith(
-                color: kWhiteColor.withValues(alpha: 0.7),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  subtitle,
+                  style: AppTypography.textSmMedium.copyWith(
+                    color: kWhiteColor.withValues(alpha: 0.7),
+                  ),
+                ),
               ),
-            ),
+              if (state.isQueryLoading)
+                SizedBox(
+                  width: 18.sp,
+                  height: 18.sp,
+                  child: const CircularProgressIndicator(
+                    color: kPrimaryColor,
+                    strokeWidth: 2,
+                  ),
+                ),
+            ],
           ),
-          if (state.isQueryLoading)
-            SizedBox(
-              width: 18.sp,
-              height: 18.sp,
-              child: const CircularProgressIndicator(
-                color: kPrimaryColor,
-                strokeWidth: 2,
+          if (estimated) ...[
+            SizedBox(height: 4.h),
+            GestureDetector(
+              onTap: state.isQueryLoading ? null : onRequestExactCount,
+              child: Text(
+                'Exact count',
+                style: AppTypography.textXsRegular.copyWith(
+                  color: kPrimaryColor.withValues(
+                    alpha: state.isQueryLoading ? 0.6 : 0.9,
+                  ),
+                ),
               ),
             ),
+          ],
         ],
       ),
     );
@@ -295,7 +323,7 @@ class _GamesList extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final gamesAsync = ref.watch(gamebaseDatabaseGamesProvider);
+    final games = _rowsToGames(state.rows);
 
     if (state.lastQueryError != null) {
       return ListView(
@@ -310,58 +338,133 @@ class _GamesList extends ConsumerWidget {
               ref.read(gamebaseDatabaseSearchProvider.notifier).refresh(),
       color: kPrimaryColor,
       backgroundColor: kBlack2Color,
-      child: gamesAsync.when(
-        loading:
-            () => ListView(
-              physics: const AlwaysScrollableScrollPhysics(
-                parent: BouncingScrollPhysics(),
-              ),
-              padding: EdgeInsets.fromLTRB(16.w, 24.h, 16.w, 24.h),
-              children: const [
-                Center(child: CircularProgressIndicator(color: kPrimaryColor)),
-              ],
-            ),
-        error:
-            (e, _) => ListView(
-              physics: const AlwaysScrollableScrollPhysics(
-                parent: BouncingScrollPhysics(),
-              ),
-              padding: EdgeInsets.fromLTRB(16.w, 48.h, 16.w, 24.h),
-              children: [_InlineError(message: e.toString())],
-            ),
-        data: (games) {
-          if (games.isEmpty) {
-            return ListView(
+      child: games.isEmpty
+          ? ListView(
               physics: const AlwaysScrollableScrollPhysics(
                 parent: BouncingScrollPhysics(),
               ),
               padding: EdgeInsets.fromLTRB(16.w, 48.h, 16.w, 24.h),
               children: const [_EmptyState()],
-            );
-          }
-
-          return ListView.separated(
-            physics: const AlwaysScrollableScrollPhysics(
-              parent: BouncingScrollPhysics(),
+            )
+          : ListView.separated(
+              physics: const AlwaysScrollableScrollPhysics(
+                parent: BouncingScrollPhysics(),
+              ),
+              padding: EdgeInsets.fromLTRB(16.w, 0, 16.w, 16.h),
+              itemCount: games.length,
+              separatorBuilder: (_, __) => SizedBox(height: 12.h),
+              itemBuilder: (context, index) {
+                final game = games[index];
+                return GamebaseSearchGameCard(
+                  game: game,
+                  allGames: games,
+                  gameIndex: index,
+                  animationIndex: index,
+                  onAdd: () => onAdd(game),
+                  hideEventInfo: true,
+                );
+              },
             ),
-            padding: EdgeInsets.fromLTRB(16.w, 0, 16.w, 16.h),
-            itemCount: games.length,
-            separatorBuilder: (_, __) => SizedBox(height: 12.h),
-            itemBuilder: (context, index) {
-              final game = games[index];
-              return GamebaseSearchGameCard(
-                game: game,
-                allGames: games,
-                gameIndex: index,
-                animationIndex: index,
-                onAdd: () => onAdd(game),
-                hideEventInfo: true,
-              );
-            },
-          );
-        },
-      ),
     );
+  }
+
+  static List<GamesTourModel> _rowsToGames(List<Map<String, dynamic>> rows) {
+    return rows.map((row) {
+      final id = (row['id']?.toString().trim());
+      final safeId = (id != null && id.isNotEmpty) ? id : 'unknown';
+      final result = row['result']?.toString() ?? '*';
+      final timeControl = row['timeControl']?.toString();
+      final date = _parseDate(row['date']);
+      final eco = row['eco']?.toString() ?? '';
+      final opening = row['opening']?.toString() ?? '';
+      final variation = row['variation']?.toString() ?? '';
+      final event = row['event']?.toString() ?? 'Gamebase';
+      final site = row['site']?.toString();
+
+      final whiteName =
+          (row['white']?.toString() ?? row['whiteName']?.toString() ?? '')
+              .trim();
+      final blackName =
+          (row['black']?.toString() ?? row['blackName']?.toString() ?? '')
+              .trim();
+
+      final pgn = buildHeaderOnlyPgn(
+        whiteName: whiteName.isNotEmpty ? whiteName : 'White',
+        blackName: blackName.isNotEmpty ? blackName : 'Black',
+        result: result,
+        event: event,
+        site: site,
+        date: date,
+        eco: eco,
+        opening: opening,
+        variation: variation,
+      );
+
+      final whiteElo = (row['whiteElo'] as num?)?.toInt() ?? 0;
+      final blackElo = (row['blackElo'] as num?)?.toInt() ?? 0;
+      final whiteFed = row['whiteFed']?.toString() ?? '';
+      final blackFed = row['blackFed']?.toString() ?? '';
+      final whiteTitle = ChessTitleUtils.normalize(
+        row['whiteTitle']?.toString(),
+      );
+      final blackTitle = ChessTitleUtils.normalize(
+        row['blackTitle']?.toString(),
+      );
+      final whitePlayerId = row['whitePlayerId']?.toString().trim();
+      final blackPlayerId = row['blackPlayerId']?.toString().trim();
+      final whiteFideId = int.tryParse(row['whiteFideId']?.toString() ?? '');
+      final blackFideId = int.tryParse(row['blackFideId']?.toString() ?? '');
+
+      final whiteCard = PlayerCard(
+        name: whiteName.isNotEmpty ? whiteName : 'White',
+        federation: '',
+        title: whiteTitle,
+        rating: whiteElo,
+        countryCode: whiteFed,
+        team: null,
+        fideId: whiteFideId,
+        gamebasePlayerId:
+            (whitePlayerId != null && whitePlayerId.isNotEmpty)
+                ? whitePlayerId
+                : null,
+      );
+
+      final blackCard = PlayerCard(
+        name: blackName.isNotEmpty ? blackName : 'Black',
+        federation: '',
+        title: blackTitle,
+        rating: blackElo,
+        countryCode: blackFed,
+        team: null,
+        fideId: blackFideId,
+        gamebasePlayerId:
+            (blackPlayerId != null && blackPlayerId.isNotEmpty)
+                ? blackPlayerId
+                : null,
+      );
+
+      return GamesTourModel(
+        gameId: safeId,
+        whitePlayer: whiteCard,
+        blackPlayer: blackCard,
+        whiteTimeDisplay: '--:--',
+        blackTimeDisplay: '--:--',
+        whiteClockCentiseconds: 0,
+        blackClockCentiseconds: 0,
+        gameStatus: GameStatus.fromString(result),
+        roundId: 'gamebase_search',
+        roundSlug: eco.trim().isNotEmpty ? eco.trim() : timeControl,
+        tourId: event.trim().isNotEmpty ? event.trim() : 'Gamebase',
+        timeControl: timeControl,
+        pgn: pgn,
+        lastMoveTime: date,
+      );
+    }).toList(growable: false);
+  }
+
+  static DateTime? _parseDate(Object? raw) {
+    if (raw == null) return null;
+    return DateTime.tryParse(raw.toString());
   }
 }
 

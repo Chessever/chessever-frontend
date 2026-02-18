@@ -42,6 +42,8 @@ class StockfishSingleton {
   bool _previousJobCompleted = true; // Track if last job ended via bestmove (engine idle)
   Completer<void>? _initCompleter; // Completer for waiting on initialization
   static const int _maxQueueSize = 60; // Soft cap to avoid backlog
+  static const int _maxBackgroundBacklog =
+      24; // Cap low-priority backlog to protect visible-board responsiveness
 
   // Global instance lock to prevent "Multiple instances not supported" on Android
   // Android's native Stockfish library requires strict single-instance management
@@ -158,6 +160,24 @@ class StockfishSingleton {
       });
     }
 
+    // Back-pressure for low-priority workloads (game cards/background lookups).
+    // Android is slower at draining native evaluations, so prevent unbounded
+    // fallback requests from starving on-screen board analysis.
+    final backlogSize = _jobQueue.length + (_currentJob != null ? 1 : 0);
+    if (!isCurrentPosition && backlogSize >= _maxBackgroundBacklog) {
+      debugPrint(
+        '🛑 QUEUE: Skipping low-priority eval for $fen (backlog: $backlogSize)',
+      );
+      return EnhancedCloudEval(
+        fen: fen,
+        knodes: 0,
+        depth: 0,
+        pvs: [Pv(moves: '', cp: 0, mate: 0)],
+        isCancelled: true,
+        requestedMultiPv: multiPV,
+      );
+    }
+
     // Create job and add to queue
     final completer = Completer<EnhancedCloudEval>();
     final job = _EvalJob(
@@ -190,7 +210,15 @@ class StockfishSingleton {
 
     // Enforce soft cap: drop oldest overflow jobs safely
     while (_jobQueue.length > _maxQueueSize) {
-      final dropped = _jobQueue.removeAt(0);
+      // Prefer dropping low-priority jobs first.
+      // Front of queue contains highest-priority/current-position jobs.
+      final int lowPriorityIndex = _jobQueue.lastIndexWhere(
+        (job) => !job.isCurrentPosition,
+      );
+      final dropped =
+          lowPriorityIndex >= 0
+              ? _jobQueue.removeAt(lowPriorityIndex)
+              : _jobQueue.removeLast();
       _pendingJobs.remove(dropped.key);
       if (!dropped.completer.isCompleted) {
         dropped.completer.complete(
@@ -204,7 +232,9 @@ class StockfishSingleton {
           ),
         );
       }
-      debugPrint('🗑️ QUEUE: Dropped overflow job for ${dropped.fen}');
+      debugPrint(
+        '🗑️ QUEUE: Dropped overflow job for ${dropped.fen} (priority: ${dropped.isCurrentPosition ? "HIGH" : "low"})',
+      );
     }
 
     // Start processing queue if not already processing
@@ -615,20 +645,23 @@ class StockfishSingleton {
         // For dynamic search, add 1 second buffer to the search duration
         safetyTimeout = searchDuration + const Duration(seconds: 1);
       } else {
-        // For fixed depth search, use a reasonable timeout based on depth
-        // Deeper searches need more time, but keep it aggressive
-        final timeoutSeconds = depth < 10 ? 3 : (depth < 20 ? 6 : 10);
+        // Deep searches with multiPV take exponentially longer per depth level.
+        // depth 15: ~10s, depth 25: ~60s, depth 40: ~300s, depth 50+: ~600s
+        final timeoutSeconds = depth <= 15 ? 15 : (depth <= 25 ? 60 : (depth <= 40 ? 300 : 600));
         safetyTimeout = Duration(seconds: timeoutSeconds);
       }
 
       // Also add a stall detection mechanism
       Timer? stallDetector;
 
+      // At high depths with multiPV, a single depth level can take 5-10+ seconds
+      // with no intermediate output. Scale the stall threshold accordingly.
+      final stallThreshold = Duration(milliseconds: depth <= 20 ? 2000 : (depth <= 40 ? 8000 : 15000));
+
       stallDetector = Timer.periodic(const Duration(seconds: 1), (_) {
         if (lastInfoReceived != null) {
           final timeSinceLastInfo = DateTime.now().difference(lastInfoReceived!);
-          // If we haven't received any info for 1.5 seconds, consider it stalled
-          if (timeSinceLastInfo > const Duration(milliseconds: 1500)) {
+          if (timeSinceLastInfo > stallThreshold) {
             debugPrint('⚠️ STOCKFISH STALL DETECTED: No response for ${timeSinceLastInfo.inSeconds}s');
             stallDetector?.cancel();
 
@@ -1187,6 +1220,12 @@ class StockfishSingleton {
   /// Check if the engine is currently in a healthy state
   bool get isEngineHealthy {
     return _engine != null && _engine!.state.value == StockfishState.ready;
+  }
+
+  /// True when engine exists but is in a terminal/broken state.
+  bool get requiresRecovery {
+    final state = _engine?.state.value;
+    return state == StockfishState.error || state == StockfishState.disposed;
   }
 
   /// Get the current engine state for debugging

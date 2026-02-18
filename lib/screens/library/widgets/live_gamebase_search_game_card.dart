@@ -1,4 +1,5 @@
 import 'package:chessever2/screens/library/widgets/gamebase_search_game_card.dart';
+import 'package:chessever2/screens/player_profile/player_profile_data_source.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/live_game_card_provider.dart';
 import 'package:flutter/material.dart';
@@ -18,6 +19,7 @@ class LiveGamebaseSearchGameCard extends ConsumerWidget {
     this.showSwipeHint = false,
     this.showGamebaseButton = false,
     this.hideEventInfo = false,
+    this.playerProfileDataSource = PlayerProfileDataSource.supabase,
     this.onTap,
   });
 
@@ -30,6 +32,7 @@ class LiveGamebaseSearchGameCard extends ConsumerWidget {
   final bool showSwipeHint;
   final bool showGamebaseButton;
   final bool hideEventInfo;
+  final PlayerProfileDataSource playerProfileDataSource;
 
   /// Optional tap callback. If provided, overrides default chessboard navigation.
   final VoidCallback? onTap;
@@ -59,6 +62,7 @@ class LiveGamebaseSearchGameCard extends ConsumerWidget {
       showSwipeHint: showSwipeHint,
       showGamebaseButton: showGamebaseButton,
       hideEventInfo: hideEventInfo,
+      playerProfileDataSource: playerProfileDataSource,
       onTap: onTap,
     );
   }

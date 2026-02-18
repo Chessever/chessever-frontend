@@ -20,8 +20,8 @@ class AnimatedSearchHint extends StatefulWidget {
     this.textColor = const Color(0xFFA1A1AA),
     this.textStyle,
     this.phrases = const [
-      'Search books',
-      'Find a book...',
+      'Search',
+      'Search',
     ],
   });
 
@@ -42,7 +42,7 @@ class _AnimatedSearchHintState extends State<AnimatedSearchHint>
   Timer? _phraseTimer;
 
   int _currentPhraseIndex = 0;
-  int _nextPhraseIndex = 1;
+  late int _nextPhraseIndex;
   bool _showingNext = false;
 
   // Timing configurations
@@ -53,6 +53,7 @@ class _AnimatedSearchHintState extends State<AnimatedSearchHint>
   void initState() {
     super.initState();
     _hintPhrases = widget.phrases;
+    _nextPhraseIndex = _hintPhrases.length > 1 ? 1 : 0;
 
     _controller = AnimationController(
       vsync: this,
@@ -115,6 +116,7 @@ class _AnimatedSearchHintState extends State<AnimatedSearchHint>
   }
 
   void _startPhraseRotation() {
+    if (_hintPhrases.length <= 1) return;
     _phraseTimer = Timer.periodic(_displayDuration, (_) {
       if (!mounted) return;
       setState(() => _showingNext = true);

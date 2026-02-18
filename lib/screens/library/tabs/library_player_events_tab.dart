@@ -329,7 +329,9 @@ class _EventsListContent extends ConsumerWidget {
       if (ref.read(selectedBroadcastModelProvider) != null) {
         Navigator.pushNamed(context, '/tournament_detail_screen');
       }
-    } catch (_) {
+    } catch (e, st) {
+      debugPrint('[LibraryPlayerEvents] Navigate to tournament error: $e');
+      debugPrintStack(stackTrace: st, label: '[LibraryPlayerEvents] Navigate');
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Unable to open event')),
@@ -549,7 +551,9 @@ class _PlayerEventCard extends ConsumerWidget {
       if (ref.read(selectedBroadcastModelProvider) != null) {
         Navigator.pushNamed(context, '/tournament_detail_screen');
       }
-    } catch (_) {
+    } catch (e, st) {
+      debugPrint('[LibraryPlayerEvents] Navigate to event card error: $e');
+      debugPrintStack(stackTrace: st, label: '[LibraryPlayerEvents] Event card navigate');
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Unable to open event')),
@@ -715,14 +719,15 @@ final playerEventCardsProvider = FutureProvider.family
           groupBroadcast,
           [],
         );
-      } catch (_) {
-        // Skip events that can't be loaded
+      } catch (e) {
+        debugPrint('[playerEventCardsProvider] Failed to load event ${event.tourId}: $e');
       }
     }
 
     return eventCards;
-  } catch (e) {
+  } catch (e, st) {
     debugPrint('[playerEventCardsProvider] Error: $e');
+    debugPrintStack(stackTrace: st, label: '[playerEventCardsProvider]');
     return {};
   }
 });

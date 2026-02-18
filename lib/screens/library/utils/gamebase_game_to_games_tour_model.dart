@@ -50,6 +50,11 @@ GamesTourModel mapGamebaseGameToGamesTourModel(GamebaseGame game) {
     return int.tryParse(value?.toString() ?? '') ?? 0;
   }
 
+  int? parseFideId(Object? raw) {
+    if (raw == null) return null;
+    return int.tryParse(raw.toString());
+  }
+
   final whitePlayer = PlayerCard(
     name: whiteName,
     federation: '',
@@ -57,7 +62,7 @@ GamesTourModel mapGamebaseGameToGamesTourModel(GamebaseGame game) {
     rating: parseRating(md['WhiteElo']),
     countryCode: countryCodeFromMetadata(isWhite: true),
     team: null,
-    fideId: null,
+    fideId: parseFideId(md['WhiteFideId']),
   );
 
   final blackPlayer = PlayerCard(
@@ -67,7 +72,7 @@ GamesTourModel mapGamebaseGameToGamesTourModel(GamebaseGame game) {
     rating: parseRating(md['BlackElo']),
     countryCode: countryCodeFromMetadata(isWhite: false),
     team: null,
-    fideId: null,
+    fideId: parseFideId(md['BlackFideId']),
   );
 
   final eventRaw = (md['Event']?.toString() ?? '').trim();

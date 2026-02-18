@@ -437,7 +437,7 @@ class _FavoritesPlayersTabState extends ConsumerState<FavoritesPlayersTab>
             child: Padding(
               padding: EdgeInsets.fromLTRB(16.w, 12.h, 16.w, 8.h),
               child: SearchBarWidget(
-                hintText: 'Search all players',
+                hintText: 'Search',
                 margin: 0.sp,
                 autoFocus: false,
                 controller: _searchController,

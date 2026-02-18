@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
 import 'package:chessever2/repository/gamebase/search/gamebase_search_models.dart';
+import 'package:chessever2/repository/supabase/chess_player/chess_player_repository.dart';
+import 'package:chessever2/utils/twic_player_enrichment.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -157,16 +159,18 @@ class GamebaseDatabaseSearchState {
     }
 
     if (orderBy.isNotEmpty) {
-      body['orderBy'] = orderBy
-          .map(
-            (o) => {
-              'field': o.field,
-              'direction': o.direction == GamebaseOrderDirection.asc
-                  ? 'asc'
-                  : 'desc',
-            },
-          )
-          .toList();
+      body['orderBy'] =
+          orderBy
+              .map(
+                (o) => {
+                  'field': o.field,
+                  'direction':
+                      o.direction == GamebaseOrderDirection.asc
+                          ? 'asc'
+                          : 'desc',
+                },
+              )
+              .toList();
     }
 
     if (selectedColumns.isNotEmpty) {
@@ -241,8 +245,12 @@ class GamebaseDatabaseSearchState {
         return double.tryParse(input) ?? input;
       case 'boolean':
         final lowered = input.toLowerCase().trim();
-        if (lowered == 'true' || lowered == '1' || lowered == 'yes') return true;
-        if (lowered == 'false' || lowered == '0' || lowered == 'no') return false;
+        if (lowered == 'true' || lowered == '1' || lowered == 'yes') {
+          return true;
+        }
+        if (lowered == 'false' || lowered == '0' || lowered == 'no') {
+          return false;
+        }
         return input;
       case 'datetime':
         final dt = DateTime.tryParse(input);
@@ -279,11 +287,14 @@ class GamebaseDatabaseSearchState {
     }
 
     final fallback =
-        resource.defaultSearchColumns.isNotEmpty ? resource.defaultSearchColumns : allColumns.take(6).toList();
+        resource.defaultSearchColumns.isNotEmpty
+            ? resource.defaultSearchColumns
+            : allColumns.take(6).toList();
 
-    final safeColumns = curated.isNotEmpty
-        ? curated
-        : (fallback.isNotEmpty ? fallback : <String>[resource.primaryKey]);
+    final safeColumns =
+        curated.isNotEmpty
+            ? curated
+            : (fallback.isNotEmpty ? fallback : <String>[resource.primaryKey]);
 
     return GamebaseDatabaseSearchState(
       metadata: metadata,
@@ -304,13 +315,14 @@ class GamebaseDatabaseSearchState {
 }
 
 final gamebaseDatabaseSearchProvider = StateNotifierProvider.autoDispose<
-    GamebaseDatabaseSearchNotifier, AsyncValue<GamebaseDatabaseSearchState>>(
-  (ref) => GamebaseDatabaseSearchNotifier(ref),
-);
+  GamebaseDatabaseSearchNotifier,
+  AsyncValue<GamebaseDatabaseSearchState>
+>((ref) => GamebaseDatabaseSearchNotifier(ref));
 
 class GamebaseDatabaseSearchNotifier
     extends StateNotifier<AsyncValue<GamebaseDatabaseSearchState>> {
-  GamebaseDatabaseSearchNotifier(this._ref) : super(const AsyncValue.loading()) {
+  GamebaseDatabaseSearchNotifier(this._ref)
+    : super(const AsyncValue.loading()) {
     _initialize();
   }
 
@@ -329,7 +341,10 @@ class GamebaseDatabaseSearchNotifier
       }
 
       state = AsyncValue.data(
-        GamebaseDatabaseSearchState.initial(metadata: metadata, resource: resource),
+        GamebaseDatabaseSearchState.initial(
+          metadata: metadata,
+          resource: resource,
+        ),
       );
       await refresh();
     } catch (e, st) {
@@ -343,11 +358,7 @@ class GamebaseDatabaseSearchNotifier
 
     final trimmed = query;
     state = AsyncValue.data(
-      current.copyWith(
-        query: trimmed,
-        pageNumber: 1,
-        lastQueryError: null,
-      ),
+      current.copyWith(query: trimmed, pageNumber: 1, lastQueryError: null),
     );
 
     _debounceTimer?.cancel();
@@ -426,9 +437,10 @@ class GamebaseDatabaseSearchNotifier
       if (trimmed.isNotEmpty) unique.add(trimmed);
     }
 
-    final fallback = unique.isNotEmpty ? unique.toList() : <String>[
-      current.resource.primaryKey,
-    ];
+    final fallback =
+        unique.isNotEmpty
+            ? unique.toList()
+            : <String>[current.resource.primaryKey];
 
     state = AsyncValue.data(
       current.copyWith(selectedColumns: fallback, lastQueryError: null),
@@ -460,152 +472,38 @@ class GamebaseDatabaseSearchNotifier
     await goToPage(current.pagination.pageNumber - 1);
   }
 
-  Future<void> refresh() async {
+  Future<void> refresh({bool exactCount = false}) async {
     final current = state.valueOrNull;
     if (current == null) return;
 
     final token = ++_token;
-    state = AsyncValue.data(current.copyWith(isQueryLoading: true, lastQueryError: null));
+    state = AsyncValue.data(
+      current.copyWith(isQueryLoading: true, lastQueryError: null),
+    );
 
     try {
       final repository = _ref.read(gamebaseRepositoryProvider);
-      // NOTE: `/api/search/query` for `resource=game` is currently unreliable in
-      // production (500 "Unknown Error"). We fall back to global search and
-      // apply the sheet's filters client-side so Library search stays usable.
-      final query = current.query.trim();
-      if (query.isEmpty) {
-        if (!mounted || token != _token) return;
-        state = AsyncValue.data(
-          current.copyWith(
-            rows: const [],
-            pagination: const GamebasePaginationMetadata(pageNumber: 1, pageSize: 20),
-            pageNumber: 1,
-            pageSize: current.pageSize,
-            isQueryLoading: false,
-            lastQueryError: null,
-          ),
+      final body =
+          current.buildRequestBody()
+            ..['countMode'] = exactCount ? 'exact' : 'auto';
+      final response = await repository.queryResource(body: body);
+      var enrichedRows = response.data;
+      final fideIds = collectFideIdsFromRows(enrichedRows);
+      if (fideIds.isNotEmpty) {
+        final playersByFideId = await _ref
+            .read(chessPlayerRepositoryProvider)
+            .getPlayersByFideIds(fideIds);
+        enrichedRows = enrichSearchRowsWithChessPlayers(
+          enrichedRows,
+          playersByFideId,
         );
-        return;
       }
-
-      final response = await repository.globalSearch(
-        query: query,
-        pageNumber: current.pageNumber,
-        // Fetch extra to account for mixed player/game results.
-        pageSize: (current.pageSize * 3).clamp(20, 120),
-      );
 
       if (!mounted || token != _token) return;
 
-      bool matchesRule(Map<String, dynamic> row, GamebaseFilterRule rule) {
-        Object? value = row[rule.field];
-        // Back-compat aliases for mixed payloads.
-        if (value == null) {
-          if (rule.field == 'whiteName') value = row['white'] ?? row['whiteName'];
-          if (rule.field == 'blackName') value = row['black'] ?? row['blackName'];
-        }
-
-        final op = rule.op.trim();
-        if (op.isEmpty) return true;
-
-        bool isNull(Object? v) => v == null || (v is String && v.trim().isEmpty);
-
-        if (op == 'isNull') return isNull(value);
-        if (op == 'isNotNull') return !isNull(value);
-
-        // Numeric comparisons
-        num? asNum(Object? v) {
-          if (v is num) return v;
-          return num.tryParse(v?.toString() ?? '');
-        }
-
-        // String comparisons (case-insensitive)
-        String asStr(Object? v) => (v?.toString() ?? '').trim();
-
-        if (op == 'eq') {
-          if (value is num || num.tryParse(value?.toString() ?? '') != null) {
-            final left = asNum(value);
-            final right = asNum(rule.value);
-            return left != null && right != null && left == right;
-          }
-          return asStr(value).toLowerCase() == asStr(rule.value).toLowerCase();
-        }
-        if (op == 'neq') {
-          return !matchesRule(row, rule.copyWith(op: 'eq'));
-        }
-        if (op == 'contains') {
-          final hay = asStr(value).toLowerCase();
-          final needle = asStr(rule.value).toLowerCase();
-          return needle.isNotEmpty && hay.contains(needle);
-        }
-        if (op == 'in' || op == 'nin') {
-          final values = rule.values ?? const [];
-          final needle = asStr(value).toLowerCase();
-          final hit = values.any((v) => v.toLowerCase() == needle);
-          return op == 'in' ? hit : !hit;
-        }
-        if (op == 'gt' || op == 'gte' || op == 'lt' || op == 'lte') {
-          final left = asNum(value);
-          final right = asNum(rule.value);
-          if (left == null || right == null) return false;
-          switch (op) {
-            case 'gt':
-              return left > right;
-            case 'gte':
-              return left >= right;
-            case 'lt':
-              return left < right;
-            case 'lte':
-              return left <= right;
-          }
-        }
-        if (op == 'between') {
-          final values = rule.values ?? const [];
-          if (values.length < 2) return true;
-          final left = asNum(value);
-          final lo = asNum(values[0]);
-          final hi = asNum(values[1]);
-          if (left == null || lo == null || hi == null) return false;
-          final min = lo < hi ? lo : hi;
-          final max = lo < hi ? hi : lo;
-          return left >= min && left <= max;
-        }
-
-        return true;
-      }
-
-      bool matchesAllFilters(Map<String, dynamic> row) {
-        if (current.filters.isEmpty) return true;
-        final checks =
-            current.filters.map((rule) {
-              final base = matchesRule(row, rule);
-              return rule.negated ? !base : base;
-            }).toList(growable: false);
-
-        return current.filterMode == GamebaseFilterGroupMode.and
-            ? checks.every((ok) => ok)
-            : checks.any((ok) => ok);
-      }
-
-      final gameRows =
-          response.results
-              .where((r) => r.resource == 'game')
-              .map((r) {
-                final preview = r.preview ?? const <String, dynamic>{};
-                final id = preview['id']?.toString() ?? r.id;
-                return <String, dynamic>{
-                  'id': id,
-                  'label': r.label,
-                  'snippet': r.snippet,
-                  ...preview,
-                };
-              })
-              .where(matchesAllFilters)
-              .toList(growable: false);
-
       state = AsyncValue.data(
         current.copyWith(
-          rows: gameRows,
+          rows: enrichedRows,
           pagination: response.metadata,
           pageNumber: response.metadata.pageNumber,
           pageSize: current.pageSize,
@@ -617,15 +515,16 @@ class GamebaseDatabaseSearchNotifier
       if (!mounted || token != _token) return;
       debugPrint('[GamebaseDatabaseSearch] error: $e');
       state = AsyncValue.data(
-        current.copyWith(
-          isQueryLoading: false,
-          lastQueryError: e.toString(),
-        ),
+        current.copyWith(isQueryLoading: false, lastQueryError: e.toString()),
       );
       if (kDebugMode) {
         debugPrintStack(stackTrace: st);
       }
     }
+  }
+
+  Future<void> requestExactCount() async {
+    await refresh(exactCount: true);
   }
 
   @override

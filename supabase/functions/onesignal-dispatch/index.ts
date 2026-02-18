@@ -87,6 +87,8 @@ const jsonHeaders = { "Content-Type": "application/json" };
 const fidePhotoCache = new Map<number, string | null>();
 const CLOUD_EVAL_MAX_REQUESTS = 5;
 const CHESS_API_MAX_REQUESTS = 10;
+const DEFAULT_DISPATCH_LIMIT = 50;
+const MAX_DISPATCH_LIMIT = 500;
 const cloudEvalCache = new Map<string, EvalSnapshot | null>();
 const chessApiEvalCache = new Map<string, EvalSnapshot | null>();
 const dispatchTokenCache: { token: string | null; expiresAtMs: number } = {
@@ -111,7 +113,8 @@ Deno.serve(async (req) => {
     }
   }
 
-  const items = await fetchPending();
+  const limit = await resolveDispatchLimit(req);
+  const items = await claimPending(limit);
   const results: Array<Record<string, unknown>> = [];
   const cloudEvalState: CloudEvalState = {
     remaining: CLOUD_EVAL_MAX_REQUESTS,
@@ -133,35 +136,53 @@ Deno.serve(async (req) => {
 });
 
 async function resolveDispatchToken(): Promise<string | null> {
-  if (STREAM_DISPATCH_TOKEN) return STREAM_DISPATCH_TOKEN;
-
   const now = Date.now();
   if (dispatchTokenCache.expiresAtMs > now) return dispatchTokenCache.token;
+  const envToken = STREAM_DISPATCH_TOKEN || null;
 
   const { data, error } = await supabase.rpc("get_vault_secret", {
     secret_name: "live_dispatch_token",
   });
 
   if (error) {
-    // Cache the miss briefly to avoid hammering the DB on transient failures.
-    dispatchTokenCache.token = null;
+    // Fallback to env token on vault failures and cache briefly.
+    dispatchTokenCache.token = envToken;
     dispatchTokenCache.expiresAtMs = now + 15_000;
-    return null;
+    return envToken;
   }
 
-  const token = typeof data === "string" && data.length > 0 ? data : null;
+  const vaultToken = typeof data === "string" && data.length > 0 ? data : null;
+  const token = vaultToken ?? envToken;
   dispatchTokenCache.token = token;
   dispatchTokenCache.expiresAtMs = now + 60_000;
   return token;
 }
 
-async function fetchPending(): Promise<OutboxItem[]> {
-  const { data, error } = await supabase
-    .from("notification_outbox")
-    .select("*")
-    .eq("status", "pending")
-    .lte("not_before", new Date().toISOString())
-    .order("created_at", { ascending: true });
+async function resolveDispatchLimit(req: Request): Promise<number> {
+  let requestedLimit: unknown = null;
+  try {
+    const body = await req.json();
+    requestedLimit = body?.limit;
+  } catch (_error) {
+    return DEFAULT_DISPATCH_LIMIT;
+  }
+
+  if (typeof requestedLimit !== "number" || !Number.isFinite(requestedLimit)) {
+    return DEFAULT_DISPATCH_LIMIT;
+  }
+
+  const normalizedLimit = Math.trunc(requestedLimit);
+  if (normalizedLimit < 1) return DEFAULT_DISPATCH_LIMIT;
+  return Math.min(normalizedLimit, MAX_DISPATCH_LIMIT);
+}
+
+async function claimPending(limit: number): Promise<OutboxItem[]> {
+  const { data, error } = await supabase.rpc(
+    "claim_notification_outbox_batch",
+    {
+      p_limit: limit,
+    },
+  );
 
   if (error) {
     throw error;
@@ -178,11 +199,6 @@ async function processItem(item: OutboxItem, cloudEvalState: CloudEvalState) {
   if (Date.now() - createdAt.getTime() > STALE_THRESHOLD_MS) {
     await markSkipped(item.id, "stale");
     return { id: item.id, status: "skipped", reason: "stale" };
-  }
-
-  const claimOk = await markProcessing(item.id, item.attempts);
-  if (!claimOk) {
-    return { id: item.id, status: "skipped", reason: "already_claimed" };
   }
 
   try {
@@ -587,21 +603,9 @@ async function processItem(item: OutboxItem, cloudEvalState: CloudEvalState) {
       recipients: filteredUserIds.size,
     };
   } catch (error) {
-    await markFailed(item.id, item.attempts + 1, `${error}`);
+    await markFailed(item.id, item.attempts, `${error}`);
     return { id: item.id, status: "failed", error: `${error}` };
   }
-}
-
-async function markProcessing(id: string, attempts: number) {
-  const { data, error } = await supabase
-    .from("notification_outbox")
-    .update({ status: "processing", attempts: attempts + 1 })
-    .eq("id", id)
-    .eq("status", "pending")
-    .select("id");
-
-  if (error) return false;
-  return (data ?? []).length > 0;
 }
 
 async function markSent(id: string) {
@@ -1374,6 +1378,15 @@ function groupUsersByPlayerCombo(
   return groups;
 }
 
+function buildEventHeader(
+  eventName: string | null,
+  roundName: string | null | undefined,
+): string | null {
+  if (eventName && roundName) return `${eventName} — ${roundName}`;
+  if (eventName) return eventName;
+  return null;
+}
+
 function channelForEvent(eventType: string) {
   switch (eventType) {
     case "round_heads_up":
@@ -1409,10 +1422,11 @@ function buildNotification(
   const androidChannelId = channelForEvent(item.event_type);
 
   if (item.event_type === "game_started") {
+    const eventHeader = buildEventHeader(context.eventName, context.round?.name);
     return {
-      title: `Live: ${white} vs ${black}`,
-      body: context.eventName
-        ? `${context.eventName} is live now.`
+      title: eventHeader ?? `${white} vs ${black}`,
+      body: eventHeader
+        ? `${white} vs ${black} is live.`
         : "A favorite game just went live.",
       url: null,
       data: { type: "game_started", game_id: item.game_id },
@@ -1421,9 +1435,13 @@ function buildNotification(
   }
 
   if (item.event_type === "game_finished") {
+    const eventHeader = buildEventHeader(context.eventName, context.round?.name);
+    const resultStr = status || "Game over";
     return {
-      title: `Final: ${white} vs ${black}`,
-      body: status ? `Result: ${status}` : "A favorite game just finished.",
+      title: eventHeader ?? `${white} vs ${black}`,
+      body: eventHeader
+        ? `${white} vs ${black}: ${resultStr}`
+        : `Result: ${resultStr}`,
       url: null,
       data: { type: "game_finished", game_id: item.game_id },
       androidChannelId,
@@ -2264,7 +2282,10 @@ async function sendLiveGameAlert(
   payload: LiveUpdatePayload,
   reason: "check" | "game_end",
 ) {
-  const title = reason === "check" ? "Check!" : "Game Finished";
+  const eventHeader = buildEventHeader(payload.event_name, payload.round_name);
+  const title = reason === "check"
+    ? "Check!"
+    : eventHeader ?? "Game Finished";
   const move = payload.last_move_numbered ??
     payload.last_move_san ??
     payload.last_move ?? "";

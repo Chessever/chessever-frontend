@@ -1,10 +1,13 @@
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
+import 'package:chessever2/repository/supabase/chess_player/chess_player_repository.dart';
 import 'package:chessever2/screens/gamebase/models/models.dart';
 import 'package:chessever2/screens/library/providers/gamebase_filter_provider.dart';
+import 'package:chessever2/screens/library/providers/twic_event_aggregates_provider.dart';
 import 'package:chessever2/screens/library/utils/gamebase_pgn_builder.dart';
 import 'package:chessever2/screens/library/widgets/library_gamebase_filter_dialog.dart';
 import 'package:chessever2/utils/chess_title_utils.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/utils/twic_player_enrichment.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -50,15 +53,21 @@ class DatabaseGamesPaginationState {
 }
 
 /// Notifier for paginated database games
-class DatabaseGamesPaginationNotifier extends StateNotifier<DatabaseGamesPaginationState> {
+class DatabaseGamesPaginationNotifier
+    extends StateNotifier<DatabaseGamesPaginationState> {
   final Ref _ref;
   final String _query;
   final GamebaseFilter _filter;
+  final String? _selectedEvent;
 
   static const int _pageSize = 20;
 
-  DatabaseGamesPaginationNotifier(this._ref, this._query, this._filter)
-      : super(const DatabaseGamesPaginationState()) {
+  DatabaseGamesPaginationNotifier(
+    this._ref,
+    this._query,
+    this._filter,
+    this._selectedEvent,
+  ) : super(const DatabaseGamesPaginationState()) {
     _loadInitialPage();
   }
 
@@ -100,10 +109,7 @@ class DatabaseGamesPaginationNotifier extends StateNotifier<DatabaseGamesPaginat
         hasMore: result.hasMore,
       );
     } catch (e) {
-      state = state.copyWith(
-        isLoading: false,
-        error: e.toString(),
-      );
+      state = state.copyWith(isLoading: false, error: e.toString());
     }
   }
 
@@ -114,11 +120,18 @@ class DatabaseGamesPaginationNotifier extends StateNotifier<DatabaseGamesPaginat
 
   Future<_PageResult> _fetchPage(int pageNumber) async {
     final repo = _ref.read(gamebaseRepositoryProvider);
+    final baseQuery = _query.trim().isEmpty ? '*' : _query.trim();
+    final selectedEvent = _selectedEvent?.trim();
+    final escapedEvent = selectedEvent?.replaceAll('"', r'\"');
+    final composedQuery =
+        (escapedEvent == null || escapedEvent.isEmpty)
+            ? baseQuery
+            : '$baseQuery event:"$escapedEvent"';
 
     // Use GET /api/search (token-based + FTS) because it is indexed and fast.
     // POST /api/search/query currently can be very slow for free-text search.
     final response = await repo.globalSearch(
-      query: _query.trim().isEmpty ? '*' : _query.trim(),
+      query: composedQuery,
       resources: const ['game'],
       pageNumber: pageNumber,
       pageSize: _pageSize,
@@ -143,105 +156,198 @@ class DatabaseGamesPaginationNotifier extends StateNotifier<DatabaseGamesPaginat
       );
     }
 
-    final games = gameResults.map((result) {
+    final playerIdsForEnrichment = <String>{};
+    final fideIdsForEnrichment = <int>{};
+    for (final result in gameResults) {
       final preview = result.preview ?? const <String, dynamic>{};
-
-      final id = (preview['id']?.toString() ?? result.id).trim();
-      final safeId = id.isNotEmpty ? id : 'unknown';
-
-      final timeControl = preview['timeControl']?.toString();
-      final date = _parseDate(preview['date']);
-      final resultStr = preview['result']?.toString() ?? '*';
-
-      final whiteName = (preview['white']?.toString() ?? '').trim();
-      final blackName = (preview['black']?.toString() ?? '').trim();
-
-      final eco = preview['eco']?.toString() ?? '';
-      final opening = preview['opening']?.toString() ?? '';
-      final variation = preview['variation']?.toString() ?? '';
-      final event = preview['event']?.toString() ?? 'Gamebase';
-      final site = preview['site']?.toString();
-
-      final pgn = buildHeaderOnlyPgn(
-        whiteName: whiteName.isNotEmpty ? whiteName : 'White',
-        blackName: blackName.isNotEmpty ? blackName : 'Black',
-        result: resultStr,
-        event: event,
-        site: site,
-        date: date,
-        eco: eco,
-        opening: opening,
-        variation: variation,
-      );
-
-      final whiteElo = (preview['whiteElo'] as num?)?.toInt() ?? 0;
-      final blackElo = (preview['blackElo'] as num?)?.toInt() ?? 0;
-      final whiteFed = preview['whiteFed']?.toString() ?? '';
-      final blackFed = preview['blackFed']?.toString() ?? '';
-      final whiteTitle = ChessTitleUtils.normalize(
-        preview['whiteTitle']?.toString(),
-      );
-      final blackTitle = ChessTitleUtils.normalize(
-        preview['blackTitle']?.toString(),
-      );
       final whitePlayerId = preview['whitePlayerId']?.toString().trim();
       final blackPlayerId = preview['blackPlayerId']?.toString().trim();
-
-      final whiteCard = PlayerCard(
-        name: whiteName.isNotEmpty ? whiteName : 'White',
-        federation: '',
-        title: whiteTitle,
-        rating: whiteElo,
-        countryCode: whiteFed,
-        team: null,
-        fideId: null,
-        gamebasePlayerId: (whitePlayerId != null && whitePlayerId.isNotEmpty)
-            ? whitePlayerId
-            : null,
+      if (whitePlayerId != null && whitePlayerId.isNotEmpty) {
+        playerIdsForEnrichment.add(whitePlayerId);
+      }
+      if (blackPlayerId != null && blackPlayerId.isNotEmpty) {
+        playerIdsForEnrichment.add(blackPlayerId);
+      }
+      final whiteFideId = parseFideIdFromRaw(preview['whiteFideId']);
+      final blackFideId = parseFideIdFromRaw(preview['blackFideId']);
+      if (whiteFideId != null) fideIdsForEnrichment.add(whiteFideId);
+      if (blackFideId != null) fideIdsForEnrichment.add(blackFideId);
+    }
+    final gamebasePlayersById = <String, GamebasePlayer>{};
+    if (playerIdsForEnrichment.isNotEmpty) {
+      final players = await Future.wait(
+        playerIdsForEnrichment.map(repo.getPlayerById),
+        eagerError: false,
       );
+      for (final player in players.whereType<GamebasePlayer>()) {
+        gamebasePlayersById[player.id] = player;
+        final parsedFide = int.tryParse(player.fideId);
+        if (parsedFide != null && parsedFide > 0) {
+          fideIdsForEnrichment.add(parsedFide);
+        }
+      }
+    }
+    final chessPlayersByFideId =
+        fideIdsForEnrichment.isEmpty
+            ? const <int, ChessPlayer>{}
+            : await _ref
+                .read(chessPlayerRepositoryProvider)
+                .getPlayersByFideIds(fideIdsForEnrichment);
 
-      final blackCard = PlayerCard(
-        name: blackName.isNotEmpty ? blackName : 'Black',
-        federation: '',
-        title: blackTitle,
-        rating: blackElo,
-        countryCode: blackFed,
-        team: null,
-        fideId: null,
-        gamebasePlayerId: (blackPlayerId != null && blackPlayerId.isNotEmpty)
-            ? blackPlayerId
-            : null,
-      );
+    int ratingFor(GamebasePlayer? player, String? timeControl) {
+      if (player == null) return 0;
+      final tc = (timeControl ?? '').toUpperCase();
+      switch (tc) {
+        case 'RAPID':
+          return player.ratingRapid ?? player.highestRating ?? 0;
+        case 'BLITZ':
+          return player.ratingBlitz ?? player.highestRating ?? 0;
+        case 'CLASSICAL':
+        default:
+          return player.ratingClassical ?? player.highestRating ?? 0;
+      }
+    }
 
-      final formatCode =
-          (eco.trim().isNotEmpty) ? eco.trim() : (timeControl ?? '');
+    final games = gameResults
+        .map((result) {
+          final preview = result.preview ?? const <String, dynamic>{};
 
-      return GamesTourModel(
-        gameId: safeId,
-        whitePlayer: whiteCard,
-        blackPlayer: blackCard,
-        whiteTimeDisplay: '--:--',
-        blackTimeDisplay: '--:--',
-        whiteClockCentiseconds: 0,
-        blackClockCentiseconds: 0,
-        gameStatus: GameStatus.fromString(resultStr),
-        roundId: 'gamebase_search',
-        roundSlug: formatCode.isNotEmpty ? formatCode : null,
-        tourId: event.trim().isNotEmpty ? event.trim() : 'Gamebase',
-        timeControl: timeControl,
-        pgn: pgn,
-        lastMoveTime: date,
-      );
-    }).toList(growable: false);
+          final id = (preview['id']?.toString() ?? result.id).trim();
+          final safeId = id.isNotEmpty ? id : 'unknown';
+
+          final timeControl = preview['timeControl']?.toString();
+          final date = _parseDate(preview['date']);
+          final resultStr = preview['result']?.toString() ?? '*';
+
+          final whiteName = (preview['white']?.toString() ?? '').trim();
+          final blackName = (preview['black']?.toString() ?? '').trim();
+
+          final eco = preview['eco']?.toString() ?? '';
+          final opening = preview['opening']?.toString() ?? '';
+          final variation = preview['variation']?.toString() ?? '';
+          final event = preview['event']?.toString() ?? 'Gamebase';
+          final site = preview['site']?.toString();
+
+          final pgn = buildHeaderOnlyPgn(
+            whiteName: whiteName.isNotEmpty ? whiteName : 'White',
+            blackName: blackName.isNotEmpty ? blackName : 'Black',
+            result: resultStr,
+            event: event,
+            site: site,
+            date: date,
+            eco: eco,
+            opening: opening,
+            variation: variation,
+          );
+
+          final whitePlayerId = preview['whitePlayerId']?.toString().trim();
+          final blackPlayerId = preview['blackPlayerId']?.toString().trim();
+          final whitePlayer =
+              (whitePlayerId != null && whitePlayerId.isNotEmpty)
+                  ? gamebasePlayersById[whitePlayerId]
+                  : null;
+          final blackPlayer =
+              (blackPlayerId != null && blackPlayerId.isNotEmpty)
+                  ? gamebasePlayersById[blackPlayerId]
+                  : null;
+          final whiteEloRaw = (preview['whiteElo'] as num?)?.toInt() ?? 0;
+          final blackEloRaw = (preview['blackElo'] as num?)?.toInt() ?? 0;
+          final whiteElo =
+              whiteEloRaw > 0
+                  ? whiteEloRaw
+                  : ratingFor(whitePlayer, timeControl);
+          final blackElo =
+              blackEloRaw > 0
+                  ? blackEloRaw
+                  : ratingFor(blackPlayer, timeControl);
+          final whiteFed =
+              (preview['whiteFed']?.toString().trim().isNotEmpty ?? false)
+                  ? preview['whiteFed'].toString().trim()
+                  : (whitePlayer?.fed ?? '');
+          final blackFed =
+              (preview['blackFed']?.toString().trim().isNotEmpty ?? false)
+                  ? preview['blackFed'].toString().trim()
+                  : (blackPlayer?.fed ?? '');
+          final whiteTitle = ChessTitleUtils.normalize(
+            preview['whiteTitle']?.toString() ?? whitePlayer?.title,
+          );
+          final blackTitle = ChessTitleUtils.normalize(
+            preview['blackTitle']?.toString() ?? blackPlayer?.title,
+          );
+          final whiteFideId =
+              int.tryParse(preview['whiteFideId']?.toString() ?? '') ??
+              int.tryParse(whitePlayer?.fideId ?? '');
+          final blackFideId =
+              int.tryParse(preview['blackFideId']?.toString() ?? '') ??
+              int.tryParse(blackPlayer?.fideId ?? '');
+          final rowFen =
+              preview['fen']?.toString() ??
+              preview['finalFen']?.toString() ??
+              preview['positionFen']?.toString();
+          final rowLastMove = preview['lastMove']?.toString();
+
+          final whiteCard = enrichPlayerCardFromChessPlayers(
+            PlayerCard(
+              name: whiteName.isNotEmpty ? whiteName : 'White',
+              federation: '',
+              title: whiteTitle,
+              rating: whiteElo,
+              countryCode: whiteFed,
+              team: null,
+              fideId: whiteFideId,
+              gamebasePlayerId:
+                  (whitePlayerId != null && whitePlayerId.isNotEmpty)
+                      ? whitePlayerId
+                      : whitePlayer?.id,
+            ),
+            chessPlayersByFideId,
+          );
+
+          final blackCard = enrichPlayerCardFromChessPlayers(
+            PlayerCard(
+              name: blackName.isNotEmpty ? blackName : 'Black',
+              federation: '',
+              title: blackTitle,
+              rating: blackElo,
+              countryCode: blackFed,
+              team: null,
+              fideId: blackFideId,
+              gamebasePlayerId:
+                  (blackPlayerId != null && blackPlayerId.isNotEmpty)
+                      ? blackPlayerId
+                      : blackPlayer?.id,
+            ),
+            chessPlayersByFideId,
+          );
+
+          final formatCode =
+              (eco.trim().isNotEmpty) ? eco.trim() : (timeControl ?? '');
+
+          return GamesTourModel(
+            gameId: safeId,
+            whitePlayer: whiteCard,
+            blackPlayer: blackCard,
+            whiteTimeDisplay: '--:--',
+            blackTimeDisplay: '--:--',
+            whiteClockCentiseconds: 0,
+            blackClockCentiseconds: 0,
+            gameStatus: GameStatus.fromString(resultStr),
+            roundId: 'gamebase_search',
+            roundSlug: formatCode.isNotEmpty ? formatCode : null,
+            tourId: event.trim().isNotEmpty ? event.trim() : 'Gamebase',
+            timeControl: timeControl,
+            lastMove: rowLastMove,
+            fen: rowFen,
+            pgn: pgn,
+            lastMoveTime: date,
+          );
+        })
+        .toList(growable: false);
 
     final totalCount = response.metadata.totalCount ?? 0;
     final hasMore = response.metadata.hasMore;
 
-    return _PageResult(
-      games: games,
-      totalCount: totalCount,
-      hasMore: hasMore,
-    );
+    return _PageResult(games: games, totalCount: totalCount, hasMore: hasMore);
   }
 
   static DateTime? _parseDate(Object? raw) {
@@ -263,12 +369,16 @@ class _PageResult {
 }
 
 /// Provider for paginated database games with filter support
-final gamebaseDatabaseGamesPaginatedProvider = StateNotifierProvider.autoDispose<
-    DatabaseGamesPaginationNotifier, DatabaseGamesPaginationState>((ref) {
-  final query = ref.watch(librarySearchQueryProvider);
-  final filter = ref.watch(gamebaseFilterProvider);
-  return DatabaseGamesPaginationNotifier(ref, query, filter);
-});
+final gamebaseDatabaseGamesPaginatedProvider =
+    StateNotifierProvider.autoDispose<
+      DatabaseGamesPaginationNotifier,
+      DatabaseGamesPaginationState
+    >((ref) {
+      final query = ref.watch(librarySearchQueryProvider);
+      final filter = ref.watch(gamebaseFilterProvider);
+      final selectedEvent = ref.watch(twicSelectedEventProvider);
+      return DatabaseGamesPaginationNotifier(ref, query, filter, selectedEvent);
+    });
 
 /// Maps Gamebase search results into `GamesTourModel`s.
 ///
@@ -308,9 +418,8 @@ final gamebaseDatabaseGamesProvider = FutureProvider.autoDispose<
     );
 
     // Extract game results
-    final gameResults = response.results
-        .where((r) => r.resource == 'game')
-        .toList();
+    final gameResults =
+        response.results.where((r) => r.resource == 'game').toList();
 
     if (gameResults.isEmpty) {
       return const <GamesTourModel>[];
@@ -374,92 +483,162 @@ final gamebaseDatabaseGamesProvider = FutureProvider.autoDispose<
       return b.isNotEmpty ? b : (keyA.startsWith('white') ? 'White' : 'Black');
     }
 
-    return gameResults.map((result) {
-      final row = <String, dynamic>{
-        'id': result.id,
-        'label': result.label,
-        'snippet': result.snippet,
-        ...?result.preview,
-      };
+    final playerFideIds = <int>{};
+    for (final result in gameResults) {
+      final preview = result.preview ?? const <String, dynamic>{};
+      final whiteFideId = parseFideIdFromRaw(preview['whiteFideId']);
+      final blackFideId = parseFideIdFromRaw(preview['blackFideId']);
+      if (whiteFideId != null) playerFideIds.add(whiteFideId);
+      if (blackFideId != null) playerFideIds.add(blackFideId);
+    }
+    for (final p in playerDetails.values) {
+      final fideId = int.tryParse(p.fideId);
+      if (fideId != null && fideId > 0) {
+        playerFideIds.add(fideId);
+      }
+    }
+    final chessPlayersByFideId =
+        playerFideIds.isEmpty
+            ? const <int, ChessPlayer>{}
+            : await ref
+                .read(chessPlayerRepositoryProvider)
+                .getPlayersByFideIds(playerFideIds);
 
-      final id = (row['id']?.toString() ?? '').trim();
-      final safeId = id.isNotEmpty ? id : 'unknown';
-      final timeControl = row['timeControl']?.toString();
-      final date = parseDate(row['date']);
-      final resultStr = row['result']?.toString() ?? '*';
+    return gameResults
+        .map((result) {
+          final row = <String, dynamic>{
+            'id': result.id,
+            'label': result.label,
+            'snippet': result.snippet,
+            ...?result.preview,
+          };
 
-      final whiteName = coalesceName(row, 'white', 'whiteName');
-      final blackName = coalesceName(row, 'black', 'blackName');
+          final id = (row['id']?.toString() ?? '').trim();
+          final safeId = id.isNotEmpty ? id : 'unknown';
+          final timeControl = row['timeControl']?.toString();
+          final date = parseDate(row['date']);
+          final resultStr = row['result']?.toString() ?? '*';
 
-      final whitePlayerId = row['whitePlayerId']?.toString().trim();
-      final blackPlayerId = row['blackPlayerId']?.toString().trim();
-      final whitePlayer = (whitePlayerId != null) ? playerDetails[whitePlayerId] : null;
-      final blackPlayer = (blackPlayerId != null) ? playerDetails[blackPlayerId] : null;
+          final whiteName = coalesceName(row, 'white', 'whiteName');
+          final blackName = coalesceName(row, 'black', 'blackName');
 
-      final whiteTitle = ChessTitleUtils.normalize(
-        row['whiteTitle']?.toString() ?? whitePlayer?.title,
-      );
-      final blackTitle = ChessTitleUtils.normalize(
-        row['blackTitle']?.toString() ?? blackPlayer?.title,
-      );
+          final whitePlayerId = row['whitePlayerId']?.toString().trim();
+          final blackPlayerId = row['blackPlayerId']?.toString().trim();
+          final whitePlayer =
+              (whitePlayerId != null) ? playerDetails[whitePlayerId] : null;
+          final blackPlayer =
+              (blackPlayerId != null) ? playerDetails[blackPlayerId] : null;
 
-      final eco = row['eco']?.toString() ?? '';
-      final opening = row['opening']?.toString() ?? '';
-      final variation = row['variation']?.toString() ?? '';
-      final event = row['event']?.toString() ?? 'Gamebase';
-      final site = row['site']?.toString();
+          final whiteTitle = ChessTitleUtils.normalize(
+            row['whiteTitle']?.toString() ?? whitePlayer?.title,
+          );
+          final blackTitle = ChessTitleUtils.normalize(
+            row['blackTitle']?.toString() ?? blackPlayer?.title,
+          );
 
-      final pgn = buildHeaderOnlyPgn(
-        whiteName: whiteName,
-        blackName: blackName,
-        result: resultStr,
-        event: event,
-        site: site,
-        date: date,
-        eco: eco,
-        opening: opening,
-        variation: variation,
-      );
+          final eco = row['eco']?.toString() ?? '';
+          final opening = row['opening']?.toString() ?? '';
+          final variation = row['variation']?.toString() ?? '';
+          final event = row['event']?.toString() ?? 'Gamebase';
+          final site = row['site']?.toString();
+          final rowFen =
+              row['fen']?.toString() ??
+              row['finalFen']?.toString() ??
+              row['positionFen']?.toString();
+          final rowLastMove = row['lastMove']?.toString();
+          final whiteFideId =
+              parseFideIdFromRaw(row['whiteFideId']) ??
+              int.tryParse(whitePlayer?.fideId ?? '');
+          final blackFideId =
+              parseFideIdFromRaw(row['blackFideId']) ??
+              int.tryParse(blackPlayer?.fideId ?? '');
+          final whiteEloFromRow = (row['whiteElo'] as num?)?.toInt() ?? 0;
+          final blackEloFromRow = (row['blackElo'] as num?)?.toInt() ?? 0;
+          final whiteFed =
+              (row['whiteFed']?.toString().trim().isNotEmpty ?? false)
+                  ? row['whiteFed'].toString().trim()
+                  : (whitePlayer?.fed ?? '');
+          final blackFed =
+              (row['blackFed']?.toString().trim().isNotEmpty ?? false)
+                  ? row['blackFed'].toString().trim()
+                  : (blackPlayer?.fed ?? '');
 
-      final whiteCard = PlayerCard(
-        name: whiteName,
-        federation: '',
-        title: whiteTitle,
-        rating: ratingFor(whitePlayer, timeControl),
-        countryCode: whitePlayer?.fed ?? '',
-        team: null,
-        fideId: int.tryParse(whitePlayer?.fideId ?? ''),
-      );
+          final pgn = buildHeaderOnlyPgn(
+            whiteName: whiteName,
+            blackName: blackName,
+            result: resultStr,
+            event: event,
+            site: site,
+            date: date,
+            eco: eco,
+            opening: opening,
+            variation: variation,
+            fen: rowFen,
+          );
 
-      final blackCard = PlayerCard(
-        name: blackName,
-        federation: '',
-        title: blackTitle,
-        rating: ratingFor(blackPlayer, timeControl),
-        countryCode: blackPlayer?.fed ?? '',
-        team: null,
-        fideId: int.tryParse(blackPlayer?.fideId ?? ''),
-      );
+          final whiteCard = enrichPlayerCardFromChessPlayers(
+            PlayerCard(
+              name: whiteName,
+              federation: '',
+              title: whiteTitle,
+              rating:
+                  whiteEloFromRow > 0
+                      ? whiteEloFromRow
+                      : ratingFor(whitePlayer, timeControl),
+              countryCode: whiteFed,
+              team: null,
+              fideId: whiteFideId,
+              gamebasePlayerId:
+                  (whitePlayerId != null && whitePlayerId.isNotEmpty)
+                      ? whitePlayerId
+                      : whitePlayer?.id,
+            ),
+            chessPlayersByFideId,
+          );
 
-      final formatCode = (eco.trim().isNotEmpty) ? eco.trim() : (timeControl ?? '');
+          final blackCard = enrichPlayerCardFromChessPlayers(
+            PlayerCard(
+              name: blackName,
+              federation: '',
+              title: blackTitle,
+              rating:
+                  blackEloFromRow > 0
+                      ? blackEloFromRow
+                      : ratingFor(blackPlayer, timeControl),
+              countryCode: blackFed,
+              team: null,
+              fideId: blackFideId,
+              gamebasePlayerId:
+                  (blackPlayerId != null && blackPlayerId.isNotEmpty)
+                      ? blackPlayerId
+                      : blackPlayer?.id,
+            ),
+            chessPlayersByFideId,
+          );
 
-      return GamesTourModel(
-        gameId: safeId,
-        whitePlayer: whiteCard,
-        blackPlayer: blackCard,
-        whiteTimeDisplay: '--:--',
-        blackTimeDisplay: '--:--',
-        whiteClockCentiseconds: 0,
-        blackClockCentiseconds: 0,
-        gameStatus: GameStatus.fromString(resultStr),
-        roundId: 'gamebase_search',
-        roundSlug: formatCode.isNotEmpty ? formatCode : null,
-        tourId: event.trim().isNotEmpty ? event.trim() : 'Gamebase',
-        timeControl: timeControl,
-        pgn: pgn,
-        lastMoveTime: date,
-      );
-    }).toList(growable: false);
+          final formatCode =
+              (eco.trim().isNotEmpty) ? eco.trim() : (timeControl ?? '');
+
+          return GamesTourModel(
+            gameId: safeId,
+            whitePlayer: whiteCard,
+            blackPlayer: blackCard,
+            whiteTimeDisplay: '--:--',
+            blackTimeDisplay: '--:--',
+            whiteClockCentiseconds: 0,
+            blackClockCentiseconds: 0,
+            gameStatus: GameStatus.fromString(resultStr),
+            roundId: 'gamebase_search',
+            roundSlug: formatCode.isNotEmpty ? formatCode : null,
+            tourId: event.trim().isNotEmpty ? event.trim() : 'Gamebase',
+            timeControl: timeControl,
+            lastMove: rowLastMove,
+            fen: rowFen,
+            pgn: pgn,
+            lastMoveTime: date,
+          );
+        })
+        .toList(growable: false);
   } catch (e, st) {
     if (kDebugMode) {
       debugPrint('[GamebaseDatabaseGames] Error: $e');

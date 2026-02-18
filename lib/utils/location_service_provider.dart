@@ -230,7 +230,7 @@ class LocationService {
       return mappedCode;
     }
 
-    // Last fallback: try 3-letter to 2-letter conversion for common cases
+    // Try 3-letter to 2-letter conversion for common cases
     if (countryCode.length == 3) {
       try {
         var code = CountryCode.tryParse(countryCode);
@@ -238,8 +238,14 @@ class LocationService {
           return code.alpha2;
         }
       } catch (_) {
-        // If still fails, return empty
+        // Continue to name-based fallback
       }
+    }
+
+    // Fallback: if input looks like a full country name (e.g., "Azerbaijan"),
+    // try name-based lookup. Gamebase returns country names, not codes.
+    if (countryCode.length > 3) {
+      return getValidCountryCodeFromName(countryCode);
     }
 
     return '';

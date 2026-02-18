@@ -411,7 +411,6 @@ class _EventImage extends ConsumerWidget {
                       placeholder:
                           (context, url) => Skeletonizer(
                             enabled: true,
-                            ignoreContainers: true,
                             effect: const ShimmerEffect(
                               baseColor: Color(0xFF2A2A2A),
                               highlightColor: Color(0xFF3A3A3A),
@@ -431,7 +430,6 @@ class _EventImage extends ConsumerWidget {
                 loading:
                     () => Skeletonizer(
                       enabled: true,
-                      ignoreContainers: true,
                       effect: const ShimmerEffect(
                         baseColor: Color(0xFF2A2A2A),
                         highlightColor: Color(0xFF3A3A3A),
@@ -625,7 +623,6 @@ class _TabletEventBackground extends ConsumerWidget {
   Widget _buildLoadingBackground() {
     return Skeletonizer(
       enabled: true,
-      ignoreContainers: true,
       effect: const ShimmerEffect(
         baseColor: Color(0xFF2A2A2A),
         highlightColor: Color(0xFF3A3A3A),

@@ -4,12 +4,14 @@ class GamebasePaginationMetadata {
     required this.pageSize,
     this.totalCount,
     this.hasMoreValue,
+    this.totalCountIsEstimate = false,
   });
 
   final int pageNumber;
   final int pageSize;
   final int? totalCount;
   final bool? hasMoreValue;
+  final bool totalCountIsEstimate;
 
   factory GamebasePaginationMetadata.fromJson(Map<String, dynamic> json) {
     return GamebasePaginationMetadata(
@@ -17,6 +19,7 @@ class GamebasePaginationMetadata {
       pageSize: (json['pageSize'] as num?)?.toInt() ?? 20,
       totalCount: (json['totalCount'] as num?)?.toInt(),
       hasMoreValue: json['hasMore'] as bool?,
+      totalCountIsEstimate: json['totalCountIsEstimate'] as bool? ?? false,
     );
   }
 

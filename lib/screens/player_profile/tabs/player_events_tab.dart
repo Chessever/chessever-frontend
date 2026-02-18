@@ -1,6 +1,7 @@
 import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
+import 'package:chessever2/screens/player_profile/player_profile_data_source.dart';
 import 'package:chessever2/screens/player_profile/provider/player_profile_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
 import 'package:chessever2/theme/app_theme.dart';
@@ -9,10 +10,10 @@ import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/event_card/event_card.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
-import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_animate/flutter_animate.dart';
+import 'package:flutter_animate/flutter_animate.dart' hide ShimmerEffect;
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:skeletonizer/skeletonizer.dart';
 
 /// Events tab showing tournaments the player has participated in
 class PlayerEventsTab extends ConsumerStatefulWidget {
@@ -20,10 +21,14 @@ class PlayerEventsTab extends ConsumerStatefulWidget {
     super.key,
     this.fideId,
     required this.playerName,
+    this.dataSource = PlayerProfileDataSource.supabase,
+    this.gamebasePlayerId,
   });
 
   final int? fideId;
   final String playerName;
+  final PlayerProfileDataSource dataSource;
+  final String? gamebasePlayerId;
 
   @override
   ConsumerState<PlayerEventsTab> createState() => _PlayerEventsTabState();
@@ -36,9 +41,11 @@ class _PlayerEventsTabState extends ConsumerState<PlayerEventsTab>
 
   /// Get the player profile key for provider lookups
   PlayerProfileKey get _playerKey => PlayerProfileKey(
-        fideId: widget.fideId,
-        playerName: widget.playerName,
-      );
+    fideId: widget.fideId,
+    playerName: widget.playerName,
+    source: widget.dataSource,
+    gamebasePlayerId: widget.gamebasePlayerId,
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -55,7 +62,9 @@ class _PlayerEventsTabState extends ConsumerState<PlayerEventsTab>
       onRefresh: () async {
         HapticFeedbackService.medium();
         ref.invalidate(playerEventsKeyProvider(_playerKey));
-        if (widget.fideId != null) {
+        if (widget.dataSource == PlayerProfileDataSource.twic) {
+          ref.invalidate(playerTwicEventCardsProvider(_playerKey));
+        } else if (widget.fideId != null) {
           ref.invalidate(playerEventCardsProvider(widget.fideId!));
         }
       },
@@ -68,16 +77,17 @@ class _PlayerEventsTabState extends ConsumerState<PlayerEventsTab>
           }
 
           // Sort events by start date (most recent first)
-          final sortedEvents = List<PlayerEventData>.from(events)
-            ..sort((a, b) {
-              final aDate = a.startDate ?? DateTime(1900);
-              final bDate = b.startDate ?? DateTime(1900);
-              return bDate.compareTo(aDate);
-            });
+          final sortedEvents = List<PlayerEventData>.from(events)..sort((a, b) {
+            final aDate = a.startDate ?? DateTime(1900);
+            final bDate = b.startDate ?? DateTime(1900);
+            return bDate.compareTo(aDate);
+          });
 
           return _EventsListContent(
             events: sortedEvents,
             fideId: widget.fideId,
+            playerKey: _playerKey,
+            dataSource: widget.dataSource,
             timeControlFilter: currentTimeControl,
             hasActiveFilter: hasActiveFilter,
           );
@@ -228,16 +238,19 @@ class _PlayerEventsTabState extends ConsumerState<PlayerEventsTab>
                   ref.invalidate(playerEventsKeyProvider(_playerKey));
                 },
                 child: Container(
-                  padding:
-                      EdgeInsets.symmetric(horizontal: 24.w, vertical: 12.h),
+                  padding: EdgeInsets.symmetric(
+                    horizontal: 24.w,
+                    vertical: 12.h,
+                  ),
                   decoration: BoxDecoration(
                     color: kWhiteColor.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(8.br),
                   ),
                   child: Text(
                     'Retry',
-                    style:
-                        AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+                    style: AppTypography.textSmMedium.copyWith(
+                      color: kWhiteColor,
+                    ),
                   ),
                 ),
               ),
@@ -254,21 +267,27 @@ class _EventsListContent extends ConsumerWidget {
   const _EventsListContent({
     required this.events,
     this.fideId,
+    required this.playerKey,
+    required this.dataSource,
     this.timeControlFilter = GameTimeControlFilter.all,
     this.hasActiveFilter = false,
   });
 
   final List<PlayerEventData> events;
   final int? fideId;
+  final PlayerProfileKey playerKey;
+  final PlayerProfileDataSource dataSource;
   final GameTimeControlFilter timeControlFilter;
   final bool hasActiveFilter;
 
   /// Check if an event matches the time control filter
   bool _eventMatchesTimeControl(GroupEventCardModel? eventCard) {
     if (timeControlFilter == GameTimeControlFilter.all) return true;
-    if (eventCard == null) return true; // Show events without card data when filtering
+    if (eventCard == null) {
+      return true; // Show events without card data when filtering
+    }
 
-    final eventTimeControl = eventCard.timeControl?.toLowerCase() ?? '';
+    final eventTimeControl = eventCard.timeControl.toLowerCase();
 
     switch (timeControlFilter) {
       case GameTimeControlFilter.classical:
@@ -287,38 +306,57 @@ class _EventsListContent extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     // Watch the event cards provider (only if fideId is available)
-    final eventCardsAsync = fideId != null
-        ? ref.watch(playerEventCardsProvider(fideId!))
-        : const AsyncValue<Map<String, GroupEventCardModel>>.data({});
+    final eventCardsAsync =
+        dataSource == PlayerProfileDataSource.twic
+            ? ref.watch(playerTwicEventCardsProvider(playerKey))
+            : fideId != null
+            ? ref.watch(playerEventCardsProvider(fideId!))
+            : const AsyncValue<Map<String, GroupEventCardModel>>.data({});
 
     return eventCardsAsync.when(
       data: (eventCards) {
         // Filter events based on time control
-        final filteredEvents = hasActiveFilter
-            ? events.where((event) {
-                final eventCard = eventCards[event.tourId];
-                return _eventMatchesTimeControl(eventCard);
-              }).toList()
-            : events;
+        final filteredEvents =
+            hasActiveFilter
+                ? events.where((event) {
+                  final eventCard = eventCards[event.tourId];
+                  return _eventMatchesTimeControl(eventCard);
+                }).toList()
+                : events;
 
         // Calculate statistics from filtered events
-        final totalGames = filteredEvents.fold<int>(0, (sum, e) => sum + e.gamesPlayed);
-        final totalScore = filteredEvents.fold<double>(0, (sum, e) => sum + (e.score ?? 0));
+        final totalGames = filteredEvents.fold<int>(
+          0,
+          (sum, e) => sum + e.gamesPlayed,
+        );
+        final totalScore = filteredEvents.fold<double>(
+          0,
+          (sum, e) => sum + (e.score ?? 0),
+        );
         final avgScore = totalGames > 0 ? totalScore / totalGames : 0.0;
 
-        final horizontalPadding = ResponsiveHelper.adaptive(phone: 16.w, tablet: 24.w);
+        final horizontalPadding = ResponsiveHelper.adaptive(
+          phone: 16.w,
+          tablet: 24.w,
+        );
 
         // Build list items
-        final headerItemCount = hasActiveFilter ? 2 : 1; // Filter banner + stats header
+        final headerItemCount =
+            hasActiveFilter ? 2 : 1; // Filter banner + stats header
 
         return ListView.builder(
           physics: const AlwaysScrollableScrollPhysics(
             parent: BouncingScrollPhysics(),
           ),
-          padding: EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: 16.h),
-          itemCount: filteredEvents.isEmpty && hasActiveFilter
-              ? headerItemCount + 1 // header + empty state
-              : filteredEvents.length + headerItemCount,
+          padding: EdgeInsets.symmetric(
+            horizontal: horizontalPadding,
+            vertical: 16.h,
+          ),
+          itemCount:
+              filteredEvents.isEmpty && hasActiveFilter
+                  ? headerItemCount +
+                      1 // header + empty state
+                  : filteredEvents.length + headerItemCount,
           itemBuilder: (context, index) {
             // Filter banner
             if (hasActiveFilter && index == 0) {
@@ -373,17 +411,26 @@ class _EventsListContent extends ConsumerWidget {
       loading: () {
         // Calculate statistics from all events while loading cards
         final totalGames = events.fold<int>(0, (sum, e) => sum + e.gamesPlayed);
-        final totalScore = events.fold<double>(0, (sum, e) => sum + (e.score ?? 0));
+        final totalScore = events.fold<double>(
+          0,
+          (sum, e) => sum + (e.score ?? 0),
+        );
         final avgScore = totalGames > 0 ? totalScore / totalGames : 0.0;
 
-        final horizontalPadding = ResponsiveHelper.adaptive(phone: 16.w, tablet: 24.w);
+        final horizontalPadding = ResponsiveHelper.adaptive(
+          phone: 16.w,
+          tablet: 24.w,
+        );
         final headerItemCount = hasActiveFilter ? 2 : 1;
 
         return ListView.builder(
           physics: const AlwaysScrollableScrollPhysics(
             parent: BouncingScrollPhysics(),
           ),
-          padding: EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: 16.h),
+          padding: EdgeInsets.symmetric(
+            horizontal: horizontalPadding,
+            vertical: 16.h,
+          ),
           itemCount: events.length + headerItemCount,
           itemBuilder: (context, index) {
             if (hasActiveFilter && index == 0) {
@@ -420,17 +467,26 @@ class _EventsListContent extends ConsumerWidget {
       error: (_, __) {
         // Same as loading - show fallback cards
         final totalGames = events.fold<int>(0, (sum, e) => sum + e.gamesPlayed);
-        final totalScore = events.fold<double>(0, (sum, e) => sum + (e.score ?? 0));
+        final totalScore = events.fold<double>(
+          0,
+          (sum, e) => sum + (e.score ?? 0),
+        );
         final avgScore = totalGames > 0 ? totalScore / totalGames : 0.0;
 
-        final horizontalPadding = ResponsiveHelper.adaptive(phone: 16.w, tablet: 24.w);
+        final horizontalPadding = ResponsiveHelper.adaptive(
+          phone: 16.w,
+          tablet: 24.w,
+        );
         final headerItemCount = hasActiveFilter ? 2 : 1;
 
         return ListView.builder(
           physics: const AlwaysScrollableScrollPhysics(
             parent: BouncingScrollPhysics(),
           ),
-          padding: EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: 16.h),
+          padding: EdgeInsets.symmetric(
+            horizontal: horizontalPadding,
+            vertical: 16.h,
+          ),
           itemCount: events.length + headerItemCount,
           itemBuilder: (context, index) {
             if (hasActiveFilter && index == 0) {
@@ -467,7 +523,10 @@ class _EventsListContent extends ConsumerWidget {
     );
   }
 
-  Widget _buildNoFilterResultsState(BuildContext context, GameTimeControlFilter timeControl) {
+  Widget _buildNoFilterResultsState(
+    BuildContext context,
+    GameTimeControlFilter timeControl,
+  ) {
     const filterRedColor = Color(0xFFEF4444);
     return Center(
       child: Padding(
@@ -519,9 +578,9 @@ class _EventsListContent extends ConsumerWidget {
       }
     } catch (_) {
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Unable to open event')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Unable to open event')));
     }
   }
 }
@@ -567,9 +626,7 @@ class _FilterActiveBanner extends StatelessWidget {
           Expanded(
             child: Text(
               'Showing ${timeControl.displayText} events only',
-              style: AppTypography.textSmMedium.copyWith(
-                color: kWhiteColor,
-              ),
+              style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
             ),
           ),
           Text(
@@ -674,10 +731,7 @@ class _StatBox extends StatelessWidget {
         ),
         child: Column(
           children: [
-            Text(
-              value,
-              style: AppTypography.textMdBold.copyWith(color: color),
-            ),
+            Text(value, style: AppTypography.textMdBold.copyWith(color: color)),
             SizedBox(height: 2.h),
             Text(
               label,
@@ -707,73 +761,73 @@ class _PlayerEventCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return GestureDetector(
-      onTap: () => _navigateToTournament(context, ref),
-      child: Column(
-        children: [
-          // Standard event card
-          EventCard(
-            tourEventCardModel: eventCard,
-            heroTagSuffix: 'player-profile-$index',
-          ),
-          // Player stats row
-          Container(
-            margin: EdgeInsets.only(top: 1.h),
-            padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
-            decoration: BoxDecoration(
-              color: kBlack2Color,
-              borderRadius: BorderRadius.only(
-                bottomLeft: Radius.circular(8.br),
-                bottomRight: Radius.circular(8.br),
+          onTap: () => _navigateToTournament(context, ref),
+          child: Column(
+            children: [
+              // Standard event card
+              EventCard(
+                tourEventCardModel: eventCard,
+                heroTagSuffix: 'player-profile-$index',
               ),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Row(
-                  children: [
-                    Icon(
-                      Icons.sports_esports_outlined,
-                      size: 14.sp,
-                      color: kWhiteColor.withValues(alpha: 0.5),
-                    ),
-                    SizedBox(width: 4.w),
-                    Text(
-                      '${playerEventData.gamesPlayed} ${playerEventData.gamesPlayed == 1 ? 'game' : 'games'}',
-                      style: AppTypography.textXsRegular.copyWith(
-                        color: kWhiteColor.withValues(alpha: 0.5),
-                      ),
-                    ),
-                  ],
+              // Player stats row
+              Container(
+                margin: EdgeInsets.only(top: 1.h),
+                padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
+                decoration: BoxDecoration(
+                  color: kBlack2Color,
+                  borderRadius: BorderRadius.only(
+                    bottomLeft: Radius.circular(8.br),
+                    bottomRight: Radius.circular(8.br),
+                  ),
                 ),
-                if (playerEventData.score != null)
-                  Container(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: 8.w,
-                      vertical: 3.h,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.sports_esports_outlined,
+                          size: 14.sp,
+                          color: kWhiteColor.withValues(alpha: 0.5),
+                        ),
+                        SizedBox(width: 4.w),
+                        Text(
+                          '${playerEventData.gamesPlayed} ${playerEventData.gamesPlayed == 1 ? 'game' : 'games'}',
+                          style: AppTypography.textXsRegular.copyWith(
+                            color: kWhiteColor.withValues(alpha: 0.5),
+                          ),
+                        ),
+                      ],
                     ),
-                    decoration: BoxDecoration(
-                      color: _getScoreColor(
-                        playerEventData.score!,
-                        playerEventData.gamesPlayed,
-                      ).withValues(alpha: 0.2),
-                      borderRadius: BorderRadius.circular(4.br),
-                    ),
-                    child: Text(
-                      '${playerEventData.score!.toStringAsFixed(1)}/${playerEventData.gamesPlayed}',
-                      style: AppTypography.textXsBold.copyWith(
-                        color: _getScoreColor(
-                          playerEventData.score!,
-                          playerEventData.gamesPlayed,
+                    if (playerEventData.score != null)
+                      Container(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 8.w,
+                          vertical: 3.h,
+                        ),
+                        decoration: BoxDecoration(
+                          color: _getScoreColor(
+                            playerEventData.score!,
+                            playerEventData.gamesPlayed,
+                          ).withValues(alpha: 0.2),
+                          borderRadius: BorderRadius.circular(4.br),
+                        ),
+                        child: Text(
+                          '${playerEventData.score!.toStringAsFixed(1)}/${playerEventData.gamesPlayed}',
+                          style: AppTypography.textXsBold.copyWith(
+                            color: _getScoreColor(
+                              playerEventData.score!,
+                              playerEventData.gamesPlayed,
+                            ),
+                          ),
                         ),
                       ),
-                    ),
-                  ),
-              ],
-            ),
+                  ],
+                ),
+              ),
+            ],
           ),
-        ],
-      ),
-    )
+        )
         .animate()
         .fadeIn(
           duration: 200.ms,
@@ -782,7 +836,10 @@ class _PlayerEventCard extends ConsumerWidget {
         .slideY(begin: 0.02, end: 0);
   }
 
-  Future<void> _navigateToTournament(BuildContext context, WidgetRef ref) async {
+  Future<void> _navigateToTournament(
+    BuildContext context,
+    WidgetRef ref,
+  ) async {
     HapticFeedbackService.buttonPress();
     try {
       final broadcast = await ref
@@ -796,9 +853,9 @@ class _PlayerEventCard extends ConsumerWidget {
       }
     } catch (_) {
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Unable to open event')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Unable to open event')));
     }
   }
 
@@ -828,155 +885,155 @@ class _FallbackEventCard extends StatelessWidget {
   Widget build(BuildContext context) {
     // Match the exact layout of EventCard._buildPhoneCard + _PlayerEventCard
     return GestureDetector(
-      onTap: onTap,
-      child: Column(
-        children: [
-          // Main card - matches EventCard._buildPhoneCard layout
-          Container(
-            decoration: BoxDecoration(
-              color: kBlack2Color,
-              borderRadius: BorderRadius.circular(8.br),
-            ),
-            padding: EdgeInsets.all(6.sp),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                // Image placeholder - matches _EventImage dimensions
-                _SkeletonEventImage(),
-                SizedBox(width: 12.w),
+          onTap: onTap,
+          child: Column(
+            children: [
+              // Main card - matches EventCard._buildPhoneCard layout
+              Container(
+                decoration: BoxDecoration(
+                  color: kBlack2Color,
+                  borderRadius: BorderRadius.circular(8.br),
+                ),
+                padding: EdgeInsets.all(6.sp),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    // Image placeholder - matches _EventImage dimensions
+                    _SkeletonEventImage(),
+                    SizedBox(width: 12.w),
 
-                // Content in the middle
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      // Event name
-                      Text(
-                        event.tourName,
-                        style: AppTypography.textSmMedium.copyWith(
-                          color: kWhiteColor,
-                          fontSize: 14.sp,
-                          height: 1.2,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                        maxLines: 1,
-                      ),
-
-                      SizedBox(height: 4.h),
-
-                      // Event details placeholder (date, time control)
-                      Row(
+                    // Content in the middle
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          if (event.startDate != null) ...[
-                            Flexible(
-                              child: Text(
-                                _formatDate(event.startDate!),
-                                style: AppTypography.textXsMedium.copyWith(
-                                  color: kWhiteColor70,
+                          // Event name
+                          Text(
+                            event.tourName,
+                            style: AppTypography.textSmMedium.copyWith(
+                              color: kWhiteColor,
+                              fontSize: 14.sp,
+                              height: 1.2,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                            maxLines: 1,
+                          ),
+
+                          SizedBox(height: 4.h),
+
+                          // Event details placeholder (date, time control)
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (event.startDate != null) ...[
+                                Flexible(
+                                  child: Text(
+                                    _formatDate(event.startDate!),
+                                    style: AppTypography.textXsMedium.copyWith(
+                                      color: kWhiteColor70,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                    maxLines: 1,
+                                  ),
                                 ),
-                                overflow: TextOverflow.ellipsis,
-                                maxLines: 1,
-                              ),
-                            ),
-                          ] else ...[
-                            // Skeleton for date
-                            Container(
-                              width: 60.w,
-                              height: 12.h,
-                              decoration: BoxDecoration(
-                                color: kLightBlack,
-                                borderRadius: BorderRadius.circular(4.br),
-                              ),
-                            ),
-                          ],
+                              ] else ...[
+                                // Skeleton for date
+                                Container(
+                                  width: 60.w,
+                                  height: 12.h,
+                                  decoration: BoxDecoration(
+                                    color: kLightBlack,
+                                    borderRadius: BorderRadius.circular(4.br),
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
                         ],
                       ),
-                    ],
-                  ),
-                ),
-
-                SizedBox(width: 8.w),
-
-                // Star placeholder - matches _StarWidget size
-                SizedBox(
-                  width: 30.w,
-                  height: 40.h,
-                  child: Center(
-                    child: Container(
-                      width: 20.w,
-                      height: 20.h,
-                      decoration: BoxDecoration(
-                        color: kLightBlack,
-                        borderRadius: BorderRadius.circular(4.br),
-                      ),
                     ),
-                  ),
-                ),
-              ],
-            ),
-          ),
 
-          // Player stats row - matches _PlayerEventCard layout
-          Container(
-            margin: EdgeInsets.only(top: 1.h),
-            padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
-            decoration: BoxDecoration(
-              color: kBlack2Color,
-              borderRadius: BorderRadius.only(
-                bottomLeft: Radius.circular(8.br),
-                bottomRight: Radius.circular(8.br),
-              ),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Row(
-                  children: [
-                    Icon(
-                      Icons.sports_esports_outlined,
-                      size: 14.sp,
-                      color: kWhiteColor.withValues(alpha: 0.5),
-                    ),
-                    SizedBox(width: 4.w),
-                    Text(
-                      '${event.gamesPlayed} ${event.gamesPlayed == 1 ? 'game' : 'games'}',
-                      style: AppTypography.textXsRegular.copyWith(
-                        color: kWhiteColor.withValues(alpha: 0.5),
+                    SizedBox(width: 8.w),
+
+                    // Star placeholder - matches _StarWidget size
+                    SizedBox(
+                      width: 30.w,
+                      height: 40.h,
+                      child: Center(
+                        child: Container(
+                          width: 20.w,
+                          height: 20.h,
+                          decoration: BoxDecoration(
+                            color: kLightBlack,
+                            borderRadius: BorderRadius.circular(4.br),
+                          ),
+                        ),
                       ),
                     ),
                   ],
                 ),
-                if (event.score != null)
-                  Container(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: 8.w,
-                      vertical: 3.h,
+              ),
+
+              // Player stats row - matches _PlayerEventCard layout
+              Container(
+                margin: EdgeInsets.only(top: 1.h),
+                padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
+                decoration: BoxDecoration(
+                  color: kBlack2Color,
+                  borderRadius: BorderRadius.only(
+                    bottomLeft: Radius.circular(8.br),
+                    bottomRight: Radius.circular(8.br),
+                  ),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.sports_esports_outlined,
+                          size: 14.sp,
+                          color: kWhiteColor.withValues(alpha: 0.5),
+                        ),
+                        SizedBox(width: 4.w),
+                        Text(
+                          '${event.gamesPlayed} ${event.gamesPlayed == 1 ? 'game' : 'games'}',
+                          style: AppTypography.textXsRegular.copyWith(
+                            color: kWhiteColor.withValues(alpha: 0.5),
+                          ),
+                        ),
+                      ],
                     ),
-                    decoration: BoxDecoration(
-                      color: _getScoreColor(
-                        event.score!,
-                        event.gamesPlayed,
-                      ).withValues(alpha: 0.2),
-                      borderRadius: BorderRadius.circular(4.br),
-                    ),
-                    child: Text(
-                      '${event.score!.toStringAsFixed(1)}/${event.gamesPlayed}',
-                      style: AppTypography.textXsBold.copyWith(
-                        color: _getScoreColor(
-                          event.score!,
-                          event.gamesPlayed,
+                    if (event.score != null)
+                      Container(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 8.w,
+                          vertical: 3.h,
+                        ),
+                        decoration: BoxDecoration(
+                          color: _getScoreColor(
+                            event.score!,
+                            event.gamesPlayed,
+                          ).withValues(alpha: 0.2),
+                          borderRadius: BorderRadius.circular(4.br),
+                        ),
+                        child: Text(
+                          '${event.score!.toStringAsFixed(1)}/${event.gamesPlayed}',
+                          style: AppTypography.textXsBold.copyWith(
+                            color: _getScoreColor(
+                              event.score!,
+                              event.gamesPlayed,
+                            ),
+                          ),
                         ),
                       ),
-                    ),
-                  ),
-              ],
-            ),
+                  ],
+                ),
+              ),
+            ],
           ),
-        ],
-      ),
-    )
+        )
         .animate()
         .fadeIn(
           duration: 200.ms,
@@ -986,8 +1043,20 @@ class _FallbackEventCard extends StatelessWidget {
   }
 
   String _formatDate(DateTime date) {
-    final months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-                    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    final months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
     return '${months[date.month - 1]} ${date.day}, ${date.year}';
   }
 
@@ -1023,7 +1092,13 @@ class _SkeletonEventImage extends StatelessWidget {
         aspectRatio: 3 / 2,
         child: ClipRRect(
           borderRadius: BorderRadius.circular(6.br),
-          child: SkeletonWidget(
+          child: Skeletonizer(
+            enabled: true,
+            effect: const ShimmerEffect(
+              baseColor: Color(0xFF2A2A2A),
+              highlightColor: Color(0xFF3A3A3A),
+              duration: Duration(seconds: 1),
+            ),
             child: Container(
               decoration: BoxDecoration(
                 color: kLightBlack,
@@ -1040,41 +1115,43 @@ class _SkeletonEventImage extends StatelessWidget {
 /// Provider to fetch GroupEventCardModel for player events
 final playerEventCardsProvider = FutureProvider.family
     .autoDispose<Map<String, GroupEventCardModel>, int>((ref, fideId) async {
-  try {
-    final events = await ref.watch(playerEventsProvider(fideId).future);
-    if (events.isEmpty) return {};
-
-    // Get unique group_broadcast_ids from tours
-    final groupBroadcastRepo = ref.read(groupBroadcastRepositoryProvider);
-    final eventCards = <String, GroupEventCardModel>{};
-
-    // Fetch all group broadcasts for these tours
-    for (final event in events) {
       try {
-        final broadcast = await groupBroadcastRepo.getGroupBroadcastById(event.tourId);
-        final groupBroadcast = GroupBroadcast.fromJson({
-          'id': broadcast.id,
-          'created_at': DateTime.now().toIso8601String(),
-          'name': broadcast.name,
-          'search': broadcast.search,
-          'max_avg_elo': broadcast.maxAvgElo,
-          'date_start': broadcast.dateStart?.toIso8601String(),
-          'date_end': broadcast.dateEnd?.toIso8601String(),
-          'time_control': broadcast.timeControl,
-        });
+        final events = await ref.watch(playerEventsProvider(fideId).future);
+        if (events.isEmpty) return {};
 
-        eventCards[event.tourId] = GroupEventCardModel.fromGroupBroadcast(
-          groupBroadcast,
-          [], // No live events needed for player profile
-        );
-      } catch (_) {
-        // Skip events that can't be loaded
+        // Get unique group_broadcast_ids from tours
+        final groupBroadcastRepo = ref.read(groupBroadcastRepositoryProvider);
+        final eventCards = <String, GroupEventCardModel>{};
+
+        // Fetch all group broadcasts for these tours
+        for (final event in events) {
+          try {
+            final broadcast = await groupBroadcastRepo.getGroupBroadcastById(
+              event.tourId,
+            );
+            final groupBroadcast = GroupBroadcast.fromJson({
+              'id': broadcast.id,
+              'created_at': DateTime.now().toIso8601String(),
+              'name': broadcast.name,
+              'search': broadcast.search,
+              'max_avg_elo': broadcast.maxAvgElo,
+              'date_start': broadcast.dateStart?.toIso8601String(),
+              'date_end': broadcast.dateEnd?.toIso8601String(),
+              'time_control': broadcast.timeControl,
+            });
+
+            eventCards[event.tourId] = GroupEventCardModel.fromGroupBroadcast(
+              groupBroadcast,
+              [], // No live events needed for player profile
+            );
+          } catch (_) {
+            // Skip events that can't be loaded
+          }
+        }
+
+        return eventCards;
+      } catch (e) {
+        debugPrint('[playerEventCardsProvider] Error: $e');
+        return {};
       }
-    }
-
-    return eventCards;
-  } catch (e) {
-    debugPrint('[playerEventCardsProvider] Error: $e');
-    return {};
-  }
-});
+    });

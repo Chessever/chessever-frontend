@@ -12,6 +12,12 @@ class LibraryFolder with LibraryFolderMappable {
   final int orderIndex;
   final DateTime createdAt;
   final DateTime updatedAt;
+  final String? shareToken;
+  final String? ownerDisplayName;
+
+  /// Client-side only — true when this folder was fetched via subscription.
+  /// Not stored in DB; set by the provider layer.
+  final bool isSubscribed;
 
   const LibraryFolder({
     required this.id,
@@ -22,6 +28,9 @@ class LibraryFolder with LibraryFolderMappable {
     required this.orderIndex,
     required this.createdAt,
     required this.updatedAt,
+    this.shareToken,
+    this.ownerDisplayName,
+    this.isSubscribed = false,
   });
 
   /// Create LibraryFolder from Supabase response
@@ -35,6 +44,8 @@ class LibraryFolder with LibraryFolderMappable {
       orderIndex: json['order_index'] as int? ?? 0,
       createdAt: DateTime.parse(json['created_at'] as String),
       updatedAt: DateTime.parse(json['updated_at'] as String),
+      shareToken: json['share_token'] as String?,
+      ownerDisplayName: json['owner_display_name'] as String?,
     );
   }
 

@@ -38,6 +38,8 @@ final chessPlayerRepositoryProvider = Provider<ChessPlayerRepository>((ref) {
 // --- Repository ---
 
 class ChessPlayerRepository extends BaseRepository {
+  static const int _inFilterChunkSize = 150;
+  static final Map<int, ChessPlayer?> _playerByFideIdCache = {};
 
   /// Get top players (by rating)
   Future<List<ChessPlayer>> getTopPlayers({
@@ -106,13 +108,76 @@ class ChessPlayerRepository extends BaseRepository {
 
   /// Get a single player by FIDE ID
   Future<ChessPlayer?> getPlayerByFideId(int fideId) async {
-    final data = await supabase
-        .from('chess_players')
-        .select('fideid, name, title, rating, country')
-        .eq('fideid', fideId)
-        .maybeSingle();
+    if (fideId <= 0) return null;
+    final cached = _playerByFideIdCache[fideId];
+    if (cached != null || _playerByFideIdCache.containsKey(fideId)) {
+      return cached;
+    }
 
-    if (data == null) return null;
-    return ChessPlayer.fromMap(data);
+    final data =
+        await supabase
+            .from('chess_players')
+            .select('fideid, name, title, rating, country')
+            .eq('fideid', fideId)
+            .maybeSingle();
+
+    if (data == null) {
+      _playerByFideIdCache[fideId] = null;
+      return null;
+    }
+
+    final player = ChessPlayer.fromMap(data);
+    _playerByFideIdCache[fideId] = player;
+    return player;
+  }
+
+  /// Batch load players by FIDE IDs with in-memory caching.
+  Future<Map<int, ChessPlayer>> getPlayersByFideIds(
+    Iterable<int> fideIds,
+  ) async {
+    final ids = fideIds.where((id) => id > 0).toSet();
+    if (ids.isEmpty) return const <int, ChessPlayer>{};
+
+    final result = <int, ChessPlayer>{};
+    final missing = <int>[];
+
+    for (final id in ids) {
+      final cached = _playerByFideIdCache[id];
+      if (cached != null) {
+        result[id] = cached;
+      } else if (!_playerByFideIdCache.containsKey(id)) {
+        missing.add(id);
+      }
+    }
+
+    if (missing.isNotEmpty) {
+      for (int i = 0; i < missing.length; i += _inFilterChunkSize) {
+        final end =
+            (i + _inFilterChunkSize < missing.length)
+                ? i + _inFilterChunkSize
+                : missing.length;
+        final chunk = missing.sublist(i, end);
+        final rows = await supabase
+            .from('chess_players')
+            .select('fideid, name, title, rating, country')
+            .inFilter('fideid', chunk);
+
+        final fetchedIds = <int>{};
+        for (final row in (rows as List)) {
+          final player = ChessPlayer.fromMap(Map<String, dynamic>.from(row));
+          fetchedIds.add(player.fideid);
+          _playerByFideIdCache[player.fideid] = player;
+          result[player.fideid] = player;
+        }
+
+        for (final requestedId in chunk) {
+          if (!fetchedIds.contains(requestedId)) {
+            _playerByFideIdCache[requestedId] = null;
+          }
+        }
+      }
+    }
+
+    return result;
   }
 }

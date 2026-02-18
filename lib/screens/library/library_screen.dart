@@ -86,7 +86,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       // Force refresh folders provider to ensure immediate UI update
       // (Supabase streams may have slight delay)
       ref.invalidate(libraryFoldersStreamProvider);
-      await ref.read(libraryFoldersStreamProvider.future);
+      ref.invalidate(subscribedBooksProvider);
 
       if (mounted) {
         HapticFeedback.mediumImpact();
@@ -226,7 +226,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       focusNode: _searchFocusNode,
       enableOverlay: false,
       showFilterIcon: false,
-      hintText: 'Search books',
+      hintText: 'Search',
       onChanged: (query) {
         setState(() => _searchQuery = query.trim().toLowerCase());
       },
@@ -234,10 +234,15 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   }
 
   Widget _buildContent() {
-    final foldersAsync = ref.watch(libraryFoldersStreamProvider);
+    final ownedFoldersAsync = ref.watch(libraryFoldersStreamProvider);
+    final subscribedFoldersAsync = ref.watch(subscribedBooksProvider);
 
     // Check if we have user folders to show background decoration
-    final hasFolders = foldersAsync.valueOrNull?.isNotEmpty ?? false;
+    final ownedFolders =
+        ownedFoldersAsync.valueOrNull ?? const <LibraryFolder>[];
+    final subscribedFolders =
+        subscribedFoldersAsync.valueOrNull ?? const <LibraryFolder>[];
+    final hasFolders = ownedFolders.isNotEmpty || subscribedFolders.isNotEmpty;
 
     return Stack(
       children: [
@@ -249,6 +254,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
           onRefresh: () async {
             HapticFeedbackService.medium();
             ref.invalidate(libraryFoldersStreamProvider);
+            ref.invalidate(subscribedBooksProvider);
           },
           color: kWhiteColor,
           backgroundColor: kBlack2Color,
@@ -258,8 +264,14 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
             ),
             slivers: [
               SliverToBoxAdapter(child: SizedBox(height: 4.h)),
-              foldersAsync.when(
-                data: (folders) => _buildFoldersSliver(folders),
+              ownedFoldersAsync.when(
+                data: (owned) {
+                  final combined = <LibraryFolder>[
+                    ...owned,
+                    ...subscribedFolders,
+                  ];
+                  return _buildFoldersSliver(combined);
+                },
                 loading: () => _buildLoadingSliver(),
                 error: (error, _) => _buildErrorSliver(error.toString()),
               ),
