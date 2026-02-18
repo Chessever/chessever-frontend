@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:chessever2/repository/lichess/cloud_eval/cloud_eval.dart';
 import 'package:chessever2/screens/chessboard/provider/current_eval_provider.dart';
 import 'package:chessever2/screens/chessboard/widgets/player_first_row_detail_widget.dart';
 import 'package:chessever2/theme/app_theme.dart';
@@ -292,9 +293,10 @@ class EvaluationBarWidgetForGames extends ConsumerWidget {
               );
             }
 
-            final eval = pv.cp / 100.0;
-            final isMate = pv.isMate && pv.mate != null;
-            final mate = pv.mate ?? 0;
+            final normalized = _normalizePvToWhitePerspective(pv);
+            final eval = normalized.eval;
+            final isMate = normalized.isMate;
+            final mate = normalized.mate;
 
             return _Bars(
               width: width,
@@ -397,7 +399,10 @@ class _Bars extends StatelessWidget {
             // Position at the edge where black and white meet, clamped to stay within bounds
             top: ((isFlipped ? whiteHeight : blackHeight) -
                     (playerView == PlayerView.gridView ? 6.h : 10.h))
-                .clamp(0.0, height - (playerView == PlayerView.gridView ? 12.h : 20.h)),
+                .clamp(
+                  0.0,
+                  height - (playerView == PlayerView.gridView ? 12.h : 20.h),
+                ),
             child: Container(
               width: width,
               color: kPrimaryColor,
@@ -430,6 +435,14 @@ class _Bars extends StatelessWidget {
       ),
     );
   }
+}
+
+({double eval, bool isMate, int mate}) _normalizePvToWhitePerspective(Pv pv) {
+  final sign = pv.whitePerspective ? 1 : -1;
+  final isMate = pv.isMate && pv.mate != null;
+  final normalizedMate = (pv.mate ?? 0) * sign;
+  final normalizedEval = (pv.cp * sign) / 100.0;
+  return (eval: normalizedEval, isMate: isMate, mate: normalizedMate);
 }
 
 double _normalizedEvalToRatio(double eval) {
