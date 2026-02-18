@@ -35,6 +35,7 @@ import 'package:chessever2/screens/player_profile/player_profile_screen.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
+import 'package:motor/motor.dart';
 
 final selectedPlayerProvider = StateProvider<PlayerStandingModel?>(
   (ref) => null,
@@ -640,6 +641,15 @@ class ScoreCardScreen extends ConsumerWidget {
                                     : null,
                           ),
                         ),
+                        SizedBox(height: 10.h),
+                        _ProfileNavigationButton(
+                          onTap:
+                              () => _navigateToPlayerProfile(
+                                context,
+                                ref,
+                                player,
+                              ),
+                        ),
                       ],
                     ),
                   ),
@@ -879,6 +889,74 @@ class ScoreCardScreen extends ConsumerWidget {
     }
 
     return null;
+  }
+}
+
+/// A refined, Motor-animated button for navigating to the player profile screen.
+/// Uses spring-physics press feedback for a tactile, premium feel.
+class _ProfileNavigationButton extends StatefulWidget {
+  const _ProfileNavigationButton({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  State<_ProfileNavigationButton> createState() =>
+      _ProfileNavigationButtonState();
+}
+
+class _ProfileNavigationButtonState extends State<_ProfileNavigationButton> {
+  bool _pressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTapDown: (_) => setState(() => _pressed = true),
+      onTapUp: (_) {
+        setState(() => _pressed = false);
+        widget.onTap();
+      },
+      onTapCancel: () => setState(() => _pressed = false),
+      child: SingleMotionBuilder(
+        motion: const CupertinoMotion.snappy(),
+        value: _pressed ? 1.0 : 0.0,
+        builder: (context, pressProgress, _) {
+          return Transform.scale(
+            scale: 1.0 - 0.03 * pressProgress,
+            child: Container(
+              height: 40.h,
+              decoration: BoxDecoration(
+                color: kWhiteColor.withValues(
+                  alpha: 0.05 + 0.04 * pressProgress,
+                ),
+                borderRadius: BorderRadius.circular(10.br),
+                border: Border.all(
+                  color: kWhiteColor.withValues(
+                    alpha: 0.10 + 0.06 * pressProgress,
+                  ),
+                ),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.person_outline_rounded,
+                    size: 16.ic,
+                    color: kWhiteColor.withValues(alpha: 0.75),
+                  ),
+                  SizedBox(width: 7.w),
+                  Text(
+                    'Open Player Profile',
+                    style: AppTypography.textSmBold.copyWith(
+                      color: kWhiteColor.withValues(alpha: 0.75),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
   }
 }
 

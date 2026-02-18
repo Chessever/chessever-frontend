@@ -32,15 +32,32 @@ class GamebaseExplorerView extends HookConsumerWidget {
     // library game, live game, etc.).
     final currentPosition = state.analysisState.position;
     final currentFen = currentPosition.fen;
+    final currentMoveIndex = state.analysisState.currentMoveIndex;
+    final combinedMoves = state.analysisState.combinedMoves;
+    final takeCount =
+        (currentMoveIndex + 1).clamp(0, combinedMoves.length).toInt();
+    final lineToCurrent =
+        currentMoveIndex >= 0
+            ? combinedMoves
+                .take(takeCount)
+                .map((m) => m.uci)
+                .toList(growable: false)
+            : const <String>[];
+    final lineKey = lineToCurrent.join(' ');
 
-    // Sync Gamebase provider with current board FEN
+    // Sync Gamebase provider with current board position AND explored line.
+    // Passing moves is required for deep explorer queries beyond opening plies.
     useEffect(() {
-      debugPrint('[GamebaseExplorerView] FEN changed: ${currentFen.split(' ').take(2).join(' ')}...');
+      debugPrint(
+        '[GamebaseExplorerView] FEN changed: ${currentFen.split(' ').take(2).join(' ')}...',
+      );
       Future.microtask(() {
-        ref.read(gamebaseExplorerProvider.notifier).setPosition(currentFen);
+        ref
+            .read(gamebaseExplorerProvider.notifier)
+            .setPositionWithMoves(currentFen, lineToCurrent);
       });
       return null;
-    }, [currentFen]);
+    }, [currentFen, lineKey]);
 
     final gamebaseState = ref.watch(gamebaseExplorerProvider);
 
@@ -102,7 +119,8 @@ class GamebaseExplorerView extends HookConsumerWidget {
           primaryAction: _GamebaseEmptyStateAction(
             label: 'Retry',
             icon: Icons.refresh_rounded,
-            onPressed: () => ref.read(gamebaseExplorerProvider.notifier).refresh(),
+            onPressed:
+                () => ref.read(gamebaseExplorerProvider.notifier).refresh(),
           ),
         ),
       );
@@ -155,10 +173,7 @@ class GamebaseExplorerView extends HookConsumerWidget {
 }
 
 class _HorizontalPvLines extends StatelessWidget {
-  const _HorizontalPvLines({
-    required this.state,
-    required this.onMoveSelected,
-  });
+  const _HorizontalPvLines({required this.state, required this.onMoveSelected});
 
   final ChessBoardStateNew state;
   final Function(String uci) onMoveSelected;
@@ -187,14 +202,10 @@ class _HorizontalPvLines extends StatelessWidget {
           final eval = line.displayEval.isNotEmpty ? line.displayEval : '...';
           final moves = line.sanMoves.join(' ');
 
-          final firstUci =
-              line.moves.isNotEmpty ? line.moves.first.uci : null;
+          final firstUci = line.moves.isNotEmpty ? line.moves.first.uci : null;
 
           return InkWell(
-            onTap:
-                firstUci == null
-                    ? null
-                    : () => onMoveSelected(firstUci),
+            onTap: firstUci == null ? null : () => onMoveSelected(firstUci),
             child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: Padding(
@@ -381,11 +392,7 @@ class _GamebaseEmptyState extends StatelessWidget {
             SizedBox(height: 14.h),
             TextButton.icon(
               onPressed: primaryAction!.onPressed,
-              icon: Icon(
-                primaryAction!.icon,
-                size: 18.sp,
-                color: kWhiteColor,
-              ),
+              icon: Icon(primaryAction!.icon, size: 18.sp, color: kWhiteColor),
               label: Text(
                 primaryAction!.label,
                 style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
@@ -395,9 +402,7 @@ class _GamebaseEmptyState extends StatelessWidget {
                 padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 10.h),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12.br),
-                  side: BorderSide(
-                    color: kWhiteColor.withValues(alpha: 0.12),
-                  ),
+                  side: BorderSide(color: kWhiteColor.withValues(alpha: 0.12)),
                 ),
               ),
             ),
@@ -492,10 +497,7 @@ class _MoveRow extends ConsumerWidget {
             ),
 
             // Eval
-            Expanded(
-              flex: 2,
-              child: MiniEvalBar(fen: resultingFen),
-            ),
+            Expanded(flex: 2, child: MiniEvalBar(fen: resultingFen)),
 
             // Count
             Expanded(

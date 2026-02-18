@@ -558,6 +558,7 @@ class GamebaseRepository {
   /// Pagination is 0-indexed per the API spec for this endpoint.
   Future<GamebaseSearchQueryResponse> getPositionGames({
     required String fen,
+    List<String> moves = const [],
     String? uci,
     TimeControl? timeControl,
     String? playerId,
@@ -568,25 +569,50 @@ class GamebaseRepository {
   }) async {
     try {
       final normalizedFen = _normalizeFenForLookup(fen);
-      final queryParams = {
-        'fen': normalizedFen,
-        'pageNumber': pageNumber,
-        'pageSize': pageSize,
-        if (uci != null && uci.trim().isNotEmpty) 'uci': uci.trim(),
-        if (playerId != null && playerId.trim().isNotEmpty)
-          'playerId': playerId.trim(),
-        if (timeControl != null) 'timeControl': timeControl.name.toUpperCase(),
-        if (minRating != null) 'minRating': minRating,
-        if (maxRating != null) 'maxRating': maxRating,
-      };
+      final normalizedMoves = moves
+          .map((m) => m.trim().toLowerCase())
+          .where((m) => RegExp(r'^[a-h][1-8][a-h][1-8][qrbn]?$').hasMatch(m))
+          .toList(growable: false);
 
-      final response = await _dio.get(
-        '$_baseUrl/api/game-position/games',
-        queryParameters: queryParams,
-        options: Options(
-          headers: {'X-API-Key': _apiKey, 'Accept': 'application/json'},
-        ),
-      );
+      final response =
+          normalizedMoves.isNotEmpty
+              ? await _dio.post(
+                '$_baseUrl/api/game-position/games/query',
+                data: {
+                  'fen': normalizedFen,
+                  'moves': normalizedMoves,
+                  'pageNumber': pageNumber,
+                  'pageSize': pageSize,
+                  if (uci != null && uci.trim().isNotEmpty) 'uci': uci.trim(),
+                  if (playerId != null && playerId.trim().isNotEmpty)
+                    'playerId': playerId.trim(),
+                  if (timeControl != null)
+                    'timeControl': timeControl.name.toUpperCase(),
+                  if (minRating != null) 'minRating': minRating,
+                  if (maxRating != null) 'maxRating': maxRating,
+                },
+                options: Options(
+                  headers: {'X-API-Key': _apiKey, 'Accept': 'application/json'},
+                ),
+              )
+              : await _dio.get(
+                '$_baseUrl/api/game-position/games',
+                queryParameters: {
+                  'fen': normalizedFen,
+                  'pageNumber': pageNumber,
+                  'pageSize': pageSize,
+                  if (uci != null && uci.trim().isNotEmpty) 'uci': uci.trim(),
+                  if (playerId != null && playerId.trim().isNotEmpty)
+                    'playerId': playerId.trim(),
+                  if (timeControl != null)
+                    'timeControl': timeControl.name.toUpperCase(),
+                  if (minRating != null) 'minRating': minRating,
+                  if (maxRating != null) 'maxRating': maxRating,
+                },
+                options: Options(
+                  headers: {'X-API-Key': _apiKey, 'Accept': 'application/json'},
+                ),
+              );
 
       final data = response.data;
       if (data is! Map) {

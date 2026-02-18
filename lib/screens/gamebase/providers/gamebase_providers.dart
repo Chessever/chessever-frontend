@@ -139,7 +139,9 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
             ? state.filters.timeControls.first
             : null;
     final playerIdFilter =
-        state.filters.playerIds.isNotEmpty ? state.filters.playerIds.first : null;
+        state.filters.playerIds.isNotEmpty
+            ? state.filters.playerIds.first
+            : null;
 
     for (final a in aggregates.take(maxPrefetch)) {
       try {
@@ -307,8 +309,8 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
   void goToEnd() {
     if (state.moveHistory.isEmpty) return;
 
-    // The opening explorer backend only indexes the first N plies.
-    // Clamp navigation to the deepest position we can still aggregate.
+    // Navigate to the deepest move in the currently explored line.
+    // Deep lines are supported when `moves` are provided to the backend.
     final targetIndex = state.maxNavigableMoveIndex;
     if (targetIndex == state.currentMoveIndex) return;
     goToMove(targetIndex);
@@ -354,12 +356,29 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
 
   /// Set position from FEN (for loading a specific position)
   void setPosition(String fen) {
+    setPositionWithMoves(fen, const <String>[]);
+  }
+
+  /// Set position from board FEN and full explored move line (UCI).
+  ///
+  /// This keeps the explorer aligned with the board and enables backend deep
+  /// line aggregation beyond the indexed opening window.
+  void setPositionWithMoves(String fen, List<String> moves) {
     try {
       final normalized = normalizeFenForGamebase(fen);
+      final sanitizedMoves = moves
+          .map((m) => m.trim().toLowerCase())
+          .where((m) => RegExp(r'^[a-h][1-8][a-h][1-8][qrbn]?$').hasMatch(m))
+          .toList(growable: false);
+      final newIndex = sanitizedMoves.isEmpty ? -1 : sanitizedMoves.length - 1;
 
-      // Skip if FEN hasn't changed to avoid unnecessary API calls
-      if (state.currentFen == normalized) {
-        debugPrint('[GamebaseExplorer] setPosition: FEN unchanged, skipping');
+      // Skip if nothing changed to avoid unnecessary API calls.
+      if (state.currentFen == normalized &&
+          state.currentMoveIndex == newIndex &&
+          listEquals(state.moveHistory, sanitizedMoves)) {
+        debugPrint(
+          '[GamebaseExplorer] setPositionWithMoves: position unchanged, skipping',
+        );
         return;
       }
 
@@ -369,8 +388,8 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
       _chess = Chess.fromFEN(normalized);
       state = state.copyWith(
         currentFen: normalized,
-        moveHistory: [],
-        currentMoveIndex: -1,
+        moveHistory: sanitizedMoves,
+        currentMoveIndex: newIndex,
       );
       _scheduleFetch();
     } catch (e) {
@@ -521,6 +540,7 @@ final gameWithPgnByIdProvider = FutureProvider.autoDispose
 
 class GamebasePositionGamesQuery {
   final String fen;
+  final List<String> moves;
   final String? uci;
   final TimeControl? timeControl;
   final String? playerId;
@@ -531,6 +551,7 @@ class GamebasePositionGamesQuery {
 
   const GamebasePositionGamesQuery({
     required this.fen,
+    this.moves = const <String>[],
     this.uci,
     this.timeControl,
     this.playerId,
@@ -544,6 +565,7 @@ class GamebasePositionGamesQuery {
   bool operator ==(Object other) {
     return other is GamebasePositionGamesQuery &&
         other.fen == fen &&
+        listEquals(other.moves, moves) &&
         other.uci == uci &&
         other.timeControl == timeControl &&
         other.playerId == playerId &&
@@ -554,25 +576,34 @@ class GamebasePositionGamesQuery {
   }
 
   @override
-  int get hashCode =>
-      Object.hash(fen, uci, timeControl, playerId, minRating, maxRating,
-          pageNumber, pageSize);
+  int get hashCode => Object.hash(
+    fen,
+    Object.hashAll(moves),
+    uci,
+    timeControl,
+    playerId,
+    minRating,
+    maxRating,
+    pageNumber,
+    pageSize,
+  );
 }
 
 final positionGamesProvider = FutureProvider.autoDispose
     .family<GamebaseSearchQueryResponse, GamebasePositionGamesQuery>((
-  ref,
-  query,
-) async {
-  final repository = ref.read(gamebaseRepositoryProvider);
-  return repository.getPositionGames(
-    fen: query.fen,
-    uci: query.uci,
-    timeControl: query.timeControl,
-    playerId: query.playerId,
-    minRating: query.minRating,
-    maxRating: query.maxRating,
-    pageNumber: query.pageNumber,
-    pageSize: query.pageSize,
-  );
-});
+      ref,
+      query,
+    ) async {
+      final repository = ref.read(gamebaseRepositoryProvider);
+      return repository.getPositionGames(
+        fen: query.fen,
+        moves: query.moves,
+        uci: query.uci,
+        timeControl: query.timeControl,
+        playerId: query.playerId,
+        minRating: query.minRating,
+        maxRating: query.maxRating,
+        pageNumber: query.pageNumber,
+        pageSize: query.pageSize,
+      );
+    });

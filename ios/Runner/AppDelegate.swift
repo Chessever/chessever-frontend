@@ -5,14 +5,11 @@ import AVFoundation
 import app_links
 
 @main
-@objc class AppDelegate: FlutterAppDelegate {
+@objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
   override func application(
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
-
-    GeneratedPluginRegistrant.register(with: self)
-
     // Forward deep link URL from launch options to app_links plugin.
     // On cold start (app killed), iOS puts the URL in launchOptions instead of
     // calling application(_:open:options:), so we must extract it manually.
@@ -24,20 +21,18 @@ import app_links
       UNUserNotificationCenter.current().delegate = self as? UNUserNotificationCenterDelegate
     }
 
-    // Setup audio session channel for configuring ambient mode
-    setupAudioSessionChannel()
-
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 
-  private func setupAudioSessionChannel() {
-    guard let controller = window?.rootViewController as? FlutterViewController else {
-      return
-    }
+  func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
+    GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
+    setupAudioSessionChannel(binaryMessenger: engineBridge.applicationRegistrar.messenger())
+  }
 
+  private func setupAudioSessionChannel(binaryMessenger: FlutterBinaryMessenger) {
     let audioSessionChannel = FlutterMethodChannel(
       name: "com.chessever/audio_session",
-      binaryMessenger: controller.binaryMessenger
+      binaryMessenger: binaryMessenger
     )
 
     audioSessionChannel.setMethodCallHandler { [weak self] (call, result) in

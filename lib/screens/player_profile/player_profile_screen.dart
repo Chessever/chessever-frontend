@@ -317,6 +317,50 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
       orElse: () => false,
     );
 
+    final playerKey = PlayerProfileKey(
+      fideId: widget.fideId,
+      playerName: widget.playerName,
+      source: _currentDataSource,
+      gamebasePlayerId: _currentGamebasePlayerId,
+    );
+    final gamesState = ref.watch(playerProfileGamesKeyProvider(playerKey));
+    final hasActiveFilter = gamesState.hasActiveFilters;
+    final isTwicSource = _currentDataSource == PlayerProfileDataSource.twic;
+
+    var isTwicStatsLoading = false;
+    if (isTwicSource && selectedTab == PlayerProfileTab.about) {
+      final allGamesStats = ref.watch(
+        twicPlayerStatsProvider(
+          TwicPlayerStatsRequest(
+            playerKey: playerKey,
+            scope: TwicStatsScope.allGames,
+          ),
+        ),
+      );
+      final openingStats = ref.watch(
+        twicPlayerStatsProvider(
+          TwicPlayerStatsRequest(
+            playerKey: playerKey,
+            scope: TwicStatsScope.filteredIgnoringEco,
+          ),
+        ),
+      );
+      final filteredStats = ref.watch(
+        twicPlayerStatsProvider(
+          TwicPlayerStatsRequest(
+            playerKey: playerKey,
+            scope: TwicStatsScope.filtered,
+          ),
+        ),
+      );
+      isTwicStatsLoading =
+          allGamesStats.isLoading ||
+          openingStats.isLoading ||
+          filteredStats.isLoading;
+    }
+    final isTwicLoading =
+        isTwicSource && (gamesState.isLoading || isTwicStatsLoading);
+
     return Scaffold(
       backgroundColor: kBackgroundColor,
       body: Center(
@@ -346,14 +390,19 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
               // Tab switcher
               _buildTabSwitcher(selectedTab),
 
+              // Filter/loading indicator bar — adjacent to tab
+              _buildIndicatorBar(
+                hasActiveFilter: hasActiveFilter,
+                isTwicLoading: isTwicLoading,
+              ),
+
               _buildDataSourceSelector(twicSummaryAsync),
 
-              // Tab content with filter indicator bar
+              // Tab content
               Expanded(
-                child: _buildTabContentWithFilterBar(
+                child: _buildTabContent(
                   effectiveTitle: effectiveTitle,
                   effectiveFederation: effectiveFederation,
-                  selectedTab: selectedTab,
                 ),
               ),
             ],
@@ -482,135 +531,47 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
     );
   }
 
-  Widget _buildTabContentWithFilterBar({
-    String? effectiveTitle,
-    String? effectiveFederation,
-    required PlayerProfileTab selectedTab,
+  Widget _buildIndicatorBar({
+    required bool hasActiveFilter,
+    required bool isTwicLoading,
   }) {
-    final playerKey = PlayerProfileKey(
-      fideId: widget.fideId,
-      playerName: widget.playerName,
-      source: _currentDataSource,
-      gamebasePlayerId: _currentGamebasePlayerId,
-    );
-    final gamesState = ref.watch(playerProfileGamesKeyProvider(playerKey));
-    final hasActiveFilter = gamesState.hasActiveFilters;
-    final isTwicSource = _currentDataSource == PlayerProfileDataSource.twic;
-
-    var isTwicStatsLoading = false;
-    if (isTwicSource && selectedTab == PlayerProfileTab.about) {
-      final allGamesStats = ref.watch(
-        twicPlayerStatsProvider(
-          TwicPlayerStatsRequest(
-            playerKey: playerKey,
-            scope: TwicStatsScope.allGames,
-          ),
-        ),
-      );
-      final openingStats = ref.watch(
-        twicPlayerStatsProvider(
-          TwicPlayerStatsRequest(
-            playerKey: playerKey,
-            scope: TwicStatsScope.filteredIgnoringEco,
-          ),
-        ),
-      );
-      final filteredStats = ref.watch(
-        twicPlayerStatsProvider(
-          TwicPlayerStatsRequest(
-            playerKey: playerKey,
-            scope: TwicStatsScope.filtered,
-          ),
-        ),
-      );
-      isTwicStatsLoading =
-          allGamesStats.isLoading ||
-          openingStats.isLoading ||
-          filteredStats.isLoading;
-    }
-
-    final isTwicLoading =
-        isTwicSource && (gamesState.isLoading || isTwicStatsLoading);
-
-    return Stack(
-      children: [
-        // PageView content
-        PageView.builder(
-          controller: _pageController,
-          itemCount: PlayerProfileTab.values.length,
-          onPageChanged: _handlePageChanged,
-          itemBuilder: (context, index) {
-            switch (PlayerProfileTab.values[index]) {
-              case PlayerProfileTab.about:
-                return PlayerAboutTab(
-                  fideId: widget.fideId,
-                  playerName: widget.playerName,
-                  title: effectiveTitle,
-                  federation: effectiveFederation,
-                  fallbackRating: widget.rating,
-                  dataSource: _currentDataSource,
-                  gamebasePlayerId: _currentGamebasePlayerId,
-                  onOpenGames: _openGames,
-                );
-              case PlayerProfileTab.games:
-                return PlayerGamesTab(
-                  fideId: widget.fideId,
-                  playerName: widget.playerName,
-                  dataSource: _currentDataSource,
-                  gamebasePlayerId: _currentGamebasePlayerId,
-                );
-              case PlayerProfileTab.events:
-                return PlayerEventsTab(
-                  fideId: widget.fideId,
-                  playerName: widget.playerName,
-                  dataSource: _currentDataSource,
-                  gamebasePlayerId: _currentGamebasePlayerId,
-                );
-            }
-          },
-        ),
-        // Filter active indicator bar at top - visible on all tabs
-        SingleMotionBuilder(
-          motion: const CupertinoMotion.snappy(),
-          value: hasActiveFilter ? 1.0 : 0.0,
-          builder: (context, barProgress, _) {
-            if (barProgress < 0.01) return const SizedBox.shrink();
-
-            return Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
-              child: Container(
-                height: 2.h * barProgress,
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [
-                      kPrimaryColor.withValues(alpha: 0.0),
-                      kPrimaryColor.withValues(alpha: 0.8 * barProgress),
-                      kPrimaryColor.withValues(alpha: 0.8 * barProgress),
-                      kPrimaryColor.withValues(alpha: 0.0),
-                    ],
-                    stops: const [0.0, 0.2, 0.8, 1.0],
+    return SizedBox(
+      height: 2.h,
+      child: Stack(
+        children: [
+          // Filter active indicator bar
+          SingleMotionBuilder(
+            motion: const CupertinoMotion.snappy(),
+            value: hasActiveFilter ? 1.0 : 0.0,
+            builder: (context, barProgress, _) {
+              if (barProgress < 0.01) return const SizedBox.shrink();
+              return Positioned.fill(
+                child: Container(
+                  height: 2.h * barProgress,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        kPrimaryColor.withValues(alpha: 0.0),
+                        kPrimaryColor.withValues(alpha: 0.8 * barProgress),
+                        kPrimaryColor.withValues(alpha: 0.8 * barProgress),
+                        kPrimaryColor.withValues(alpha: 0.0),
+                      ],
+                      stops: const [0.0, 0.2, 0.8, 1.0],
+                    ),
                   ),
                 ),
-              ),
-            );
-          },
-        ),
-        // TWIC loading indicator — keeps filter transitions visually alive.
-        SingleMotionBuilder(
-          motion: const CupertinoMotion.snappy(),
-          value: isTwicLoading ? 1.0 : 0.0,
-          builder: (context, loadingProgress, _) {
-            if (loadingProgress < 0.01) return const SizedBox.shrink();
-            return Positioned(
-              top: 3.h,
-              left: 0,
-              right: 0,
-              child: Opacity(
-                opacity: loadingProgress,
-                child: SizedBox(
-                  height: 2.h,
+              );
+            },
+          ),
+          // TWIC loading indicator
+          SingleMotionBuilder(
+            motion: const CupertinoMotion.snappy(),
+            value: isTwicLoading ? 1.0 : 0.0,
+            builder: (context, loadingProgress, _) {
+              if (loadingProgress < 0.01) return const SizedBox.shrink();
+              return Positioned.fill(
+                child: Opacity(
+                  opacity: loadingProgress,
                   child: LinearProgressIndicator(
                     backgroundColor: kPrimaryColor.withValues(alpha: 0.12),
                     valueColor: AlwaysStoppedAnimation<Color>(
@@ -618,11 +579,51 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
                     ),
                   ),
                 ),
-              ),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTabContent({
+    String? effectiveTitle,
+    String? effectiveFederation,
+  }) {
+    return PageView.builder(
+      controller: _pageController,
+      itemCount: PlayerProfileTab.values.length,
+      onPageChanged: _handlePageChanged,
+      itemBuilder: (context, index) {
+        switch (PlayerProfileTab.values[index]) {
+          case PlayerProfileTab.about:
+            return PlayerAboutTab(
+              fideId: widget.fideId,
+              playerName: widget.playerName,
+              title: effectiveTitle,
+              federation: effectiveFederation,
+              fallbackRating: widget.rating,
+              dataSource: _currentDataSource,
+              gamebasePlayerId: _currentGamebasePlayerId,
+              onOpenGames: _openGames,
             );
-          },
-        ),
-      ],
+          case PlayerProfileTab.games:
+            return PlayerGamesTab(
+              fideId: widget.fideId,
+              playerName: widget.playerName,
+              dataSource: _currentDataSource,
+              gamebasePlayerId: _currentGamebasePlayerId,
+            );
+          case PlayerProfileTab.events:
+            return PlayerEventsTab(
+              fideId: widget.fideId,
+              playerName: widget.playerName,
+              dataSource: _currentDataSource,
+              gamebasePlayerId: _currentGamebasePlayerId,
+            );
+        }
+      },
     );
   }
 
@@ -649,178 +650,235 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
     AsyncValue<TwicProfileSummary?> twicSummaryAsync,
   ) {
     final summary = twicSummaryAsync.valueOrNull;
-    if (summary == null) return const SizedBox.shrink();
+    final isLoading = twicSummaryAsync.isLoading;
+    final isTwic = _currentDataSource == PlayerProfileDataSource.twic;
+
+    if (summary == null && !isLoading && !isTwic) {
+      return const SizedBox.shrink();
+    }
 
     final horizontalPadding = ResponsiveHelper.adaptive(
       phone: 20.sp,
       tablet: 32.sp,
     );
-    final isTwic = _currentDataSource == PlayerProfileDataSource.twic;
+    final twicGameCount =
+        summary != null ? formatCompactCount(summary.totalGames) : '--';
 
-    return Padding(
-      padding: EdgeInsets.fromLTRB(
-        horizontalPadding,
-        10.h,
-        horizontalPadding,
-        0,
-      ),
-      child: _DataSourceSegment(
-        isTwicSelected: isTwic,
-        twicGameCount: formatCompactCount(summary.totalGames),
-        onSelectRegular: () => _setDataSource(PlayerProfileDataSource.supabase),
-        onSelectTwic:
-            () => _setDataSource(
-              PlayerProfileDataSource.twic,
-              gamebasePlayerId: summary.gamebasePlayerId,
+    return SingleMotionBuilder(
+      motion: const CupertinoMotion.bouncy(),
+      value: 1.0,
+      builder: (context, progress, _) {
+        return Opacity(
+          opacity: progress.clamp(0.0, 1.0),
+          child: Transform.translate(
+            offset: Offset(0, (1.0 - progress) * -6),
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(
+                horizontalPadding,
+                10.h,
+                horizontalPadding,
+                0,
+              ),
+              child: _DataSourceBanner(
+                isTwic: isTwic,
+                isLoading: isLoading,
+                twicGameCount: twicGameCount,
+                twicEnabled: summary != null || isTwic,
+                onSelectRegular:
+                    () => _setDataSource(PlayerProfileDataSource.supabase),
+                onSelectTwic:
+                    summary == null
+                        ? null
+                        : () => _setDataSource(
+                          PlayerProfileDataSource.twic,
+                          gamebasePlayerId: summary.gamebasePlayerId,
+                        ),
+              ),
             ),
-      ),
+          ),
+        );
+      },
     );
   }
 }
 
-/// Sliding segmented control for switching between Regular and TWIC data sources.
-/// Shows the TWIC game count as a badge so the user understands what they're switching to.
-class _DataSourceSegment extends StatelessWidget {
-  const _DataSourceSegment({
-    required this.isTwicSelected,
+/// Compact single-row banner for switching between Regular and TWIC data sources.
+/// Tap to toggle — animates in with a spring entrance and has a subtle press feedback.
+class _DataSourceBanner extends StatefulWidget {
+  const _DataSourceBanner({
+    required this.isTwic,
+    required this.isLoading,
     required this.twicGameCount,
+    required this.twicEnabled,
     required this.onSelectRegular,
     required this.onSelectTwic,
   });
 
-  final bool isTwicSelected;
+  final bool isTwic;
+  final bool isLoading;
   final String twicGameCount;
+  final bool twicEnabled;
   final VoidCallback onSelectRegular;
-  final VoidCallback onSelectTwic;
+  final VoidCallback? onSelectTwic;
+
+  @override
+  State<_DataSourceBanner> createState() => _DataSourceBannerState();
+}
+
+class _DataSourceBannerState extends State<_DataSourceBanner> {
+  bool _pressed = false;
+
+  bool get _canTap =>
+      widget.isTwic ||
+      (widget.twicEnabled && widget.onSelectTwic != null && !widget.isLoading);
+
+  void _handleTap() {
+    if (widget.isTwic) {
+      widget.onSelectRegular();
+    } else {
+      widget.onSelectTwic?.call();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final halfWidth = constraints.maxWidth / 2;
-        return Container(
-          height: 36.h,
-          decoration: BoxDecoration(
-            color: kPopUpColor,
-            borderRadius: BorderRadius.circular(10.br),
-            border: Border.all(color: kWhiteColor.withValues(alpha: 0.08)),
-          ),
-          child: Stack(
-            children: [
-              // Smooth sliding selected-segment highlight
-              AnimatedPositioned(
-                duration: const Duration(milliseconds: 220),
-                curve: Curves.easeOutCubic,
-                left: isTwicSelected ? halfWidth : 0,
-                top: 0,
-                bottom: 0,
-                width: halfWidth,
-                child: Padding(
-                  padding: EdgeInsets.all(3.sp),
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: kPrimaryColor.withValues(alpha: 0.14),
-                      borderRadius: BorderRadius.circular(7.br),
-                    ),
-                  ),
+    return GestureDetector(
+      onTapDown: _canTap ? (_) => setState(() => _pressed = true) : null,
+      onTapUp:
+          _canTap
+              ? (_) {
+                setState(() => _pressed = false);
+                _handleTap();
+              }
+              : null,
+      onTapCancel:
+          _canTap ? () => setState(() => _pressed = false) : null,
+      child: SingleMotionBuilder(
+        motion: const CupertinoMotion.snappy(),
+        value: _pressed ? 1.0 : 0.0,
+        builder: (context, pressProgress, _) {
+          return Transform.scale(
+            scale: 1.0 - 0.025 * pressProgress,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 260),
+              curve: Curves.easeOutCubic,
+              padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 9.h),
+              decoration: BoxDecoration(
+                color:
+                    widget.isTwic
+                        ? kPrimaryColor.withValues(alpha: 0.09)
+                        : kPopUpColor,
+                borderRadius: BorderRadius.circular(10.br),
+                border: Border.all(
+                  color:
+                      widget.isTwic
+                          ? kPrimaryColor.withValues(alpha: 0.28)
+                          : kWhiteColor.withValues(alpha: 0.08),
                 ),
               ),
-              // Tappable segment labels
-              Row(
+              child: Row(
                 children: [
-                  // Regular segment
+                  // Source state dot
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 300),
+                    curve: Curves.easeOutCubic,
+                    width: 6.w,
+                    height: 6.h,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color:
+                          widget.isTwic
+                              ? kPrimaryColor
+                              : kWhiteColor.withValues(alpha: 0.28),
+                    ),
+                  ),
+                  SizedBox(width: 10.w),
+
+                  // Info label
                   Expanded(
-                    child: GestureDetector(
-                      onTap: onSelectRegular,
-                      behavior: HitTestBehavior.opaque,
-                      child: SizedBox(
-                        height: 36.h,
-                        child: Center(
-                          child: AnimatedDefaultTextStyle(
-                            duration: const Duration(milliseconds: 200),
-                            curve: Curves.easeOutCubic,
-                            style: AppTypography.textSmBold.copyWith(
-                              color:
-                                  !isTwicSelected
-                                      ? kPrimaryColor
-                                      : kWhiteColor.withValues(alpha: 0.38),
-                            ),
-                            child: const Text('Regular'),
-                          ),
+                    child: AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 200),
+                      transitionBuilder:
+                          (child, anim) =>
+                              FadeTransition(opacity: anim, child: child),
+                      child: Text(
+                        widget.isTwic
+                            ? 'TWIC database · ${widget.twicGameCount} games'
+                            : widget.isLoading
+                            ? 'Checking TWIC availability...'
+                            : 'TWIC database · ${widget.twicGameCount} games available',
+                        key: ValueKey(
+                          widget.isTwic
+                              ? 'twic'
+                              : widget.isLoading
+                              ? 'loading'
+                              : 'ready',
                         ),
+                        style: AppTypography.textXsMedium.copyWith(
+                          color:
+                              widget.isTwic
+                                  ? kPrimaryColor.withValues(alpha: 0.9)
+                                  : kWhiteColor.withValues(alpha: 0.6),
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
                   ),
-                  // Subtle divider
-                  Container(
-                    width: 1,
-                    height: 16.h,
-                    color: kWhiteColor.withValues(alpha: 0.07),
-                  ),
-                  // TWIC segment with game count badge
-                  Expanded(
-                    child: GestureDetector(
-                      onTap: onSelectTwic,
-                      behavior: HitTestBehavior.opaque,
-                      child: SizedBox(
-                        height: 36.h,
-                        child: Center(
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              AnimatedDefaultTextStyle(
-                                duration: const Duration(milliseconds: 200),
-                                curve: Curves.easeOutCubic,
-                                style: AppTypography.textSmBold.copyWith(
-                                  color:
-                                      isTwicSelected
-                                          ? kPrimaryColor
-                                          : kWhiteColor.withValues(alpha: 0.38),
+
+                  SizedBox(width: 8.w),
+
+                  // Action area
+                  if (widget.isLoading && !widget.isTwic)
+                    SizedBox(
+                      width: 11.w,
+                      height: 11.h,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 1.5,
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          kPrimaryColor.withValues(alpha: 0.8),
+                        ),
+                      ),
+                    )
+                  else if (_canTap)
+                    AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 200),
+                      transitionBuilder:
+                          (child, anim) =>
+                              FadeTransition(opacity: anim, child: child),
+                      child:
+                          widget.isTwic
+                              ? Text(
+                                'Regular',
+                                key: const ValueKey('to-regular'),
+                                style: AppTypography.textXsBold.copyWith(
+                                  color: kWhiteColor.withValues(alpha: 0.42),
                                 ),
-                                child: const Text('TWIC'),
-                              ),
-                              SizedBox(width: 5.w),
-                              AnimatedContainer(
-                                duration: const Duration(milliseconds: 200),
-                                curve: Curves.easeOutCubic,
+                              )
+                              : Container(
+                                key: const ValueKey('to-twic'),
                                 padding: EdgeInsets.symmetric(
-                                  horizontal: 5.w,
-                                  vertical: 2.h,
+                                  horizontal: 7.w,
+                                  vertical: 3.h,
                                 ),
                                 decoration: BoxDecoration(
-                                  color:
-                                      isTwicSelected
-                                          ? kPrimaryColor.withValues(
-                                            alpha: 0.22,
-                                          )
-                                          : kWhiteColor.withValues(alpha: 0.07),
-                                  borderRadius: BorderRadius.circular(4.br),
+                                  color: kPrimaryColor.withValues(alpha: 0.15),
+                                  borderRadius: BorderRadius.circular(5.br),
                                 ),
                                 child: Text(
-                                  twicGameCount,
+                                  'Switch',
                                   style: AppTypography.textXsBold.copyWith(
-                                    color:
-                                        isTwicSelected
-                                            ? kPrimaryColor
-                                            : kWhiteColor.withValues(
-                                              alpha: 0.30,
-                                            ),
-                                    fontSize: 9.5.f,
+                                    color: kPrimaryColor,
                                   ),
                                 ),
                               ),
-                            ],
-                          ),
-                        ),
-                      ),
                     ),
-                  ),
                 ],
               ),
-            ],
-          ),
-        );
-      },
+            ),
+          );
+        },
+      ),
     );
   }
 }

@@ -84,7 +84,14 @@ class GamebaseExplorerState with GamebaseExplorerStateMappable {
   int get currentMoveNumber => currentMoveIndex + 2;
 
   /// Last move index available in the explored line.
-  int get maxNavigableMoveIndex => moveHistory.isEmpty ? -1 : moveHistory.length - 1;
+  int get maxNavigableMoveIndex =>
+      moveHistory.isEmpty ? -1 : moveHistory.length - 1;
+
+  /// Explored move line up to the currently selected position.
+  List<String> get exploredMoves =>
+      currentMoveIndex >= 0
+          ? moveHistory.sublist(0, currentMoveIndex + 1)
+          : const <String>[];
 
   /// Get total games in current position
   int get totalGames => moveAggregates.fold(0, (sum, agg) => sum + agg.total);
