@@ -71,6 +71,13 @@ class _PlayerAboutTabState extends ConsumerState<PlayerAboutTab>
   GameFilter? _previousFilter;
   double _filterFlashValue = 0.0;
 
+  // Cached TWIC analytics — kept across filter changes so we never show a
+  // full-page skeleton when the user adjusts a filter. The thin loading bar
+  // in the parent screen already signals the in-flight request.
+  PlayerAnalytics? _cachedBaseStats;
+  PlayerAnalytics? _cachedOpeningStats;
+  PlayerAnalytics? _cachedFilteredStats;
+
   /// Get the player profile key for provider lookups
   PlayerProfileKey get _playerKey => PlayerProfileKey(
     fideId: widget.fideId,
@@ -149,6 +156,16 @@ class _PlayerAboutTabState extends ConsumerState<PlayerAboutTab>
             )
             : const AsyncValue<PlayerAnalytics?>.data(null);
 
+    // Keep caches fresh so filter changes never blank the screen.
+    if (canUseTwicStats) {
+      final bv = twicBaseStatsAsync.valueOrNull;
+      if (bv != null) _cachedBaseStats = bv;
+      final ov = twicOpeningStatsAsync.valueOrNull;
+      if (ov != null) _cachedOpeningStats = ov;
+      final fv = twicFilteredStatsAsync.valueOrNull;
+      if (fv != null) _cachedFilteredStats = fv;
+    }
+
     final horizontalPadding = ResponsiveHelper.adaptive(
       phone: 20.sp,
       tablet: 32.sp,
@@ -222,6 +239,9 @@ class _PlayerAboutTabState extends ConsumerState<PlayerAboutTab>
                   twicBaseStatsAsync: twicBaseStatsAsync,
                   twicOpeningStatsAsync: twicOpeningStatsAsync,
                   twicFilteredStatsAsync: twicFilteredStatsAsync,
+                  cachedBase: _cachedBaseStats,
+                  cachedOpening: _cachedOpeningStats,
+                  cachedFiltered: _cachedFilteredStats,
                 )
                 : gamesAsync.when(
                   data: (allGames) {
@@ -585,10 +605,16 @@ class _PlayerAboutTabState extends ConsumerState<PlayerAboutTab>
     required AsyncValue<PlayerAnalytics?> twicBaseStatsAsync,
     required AsyncValue<PlayerAnalytics?> twicOpeningStatsAsync,
     required AsyncValue<PlayerAnalytics?> twicFilteredStatsAsync,
+    required PlayerAnalytics? cachedBase,
+    required PlayerAnalytics? cachedOpening,
+    required PlayerAnalytics? cachedFiltered,
   }) {
-    final baseAnalytics = twicBaseStatsAsync.valueOrNull;
-    final openingAnalytics = twicOpeningStatsAsync.valueOrNull;
-    final analytics = twicFilteredStatsAsync.valueOrNull;
+    // Fall back to the last cached value while a new request is in-flight so
+    // we never blank the screen on a filter change. The thin loading bar in
+    // the parent already signals the pending request to the user.
+    final baseAnalytics = twicBaseStatsAsync.valueOrNull ?? cachedBase;
+    final openingAnalytics = twicOpeningStatsAsync.valueOrNull ?? cachedOpening;
+    final analytics = twicFilteredStatsAsync.valueOrNull ?? cachedFiltered;
 
     final anyStatsLoading =
         twicBaseStatsAsync.isLoading ||
@@ -606,7 +632,8 @@ class _PlayerAboutTabState extends ConsumerState<PlayerAboutTab>
         twicOpeningStatsAsync.hasValue &&
         twicFilteredStatsAsync.hasValue;
 
-    if (anyStatsLoading) {
+    // Only show the full skeleton on the very first load (no cached data yet).
+    if (anyStatsLoading && allStatsMissing) {
       return _buildLoadingAnalytics();
     }
 
