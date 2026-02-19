@@ -16,6 +16,7 @@ class BoardEditorState {
     this.selectedPiece,
     this.pointerMode = EditorPointerMode.drag,
     this.isDeleteMode = false,
+    this.selectedDragSquare,
   });
 
   final Pieces pieces;
@@ -28,6 +29,7 @@ class BoardEditorState {
   final Piece? selectedPiece;
   final EditorPointerMode pointerMode;
   final bool isDeleteMode;
+  final Square? selectedDragSquare;
 
   /// Whether the position is a legal chess position that can be evaluated.
   ///
@@ -86,6 +88,7 @@ class BoardEditorState {
     Piece? Function()? selectedPiece,
     EditorPointerMode? pointerMode,
     bool? isDeleteMode,
+    Square? Function()? selectedDragSquare,
   }) {
     return BoardEditorState(
       pieces: pieces ?? this.pieces,
@@ -99,6 +102,9 @@ class BoardEditorState {
           selectedPiece != null ? selectedPiece() : this.selectedPiece,
       pointerMode: pointerMode ?? this.pointerMode,
       isDeleteMode: isDeleteMode ?? this.isDeleteMode,
+      selectedDragSquare: selectedDragSquare != null
+          ? selectedDragSquare()
+          : this.selectedDragSquare,
     );
   }
 }
@@ -167,6 +173,36 @@ class BoardEditorNotifier extends StateNotifier<BoardEditorState> {
     }
   }
 
+  void onTapSquare(Square square) {
+    if (state.pointerMode == EditorPointerMode.edit) return;
+
+    final selected = state.selectedDragSquare;
+
+    if (selected == null) {
+      // No square selected yet — select if there's a piece
+      if (state.pieces.containsKey(square)) {
+        state = state.copyWith(selectedDragSquare: () => square);
+      }
+    } else if (selected == square) {
+      // Same square tapped again — deselect
+      state = state.copyWith(selectedDragSquare: () => null);
+    } else {
+      // Different square tapped — move the piece
+      final piece = state.pieces[selected];
+      if (piece != null) {
+        final newPieces = Map<Square, Piece>.of(state.pieces);
+        newPieces.remove(selected);
+        newPieces[square] = piece;
+        state = state.copyWith(
+          pieces: newPieces,
+          selectedDragSquare: () => null,
+        );
+      } else {
+        state = state.copyWith(selectedDragSquare: () => null);
+      }
+    }
+  }
+
   void onEditedSquare(Square square) {
     final newPieces = Map<Square, Piece>.of(state.pieces);
     if (state.isDeleteMode) {
@@ -174,7 +210,7 @@ class BoardEditorNotifier extends StateNotifier<BoardEditorState> {
     } else if (state.selectedPiece != null) {
       newPieces[square] = state.selectedPiece!;
     }
-    state = state.copyWith(pieces: newPieces);
+    state = state.copyWith(pieces: newPieces, selectedDragSquare: () => null);
   }
 
   void onDroppedPiece(Square? origin, Square destination, Piece piece) {
@@ -183,13 +219,13 @@ class BoardEditorNotifier extends StateNotifier<BoardEditorState> {
       newPieces.remove(origin);
     }
     newPieces[destination] = piece;
-    state = state.copyWith(pieces: newPieces);
+    state = state.copyWith(pieces: newPieces, selectedDragSquare: () => null);
   }
 
   void onDiscardedPiece(Square square) {
     final newPieces = Map<Square, Piece>.of(state.pieces);
     newPieces.remove(square);
-    state = state.copyWith(pieces: newPieces);
+    state = state.copyWith(pieces: newPieces, selectedDragSquare: () => null);
   }
 
   void setSideToMove(Side side) {
