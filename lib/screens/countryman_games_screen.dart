@@ -10,6 +10,7 @@ import 'package:chessever2/screens/group_event/widget/tour_loading_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_tour_content_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/live_game_card_provider.dart';
 import 'package:chessever2/widgets/generic_error_widget.dart';
+import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:chessever2/widgets/screen_wrapper.dart';
 import 'package:flutter/material.dart';
 import 'package:chessever2/screens/group_event/widget/appbar_icons_widget.dart';
@@ -85,7 +86,12 @@ class CountrymanGamesList extends ConsumerWidget {
                             )
                             .togglePinGame(gamesTourModel.gameId);
                       },
-                      onChanged: () {
+                      onChanged: () async {
+                        final hasPremium =
+                            await requirePremiumGuard(context, ref);
+                        if (!hasPremium) return;
+                        if (!context.mounted) return;
+
                         ref
                             .read(chessboardViewFromProviderNew.notifier)
                             .state = ChessboardView.countryman;
@@ -102,7 +108,12 @@ class CountrymanGamesList extends ConsumerWidget {
                       gamesTourModel: game,
                     )
                   : GameCard(
-                      onTap: () {
+                      onTap: () async {
+                        final hasPremium =
+                            await requirePremiumGuard(context, ref);
+                        if (!hasPremium) return;
+                        if (!context.mounted) return;
+
                         ref
                             .read(chessboardViewFromProviderNew.notifier)
                             .state = ChessboardView.countryman;

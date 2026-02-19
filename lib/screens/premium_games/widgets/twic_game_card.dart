@@ -6,6 +6,7 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/app_button.dart';
+import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -66,8 +67,12 @@ class TwicGameCard extends ConsumerWidget {
         .slideY(begin: 0.05, end: 0, duration: 200.ms, curve: Curves.easeOut);
   }
 
-  void _handleTap(BuildContext context, WidgetRef ref) {
+  Future<void> _handleTap(BuildContext context, WidgetRef ref) async {
     HapticFeedbackService.cardTap();
+
+    final hasPremium = await requirePremiumGuard(context, ref);
+    if (!hasPremium) return;
+    if (!context.mounted) return;
 
     ref.read(chessboardViewFromProviderNew.notifier).state =
         ChessboardView.tour;

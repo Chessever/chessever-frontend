@@ -106,6 +106,7 @@ class ChessBoardScreenNotifierNew
     required this.game,
     required this.index,
     this.savedAnalysisData,
+    this.startAtLastMove = false,
   }) : super(const AsyncValue.loading()) {
     _stockfishOwnerId = '${game.gameId}_$index';
     _initializeState();
@@ -122,6 +123,7 @@ class ChessBoardScreenNotifierNew
 
   /// Optional saved analysis data to restore full state
   final SavedAnalysisData? savedAnalysisData;
+  final bool startAtLastMove;
   Timer? _longPressTimer;
   bool _hasParsedMoves = false;
   bool _isProcessingMove = false;
@@ -864,7 +866,7 @@ class ChessBoardScreenNotifierNew
           isPreviewActive
               ? (currentState?.analysisState.currentMoveIndex ?? lastMoveIndex)
               : shouldForceLatestPosition
-              ? (isLiveGame ? lastMoveIndex : -1)
+              ? ((isLiveGame || startAtLastMove) ? lastMoveIndex : -1)
               : (wasViewingLastMove
                   ? lastMoveIndex // Jump to new last move if user was already viewing last
                   : currentState?.analysisState.currentMoveIndex ??
@@ -5945,10 +5947,15 @@ class ChessBoardProviderParams {
   /// Optional saved analysis for restoring full state (variations, comments, position)
   final SavedAnalysisData? savedAnalysisData;
 
+  /// When true, the board starts at the last move instead of the starting position.
+  /// Used by the opening explorer's "Analyze" action.
+  final bool startAtLastMove;
+
   const ChessBoardProviderParams({
     required this.game,
     required this.index,
     this.savedAnalysisData,
+    this.startAtLastMove = false,
   });
 
   @override
@@ -6010,6 +6017,7 @@ final chessBoardScreenProviderNew = AutoDisposeStateNotifierProvider.family<
     game: params.game,
     index: params.index,
     savedAnalysisData: params.savedAnalysisData,
+    startAtLastMove: params.startAtLastMove,
   );
 });
 

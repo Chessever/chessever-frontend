@@ -275,6 +275,7 @@ class _GamebaseExplorerScreenState
               hideEventInfo: true,
               showGamebaseButton: false,
               disableGamebaseOverlayByDefault: true,
+              startAtLastMove: true,
             ),
       ),
     );

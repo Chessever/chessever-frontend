@@ -681,14 +681,14 @@ class _PlayerAboutTabState extends ConsumerState<PlayerAboutTab>
                   : const SizedBox.shrink(),
         ),
         _OverallStatsSection(
-          resultStats: filtered.resultStats,
-          avgOpponentRating: filtered.avgOpponentRating,
+          resultStats: base.resultStats,
+          avgOpponentRating: base.avgOpponentRating,
           currentResultFilter: gamesState.playerResultFilter,
           onOpenGames: widget.onOpenGames,
         ),
         SizedBox(height: 24.h),
         _ColorPerformanceSection(
-          colorStats: filtered.colorStats,
+          colorStats: base.colorStats,
           currentColorFilter: gamesState.filter.color,
           onOpenGames: widget.onOpenGames,
         ),
