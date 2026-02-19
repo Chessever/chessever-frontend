@@ -223,8 +223,8 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
           SliverPersistentHeader(
             pinned: true,
             delegate: _PinnedHeaderDelegate(
-              minExtent: state.hasActiveFilters ? 130.h : 94.h,
-              maxExtent: state.hasActiveFilters ? 130.h : 94.h,
+              minExtent: state.hasActiveFilters ? 124.h : 88.h,
+              maxExtent: state.hasActiveFilters ? 124.h : 88.h,
               child: _buildStickyHeader(state, horizontalPadding),
             ),
           ),
@@ -275,7 +275,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
           Padding(
             padding: EdgeInsets.fromLTRB(
               horizontalPadding,
-              12.h,
+              6.h,
               horizontalPadding,
               8.h,
             ),

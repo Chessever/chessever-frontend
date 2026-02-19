@@ -633,6 +633,10 @@ class ChessBoardScreenNew extends ConsumerStatefulWidget {
   final bool disableGamebaseOverlayByDefault;
   final bool showClock;
 
+  /// When true, the board starts at the last move instead of the starting position.
+  /// Used by the opening explorer's "Analyze" action.
+  final bool startAtLastMove;
+
   const ChessBoardScreenNew({
     required this.currentIndex,
     required this.games,
@@ -642,6 +646,7 @@ class ChessBoardScreenNew extends ConsumerStatefulWidget {
     this.showGamebaseButton = false,
     this.disableGamebaseOverlayByDefault = false,
     this.showClock = true,
+    this.startAtLastMove = false,
     super.key,
   });
 
@@ -894,6 +899,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
       game: game,
       index: index,
       savedAnalysisData: _getSavedAnalysisDataForIndex(index),
+      startAtLastMove: widget.startAtLastMove,
     );
   }
 

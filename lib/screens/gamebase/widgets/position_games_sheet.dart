@@ -6,6 +6,7 @@ import 'package:chessever2/screens/library/widgets/library_game_card.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -172,82 +173,83 @@ class _PositionGamesSheetState extends ConsumerState<PositionGamesSheet> {
   Widget build(BuildContext context) {
     final games = _rows.map(_mapPreviewToTourModel).toList(growable: false);
 
-    return SafeArea(
-      top: false,
-      child: Container(
-        decoration: BoxDecoration(
-          color: kBlack3Color,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(16.br)),
-        ),
-        child: ConstrainedBox(
-          constraints:
-              ResponsiveHelper.bottomSheetConstraints ?? const BoxConstraints(),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _Header(title: widget.title),
-              Divider(color: kDividerColor, height: 1),
-              Expanded(
-                child:
-                    _isInitialLoading && games.isEmpty
-                        ? const Center(
-                          child: CircularProgressIndicator(
-                            color: kWhiteColor,
-                            strokeWidth: 2,
-                          ),
-                        )
-                        : (_error != null && games.isEmpty)
-                        ? _Empty(message: 'Failed to load games.\n$_error')
-                        : (games.isEmpty)
-                        ? const _Empty(
-                          message: 'No games found for this position.',
-                        )
-                        : ListView.separated(
-                          controller: _scrollController,
-                          padding: EdgeInsets.symmetric(
-                            vertical: 8.sp,
-                            horizontal: 12.sp,
-                          ),
-                          itemCount: games.length + 1,
-                          separatorBuilder: (_, __) => SizedBox(height: 8.sp),
-                          itemBuilder: (context, index) {
-                            if (index == games.length) {
-                              return _PositionGamesFooter(
-                                isLoadingMore: _isLoadingMore,
-                                hasMore: _hasMore,
-                                loadedCount: games.length,
-                                totalCount: _totalCount,
-                                onLoadMore: _fetchPage,
-                              );
-                            }
+    final bottomPadding = MediaQuery.of(context).padding.bottom;
 
-                            final game = games[index];
-                            final eventName =
-                                (game.tourId.trim().isNotEmpty)
-                                    ? game.tourId
-                                    : 'Gamebase';
-
-                            return LibraryGameCard(
-                              game: game,
-                              eventName: eventName,
-                              eco: game.roundSlug,
-                              date: game.lastMoveTime,
-                              showRound: true,
-                              onTap:
-                                  () => _openGame(
-                                    context,
-                                    ref,
-                                    game,
-                                    games,
-                                    index,
-                                  ),
-                              onLongPress: null,
-                            );
-                          },
+    return Container(
+      decoration: BoxDecoration(
+        color: kBlack3Color,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16.br)),
+      ),
+      child: ConstrainedBox(
+        constraints:
+            ResponsiveHelper.bottomSheetConstraints ?? const BoxConstraints(),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _Header(title: widget.title),
+            Divider(color: kDividerColor, height: 1),
+            Expanded(
+              child:
+                  _isInitialLoading && games.isEmpty
+                      ? const Center(
+                        child: CircularProgressIndicator(
+                          color: kWhiteColor,
+                          strokeWidth: 2,
                         ),
-              ),
-            ],
-          ),
+                      )
+                      : (_error != null && games.isEmpty)
+                      ? _Empty(message: 'Failed to load games.\n$_error')
+                      : (games.isEmpty)
+                      ? const _Empty(
+                        message: 'No games found for this position.',
+                      )
+                      : ListView.separated(
+                        controller: _scrollController,
+                        padding: EdgeInsets.only(
+                          top: 8.sp,
+                          bottom: 8.sp + bottomPadding,
+                          left: 12.sp,
+                          right: 12.sp,
+                        ),
+                        itemCount: games.length + 1,
+                        separatorBuilder: (_, __) => SizedBox(height: 8.sp),
+                        itemBuilder: (context, index) {
+                          if (index == games.length) {
+                            return _PositionGamesFooter(
+                              isLoadingMore: _isLoadingMore,
+                              hasMore: _hasMore,
+                              loadedCount: games.length,
+                              totalCount: _totalCount,
+                              onLoadMore: _fetchPage,
+                            );
+                          }
+
+                          final game = games[index];
+                          final eventName =
+                              (game.tourId.trim().isNotEmpty)
+                                  ? game.tourId
+                                  : 'Gamebase';
+
+                          return LibraryGameCard(
+                            game: game,
+                            eventName: eventName,
+                            eco: game.roundSlug,
+                            date: game.lastMoveTime,
+                            showRound: true,
+                            onTap:
+                                () => _openGame(
+                                  context,
+                                  ref,
+                                  game,
+                                  games,
+                                  index,
+                                ),
+                            onLongPress: null,
+                          );
+                        },
+                      ),
+            ),
+          ],
         ),
       ),
     );
@@ -337,6 +339,11 @@ class _PositionGamesSheetState extends ConsumerState<PositionGamesSheet> {
     List<GamesTourModel> allGames,
     int currentIndex,
   ) async {
+    // Premium guard - show paywall if not subscribed
+    final hasPremium = await requirePremiumGuard(context, ref);
+    if (!hasPremium) return;
+    if (!context.mounted) return;
+
     // Ensure the chessboard screen renders as a "tour game" view.
     ref.read(chessboardViewFromProviderNew.notifier).state =
         ChessboardView.tour;
