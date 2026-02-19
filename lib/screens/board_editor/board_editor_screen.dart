@@ -145,7 +145,7 @@ class _BoardEditorScreenState extends ConsumerState<BoardEditorScreen> {
     ref.read(chessboardViewFromProviderNew.notifier).state =
         ChessboardView.tour;
 
-    Navigator.of(context).pushReplacement(
+    Navigator.of(context).push(
       MaterialPageRoute(
         builder:
             (_) => ChessBoardScreenNew(
