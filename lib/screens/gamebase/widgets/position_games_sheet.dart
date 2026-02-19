@@ -199,7 +199,9 @@ class _PositionGamesSheetState extends ConsumerState<PositionGamesSheet> {
                         : (_error != null && games.isEmpty)
                         ? _Empty(message: 'Failed to load games.\n$_error')
                         : (games.isEmpty)
-                        ? const _Empty(message: 'No games found for this position.')
+                        ? const _Empty(
+                          message: 'No games found for this position.',
+                        )
                         : ListView.separated(
                           controller: _scrollController,
                           padding: EdgeInsets.symmetric(
@@ -231,7 +233,14 @@ class _PositionGamesSheetState extends ConsumerState<PositionGamesSheet> {
                               eco: game.roundSlug,
                               date: game.lastMoveTime,
                               showRound: true,
-                              onTap: () => _openGame(context, ref, game),
+                              onTap:
+                                  () => _openGame(
+                                    context,
+                                    ref,
+                                    game,
+                                    games,
+                                    index,
+                                  ),
                               onLongPress: null,
                             );
                           },
@@ -325,6 +334,8 @@ class _PositionGamesSheetState extends ConsumerState<PositionGamesSheet> {
     BuildContext context,
     WidgetRef ref,
     GamesTourModel game,
+    List<GamesTourModel> allGames,
+    int currentIndex,
   ) async {
     // Ensure the chessboard screen renders as a "tour game" view.
     ref.read(chessboardViewFromProviderNew.notifier).state =
@@ -370,12 +381,17 @@ class _PositionGamesSheetState extends ConsumerState<PositionGamesSheet> {
       if (!context.mounted) return;
       Navigator.of(context).pop(); // loading
 
+      final boardGames = allGames
+          .map((g) => g.gameId == game.gameId ? g.copyWith(pgn: pgn) : g)
+          .toList(growable: false);
+      final safeIndex = currentIndex.clamp(0, boardGames.length - 1);
+
       Navigator.of(context).push(
         MaterialPageRoute(
           builder:
               (_) => ChessBoardScreenNew(
-                games: [game.copyWith(pgn: pgn)],
-                currentIndex: 0,
+                games: boardGames,
+                currentIndex: safeIndex,
                 disableGamebaseOverlayByDefault: true,
               ),
         ),

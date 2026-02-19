@@ -107,37 +107,25 @@ class FolderCard extends ConsumerWidget {
     final iconRadius = isFeatured ? 17.78.br : 10.0.br;
     final svgSize = isFeatured ? 35.56.sp : 20.0.sp;
 
-    // Count widget: TWIC shows hardcoded "4M+ games", others fetch from provider
-    Widget countWidget;
-    if (isTwic) {
-      countWidget = Text(
-        '4M+ games',
-        style: AppTypography.textXsRegular.copyWith(
-          color: const Color(0xFFA1A1A1),
-          height: 16 / 12,
-        ),
-      );
-    } else {
-      final countAsync = ref.watch(folderAnalysisCountProvider(folder.id));
-      countWidget = countAsync.when(
-        data:
-            (count) => Text(
-              _formatGameCount(count),
-              style: AppTypography.textXsRegular.copyWith(
-                color: const Color(0xFFA1A1A1),
-                height: 16 / 12,
-              ),
+    final countAsync = ref.watch(folderAnalysisCountProvider(folder.id));
+    final countWidget = countAsync.when(
+      data:
+          (count) => Text(
+            _formatGameCount(count),
+            style: AppTypography.textXsRegular.copyWith(
+              color: const Color(0xFFA1A1A1),
+              height: 16 / 12,
             ),
-        loading:
-            () => Text(
-              '...',
-              style: AppTypography.textXsRegular.copyWith(
-                color: const Color(0xFFA1A1A1),
-              ),
+          ),
+      loading:
+          () => Text(
+            '...',
+            style: AppTypography.textXsRegular.copyWith(
+              color: const Color(0xFFA1A1A1),
             ),
-        error: (_, __) => const SizedBox.shrink(),
-      );
-    }
+          ),
+      error: (_, __) => const SizedBox.shrink(),
+    );
 
     // Subtitle for subscribed books: show owner name
     Widget? subtitleWidget;
@@ -291,9 +279,10 @@ class FolderCard extends ConsumerWidget {
       if (!context.mounted) return;
       final url = 'https://chessever.com/books/${updatedFolder.shareToken}';
       final box = context.findRenderObject() as RenderBox?;
-      final origin = box != null
-          ? box.localToGlobal(Offset.zero) & box.size
-          : const Rect.fromLTWH(0, 0, 1, 1);
+      final origin =
+          box != null
+              ? box.localToGlobal(Offset.zero) & box.size
+              : const Rect.fromLTWH(0, 0, 1, 1);
       await Share.share(url, sharePositionOrigin: origin);
     } catch (e) {
       if (!context.mounted) return;
@@ -361,10 +350,7 @@ class FolderCard extends ConsumerWidget {
     }
   }
 
-  Future<void> _unsubscribeFromBook(
-    BuildContext context,
-    WidgetRef ref,
-  ) async {
+  Future<void> _unsubscribeFromBook(BuildContext context, WidgetRef ref) async {
     try {
       final repo = ref.read(libraryRepositoryProvider);
       await repo.unsubscribeFromBook(folder.id);
@@ -615,9 +601,24 @@ void showFolderOverlayMenu({
   _showOverlay(
     context: context,
     items: [
-      _OverlayMenuItemData(Icons.ios_share_rounded, 'Share', onShare, _MenuItemPosition.top),
-      _OverlayMenuItemData(Icons.edit_rounded, 'Rename Folder', onRename, _MenuItemPosition.middle),
-      _OverlayMenuItemData(Icons.delete_outline_rounded, 'Delete Folder', onDelete, _MenuItemPosition.bottom),
+      _OverlayMenuItemData(
+        Icons.ios_share_rounded,
+        'Share',
+        onShare,
+        _MenuItemPosition.top,
+      ),
+      _OverlayMenuItemData(
+        Icons.edit_rounded,
+        'Rename Folder',
+        onRename,
+        _MenuItemPosition.middle,
+      ),
+      _OverlayMenuItemData(
+        Icons.delete_outline_rounded,
+        'Delete Folder',
+        onDelete,
+        _MenuItemPosition.bottom,
+      ),
     ],
   );
 }
@@ -633,10 +634,30 @@ void showSharedFolderOverlayMenu({
   _showOverlay(
     context: context,
     items: [
-      _OverlayMenuItemData(Icons.copy_rounded, 'Copy Link', onCopyLink, _MenuItemPosition.top),
-      _OverlayMenuItemData(Icons.link_off_rounded, 'Stop Sharing', onStopSharing, _MenuItemPosition.middle),
-      _OverlayMenuItemData(Icons.edit_rounded, 'Rename Folder', onRename, _MenuItemPosition.middle),
-      _OverlayMenuItemData(Icons.delete_outline_rounded, 'Delete Folder', onDelete, _MenuItemPosition.bottom),
+      _OverlayMenuItemData(
+        Icons.copy_rounded,
+        'Copy Link',
+        onCopyLink,
+        _MenuItemPosition.top,
+      ),
+      _OverlayMenuItemData(
+        Icons.link_off_rounded,
+        'Stop Sharing',
+        onStopSharing,
+        _MenuItemPosition.middle,
+      ),
+      _OverlayMenuItemData(
+        Icons.edit_rounded,
+        'Rename Folder',
+        onRename,
+        _MenuItemPosition.middle,
+      ),
+      _OverlayMenuItemData(
+        Icons.delete_outline_rounded,
+        'Delete Folder',
+        onDelete,
+        _MenuItemPosition.bottom,
+      ),
     ],
   );
 }
@@ -649,7 +670,12 @@ void showSubscribedFolderOverlayMenu({
   _showOverlay(
     context: context,
     items: [
-      _OverlayMenuItemData(Icons.link_off_rounded, 'Unsubscribe', onUnsubscribe, _MenuItemPosition.top),
+      _OverlayMenuItemData(
+        Icons.link_off_rounded,
+        'Unsubscribe',
+        onUnsubscribe,
+        _MenuItemPosition.top,
+      ),
     ],
   );
 }
@@ -674,19 +700,20 @@ void _showOverlay({
   late OverlayEntry entry;
 
   entry = OverlayEntry(
-    builder: (_) => _FolderOverlayMenu(
-      anchorRect: cardRect,
-      onDismiss: () => entry.remove(),
-      items: items.map((item) => _OverlayMenuItemData(
-        item.icon,
-        item.label,
-        () {
-          entry.remove();
-          item.onTap();
-        },
-        item.position,
-      )).toList(),
-    ),
+    builder:
+        (_) => _FolderOverlayMenu(
+          anchorRect: cardRect,
+          onDismiss: () => entry.remove(),
+          items:
+              items
+                  .map(
+                    (item) => _OverlayMenuItemData(item.icon, item.label, () {
+                      entry.remove();
+                      item.onTap();
+                    }, item.position),
+                  )
+                  .toList(),
+        ),
   );
 
   overlay.insert(entry);

@@ -24,24 +24,91 @@ class BoardEditorScreen extends ConsumerStatefulWidget {
 }
 
 class _BoardEditorScreenState extends ConsumerState<BoardEditorScreen> {
+  String? _analysisPgnOverride;
+  String? _analysisPgnStartFen;
+  String _analysisWhiteName = 'White';
+  String _analysisBlackName = 'Black';
+
+  String _fenPositionKey(String fen) =>
+      fen.trim().split(RegExp(r'\s+')).take(4).join(' ');
+
+  void _clearPgnOverride() {
+    _analysisPgnOverride = null;
+    _analysisPgnStartFen = null;
+    _analysisWhiteName = 'White';
+    _analysisBlackName = 'Black';
+  }
+
+  String? _analysisValidationError(BoardEditorState editorState) {
+    bool hasWhiteKing = false;
+    bool hasBlackKing = false;
+    for (final piece in editorState.pieces.values) {
+      if (piece.role == Role.king) {
+        if (piece.color == Side.white) hasWhiteKing = true;
+        if (piece.color == Side.black) hasBlackKing = true;
+      }
+    }
+    if (!hasWhiteKing || !hasBlackKing) {
+      return 'Position must include both kings before analysis.';
+    }
+
+    try {
+      final setup = Setup.parseFen(editorState.fullFen);
+      Chess.fromSetup(setup);
+    } catch (_) {
+      return 'Illegal position. Check king safety, side to move, and castling rights.';
+    }
+    return null;
+  }
+
+  void _showSnack(String message, {Color? backgroundColor}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message, style: TextStyle(color: kWhiteColor)),
+        backgroundColor:
+            backgroundColor ?? kBlack2Color.withValues(alpha: 0.95),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
   void _onDone() {
     final editorState = ref.read(boardEditorProvider);
+    final validationError = _analysisValidationError(editorState);
+    if (validationError != null) {
+      _showSnack(
+        validationError,
+        backgroundColor: kRedColor.withValues(alpha: 0.9),
+      );
+      return;
+    }
+
     final fen = editorState.fullFen;
     final timestamp = DateTime.now().millisecondsSinceEpoch;
+    final usePgnOverride =
+        _analysisPgnOverride != null &&
+        _analysisPgnStartFen != null &&
+        _fenPositionKey(_analysisPgnStartFen!) == _fenPositionKey(fen);
+
+    final whiteName = usePgnOverride ? _analysisWhiteName : 'White';
+    final blackName = usePgnOverride ? _analysisBlackName : 'Black';
 
     final pgn =
-        '[Event "Board Editor"]\n'
-        '[Site "ChessEver"]\n'
-        '[Date "${DateTime.now().toIso8601String().split('T')[0]}"]\n'
-        '[White "White"]\n'
-        '[Black "Black"]\n'
-        '[Result "*"]\n'
-        '[FEN "$fen"]\n'
-        '[SetUp "1"]\n'
-        '\n*';
+        usePgnOverride
+            ? _analysisPgnOverride!
+            : '[Event "Board Editor"]\n'
+                '[Site "ChessEver"]\n'
+                '[Date "${DateTime.now().toIso8601String().split('T')[0]}"]\n'
+                '[White "$whiteName"]\n'
+                '[Black "$blackName"]\n'
+                '[Result "*"]\n'
+                '[FEN "$fen"]\n'
+                '[SetUp "1"]\n'
+                '\n*';
 
     final whitePlayer = PlayerCard(
-      name: 'White',
+      name: whiteName,
       federation: '',
       title: '',
       rating: 0,
@@ -51,7 +118,7 @@ class _BoardEditorScreenState extends ConsumerState<BoardEditorScreen> {
     );
 
     final blackPlayer = PlayerCard(
-      name: 'Black',
+      name: blackName,
       federation: '',
       title: '',
       rating: 0,
@@ -95,35 +162,20 @@ class _BoardEditorScreenState extends ConsumerState<BoardEditorScreen> {
     final clipboard = await Clipboard.getData(Clipboard.kTextPlain);
     final text = clipboard?.text?.trim();
     if (text == null || text.isEmpty) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Clipboard is empty',
-              style: TextStyle(color: kWhiteColor),
-            ),
-            backgroundColor: kBlack2Color.withValues(alpha: 0.95),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      }
+      _showSnack('Clipboard is empty');
       return;
     }
 
     // Try parsing as FEN
     try {
       Setup.parseFen(text);
+      setState(_clearPgnOverride);
       ref.read(boardEditorProvider.notifier).loadFen(text);
     } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Invalid FEN', style: TextStyle(color: kWhiteColor)),
-            backgroundColor: kRedColor.withValues(alpha: 0.9),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      }
+      _showSnack(
+        'Invalid FEN',
+        backgroundColor: kRedColor.withValues(alpha: 0.9),
+      );
     }
   }
 
@@ -202,7 +254,8 @@ class _BoardEditorScreenState extends ConsumerState<BoardEditorScreen> {
     if (pgn == null || pgn.trim().isEmpty) return;
 
     try {
-      final game = PgnGame.parsePgn(pgn.trim());
+      final rawPgn = pgn.trim();
+      final game = PgnGame.parsePgn(rawPgn);
       // Determine starting position
       final fenHeader = game.headers['FEN'];
       final startPos =
@@ -210,27 +263,23 @@ class _BoardEditorScreenState extends ConsumerState<BoardEditorScreen> {
               ? Chess.fromSetup(Setup.parseFen(fenHeader))
               : Chess.initial;
 
-      // Replay moves to reach final position
-      var pos = startPos;
-      for (final node in game.moves.mainline()) {
-        pos = pos.play(pos.parseSan(node.san)!) as Chess;
-      }
+      final startFen = startPos.fen;
+      final whiteName = (game.headers['White'] ?? 'White').trim();
+      final blackName = (game.headers['Black'] ?? 'Black').trim();
 
-      final fen = pos.fen;
-      ref.read(boardEditorProvider.notifier).loadFen(fen);
+      setState(() {
+        _analysisPgnOverride = rawPgn;
+        _analysisPgnStartFen = startFen;
+        _analysisWhiteName = whiteName.isNotEmpty ? whiteName : 'White';
+        _analysisBlackName = blackName.isNotEmpty ? blackName : 'Black';
+      });
+      ref.read(boardEditorProvider.notifier).loadFen(startFen);
+      _showSnack('PGN loaded. Analysis will keep moves and headers.');
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Failed to parse PGN',
-              style: TextStyle(color: kWhiteColor),
-            ),
-            backgroundColor: kRedColor.withValues(alpha: 0.9),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      }
+      _showSnack(
+        'Failed to parse PGN',
+        backgroundColor: kRedColor.withValues(alpha: 0.9),
+      );
     }
   }
 
@@ -275,14 +324,17 @@ class _BoardEditorScreenState extends ConsumerState<BoardEditorScreen> {
                     editorState: editorState,
                     onReset: () {
                       HapticFeedback.mediumImpact();
+                      setState(_clearPgnOverride);
                       ref.read(boardEditorProvider.notifier).reset();
                     },
                     onClear: () {
                       HapticFeedback.mediumImpact();
+                      setState(_clearPgnOverride);
                       ref.read(boardEditorProvider.notifier).clear();
                     },
                     onSideToMove: (side) {
                       HapticFeedback.selectionClick();
+                      setState(_clearPgnOverride);
                       ref
                           .read(boardEditorProvider.notifier)
                           .setSideToMove(side);
@@ -294,6 +346,7 @@ class _BoardEditorScreenState extends ConsumerState<BoardEditorScreen> {
                       bool? blackQueenside,
                     }) {
                       HapticFeedback.selectionClick();
+                      setState(_clearPgnOverride);
                       ref
                           .read(boardEditorProvider.notifier)
                           .toggleCastling(
@@ -322,14 +375,17 @@ class _BoardEditorScreenState extends ConsumerState<BoardEditorScreen> {
                     isDeleteMode: editorState.isDeleteMode,
                     onSelectPiece: (piece) {
                       HapticFeedback.selectionClick();
+                      setState(_clearPgnOverride);
                       ref.read(boardEditorProvider.notifier).selectPiece(piece);
                     },
                     onToggleDeleteMode: () {
                       HapticFeedback.selectionClick();
+                      setState(_clearPgnOverride);
                       ref.read(boardEditorProvider.notifier).toggleDeleteMode();
                     },
                     onDeleteLongPress: () {
                       HapticFeedback.heavyImpact();
+                      setState(_clearPgnOverride);
                       ref.read(boardEditorProvider.notifier).clear();
                     },
                     onFlipBoard: () {

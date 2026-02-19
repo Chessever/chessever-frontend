@@ -54,8 +54,9 @@ final chessboardViewFromProviderNew = StateProvider<ChessboardView>((ref) {
 /// All games currently loaded in the board screen.
 /// Used by the player name tap → score card flow to pass full event context
 /// (especially for TWIC where no broadcast model is available).
-final chessBoardAllGamesProvider =
-    StateProvider<List<GamesTourModel>>((ref) => const []);
+final chessBoardAllGamesProvider = StateProvider<List<GamesTourModel>>(
+  (ref) => const [],
+);
 
 // Global provider to track the currently visible page index
 // This prevents off-screen games from playing audio or triggering unnecessary updates
@@ -137,7 +138,8 @@ class ChessBoardScreenNotifierNew
   int? _activeEvalRequestId;
   String? _activeEvalKey;
   DateTime? _activeEvalStartTime; // Track when active eval started
-  int _consecutiveWatchdogTimeouts = 0; // Track consecutive watchdog timeouts for force recovery
+  int _consecutiveWatchdogTimeouts =
+      0; // Track consecutive watchdog timeouts for force recovery
   ChessGame? _analysisGame;
   ChessGameNavigatorStateManager? _analysisStateManager;
   ProviderSubscription<ChessGameNavigatorState>? _navigatorSubscription;
@@ -401,7 +403,9 @@ class ChessBoardScreenNotifierNew
     _clearActiveEvalState();
 
     // Cancel this provider's stuck Stockfish evaluations
-    unawaited(StockfishSingleton().cancelEvaluationsForOwner(_stockfishOwnerId));
+    unawaited(
+      StockfishSingleton().cancelEvaluationsForOwner(_stockfishOwnerId),
+    );
 
     // Clear the evaluating flag to prevent UI from being stuck
     if (stateSnapshot != null && stateSnapshot.isEvaluating) {
@@ -422,9 +426,10 @@ class ChessBoardScreenNotifierNew
 
     // Schedule a new evaluation after a small delay
     // Use longer delay if force recovery was triggered
-    final delay = needsForceRecovery
-        ? const Duration(milliseconds: 1000)
-        : const Duration(milliseconds: 500);
+    final delay =
+        needsForceRecovery
+            ? const Duration(milliseconds: 1000)
+            : const Duration(milliseconds: 500);
 
     Future.delayed(delay, () {
       if (mounted) {
@@ -555,9 +560,10 @@ class ChessBoardScreenNotifierNew
                     : game.lastMoveTime,
             whiteClockSeconds: (gameData['last_clock_white'] as num?)?.round(),
             blackClockSeconds: (gameData['last_clock_black'] as num?)?.round(),
-            gameStatus: streamStatus != null
-                ? _parseGameStatus(streamStatus)
-                : game.gameStatus,
+            gameStatus:
+                streamStatus != null
+                    ? _parseGameStatus(streamStatus)
+                    : game.gameStatus,
           );
 
           // CRITICAL: Update state immediately with new game object to show clock changes
@@ -829,7 +835,8 @@ class ChessBoardScreenNotifierNew
           ref.read(lastSeenMoveCountProvider)[game.gameId] ?? 0;
       final currentMoveCount = moveSans.length;
       final hasNewMoves = currentMoveCount > lastSeenMoveCount;
-      final hadMovesPreviously = currentState?.analysisState.allMoves.isNotEmpty ?? false;
+      final hadMovesPreviously =
+          currentState?.analysisState.allMoves.isNotEmpty ?? false;
       final hasMovesNow = moveSans.isNotEmpty;
 
       // Use instance-level initial load flag instead of global lastSeenMoveCount
@@ -2995,7 +3002,7 @@ class ChessBoardScreenNotifierNew
       final currentFen = navigatorState.currentFen;
       _releaseLog('🎯 ANALYSIS MOVE: Current FEN from navigator: $currentFen');
 
-      if (currentFen == boardPosition.fen) {
+      if (_normalizeFen(currentFen) == _normalizeFen(boardPosition.fen)) {
         _releaseLog(
           '🎯 ANALYSIS MOVE: Navigator aligned, applying move via navigator',
         );
@@ -3012,7 +3019,9 @@ class ChessBoardScreenNotifierNew
         _analysisNavigator?.makeOrGoToMove(move.uci);
 
         // Sync state after navigation
-        final updatedState = ref.read(chessGameNavigatorProvider(_analysisGame!));
+        final updatedState = ref.read(
+          chessGameNavigatorProvider(_analysisGame!),
+        );
         _syncAnalysisFromNavigator(updatedState);
 
         HapticFeedback.lightImpact();
@@ -3051,7 +3060,8 @@ class ChessBoardScreenNotifierNew
         chessGameNavigatorProvider(_analysisGame!),
       );
 
-      if (navigatorState.currentFen != currentPosition.fen) {
+      if (_normalizeFen(navigatorState.currentFen) !=
+          _normalizeFen(currentPosition.fen)) {
         _releaseLog(
           '🎯 MANUAL MOVE FALLBACK: CRITICAL - Navigator out of sync!',
         );
@@ -3168,7 +3178,9 @@ class ChessBoardScreenNotifierNew
             _analysisNavigator?.makeOrGoToMove(move.uci);
 
             // Sync state after navigation
-            final updatedState = ref.read(chessGameNavigatorProvider(_analysisGame!));
+            final updatedState = ref.read(
+              chessGameNavigatorProvider(_analysisGame!),
+            );
             _syncAnalysisFromNavigator(updatedState);
 
             HapticFeedback.mediumImpact();
@@ -3370,7 +3382,9 @@ class ChessBoardScreenNotifierNew
 
       // Sync state after navigation
       if (_analysisGame != null) {
-        final updatedState = ref.read(chessGameNavigatorProvider(_analysisGame!));
+        final updatedState = ref.read(
+          chessGameNavigatorProvider(_analysisGame!),
+        );
         _syncAnalysisFromNavigator(updatedState);
       }
     } else {
@@ -3420,7 +3434,9 @@ class ChessBoardScreenNotifierNew
 
       // Sync state after navigation
       if (_analysisGame != null) {
-        final updatedState = ref.read(chessGameNavigatorProvider(_analysisGame!));
+        final updatedState = ref.read(
+          chessGameNavigatorProvider(_analysisGame!),
+        );
         _syncAnalysisFromNavigator(updatedState);
       }
     } else {
@@ -3435,7 +3451,9 @@ class ChessBoardScreenNotifierNew
 
       // Sync state after navigation
       if (_analysisGame != null) {
-        final updatedState = ref.read(chessGameNavigatorProvider(_analysisGame!));
+        final updatedState = ref.read(
+          chessGameNavigatorProvider(_analysisGame!),
+        );
         _syncAnalysisFromNavigator(updatedState);
       }
     } else {
@@ -3454,13 +3472,18 @@ class ChessBoardScreenNotifierNew
   void updatePlayerName({required bool isWhite, required String newName}) {
     final currentState = state.value;
     if (currentState == null) return;
-    final updatedGame = isWhite
-        ? currentState.game.copyWith(
-            whitePlayer: currentState.game.whitePlayer.copyWith(name: newName),
-          )
-        : currentState.game.copyWith(
-            blackPlayer: currentState.game.blackPlayer.copyWith(name: newName),
-          );
+    final updatedGame =
+        isWhite
+            ? currentState.game.copyWith(
+              whitePlayer: currentState.game.whitePlayer.copyWith(
+                name: newName,
+              ),
+            )
+            : currentState.game.copyWith(
+              blackPlayer: currentState.game.blackPlayer.copyWith(
+                name: newName,
+              ),
+            );
     state = AsyncValue.data(currentState.copyWith(game: updatedGame));
   }
 
@@ -4587,13 +4610,14 @@ class ChessBoardScreenNotifierNew
             )
             .timeout(
               _cascadeEvalSoftTimeout,
-              onTimeout: () => CloudEval(
-                fen: fenToAnalyze,
-                knodes: 0,
-                depth: 0,
-                pvs: const [],
-                requestedMultiPv: configuredMultiPV,
-              ),
+              onTimeout:
+                  () => CloudEval(
+                    fen: fenToAnalyze,
+                    knodes: 0,
+                    depth: 0,
+                    pvs: const [],
+                    requestedMultiPv: configuredMultiPV,
+                  ),
             );
         if (cascadeEval.pvs.isNotEmpty) {
           primaryEval = cascadeEval;
@@ -5906,7 +5930,9 @@ class ChessBoardScreenNotifierNew
     _navigatorSubscription = null;
     _cancelEvalWatchdog(resetPending: true);
     // Cancel this provider's Stockfish jobs on dispose to prevent orphaned jobs
-    unawaited(StockfishSingleton().cancelEvaluationsForOwner(_stockfishOwnerId));
+    unawaited(
+      StockfishSingleton().cancelEvaluationsForOwner(_stockfishOwnerId),
+    );
     super.dispose();
   }
 }
