@@ -16,16 +16,16 @@ import 'package:motor/motor.dart';
 /// - yearFrom/yearTo
 /// - ratingFrom/ratingTo
 class GamebaseFilter {
-  const GamebaseFilter({
+  GamebaseFilter({
     this.tournamentType = GameTournamentTypeFilter.all,
     this.result = GameResultFilter.all,
     this.color = GameColorFilter.all,
     this.timeControl = GameTimeControlFilter.all,
     this.minYear = 1800,
-    this.maxYear = 2025,
+    int? maxYear,
     this.minRating = 0,
     this.maxRating = 3500,
-  });
+  }) : maxYear = maxYear ?? DateTime.now().year;
 
   final GameTournamentTypeFilter tournamentType;
   final GameResultFilter result;
@@ -80,9 +80,6 @@ class GamebaseFilter {
       maxRating: maxRating ?? this.maxRating,
     );
   }
-
-  static GamebaseFilter defaultFilter() =>
-      GamebaseFilter(maxYear: DateTime.now().year);
 
   /// Convert result to Gamebase API format
   String? get resultApiValue {
@@ -423,7 +420,7 @@ class _LibraryGamebaseFilterDialogState
 
   void _resetFilters() {
     HapticFeedbackService.buttonPress();
-    Navigator.of(context).pop(GamebaseFilter.defaultFilter());
+    Navigator.of(context).pop(GamebaseFilter());
   }
 
   void _applyFilters() {
