@@ -41,6 +41,7 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
 
   /// Monotonic token to ignore stale responses
   int _fetchToken = 0;
+  static final RegExp _uciRegex = RegExp(r'^[a-h][1-8][a-h][1-8][qrbn]?$');
 
   Chess get chess {
     _chess ??= Chess();
@@ -101,7 +102,9 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
       // Ignore if a newer request started or FEN changed while awaiting.
       if (fetchId != _fetchToken || requestedFen != state.currentFen) return;
 
-      final aggregates = List<MoveAggregate>.from(response.data.moves);
+      final aggregates = response.data.moves
+          .where((m) => _isLegalUciForFen(m.uci, state.currentFen))
+          .toList(growable: false);
 
       // Sort by total games descending
       aggregates.sort((a, b) => b.total.compareTo(a.total));
@@ -110,12 +113,15 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
 
       // Opportunistically prefetch a few likely next positions to make the
       // explorer feel instantaneous even when backend caches are cold.
-      _prefetchNextPositions(
-        repository: repository,
-        baseFen: state.currentFen,
-        exploredMoves: exploredMoves,
-        aggregates: aggregates,
-      );
+      // Skip prefetch when filters are active because those paths can be slow.
+      if (!state.hasActiveFilters) {
+        _prefetchNextPositions(
+          repository: repository,
+          baseFen: state.currentFen,
+          exploredMoves: exploredMoves,
+          aggregates: aggregates,
+        );
+      }
     } catch (e) {
       if (fetchId != _fetchToken) return;
       state = state.copyWith(
@@ -177,6 +183,23 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
       } catch (_) {
         // Ignore prefetch failures.
       }
+    }
+  }
+
+  bool _isLegalUciForFen(String uci, String fen) {
+    if (!_uciRegex.hasMatch(uci)) return false;
+    try {
+      final testBoard = Chess.fromFEN(fen);
+      final from = uci.substring(0, 2);
+      final to = uci.substring(2, 4);
+      final promotion = uci.length > 4 ? uci[4] : null;
+      return testBoard.move({
+        'from': from,
+        'to': to,
+        if (promotion != null) 'promotion': promotion,
+      });
+    } catch (_) {
+      return false;
     }
   }
 

@@ -105,15 +105,7 @@ class BoardEditorState {
 
 class BoardEditorNotifier extends StateNotifier<BoardEditorState> {
   BoardEditorNotifier()
-    : super(
-        const BoardEditorState(
-          pieces: {},
-          whiteKingsideCastle: false,
-          whiteQueensideCastle: false,
-          blackKingsideCastle: false,
-          blackQueensideCastle: false,
-        ),
-      );
+    : super(BoardEditorState(pieces: readFen(_startingFen)));
 
   void reset() {
     state = BoardEditorState(pieces: readFen(_startingFen));

@@ -7,7 +7,6 @@ import '../../../utils/responsive_helper.dart';
 import '../models/models.dart';
 import '../providers/gamebase_explorer_state.dart';
 import '../providers/gamebase_providers.dart';
-import 'mini_eval_bar.dart';
 import 'position_games_sheet.dart';
 
 /// Panel displaying move statistics for the current position.
@@ -78,12 +77,13 @@ class MoveStatisticsPanel extends ConsumerWidget {
                     constraints: BoxConstraints(
                       maxHeight: MediaQuery.of(context).size.height * 0.88,
                     ),
-                    builder: (_) => PositionGamesSheet(
-                      fen: state.currentFen,
-                      moves: state.exploredMoves,
-                      filters: state.filters,
-                      title: 'Games in this position',
-                    ),
+                    builder:
+                        (_) => PositionGamesSheet(
+                          fen: state.currentFen,
+                          moves: state.exploredMoves,
+                          filters: state.filters,
+                          title: 'Games in this position',
+                        ),
                   );
                 },
                 child: Padding(
@@ -167,7 +167,11 @@ class _MoveStatisticsRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final (sanMove, resultingFen) = uciToSanAndFen(aggregate.uci, currentFen);
+    final (sanMove, _) = uciToSanAndFen(aggregate.uci, currentFen);
+    final moveNumberLabel =
+        currentFen.split(' ')[1] == 'w'
+            ? '${_fullMoveNumberFromFen(currentFen)}.'
+            : '${_fullMoveNumberFromFen(currentFen)}...';
 
     return InkWell(
       onTap: onTap,
@@ -177,20 +181,33 @@ class _MoveStatisticsRow extends StatelessWidget {
           children: [
             // Move name
             SizedBox(
-              width: 48.w,
-              child: Text(
-                sanMove,
-                style: TextStyle(
-                  color: kWhiteColor,
-                  fontSize: 14.f,
-                  fontWeight: FontWeight.w500,
-                ),
+              width: 86.w,
+              child: Row(
+                children: [
+                  Text(
+                    moveNumberLabel,
+                    style: TextStyle(
+                      color: kSecondaryTextColor,
+                      fontSize: 12.f,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  SizedBox(width: 4.w),
+                  Expanded(
+                    child: Text(
+                      sanMove,
+                      style: TextStyle(
+                        color: kWhiteColor,
+                        fontSize: 14.f,
+                        fontWeight: FontWeight.w500,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
               ),
             ),
-            SizedBox(width: 4.sp),
-            // Mini eval bar
-            SizedBox(width: 56.w, child: MiniEvalBar(fen: resultingFen)),
-            SizedBox(width: 4.sp),
+            SizedBox(width: 8.sp),
             // Statistics bar
             Expanded(
               child: _StatisticsBar(
@@ -203,19 +220,13 @@ class _MoveStatisticsRow extends StatelessWidget {
             // Game count + list button — natural width, never truncates
             Text(
               aggregate.formattedTotal,
-              style: TextStyle(
-                color: kSecondaryTextColor,
-                fontSize: 12.f,
-              ),
+              style: TextStyle(color: kSecondaryTextColor, fontSize: 12.f),
             ),
             SizedBox(width: 2.sp),
             IconButton(
               visualDensity: VisualDensity.compact,
               padding: EdgeInsets.zero,
-              constraints: BoxConstraints.tightFor(
-                width: 22.w,
-                height: 22.h,
-              ),
+              constraints: BoxConstraints.tightFor(width: 22.w, height: 22.h),
               icon: Icon(
                 Icons.list_alt_rounded,
                 color: kSecondaryTextColor,
@@ -230,13 +241,14 @@ class _MoveStatisticsRow extends StatelessWidget {
                   constraints: BoxConstraints(
                     maxHeight: MediaQuery.of(context).size.height * 0.88,
                   ),
-                  builder: (_) => PositionGamesSheet(
-                    fen: currentFen,
-                    moves: exploredMoves,
-                    uci: aggregate.uci,
-                    filters: filters,
-                    title: 'Games for $sanMove',
-                  ),
+                  builder:
+                      (_) => PositionGamesSheet(
+                        fen: currentFen,
+                        moves: exploredMoves,
+                        uci: aggregate.uci,
+                        filters: filters,
+                        title: 'Games for $sanMove',
+                      ),
                 );
               },
             ),
@@ -265,6 +277,12 @@ String uciToSan(String uci, String fen) {
   } catch (_) {
     return uci;
   }
+}
+
+int _fullMoveNumberFromFen(String fen) {
+  final parts = fen.trim().split(RegExp(r'\s+'));
+  if (parts.length < 6) return 1;
+  return int.tryParse(parts[5]) ?? 1;
 }
 
 /// Like [uciToSan] but also returns the resulting FEN after the move.

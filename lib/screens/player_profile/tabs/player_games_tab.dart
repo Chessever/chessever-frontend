@@ -220,38 +220,12 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
           parent: BouncingScrollPhysics(),
         ),
         slivers: [
-          // Search bar with filter button
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: EdgeInsets.fromLTRB(
-                horizontalPadding,
-                12.h,
-                horizontalPadding,
-                8.h,
-              ),
-              child: _buildSearchBar(state),
-            ),
-          ),
-
-          // Active filters indicator
-          if (state.hasActiveFilters)
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
-                child: _buildActiveFiltersChip(state),
-              ),
-            ),
-
-          // Games count
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: EdgeInsets.fromLTRB(
-                horizontalPadding,
-                8.h,
-                horizontalPadding,
-                0,
-              ),
-              child: _buildGamesCount(state),
+          SliverPersistentHeader(
+            pinned: true,
+            delegate: _PinnedHeaderDelegate(
+              minExtent: state.hasActiveFilters ? 130.h : 94.h,
+              maxExtent: state.hasActiveFilters ? 130.h : 94.h,
+              child: _buildStickyHeader(state, horizontalPadding),
             ),
           ),
 
@@ -286,6 +260,43 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
           child: ScrollToTopButton(scrollController: _scrollController),
         ),
       ],
+    );
+  }
+
+  Widget _buildStickyHeader(
+    PlayerProfileGamesState state,
+    double horizontalPadding,
+  ) {
+    return Container(
+      color: kBackgroundColor,
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          Padding(
+            padding: EdgeInsets.fromLTRB(
+              horizontalPadding,
+              12.h,
+              horizontalPadding,
+              8.h,
+            ),
+            child: _buildSearchBar(state),
+          ),
+          if (state.hasActiveFilters)
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
+              child: _buildActiveFiltersChip(state),
+            ),
+          Padding(
+            padding: EdgeInsets.fromLTRB(
+              horizontalPadding,
+              8.h,
+              horizontalPadding,
+              0,
+            ),
+            child: _buildGamesCount(state),
+          ),
+        ],
+      ),
     );
   }
 
@@ -493,8 +504,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
 
   Widget _buildGamesCount(PlayerProfileGamesState state) {
     final isTwic = widget.dataSource == PlayerProfileDataSource.twic;
-    final isTwicLoading =
-        isTwic && state.isLoading && state.allGames.isEmpty;
+    final isTwicLoading = isTwic && state.isLoading && state.allGames.isEmpty;
     final filteredCount = state.filteredGames.length;
     final totalCount = state.allGames.length;
     final isFiltered = state.hasActiveFilters || state.searchQuery.isNotEmpty;
@@ -508,9 +518,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
               ? 'Loading games...'
               : isTwic
               ? (isFiltered
-                  ? (serverTotal != null
-                      ? '$filteredCount shown • $totalCount/$serverTotal loaded'
-                      : '$filteredCount shown • $totalCount loaded')
+                  ? '$filteredCount shown • $totalCount loaded'
                   : (serverTotal != null
                       ? '$totalCount of $serverTotal games loaded'
                       : '$totalCount games'))
@@ -576,7 +584,9 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
           (state.hasMorePages || state.isLoadingMore)) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (!mounted) return;
-          ref.read(playerProfileGamesKeyProvider(_playerKey).notifier).loadMore();
+          ref
+              .read(playerProfileGamesKeyProvider(_playerKey).notifier)
+              .loadMore();
         });
         return SliverFillRemaining(
           hasScrollBody: false,
@@ -1062,6 +1072,38 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
         ],
       ),
     ).animate().fadeIn(duration: 220.ms);
+  }
+}
+
+class _PinnedHeaderDelegate extends SliverPersistentHeaderDelegate {
+  _PinnedHeaderDelegate({
+    required this.minExtent,
+    required this.maxExtent,
+    required this.child,
+  });
+
+  @override
+  final double minExtent;
+
+  @override
+  final double maxExtent;
+
+  final Widget child;
+
+  @override
+  Widget build(
+    BuildContext context,
+    double shrinkOffset,
+    bool overlapsContent,
+  ) {
+    return SizedBox.expand(child: child);
+  }
+
+  @override
+  bool shouldRebuild(covariant _PinnedHeaderDelegate oldDelegate) {
+    return minExtent != oldDelegate.minExtent ||
+        maxExtent != oldDelegate.maxExtent ||
+        child != oldDelegate.child;
   }
 }
 

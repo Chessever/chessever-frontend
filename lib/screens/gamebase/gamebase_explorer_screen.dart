@@ -1,5 +1,5 @@
 import 'package:chessground/chessground.dart';
-import 'package:dartchess/dartchess.dart' show Side;
+import 'package:dartchess/dartchess.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -305,6 +305,14 @@ class _GamebaseChessBoard extends ConsumerWidget {
     final boardSettingsAsync = ref.watch(boardSettingsProviderNew);
     final boardSettings =
         boardSettingsAsync.valueOrNull ?? const BoardSettingsNew();
+    final notifier = ref.read(gamebaseExplorerProvider.notifier);
+
+    Chess? position;
+    try {
+      position = Chess.fromSetup(Setup.parseFen(fen));
+    } catch (_) {
+      position = null;
+    }
 
     return Container(
       height: boardSize,
@@ -321,20 +329,44 @@ class _GamebaseChessBoard extends ConsumerWidget {
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(4.br),
-        child: AbsorbPointer(
-          child: Chessboard.fixed(
-            size: boardSize,
-            settings: ChessboardSettings(
-              enableCoordinates: true,
-              // Use theme colors from settings with our custom app colors
-              colorScheme: boardSettings.colorScheme,
-              // Use piece set from settings
-              pieceAssets: boardSettings.pieceAssets,
-            ),
-            orientation: Side.white,
-            fen: fen,
-          ),
-        ),
+        child:
+            position == null
+                ? Chessboard.fixed(
+                  size: boardSize,
+                  settings: ChessboardSettings(
+                    enableCoordinates: true,
+                    colorScheme: boardSettings.colorScheme,
+                    pieceAssets: boardSettings.pieceAssets,
+                  ),
+                  orientation: Side.white,
+                  fen: fen,
+                )
+                : Chessboard(
+                  size: boardSize,
+                  settings: ChessboardSettings(
+                    enableCoordinates: true,
+                    colorScheme: boardSettings.colorScheme,
+                    pieceAssets: boardSettings.pieceAssets,
+                    pieceShiftMethod: PieceShiftMethod.tapTwoSquares,
+                    autoQueenPromotionOnPremove: false,
+                  ),
+                  orientation: Side.white,
+                  fen: fen,
+                  game: GameData(
+                    playerSide:
+                        position.turn == Side.white
+                            ? PlayerSide.white
+                            : PlayerSide.black,
+                    validMoves: makeLegalMoves(position),
+                    sideToMove: position.turn,
+                    isCheck: position.isCheck,
+                    promotionMove: null,
+                    onMove: (NormalMove move, {bool? isDrop, bool? isPremove}) {
+                      notifier.makeMove(move.uci);
+                    },
+                    onPromotionSelection: (_) {},
+                  ),
+                ),
       ),
     );
   }

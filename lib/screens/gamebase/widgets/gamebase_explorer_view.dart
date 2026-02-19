@@ -3,7 +3,6 @@ import 'package:chessever2/screens/gamebase/models/models.dart';
 import 'package:chessever2/screens/gamebase/providers/gamebase_providers.dart';
 import 'package:chessever2/screens/gamebase/providers/gamebase_explorer_state.dart';
 import 'package:chessever2/screens/gamebase/widgets/gamebase_filter_panel.dart';
-import 'package:chessever2/screens/gamebase/widgets/mini_eval_bar.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -32,11 +31,10 @@ class GamebaseExplorerView extends HookConsumerWidget {
     // library game, live game, etc.).
     final currentPosition = state.analysisState.position;
     final currentFen = currentPosition.fen;
-    final lineToCurrent =
-        state.analysisState.combinedMoves
-            .map((m) => m.uci.trim().toLowerCase())
-            .where((uci) => RegExp(r'^[a-h][1-8][a-h][1-8][qrbn]?$').hasMatch(uci))
-            .toList(growable: false);
+    final lineToCurrent = state.analysisState.combinedMoves
+        .map((m) => m.uci.trim().toLowerCase())
+        .where((uci) => RegExp(r'^[a-h][1-8][a-h][1-8][qrbn]?$').hasMatch(uci))
+        .toList(growable: false);
     final lineKey = lineToCurrent.join(' ');
 
     // Sync Gamebase provider with current board position AND explored line.
@@ -266,7 +264,6 @@ class _GamebaseMovesTable extends StatelessWidget {
           child: Row(
             children: [
               Expanded(flex: 2, child: Text('Move', style: _headerStyle)),
-              Expanded(flex: 2, child: Text('Eval', style: _headerStyle)),
               Expanded(
                 flex: 2,
                 child: Text(
@@ -310,6 +307,10 @@ class _GamebaseMovesTable extends StatelessWidget {
                         ? () => onGameSelected!(move.gameId!)
                         : null,
                 position: currentPosition,
+                moveNumberLabel:
+                    currentPosition.turn == Side.white
+                        ? '${currentPosition.fullmoves}.'
+                        : '${currentPosition.fullmoves}...',
               );
             },
           ),
@@ -414,6 +415,7 @@ class _MoveRow extends ConsumerWidget {
     required this.onPressed,
     required this.onOpenGame,
     required this.position,
+    required this.moveNumberLabel,
   });
 
   final MoveAggregate move;
@@ -421,6 +423,7 @@ class _MoveRow extends ConsumerWidget {
   final VoidCallback onPressed;
   final VoidCallback? onOpenGame;
   final Position position;
+  final String moveNumberLabel;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -444,9 +447,8 @@ class _MoveRow extends ConsumerWidget {
       error: (_, __) => '—',
     );
 
-    // Convert UCI to SAN and capture resulting FEN
+    // Convert UCI to SAN.
     String san = move.uci;
-    String? resultingFen;
     try {
       if (move.uci.length >= 4) {
         final from = Square.fromName(move.uci.substring(0, 2));
@@ -458,7 +460,6 @@ class _MoveRow extends ConsumerWidget {
         final moveObj = NormalMove(from: from, to: to, promotion: promotion);
         final result = position.makeSan(moveObj);
         san = result.$2;
-        resultingFen = result.$1.fen;
       }
     } catch (e) {
       // Fallback to UCI
@@ -481,6 +482,13 @@ class _MoveRow extends ConsumerWidget {
               child: Row(
                 children: [
                   Text(
+                    moveNumberLabel,
+                    style: AppTypography.textSmRegular.copyWith(
+                      color: kWhiteColor.withValues(alpha: 0.55),
+                    ),
+                  ),
+                  SizedBox(width: 4.w),
+                  Text(
                     san,
                     style: AppTypography.textSmBold.copyWith(
                       color: kWhiteColor,
@@ -489,9 +497,6 @@ class _MoveRow extends ConsumerWidget {
                 ],
               ),
             ),
-
-            // Eval
-            Expanded(flex: 2, child: MiniEvalBar(fen: resultingFen)),
 
             // Count
             Expanded(
