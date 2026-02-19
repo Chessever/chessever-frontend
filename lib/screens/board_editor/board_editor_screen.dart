@@ -11,6 +11,7 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessground/chessground.dart';
 import 'package:dartchess/dartchess.dart' hide Board;
+import 'package:fast_immutable_collections/fast_immutable_collections.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -524,33 +525,115 @@ class _BoardWithEvalBar extends ConsumerWidget {
                   ),
                 ),
               ),
-            ChessboardEditor(
-              size: boardSize,
+            _EditorTapWrapper(
+              boardSize: boardSize,
               orientation: editorState.orientation,
-              pieces: editorState.pieces,
               pointerMode: editorState.pointerMode,
-              settings: ChessboardSettings(
-                colorScheme: boardSettings.colorScheme,
-                pieceAssets: boardSettings.pieceAssets,
-                enableCoordinates: true,
-                dragFeedbackScale: 2.0,
-                dragFeedbackOffset: const Offset(0.0, -1.0),
+              onTapSquare: (square) {
+                ref.read(boardEditorProvider.notifier).onTapSquare(square);
+              },
+              child: ChessboardEditor(
+                size: boardSize,
+                orientation: editorState.orientation,
+                pieces: editorState.pieces,
+                pointerMode: editorState.pointerMode,
+                squareHighlights: editorState.selectedDragSquare != null
+                    ? IMap({
+                        editorState.selectedDragSquare!: SquareHighlight(
+                          details: boardSettings.colorScheme.selected,
+                        ),
+                      })
+                    : const IMap.empty(),
+                settings: ChessboardSettings(
+                  colorScheme: boardSettings.colorScheme,
+                  pieceAssets: boardSettings.pieceAssets,
+                  enableCoordinates: true,
+                  dragFeedbackScale: 2.0,
+                  dragFeedbackOffset: const Offset(0.0, -1.0),
+                ),
+                onEditedSquare: (square) {
+                  ref.read(boardEditorProvider.notifier).onEditedSquare(square);
+                },
+                onDroppedPiece: (origin, dest, piece) {
+                  ref
+                      .read(boardEditorProvider.notifier)
+                      .onDroppedPiece(origin, dest, piece);
+                },
+                onDiscardedPiece: (square) {
+                  ref
+                      .read(boardEditorProvider.notifier)
+                      .onDiscardedPiece(square);
+                },
               ),
-              onEditedSquare: (square) {
-                ref.read(boardEditorProvider.notifier).onEditedSquare(square);
-              },
-              onDroppedPiece: (origin, dest, piece) {
-                ref
-                    .read(boardEditorProvider.notifier)
-                    .onDroppedPiece(origin, dest, piece);
-              },
-              onDiscardedPiece: (square) {
-                ref.read(boardEditorProvider.notifier).onDiscardedPiece(square);
-              },
             ),
           ],
         );
       },
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Tap-to-move wrapper
+// ---------------------------------------------------------------------------
+class _EditorTapWrapper extends StatefulWidget {
+  final double boardSize;
+  final Side orientation;
+  final EditorPointerMode pointerMode;
+  final void Function(Square square) onTapSquare;
+  final Widget child;
+
+  const _EditorTapWrapper({
+    required this.boardSize,
+    required this.orientation,
+    required this.pointerMode,
+    required this.onTapSquare,
+    required this.child,
+  });
+
+  @override
+  State<_EditorTapWrapper> createState() => _EditorTapWrapperState();
+}
+
+class _EditorTapWrapperState extends State<_EditorTapWrapper> {
+  Offset? _pointerDownPos;
+
+  Square? _offsetToSquare(Offset offset) {
+    final squareSize = widget.boardSize / 8;
+    final x = (offset.dx / squareSize).floor();
+    final y = (offset.dy / squareSize).floor();
+    final orientX = widget.orientation == Side.black ? 7 - x : x;
+    final orientY = widget.orientation == Side.black ? y : 7 - y;
+    if (orientX >= 0 && orientX <= 7 && orientY >= 0 && orientY <= 7) {
+      return Square.fromCoords(File(orientX), Rank(orientY));
+    }
+    return null;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Listener(
+      onPointerDown: (event) {
+        if (widget.pointerMode == EditorPointerMode.drag) {
+          _pointerDownPos = event.localPosition;
+        }
+      },
+      onPointerUp: (event) {
+        final downPos = _pointerDownPos;
+        _pointerDownPos = null;
+        if (downPos == null || widget.pointerMode != EditorPointerMode.drag) {
+          return;
+        }
+        // Only treat as tap if pointer didn't move much (not a drag)
+        final delta = (event.localPosition - downPos).distance;
+        if (delta > widget.boardSize / 8 * 0.5) return;
+        final square = _offsetToSquare(event.localPosition);
+        if (square != null) {
+          widget.onTapSquare(square);
+        }
+      },
+      onPointerCancel: (_) => _pointerDownPos = null,
+      child: widget.child,
     );
   }
 }

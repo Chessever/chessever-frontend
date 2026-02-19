@@ -286,15 +286,6 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
               padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
               child: _buildActiveFiltersChip(state),
             ),
-          Padding(
-            padding: EdgeInsets.fromLTRB(
-              horizontalPadding,
-              8.h,
-              horizontalPadding,
-              0,
-            ),
-            child: _buildGamesCount(state),
-          ),
         ],
       ),
     );
@@ -502,43 +493,6 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
     );
   }
 
-  Widget _buildGamesCount(PlayerProfileGamesState state) {
-    final isTwic = widget.dataSource == PlayerProfileDataSource.twic;
-    final isTwicLoading = isTwic && state.isLoading && state.allGames.isEmpty;
-    final filteredCount = state.filteredGames.length;
-    final totalCount = state.allGames.length;
-    final isFiltered = state.hasActiveFilters || state.searchQuery.isNotEmpty;
-    final serverTotal = state.totalCount;
-
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text(
-          isTwicLoading
-              ? 'Loading games...'
-              : isTwic
-              ? (isFiltered
-                  ? '$filteredCount shown • $totalCount loaded'
-                  : (serverTotal != null
-                      ? '$totalCount of $serverTotal games loaded'
-                      : '$totalCount games'))
-              : (isFiltered
-                  ? '$filteredCount of $totalCount games'
-                  : '$totalCount games'),
-          style: AppTypography.textXsMedium.copyWith(
-            color: kWhiteColor.withValues(alpha: 0.5),
-          ),
-        ),
-        if (isFiltered && filteredCount != totalCount && !isTwic)
-          Text(
-            '(filtered)',
-            style: AppTypography.textXsRegular.copyWith(
-              color: const Color(0xFFEF4444).withValues(alpha: 0.7),
-            ),
-          ),
-      ],
-    );
-  }
 
   Widget _buildContentSliver(
     PlayerProfileGamesState state,
