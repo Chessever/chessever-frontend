@@ -127,20 +127,12 @@ class GamebaseRepository {
   /// first 4 fields (piece placement, side to move, castling rights, en
   /// passant). In that case, append halfmove/fullmove counters.
   ///
-  /// NOTE: Our Gamebase DB currently stores `fen` values with en-passant always
-  /// set to `-` (see `game_position_*` partitions). Canonicalize lookups to
-  /// match that, otherwise positions after a 2-square pawn move (e.g. `e3`)
-  /// would miss and appear as "No games found".
-  ///
   /// When counters are present, preserve them. Some backends index/look up
   /// positions using the full FEN string; clamping counters can cause misses
   /// for progressed positions.
   static String _normalizeFenForLookup(String fen) {
     final parts = fen.trim().split(RegExp(r'\s+'));
     if (parts.length < 4) return fen.trim();
-
-    // Canonicalize en-passant square (field 4).
-    parts[3] = '-';
 
     if (parts.length == 4) return '${parts.join(' ')} 0 1';
     return parts.take(6).join(' ');

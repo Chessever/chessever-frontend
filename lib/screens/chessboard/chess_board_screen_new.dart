@@ -918,7 +918,10 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
 
     final totalMoves = state.analysisState.allMoves.length;
     if (totalMoves == 0) {
-      return; // Wait until we have at least one move before syncing
+      // Game has no moves yet (e.g. board editor with custom FEN).
+      // Mark as synced so we don't interfere when the user later adds moves.
+      _syncedLatestPositions.add(gameId);
+      return;
     }
 
     // For live games, sync to the latest move.
