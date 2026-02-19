@@ -407,7 +407,7 @@ class _ExplorerEvalBar extends ConsumerWidget {
           );
         }
 
-        final normalized = _normalizePvToWhitePerspective(pv);
+        final normalized = _normalizeEvalForDisplay(pv, fen);
         final eval = normalized.eval;
         final mate =
             (normalized.isMate && normalized.mate != 0)
@@ -438,9 +438,13 @@ class _ExplorerEvalBar extends ConsumerWidget {
   }
 }
 
-({double eval, bool isMate, int mate}) _normalizePvToWhitePerspective(Pv pv) {
-  final sign = pv.whitePerspective ? 1 : -1;
+/// Normalize eval for display using FEN side-to-move, matching
+/// chess_board_screen_new.dart's _getConsistentEvaluation approach.
+({double eval, bool isMate, int mate}) _normalizeEvalForDisplay(Pv pv, String fen) {
   final isMate = pv.isMate && pv.mate != null;
+  final fenParts = fen.split(' ');
+  final isBlackToMove = fenParts.length >= 2 && fenParts[1] == 'b';
+  final sign = isBlackToMove ? -1 : 1;
   final normalizedMate = (pv.mate ?? 0) * sign;
   final normalizedEval = (pv.cp * sign) / 100.0;
   return (eval: normalizedEval, isMate: isMate, mate: normalizedMate);
