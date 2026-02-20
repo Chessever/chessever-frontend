@@ -577,6 +577,47 @@ async function processItem(item: OutboxItem, cloudEvalState: CloudEvalState) {
       };
     }
 
+    if (item.event_type === "book_game_added") {
+      const folderId = item.payload?.folder_id as string;
+      if (!folderId) {
+        await markSkipped(item.id, "missing_folder_id");
+        return { id: item.id, status: "skipped", reason: "missing_folder_id" };
+      }
+
+      const { data: subs } = await supabase
+        .from("book_subscriptions")
+        .select("subscriber_id")
+        .eq("folder_id", folderId);
+
+      const subscriberIds = (subs ?? []).map((s) => s.subscriber_id as string);
+      if (subscriberIds.length === 0) {
+        await markSkipped(item.id, "no_subscribers");
+        return { id: item.id, status: "skipped", reason: "no_subscribers" };
+      }
+
+      const eligible = await filterBookUpdateRecipients(subscriberIds);
+      if (eligible.length === 0) {
+        await markSkipped(item.id, "no_recipients");
+        return { id: item.id, status: "skipped", reason: "no_recipients" };
+      }
+
+      const folderName = (item.payload?.folder_name as string) ?? "a book";
+      const gameTitle = (item.payload?.game_title as string) ?? "a new game";
+      const ownerName =
+        (item.payload?.owner_display_name as string) ?? "Someone";
+
+      await sendOneSignal(eligible, {
+        title: folderName,
+        body: `${ownerName} added "${gameTitle}"`,
+        url: null,
+        data: { type: "book_game_added", folder_id: folderId },
+        androidChannelId: ANDROID_CHANNELS.general,
+      });
+
+      await markSent(item.id);
+      return { id: item.id, status: "sent", recipients: eligible.length };
+    }
+
     const allUserIds = new Set([
       ...context.eventUserIds,
       ...context.playerUserIds,
@@ -1032,6 +1073,31 @@ async function markLiveSubscriptionEvent(args: {
     .in("user_id", args.userIds);
 }
 
+async function filterBookUpdateRecipients(
+  userIds: string[],
+): Promise<string[]> {
+  if (userIds.length === 0) return [];
+
+  const { data } = await supabase
+    .from("user_notification_preferences")
+    .select("user_id,push_enabled,book_update_alerts")
+    .in("user_id", userIds);
+
+  const prefsMap = new Map<string, Record<string, unknown>>();
+  for (const row of data ?? []) {
+    prefsMap.set(row.user_id as string, row);
+  }
+
+  const filtered: string[] = [];
+  for (const userId of userIds) {
+    const prefs = prefsMap.get(userId);
+    if (prefs && prefs.push_enabled === false) continue;
+    if (prefs && prefs.book_update_alerts === false) continue;
+    filtered.push(userId);
+  }
+  return filtered;
+}
+
 async function filterHeadsUpRecipients(
   eventUserIds: Set<string>,
   playerUserIds: Set<string>,
@@ -1399,6 +1465,8 @@ function channelForEvent(eventType: string) {
       return ANDROID_CHANNELS.favorites;
     case "call_to_action":
       return ANDROID_CHANNELS.callToAction;
+    case "book_game_added":
+      return ANDROID_CHANNELS.general;
     default:
       return ANDROID_CHANNELS.general;
   }
