@@ -8,6 +8,8 @@ final RegExp _timeRegex = RegExp(r'\[%clk (\d+:\d+:\d+)\]');
 
 class ChessGame {
   static const String metadataIsLiveKey = 'isLiveGame';
+  static const String metadataAllowMainlineExtensionKey =
+      'allowMainlineExtension';
 
   final String gameId;
   final String startingFen;
@@ -65,6 +67,9 @@ class ChessGame {
     }
     return false;
   }
+
+  bool get allowMainlineExtension =>
+      metadata[metadataAllowMainlineExtensionKey] == true;
 
   String? get timeControl => metadata['TimeControl'] as String?;
 

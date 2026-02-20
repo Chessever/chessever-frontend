@@ -663,7 +663,9 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
                           : ''; // Part after comma
 
                   // Build static parts
-                  final rating = ' ${effectivePlayerCard.rating}';
+                  final rating = effectivePlayerCard.rating > 0
+                      ? ' ${effectivePlayerCard.rating}'
+                      : '';
 
                   // Create text painter to measure text width
                   final textPainter = TextPainter(

@@ -39,6 +39,7 @@ import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/utils/audio_player_service.dart';
 // import 'package:chessever2/utils/keyboard_animation_builder.dart'; // UNUSED: Removed with old dialog
 // import 'package:chessever2/providers/keyboard_total_height_provider.dart'; // UNUSED: Removed with old dialog
+import 'package:chessever2/utils/figurine_notation.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/string_utils.dart';
 import 'package:chessground/chessground.dart';
@@ -199,86 +200,7 @@ String _moveSansSignature(List<String> moveSans) {
   return '${normalized.length}:${normalized.join('|')}';
 }
 
-/// Map piece letters to PieceKind for figurine notation.
-/// Uses white pieces for clean, elegant appearance on dark backgrounds.
-const _pieceLetterToKind = {
-  'K': PieceKind.whiteKing,
-  'Q': PieceKind.whiteQueen,
-  'R': PieceKind.whiteRook,
-  'B': PieceKind.whiteBishop,
-  'N': PieceKind.whiteKnight,
-};
-
-/// Build rich text spans with inline piece images for figurine notation.
-/// Creates an elegant display where piece letters are replaced with actual
-/// piece images from the user's selected piece set.
-List<InlineSpan> _buildFigurineSpans({
-  required String text,
-  required PieceAssets pieceAssets,
-  required TextStyle style,
-  required double pieceSize,
-}) {
-  final spans = <InlineSpan>[];
-  final buffer = StringBuffer();
-  var i = 0;
-  var afterMoveNumber = false;
-
-  void flushBuffer() {
-    if (buffer.isNotEmpty) {
-      spans.add(TextSpan(text: buffer.toString(), style: style));
-      buffer.clear();
-    }
-  }
-
-  while (i < text.length) {
-    final char = text[i];
-
-    // Track if we're past move number (e.g., "1. " or "12... ")
-    if (char.contains(RegExp(r'[0-9.]'))) {
-      buffer.write(char);
-      i++;
-      continue;
-    }
-
-    if (char == ' ') {
-      buffer.write(char);
-      afterMoveNumber = true;
-      i++;
-      continue;
-    }
-
-    // Check if this is a piece letter that should be converted
-    final pieceKind = _pieceLetterToKind[char];
-    if (pieceKind != null) {
-      flushBuffer();
-      final pieceImage = pieceAssets[pieceKind];
-      if (pieceImage != null) {
-        spans.add(
-          WidgetSpan(
-            alignment: PlaceholderAlignment.middle,
-            child: Padding(
-              padding: EdgeInsets.only(right: 1.sp),
-              child: Image(
-                image: pieceImage,
-                width: pieceSize,
-                height: pieceSize,
-                filterQuality: FilterQuality.high,
-              ),
-            ),
-          ),
-        );
-      } else {
-        buffer.write(char);
-      }
-    } else {
-      buffer.write(char);
-    }
-    i++;
-  }
-
-  flushBuffer();
-  return spans;
-}
+// Figurine notation helpers: see `buildFigurineSpans` in figurine_notation.dart
 
 String? _extractLichessSiteUrl(ChessGame game) {
   final candidates = <String?>[
@@ -7007,7 +6929,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     // Build move text spans - either with figurine pieces or plain text
     final List<InlineSpan> moveSpans;
     if (useFigurine && pieceAssets != null) {
-      moveSpans = _buildFigurineSpans(
+      moveSpans = buildFigurineSpans(
         text: token.text,
         pieceAssets: pieceAssets,
         style: textStyle,
@@ -8928,7 +8850,7 @@ class _PrincipalVariationListState
         // Build move content - either with figurine pieces or plain text
         Widget moveContent;
         if (useFigurine) {
-          final figurineSpans = _buildFigurineSpans(
+          final figurineSpans = buildFigurineSpans(
             text: token.text,
             pieceAssets: pieceAssets,
             style: moveStyle,
@@ -9624,7 +9546,7 @@ class _PrincipalVariationListState
       // Build move content - either with figurine pieces or plain text
       Widget moveContent;
       if (useFigurine && pieceAssets != null) {
-        final figurineSpans = _buildFigurineSpans(
+        final figurineSpans = buildFigurineSpans(
           text: token.text,
           pieceAssets: pieceAssets,
           style: moveStyle,
@@ -10026,8 +9948,12 @@ class _ShareGameScreen extends ConsumerWidget {
       blackPlayerName: game.blackPlayer.name,
       whitePlayerCountry: game.whitePlayer.federation,
       blackPlayerCountry: game.blackPlayer.federation,
-      whitePlayerElo: game.whitePlayer.rating.toString(),
-      blackPlayerElo: game.blackPlayer.rating.toString(),
+      whitePlayerElo: game.whitePlayer.rating > 0
+          ? game.whitePlayer.rating.toString()
+          : null,
+      blackPlayerElo: game.blackPlayer.rating > 0
+          ? game.blackPlayer.rating.toString()
+          : null,
       whitePlayerTitle: game.whitePlayer.title,
       blackPlayerTitle: game.blackPlayer.title,
       whitePlayerClock: whiteTime,

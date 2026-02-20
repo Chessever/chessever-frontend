@@ -2909,11 +2909,20 @@ class ChessBoardScreenNotifierNew
 
   ChessGame _createChessGameFromPgn(String pgn) {
     final parsed = ChessGame.fromPgn(game.gameId, pgn);
-    if (!game.gameStatus.isOngoing) {
+    final needsLiveFlag = game.gameStatus.isOngoing;
+    final needsMainlineExtension = game.roundId == 'board_editor';
+
+    if (!needsLiveFlag && !needsMainlineExtension) {
       return parsed;
     }
-    final metadata = Map<String, dynamic>.from(parsed.metadata)
-      ..[ChessGame.metadataIsLiveKey] = true;
+
+    final metadata = Map<String, dynamic>.from(parsed.metadata);
+    if (needsLiveFlag) {
+      metadata[ChessGame.metadataIsLiveKey] = true;
+    }
+    if (needsMainlineExtension) {
+      metadata[ChessGame.metadataAllowMainlineExtensionKey] = true;
+    }
     return parsed.copyWith(metadata: metadata);
   }
 
