@@ -6,7 +6,6 @@ import 'package:chessever2/screens/group_event/widget/search_results_widget.dart
     show searchAnimatedEventIds;
 import 'package:chessever2/screens/group_event/widget/all_events_tab_widget.dart';
 import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_provider.dart';
-import 'package:chessever2/screens/group_event/widget/filter_popup/group_event_filter_provider.dart';
 import 'package:chessever2/screens/group_event/widget/for_you_games_widget.dart';
 import 'package:chessever2/screens/group_event/widget/search_results_widget.dart';
 import 'package:chessever2/screens/home/home_screen_provider.dart';
@@ -54,8 +53,8 @@ class GroupEventScreen extends HookConsumerWidget {
     final selectedTourEvent = ref.watch(selectedGroupCategoryProvider);
     final searchQuery = ref.watch(searchTabQueryProvider);
     final hasActiveSearch = searchQuery.trim().isNotEmpty;
-    final filterPopupState = ref.watch(filterPopupProvider);
     final forYouFilterState = ref.watch(forYouAppliedFilterProvider);
+    final currentPastFilterState = ref.watch(currentPastAppliedFilterProvider);
 
     int activeFilterCount(FilterPopupState state) {
       final rangeChanged =
@@ -69,7 +68,7 @@ class GroupEventScreen extends HookConsumerWidget {
             ? activeFilterCount(forYouFilterState)
             : selectedTourEvent == GroupEventCategory.current ||
                 selectedTourEvent == GroupEventCategory.past
-            ? activeFilterCount(filterPopupState)
+            ? activeFilterCount(currentPastFilterState)
             : 0;
 
     // Determine which categories to show (search tab only appears when searching)
@@ -261,6 +260,12 @@ class GroupEventScreen extends HookConsumerWidget {
                           ref
                               .read(filterPopupProvider.notifier)
                               .setState(forYouFilterState);
+                        } else if (selectedTourEvent ==
+                                GroupEventCategory.current ||
+                            selectedTourEvent == GroupEventCategory.past) {
+                          ref
+                              .read(filterPopupProvider.notifier)
+                              .setState(currentPastFilterState);
                         }
 
                         showDialog(
@@ -269,7 +274,7 @@ class GroupEventScreen extends HookConsumerWidget {
                           barrierColor: kBlackColor.withOpacity(0.5),
                           builder:
                               (cxt) => FilterPopup(
-                                onApplyFilters: (filterState) async {
+                                onApplyFilters: (filterState) {
                                   if (selectedTourEvent ==
                                       GroupEventCategory.forYou) {
                                     ref
@@ -281,21 +286,16 @@ class GroupEventScreen extends HookConsumerWidget {
                                     return;
                                   }
 
-                                  final filtered = await ref
-                                      .read(groupEventFilterProvider)
-                                      .applyAllFilters(
-                                        filters:
-                                            filterState.formatsAndStates
-                                                .toList(),
-                                        eloRange: filterState.eloRange,
-                                        tournamentCategory: selectedTourEvent,
-                                      );
-
+                                  // Save filter state — provider watch
+                                  // triggers reload with filter applied
                                   ref
-                                      .read(groupEventScreenProvider.notifier)
-                                      .setFilteredModels(filtered);
+                                      .read(
+                                        currentPastAppliedFilterProvider
+                                            .notifier,
+                                      )
+                                      .state = filterState;
                                 },
-                                onResetFilters: () async {
+                                onResetFilters: () {
                                   if (selectedTourEvent ==
                                       GroupEventCategory.forYou) {
                                     ref
@@ -307,9 +307,12 @@ class GroupEventScreen extends HookConsumerWidget {
                                     return;
                                   }
 
-                                  await ref
-                                      .read(groupEventScreenProvider.notifier)
-                                      .resetFilters();
+                                  ref
+                                      .read(
+                                        currentPastAppliedFilterProvider
+                                            .notifier,
+                                      )
+                                      .state = defaultFilterPopupState;
                                 },
                               ),
                         );
@@ -372,9 +375,6 @@ class GroupEventScreen extends HookConsumerWidget {
                             return; // Don't change category
                           }
 
-                          ref.invalidate(filterPopupProvider);
-                          ref.read(forYouAppliedFilterProvider.notifier).state =
-                              defaultFilterPopupState;
                           ref
                               .read(selectedGroupCategoryProvider.notifier)
                               .state = newCategory;

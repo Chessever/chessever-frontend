@@ -16,6 +16,10 @@ final forYouAppliedFilterProvider = StateProvider<FilterPopupState>(
   (ref) => defaultFilterPopupState,
 );
 
+final currentPastAppliedFilterProvider = StateProvider<FilterPopupState>(
+  (ref) => defaultFilterPopupState,
+);
+
 class _FilterPopupController extends StateNotifier<FilterPopupState> {
   _FilterPopupController(this.ref) : super(defaultFilterPopupState);
 
