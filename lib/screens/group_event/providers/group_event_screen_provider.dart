@@ -9,6 +9,8 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_s
 import 'package:chessever2/screens/group_event/providers/interfaces/igroup_event_screen_controller.dart';
 import 'package:chessever2/screens/group_event/providers/live_group_broadcast_id_provider.dart';
 import 'package:chessever2/screens/group_event/providers/sorting_all_event_provider.dart';
+import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_provider.dart';
+import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_state.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
 import 'package:chessever2/screens/group_event/group_event_screen.dart';
@@ -57,9 +59,17 @@ final groupEventScreenProvider = AutoDisposeStateNotifierProvider<
 >((ref) {
   final tourEventCategory = ref.watch(selectedGroupCategoryProvider);
 
+  // Watch filter state for Current/Past tabs so provider rebuilds on filter change
+  FilterPopupState appliedFilter = defaultFilterPopupState;
+  if (tourEventCategory == GroupEventCategory.current ||
+      tourEventCategory == GroupEventCategory.past) {
+    appliedFilter = ref.watch(currentPastAppliedFilterProvider);
+  }
+
   return _GroupEventScreenController(
     ref: ref,
     tourEventCategory: tourEventCategory,
+    appliedFilter: appliedFilter,
   );
 });
 
@@ -69,6 +79,7 @@ class _GroupEventScreenController
   _GroupEventScreenController({
     required this.ref,
     required this.tourEventCategory,
+    this.appliedFilter = defaultFilterPopupState,
   }) : super(const AsyncValue.loading()) {
     loadTours();
     _listenToLiveIds();
@@ -79,6 +90,7 @@ class _GroupEventScreenController
   final Ref ref;
   @override
   final GroupEventCategory tourEventCategory;
+  final FilterPopupState appliedFilter;
   bool get isFetchingMore => _pastIsFetching;
 
   int _pastOffset = 50;
@@ -87,6 +99,56 @@ class _GroupEventScreenController
   bool pastHasMore = true;
 
   var _groupBroadcastList = <GroupBroadcast>[];
+
+  bool get _isFilterActive {
+    if (appliedFilter.formatsAndStates.isNotEmpty) return true;
+    if (appliedFilter.eloRange.start >
+        defaultFilterPopupState.eloRange.start) return true;
+    if (appliedFilter.eloRange.end <
+        defaultFilterPopupState.eloRange.end) return true;
+    return false;
+  }
+
+  List<GroupBroadcast> _applyClientFilter(List<GroupBroadcast> broadcasts) {
+    final filterSet =
+        appliedFilter.formatsAndStates
+            .map((f) => f.trim().toLowerCase())
+            .where((f) => f.isNotEmpty)
+            .toSet();
+
+    final requestedStatuses =
+        <String>{'live', 'completed'}.intersection(filterSet);
+    final requestedFormats = filterSet.difference(requestedStatuses);
+
+    final liveIds = ref.read(liveBroadcastIdsProvider);
+
+    return broadcasts.where((tour) {
+      if (requestedStatuses.isNotEmpty) {
+        final isLive = liveIds.contains(tour.id);
+        final matchesStatus =
+            (requestedStatuses.contains('live') && isLive) ||
+            (requestedStatuses.contains('completed') && !isLive);
+        if (!matchesStatus) return false;
+      }
+
+      if (requestedFormats.isNotEmpty) {
+        final tourFormat = tour.timeControl?.trim().toLowerCase();
+        if (tourFormat == null || !requestedFormats.contains(tourFormat)) {
+          return false;
+        }
+      }
+
+      final minElo = appliedFilter.eloRange.start.round();
+      final maxElo = appliedFilter.eloRange.end.round();
+      if (tour.maxAvgElo != null) {
+        if (tour.maxAvgElo! < minElo || tour.maxAvgElo! > maxElo) {
+          return false;
+        }
+      }
+
+      return true;
+    }).toList();
+  }
 
   void _listenToLiveIds() {
     ref.listen<AsyncValue<List<String>>>(liveGroupBroadcastIdsProvider, (
@@ -196,6 +258,11 @@ class _GroupEventScreenController
 
       _groupBroadcastList = tour;
 
+      // Apply client-side filter if active
+      if (inputBroadcast == null && _isFilterActive) {
+        tour = _applyClientFilter(tour);
+      }
+
       final sortingService = ref.read(tournamentSortingServiceProvider);
 
       final tourEventCardModel =
@@ -233,9 +300,15 @@ class _GroupEventScreenController
         offset: _pastOffset,
       );
 
+      // Apply client-side filter to new batch if active
+      var filteredBroadcasts = broadcasts;
+      if (_isFilterActive) {
+        filteredBroadcasts = _applyClientFilter(broadcasts);
+      }
+
       final existingIds = state.valueOrNull?.map((e) => e.id).toSet() ?? {};
       final newModels =
-          broadcasts
+          filteredBroadcasts
               .where((b) => !existingIds.contains(b.id))
               .map(
                 (b) => GroupEventCardModel.fromGroupBroadcast(
@@ -283,8 +356,15 @@ class _GroupEventScreenController
               .refresh();
 
       _groupBroadcastList = refreshed;
+
+      // Apply client-side filter if active
+      var toDisplay = refreshed;
+      if (_isFilterActive) {
+        toDisplay = _applyClientFilter(refreshed);
+      }
+
       final tourEventCardModel =
-          refreshed
+          toDisplay
               .map(
                 (t) => GroupEventCardModel.fromGroupBroadcast(
                   t,
