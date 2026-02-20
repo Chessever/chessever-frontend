@@ -1,3 +1,5 @@
+import 'package:chessever2/providers/board_settings_provider_new.dart';
+import 'package:chessever2/utils/figurine_notation.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -150,7 +152,7 @@ class MoveStatisticsPanel extends ConsumerWidget {
 }
 
 /// Individual row showing move statistics.
-class _MoveStatisticsRow extends StatelessWidget {
+class _MoveStatisticsRow extends ConsumerWidget {
   const _MoveStatisticsRow({
     required this.aggregate,
     required this.currentFen,
@@ -166,12 +168,27 @@ class _MoveStatisticsRow extends StatelessWidget {
   final VoidCallback onTap;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final (sanMove, _) = uciToSanAndFen(aggregate.uci, currentFen);
     final moveNumberLabel =
         currentFen.split(' ')[1] == 'w'
             ? '${_fullMoveNumberFromFen(currentFen)}.'
             : '${_fullMoveNumberFromFen(currentFen)}...';
+
+    final useFigurine = ref.watch(
+      boardSettingsProviderNew.select((s) => s.valueOrNull?.useFigurine ?? false),
+    );
+    final pieceAssets = ref.watch(
+      boardSettingsProviderNew.select(
+        (s) => s.valueOrNull?.pieceAssets ?? const BoardSettingsNew().pieceAssets,
+      ),
+    );
+
+    final moveStyle = TextStyle(
+      color: kWhiteColor,
+      fontSize: 14.f,
+      fontWeight: FontWeight.w500,
+    );
 
     return InkWell(
       onTap: onTap,
@@ -194,15 +211,24 @@ class _MoveStatisticsRow extends StatelessWidget {
                   ),
                   SizedBox(width: 4.w),
                   Expanded(
-                    child: Text(
-                      sanMove,
-                      style: TextStyle(
-                        color: kWhiteColor,
-                        fontSize: 14.f,
-                        fontWeight: FontWeight.w500,
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
+                    child: useFigurine
+                        ? RichText(
+                            overflow: TextOverflow.ellipsis,
+                            maxLines: 1,
+                            text: TextSpan(
+                              children: buildFigurineSpans(
+                                text: sanMove,
+                                pieceAssets: pieceAssets,
+                                style: moveStyle,
+                                pieceSize: 16.f,
+                              ),
+                            ),
+                          )
+                        : Text(
+                            sanMove,
+                            style: moveStyle,
+                            overflow: TextOverflow.ellipsis,
+                          ),
                   ),
                 ],
               ),

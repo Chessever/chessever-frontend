@@ -512,7 +512,10 @@ class ChessGameNavigator extends StateNotifier<ChessGameNavigatorState> {
         state.movePointer.isEmpty ||
         state.movePointer.asMap().entries.every((entry) => !entry.key.isOdd);
 
-    if (isAtLineEnd && isOnMainlinePath && state.movePointer.isNotEmpty) {
+    if (isAtLineEnd &&
+        isOnMainlinePath &&
+        state.movePointer.isNotEmpty &&
+        !state.game.allowMainlineExtension) {
       debugPrint(
         '🎯 NAVIGATOR makeOrGoToMove: Mainline tail -> force new variation',
       );

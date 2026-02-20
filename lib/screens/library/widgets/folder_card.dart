@@ -107,25 +107,36 @@ class FolderCard extends ConsumerWidget {
     final iconRadius = isFeatured ? 17.78.br : 10.0.br;
     final svgSize = isFeatured ? 35.56.sp : 20.0.sp;
 
-    final countAsync = ref.watch(folderAnalysisCountProvider(folder.id));
-    final countWidget = countAsync.when(
-      data:
-          (count) => Text(
-            _formatGameCount(count),
-            style: AppTypography.textXsRegular.copyWith(
-              color: const Color(0xFFA1A1A1),
-              height: 16 / 12,
+    final Widget countWidget;
+    if (isTwic) {
+      countWidget = Text(
+        '4M+ master games',
+        style: AppTypography.textXsRegular.copyWith(
+          color: const Color(0xFFA1A1A1),
+          height: 16 / 12,
+        ),
+      );
+    } else {
+      final countAsync = ref.watch(folderAnalysisCountProvider(folder.id));
+      countWidget = countAsync.when(
+        data:
+            (count) => Text(
+              _formatGameCount(count),
+              style: AppTypography.textXsRegular.copyWith(
+                color: const Color(0xFFA1A1A1),
+                height: 16 / 12,
+              ),
             ),
-          ),
-      loading:
-          () => Text(
-            '...',
-            style: AppTypography.textXsRegular.copyWith(
-              color: const Color(0xFFA1A1A1),
+        loading:
+            () => Text(
+              '...',
+              style: AppTypography.textXsRegular.copyWith(
+                color: const Color(0xFFA1A1A1),
+              ),
             ),
-          ),
-      error: (_, __) => const SizedBox.shrink(),
-    );
+        error: (_, __) => const SizedBox.shrink(),
+      );
+    }
 
     // Subtitle for subscribed books: show owner name
     Widget? subtitleWidget;

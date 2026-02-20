@@ -1,3 +1,4 @@
+import 'package:chessever2/providers/board_settings_provider_new.dart';
 import 'package:chessever2/screens/chessboard/view_model/chess_board_state_new.dart';
 import 'package:chessever2/screens/gamebase/models/models.dart';
 import 'package:chessever2/screens/gamebase/providers/gamebase_providers.dart';
@@ -5,6 +6,7 @@ import 'package:chessever2/screens/gamebase/providers/gamebase_explorer_state.da
 import 'package:chessever2/screens/gamebase/widgets/gamebase_filter_panel.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
+import 'package:chessever2/utils/figurine_notation.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:flutter/material.dart';
@@ -164,16 +166,25 @@ class GamebaseExplorerView extends HookConsumerWidget {
   }
 }
 
-class _HorizontalPvLines extends StatelessWidget {
+class _HorizontalPvLines extends ConsumerWidget {
   const _HorizontalPvLines({required this.state, required this.onMoveSelected});
 
   final ChessBoardStateNew state;
   final Function(String uci) onMoveSelected;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final lines = state.analysisState.suggestionLines;
     if (lines.isEmpty) return const SizedBox.shrink();
+
+    final useFigurine = ref.watch(
+      boardSettingsProviderNew.select((s) => s.valueOrNull?.useFigurine ?? false),
+    );
+    final pieceAssets = ref.watch(
+      boardSettingsProviderNew.select(
+        (s) => s.valueOrNull?.pieceAssets ?? const BoardSettingsNew().pieceAssets,
+      ),
+    );
 
     return Container(
       height: 60.h,
@@ -195,6 +206,10 @@ class _HorizontalPvLines extends StatelessWidget {
           final moves = line.sanMoves.join(' ');
 
           final firstUci = line.moves.isNotEmpty ? line.moves.first.uci : null;
+
+          final movesStyle = AppTypography.textXsRegular.copyWith(
+            color: kWhiteColor.withValues(alpha: 0.8),
+          );
 
           return InkWell(
             onTap: firstUci == null ? null : () => onMoveSelected(firstUci),
@@ -221,12 +236,18 @@ class _HorizontalPvLines extends StatelessWidget {
                       ),
                     ),
                     SizedBox(width: 8.w),
-                    Text(
-                      moves,
-                      style: AppTypography.textXsRegular.copyWith(
-                        color: kWhiteColor.withValues(alpha: 0.8),
-                      ),
-                    ),
+                    useFigurine
+                        ? RichText(
+                            text: TextSpan(
+                              children: buildFigurineSpans(
+                                text: moves,
+                                pieceAssets: pieceAssets,
+                                style: movesStyle,
+                                pieceSize: 12.f,
+                              ),
+                            ),
+                          )
+                        : Text(moves, style: movesStyle),
                   ],
                 ),
               ),
@@ -465,6 +486,19 @@ class _MoveRow extends ConsumerWidget {
       // Fallback to UCI
     }
 
+    final useFigurine = ref.watch(
+      boardSettingsProviderNew.select((s) => s.valueOrNull?.useFigurine ?? false),
+    );
+    final pieceAssets = ref.watch(
+      boardSettingsProviderNew.select(
+        (s) => s.valueOrNull?.pieceAssets ?? const BoardSettingsNew().pieceAssets,
+      ),
+    );
+
+    final sanStyle = AppTypography.textSmBold.copyWith(
+      color: kWhiteColor,
+    );
+
     return InkWell(
       onTap: onPressed,
       child: Container(
@@ -488,12 +522,20 @@ class _MoveRow extends ConsumerWidget {
                     ),
                   ),
                   SizedBox(width: 4.w),
-                  Text(
-                    san,
-                    style: AppTypography.textSmBold.copyWith(
-                      color: kWhiteColor,
-                    ),
-                  ),
+                  useFigurine
+                      ? RichText(
+                          overflow: TextOverflow.ellipsis,
+                          maxLines: 1,
+                          text: TextSpan(
+                            children: buildFigurineSpans(
+                              text: san,
+                              pieceAssets: pieceAssets,
+                              style: sanStyle,
+                              pieceSize: 14.f,
+                            ),
+                          ),
+                        )
+                      : Text(san, style: sanStyle),
                 ],
               ),
             ),
