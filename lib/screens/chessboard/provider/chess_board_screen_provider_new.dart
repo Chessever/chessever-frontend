@@ -32,8 +32,8 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 const int _minPersistDepth = 20;
 const int _minPersistFullMoves = 8;
-const Duration _evalWatchdogInterval = Duration(milliseconds: 1600);
-const Duration _cascadeEvalSoftTimeout = Duration(milliseconds: 180);
+const Duration _evalWatchdogInterval = Duration(milliseconds: 1000);
+const Duration _cascadeEvalSoftTimeout = Duration(milliseconds: 60);
 
 bool _shouldPersistCloudEval(CloudEval eval) {
   return eval.meetsPersistenceThreshold(
@@ -108,7 +108,7 @@ class ChessBoardScreenNotifierNew
     this.savedAnalysisData,
     this.startAtLastMove = false,
   }) : super(const AsyncValue.loading()) {
-    _stockfishOwnerId = '${game.gameId}_$index';
+    _stockfishOwnerId = StockfishSingleton.generateOwnerId(game.gameId, index);
     _initializeState();
     _setupPgnStreamListener();
   }
@@ -3686,11 +3686,6 @@ class ChessBoardScreenNotifierNew
       return const [];
     }
 
-    final basePosition = Position.setupPosition(
-      Rule.chess,
-      Setup.parseFen(fen),
-    );
-
     final lines = <AnalysisLine>[];
     for (final entry in workerResult) {
       final uciMoves =
@@ -3701,7 +3696,8 @@ class ChessBoardScreenNotifierNew
       final mateValue = entry['mate'];
       final cpValue = entry['cp'];
 
-      var position = basePosition;
+      // Parse UCI → Move directly; the worker already validated every move
+      // via position.makeSan(), so skip the expensive position.play() loop.
       final moves = <Move>[];
       var valid = true;
 
@@ -3712,13 +3708,7 @@ class ChessBoardScreenNotifierNew
           valid = false;
           break;
         }
-        try {
-          position = position.play(parsedMove);
-          moves.add(parsedMove);
-        } catch (_) {
-          valid = false;
-          break;
-        }
+        moves.add(parsedMove);
       }
 
       if (!valid || moves.isEmpty) continue;
@@ -4834,6 +4824,12 @@ class ChessBoardScreenNotifierNew
             );
             state = AsyncValue.data(workingState);
 
+            // Only rebuild expensive PV lines at milestone depths.
+            // Intermediate depths only update the eval bar above.
+            // The bestmove handler always builds final PVs regardless.
+            final isPvMilestone = depth <= 1 || depth % 4 == 0;
+            if (!isPvMilestone) return;
+
             var lines = await _buildPrincipalVariations(fenToAnalyze, pvs);
             if (lines.isEmpty) return;
             if (lines.length > multiPV) {
@@ -4970,7 +4966,9 @@ class ChessBoardScreenNotifierNew
             context: 'progressive final',
             allowDecrease: !preserveDepthProgress,
           );
-          if (pvLines.isEmpty) {
+          // Always build final PVs at full depth — onPvUpdate skips
+          // non-milestone depths, so the latest PVs may be stale.
+          {
             var finalLines = await _buildPrincipalVariations(
               fenToAnalyze,
               stockfishResult.pvs,

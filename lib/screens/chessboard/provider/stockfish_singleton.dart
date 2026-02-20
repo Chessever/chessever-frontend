@@ -31,6 +31,17 @@ class StockfishSingleton {
   static final StockfishSingleton _i = StockfishSingleton._();
   factory StockfishSingleton() => _i;
 
+  /// Monotonically increasing counter used to generate unique owner IDs.
+  /// Prevents race conditions when the same game is opened rapidly —
+  /// each provider instance gets a distinct ownerId even for the same game.
+  static int _ownerGeneration = 0;
+
+  /// Returns a unique owner ID incorporating the game identity and a generation
+  /// counter. Call once per provider creation.
+  static String generateOwnerId(String gameId, int index) {
+    return '${gameId}_${index}_${_ownerGeneration++}';
+  }
+
   Stockfish? _engine;
   _EvalJob? _currentJob;
   StreamSubscription? _currentSubscription;
@@ -38,6 +49,7 @@ class StockfishSingleton {
   final List<_EvalJob> _jobQueue = []; // Queue for pending evaluations
   final Map<String, _EvalJob> _pendingJobs = {}; // Keyed by cacheKey
   bool _isProcessing = false; // Flag to prevent concurrent processing
+  int _queueGeneration = 0; // Incremented on cancelAll to signal stale loops
   bool _isInitializing = false; // Lock to prevent concurrent engine initialization
   bool _previousJobCompleted = true; // Track if last job ended via bestmove (engine idle)
   Completer<void>? _initCompleter; // Completer for waiting on initialization
@@ -284,18 +296,19 @@ class StockfishSingleton {
 
       _pendingJobs.remove(_currentJob!.key);
 
-      // Send stop command to engine if it's ready
+      // Fire-and-forget stop — don't block waiting for readyok.
+      // The next job's _softResetEngine() will synchronize via isready/readyok
+      // before sending the next 'go' command.
       if (_engine != null && _engine!.state.value == StockfishState.ready) {
         try {
           _engine!.stdin = 'stop';
-          // Give the engine a moment to process the stop command
-          await Future.delayed(const Duration(milliseconds: 50));
         } catch (e) {
-          // Ignore errors when stopping
           debugPrint('Error sending stop command to Stockfish: $e');
         }
       }
 
+      // Mark engine as not yet confirmed idle — _softResetEngine handles sync.
+      _previousJobCompleted = false;
       _currentJob = null;
     }
   }
@@ -322,6 +335,9 @@ class StockfishSingleton {
       _jobQueue.clear();
       debugPrint('🛑 STOCKFISH: Cancelled $jobCount queued jobs');
     }
+    // Bump generation so any running _processQueue loop will exit after its
+    // current await point, preventing concurrent queue processors.
+    _queueGeneration++;
     _isProcessing = false;
     _currentSubscription = null;
     try {
@@ -379,12 +395,18 @@ class StockfishSingleton {
     if (_isProcessing || _jobQueue.isEmpty) return;
 
     _isProcessing = true;
+    final myGeneration = _queueGeneration;
     debugPrint(
       '🏭 QUEUE PROCESSOR: Starting, ${_jobQueue.length} jobs in queue',
     );
 
     try {
       while (_jobQueue.isNotEmpty) {
+        // If cancelAllEvaluations was called, this generation is stale — exit.
+        if (_queueGeneration != myGeneration) {
+          debugPrint('🛑 QUEUE PROCESSOR: Generation changed, exiting stale loop');
+          return;
+        }
         final job = _jobQueue.removeAt(0);
         _currentJob = job;
         debugPrint('⚙️ PROCESSING: ${job.fen} (${_jobQueue.length} remaining)');
@@ -656,9 +678,9 @@ class StockfishSingleton {
 
       // At high depths with multiPV, a single depth level can take 5-10+ seconds
       // with no intermediate output. Scale the stall threshold accordingly.
-      final stallThreshold = Duration(milliseconds: depth <= 20 ? 2000 : (depth <= 40 ? 8000 : 15000));
+      final stallThreshold = Duration(milliseconds: depth <= 20 ? 1200 : (depth <= 40 ? 3500 : 8000));
 
-      stallDetector = Timer.periodic(const Duration(seconds: 1), (_) {
+      stallDetector = Timer.periodic(const Duration(milliseconds: 500), (_) {
         if (lastInfoReceived != null) {
           final timeSinceLastInfo = DateTime.now().difference(lastInfoReceived!);
           if (timeSinceLastInfo > stallThreshold) {
@@ -1064,15 +1086,10 @@ class StockfishSingleton {
     if (!_previousJobCompleted) {
       try {
         _engine!.stdin = 'stop';
-        // On Android, the engine needs more time after stop before accepting
-        // new commands. Use the UCI isready/readyok handshake to guarantee
-        // the engine is truly idle. Without this, the next 'go' command can
-        // be swallowed — leaving the UI stuck in loading on Android.
-        if (_isAndroid) {
-          await _waitForReadyOk();
-        } else {
-          await Future.delayed(const Duration(milliseconds: 20));
-        }
+        // Use the UCI isready/readyok handshake on ALL platforms to guarantee
+        // the engine is truly idle before the next 'go' command. A fixed delay
+        // is unreliable during rapid navigation (stop/go/stop/go).
+        await _waitForReadyOk();
       } catch (e) {
         debugPrint('⚠️ STOCKFISH STOP FAILED: $e');
         return;
@@ -1100,7 +1117,7 @@ class StockfishSingleton {
     });
     try {
       _engine!.stdin = 'isready';
-      await completer.future.timeout(const Duration(milliseconds: 300));
+      await completer.future.timeout(const Duration(milliseconds: 100));
     } catch (e) {
       debugPrint('⚠️ STOCKFISH READY WAIT FAILED: $e');
     } finally {
