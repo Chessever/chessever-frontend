@@ -11,7 +11,6 @@ import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 class GamebaseSearchGameCard extends ConsumerWidget {
@@ -86,12 +85,7 @@ class GamebaseSearchGameCard extends ConsumerWidget {
       child: card,
     );
 
-    // Simple entry animation only - no slideX showcase
-    final entryDelay = Duration(milliseconds: (animationIndex % 10) * 40);
-    return swipeCard
-        .animate()
-        .fadeIn(duration: 200.ms, delay: entryDelay)
-        .slideY(begin: 0.05, end: 0, duration: 200.ms, curve: Curves.easeOut);
+    return swipeCard;
   }
 
   Future<void> _handleGamebaseTap(

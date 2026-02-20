@@ -571,7 +571,7 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
               if (loadingProgress < 0.01) return const SizedBox.shrink();
               return Positioned.fill(
                 child: Opacity(
-                  opacity: loadingProgress,
+                  opacity: loadingProgress.clamp(0.0, 1.0),
                   child: LinearProgressIndicator(
                     backgroundColor: kPrimaryColor.withValues(alpha: 0.12),
                     valueColor: AlwaysStoppedAnimation<Color>(

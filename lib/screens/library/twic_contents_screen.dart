@@ -18,7 +18,6 @@ import 'package:chessever2/utils/time_utils.dart';
 import 'package:chessever2/widgets/screen_wrapper.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:motor/motor.dart';
 
@@ -524,28 +523,15 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen> {
 
         final game = games[index];
         return GamebaseSearchGameCard(
-              game: game,
-              allGames: games,
-              gameIndex: index,
-              animationIndex: index,
-              onAdd: () => showAddToFolderSheet(context: context, game: game),
-              showSwipeHint: index == 0,
-              hideEventInfo: false,
-              playerProfileDataSource: PlayerProfileDataSource.twic,
-            )
-            .animate()
-            .fadeIn(
-              duration: 250.ms,
-              delay: (index.clamp(0, 8) * 40).ms,
-              curve: Curves.easeOut,
-            )
-            .slideY(
-              begin: 0.04,
-              end: 0,
-              duration: 250.ms,
-              delay: (index.clamp(0, 8) * 40).ms,
-              curve: Curves.easeOut,
-            );
+          game: game,
+          allGames: games,
+          gameIndex: index,
+          animationIndex: index,
+          onAdd: () => showAddToFolderSheet(context: context, game: game),
+          showSwipeHint: index == 0,
+          hideEventInfo: false,
+          playerProfileDataSource: PlayerProfileDataSource.twic,
+        );
       },
     );
 

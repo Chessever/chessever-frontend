@@ -223,6 +223,25 @@ class _ChessBoardNotificationSettingsPageState
                   ),
                 ),
                 SizedBox(height: 18.h),
+                _SectionLabel(title: 'Library'),
+                SizedBox(height: 12.h),
+                _SettingCard(
+                  child: _ToggleRow(
+                    title: 'Book updates',
+                    description: 'Get notified when new games are added to your subscribed books.',
+                    value: prefs.bookUpdateAlerts,
+                    onChanged: (!pushEnabled || prefsLoading)
+                        ? null
+                        : (value) {
+                            _trackPersist(
+                              ref
+                                  .read(notificationPreferencesProvider.notifier)
+                                  .setBookUpdateAlerts(value),
+                            );
+                          },
+                  ),
+                ),
+                SizedBox(height: 18.h),
                 _SectionLabel(title: 'Updates'),
                 SizedBox(height: 12.h),
                 _SettingCard(

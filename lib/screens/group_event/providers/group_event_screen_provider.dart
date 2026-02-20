@@ -138,9 +138,14 @@ class _GroupEventScreenController
         }
       }
 
-      final minElo = appliedFilter.eloRange.start.round();
-      final maxElo = appliedFilter.eloRange.end.round();
-      if (tour.maxAvgElo != null) {
+      // Only apply ELO filter if user changed the range from default
+      final hasEloFilter =
+          appliedFilter.eloRange.start >
+              defaultFilterPopupState.eloRange.start ||
+          appliedFilter.eloRange.end < defaultFilterPopupState.eloRange.end;
+      if (hasEloFilter && tour.maxAvgElo != null) {
+        final minElo = appliedFilter.eloRange.start.round();
+        final maxElo = appliedFilter.eloRange.end.round();
         if (tour.maxAvgElo! < minElo || tour.maxAvgElo! > maxElo) {
           return false;
         }
@@ -327,7 +332,7 @@ class _GroupEventScreenController
 
       state = AsyncValue.data(sortedEvents);
 
-      _pastOffset += newModels.length;
+      _pastOffset += broadcasts.length;
       pastHasMore = broadcasts.length == _pastLimit;
     } catch (_) {
     } finally {

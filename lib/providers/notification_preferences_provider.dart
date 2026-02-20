@@ -15,6 +15,7 @@ class NotificationPreferences {
   final bool liveGameUpdates;
   final bool dailyDigest;
   final bool callToActionAlerts;
+  final bool bookUpdateAlerts;
 
   const NotificationPreferences({
     required this.favoriteEventAlerts,
@@ -23,6 +24,7 @@ class NotificationPreferences {
     required this.liveGameUpdates,
     required this.dailyDigest,
     required this.callToActionAlerts,
+    required this.bookUpdateAlerts,
   });
 
   NotificationPreferences copyWith({
@@ -32,6 +34,7 @@ class NotificationPreferences {
     bool? liveGameUpdates,
     bool? dailyDigest,
     bool? callToActionAlerts,
+    bool? bookUpdateAlerts,
   }) {
     return NotificationPreferences(
       favoriteEventAlerts: favoriteEventAlerts ?? this.favoriteEventAlerts,
@@ -40,6 +43,7 @@ class NotificationPreferences {
       liveGameUpdates: liveGameUpdates ?? this.liveGameUpdates,
       dailyDigest: dailyDigest ?? this.dailyDigest,
       callToActionAlerts: callToActionAlerts ?? this.callToActionAlerts,
+      bookUpdateAlerts: bookUpdateAlerts ?? this.bookUpdateAlerts,
     );
   }
 
@@ -50,6 +54,7 @@ class NotificationPreferences {
     liveGameUpdates: false,
     dailyDigest: false,
     callToActionAlerts: false,
+    bookUpdateAlerts: true,
   );
 }
 
@@ -97,7 +102,7 @@ class NotificationPreferencesNotifier
           await _supabase
               .from('user_notification_preferences')
               .select(
-                'favorite_event_alerts,favorite_player_alerts,heads_up_alerts,live_game_updates,daily_digest,call_to_action_alerts',
+                'favorite_event_alerts,favorite_player_alerts,heads_up_alerts,live_game_updates,daily_digest,call_to_action_alerts,book_update_alerts',
               )
               .eq('user_id', userId)
               .maybeSingle();
@@ -125,6 +130,9 @@ class NotificationPreferencesNotifier
         callToActionAlerts:
             response['call_to_action_alerts'] as bool? ??
             NotificationPreferences.defaults.callToActionAlerts,
+        bookUpdateAlerts:
+            response['book_update_alerts'] as bool? ??
+            NotificationPreferences.defaults.bookUpdateAlerts,
       );
 
       // Cache locally for offline fallback (non-blocking)
@@ -168,6 +176,12 @@ class NotificationPreferencesNotifier
     );
   }
 
+  Future<void> setBookUpdateAlerts(bool value) async {
+    await _updatePreferences(
+      (prefs) => prefs.copyWith(bookUpdateAlerts: value),
+    );
+  }
+
   Future<void> disableAll() async {
     await _updatePreferences(
       (_) => const NotificationPreferences(
@@ -177,6 +191,7 @@ class NotificationPreferencesNotifier
         liveGameUpdates: false,
         dailyDigest: false,
         callToActionAlerts: false,
+        bookUpdateAlerts: false,
       ),
     );
   }
@@ -203,6 +218,7 @@ class NotificationPreferencesNotifier
         'live_game_updates': updated.liveGameUpdates,
         'daily_digest': updated.dailyDigest,
         'call_to_action_alerts': updated.callToActionAlerts,
+        'book_update_alerts': updated.bookUpdateAlerts,
       }, onConflict: 'user_id');
     } catch (e, st) {
       debugPrint('[NotificationPreferences] Update failed: $e');
@@ -220,6 +236,7 @@ class NotificationPreferencesNotifier
         'liveGameUpdates': prefs.liveGameUpdates,
         'dailyDigest': prefs.dailyDigest,
         'callToActionAlerts': prefs.callToActionAlerts,
+        'bookUpdateAlerts': prefs.bookUpdateAlerts,
       });
       await db.setString(_cacheKey, json);
     } catch (e) {
@@ -255,6 +272,9 @@ class NotificationPreferencesNotifier
         callToActionAlerts:
             map['callToActionAlerts'] as bool? ??
             NotificationPreferences.defaults.callToActionAlerts,
+        bookUpdateAlerts:
+            map['bookUpdateAlerts'] as bool? ??
+            NotificationPreferences.defaults.bookUpdateAlerts,
       );
     } catch (e) {
       debugPrint('[NotificationPreferences] Error reading cache: $e');
