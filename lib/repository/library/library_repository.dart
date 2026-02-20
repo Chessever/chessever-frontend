@@ -265,25 +265,24 @@ class LibraryRepository extends BaseRepository {
   });
 
   /// Stream analyses in a subscribed (shared) folder.
-  /// Uses a polling-based approach since Supabase streams filter by user_id
-  /// which won't work for shared folders.
-  Stream<List<SavedAnalysis>> subscribeSharedFolderAnalyses(String folderId) {
-    // Poll every 10 seconds for updates. Supabase realtime streams
-    // filter by the authenticated user's rows, so we can't use stream()
-    // for another user's data. Regular select() works via RLS.
-    return Stream.periodic(const Duration(seconds: 10))
-        .asyncMap((_) async {
+  /// Uses a polling-based approach since Supabase realtime streams
+  /// filter by the authenticated user's rows (won't work for shared folders).
+  Stream<List<SavedAnalysis>> subscribeSharedFolderAnalyses(
+      String folderId) async* {
+    // Fetch immediately, then poll every 10 seconds.
+    while (true) {
       final response = await supabase
           .from('user_saved_analyses')
           .select()
           .eq('folder_id', folderId)
           .order('created_at', ascending: false);
 
-      return (response as List)
+      yield (response as List)
           .map((json) => SavedAnalysis.fromSupabase(json))
           .toList();
-    }).distinct((a, b) => a.length == b.length &&
-        a.map((e) => e.id).join() == b.map((e) => e.id).join());
+
+      await Future.delayed(const Duration(seconds: 10));
+    }
   }
 
   // ============ SAVED ANALYSIS METHODS ============
