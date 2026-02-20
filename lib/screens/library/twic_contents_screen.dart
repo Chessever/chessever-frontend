@@ -218,7 +218,13 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen> {
           colors: [kBlackColor, kBackgroundColor],
         ),
       ),
-      child: Column(children: [_buildHeader(), _buildSearchRow()]),
+      child: Column(
+        children: [
+          _buildHeader(),
+          _buildSearchRow(),
+          _buildResultCount(),
+        ],
+      ),
     );
   }
 
@@ -285,6 +291,31 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen> {
         hintText: 'Search',
         onChanged: _onSearchChanged,
         onFilterTap: _openFilters,
+      ),
+    );
+  }
+
+  Widget _buildResultCount() {
+    final paginationState = ref.watch(gamebaseDatabaseGamesPaginatedProvider);
+    final totalCount = paginationState.totalCount;
+
+    if (totalCount <= 0) return const SizedBox.shrink();
+
+    final horizontalPadding = ResponsiveHelper.adaptive(
+      phone: 16.w,
+      tablet: 24.w,
+    );
+
+    return Padding(
+      padding: EdgeInsets.fromLTRB(horizontalPadding, 0, horizontalPadding, 4.h),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: Text(
+          '${formatCompactCount(totalCount)} games',
+          style: AppTypography.textXsRegular.copyWith(
+            color: kWhiteColor.withValues(alpha: 0.4),
+          ),
+        ),
       ),
     );
   }
@@ -361,23 +392,6 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen> {
           selectedItem: selectedItem,
           horizontalPadding: horizontalPadding,
         ),
-
-        // ── Result count ──
-        if (paginationState.totalCount > 0)
-          Padding(
-            padding: EdgeInsets.fromLTRB(
-              horizontalPadding,
-              4.h,
-              horizontalPadding,
-              8.h,
-            ),
-            child: Text(
-              '${formatCompactCount(paginationState.totalCount)} games',
-              style: AppTypography.textXsRegular.copyWith(
-                color: kWhiteColor.withValues(alpha: 0.5),
-              ),
-            ),
-          ),
 
         // ── Games list (keeps previous content while loading new results) ──
         Expanded(child: _buildGamesList(paginationState, horizontalPadding)),
