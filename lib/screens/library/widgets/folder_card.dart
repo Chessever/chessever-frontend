@@ -918,9 +918,12 @@ class _OverlayMenuItemState extends State<_OverlayMenuItem> {
               ),
             ),
             SizedBox(width: 11.w),
-            Text(
-              widget.label,
-              style: AppTypography.textMdMedium.copyWith(color: kWhiteColor),
+            Expanded(
+              child: Text(
+                widget.label,
+                style: AppTypography.textMdMedium.copyWith(color: kWhiteColor),
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
           ],
         ),

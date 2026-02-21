@@ -298,112 +298,223 @@ class _BoardEditorScreenState extends ConsumerState<BoardEditorScreen> {
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
+  Widget _buildTopControls() {
+    final editorState = ref.watch(boardEditorProvider);
+    return _TopControls(
+      editorState: editorState,
+      onReset: () {
+        HapticFeedback.mediumImpact();
+        setState(_clearPgnOverride);
+        ref.read(boardEditorProvider.notifier).reset();
+      },
+      onClear: () {
+        HapticFeedback.mediumImpact();
+        setState(_clearPgnOverride);
+        ref.read(boardEditorProvider.notifier).clear();
+      },
+      onSideToMove: (side) {
+        HapticFeedback.selectionClick();
+        setState(_clearPgnOverride);
+        ref.read(boardEditorProvider.notifier).setSideToMove(side);
+      },
+      onToggleCastling: ({
+        bool? whiteKingside,
+        bool? whiteQueenside,
+        bool? blackKingside,
+        bool? blackQueenside,
+      }) {
+        HapticFeedback.selectionClick();
+        setState(_clearPgnOverride);
+        ref
+            .read(boardEditorProvider.notifier)
+            .toggleCastling(
+              whiteKingside: whiteKingside,
+              whiteQueenside: whiteQueenside,
+              blackKingside: blackKingside,
+              blackQueenside: blackQueenside,
+            );
+      },
+    );
+  }
+
+  Widget _buildPieceTray(double squareSize) {
     final editorState = ref.watch(boardEditorProvider);
     final boardSettingsAsync = ref.watch(boardSettingsProviderNew);
     final boardSettings =
         boardSettingsAsync.valueOrNull ?? const BoardSettingsNew();
-    final screenWidth = MediaQuery.of(context).size.width;
-    final showEval = editorState.isEvaluatable;
-    final evalBarWidth = 20.sp;
-    final squareSize = screenWidth / 8;
+    return _PieceTray(
+      pieceAssets: boardSettings.pieceAssets,
+      squareSize: squareSize,
+      selectedPiece: editorState.selectedPiece,
+      isDeleteMode: editorState.isDeleteMode,
+      onSelectPiece: (piece) {
+        HapticFeedback.selectionClick();
+        setState(_clearPgnOverride);
+        ref.read(boardEditorProvider.notifier).selectPiece(piece);
+      },
+      onToggleDeleteMode: () {
+        HapticFeedback.selectionClick();
+        setState(_clearPgnOverride);
+        ref.read(boardEditorProvider.notifier).toggleDeleteMode();
+      },
+      onDeleteLongPress: () {
+        HapticFeedback.heavyImpact();
+        setState(_clearPgnOverride);
+        ref.read(boardEditorProvider.notifier).clear();
+      },
+      onFlipBoard: () {
+        HapticFeedback.mediumImpact();
+        ref.read(boardEditorProvider.notifier).flipBoard();
+      },
+    );
+  }
 
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: kBackgroundColor,
       body: SafeArea(
         child: Column(
           children: [
-            // App bar
             _buildAppBar(),
-
             Expanded(
-              child: Column(
-                children: [
-                  // Top controls: Reset/Clear, Side-to-move, Castling
-                  _TopControls(
-                    editorState: editorState,
-                    onReset: () {
-                      HapticFeedback.mediumImpact();
-                      setState(_clearPgnOverride);
-                      ref.read(boardEditorProvider.notifier).reset();
-                    },
-                    onClear: () {
-                      HapticFeedback.mediumImpact();
-                      setState(_clearPgnOverride);
-                      ref.read(boardEditorProvider.notifier).clear();
-                    },
-                    onSideToMove: (side) {
-                      HapticFeedback.selectionClick();
-                      setState(_clearPgnOverride);
-                      ref
-                          .read(boardEditorProvider.notifier)
-                          .setSideToMove(side);
-                    },
-                    onToggleCastling: ({
-                      bool? whiteKingside,
-                      bool? whiteQueenside,
-                      bool? blackKingside,
-                      bool? blackQueenside,
-                    }) {
-                      HapticFeedback.selectionClick();
-                      setState(_clearPgnOverride);
-                      ref
-                          .read(boardEditorProvider.notifier)
-                          .toggleCastling(
-                            whiteKingside: whiteKingside,
-                            whiteQueenside: whiteQueenside,
-                            blackKingside: blackKingside,
-                            blackQueenside: blackQueenside,
-                          );
-                    },
-                  ),
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final isTablet = ResponsiveHelper.isTablet;
+                  final isLandscape = ResponsiveHelper.isLandscape;
 
-                  // Board + Eval bar row
-                  _BoardWithEvalBar(
-                    editorState: editorState,
-                    boardSettings: boardSettings,
-                    screenWidth: screenWidth,
-                    evalBarWidth: evalBarWidth,
-                    showEval: showEval,
-                  ),
-
-                  // Piece Tray
-                  _PieceTray(
-                    pieceAssets: boardSettings.pieceAssets,
-                    squareSize: squareSize,
-                    selectedPiece: editorState.selectedPiece,
-                    isDeleteMode: editorState.isDeleteMode,
-                    onSelectPiece: (piece) {
-                      HapticFeedback.selectionClick();
-                      setState(_clearPgnOverride);
-                      ref.read(boardEditorProvider.notifier).selectPiece(piece);
-                    },
-                    onToggleDeleteMode: () {
-                      HapticFeedback.selectionClick();
-                      setState(_clearPgnOverride);
-                      ref.read(boardEditorProvider.notifier).toggleDeleteMode();
-                    },
-                    onDeleteLongPress: () {
-                      HapticFeedback.heavyImpact();
-                      setState(_clearPgnOverride);
-                      ref.read(boardEditorProvider.notifier).clear();
-                    },
-                    onFlipBoard: () {
-                      HapticFeedback.mediumImpact();
-                      ref.read(boardEditorProvider.notifier).flipBoard();
-                    },
-                  ),
-
-                  // FEN Bar
-                  _FenBar(fen: editorState.fullFen, onCopy: _copyFen),
-
-                  // Action buttons
-                  _ActionRow(onPasteFen: _pasteFen, onPastePgn: _pastePgn),
-                ],
+                  if (isTablet && isLandscape) {
+                    return _buildTabletLandscapeLayout(constraints);
+                  } else if (isTablet) {
+                    return _buildTabletPortraitLayout(constraints);
+                  } else {
+                    return _buildPhoneLayout(constraints);
+                  }
+                },
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  /// Phone layout — unchanged from original.
+  Widget _buildPhoneLayout(BoxConstraints constraints) {
+    final editorState = ref.watch(boardEditorProvider);
+    final boardSettingsAsync = ref.watch(boardSettingsProviderNew);
+    final boardSettings =
+        boardSettingsAsync.valueOrNull ?? const BoardSettingsNew();
+    final boardWidth = constraints.maxWidth;
+    final squareSize = boardWidth / 8;
+    final evalBarWidth = 20.sp;
+
+    return Column(
+      children: [
+        _buildTopControls(),
+        _BoardWithEvalBar(
+          editorState: editorState,
+          boardSettings: boardSettings,
+          availableWidth: boardWidth,
+          evalBarWidth: evalBarWidth,
+          showEval: editorState.isEvaluatable,
+        ),
+        _buildPieceTray(squareSize),
+        _FenBar(fen: editorState.fullFen, onCopy: _copyFen),
+        _ActionRow(onPasteFen: _pasteFen, onPastePgn: _pastePgn),
+      ],
+    );
+  }
+
+  /// Tablet landscape — board+tray on the left, controls+fen+actions on the right.
+  Widget _buildTabletLandscapeLayout(BoxConstraints constraints) {
+    final editorState = ref.watch(boardEditorProvider);
+    final boardSettingsAsync = ref.watch(boardSettingsProviderNew);
+    final boardSettings =
+        boardSettingsAsync.valueOrNull ?? const BoardSettingsNew();
+    final evalBarWidth = 20.sp;
+    final availableHeight = constraints.maxHeight;
+    final outerPadding = 8.sp * 2; // vertical padding from Padding widget
+    final trayVPadding = 8.h * 2; // piece tray vertical padding
+    final trayRowGap = 4.h; // gap between piece tray rows
+    // Tray has 2 rows of pieces sized (boardSize/8)*0.9, so:
+    // totalHeight = boardSize + trayVPadding + trayRowGap + boardSize*0.225
+    // Solve for boardSize:
+    final boardSize = ((availableHeight - outerPadding - trayVPadding - trayRowGap) / 1.225)
+        .clamp(200.0, double.infinity);
+    final boardColumnWidth = boardSize + evalBarWidth;
+    final squareSize = boardSize / 8;
+
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 8.sp),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Left column: board + piece tray
+          SizedBox(
+            width: boardColumnWidth,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _BoardWithEvalBar(
+                  editorState: editorState,
+                  boardSettings: boardSettings,
+                  availableWidth: boardColumnWidth,
+                  evalBarWidth: evalBarWidth,
+                  showEval: editorState.isEvaluatable,
+                ),
+                _buildPieceTray(squareSize),
+              ],
+            ),
+          ),
+          SizedBox(width: 12.sp),
+          // Right column: controls, FEN, actions
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _buildTopControls(),
+                const Spacer(),
+                _FenBar(fen: editorState.fullFen, onCopy: _copyFen),
+                _ActionRow(onPasteFen: _pasteFen, onPastePgn: _pastePgn),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Tablet portrait — centered column with constrained width.
+  Widget _buildTabletPortraitLayout(BoxConstraints constraints) {
+    final editorState = ref.watch(boardEditorProvider);
+    final boardSettingsAsync = ref.watch(boardSettingsProviderNew);
+    final boardSettings =
+        boardSettingsAsync.valueOrNull ?? const BoardSettingsNew();
+    final contentMaxWidth =
+        (constraints.maxWidth * 0.85).clamp(0.0, 720.0);
+    final evalBarWidth = 20.sp;
+    final squareSize = contentMaxWidth / 8;
+
+    return SizedBox.expand(
+      child: Center(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxWidth: contentMaxWidth),
+          child: Column(
+            children: [
+              _buildTopControls(),
+              _BoardWithEvalBar(
+                editorState: editorState,
+                boardSettings: boardSettings,
+                availableWidth: contentMaxWidth,
+                evalBarWidth: evalBarWidth,
+                showEval: editorState.isEvaluatable,
+              ),
+              _buildPieceTray(squareSize),
+              _FenBar(fen: editorState.fullFen, onCopy: _copyFen),
+              _ActionRow(onPasteFen: _pasteFen, onPastePgn: _pastePgn),
+            ],
+          ),
         ),
       ),
     );
@@ -458,14 +569,14 @@ class _BoardEditorScreenState extends ConsumerState<BoardEditorScreen> {
 class _BoardWithEvalBar extends ConsumerWidget {
   final BoardEditorState editorState;
   final BoardSettingsNew boardSettings;
-  final double screenWidth;
+  final double availableWidth;
   final double evalBarWidth;
   final bool showEval;
 
   const _BoardWithEvalBar({
     required this.editorState,
     required this.boardSettings,
-    required this.screenWidth,
+    required this.availableWidth,
     required this.evalBarWidth,
     required this.showEval,
   });
@@ -503,7 +614,7 @@ class _BoardWithEvalBar extends ConsumerWidget {
       builder: (context, animVal, _) {
         final clamped = animVal.clamp(0.0, 1.0);
         final currentEvalWidth = evalBarWidth * clamped;
-        final boardSize = screenWidth - currentEvalWidth;
+        final boardSize = availableWidth - currentEvalWidth;
 
         return Row(
           children: [

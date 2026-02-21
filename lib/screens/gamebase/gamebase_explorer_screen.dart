@@ -56,84 +56,202 @@ class _GamebaseExplorerScreenState
 
   static final double _evalBarWidth = 20.sp;
 
+  Widget _buildNavigationControls() {
+    final state = ref.watch(gamebaseExplorerProvider);
+    return _NavigationControls(
+      canGoBack: state.canGoBack,
+      canGoForward: state.canGoForward,
+      onGoToStart:
+          () => ref.read(gamebaseExplorerProvider.notifier).goToStart(),
+      onGoBack: () => ref.read(gamebaseExplorerProvider.notifier).goBack(),
+      onGoForward:
+          () => ref.read(gamebaseExplorerProvider.notifier).goForward(),
+      onGoToEnd: () => ref.read(gamebaseExplorerProvider.notifier).goToEnd(),
+      onReset: () => ref.read(gamebaseExplorerProvider.notifier).reset(),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final state = ref.watch(gamebaseExplorerProvider);
-    final screenWidth = MediaQuery.of(context).size.width;
-    final boardSize =
-        screenWidth - 48.sp - _evalBarWidth - 4.sp; // padding + eval bar + gap
-
     return ScreenWrapper(
       child: Scaffold(
         backgroundColor: kBlack2Color,
         appBar: _buildAppBar(context),
-        body: Center(
-          child: ConstrainedBox(
-            constraints: BoxConstraints(
-              maxWidth: ResponsiveHelper.contentMaxWidth,
+        body: LayoutBuilder(
+          builder: (context, constraints) {
+            final isTablet = ResponsiveHelper.isTablet;
+            final isLandscape = ResponsiveHelper.isLandscape;
+
+            if (isTablet && isLandscape) {
+              return _buildTabletLandscapeLayout(constraints);
+            } else if (isTablet) {
+              return _buildTabletPortraitLayout(constraints);
+            } else {
+              return _buildPhoneLayout(constraints);
+            }
+          },
+        ),
+      ),
+    );
+  }
+
+  /// Phone layout — identical to the original layout.
+  Widget _buildPhoneLayout(BoxConstraints constraints) {
+    final state = ref.watch(gamebaseExplorerProvider);
+    final boardSize =
+        constraints.maxWidth - 48.sp - _evalBarWidth - 4.sp;
+
+    return Center(
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxWidth: ResponsiveHelper.contentMaxWidth,
+        ),
+        child: Column(
+          children: [
+            Padding(
+              padding: EdgeInsets.all(24.sp),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  _ExplorerEvalBar(
+                    fen: state.currentFen,
+                    height: boardSize,
+                    width: _evalBarWidth,
+                  ),
+                  SizedBox(width: 4.sp),
+                  _GamebaseChessBoard(
+                    fen: state.currentFen,
+                    boardSize: boardSize,
+                  ),
+                ],
+              ),
             ),
+            _buildNavigationControls(),
+            SizedBox(height: 8.sp),
+            Expanded(
+              child: Container(
+                decoration: BoxDecoration(
+                  color: kBlack3Color,
+                  borderRadius: BorderRadius.vertical(
+                    top: Radius.circular(16.br),
+                  ),
+                ),
+                child: const MoveStatisticsPanel(),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Tablet landscape — side-by-side: board+nav on left, stats panel on right.
+  Widget _buildTabletLandscapeLayout(BoxConstraints constraints) {
+    final state = ref.watch(gamebaseExplorerProvider);
+    final availableHeight = constraints.maxHeight;
+    final navHeight = 44.h + 16.sp; // nav button height + vertical padding
+    final verticalPadding = 8.sp * 2; // top + bottom
+    final boardSize = (availableHeight - navHeight - verticalPadding)
+        .clamp(200.0, double.infinity);
+    final leftWidth = boardSize + _evalBarWidth + 4.sp + 24.sp;
+
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 8.sp),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Left column: board + nav controls
+          SizedBox(
+            width: leftWidth,
             child: Column(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                // Chess board section with eval bar
-                Padding(
-                  padding: EdgeInsets.all(24.sp),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      _ExplorerEvalBar(
-                        fen: state.currentFen,
-                        height: boardSize,
-                        width: _evalBarWidth,
-                      ),
-                      SizedBox(width: 4.sp),
-                      _GamebaseChessBoard(
-                        fen: state.currentFen,
-                        boardSize: boardSize,
-                      ),
-                    ],
-                  ),
-                ),
-
-                // Navigation controls
-                _NavigationControls(
-                  canGoBack: state.canGoBack,
-                  canGoForward: state.canGoForward,
-                  onGoToStart:
-                      () =>
-                          ref
-                              .read(gamebaseExplorerProvider.notifier)
-                              .goToStart(),
-                  onGoBack:
-                      () =>
-                          ref.read(gamebaseExplorerProvider.notifier).goBack(),
-                  onGoForward:
-                      () =>
-                          ref
-                              .read(gamebaseExplorerProvider.notifier)
-                              .goForward(),
-                  onGoToEnd:
-                      () =>
-                          ref.read(gamebaseExplorerProvider.notifier).goToEnd(),
-                  onReset:
-                      () => ref.read(gamebaseExplorerProvider.notifier).reset(),
-                ),
-
-                SizedBox(height: 8.sp),
-
-                // Move statistics panel
-                Expanded(
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: kBlack3Color,
-                      borderRadius: BorderRadius.vertical(
-                        top: Radius.circular(16.br),
-                      ),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    _ExplorerEvalBar(
+                      fen: state.currentFen,
+                      height: boardSize,
+                      width: _evalBarWidth,
                     ),
-                    child: const MoveStatisticsPanel(),
-                  ),
+                    SizedBox(width: 4.sp),
+                    _GamebaseChessBoard(
+                      fen: state.currentFen,
+                      boardSize: boardSize,
+                    ),
+                  ],
                 ),
+                SizedBox(height: 8.sp),
+                _buildNavigationControls(),
               ],
             ),
+          ),
+          SizedBox(width: 12.sp),
+          // Right column: stats panel
+          Expanded(
+            child: Container(
+              height: availableHeight - verticalPadding,
+              decoration: BoxDecoration(
+                color: kBlack3Color,
+                borderRadius: BorderRadius.circular(12.sp),
+                border: Border.all(color: kDividerColor),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12.sp),
+                child: const MoveStatisticsPanel(),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Tablet portrait — centered column with constrained width.
+  Widget _buildTabletPortraitLayout(BoxConstraints constraints) {
+    final state = ref.watch(gamebaseExplorerProvider);
+    final contentMaxWidth =
+        (constraints.maxWidth * 0.85).clamp(0.0, 720.0);
+    final boardSize = contentMaxWidth - 48.sp - _evalBarWidth - 4.sp;
+
+    return SizedBox.expand(
+      child: Center(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxWidth: contentMaxWidth),
+          child: Column(
+            children: [
+              Padding(
+                padding: EdgeInsets.all(24.sp),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    _ExplorerEvalBar(
+                      fen: state.currentFen,
+                      height: boardSize,
+                      width: _evalBarWidth,
+                    ),
+                    SizedBox(width: 4.sp),
+                    _GamebaseChessBoard(
+                      fen: state.currentFen,
+                      boardSize: boardSize,
+                    ),
+                  ],
+                ),
+              ),
+              _buildNavigationControls(),
+              SizedBox(height: 8.sp),
+              Expanded(
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: kBlack3Color,
+                    borderRadius: BorderRadius.vertical(
+                      top: Radius.circular(16.br),
+                    ),
+                  ),
+                  child: const MoveStatisticsPanel(),
+                ),
+              ),
+            ],
           ),
         ),
       ),
