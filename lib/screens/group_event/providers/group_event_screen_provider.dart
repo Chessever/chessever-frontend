@@ -250,6 +250,13 @@ class _GroupEventScreenController
 
       if (inputBroadcast != null) {
         tour = inputBroadcast;
+      } else if (_isFilterActive) {
+        // When filters are active, refresh from server to ensure we have
+        // latest time_control / elo data for accurate filtering.
+        tour =
+            await ref
+                .read(groupBroadcastLocalStorage(tourEventCategory))
+                .refresh();
       } else {
         tour =
             await ref

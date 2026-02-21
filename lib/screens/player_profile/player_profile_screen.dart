@@ -849,7 +849,7 @@ class _DataSourceBannerState extends State<_DataSourceBanner> {
                       child:
                           widget.isTwic
                               ? Text(
-                                'Regular',
+                                'ChessEver',
                                 key: const ValueKey('to-regular'),
                                 style: AppTypography.textXsBold.copyWith(
                                   color: kWhiteColor.withValues(alpha: 0.42),
