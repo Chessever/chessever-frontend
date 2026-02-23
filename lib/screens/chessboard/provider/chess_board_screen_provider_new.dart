@@ -414,26 +414,40 @@ class ChessBoardScreenNotifierNew
       state = AsyncValue.data(stateSnapshot.copyWith(isEvaluating: false));
     }
 
-    // If we've had multiple consecutive watchdog timeouts, the engine might be stuck
-    // Force a complete engine recovery to fix "Multiple instances" errors on Android
-    final needsForceRecovery = _consecutiveWatchdogTimeouts >= 3;
+    // If we've had too many consecutive watchdog timeouts, give up to prevent infinite loop
     final stockfish = StockfishSingleton();
 
-    if (needsForceRecovery && !stockfish.isEngineHealthy) {
+    if (_consecutiveWatchdogTimeouts >= 6) {
       _releaseLog(
-        '🔧 EVAL WATCHDOG: Engine unhealthy after $_consecutiveWatchdogTimeouts timeouts (state: ${stockfish.engineStateDebug}), forcing recovery',
+        '🛑 EVAL WATCHDOG: Giving up after $_consecutiveWatchdogTimeouts timeouts, final recovery attempt',
       );
-      unawaited(stockfish.forceRecovery());
+      _consecutiveWatchdogTimeouts = 0;
+      stockfish.forceRecovery().then((_) {
+        if (mounted) {
+          Future.delayed(const Duration(milliseconds: 1000), () {
+            if (mounted) _evaluatePosition(force: true);
+          });
+        }
+      });
+      return;
     }
 
-    // Schedule a new evaluation after a small delay
-    // Use longer delay if force recovery was triggered
-    final delay =
-        needsForceRecovery
-            ? const Duration(milliseconds: 1000)
-            : const Duration(milliseconds: 500);
+    // After 3+ timeouts, force recovery regardless of engine health state
+    // (engine can appear "ready" while actually unresponsive)
+    if (_consecutiveWatchdogTimeouts >= 3) {
+      _releaseLog(
+        '🔧 EVAL WATCHDOG: Forcing recovery after $_consecutiveWatchdogTimeouts timeouts (state: ${stockfish.engineStateDebug})',
+      );
+      stockfish.forceRecovery().then((_) {
+        if (mounted) {
+          _evaluatePosition(force: true);
+        }
+      });
+      return;
+    }
 
-    Future.delayed(delay, () {
+    // Simple delayed retry for early timeouts
+    Future.delayed(const Duration(milliseconds: 500), () {
       if (mounted) {
         _evaluatePosition(force: true);
       }
@@ -4920,9 +4934,10 @@ class ChessBoardScreenNotifierNew
             }
           }
 
-          if (mounted && !_cancelEvaluation) {
+          // Only retry if NOT caused by watchdog — watchdog has its own retry path.
+          if (mounted && !_cancelEvaluation && _consecutiveWatchdogTimeouts == 0) {
             Future.microtask(() {
-              if (!mounted || _cancelEvaluation) return;
+              if (!mounted || _cancelEvaluation || _consecutiveWatchdogTimeouts > 0) return;
               final latestState = state.value;
               if (latestState == null) return;
               final latestPosition =
@@ -5026,9 +5041,9 @@ class ChessBoardScreenNotifierNew
         _releaseLog('Stack: $stack');
       }
 
-      if (stockfishFailed && mounted && !_cancelEvaluation) {
+      if (stockfishFailed && mounted && !_cancelEvaluation && _consecutiveWatchdogTimeouts == 0) {
         Future.microtask(() {
-          if (!mounted || _cancelEvaluation) return;
+          if (!mounted || _cancelEvaluation || _consecutiveWatchdogTimeouts > 0) return;
           final latestState = state.value;
           if (latestState == null) return;
           final latestPosition =
