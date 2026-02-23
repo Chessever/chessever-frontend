@@ -768,7 +768,11 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
                     showSwipeHint: showHint,
                     showGamebaseButton: false,
                     onAdd: () => _showAddToFolderSheet(context, game),
-                    onTap: () => _navigateToChessBoard(game, games, gameIndex),
+                    onTap: () async {
+                      final hasPremium = await requirePremiumGuard(context, ref);
+                      if (!hasPremium) return;
+                      _navigateToChessBoard(game, games, gameIndex);
+                    },
                   ),
                 ),
               );

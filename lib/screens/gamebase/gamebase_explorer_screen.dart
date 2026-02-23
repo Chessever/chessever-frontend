@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 import 'package:chessground/chessground.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:flutter/material.dart';
@@ -6,12 +8,12 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/providers/board_settings_provider_new.dart';
 import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
-import 'package:chessever2/screens/chessboard/provider/current_eval_provider.dart';
 import 'package:chessever2/screens/chessboard/widgets/evaluation_bar_widget.dart';
-import 'package:chessever2/repository/lichess/cloud_eval/cloud_eval.dart';
+import 'package:chessever2/screens/gamebase/providers/explorer_eval_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
+import 'package:chessever2/utils/figurine_notation.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/screen_wrapper.dart';
 import 'package:chessever2/screens/gamebase/providers/gamebase_providers.dart';
@@ -30,6 +32,8 @@ class GamebaseExplorerScreen extends ConsumerStatefulWidget {
 
 class _GamebaseExplorerScreenState
     extends ConsumerState<GamebaseExplorerScreen> {
+  bool _isFlipped = false;
+
   @override
   void initState() {
     super.initState();
@@ -56,9 +60,9 @@ class _GamebaseExplorerScreenState
 
   @override
   void dispose() {
-    // Clear filters when leaving the standalone explorer so they don't
-    // bleed into the shared provider (used by the chessboard overlay too).
-    ref.read(gamebaseExplorerProvider.notifier).clearFilters();
+    // Reset the full explorer state when leaving so stale moves/position
+    // don't persist into the next visit or bleed into the chessboard overlay.
+    ref.read(gamebaseExplorerProvider.notifier).reset();
     super.dispose();
   }
 
@@ -75,7 +79,7 @@ class _GamebaseExplorerScreenState
       onGoForward:
           () => ref.read(gamebaseExplorerProvider.notifier).goForward(),
       onGoToEnd: () => ref.read(gamebaseExplorerProvider.notifier).goToEnd(),
-      onReset: () => ref.read(gamebaseExplorerProvider.notifier).reset(),
+      onFlip: () => setState(() => _isFlipped = !_isFlipped),
     );
   }
 
@@ -125,11 +129,13 @@ class _GamebaseExplorerScreenState
                     fen: state.currentFen,
                     height: boardSize,
                     width: _evalBarWidth,
+                    isFlipped: _isFlipped,
                   ),
                   SizedBox(width: 4.sp),
                   _GamebaseChessBoard(
                     fen: state.currentFen,
                     boardSize: boardSize,
+                    isFlipped: _isFlipped,
                   ),
                 ],
               ),
@@ -144,7 +150,13 @@ class _GamebaseExplorerScreenState
                     top: Radius.circular(16.br),
                   ),
                 ),
-                child: const MoveStatisticsPanel(),
+                clipBehavior: Clip.antiAlias,
+                child: Column(
+                  children: [
+                    const _ExplorerEngineLines(),
+                    const Expanded(child: MoveStatisticsPanel()),
+                  ],
+                ),
               ),
             ),
           ],
@@ -181,11 +193,13 @@ class _GamebaseExplorerScreenState
                       fen: state.currentFen,
                       height: boardSize,
                       width: _evalBarWidth,
+                      isFlipped: _isFlipped,
                     ),
                     SizedBox(width: 4.sp),
                     _GamebaseChessBoard(
                       fen: state.currentFen,
                       boardSize: boardSize,
+                      isFlipped: _isFlipped,
                     ),
                   ],
                 ),
@@ -204,9 +218,15 @@ class _GamebaseExplorerScreenState
                 borderRadius: BorderRadius.circular(12.sp),
                 border: Border.all(color: kDividerColor),
               ),
+              clipBehavior: Clip.antiAlias,
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(12.sp),
-                child: const MoveStatisticsPanel(),
+                child: Column(
+                  children: [
+                    const _ExplorerEngineLines(),
+                    const Expanded(child: MoveStatisticsPanel()),
+                  ],
+                ),
               ),
             ),
           ),
@@ -237,11 +257,13 @@ class _GamebaseExplorerScreenState
                       fen: state.currentFen,
                       height: boardSize,
                       width: _evalBarWidth,
+                      isFlipped: _isFlipped,
                     ),
                     SizedBox(width: 4.sp),
                     _GamebaseChessBoard(
                       fen: state.currentFen,
                       boardSize: boardSize,
+                      isFlipped: _isFlipped,
                     ),
                   ],
                 ),
@@ -256,7 +278,13 @@ class _GamebaseExplorerScreenState
                       top: Radius.circular(16.br),
                     ),
                   ),
-                  child: const MoveStatisticsPanel(),
+                  clipBehavior: Clip.antiAlias,
+                  child: Column(
+                    children: [
+                      const _ExplorerEngineLines(),
+                      const Expanded(child: MoveStatisticsPanel()),
+                    ],
+                  ),
                 ),
               ),
             ],
@@ -308,7 +336,7 @@ class _GamebaseExplorerScreenState
               borderRadius: BorderRadius.circular(8.br),
             ),
             child: Text(
-              'Analyze',
+              'Done',
               style: AppTypography.textSmMedium.copyWith(
                 color: kBackgroundColor,
               ),
@@ -422,10 +450,15 @@ class _GamebaseExplorerScreenState
 
 /// Chess board widget for displaying the current position.
 class _GamebaseChessBoard extends ConsumerWidget {
-  const _GamebaseChessBoard({required this.fen, required this.boardSize});
+  const _GamebaseChessBoard({
+    required this.fen,
+    required this.boardSize,
+    this.isFlipped = false,
+  });
 
   final String fen;
   final double boardSize;
+  final bool isFlipped;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -465,7 +498,7 @@ class _GamebaseChessBoard extends ConsumerWidget {
                     colorScheme: boardSettings.colorScheme,
                     pieceAssets: boardSettings.pieceAssets,
                   ),
-                  orientation: Side.white,
+                  orientation: isFlipped ? Side.black : Side.white,
                   fen: fen,
                 )
                 : Chessboard(
@@ -477,7 +510,7 @@ class _GamebaseChessBoard extends ConsumerWidget {
                     pieceShiftMethod: PieceShiftMethod.tapTwoSquares,
                     autoQueenPromotionOnPremove: false,
                   ),
-                  orientation: Side.white,
+                  orientation: isFlipped ? Side.black : Side.white,
                   fen: fen,
                   game: GameData(
                     playerSide:
@@ -499,79 +532,63 @@ class _GamebaseChessBoard extends ConsumerWidget {
   }
 }
 
-/// Eval bar for the standalone gamebase explorer, powered by
-/// [gameCardEvalWithStockfishFallbackProvider] (local → Supabase → Stockfish depth 8).
-class _ExplorerEvalBar extends ConsumerWidget {
+/// Eval bar for the standalone gamebase explorer, powered by local Stockfish
+/// with progressive depth updates via [explorerEvalProvider].
+class _ExplorerEvalBar extends ConsumerStatefulWidget {
   const _ExplorerEvalBar({
     required this.fen,
     required this.height,
     required this.width,
+    this.isFlipped = false,
   });
 
   final String fen;
   final double height;
   final double width;
+  final bool isFlipped;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    if (fen.isEmpty) {
-      return SizedBox(width: width, height: height);
-    }
-
-    final evalAsync = ref.watch(gameCardEvalWithStockfishFallbackProvider(fen));
-
-    return evalAsync.when(
-      data: (cloud) {
-        final pv = cloud.pvs.firstOrNull;
-        if (pv == null) {
-          return EvaluationBarWidget(
-            width: width,
-            height: height,
-            isFlipped: false,
-            evaluation: null,
-            mate: null,
-            isEvaluating: true,
-          );
-        }
-
-        final normalized = _normalizeEvalForDisplay(pv, fen);
-        final eval = normalized.eval;
-        final mate =
-            (normalized.isMate && normalized.mate != 0)
-                ? normalized.mate
-                : null;
-
-        return EvaluationBarWidget(
-          width: width,
-          height: height,
-          isFlipped: false,
-          evaluation: eval,
-          mate: mate,
-          isEvaluating: false,
-          positionKey: fen,
-        );
-      },
-      loading:
-          () => EvaluationBarWidget(
-            width: width,
-            height: height,
-            isFlipped: false,
-            evaluation: null,
-            mate: null,
-            isEvaluating: true,
-          ),
-      error: (_, __) => SizedBox(width: width, height: height),
-    );
-  }
+  ConsumerState<_ExplorerEvalBar> createState() => _ExplorerEvalBarState();
 }
 
-/// Normalize eval to White's perspective using the Pv's own perspective flag.
-({double eval, bool isMate, int mate}) _normalizeEvalForDisplay(Pv pv, String fen) {
-  final sign = pv.whitePerspective ? 1 : -1;
-  final isMate = pv.isMate && pv.mate != null;
-  final normalizedMate = (pv.mate ?? 0) * sign;
-  final normalizedEval = (pv.cp * sign) / 100.0;
-  return (eval: normalizedEval, isMate: isMate, mate: normalizedMate);
+class _ExplorerEvalBarState extends ConsumerState<_ExplorerEvalBar> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (widget.fen.isNotEmpty) {
+        ref.read(explorerEvalProvider.notifier).evaluatePosition(widget.fen);
+      }
+    });
+  }
+
+  @override
+  void didUpdateWidget(covariant _ExplorerEvalBar oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.fen != oldWidget.fen && widget.fen.isNotEmpty) {
+      ref.read(explorerEvalProvider.notifier).evaluatePosition(widget.fen);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.fen.isEmpty) {
+      return SizedBox(width: widget.width, height: widget.height);
+    }
+
+    final evalState = ref.watch(explorerEvalProvider);
+
+    return EvaluationBarWidget(
+      width: widget.width,
+      height: widget.height,
+      isFlipped: widget.isFlipped,
+      evaluation: evalState.evaluation,
+      mate: evalState.mate,
+      isEvaluating: evalState.isEvaluating,
+      positionKey: widget.fen,
+    );
+  }
 }
 
 /// Navigation controls for move history.
@@ -583,7 +600,7 @@ class _NavigationControls extends StatelessWidget {
     required this.onGoBack,
     required this.onGoForward,
     required this.onGoToEnd,
-    required this.onReset,
+    required this.onFlip,
   });
 
   final bool canGoBack;
@@ -592,7 +609,7 @@ class _NavigationControls extends StatelessWidget {
   final VoidCallback onGoBack;
   final VoidCallback onGoForward;
   final VoidCallback onGoToEnd;
-  final VoidCallback onReset;
+  final VoidCallback onFlip;
 
   @override
   Widget build(BuildContext context) {
@@ -613,7 +630,7 @@ class _NavigationControls extends StatelessWidget {
             tooltip: 'Previous move',
           ),
           SizedBox(width: 8.sp),
-          _NavButton(icon: Icons.refresh, onPressed: onReset, tooltip: 'Reset'),
+          _NavButton(icon: Icons.swap_vert, onPressed: onFlip, tooltip: 'Flip board'),
           SizedBox(width: 8.sp),
           _NavButton(
             icon: Icons.chevron_right,
@@ -898,5 +915,187 @@ class _RatingDropdown extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+/// Compact engine analysis lines displayed above the move statistics.
+/// Shows up to 3 Stockfish PV lines, each as a single horizontal row
+/// with an eval badge and SAN moves.
+class _ExplorerEngineLines extends ConsumerWidget {
+  const _ExplorerEngineLines();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final evalState = ref.watch(explorerEvalProvider);
+    final pvLines = evalState.pvLines;
+
+    if (pvLines.isEmpty) return const SizedBox.shrink();
+
+    final useFigurine = ref.watch(
+      boardSettingsProviderNew
+          .select((s) => s.valueOrNull?.useFigurine ?? false),
+    );
+    final pieceAssets = ref.watch(
+      boardSettingsProviderNew.select(
+        (s) =>
+            s.valueOrNull?.pieceAssets ?? const BoardSettingsNew().pieceAssets,
+      ),
+    );
+
+    final explorerState = ref.watch(gamebaseExplorerProvider);
+    final baseFen = explorerState.currentFen;
+    final fenParts = baseFen.split(' ');
+    final isWhiteToMove = fenParts.length > 1 ? fenParts[1] == 'w' : true;
+    final startMoveNumber =
+        fenParts.length > 5 ? (int.tryParse(fenParts[5]) ?? 1) : 1;
+
+    final lines = pvLines.take(3).toList();
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (var i = 0; i < lines.length; i++) ...[
+          if (i > 0)
+            Divider(
+              height: 1,
+              color: kDividerColor.withValues(alpha: 0.3),
+              indent: 12.sp,
+              endIndent: 12.sp,
+            ),
+          _EngineLine(
+            line: lines[i],
+            lineIndex: i,
+            isWhiteToMove: isWhiteToMove,
+            startMoveNumber: startMoveNumber,
+            useFigurine: useFigurine,
+            pieceAssets: pieceAssets,
+          ),
+        ],
+        Divider(color: kDividerColor, height: 1),
+      ],
+    );
+  }
+}
+
+/// Single engine line row: eval badge + SAN move text.
+class _EngineLine extends StatelessWidget {
+  const _EngineLine({
+    required this.line,
+    required this.lineIndex,
+    required this.isWhiteToMove,
+    required this.startMoveNumber,
+    required this.useFigurine,
+    required this.pieceAssets,
+  });
+
+  final ExplorerPvLine line;
+  final int lineIndex;
+  final bool isWhiteToMove;
+  final int startMoveNumber;
+  final bool useFigurine;
+  final PieceAssets pieceAssets;
+
+  @override
+  Widget build(BuildContext context) {
+    final evalText = line.displayEval;
+
+    // Eval badge: white bg for white advantage, dark for black, muted for equal.
+    final bool isWhiteWinning = (line.mate != null && line.mate! > 0) ||
+        (line.evaluation != null && line.evaluation! > 0.2);
+    final bool isBlackWinning = (line.mate != null && line.mate! < 0) ||
+        (line.evaluation != null && line.evaluation! < -0.2);
+
+    Color evalBgColor;
+    Color evalTextColor;
+    if (isWhiteWinning) {
+      evalBgColor = kWhiteColor;
+      evalTextColor = kBlack2Color;
+    } else if (isBlackWinning) {
+      evalBgColor = kDividerColor;
+      evalTextColor = kWhiteColor;
+    } else {
+      evalBgColor = kSecondaryTextColor.withValues(alpha: 0.3);
+      evalTextColor = kWhiteColor;
+    }
+
+    final moveText = _formatMoveText();
+    final moveStyle = TextStyle(
+      color: kWhiteColor.withValues(alpha: lineIndex == 0 ? 0.9 : 0.6),
+      fontSize: 12.f,
+      fontWeight: lineIndex == 0 ? FontWeight.w500 : FontWeight.w400,
+    );
+
+    return Padding(
+      padding: EdgeInsets.symmetric(vertical: 5.sp, horizontal: 12.sp),
+      child: Row(
+        children: [
+          // Eval badge
+          Container(
+            width: 44.w,
+            padding: EdgeInsets.symmetric(vertical: 2.sp),
+            decoration: BoxDecoration(
+              color: evalBgColor,
+              borderRadius: BorderRadius.circular(3.br),
+            ),
+            child: Text(
+              evalText,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: evalTextColor,
+                fontSize: 11.f,
+                fontWeight: FontWeight.w700,
+                fontFeatures: const [FontFeature.tabularFigures()],
+              ),
+            ),
+          ),
+          SizedBox(width: 8.sp),
+          // Moves
+          Expanded(
+            child: useFigurine
+                ? RichText(
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    text: TextSpan(
+                      children: buildFigurineSpans(
+                        text: moveText,
+                        pieceAssets: pieceAssets,
+                        style: moveStyle,
+                        pieceSize: 14.f,
+                      ),
+                    ),
+                  )
+                : Text(
+                    moveText,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: moveStyle,
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _formatMoveText() {
+    if (line.sanMoves.isEmpty) return '';
+    final buffer = StringBuffer();
+    var moveNum = startMoveNumber;
+    var isWhite = isWhiteToMove;
+
+    for (var i = 0; i < line.sanMoves.length; i++) {
+      if (isWhite) {
+        if (i > 0) buffer.write(' ');
+        buffer.write('$moveNum.');
+      } else if (i == 0) {
+        buffer.write('$moveNum...');
+      } else {
+        buffer.write(' ');
+      }
+      buffer.write(line.sanMoves[i]);
+
+      if (!isWhite) moveNum++;
+      isWhite = !isWhite;
+    }
+    return buffer.toString();
   }
 }

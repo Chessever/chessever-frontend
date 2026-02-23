@@ -275,7 +275,7 @@ class _BoardEditorScreenState extends ConsumerState<BoardEditorScreen> {
         _analysisBlackName = blackName.isNotEmpty ? blackName : 'Black';
       });
       ref.read(boardEditorProvider.notifier).loadFen(startFen);
-      _showSnack('PGN loaded. Analysis will keep moves and headers.');
+      _onDone();
     } catch (e) {
       _showSnack(
         'Failed to parse PGN',
@@ -549,7 +549,7 @@ class _BoardEditorScreenState extends ConsumerState<BoardEditorScreen> {
                 borderRadius: BorderRadius.circular(8.br),
               ),
               child: Text(
-                'Analyze',
+                'Done',
                 style: AppTypography.textSmMedium.copyWith(
                   color: kBackgroundColor,
                 ),

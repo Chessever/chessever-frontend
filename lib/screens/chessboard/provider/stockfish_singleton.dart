@@ -527,20 +527,24 @@ class StockfishSingleton {
               final pv = Pv(moves: moves, cp: cp, isMate: true, mate: mate);
               pvs[multipvIndex - 1] = pv;
             }
-          }
 
-          // Emit PV snapshot updates once per increased depth
-          if (job.onPvUpdate != null &&
-              finalDepth > lastPvUpdateDepthReported) {
-            final snapshot = pvs
-                .where((pv) => pv.moves.isNotEmpty)
-                .toList(growable: false);
-            if (snapshot.isNotEmpty) {
-              try {
-                job.onPvUpdate!(snapshot, finalDepth);
-                lastPvUpdateDepthReported = finalDepth;
-              } catch (_) {
-                // Ignore callback errors
+            // Emit PV snapshot after parsing actual PV data.
+            // CRITICAL: This must be inside the pvMatch block so that
+            // non-PV info lines (currmove, stats) don't consume
+            // lastPvUpdateDepthReported — which would prevent the real
+            // PV lines at the same depth from being emitted.
+            if (job.onPvUpdate != null &&
+                finalDepth > lastPvUpdateDepthReported) {
+              final snapshot = pvs
+                  .where((pv) => pv.moves.isNotEmpty)
+                  .toList(growable: false);
+              if (snapshot.isNotEmpty) {
+                try {
+                  job.onPvUpdate!(snapshot, finalDepth);
+                  lastPvUpdateDepthReported = finalDepth;
+                } catch (_) {
+                  // Ignore callback errors
+                }
               }
             }
           }

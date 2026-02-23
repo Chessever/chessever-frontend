@@ -34,7 +34,6 @@ import 'package:chessever2/screens/player_profile/player_profile_data_source.dar
 import 'package:chessever2/screens/player_profile/player_profile_screen.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
-import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:motor/motor.dart';
 
@@ -738,12 +737,7 @@ class ScoreCardScreen extends ConsumerWidget {
                           index: index,
                           isFirst: index == 0,
                           isLast: index == playerGames.length - 1,
-                          onTap: () async {
-                            final hasPremium =
-                                await requirePremiumGuard(context, ref);
-                            if (!hasPremium) return;
-                            if (!context.mounted) return;
-
+                          onTap: () {
                             if (ref.read(selectedBroadcastModelProvider) ==
                                 null) {
                               ref

@@ -4811,10 +4811,14 @@ class ChessBoardScreenNotifierNew
           );
         },
         onPvUpdate: (pvs, depth) {
-          Future<void>(() async {
+          // CRITICAL: Update evaluation synchronously so the eval bar
+          // never stalls while depth keeps increasing. Previously, the
+          // entire callback was wrapped in Future<void> which could
+          // silently bail at guard conditions or throw, leaving the
+          // eval bar stuck on "..." while onDepthUpdate (synchronous)
+          // kept advancing the depth display.
+          try {
             if (!mounted) return;
-            final visiblePage = ref.read(currentlyVisiblePageIndexProvider);
-            if (visiblePage != index && !isCurrentlyVisible) return;
             final currentState = state.value;
             if (currentState == null) return;
             final pos =
@@ -4844,72 +4848,91 @@ class ChessBoardScreenNotifierNew
             final isPvMilestone = depth <= 1 || depth % 4 == 0;
             if (!isPvMilestone) return;
 
-            var lines = await _buildPrincipalVariations(fenToAnalyze, pvs);
-            if (lines.isEmpty) return;
-            if (lines.length > multiPV) {
-              lines = lines.take(multiPV).toList(growable: false);
-            }
+            // Build PV lines asynchronously — the heavy work is
+            // deferred but eval bar is already updated above.
+            Future<void>(() async {
+              try {
+                if (!mounted) return;
+                final visiblePage = ref.read(currentlyVisiblePageIndexProvider);
+                if (visiblePage != index && !isCurrentlyVisible) return;
 
-            primaryEval = CloudEval(
-              fen: fenToAnalyze,
-              knodes: 0,
-              depth: depth,
-              pvs: pvs,
-              requestedMultiPv: multiPV,
-            );
-            final mergedLines = _mergePvProgress(
-              workingState.principalVariations,
-              lines,
-            );
-            pvLines = mergedLines;
+                var lines = await _buildPrincipalVariations(fenToAnalyze, pvs);
+                if (lines.isEmpty) return;
+                if (lines.length > multiPV) {
+                  lines = lines.take(multiPV).toList(growable: false);
+                }
 
-            final progress =
-                pendingProgress ??
-                EngineSearchProgress(
+                if (!mounted) return;
+
+                primaryEval = CloudEval(
+                  fen: fenToAnalyze,
+                  knodes: 0,
                   depth: depth,
-                  kiloNodes: 0,
-                  fenFragment: fenToAnalyze,
+                  pvs: pvs,
+                  requestedMultiPv: multiPV,
                 );
-            if (pendingProgress == null) {
-              depthTracker.update(
-                component: EngineComponent.evaluationGauge,
-                progress: progress,
-                context: 'progressive D:$depth',
-                allowDecrease: !preserveDepthProgress,
-              );
-            }
-            depthTracker.update(
-              component: EngineComponent.principalVariation,
-              progress: progress,
-              context: 'progressive D:$depth',
-              allowDecrease: !preserveDepthProgress,
-            );
-            pendingProgress = null;
 
-            final basePointer =
-                workingState.isAnalysisMode
-                    ? workingState.analysisState.movePointer
-                    : null;
-            final hasPrimaryPv = mergedLines.isNotEmpty;
-            final nextState = workingState.copyWith(
-              evaluation: newEval,
-              isEvaluating: !hasPrimaryPv,
-              mate: mateScore,
-              principalVariations: mergedLines,
-              principalVariationsBaseFen: fen,
-              analysisState: workingState.analysisState.copyWith(
-                suggestionLines: mergedLines,
-              ),
-            );
-            state = AsyncValue.data(nextState);
-            _applyPrincipalVariationResults(
-              currentState: nextState,
-              currentPosition: pos,
-              baseFen: fen,
-              baseMovePointer: basePointer,
-              pvLines: mergedLines,
-            );
-          });
+                // Re-read state to avoid overwriting concurrent updates
+                final freshState = state.value ?? workingState;
+                final mergedLines = _mergePvProgress(
+                  freshState.principalVariations,
+                  lines,
+                );
+                pvLines = mergedLines;
+
+                final progress =
+                    pendingProgress ??
+                    EngineSearchProgress(
+                      depth: depth,
+                      kiloNodes: 0,
+                      fenFragment: fenToAnalyze,
+                    );
+                if (pendingProgress == null) {
+                  depthTracker.update(
+                    component: EngineComponent.evaluationGauge,
+                    progress: progress,
+                    context: 'progressive D:$depth',
+                    allowDecrease: !preserveDepthProgress,
+                  );
+                }
+                depthTracker.update(
+                  component: EngineComponent.principalVariation,
+                  progress: progress,
+                  context: 'progressive D:$depth',
+                  allowDecrease: !preserveDepthProgress,
+                );
+                pendingProgress = null;
+
+                final basePointer =
+                    freshState.isAnalysisMode
+                        ? freshState.analysisState.movePointer
+                        : null;
+                final hasPrimaryPv = mergedLines.isNotEmpty;
+                final nextState = freshState.copyWith(
+                  evaluation: newEval,
+                  isEvaluating: !hasPrimaryPv,
+                  mate: mateScore,
+                  principalVariations: mergedLines,
+                  principalVariationsBaseFen: fen,
+                  analysisState: freshState.analysisState.copyWith(
+                    suggestionLines: mergedLines,
+                  ),
+                );
+                state = AsyncValue.data(nextState);
+                _applyPrincipalVariationResults(
+                  currentState: nextState,
+                  currentPosition: pos,
+                  baseFen: fen,
+                  baseMovePointer: basePointer,
+                  pvLines: mergedLines,
+                );
+              } catch (e) {
+                _releaseLog('⚠️ PV BUILD: Error building PV lines: $e');
+              }
+            });
+          } catch (e) {
+            _releaseLog('⚠️ PV UPDATE: Error in synchronous eval update: $e');
+          }
         },
       );
 
