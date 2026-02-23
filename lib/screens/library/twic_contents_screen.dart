@@ -546,9 +546,9 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen> {
       enabled: true,
       ignoreContainers: true,
       effect: const ShimmerEffect(
-        baseColor: Color(0xFF2A2A2A),
-        highlightColor: Color(0xFF3A3A3A),
-        duration: Duration(seconds: 1),
+        baseColor: Color(0xFF2E2E32),
+        highlightColor: Color(0xFF48484E),
+        duration: Duration(milliseconds: 1200),
       ),
       child: ListView.separated(
         physics: const NeverScrollableScrollPhysics(),
@@ -648,9 +648,9 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen> {
           enabled: true,
           ignoreContainers: true,
           effect: const ShimmerEffect(
-            baseColor: Color(0xFF2A2A2A),
-            highlightColor: Color(0xFF3A3A3A),
-            duration: Duration(seconds: 1),
+            baseColor: Color(0xFF2E2E32),
+            highlightColor: Color(0xFF48484E),
+            duration: Duration(milliseconds: 1200),
           ),
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
@@ -843,20 +843,29 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen> {
 class _SkeletonGameCard extends StatelessWidget {
   const _SkeletonGameCard();
 
+  // Passive variants of real LibraryGameCard colors:
+  // Real top gradient: 0xFFDDDDE0 → 0xFFADAEB3
+  // Real bottom: 0xFF1A1A1C
+  // Real outer: 0xFF2E2E2E
+  static const _outerBg = Color(0xFF242426);
+  static const _topBg = Color(0xFF38383C);
+  static const _bottomBg = Color(0xFF1C1C1E);
+  static const _boneRadius = 4.0;
+
   @override
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0xFF2E2E2E),
+        color: _outerBg,
         borderRadius: BorderRadius.circular(12.br),
       ),
       child: Column(
         children: [
-          // Top section — matches LibraryGameCard light gradient area
+          // Top section — muted version of the light player area
           Container(
             padding: EdgeInsets.fromLTRB(14.w, 10.h, 14.w, 10.h),
             decoration: BoxDecoration(
-              color: const Color(0xFFCCCCD0),
+              color: _topBg,
               borderRadius: BorderRadius.vertical(
                 top: Radius.circular(12.br),
               ),
@@ -871,13 +880,13 @@ class _SkeletonGameCard extends StatelessWidget {
                       Bone(
                         width: 100.w,
                         height: 14.h,
-                        borderRadius: BorderRadius.circular(4.br),
+                        borderRadius: BorderRadius.circular(_boneRadius.br),
                       ),
                       SizedBox(height: 4.h),
                       Bone(
                         width: 60.w,
                         height: 12.h,
-                        borderRadius: BorderRadius.circular(4.br),
+                        borderRadius: BorderRadius.circular(_boneRadius.br),
                       ),
                     ],
                   ),
@@ -888,7 +897,7 @@ class _SkeletonGameCard extends StatelessWidget {
                   child: Bone(
                     width: 40.w,
                     height: 20.h,
-                    borderRadius: BorderRadius.circular(4.br),
+                    borderRadius: BorderRadius.circular(_boneRadius.br),
                   ),
                 ),
                 // Right player
@@ -901,7 +910,7 @@ class _SkeletonGameCard extends StatelessWidget {
                         child: Bone(
                           width: 90.w,
                           height: 14.h,
-                          borderRadius: BorderRadius.circular(4.br),
+                          borderRadius: BorderRadius.circular(_boneRadius.br),
                         ),
                       ),
                       SizedBox(height: 4.h),
@@ -910,7 +919,7 @@ class _SkeletonGameCard extends StatelessWidget {
                         child: Bone(
                           width: 50.w,
                           height: 12.h,
-                          borderRadius: BorderRadius.circular(4.br),
+                          borderRadius: BorderRadius.circular(_boneRadius.br),
                         ),
                       ),
                     ],
@@ -919,29 +928,32 @@ class _SkeletonGameCard extends StatelessWidget {
               ],
             ),
           ),
-          // Bottom section — dark bar with event info
+          // Bottom section — muted dark bar
           Container(
             padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 5.h),
             decoration: BoxDecoration(
-              color: const Color(0xFF1A1A1C),
+              color: _bottomBg,
               borderRadius: BorderRadius.vertical(
                 bottom: Radius.circular(12.br),
               ),
             ),
             child: Row(
               children: [
-                Bone.square(size: 14.sp, borderRadius: BorderRadius.circular(2.br)),
+                Bone.square(
+                  size: 14.sp,
+                  borderRadius: BorderRadius.circular(2.br),
+                ),
                 SizedBox(width: 4.w),
                 Bone(
                   width: 120.w,
                   height: 12.h,
-                  borderRadius: BorderRadius.circular(4.br),
+                  borderRadius: BorderRadius.circular(_boneRadius.br),
                 ),
                 const Spacer(),
                 Bone(
                   width: 60.w,
                   height: 12.h,
-                  borderRadius: BorderRadius.circular(4.br),
+                  borderRadius: BorderRadius.circular(_boneRadius.br),
                 ),
               ],
             ),
