@@ -9,6 +9,7 @@ import 'package:chessever2/screens/library/widgets/add_to_folder_sheet.dart';
 import 'package:chessever2/screens/library/widgets/live_gamebase_search_game_card.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/grid_game_card_wrapper_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/live_game_card_provider.dart';
