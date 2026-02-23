@@ -485,12 +485,13 @@ class _PlusButton extends StatelessWidget {
       child: Container(
         width: 36.h,
         height: 36.h,
-        padding: EdgeInsets.all(8.sp),
         decoration: BoxDecoration(
           color: const Color(0xFF262626),
           borderRadius: BorderRadius.circular(10.br),
         ),
-        child: Icon(Icons.add, size: 20.sp, color: const Color(0xFFFFFFFF)),
+        child: Center(
+          child: Icon(Icons.add, size: 20.sp, color: const Color(0xFFFFFFFF)),
+        ),
       ),
     );
   }
