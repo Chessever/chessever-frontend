@@ -444,6 +444,32 @@ void _initializePostStartupServices() {
           unawaited(stockfish.forceRecovery());
         }
 
+        // Proactively refresh auth token when app resumes from background.
+        // This prevents stale/expired tokens after long background periods.
+        unawaited(
+          Future(() async {
+            try {
+              final auth = Supabase.instance.client.auth;
+              final session = auth.currentSession;
+              if (session != null) {
+                final expiresAt = session.expiresAt;
+                if (expiresAt != null) {
+                  final expiresInSeconds =
+                      DateTime.fromMillisecondsSinceEpoch(expiresAt * 1000)
+                          .difference(DateTime.now())
+                          .inSeconds;
+                  // Refresh if token expires within 60 seconds or already expired
+                  if (expiresInSeconds < 60) {
+                    await auth.refreshSession();
+                  }
+                }
+              }
+            } catch (e) {
+              debugPrint('⚠️ Token refresh on resume failed: $e');
+            }
+          }),
+        );
+
         // Sync purchases when app comes to foreground
         final revenueCat = RevenueCatService();
         if (revenueCat.onAppResumeCallback != null) {

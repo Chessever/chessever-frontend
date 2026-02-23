@@ -54,6 +54,14 @@ class _GamebaseExplorerScreenState
     });
   }
 
+  @override
+  void dispose() {
+    // Clear filters when leaving the standalone explorer so they don't
+    // bleed into the shared provider (used by the chessboard overlay too).
+    ref.read(gamebaseExplorerProvider.notifier).clearFilters();
+    super.dispose();
+  }
+
   static final double _evalBarWidth = 20.sp;
 
   Widget _buildNavigationControls() {
@@ -557,13 +565,10 @@ class _ExplorerEvalBar extends ConsumerWidget {
   }
 }
 
-/// Normalize eval for display using FEN side-to-move, matching
-/// chess_board_screen_new.dart's _getConsistentEvaluation approach.
+/// Normalize eval to White's perspective using the Pv's own perspective flag.
 ({double eval, bool isMate, int mate}) _normalizeEvalForDisplay(Pv pv, String fen) {
+  final sign = pv.whitePerspective ? 1 : -1;
   final isMate = pv.isMate && pv.mate != null;
-  final fenParts = fen.split(' ');
-  final isBlackToMove = fenParts.length >= 2 && fenParts[1] == 'b';
-  final sign = isBlackToMove ? -1 : 1;
   final normalizedMate = (pv.mate ?? 0) * sign;
   final normalizedEval = (pv.cp * sign) / 100.0;
   return (eval: normalizedEval, isMate: isMate, mate: normalizedMate);

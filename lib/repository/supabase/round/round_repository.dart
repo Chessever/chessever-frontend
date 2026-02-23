@@ -151,30 +151,46 @@ class RoundRepository extends BaseRepository {
 
   Future<Round?> getLatestRoundByLastMove(String tourId) async {
     return handleApiCall(() async {
+      // Primary: find round with most recent last_move_time (precise timestamp)
       final response = await supabase
           .from('games')
           .select('round:round_id(id,slug,tour_id,tour_slug,name,created_at,starts_at,url),round_id,last_move_time')
           .eq('tour_id', tourId)
-          .not('last_move', 'is', null)
+          .not('last_move_time', 'is', null)
           .order('last_move_time', ascending: false)
           .limit(1);
 
-      if (response.isEmpty) {
-        return null;
+      if (response.isNotEmpty) {
+        final round = _roundFromRow(response.first);
+        if (round != null) return round;
       }
 
-      final row = response.first;
-      final roundJson = row['round'];
-      if (roundJson is Map<String, dynamic>) {
-        return Round.fromJson(roundJson);
-      }
+      // Fallback: use game_day (date-only, near-universal coverage)
+      final fallbackResponse = await supabase
+          .from('games')
+          .select('round:round_id(id,slug,tour_id,tour_slug,name,created_at,starts_at,url),round_id,game_day')
+          .eq('tour_id', tourId)
+          .not('last_move', 'is', null)
+          .not('game_day', 'is', null)
+          .order('game_day', ascending: false)
+          .limit(1);
 
-      final roundId = row['round_id'];
-      if (roundId is String && roundId.isNotEmpty) {
-        return await getRoundById(roundId);
+      if (fallbackResponse.isNotEmpty) {
+        final round = _roundFromRow(fallbackResponse.first);
+        if (round != null) return round;
       }
 
       return null;
     });
+  }
+
+  Round? _roundFromRow(Map<String, dynamic> row) {
+    final roundJson = row['round'];
+    if (roundJson is Map<String, dynamic>) {
+      try {
+        return Round.fromJson(roundJson);
+      } catch (_) {}
+    }
+    return null;
   }
 }

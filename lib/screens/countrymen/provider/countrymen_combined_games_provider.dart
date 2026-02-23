@@ -407,6 +407,7 @@ class CountrymenCombinedGamesNotifier
       final dayGames = await gameRepo.getGamesByCountryAndDate(
         countryCode: fideCode,
         date: date,
+        eco: state.filter.eco.isAll ? null : state.filter.eco.code,
       );
 
       debugPrint('[CountrymenGames] Got ${dayGames.length} games for ${date.toString().split(' ')[0]}');
@@ -521,8 +522,24 @@ class CountrymenCombinedGamesNotifier
 
   /// Apply a new filter to the games
   void applyFilter(GameFilter filter) {
-    debugPrint('[CountrymenGames] Applying filter: result=${filter.result}, color=${filter.color}, timeControl=${filter.timeControl}');
+    debugPrint('[CountrymenGames] Applying filter: result=${filter.result}, color=${filter.color}, timeControl=${filter.timeControl}, eco=${filter.eco.code}');
+    final ecoChanged = filter.eco != state.filter.eco;
     state = state.copyWith(filter: filter);
+
+    // ECO filter is applied server-side, so we need to refetch
+    if (ecoChanged) {
+      _availableDates = [];
+      _hasMoreDates = true;
+      state = state.copyWith(
+        games: [],
+        seenGameIds: {},
+        loadedDates: [],
+        dateOffset: 0,
+        hasMore: true,
+        isLoading: true,
+      );
+      _fetchNextDates(isInitial: true);
+    }
   }
 
   /// Clear all filters

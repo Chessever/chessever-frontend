@@ -92,78 +92,86 @@ class SessionManager {
   Future<bool> _isLoggedInInternal() async {
     final auth = Supabase.instance.client.auth;
 
-    // First check if Supabase already has an active, non-expired session.
-    final currentSession = auth.currentSession;
-    if (currentSession != null) {
-      if (!currentSession.isExpired) {
-        return true;
-      }
+    // The Supabase SDK recovers and refreshes the persisted session during
+    // Supabase.initialize(). By this point, currentSession reflects the SDK's
+    // best-effort recovery. We must avoid calling refreshSession() with an
+    // explicit (potentially stale) refresh token — rotating refresh tokens mean
+    // the SDK may have already consumed it, and a second attempt would fail and
+    // leave us in an inconsistent state.
 
-      // Expired session found in memory. Try refresh before declaring unauthenticated.
+    final currentSession = auth.currentSession;
+    final currentUser = auth.currentUser;
+
+    // Valid non-expired session — user is logged in.
+    if (currentUser != null &&
+        currentSession != null &&
+        !currentSession.isExpired) {
+      return true;
+    }
+
+    // Expired session in memory. Try ONE refresh using the SDK's latest state
+    // (no explicit token — avoids race with SDK's own auto-refresh).
+    if (currentSession != null && currentSession.isExpired) {
       try {
-        final refreshed = await auth.refreshSession(
-          currentSession.refreshToken,
-        );
-        final refreshedUser = refreshed.user;
+        final refreshed = await auth.refreshSession();
         final refreshedSession = refreshed.session;
+        final refreshedUser = refreshed.user;
         if (refreshedUser != null &&
             refreshedSession != null &&
             !refreshedSession.isExpired) {
           await saveSession(refreshedSession, refreshedUser);
           return true;
         }
-      } catch (_) {
-        // Ignore and fall through to local recovery/cleanup.
+      } catch (e) {
+        if (kDebugMode) {
+          debugPrint('⚠️ Session refresh failed: $e');
+        }
+        // IMPORTANT: Do NOT call signOut here. The refresh token may have been
+        // consumed by a concurrent SDK refresh. Calling signOut(local) would
+        // nuke the SDK's freshly refreshed session and fire a signedOut event,
+        // causing a false logout. Just clean our own backup storage silently.
+        await _clearOwnStorageQuietly();
       }
-
-      // Ensure stale token is removed so app requests don't send expired JWTs.
-      await _clearStaleSession();
-      return false;
     }
 
-    // If no current session, try to recover from local storage
-    final prefs = await SharedPreferencesService.instance.ensureInitialized();
-    if (prefs == null) return false;
-
-    final sessionStr = prefs.getString(_keyPersistSession);
-
-    if (sessionStr == null) return false;
-
-    try {
-      final response = await auth.recoverSession(sessionStr);
-
-      var user = response.user;
-      var session = response.session;
-
-      if (user != null && session != null && session.isExpired) {
-        // Recovered session exists but access token is already expired. Refresh it.
-        final refreshed = await auth.refreshSession(session.refreshToken);
-        user = refreshed.user;
-        session = refreshed.session;
+    // No in-memory session. The SDK either had nothing to recover or recovery
+    // failed during init. Try our own SharedPreferences backup as last resort
+    // (covers edge case where SafeSupabaseLocalStorage fell back to memory).
+    if (currentSession == null) {
+      final prefs = await SharedPreferencesService.instance.ensureInitialized();
+      if (prefs != null) {
+        final sessionStr = prefs.getString(_keyPersistSession);
+        if (sessionStr != null) {
+          try {
+            final response = await auth.recoverSession(sessionStr);
+            final session = response.session;
+            final user = response.user;
+            if (user != null && session != null && !session.isExpired) {
+              await saveSession(session, user);
+              return true;
+            }
+          } catch (e) {
+            if (kDebugMode) {
+              debugPrint('⚠️ Local session recovery failed: $e');
+            }
+          }
+          // Recovery failed — clean our stale copy silently.
+          await _clearOwnStorageQuietly();
+        }
       }
-
-      if (user != null && session != null && !session.isExpired) {
-        await saveSession(session, user);
-        return true;
-      }
-
-      // Session invalid - clear local storage
-      await _clearStaleSession();
-      return false;
-    } catch (e) {
-      // Session recovery failed - clear local storage
-      await _clearStaleSession();
-      return false;
     }
+
+    return false;
   }
 
-  Future<void> _clearStaleSession() async {
-    try {
-      await Supabase.instance.client.auth.signOut(scope: SignOutScope.local);
-    } catch (_) {
-      // Best effort. Local storage cleanup below is the critical step.
+  /// Silently clears our own session keys without calling signOut or firing
+  /// auth events. This is safe to call during session checks.
+  Future<void> _clearOwnStorageQuietly() async {
+    final prefs = await SharedPreferencesService.instance.ensureInitialized();
+    if (prefs != null) {
+      await prefs.remove(_keyPersistSession);
+      await prefs.remove(_keyPersistUser);
     }
-    await clearLocalStorage();
   }
 
   Future<String?> getUserInitials() async {

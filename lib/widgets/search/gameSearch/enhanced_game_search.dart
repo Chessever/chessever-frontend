@@ -71,6 +71,19 @@ extension GamesLocalStorageEnhancedSearch on GamesLocalStorage {
           }
         }
 
+        // Check ECO code and opening name
+        if (!hasMatch) {
+          final eco = game.eco?.toLowerCase() ?? '';
+          final openingName = game.openingName?.toLowerCase() ?? '';
+          if (eco.isNotEmpty && _allTokensMatch(queryTokens, eco)) {
+            hasMatch = true;
+            matchedText = game.eco!;
+          } else if (openingName.isNotEmpty && _allTokensMatch(queryTokens, openingName)) {
+            hasMatch = true;
+            matchedText = game.openingName!;
+          }
+        }
+
         if (hasMatch) {
           results.add(
             GameSearchResult(
