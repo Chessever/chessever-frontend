@@ -1,6 +1,8 @@
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/screens/group_event/providers/group_event_screen_provider.dart';
 import 'package:chessever2/screens/group_event/providers/supabase_combined_search_provider.dart';
+import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_provider.dart';
+import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_state.dart';
 import 'package:chessever2/screens/group_event/widget/player_search_cards.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -41,6 +43,9 @@ class SearchResultsWidget extends HookConsumerWidget {
       supabaseCombinedSearchProvider(searchQuery.trim()),
     );
 
+    // Watch search filter state
+    final searchFilter = ref.watch(searchAppliedFilterProvider);
+
     // Clear animation tracking when query changes
     useEffect(() {
       searchAnimatedEventIds.clear();
@@ -53,7 +58,14 @@ class SearchResultsWidget extends HookConsumerWidget {
 
     return searchResultsAsync.when(
       data: (results) {
-        final tournaments = results.tournamentResults;
+        var tournaments = results.tournamentResults
+            .map((r) => r.tournament)
+            .toList();
+
+        // Apply client-side filter if active
+        if (searchFilter != defaultFilterPopupState) {
+          tournaments = _applySearchFilter(tournaments, searchFilter);
+        }
 
         if (tournaments.isEmpty && results.playerResults.isEmpty) {
           return _buildEmptyState(context, searchQuery);
@@ -61,7 +73,7 @@ class SearchResultsWidget extends HookConsumerWidget {
 
         return _SearchResultsListView(
           scrollController: scrollController,
-          tournaments: tournaments.map((r) => r.tournament).toList(),
+          tournaments: tournaments,
           searchQuery: searchQuery,
         );
       },
@@ -374,4 +386,48 @@ class _SearchEventCardState extends ConsumerState<_SearchEventCard>
 
     return card;
   }
+}
+
+/// Filters search results by format, status, and ELO range.
+List<GroupEventCardModel> _applySearchFilter(
+  List<GroupEventCardModel> tournaments,
+  FilterPopupState filter,
+) {
+  final filterSet =
+      filter.formatsAndStates
+          .map((f) => f.trim().toLowerCase())
+          .where((f) => f.isNotEmpty)
+          .toSet();
+  final requestedStatuses =
+      <String>{'live', 'completed'}.intersection(filterSet);
+  final requestedFormats = filterSet.difference(requestedStatuses);
+
+  final hasEloFilter =
+      filter.eloRange.start > defaultFilterPopupState.eloRange.start ||
+      filter.eloRange.end < defaultFilterPopupState.eloRange.end;
+
+  return tournaments.where((tour) {
+    if (requestedStatuses.isNotEmpty) {
+      final isLive =
+          tour.tourEventCategory == TourEventCategory.live ||
+          tour.tourEventCategory == TourEventCategory.ongoing;
+      final matchesStatus =
+          (requestedStatuses.contains('live') && isLive) ||
+          (requestedStatuses.contains('completed') && !isLive);
+      if (!matchesStatus) return false;
+    }
+
+    if (requestedFormats.isNotEmpty) {
+      final tourFormat = tour.timeControl.trim().toLowerCase();
+      if (!requestedFormats.contains(tourFormat)) return false;
+    }
+
+    if (hasEloFilter && tour.maxAvgElo > 0) {
+      final minElo = filter.eloRange.start.round();
+      final maxElo = filter.eloRange.end.round();
+      if (tour.maxAvgElo < minElo || tour.maxAvgElo > maxElo) return false;
+    }
+
+    return true;
+  }).toList();
 }

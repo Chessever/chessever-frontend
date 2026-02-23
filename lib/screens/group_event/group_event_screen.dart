@@ -55,6 +55,7 @@ class GroupEventScreen extends HookConsumerWidget {
     final hasActiveSearch = searchQuery.trim().isNotEmpty;
     final forYouFilterState = ref.watch(forYouAppliedFilterProvider);
     final currentPastFilterState = ref.watch(currentPastAppliedFilterProvider);
+    final searchFilterState = ref.watch(searchAppliedFilterProvider);
 
     int activeFilterCount(FilterPopupState state) {
       final rangeChanged =
@@ -69,6 +70,8 @@ class GroupEventScreen extends HookConsumerWidget {
             : selectedTourEvent == GroupEventCategory.current ||
                 selectedTourEvent == GroupEventCategory.past
             ? activeFilterCount(currentPastFilterState)
+            : selectedTourEvent == GroupEventCategory.search
+            ? activeFilterCount(searchFilterState)
             : 0;
 
     // Determine which categories to show (search tab only appears when searching)
@@ -266,6 +269,11 @@ class GroupEventScreen extends HookConsumerWidget {
                           ref
                               .read(filterPopupProvider.notifier)
                               .setState(currentPastFilterState);
+                        } else if (selectedTourEvent ==
+                            GroupEventCategory.search) {
+                          ref
+                              .read(filterPopupProvider.notifier)
+                              .setState(searchFilterState);
                         }
 
                         showDialog(
@@ -283,6 +291,16 @@ class GroupEventScreen extends HookConsumerWidget {
                                         )
                                         .state = filterState;
                                     ref.invalidate(forYouEventsProvider);
+                                    return;
+                                  }
+
+                                  if (selectedTourEvent ==
+                                      GroupEventCategory.search) {
+                                    ref
+                                        .read(
+                                          searchAppliedFilterProvider.notifier,
+                                        )
+                                        .state = filterState;
                                     return;
                                   }
 
@@ -304,6 +322,16 @@ class GroupEventScreen extends HookConsumerWidget {
                                         )
                                         .state = defaultFilterPopupState;
                                     ref.invalidate(forYouEventsProvider);
+                                    return;
+                                  }
+
+                                  if (selectedTourEvent ==
+                                      GroupEventCategory.search) {
+                                    ref
+                                        .read(
+                                          searchAppliedFilterProvider.notifier,
+                                        )
+                                        .state = defaultFilterPopupState;
                                     return;
                                   }
 
