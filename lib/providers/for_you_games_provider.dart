@@ -443,21 +443,26 @@ final eventGamesProvider = FutureProvider.autoDispose
     return result;
   }
 
-  // Find the latest round number among games that have actually started
-  int latestRoundNum = 0;
+  // Find the latest round by time (most recent activity) rather than round number.
+  // This correctly handles events where rounds are played out of order or have
+  // non-standard naming (e.g., tiebreaks, knockout stages).
+  // Priority: lastMoveTime (precise) > gameDay (date-only, near-universal)
+  String? latestRoundId;
+  DateTime? latestTime;
   for (final game in allGames) {
-    final roundNum = _extractRoundNumber(game.roundSlug);
-    if (roundNum > latestRoundNum) {
-      latestRoundNum = roundNum;
+    final time = game.lastMoveTime ?? game.gameDay;
+    if (time != null && (latestTime == null || time.isAfter(latestTime))) {
+      latestTime = time;
+      latestRoundId = game.roundId;
     }
   }
 
-  // Filter to only games from the latest started round
-  final latestRoundGames = allGames.where((game) {
-    return _extractRoundNumber(game.roundSlug) == latestRoundNum;
-  }).toList();
+  // Filter to only games from the latest round
+  final latestRoundGames = latestRoundId != null
+      ? allGames.where((game) => game.roundId == latestRoundId).toList()
+      : allGames;
 
-  debugPrint('[ForYou] Latest started round: $latestRoundNum with ${latestRoundGames.length} games');
+  debugPrint('[ForYou] Latest round by time: $latestRoundId with ${latestRoundGames.length} games');
 
   if (latestRoundGames.isEmpty) {
     return [];
@@ -468,7 +473,7 @@ final eventGamesProvider = FutureProvider.autoDispose
 
   // Return first 4 games
   final result = sortedGames.take(kGamesPerEvent).toList();
-  debugPrint('[ForYou] Selected ${result.length} games for event $eventId (from ${latestRoundGames.length} in round $latestRoundNum)');
+  debugPrint('[ForYou] Selected ${result.length} games for event $eventId (from ${latestRoundGames.length} in round $latestRoundId)');
   return result;
 });
 

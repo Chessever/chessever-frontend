@@ -740,9 +740,9 @@ class GameRepository extends BaseRepository {
           .select(_gameListSelectColumns)
           .contains('player_feds', [normalizedCode]);
 
-      // Add text search if query provided
+      // Add text search if query provided (searches player names, ECO code, and opening name)
       if (query != null && query.trim().isNotEmpty) {
-        dbQuery = dbQuery.ilike('name', '%${query.trim()}%');
+        dbQuery = dbQuery.or('name.ilike.%${query.trim()}%,eco.ilike.%${query.trim()}%,opening_name.ilike.%${query.trim()}%');
       }
 
       // Order by date_start first to group games by day, then by last_move_time
@@ -780,9 +780,9 @@ class GameRepository extends BaseRepository {
           .select(_gameListSelectColumns)
           .overlaps('player_fide_ids', fideIdInts);
 
-      // Add text search on name column if query provided
+      // Add text search if query provided (searches player names, ECO code, and opening name)
       if (query != null && query.trim().isNotEmpty) {
-        dbQuery = dbQuery.ilike('name', '%${query.trim()}%');
+        dbQuery = dbQuery.or('name.ilike.%${query.trim()}%,eco.ilike.%${query.trim()}%,opening_name.ilike.%${query.trim()}%');
       }
 
       // Order and paginate
@@ -1030,6 +1030,7 @@ class GameRepository extends BaseRepository {
   Future<List<Games>> getGamesByFideIdsAndDate({
     required List<String> fideIds,
     required DateTime date,
+    String? eco,
   }) async {
     return handleApiCall(() async {
       final fideIdInts = _parseFideIds(fideIds);
@@ -1042,14 +1043,20 @@ class GameRepository extends BaseRepository {
           'game_day.eq.$dateStr,'
           'and(game_day.is.null,last_move_time.gte.${dayStartUtc.toIso8601String()},last_move_time.lt.${nextDayUtc.toIso8601String()}),'
           'and(game_day.is.null,last_move_time.is.null,date_start.eq.$dateStr)';
-      debugPrint('[GameRepository] getGamesByFideIdsAndDate: fideIds=${fideIdInts.length}, date=$dateStr');
+      debugPrint('[GameRepository] getGamesByFideIdsAndDate: fideIds=${fideIdInts.length}, date=$dateStr, eco=$eco');
 
       // Fetch ALL games for this date (no limit)
-      final response = await supabase
+      var dbQuery = supabase
           .from('games')
           .select(_gameListSelectColumns)
           .overlaps('player_fide_ids', fideIdInts)
-          .or(dayFilter)
+          .or(dayFilter);
+
+      if (eco != null && eco.isNotEmpty) {
+        dbQuery = dbQuery.eq('eco', eco);
+      }
+
+      final response = await dbQuery
           .order('last_move_time', ascending: false, nullsFirst: false);
 
       final jsonList =
@@ -1119,6 +1126,7 @@ class GameRepository extends BaseRepository {
     required String countryCode,
     required DateTime date,
     int minElo = 2000,
+    String? eco,
   }) async {
     return handleApiCall(() async {
       final normalizedCode = _normalizeCountryCode(countryCode);
@@ -1129,15 +1137,21 @@ class GameRepository extends BaseRepository {
           'game_day.eq.$dateStr,'
           'and(game_day.is.null,last_move_time.gte.${dayStartUtc.toIso8601String()},last_move_time.lt.${nextDayUtc.toIso8601String()}),'
           'and(game_day.is.null,last_move_time.is.null,date_start.eq.$dateStr)';
-      debugPrint('[GameRepository] getGamesByCountryAndDate: countryCode=$normalizedCode, date=$dateStr');
+      debugPrint('[GameRepository] getGamesByCountryAndDate: countryCode=$normalizedCode, date=$dateStr, eco=$eco');
 
       // No limit - fetch ALL games for this date
-      final response = await supabase
+      var dbQuery = supabase
           .from('games')
           .select(_gameListSelectColumns)
           .contains('player_feds', [normalizedCode])
           .or(dayFilter)
-          .gte('player_max_rating', minElo)
+          .gte('player_max_rating', minElo);
+
+      if (eco != null && eco.isNotEmpty) {
+        dbQuery = dbQuery.eq('eco', eco);
+      }
+
+      final response = await dbQuery
           .order('last_move_time', ascending: false, nullsFirst: false);
 
       final jsonList =

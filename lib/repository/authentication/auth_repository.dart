@@ -55,18 +55,36 @@ class AuthController extends AutoDisposeAsyncNotifier<AppAuthState> {
 
     _startAuthListener();
 
-    // Validate/refresh any recovered session before reporting authenticated.
-    // This prevents startup races where an expired JWT briefly appears valid.
+    // Quick path: SDK already has a valid session from Supabase.initialize().
+    final earlySession = _supabase.auth.currentSession;
+    final earlyUser = _supabase.auth.currentUser;
+    if (earlySession != null &&
+        earlyUser != null &&
+        !earlySession.isExpired) {
+      return AppAuthState.authenticated(AppUser.fromSupabaseUser(earlyUser));
+    }
+
+    // Session may be expired or absent — let isLoggedIn() attempt a refresh.
+    // The SessionManager no longer calls signOut on failure, so this is safe.
     final loggedIn = await _sessionManager.isLoggedIn().timeout(
-      const Duration(seconds: 5),
+      const Duration(seconds: 8),
       onTimeout: () => false,
     );
 
+    // Re-check the SDK's current state. The onAuthStateChange stream or the
+    // refresh inside isLoggedIn() may have updated the session since we started.
     final currentUser = _supabase.auth.currentUser;
-    if (loggedIn && currentUser != null) {
+    final currentSession = _supabase.auth.currentSession;
+    if (loggedIn &&
+        currentUser != null &&
+        currentSession != null &&
+        !currentSession.isExpired) {
       return AppAuthState.authenticated(AppUser.fromSupabaseUser(currentUser));
     }
 
+    // Even if isLoggedIn() returned false, the SDK's auto-refresh may still
+    // complete later. The onAuthStateChange listener will update state
+    // reactively when that happens (tokenRefreshed / signedIn events).
     return const AppAuthState.unauthenticated();
   }
 
