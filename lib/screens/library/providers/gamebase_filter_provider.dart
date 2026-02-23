@@ -3,7 +3,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 /// Provider for the gamebase filter state used in Library search.
 /// This provides a simple way to persist and access the current filter.
-final gamebaseFilterProvider = StateProvider<GamebaseFilter>((ref) {
+final gamebaseFilterProvider = StateProvider.autoDispose<GamebaseFilter>((ref) {
   return GamebaseFilter();
 });
 

@@ -7,7 +7,7 @@ import 'package:chessever2/screens/library/widgets/library_gamebase_filter_dialo
 import 'package:chessever2/utils/time_utils.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-final twicSelectedEventProvider = StateProvider<String?>((ref) => null);
+final twicSelectedEventProvider = StateProvider.autoDispose<String?>((ref) => null);
 
 class TwicEventAggregate {
   const TwicEventAggregate({

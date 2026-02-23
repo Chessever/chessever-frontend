@@ -13,7 +13,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 /// Provider for the library search query.
 /// Updated from library screen when search text changes.
-final librarySearchQueryProvider = StateProvider<String>((ref) => '');
+final librarySearchQueryProvider = StateProvider.autoDispose<String>((ref) => '');
 
 /// Pagination state for database games
 class DatabaseGamesPaginationState {
