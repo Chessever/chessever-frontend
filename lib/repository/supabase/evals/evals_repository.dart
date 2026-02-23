@@ -2,6 +2,7 @@ import 'package:chessever2/repository/lichess/cloud_eval/cloud_eval.dart';
 import 'package:chessever2/repository/supabase/base_repository.dart';
 import 'package:chessever2/repository/supabase/evals/evals.dart';
 import 'package:chessever2/repository/supabase/position/position_repository.dart';
+import 'package:dartchess/dartchess.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 final evalsRepositoryProvider = AutoDisposeProvider<EvalRepository>(
@@ -68,13 +69,40 @@ class EvalRepository extends BaseRepository {
         return data.map<Evals>((json) => Evals.fromJson(json)).toList();
       });
 
+  /// Returns true if the first PV move in an eval is legal for the given FEN.
+  /// Used to filter out corrupt evals where a Stockfish result was stored
+  /// under the wrong position (race condition).
+  bool _isEvalLegalForFen(String fen, Evals eval) {
+    if (eval.pvs.isEmpty) return true; // no PVs to validate
+    try {
+      final map = Map<String, dynamic>.from(eval.pvs.first as Map);
+      final rawMoves =
+          (map['moves'] as String?) ?? (map['line'] as String?) ?? '';
+      final moves = rawMoves == 'no moves' ? '' : rawMoves;
+      if (moves.isEmpty) return true; // no moves to validate
+
+      final position = Chess.fromSetup(Setup.parseFen(fen));
+      final firstUci = moves.split(' ').first;
+      final move = Move.parse(firstUci);
+      if (move == null || !position.isLegal(move)) {
+        print('⚠️ CORRUPT EVAL FILTERED: First PV move $firstUci is illegal for FEN $fen (eval id=${eval.id})');
+        return false;
+      }
+      return true;
+    } catch (e) {
+      return true; // don't filter on parse errors
+    }
+  }
+
   Future<Evals?> fetchFromSupabase(String fen, {int? desiredMultiPv}) async {
     final posRepo = ref.read(positionRepositoryProvider);
 
     final pos = await posRepo.getByFen(fen);
     if (pos == null) return null;
 
-    final evals = await getByPositionId(pos.id);
+    final evals = (await getByPositionId(pos.id))
+        .where((e) => _isEvalLegalForFen(fen, e))
+        .toList();
     if (evals.isEmpty) return null;
 
     Evals? selectBestMatch(Iterable<Evals> candidates) {
@@ -174,12 +202,15 @@ class EvalRepository extends BaseRepository {
         }
       }
 
-      // Map back to FENs
+      // Map back to FENs, filtering out corrupt evals
       for (final entry in fenToPositionId.entries) {
         final fen = entry.key;
         final posId = entry.value;
         if (evalsByPositionId.containsKey(posId)) {
-          result[fen] = evalsByPositionId[posId]!;
+          final eval = evalsByPositionId[posId]!;
+          if (_isEvalLegalForFen(fen, eval)) {
+            result[fen] = eval;
+          }
         }
       }
     } catch (e) {

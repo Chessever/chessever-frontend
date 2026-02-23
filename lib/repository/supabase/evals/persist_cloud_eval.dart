@@ -2,6 +2,7 @@ import 'package:chessever2/repository/lichess/cloud_eval/cloud_eval.dart';
 import 'package:chessever2/repository/supabase/evals/evals.dart';
 import 'package:chessever2/repository/supabase/evals/evals_repository.dart';
 import 'package:chessever2/repository/supabase/position/position_repository.dart';
+import 'package:dartchess/dartchess.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 final persistCloudEvalProvider = AutoDisposeProvider<PersistCloudEval>((ref) {
@@ -29,6 +30,22 @@ class PersistCloudEval {
     }
     if (cloud.pvs.isEmpty) {
       throw ArgumentError('CloudEval must have at least one PV');
+    }
+
+    // Validate first PV move is legal for this FEN to prevent corrupt data
+    final firstMoves = cloud.pvs.first.moves;
+    if (firstMoves.isNotEmpty) {
+      try {
+        final position = Chess.fromSetup(Setup.parseFen(fen));
+        final firstUci = firstMoves.split(' ').first;
+        final move = Move.parse(firstUci);
+        if (move == null || !position.isLegal(move)) {
+          print('⚠️ PERSIST BLOCKED: First PV move $firstUci is illegal for FEN $fen');
+          return Evals(positionId: 0, knodes: 0, depth: 0, pvs: []);
+        }
+      } catch (e) {
+        print('⚠️ PERSIST VALIDATION ERROR: $e');
+      }
     }
 
     // Log what we're saving (CloudEval should already be in white's perspective from Lichess repo)

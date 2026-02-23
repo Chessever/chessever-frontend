@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:chessever2/providers/country_dropdown_provider.dart';
+import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_board_from_fen_new.dart';
 import 'package:chessever2/screens/countrymen/provider/countrymen_combined_games_provider.dart';
@@ -558,6 +559,11 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
                     showSwipeHint: showHint,
                     showGamebaseButton: false,
                     onAdd: () => _showAddToFolderSheet(context, game),
+                    onTap: () async {
+                      final hasPremium = await requirePremiumGuard(context, ref);
+                      if (!hasPremium) return;
+                      _navigateToChessBoard(game, games, gameIndex);
+                    },
                   ),
                 ),
               );
@@ -857,6 +863,25 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
 
   void _showAddToFolderSheet(BuildContext context, GamesTourModel game) {
     showAddToFolderSheet(context: context, game: game);
+  }
+
+  void _navigateToChessBoard(GamesTourModel game, List<GamesTourModel> allGames, int gameIndex) {
+    ref.read(chessboardViewFromProviderNew.notifier).state = ChessboardView.countryman;
+    ref.read(shouldStreamProvider.notifier).state = false;
+
+    Navigator.push<int>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ChessBoardScreenNew(
+          games: allGames,
+          currentIndex: gameIndex,
+        ),
+      ),
+    ).then((_) {
+      if (mounted) {
+        ref.read(shouldStreamProvider.notifier).state = true;
+      }
+    });
   }
 }
 
