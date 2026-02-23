@@ -8,13 +8,13 @@ final gamebaseFilterProvider = StateProvider.autoDispose<GamebaseFilter>((ref) {
 });
 
 /// Provider that returns whether any filters are active.
-final hasActiveGamebaseFiltersProvider = Provider<bool>((ref) {
+final hasActiveGamebaseFiltersProvider = Provider.autoDispose<bool>((ref) {
   final filter = ref.watch(gamebaseFilterProvider);
   return filter.hasActiveFilters;
 });
 
 /// Provider that returns the count of active filters.
-final activeGamebaseFilterCountProvider = Provider<int>((ref) {
+final activeGamebaseFilterCountProvider = Provider.autoDispose<int>((ref) {
   final filter = ref.watch(gamebaseFilterProvider);
   return filter.activeFilterCount;
 });
