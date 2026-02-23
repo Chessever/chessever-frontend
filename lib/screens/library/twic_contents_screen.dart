@@ -69,6 +69,10 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen> {
     _chipScrollController.dispose();
     _searchFocusNode.dispose();
     _searchController.dispose();
+    // Reset all query state so library doesn't retain stale TWIC filters
+    ref.read(librarySearchQueryProvider.notifier).state = '';
+    ref.read(twicSelectedEventProvider.notifier).state = null;
+    ref.read(gamebaseFilterProvider.notifier).state = GamebaseFilter();
     super.dispose();
   }
 
