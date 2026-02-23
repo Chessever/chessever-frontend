@@ -1117,7 +1117,10 @@ class StockfishSingleton {
     });
     try {
       _engine!.stdin = 'isready';
-      await completer.future.timeout(const Duration(milliseconds: 100));
+      final timeout = _isAndroid
+          ? const Duration(milliseconds: 800)
+          : const Duration(milliseconds: 500);
+      await completer.future.timeout(timeout);
     } catch (e) {
       debugPrint('⚠️ STOCKFISH READY WAIT FAILED: $e');
     } finally {
