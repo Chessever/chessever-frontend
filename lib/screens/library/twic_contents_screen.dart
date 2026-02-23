@@ -544,6 +544,7 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen> {
   Widget _buildSkeletonGamesList(double horizontalPadding) {
     return Skeletonizer(
       enabled: true,
+      ignoreContainers: true,
       effect: const ShimmerEffect(
         baseColor: Color(0xFF2A2A2A),
         highlightColor: Color(0xFF3A3A3A),
@@ -645,6 +646,7 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen> {
         height: 40.h,
         child: Skeletonizer(
           enabled: true,
+          ignoreContainers: true,
           effect: const ShimmerEffect(
             baseColor: Color(0xFF2A2A2A),
             highlightColor: Color(0xFF3A3A3A),
@@ -657,12 +659,10 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen> {
             itemCount: 5,
             separatorBuilder: (_, __) => SizedBox(width: 8.w),
             itemBuilder: (context, index) {
-              return Container(
+              return Bone(
                 width: index == 0 ? 50.w : (80 + index * 20).w,
-                decoration: BoxDecoration(
-                  color: kBlack2Color,
-                  borderRadius: BorderRadius.circular(999.br),
-                ),
+                height: 40.h,
+                borderRadius: BorderRadius.circular(999.br),
               );
             },
           ),
@@ -852,7 +852,7 @@ class _SkeletonGameCard extends StatelessWidget {
       ),
       child: Column(
         children: [
-          // Top section — light gradient with player info
+          // Top section — matches LibraryGameCard light gradient area
           Container(
             padding: EdgeInsets.fromLTRB(14.w, 10.h, 14.w, 10.h),
             decoration: BoxDecoration(
@@ -868,22 +868,16 @@ class _SkeletonGameCard extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Container(
+                      Bone(
                         width: 100.w,
                         height: 14.h,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFB0B0B4),
-                          borderRadius: BorderRadius.circular(4.br),
-                        ),
+                        borderRadius: BorderRadius.circular(4.br),
                       ),
                       SizedBox(height: 4.h),
-                      Container(
+                      Bone(
                         width: 60.w,
                         height: 12.h,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFB0B0B4),
-                          borderRadius: BorderRadius.circular(4.br),
-                        ),
+                        borderRadius: BorderRadius.circular(4.br),
                       ),
                     ],
                   ),
@@ -891,13 +885,10 @@ class _SkeletonGameCard extends StatelessWidget {
                 // Center result
                 Padding(
                   padding: EdgeInsets.symmetric(horizontal: 10.w),
-                  child: Container(
+                  child: Bone(
                     width: 40.w,
                     height: 20.h,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFB0B0B4),
-                      borderRadius: BorderRadius.circular(4.br),
-                    ),
+                    borderRadius: BorderRadius.circular(4.br),
                   ),
                 ),
                 // Right player
@@ -905,20 +896,20 @@ class _SkeletonGameCard extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
-                      Container(
-                        width: 90.w,
-                        height: 14.h,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFB0B0B4),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: Bone(
+                          width: 90.w,
+                          height: 14.h,
                           borderRadius: BorderRadius.circular(4.br),
                         ),
                       ),
                       SizedBox(height: 4.h),
-                      Container(
-                        width: 50.w,
-                        height: 12.h,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFB0B0B4),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: Bone(
+                          width: 50.w,
+                          height: 12.h,
                           borderRadius: BorderRadius.circular(4.br),
                         ),
                       ),
@@ -939,31 +930,18 @@ class _SkeletonGameCard extends StatelessWidget {
             ),
             child: Row(
               children: [
-                Container(
-                  width: 14.sp,
-                  height: 14.sp,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF3A3A3A),
-                    borderRadius: BorderRadius.circular(2.br),
-                  ),
-                ),
+                Bone.square(size: 14.sp, borderRadius: BorderRadius.circular(2.br)),
                 SizedBox(width: 4.w),
-                Container(
+                Bone(
                   width: 120.w,
                   height: 12.h,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF3A3A3A),
-                    borderRadius: BorderRadius.circular(4.br),
-                  ),
+                  borderRadius: BorderRadius.circular(4.br),
                 ),
                 const Spacer(),
-                Container(
+                Bone(
                   width: 60.w,
                   height: 12.h,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF3A3A3A),
-                    borderRadius: BorderRadius.circular(4.br),
-                  ),
+                  borderRadius: BorderRadius.circular(4.br),
                 ),
               ],
             ),
