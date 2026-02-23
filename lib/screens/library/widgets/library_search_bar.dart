@@ -251,13 +251,18 @@ class _LibrarySearchBarState extends ConsumerState<LibrarySearchBar> {
           if (widget.controller.text.isNotEmpty)
             GestureDetector(
               onTap: _clearSearch,
-              child: Icon(
-                Icons.close,
-                size: 16.sp,
-                color: const Color(0xFFFFFFFF).withValues(alpha: 0.7),
+              behavior: HitTestBehavior.opaque,
+              child: Padding(
+                padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 4.h),
+                child: Icon(
+                  Icons.close,
+                  size: 16.sp,
+                  color: const Color(0xFFFFFFFF).withValues(alpha: 0.7),
+                ),
               ),
             ),
-          if (widget.showFilterIcon)
+          if (widget.showFilterIcon) ...[
+            if (widget.controller.text.isNotEmpty) SizedBox(width: 4.w),
             // CSS: list-filter icon 24x24 in 32x32 container, radius 4px
             GestureDetector(
               onTap: widget.onFilterTap,
@@ -277,6 +282,7 @@ class _LibrarySearchBarState extends ConsumerState<LibrarySearchBar> {
                 ),
               ),
             ),
+          ],
           SizedBox(width: widget.showFilterIcon ? 4.w : 12.w),
         ],
       ),
