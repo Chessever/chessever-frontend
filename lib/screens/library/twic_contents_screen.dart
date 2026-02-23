@@ -558,7 +558,7 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen> {
           horizontalPadding,
           100.h,
         ),
-        itemCount: 6,
+        itemCount: 10,
         separatorBuilder: (_, __) => SizedBox(height: 12.h),
         itemBuilder: (context, index) => const _SkeletonGameCard(),
       ),
