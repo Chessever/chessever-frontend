@@ -16,10 +16,10 @@ import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/time_utils.dart';
 import 'package:chessever2/widgets/screen_wrapper.dart';
-import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:motor/motor.dart';
+import 'package:skeletonizer/skeletonizer.dart';
 
 /// TWIC book contents screen.
 ///
@@ -542,7 +542,13 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen> {
   }
 
   Widget _buildSkeletonGamesList(double horizontalPadding) {
-    return SkeletonWidget(
+    return Skeletonizer(
+      enabled: true,
+      effect: const ShimmerEffect(
+        baseColor: Color(0xFF2A2A2A),
+        highlightColor: Color(0xFF3A3A3A),
+        duration: Duration(seconds: 1),
+      ),
       child: ListView.separated(
         physics: const NeverScrollableScrollPhysics(),
         padding: EdgeInsets.fromLTRB(
@@ -553,15 +559,7 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen> {
         ),
         itemCount: 6,
         separatorBuilder: (_, __) => SizedBox(height: 12.h),
-        itemBuilder: (context, index) {
-          return Container(
-            height: 80.h,
-            decoration: BoxDecoration(
-              color: kBlack2Color,
-              borderRadius: BorderRadius.circular(8.br),
-            ),
-          );
-        },
+        itemBuilder: (context, index) => const _SkeletonGameCard(),
       ),
     );
   }
@@ -645,7 +643,13 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen> {
       padding: EdgeInsets.fromLTRB(0, 6.h, 0, 12.h),
       child: SizedBox(
         height: 40.h,
-        child: SkeletonWidget(
+        child: Skeletonizer(
+          enabled: true,
+          effect: const ShimmerEffect(
+            baseColor: Color(0xFF2A2A2A),
+            highlightColor: Color(0xFF3A3A3A),
+            duration: Duration(seconds: 1),
+          ),
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             physics: const NeverScrollableScrollPhysics(),
@@ -827,6 +831,144 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen> {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Skeleton game card — mirrors LibraryGameCard layout for Skeletonizer
+// ---------------------------------------------------------------------------
+
+class _SkeletonGameCard extends StatelessWidget {
+  const _SkeletonGameCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFF2E2E2E),
+        borderRadius: BorderRadius.circular(12.br),
+      ),
+      child: Column(
+        children: [
+          // Top section — light gradient with player info
+          Container(
+            padding: EdgeInsets.fromLTRB(14.w, 10.h, 14.w, 10.h),
+            decoration: BoxDecoration(
+              color: const Color(0xFFCCCCD0),
+              borderRadius: BorderRadius.vertical(
+                top: Radius.circular(12.br),
+              ),
+            ),
+            child: Row(
+              children: [
+                // Left player
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        width: 100.w,
+                        height: 14.h,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFB0B0B4),
+                          borderRadius: BorderRadius.circular(4.br),
+                        ),
+                      ),
+                      SizedBox(height: 4.h),
+                      Container(
+                        width: 60.w,
+                        height: 12.h,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFB0B0B4),
+                          borderRadius: BorderRadius.circular(4.br),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                // Center result
+                Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 10.w),
+                  child: Container(
+                    width: 40.w,
+                    height: 20.h,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFB0B0B4),
+                      borderRadius: BorderRadius.circular(4.br),
+                    ),
+                  ),
+                ),
+                // Right player
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Container(
+                        width: 90.w,
+                        height: 14.h,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFB0B0B4),
+                          borderRadius: BorderRadius.circular(4.br),
+                        ),
+                      ),
+                      SizedBox(height: 4.h),
+                      Container(
+                        width: 50.w,
+                        height: 12.h,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFB0B0B4),
+                          borderRadius: BorderRadius.circular(4.br),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          // Bottom section — dark bar with event info
+          Container(
+            padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 5.h),
+            decoration: BoxDecoration(
+              color: const Color(0xFF1A1A1C),
+              borderRadius: BorderRadius.vertical(
+                bottom: Radius.circular(12.br),
+              ),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 14.sp,
+                  height: 14.sp,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF3A3A3A),
+                    borderRadius: BorderRadius.circular(2.br),
+                  ),
+                ),
+                SizedBox(width: 4.w),
+                Container(
+                  width: 120.w,
+                  height: 12.h,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF3A3A3A),
+                    borderRadius: BorderRadius.circular(4.br),
+                  ),
+                ),
+                const Spacer(),
+                Container(
+                  width: 60.w,
+                  height: 12.h,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF3A3A3A),
+                    borderRadius: BorderRadius.circular(4.br),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
