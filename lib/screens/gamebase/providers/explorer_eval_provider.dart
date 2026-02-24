@@ -76,7 +76,13 @@ class ExplorerEvalNotifier extends StateNotifier<ExplorerEvalState> {
     // Cancel any prior job for this owner.
     StockfishSingleton().cancelEvaluationsForOwner(_ownerId);
 
-    state = ExplorerEvalState(fen: fen, isEvaluating: true);
+    state = state.copyWith(
+      fen: fen,
+      isEvaluating: true,
+      depth: 0,
+      clearEval: true,
+      clearMate: true,
+    );
 
     StockfishSingleton()
         .evaluatePosition(

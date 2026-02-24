@@ -23,7 +23,10 @@ import 'package:chessever2/screens/gamebase/models/models.dart';
 /// Main screen for exploring the Gamebase opening database.
 /// Displays a chess board, move statistics, and navigation controls.
 class GamebaseExplorerScreen extends ConsumerStatefulWidget {
-  const GamebaseExplorerScreen({super.key});
+  const GamebaseExplorerScreen({super.key, this.initialPlayer});
+
+  /// When non-null, the explorer opens pre-filtered to this player's games.
+  final GamebasePlayer? initialPlayer;
 
   @override
   ConsumerState<GamebaseExplorerScreen> createState() =>
@@ -44,16 +47,20 @@ class _GamebaseExplorerScreenState
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
 
-      // Ensure we have a valid starting position and kick off the initial fetch.
-      // Without this, the explorer can render with an empty FEN and never load stats.
-      final state = ref.read(gamebaseExplorerProvider);
       final notifier = ref.read(gamebaseExplorerProvider.notifier);
 
-      if (state.currentFen.trim().isEmpty) {
-        notifier.goToStart();
-      } else if (state.moveAggregates.isEmpty) {
-        // If we ever add an "open explorer at FEN" entrypoint, make sure it loads.
-        notifier.refresh();
+      if (widget.initialPlayer != null) {
+        notifier.initializeWithPlayer(widget.initialPlayer!);
+      } else {
+        // Ensure we have a valid starting position and kick off the initial fetch.
+        // Without this, the explorer can render with an empty FEN and never load stats.
+        final state = ref.read(gamebaseExplorerProvider);
+
+        if (state.currentFen.trim().isEmpty) {
+          notifier.goToStart();
+        } else if (state.moveAggregates.isEmpty) {
+          notifier.refresh();
+        }
       }
     });
   }
@@ -304,14 +311,38 @@ class _GamebaseExplorerScreenState
         icon: Icon(Icons.arrow_back, size: 24.ic),
         onPressed: () => Navigator.of(context).pop(),
       ),
-      title: Text(
-        'Opening Explorer',
-        style: TextStyle(
-          color: kWhiteColor,
-          fontSize: 18.f,
-          fontWeight: FontWeight.w600,
-        ),
-      ),
+      title: state.filters.selectedPlayers.isNotEmpty
+          ? Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  state.filters.selectedPlayers.first.titleAndName,
+                  style: TextStyle(
+                    color: kWhiteColor,
+                    fontSize: 16.f,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                Text(
+                  'Opening Explorer',
+                  style: TextStyle(
+                    color: kSecondaryTextColor,
+                    fontSize: 12.f,
+                    fontWeight: FontWeight.w400,
+                  ),
+                ),
+              ],
+            )
+          : Text(
+              'Opening Explorer',
+              style: TextStyle(
+                color: kWhiteColor,
+                fontSize: 18.f,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
       actions: [
         if (state.hasActiveFilters)
           IconButton(

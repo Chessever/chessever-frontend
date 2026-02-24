@@ -21,6 +21,8 @@ import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:chessever2/widgets/segmented_switcher.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
+import 'package:chessever2/screens/gamebase/gamebase_explorer_screen.dart';
+import 'package:chessever2/screens/gamebase/providers/gamebase_providers.dart';
 import 'package:country_flags/country_flags.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -215,6 +217,43 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
       playerResultFilter: playerResultFilter,
       searchQuery: searchQuery,
     );
+  }
+
+  /// Resolve the gamebase player UUID from constructor or TWIC summary.
+  String? _resolveGamebasePlayerId() {
+    if (_currentGamebasePlayerId != null) return _currentGamebasePlayerId;
+    final twicLookupKey = PlayerProfileKey(
+      fideId: widget.fideId,
+      playerName: widget.playerName,
+      source: PlayerProfileDataSource.supabase,
+      gamebasePlayerId: _currentGamebasePlayerId,
+    );
+    return ref.read(twicProfileSummaryProvider(twicLookupKey)).valueOrNull?.gamebasePlayerId;
+  }
+
+  Future<void> _openExplorer() async {
+    HapticFeedbackService.buttonPress();
+    final uuid = _resolveGamebasePlayerId();
+    if (uuid == null) return;
+
+    try {
+      final player = await ref.read(playerByIdProvider(uuid).future);
+      if (player == null || !mounted) return;
+
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => GamebaseExplorerScreen(initialPlayer: player),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Could not load player data.'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+    }
   }
 
   Future<void> _toggleFavorite() async {
@@ -486,6 +525,20 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
               ),
             ),
           ),
+
+          // Explorer button
+          if (_resolveGamebasePlayerId() != null)
+            IconButton(
+              iconSize: 24.ic,
+              padding: EdgeInsets.zero,
+              onPressed: _openExplorer,
+              icon: Icon(
+                Icons.account_tree_outlined,
+                size: 22.ic,
+                color: kWhiteColor,
+              ),
+              tooltip: 'Opening Explorer',
+            ),
 
           // Favorite button
           GestureDetector(
