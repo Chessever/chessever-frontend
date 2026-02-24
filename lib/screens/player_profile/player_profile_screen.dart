@@ -228,7 +228,10 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
       source: PlayerProfileDataSource.supabase,
       gamebasePlayerId: _currentGamebasePlayerId,
     );
-    return ref.read(twicProfileSummaryProvider(twicLookupKey)).valueOrNull?.gamebasePlayerId;
+    return ref
+        .read(twicProfileSummaryProvider(twicLookupKey))
+        .valueOrNull
+        ?.gamebasePlayerId;
   }
 
   Future<void> _openExplorer() async {
@@ -300,6 +303,7 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
   @override
   Widget build(BuildContext context) {
     final selectedTab = ref.watch(selectedPlayerProfileTabProvider);
+    final hasPlayerExplorer = _resolveGamebasePlayerId() != null;
     final activePlayerKey = PlayerProfileKey(
       fideId: widget.fideId,
       playerName: widget.playerName,
@@ -436,6 +440,14 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
               ),
 
               _buildDataSourceSelector(twicSummaryAsync),
+
+              if (hasPlayerExplorer)
+                _buildOpeningRepertoireButton(
+                  displayName: _formatDisplayName(
+                    name: effectiveName,
+                    title: effectiveTitle,
+                  ),
+                ),
 
               // Tab content
               Expanded(
@@ -680,6 +692,84 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
     );
   }
 
+  Widget _buildOpeningRepertoireButton({required String displayName}) {
+    final horizontalPadding = ResponsiveHelper.adaptive(
+      phone: 20.sp,
+      tablet: 32.sp,
+    );
+
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        horizontalPadding,
+        10.h,
+        horizontalPadding,
+        6.h,
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12.br),
+          onTap: _openExplorer,
+          child: Ink(
+            padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 11.h),
+            decoration: BoxDecoration(
+              color: kPopUpColor,
+              borderRadius: BorderRadius.circular(12.br),
+              border: Border.all(color: kPrimaryColor.withValues(alpha: 0.34)),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 34.w,
+                  height: 34.h,
+                  decoration: BoxDecoration(
+                    color: kPrimaryColor.withValues(alpha: 0.16),
+                    borderRadius: BorderRadius.circular(9.br),
+                  ),
+                  child: Icon(
+                    Icons.account_tree_outlined,
+                    size: 18.ic,
+                    color: kWhiteColor,
+                  ),
+                ),
+                SizedBox(width: 11.w),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'Study opening repertoire',
+                        style: AppTypography.textSmBold.copyWith(
+                          color: kWhiteColor,
+                        ),
+                      ),
+                      SizedBox(height: 2.h),
+                      Text(
+                        '$displayName only',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppTypography.textXsRegular.copyWith(
+                          color: kWhiteColor.withValues(alpha: 0.72),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                SizedBox(width: 8.w),
+                Icon(
+                  Icons.chevron_right_rounded,
+                  color: kWhiteColor.withValues(alpha: 0.8),
+                  size: 20.ic,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   String _formatDisplayName({String? name, String? title}) {
     String displayName = name ?? widget.playerName;
 
@@ -804,8 +894,7 @@ class _DataSourceBannerState extends State<_DataSourceBanner> {
                 _handleTap();
               }
               : null,
-      onTapCancel:
-          _canTap ? () => setState(() => _pressed = false) : null,
+      onTapCancel: _canTap ? () => setState(() => _pressed = false) : null,
       child: SingleMotionBuilder(
         motion: const CupertinoMotion.snappy(),
         value: _pressed ? 1.0 : 0.0,

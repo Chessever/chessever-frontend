@@ -35,10 +35,11 @@ class PositionGamesSheet extends ConsumerStatefulWidget {
 
 class _PositionGamesSheetState extends ConsumerState<PositionGamesSheet> {
   static const int _pageSize = 50;
-  static const int _eagerPrefetchCap = 1000;
+  static const double _scrollPrefetchExtent = 640;
   final ScrollController _scrollController = ScrollController();
 
   final List<Map<String, dynamic>> _rows = <Map<String, dynamic>>[];
+  final List<GamesTourModel> _games = <GamesTourModel>[];
   bool _isInitialLoading = true;
   bool _isLoadingMore = false;
   bool _hasMore = true;
@@ -62,9 +63,14 @@ class _PositionGamesSheetState extends ConsumerState<PositionGamesSheet> {
   }
 
   void _onScroll() {
-    if (!_scrollController.hasClients) return;
+    if (!_scrollController.hasClients ||
+        _isInitialLoading ||
+        _isLoadingMore ||
+        !_hasMore) {
+      return;
+    }
     final position = _scrollController.position;
-    if (position.pixels < position.maxScrollExtent - 420) return;
+    if (position.extentAfter > _scrollPrefetchExtent) return;
     _fetchPage();
   }
 
@@ -95,6 +101,7 @@ class _PositionGamesSheetState extends ConsumerState<PositionGamesSheet> {
     if (reset) {
       setState(() {
         _rows.clear();
+        _games.clear();
         _isInitialLoading = true;
         _isLoadingMore = false;
         _hasMore = true;
@@ -118,6 +125,7 @@ class _PositionGamesSheetState extends ConsumerState<PositionGamesSheet> {
       if (!mounted || requestToken != _requestToken) return;
 
       final mergedRows = List<Map<String, dynamic>>.from(_rows);
+      final mergedGames = List<GamesTourModel>.from(_games);
       final existingIds = <String>{};
       for (final row in _rows) {
         final id = row['id']?.toString().trim();
@@ -131,9 +139,11 @@ class _PositionGamesSheetState extends ConsumerState<PositionGamesSheet> {
         if (id != null && id.isNotEmpty) {
           if (existingIds.add(id)) {
             mergedRows.add(row);
+            mergedGames.add(_mapPreviewToTourModel(row));
           }
         } else {
           mergedRows.add(row);
+          mergedGames.add(_mapPreviewToTourModel(row));
         }
       }
 
@@ -144,21 +154,15 @@ class _PositionGamesSheetState extends ConsumerState<PositionGamesSheet> {
         _rows
           ..clear()
           ..addAll(mergedRows);
+        _games
+          ..clear()
+          ..addAll(mergedGames);
         _hasMore = hasMoreRows;
         _nextPageNumber += 1;
         _totalCount = response.metadata.totalCount;
         _isInitialLoading = false;
         _isLoadingMore = false;
       });
-
-      final eagerTarget =
-          (_totalCount != null && _totalCount! < _eagerPrefetchCap)
-              ? _totalCount!
-              : _eagerPrefetchCap;
-      final shouldEagerPrefetch = _hasMore && _rows.length < eagerTarget;
-      if (shouldEagerPrefetch) {
-        Future<void>.microtask(() => _fetchPage());
-      }
     } catch (e) {
       if (!mounted || requestToken != _requestToken) return;
       setState(() {
@@ -171,8 +175,6 @@ class _PositionGamesSheetState extends ConsumerState<PositionGamesSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final games = _rows.map(_mapPreviewToTourModel).toList(growable: false);
-
     final bottomPadding = MediaQuery.of(context).padding.bottom;
 
     return Container(
@@ -190,16 +192,16 @@ class _PositionGamesSheetState extends ConsumerState<PositionGamesSheet> {
             Divider(color: kDividerColor, height: 1),
             Expanded(
               child:
-                  _isInitialLoading && games.isEmpty
+                  _isInitialLoading && _games.isEmpty
                       ? const Center(
                         child: CircularProgressIndicator(
                           color: kWhiteColor,
                           strokeWidth: 2,
                         ),
                       )
-                      : (_error != null && games.isEmpty)
+                      : (_error != null && _games.isEmpty)
                       ? _Empty(message: 'Failed to load games.\n$_error')
-                      : (games.isEmpty)
+                      : (_games.isEmpty)
                       ? const _Empty(
                         message: 'No games found for this position.',
                       )
@@ -211,20 +213,20 @@ class _PositionGamesSheetState extends ConsumerState<PositionGamesSheet> {
                           left: 12.sp,
                           right: 12.sp,
                         ),
-                        itemCount: games.length + 1,
+                        itemCount: _games.length + 1,
                         separatorBuilder: (_, __) => SizedBox(height: 8.sp),
                         itemBuilder: (context, index) {
-                          if (index == games.length) {
+                          if (index == _games.length) {
                             return _PositionGamesFooter(
                               isLoadingMore: _isLoadingMore,
                               hasMore: _hasMore,
-                              loadedCount: games.length,
+                              loadedCount: _games.length,
                               totalCount: _totalCount,
                               onLoadMore: _fetchPage,
                             );
                           }
 
-                          final game = games[index];
+                          final game = _games[index];
                           final eventName =
                               (game.tourId.trim().isNotEmpty)
                                   ? game.tourId
@@ -241,7 +243,7 @@ class _PositionGamesSheetState extends ConsumerState<PositionGamesSheet> {
                                   context,
                                   ref,
                                   game,
-                                  games,
+                                  _games,
                                   index,
                                 ),
                             onLongPress: null,

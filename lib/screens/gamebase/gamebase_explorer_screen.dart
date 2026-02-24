@@ -1,4 +1,4 @@
-import 'dart:ui';
+import 'dart:async';
 
 import 'package:chessground/chessground.dart';
 import 'package:dartchess/dartchess.dart';
@@ -6,8 +6,11 @@ import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 import 'package:chessever2/providers/board_settings_provider_new.dart';
+import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
+import 'package:chessever2/screens/chessboard/chess_board_settings_page.dart';
+import 'package:chessever2/screens/chessboard/widgets/chess_board_bottom_nav_bar.dart';
 import 'package:chessever2/screens/chessboard/widgets/evaluation_bar_widget.dart';
 import 'package:chessever2/screens/gamebase/providers/explorer_eval_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
@@ -19,6 +22,7 @@ import 'package:chessever2/widgets/screen_wrapper.dart';
 import 'package:chessever2/screens/gamebase/providers/gamebase_providers.dart';
 import 'package:chessever2/screens/gamebase/widgets/widgets.dart';
 import 'package:chessever2/screens/gamebase/models/models.dart';
+import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 
 /// Main screen for exploring the Gamebase opening database.
 /// Displays a chess board, move statistics, and navigation controls.
@@ -36,6 +40,8 @@ class GamebaseExplorerScreen extends ConsumerStatefulWidget {
 class _GamebaseExplorerScreenState
     extends ConsumerState<GamebaseExplorerScreen> {
   bool _isFlipped = false;
+  Timer? _backwardLongPressTimer;
+  Timer? _forwardLongPressTimer;
 
   @override
   void initState() {
@@ -67,6 +73,8 @@ class _GamebaseExplorerScreenState
 
   @override
   void dispose() {
+    _stopLongPressBackward();
+    _stopLongPressForward();
     // Reset the full explorer state when leaving so stale moves/position
     // don't persist into the next visit or bleed into the chessboard overlay.
     ref.read(gamebaseExplorerProvider.notifier).reset();
@@ -75,38 +83,118 @@ class _GamebaseExplorerScreenState
 
   static final double _evalBarWidth = 20.sp;
 
-  Widget _buildNavigationControls() {
-    final state = ref.watch(gamebaseExplorerProvider);
-    return _NavigationControls(
-      canGoBack: state.canGoBack,
-      canGoForward: state.canGoForward,
-      onGoToStart:
-          () => ref.read(gamebaseExplorerProvider.notifier).goToStart(),
-      onGoBack: () => ref.read(gamebaseExplorerProvider.notifier).goBack(),
-      onGoForward:
-          () => ref.read(gamebaseExplorerProvider.notifier).goForward(),
-      onGoToEnd: () => ref.read(gamebaseExplorerProvider.notifier).goToEnd(),
-      onFlip: () => setState(() => _isFlipped = !_isFlipped),
+  Future<void> _toggleEngineAnalysis() async {
+    final current = ref.read(engineSettingsProviderNew).valueOrNull;
+    final nextValue = !(current?.showEngineAnalysis ?? true);
+    await ref
+        .read(engineSettingsProviderNew.notifier)
+        .toggleEngineAnalysis(nextValue);
+  }
+
+  void _startLongPressBackward() {
+    _backwardLongPressTimer?.cancel();
+    _backwardLongPressTimer = Timer.periodic(
+      const Duration(milliseconds: 130),
+      (_) {
+        final currentState = ref.read(gamebaseExplorerProvider);
+        if (!currentState.canGoBack) {
+          _stopLongPressBackward();
+          return;
+        }
+        ref.read(gamebaseExplorerProvider.notifier).goBack();
+      },
     );
+  }
+
+  void _stopLongPressBackward() {
+    _backwardLongPressTimer?.cancel();
+    _backwardLongPressTimer = null;
+  }
+
+  void _startLongPressForward() {
+    _forwardLongPressTimer?.cancel();
+    _forwardLongPressTimer = Timer.periodic(const Duration(milliseconds: 130), (
+      _,
+    ) {
+      final currentState = ref.read(gamebaseExplorerProvider);
+      if (!currentState.canGoForward) {
+        _stopLongPressForward();
+        return;
+      }
+      ref.read(gamebaseExplorerProvider.notifier).goForward();
+    });
+  }
+
+  void _stopLongPressForward() {
+    _forwardLongPressTimer?.cancel();
+    _forwardLongPressTimer = null;
   }
 
   @override
   Widget build(BuildContext context) {
+    final showEngineAnalysis = ref.watch(
+      engineSettingsProviderNew.select(
+        (s) => s.valueOrNull?.showEngineAnalysis ?? true,
+      ),
+    );
+
+    final state = ref.watch(gamebaseExplorerProvider);
+
     return ScreenWrapper(
       child: Scaffold(
         backgroundColor: kBlack2Color,
         appBar: _buildAppBar(context),
+        bottomNavigationBar: ChessBoardBottomNavBar(
+          gameIndex: 0,
+          onFlip: () => setState(() => _isFlipped = !_isFlipped),
+          toggleEngineVisibility: _toggleEngineAnalysis,
+          onEngineSettingsLongPress: () {
+            requireFullAuthGuard(context).then((allowed) {
+              if (!allowed || !context.mounted) return;
+              Navigator.of(context).push(ChessBoardSettingsPage.route());
+            });
+          },
+          onRightMove:
+              state.canGoForward
+                  ? () =>
+                      ref.read(gamebaseExplorerProvider.notifier).goForward()
+                  : null,
+          onLeftMove:
+              state.canGoBack
+                  ? () => ref.read(gamebaseExplorerProvider.notifier).goBack()
+                  : null,
+          onLongPressBackwardStart:
+              state.canGoBack ? _startLongPressBackward : null,
+          onLongPressBackwardEnd: _stopLongPressBackward,
+          onLongPressForwardStart:
+              state.canGoForward ? _startLongPressForward : null,
+          onLongPressForwardEnd: _stopLongPressForward,
+          canMoveForward: state.canGoForward,
+          canMoveBackward: state.canGoBack,
+          showEngineAnalysis: showEngineAnalysis,
+          showUnseenMoveBadge: false,
+          showGamebaseButton: false,
+        ),
         body: LayoutBuilder(
           builder: (context, constraints) {
             final isTablet = ResponsiveHelper.isTablet;
             final isLandscape = ResponsiveHelper.isLandscape;
 
             if (isTablet && isLandscape) {
-              return _buildTabletLandscapeLayout(constraints);
+              return _buildTabletLandscapeLayout(
+                constraints,
+                showEngineAnalysis: showEngineAnalysis,
+              );
             } else if (isTablet) {
-              return _buildTabletPortraitLayout(constraints);
+              return _buildTabletPortraitLayout(
+                constraints,
+                showEngineAnalysis: showEngineAnalysis,
+              );
             } else {
-              return _buildPhoneLayout(constraints);
+              return _buildPhoneLayout(
+                constraints,
+                showEngineAnalysis: showEngineAnalysis,
+              );
             }
           },
         ),
@@ -115,16 +203,16 @@ class _GamebaseExplorerScreenState
   }
 
   /// Phone layout — identical to the original layout.
-  Widget _buildPhoneLayout(BoxConstraints constraints) {
+  Widget _buildPhoneLayout(
+    BoxConstraints constraints, {
+    required bool showEngineAnalysis,
+  }) {
     final state = ref.watch(gamebaseExplorerProvider);
-    final boardSize =
-        constraints.maxWidth - 48.sp - _evalBarWidth - 4.sp;
+    final boardSize = constraints.maxWidth - 48.sp - _evalBarWidth - 4.sp;
 
     return Center(
       child: ConstrainedBox(
-        constraints: BoxConstraints(
-          maxWidth: ResponsiveHelper.contentMaxWidth,
-        ),
+        constraints: BoxConstraints(maxWidth: ResponsiveHelper.contentMaxWidth),
         child: Column(
           children: [
             Padding(
@@ -137,6 +225,7 @@ class _GamebaseExplorerScreenState
                     height: boardSize,
                     width: _evalBarWidth,
                     isFlipped: _isFlipped,
+                    showEngineAnalysis: showEngineAnalysis,
                   ),
                   SizedBox(width: 4.sp),
                   _GamebaseChessBoard(
@@ -147,8 +236,6 @@ class _GamebaseExplorerScreenState
                 ],
               ),
             ),
-            _buildNavigationControls(),
-            SizedBox(height: 8.sp),
             Expanded(
               child: Container(
                 decoration: BoxDecoration(
@@ -160,7 +247,7 @@ class _GamebaseExplorerScreenState
                 clipBehavior: Clip.antiAlias,
                 child: Column(
                   children: [
-                    const _ExplorerEngineLines(),
+                    if (showEngineAnalysis) const _ExplorerEngineLines(),
                     const Expanded(child: MoveStatisticsPanel()),
                   ],
                 ),
@@ -172,14 +259,18 @@ class _GamebaseExplorerScreenState
     );
   }
 
-  /// Tablet landscape — side-by-side: board+nav on left, stats panel on right.
-  Widget _buildTabletLandscapeLayout(BoxConstraints constraints) {
+  /// Tablet landscape — side-by-side: board on left, stats panel on right.
+  Widget _buildTabletLandscapeLayout(
+    BoxConstraints constraints, {
+    required bool showEngineAnalysis,
+  }) {
     final state = ref.watch(gamebaseExplorerProvider);
     final availableHeight = constraints.maxHeight;
-    final navHeight = 44.h + 16.sp; // nav button height + vertical padding
     final verticalPadding = 8.sp * 2; // top + bottom
-    final boardSize = (availableHeight - navHeight - verticalPadding)
-        .clamp(200.0, double.infinity);
+    final boardSize = (availableHeight - verticalPadding).clamp(
+      200.0,
+      double.infinity,
+    );
     final leftWidth = boardSize + _evalBarWidth + 4.sp + 24.sp;
 
     return Padding(
@@ -201,6 +292,7 @@ class _GamebaseExplorerScreenState
                       height: boardSize,
                       width: _evalBarWidth,
                       isFlipped: _isFlipped,
+                      showEngineAnalysis: showEngineAnalysis,
                     ),
                     SizedBox(width: 4.sp),
                     _GamebaseChessBoard(
@@ -210,8 +302,6 @@ class _GamebaseExplorerScreenState
                     ),
                   ],
                 ),
-                SizedBox(height: 8.sp),
-                _buildNavigationControls(),
               ],
             ),
           ),
@@ -230,7 +320,7 @@ class _GamebaseExplorerScreenState
                 borderRadius: BorderRadius.circular(12.sp),
                 child: Column(
                   children: [
-                    const _ExplorerEngineLines(),
+                    if (showEngineAnalysis) const _ExplorerEngineLines(),
                     const Expanded(child: MoveStatisticsPanel()),
                   ],
                 ),
@@ -243,10 +333,12 @@ class _GamebaseExplorerScreenState
   }
 
   /// Tablet portrait — centered column with constrained width.
-  Widget _buildTabletPortraitLayout(BoxConstraints constraints) {
+  Widget _buildTabletPortraitLayout(
+    BoxConstraints constraints, {
+    required bool showEngineAnalysis,
+  }) {
     final state = ref.watch(gamebaseExplorerProvider);
-    final contentMaxWidth =
-        (constraints.maxWidth * 0.85).clamp(0.0, 720.0);
+    final contentMaxWidth = (constraints.maxWidth * 0.85).clamp(0.0, 720.0);
     final boardSize = contentMaxWidth - 48.sp - _evalBarWidth - 4.sp;
 
     return SizedBox.expand(
@@ -265,6 +357,7 @@ class _GamebaseExplorerScreenState
                       height: boardSize,
                       width: _evalBarWidth,
                       isFlipped: _isFlipped,
+                      showEngineAnalysis: showEngineAnalysis,
                     ),
                     SizedBox(width: 4.sp),
                     _GamebaseChessBoard(
@@ -275,8 +368,6 @@ class _GamebaseExplorerScreenState
                   ],
                 ),
               ),
-              _buildNavigationControls(),
-              SizedBox(height: 8.sp),
               Expanded(
                 child: Container(
                   decoration: BoxDecoration(
@@ -288,7 +379,7 @@ class _GamebaseExplorerScreenState
                   clipBehavior: Clip.antiAlias,
                   child: Column(
                     children: [
-                      const _ExplorerEngineLines(),
+                      if (showEngineAnalysis) const _ExplorerEngineLines(),
                       const Expanded(child: MoveStatisticsPanel()),
                     ],
                   ),
@@ -311,38 +402,39 @@ class _GamebaseExplorerScreenState
         icon: Icon(Icons.arrow_back, size: 24.ic),
         onPressed: () => Navigator.of(context).pop(),
       ),
-      title: state.filters.selectedPlayers.isNotEmpty
-          ? Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  state.filters.selectedPlayers.first.titleAndName,
-                  style: TextStyle(
-                    color: kWhiteColor,
-                    fontSize: 16.f,
-                    fontWeight: FontWeight.w600,
+      title:
+          state.filters.selectedPlayers.isNotEmpty
+              ? Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    state.filters.selectedPlayers.first.titleAndName,
+                    style: TextStyle(
+                      color: kWhiteColor,
+                      fontSize: 16.f,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                Text(
-                  'Opening Explorer',
-                  style: TextStyle(
-                    color: kSecondaryTextColor,
-                    fontSize: 12.f,
-                    fontWeight: FontWeight.w400,
+                  Text(
+                    'Opening Explorer',
+                    style: TextStyle(
+                      color: kSecondaryTextColor,
+                      fontSize: 12.f,
+                      fontWeight: FontWeight.w400,
+                    ),
                   ),
+                ],
+              )
+              : Text(
+                'Opening Explorer',
+                style: TextStyle(
+                  color: kWhiteColor,
+                  fontSize: 18.f,
+                  fontWeight: FontWeight.w600,
                 ),
-              ],
-            )
-          : Text(
-              'Opening Explorer',
-              style: TextStyle(
-                color: kWhiteColor,
-                fontSize: 18.f,
-                fontWeight: FontWeight.w600,
               ),
-            ),
       actions: [
         if (state.hasActiveFilters)
           IconButton(
@@ -570,12 +662,14 @@ class _ExplorerEvalBar extends ConsumerStatefulWidget {
     required this.fen,
     required this.height,
     required this.width,
+    required this.showEngineAnalysis,
     this.isFlipped = false,
   });
 
   final String fen;
   final double height;
   final double width;
+  final bool showEngineAnalysis;
   final bool isFlipped;
 
   @override
@@ -583,32 +677,53 @@ class _ExplorerEvalBar extends ConsumerStatefulWidget {
 }
 
 class _ExplorerEvalBarState extends ConsumerState<_ExplorerEvalBar> {
+  void _syncEngineState({bool force = false}) {
+    ref
+        .read(explorerEvalProvider.notifier)
+        .setEngineEnabled(
+          enabled: widget.showEngineAnalysis,
+          fen: widget.fen,
+          force: force,
+        );
+  }
+
+  bool _shouldTriggerEvaluation(ExplorerEvalState evalState) {
+    if (!widget.showEngineAnalysis || widget.fen.isEmpty) return false;
+    if (evalState.fen != widget.fen) return true;
+    return !evalState.isEvaluating && evalState.pvLines.isEmpty;
+  }
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      if (widget.fen.isNotEmpty) {
-        ref.read(explorerEvalProvider.notifier).evaluatePosition(widget.fen);
-      }
+      _syncEngineState(force: true);
     });
   }
 
   @override
   void didUpdateWidget(covariant _ExplorerEvalBar oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.fen != oldWidget.fen && widget.fen.isNotEmpty) {
-      ref.read(explorerEvalProvider.notifier).evaluatePosition(widget.fen);
+    if (widget.fen != oldWidget.fen ||
+        widget.showEngineAnalysis != oldWidget.showEngineAnalysis) {
+      _syncEngineState(force: true);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    if (widget.fen.isEmpty) {
+    if (!widget.showEngineAnalysis || widget.fen.isEmpty) {
       return SizedBox(width: widget.width, height: widget.height);
     }
 
     final evalState = ref.watch(explorerEvalProvider);
+    if (_shouldTriggerEvaluation(evalState)) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _syncEngineState(force: true);
+      });
+    }
 
     return EvaluationBarWidget(
       width: widget.width,
@@ -618,115 +733,6 @@ class _ExplorerEvalBarState extends ConsumerState<_ExplorerEvalBar> {
       mate: evalState.mate,
       isEvaluating: evalState.isEvaluating,
       positionKey: widget.fen,
-    );
-  }
-}
-
-/// Navigation controls for move history.
-class _NavigationControls extends StatelessWidget {
-  const _NavigationControls({
-    required this.canGoBack,
-    required this.canGoForward,
-    required this.onGoToStart,
-    required this.onGoBack,
-    required this.onGoForward,
-    required this.onGoToEnd,
-    required this.onFlip,
-  });
-
-  final bool canGoBack;
-  final bool canGoForward;
-  final VoidCallback onGoToStart;
-  final VoidCallback onGoBack;
-  final VoidCallback onGoForward;
-  final VoidCallback onGoToEnd;
-  final VoidCallback onFlip;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.symmetric(horizontal: 24.sp),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          _NavButton(
-            icon: Icons.keyboard_double_arrow_left,
-            onPressed: canGoBack ? onGoToStart : null,
-            tooltip: 'Go to start',
-          ),
-          SizedBox(width: 8.sp),
-          _NavButton(
-            icon: Icons.chevron_left,
-            onPressed: canGoBack ? onGoBack : null,
-            tooltip: 'Previous move',
-          ),
-          SizedBox(width: 8.sp),
-          _NavButton(icon: Icons.swap_vert, onPressed: onFlip, tooltip: 'Flip board'),
-          SizedBox(width: 8.sp),
-          _NavButton(
-            icon: Icons.chevron_right,
-            onPressed: canGoForward ? onGoForward : null,
-            tooltip: 'Next move',
-          ),
-          SizedBox(width: 8.sp),
-          _NavButton(
-            icon: Icons.keyboard_double_arrow_right,
-            onPressed: canGoForward ? onGoToEnd : null,
-            tooltip: 'Go to end',
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Individual navigation button.
-class _NavButton extends StatelessWidget {
-  const _NavButton({
-    required this.icon,
-    required this.onPressed,
-    required this.tooltip,
-  });
-
-  final IconData icon;
-  final VoidCallback? onPressed;
-  final String tooltip;
-
-  @override
-  Widget build(BuildContext context) {
-    final isEnabled = onPressed != null;
-
-    return Tooltip(
-      message: tooltip,
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onPressed,
-          borderRadius: BorderRadius.circular(8.br),
-          child: Container(
-            width: 44.w,
-            height: 44.h,
-            decoration: BoxDecoration(
-              color:
-                  isEnabled
-                      ? kPrimaryColor.withValues(alpha: 0.1)
-                      : Colors.transparent,
-              borderRadius: BorderRadius.circular(8.br),
-              border: Border.all(
-                color:
-                    isEnabled
-                        ? kPrimaryColor.withValues(alpha: 0.3)
-                        : kDividerColor,
-              ),
-            ),
-            child: Icon(
-              icon,
-              size: 24.ic,
-              color: isEnabled ? kPrimaryColor : kSecondaryTextColor,
-            ),
-          ),
-        ),
-      ),
     );
   }
 }
@@ -960,11 +966,62 @@ class _ExplorerEngineLines extends ConsumerWidget {
     final evalState = ref.watch(explorerEvalProvider);
     final pvLines = evalState.pvLines;
 
-    if (pvLines.isEmpty) return const SizedBox.shrink();
+    if (pvLines.isEmpty) {
+      if (!evalState.isEvaluating) return const SizedBox.shrink();
+      final depthLabel =
+          evalState.depth > 0
+              ? 'D:${evalState.depth.toString().padLeft(2, '0')}'
+              : '...';
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Padding(
+            padding: EdgeInsets.symmetric(vertical: 5.sp, horizontal: 12.sp),
+            child: Row(
+              children: [
+                Container(
+                  width: 44.w,
+                  padding: EdgeInsets.symmetric(vertical: 2.sp),
+                  decoration: BoxDecoration(
+                    color: kSecondaryTextColor.withValues(alpha: 0.3),
+                    borderRadius: BorderRadius.circular(3.br),
+                  ),
+                  child: Text(
+                    '...',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: kWhiteColor,
+                      fontSize: 11.f,
+                      fontWeight: FontWeight.w700,
+                      fontFeatures: const [FontFeature.tabularFigures()],
+                    ),
+                  ),
+                ),
+                SizedBox(width: 8.sp),
+                Expanded(
+                  child: Text(
+                    'Analyzing engine line ($depthLabel)',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: kWhiteColor.withValues(alpha: 0.65),
+                      fontSize: 12.f,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Divider(color: kDividerColor, height: 1),
+        ],
+      );
+    }
 
     final useFigurine = ref.watch(
-      boardSettingsProviderNew
-          .select((s) => s.valueOrNull?.useFigurine ?? false),
+      boardSettingsProviderNew.select(
+        (s) => s.valueOrNull?.useFigurine ?? false,
+      ),
     );
     final pieceAssets = ref.watch(
       boardSettingsProviderNew.select(
@@ -1031,9 +1088,11 @@ class _EngineLine extends StatelessWidget {
     final evalText = line.displayEval;
 
     // Eval badge: white bg for white advantage, dark for black, muted for equal.
-    final bool isWhiteWinning = (line.mate != null && line.mate! > 0) ||
+    final bool isWhiteWinning =
+        (line.mate != null && line.mate! > 0) ||
         (line.evaluation != null && line.evaluation! > 0.2);
-    final bool isBlackWinning = (line.mate != null && line.mate! < 0) ||
+    final bool isBlackWinning =
+        (line.mate != null && line.mate! < 0) ||
         (line.evaluation != null && line.evaluation! < -0.2);
 
     Color evalBgColor;
@@ -1082,25 +1141,26 @@ class _EngineLine extends StatelessWidget {
           SizedBox(width: 8.sp),
           // Moves
           Expanded(
-            child: useFigurine
-                ? RichText(
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    text: TextSpan(
-                      children: buildFigurineSpans(
-                        text: moveText,
-                        pieceAssets: pieceAssets,
-                        style: moveStyle,
-                        pieceSize: 14.f,
+            child:
+                useFigurine
+                    ? RichText(
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      text: TextSpan(
+                        children: buildFigurineSpans(
+                          text: moveText,
+                          pieceAssets: pieceAssets,
+                          style: moveStyle,
+                          pieceSize: 14.f,
+                        ),
                       ),
+                    )
+                    : Text(
+                      moveText,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: moveStyle,
                     ),
-                  )
-                : Text(
-                    moveText,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: moveStyle,
-                  ),
           ),
         ],
       ),

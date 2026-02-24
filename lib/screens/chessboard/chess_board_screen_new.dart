@@ -196,7 +196,8 @@ extension LichessMoveAnnotationTypeX on LichessMoveAnnotationType {
 String _moveSansSignature(List<String> moveSans) {
   // Normalize: strip check indicators (+, #) for consistent signature matching
   // Different PGN parsers may or may not include these symbols
-  final normalized = moveSans.map((san) => san.replaceAll(RegExp(r'[+#]'), '')).toList();
+  final normalized =
+      moveSans.map((san) => san.replaceAll(RegExp(r'[+#]'), '')).toList();
   return '${normalized.length}:${normalized.join('|')}';
 }
 
@@ -235,8 +236,9 @@ String? _extractLichessGameId(ChessGame game) {
   // Match direct game URLs like https://lichess.org/abcdefgh or /abcdefgh/white
   final urlRegex = RegExp(r'lichess\.org/([a-zA-Z0-9]{8})(?:[/?#]|$)');
   // Match broadcast URLs: lichess.org/broadcast/{slug}/{roundSlug}/{roundId}/{gameId}
-  final broadcastRegex =
-      RegExp(r'lichess\.org/broadcast/[^/]+/[^/]+/[a-zA-Z0-9]{8}/([a-zA-Z0-9]{8})');
+  final broadcastRegex = RegExp(
+    r'lichess\.org/broadcast/[^/]+/[^/]+/[a-zA-Z0-9]{8}/([a-zA-Z0-9]{8})',
+  );
 
   for (final candidate in candidates) {
     if (candidate == null || candidate.isEmpty) continue;
@@ -615,8 +617,10 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
   late Animation<double> _swipeMoveAnimation;
   final GlobalKey<_SwipeTutorialOverlayState> _tutorialOverlayKey = GlobalKey();
 
-  static const String _kWalkthroughShownDateKey = 'swipable_walkthrough_shown_date';
-  static const String _kWalkthroughDontShowKey = 'swipable_walkthrough_dont_show';
+  static const String _kWalkthroughShownDateKey =
+      'swipable_walkthrough_shown_date';
+  static const String _kWalkthroughDontShowKey =
+      'swipable_walkthrough_dont_show';
 
   @override
   void initState() {
@@ -665,12 +669,18 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     _swipeMoveAnimation = TweenSequence<double>([
       TweenSequenceItem(tween: ConstantTween(0.0), weight: 15),
       TweenSequenceItem(
-        tween: Tween(begin: 0.0, end: 1.0).chain(CurveTween(curve: Curves.easeInOutCubic)),
+        tween: Tween(
+          begin: 0.0,
+          end: 1.0,
+        ).chain(CurveTween(curve: Curves.easeInOutCubic)),
         weight: 35,
       ),
       TweenSequenceItem(tween: ConstantTween(1.0), weight: 10),
       TweenSequenceItem(
-        tween: Tween(begin: 1.0, end: 0.0).chain(CurveTween(curve: Curves.easeInOutCubic)),
+        tween: Tween(
+          begin: 1.0,
+          end: 0.0,
+        ).chain(CurveTween(curve: Curves.easeInOutCubic)),
         weight: 35,
       ),
       TweenSequenceItem(tween: ConstantTween(0.0), weight: 5),
@@ -692,7 +702,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
       // Positive delta = Scroll Right = Content moves Left (matching hand moving Left)
       double delta = _swipeMoveAnimation.value * maxDrag * direction;
       double baseOffset = _currentPageIndex * width;
-      
+
       // Use jumpTo to follow animation frame-by-frame without physics interference
       _pageController.position.jumpTo(baseOffset + delta);
     });
@@ -905,8 +915,6 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     );
   }
 
-
-
   @override
   void didUpdateWidget(covariant ChessBoardScreenNew oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -1117,9 +1125,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
       try {
         final newGame = _resolveGameForIndex(newIndex);
         final params = _createParams(newGame, newIndex);
-        final notifier = ref.read(
-          chessBoardScreenProviderNew(params).notifier,
-        );
+        final notifier = ref.read(chessBoardScreenProviderNew(params).notifier);
         unawaited(
           notifier.parseMoves().whenComplete(
             () => notifier.onBecameVisible(force: false),
@@ -1157,7 +1163,9 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
 
     // Stop the active live activity since user is back in the app
     unawaited(liveService.stopForGame(activeGameId, user.id));
-    debugPrint('[ChessBoardScreen] Stopped Live Activity - user returned to app');
+    debugPrint(
+      '[ChessBoardScreen] Stopped Live Activity - user returned to app',
+    );
   }
 
   void _handleLifecyclePaused() {
@@ -1205,12 +1213,14 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     final whitePhoto = null;
     final blackPhoto = null;
 
-    final eventName = game.tourSlug != null && game.tourSlug!.isNotEmpty
-        ? StringUtils.slugToTitle(game.tourSlug!)
-        : null;
-    final roundName = game.roundSlug != null && game.roundSlug!.isNotEmpty
-        ? StringUtils.formatRoundLabel(game.roundSlug!)
-        : null;
+    final eventName =
+        game.tourSlug != null && game.tourSlug!.isNotEmpty
+            ? StringUtils.slugToTitle(game.tourSlug!)
+            : null;
+    final roundName =
+        game.roundSlug != null && game.roundSlug!.isNotEmpty
+            ? StringUtils.formatRoundLabel(game.roundSlug!)
+            : null;
 
     final boardSettings = ref.read(boardSettingsProviderNew).valueOrNull;
     final boardThemeIndex = boardSettings?.boardThemeIndex ?? 0;
@@ -1223,18 +1233,18 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
         userId: user.id,
         playerWhite: game.whitePlayer.name,
         playerBlack: game.blackPlayer.name,
-        whiteTitle: game.whitePlayer.title.isNotEmpty
-            ? game.whitePlayer.title
-            : null,
-        blackTitle: game.blackPlayer.title.isNotEmpty
-            ? game.blackPlayer.title
-            : null,
-        whiteFed: game.whitePlayer.federation.isNotEmpty
-            ? game.whitePlayer.federation
-            : null,
-        blackFed: game.blackPlayer.federation.isNotEmpty
-            ? game.blackPlayer.federation
-            : null,
+        whiteTitle:
+            game.whitePlayer.title.isNotEmpty ? game.whitePlayer.title : null,
+        blackTitle:
+            game.blackPlayer.title.isNotEmpty ? game.blackPlayer.title : null,
+        whiteFed:
+            game.whitePlayer.federation.isNotEmpty
+                ? game.whitePlayer.federation
+                : null,
+        blackFed:
+            game.blackPlayer.federation.isNotEmpty
+                ? game.blackPlayer.federation
+                : null,
         whitePhoto: whitePhoto,
         blackPhoto: blackPhoto,
         fen: game.fen,
@@ -1251,7 +1261,9 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
       ),
     );
 
-    debugPrint('[ChessBoardScreen] Auto-started Live Activity for game: ${game.gameId}');
+    debugPrint(
+      '[ChessBoardScreen] Auto-started Live Activity for game: ${game.gameId}',
+    );
   }
 
   @override
@@ -1351,11 +1363,15 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
             GamesScreenModel(gamesTourModels: widget.games, pinnedGamedIs: []),
           );
         } else {
-          final gamesValue = ref.watch(playerGamesProvider(selectedPlayer)).valueOrNull;
+          final gamesValue =
+              ref.watch(playerGamesProvider(selectedPlayer)).valueOrNull;
           if (gamesValue == null) {
             // Still loading player games, use widget.games as fallback
             gamesAsync = AsyncValue.data(
-              GamesScreenModel(gamesTourModels: widget.games, pinnedGamedIs: []),
+              GamesScreenModel(
+                gamesTourModels: widget.games,
+                pinnedGamedIs: [],
+              ),
             );
           } else {
             gamesAsync = AsyncValue.data(
@@ -1450,9 +1466,9 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
 
       // Only watch game changes - this rarely changes compared to eval/PV updates
       final gameFromProvider = ref.watch(
-        chessBoardScreenProviderNew(params).select(
-          (state) => state.valueOrNull?.game,
-        ),
+        chessBoardScreenProviderNew(
+          params,
+        ).select((state) => state.valueOrNull?.game),
       );
       if (gameFromProvider != null) {
         syncedGames[i] = gameFromProvider;
@@ -1460,7 +1476,8 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     }
 
     // Use same params as watch to listen to the same provider
-    final currentGame = syncedGames[_currentPageIndex.clamp(0, syncedGames.length - 1)];
+    final currentGame =
+        syncedGames[_currentPageIndex.clamp(0, syncedGames.length - 1)];
     final currentParams = _createParams(currentGame, _currentPageIndex);
     _ensureAudioListener(currentParams);
     // OPTIMIZED: Only watch for updates to games that are currently visible in the PageView
@@ -1480,8 +1497,8 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
           systemNavigationBarColor: Colors.black,
         ),
         child:
-            // ignore: deprecated_member_use
-            ShowCaseWidget(
+        // ignore: deprecated_member_use
+        ShowCaseWidget(
           onFinish: _onWalkthroughFinished,
           builder: (context) {
             if (!_hasCheckedWalkthrough) {
@@ -1498,120 +1515,124 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
                   // REMOVED: RawGestureDetector was blocking PageView swipes
                   body: Stack(
                     children: [
-                    PageView.builder(
-                      padEnds: true,
-                      // PERF: Disabled implicit scrolling entirely - it pre-renders adjacent
-                      // pages for accessibility which is too expensive for complex chess views.
-                      // This significantly reduces memory pressure during rapid swiping.
-                      allowImplicitScrolling: false,
-                      dragStartBehavior: DragStartBehavior.down,
-                      // Allow swiping on tablet as well; landscape block caused gestures to
-                      // feel broken on larger devices. Keep physics simple to avoid half-drags.
-                      physics: isTablet
-                          ? const PageScrollPhysics(parent: ClampingScrollPhysics())
-                          : const PageScrollPhysics(),
-                      controller: _pageController,
-                      onPageChanged: _onPageChanged,
-                      itemCount: syncedGames.length,
-                      itemBuilder: (context, index) {
-                        // Build current page and adjacent pages
-                        if (index == _currentPageIndex - 1 ||
-                            index == _currentPageIndex ||
-                            index == _currentPageIndex + 1) {
-                          final game = syncedGames[index];
-                          final params = _createParams(game, index);
+                      PageView.builder(
+                        padEnds: true,
+                        // PERF: Disabled implicit scrolling entirely - it pre-renders adjacent
+                        // pages for accessibility which is too expensive for complex chess views.
+                        // This significantly reduces memory pressure during rapid swiping.
+                        allowImplicitScrolling: false,
+                        dragStartBehavior: DragStartBehavior.down,
+                        // Allow swiping on tablet as well; landscape block caused gestures to
+                        // feel broken on larger devices. Keep physics simple to avoid half-drags.
+                        physics:
+                            isTablet
+                                ? const PageScrollPhysics(
+                                  parent: ClampingScrollPhysics(),
+                                )
+                                : const PageScrollPhysics(),
+                        controller: _pageController,
+                        onPageChanged: _onPageChanged,
+                        itemCount: syncedGames.length,
+                        itemBuilder: (context, index) {
+                          // Build current page and adjacent pages
+                          if (index == _currentPageIndex - 1 ||
+                              index == _currentPageIndex ||
+                              index == _currentPageIndex + 1) {
+                            final game = syncedGames[index];
+                            final params = _createParams(game, index);
 
-                          // PERFORMANCE FIX: Wrap each page in Consumer to isolate rebuilds.
-                          // This way, evaluation/PV updates only rebuild the affected page,
-                          // not the entire PageView and all siblings.
-                          return Consumer(
-                            builder: (context, ref, _) {
-                              try {
-                                final stateAsync = ref.watch(
-                                  chessBoardScreenProviderNew(params),
-                                );
-                                return stateAsync.when(
-                                  data: (chessBoardState) {
-                                    _ensureLatestMoveSelected(
-                                      ref: ref,
-                                      pageIndex: index,
-                                      state: chessBoardState,
-                                    );
-                                    // PERFORMANCE FIX: Removed useless setState for analysisMode.
-                                    // The variable was tracked but never used for rendering,
-                                    // causing full parent rebuilds on every analysis mode change.
-                                    return _GamePage(
-                                      game: chessBoardState.game,
-                                      state: chessBoardState,
-                                      games: syncedGames,
-                                      currentGameIndex: index,
-                                      currentPageIndex: _currentPageIndex,
-                                      onGameChanged: _navigateToGame,
-                                      lastViewedIndex: _lastViewedIndex,
-                                      hideEventInfo: widget.hideEventInfo,
-                                      playerProfileDataSource:
-                                          widget.playerProfileDataSource,
-                                      onToggleGamebase: _toggleGamebase,
-                                      showGamebaseButton:
-                                          widget.showGamebaseButton,
-                                      showClock: widget.showClock,
-                                    );
-                                  },
-                                  loading: () => _LoadingScreen(
+                            // PERFORMANCE FIX: Wrap each page in Consumer to isolate rebuilds.
+                            // This way, evaluation/PV updates only rebuild the affected page,
+                            // not the entire PageView and all siblings.
+                            return Consumer(
+                              builder: (context, ref, _) {
+                                try {
+                                  final stateAsync = ref.watch(
+                                    chessBoardScreenProviderNew(params),
+                                  );
+                                  return stateAsync.when(
+                                    data: (chessBoardState) {
+                                      _ensureLatestMoveSelected(
+                                        ref: ref,
+                                        pageIndex: index,
+                                        state: chessBoardState,
+                                      );
+                                      // PERFORMANCE FIX: Removed useless setState for analysisMode.
+                                      // The variable was tracked but never used for rendering,
+                                      // causing full parent rebuilds on every analysis mode change.
+                                      return _GamePage(
+                                        game: chessBoardState.game,
+                                        state: chessBoardState,
+                                        games: syncedGames,
+                                        currentGameIndex: index,
+                                        currentPageIndex: _currentPageIndex,
+                                        onGameChanged: _navigateToGame,
+                                        lastViewedIndex: _lastViewedIndex,
+                                        hideEventInfo: widget.hideEventInfo,
+                                        playerProfileDataSource:
+                                            widget.playerProfileDataSource,
+                                        onToggleGamebase: _toggleGamebase,
+                                        showGamebaseButton:
+                                            widget.showGamebaseButton,
+                                        showClock: widget.showClock,
+                                      );
+                                    },
+                                    loading:
+                                        () => _LoadingScreen(
+                                          games: liveGames,
+                                          currentGameIndex: index,
+                                          onGameChanged: _navigateToGame,
+                                          lastViewedIndex: _lastViewedIndex,
+                                          hideEventInfo: widget.hideEventInfo,
+                                        ),
+                                    error: (e, _) => ErrorWidget(e),
+                                  );
+                                } catch (e) {
+                                  // Fallback for when provider isn't ready
+                                  return _LoadingScreen(
                                     games: liveGames,
                                     currentGameIndex: index,
                                     onGameChanged: _navigateToGame,
                                     lastViewedIndex: _lastViewedIndex,
                                     hideEventInfo: widget.hideEventInfo,
-                                  ),
-                                  error: (e, _) => ErrorWidget(e),
-                                );
-                              } catch (e) {
-                                // Fallback for when provider isn't ready
-                                return _LoadingScreen(
-                                  games: liveGames,
-                                  currentGameIndex: index,
-                                  onGameChanged: _navigateToGame,
-                                  lastViewedIndex: _lastViewedIndex,
-                                  hideEventInfo: widget.hideEventInfo,
-                                );
-                              }
-                            },
-                          );
-                        } else {
-                          return SizedBox.shrink();
-                        }
-                      },
-                    ),
-                    // Removed redundant IgnorePointer/AnimatedBuilder that was here
-                    if (_showTutorialOverlay)
-                      Positioned.fill(
-                        child: _SwipeTutorialOverlay(
-                          key: _tutorialOverlayKey,
-                          animationController: _swipeController,
-                          moveAnimation: _swipeMoveAnimation,
-                          fadeAnimation: _swipeFadeAnimation,
-                          scaleAnimation: _swipeScaleAnimation,
-                          currentPageIndex: _currentPageIndex,
-                          totalItems: syncedGames.length,
-                          onDismiss: _onWalkthroughFinished,
-                          onDontShowAgain: () async {
-                            await _suppressWalkthrough();
-                            _onWalkthroughFinished();
-                          },
-                        ),
+                                  );
+                                }
+                              },
+                            );
+                          } else {
+                            return SizedBox.shrink();
+                          }
+                        },
                       ),
-                  ],
-                ),
-              );
-            });
-          }),
+                      // Removed redundant IgnorePointer/AnimatedBuilder that was here
+                      if (_showTutorialOverlay)
+                        Positioned.fill(
+                          child: _SwipeTutorialOverlay(
+                            key: _tutorialOverlayKey,
+                            animationController: _swipeController,
+                            moveAnimation: _swipeMoveAnimation,
+                            fadeAnimation: _swipeFadeAnimation,
+                            scaleAnimation: _swipeScaleAnimation,
+                            currentPageIndex: _currentPageIndex,
+                            totalItems: syncedGames.length,
+                            onDismiss: _onWalkthroughFinished,
+                            onDontShowAgain: () async {
+                              await _suppressWalkthrough();
+                              _onWalkthroughFinished();
+                            },
+                          ),
+                        ),
+                    ],
+                  ),
+                );
+              },
+            );
+          },
         ),
-      );
+      ),
+    );
   }
 }
-
-
 
 class _SwipeTutorialOverlay extends StatefulWidget {
   final VoidCallback onDismiss;
@@ -1717,7 +1738,9 @@ class _SwipeTutorialOverlayState extends State<_SwipeTutorialOverlay>
             child: Container(
               height: MediaQuery.sizeOf(context).height,
               width: MediaQuery.sizeOf(context).width,
-              color: kBlackColor.withValues(alpha: 0.8), // Restored background for overlay
+              color: kBlackColor.withValues(
+                alpha: 0.8,
+              ), // Restored background for overlay
               child: Stack(
                 children: [
                   // Main Content: Bubble + Hand (Centered together)
@@ -1746,15 +1769,21 @@ class _SwipeTutorialOverlayState extends State<_SwipeTutorialOverlay>
                                     ),
                                     child: Container(
                                       padding: EdgeInsets.fromLTRB(
-                                          24.w, 36.h, 24.w, 24.h),
+                                        24.w,
+                                        36.h,
+                                        24.w,
+                                        24.h,
+                                      ),
                                       decoration: BoxDecoration(
                                         color: kWhiteColor,
-                                        borderRadius:
-                                            BorderRadius.circular(28.br),
+                                        borderRadius: BorderRadius.circular(
+                                          28.br,
+                                        ),
                                         boxShadow: [
                                           BoxShadow(
-                                            color: Colors.black
-                                                .withValues(alpha: 0.3),
+                                            color: Colors.black.withValues(
+                                              alpha: 0.3,
+                                            ),
                                             blurRadius: 30,
                                             offset: const Offset(0, 12),
                                             spreadRadius: 0,
@@ -1768,10 +1797,10 @@ class _SwipeTutorialOverlayState extends State<_SwipeTutorialOverlay>
                                             'Swipe to Browse',
                                             style: AppTypography.textLgBold
                                                 .copyWith(
-                                              color: kBlackColor,
-                                              height: 1.2,
-                                              letterSpacing: -0.5,
-                                            ),
+                                                  color: kBlackColor,
+                                                  height: 1.2,
+                                                  letterSpacing: -0.5,
+                                                ),
                                             textAlign: TextAlign.center,
                                           ),
                                           SizedBox(height: 8.h),
@@ -1779,10 +1808,11 @@ class _SwipeTutorialOverlayState extends State<_SwipeTutorialOverlay>
                                             'Explore other games in this tournament by swiping horizontally.',
                                             style: AppTypography.textSmMedium
                                                 .copyWith(
-                                              color: kBlackColor
-                                                  .withValues(alpha: 0.6),
-                                              height: 1.4,
-                                            ),
+                                                  color: kBlackColor.withValues(
+                                                    alpha: 0.6,
+                                                  ),
+                                                  height: 1.4,
+                                                ),
                                             textAlign: TextAlign.center,
                                           ),
                                         ],
@@ -1801,11 +1831,12 @@ class _SwipeTutorialOverlayState extends State<_SwipeTutorialOverlay>
                                     shape: BoxShape.circle,
                                     boxShadow: [
                                       BoxShadow(
-                                        color: kPrimaryColor
-                                            .withValues(alpha: 0.4),
+                                        color: kPrimaryColor.withValues(
+                                          alpha: 0.4,
+                                        ),
                                         blurRadius: 12,
                                         offset: const Offset(0, 6),
-                                      )
+                                      ),
                                     ],
                                     border: Border.all(
                                       color: kWhiteColor,
@@ -1825,7 +1856,8 @@ class _SwipeTutorialOverlayState extends State<_SwipeTutorialOverlay>
                         SizedBox(height: 48.h), // Gap between bubble and hand
                         // Hand Animation
                         SizedBox(
-                          height: 120.h, // Reserve space for hand movement vertically
+                          height:
+                              120.h, // Reserve space for hand movement vertically
                           width: double.infinity,
                           child: AnimatedBuilder(
                             animation: widget.animationController,
@@ -1835,13 +1867,18 @@ class _SwipeTutorialOverlayState extends State<_SwipeTutorialOverlay>
                               }
 
                               final width = MediaQuery.sizeOf(context).width;
-                              bool canGoNext = widget.currentPageIndex < widget.totalItems - 1;
+                              bool canGoNext =
+                                  widget.currentPageIndex <
+                                  widget.totalItems - 1;
                               double direction = canGoNext ? 1.0 : -1.0;
 
                               // Reduce drag distance slightly for better visual within column
                               double maxDrag = width * 0.5;
                               double handTranslation =
-                                  -1 * widget.moveAnimation.value * maxDrag * direction;
+                                  -1 *
+                                  widget.moveAnimation.value *
+                                  maxDrag *
+                                  direction;
 
                               return Opacity(
                                 opacity: widget.fadeAnimation.value,
@@ -1852,17 +1889,20 @@ class _SwipeTutorialOverlayState extends State<_SwipeTutorialOverlay>
                                     child: Center(
                                       child: Container(
                                         decoration: BoxDecoration(
-                                            color:
-                                                kWhiteColor.withValues(alpha: 0.15),
-                                            shape: BoxShape.circle,
-                                            boxShadow: [
-                                              BoxShadow(
-                                                color: Colors.black
-                                                    .withValues(alpha: 0.3),
-                                                blurRadius: 20,
-                                                spreadRadius: 5,
-                                              )
-                                            ]),
+                                          color: kWhiteColor.withValues(
+                                            alpha: 0.15,
+                                          ),
+                                          shape: BoxShape.circle,
+                                          boxShadow: [
+                                            BoxShadow(
+                                              color: Colors.black.withValues(
+                                                alpha: 0.3,
+                                              ),
+                                              blurRadius: 20,
+                                              spreadRadius: 5,
+                                            ),
+                                          ],
+                                        ),
                                         padding: EdgeInsets.all(24.sp),
                                         child: Icon(
                                           Icons.touch_app_rounded,
@@ -1870,8 +1910,9 @@ class _SwipeTutorialOverlayState extends State<_SwipeTutorialOverlay>
                                           color: kWhiteColor,
                                           shadows: [
                                             BoxShadow(
-                                              color:
-                                                  Colors.black.withValues(alpha: 0.5),
+                                              color: Colors.black.withValues(
+                                                alpha: 0.5,
+                                              ),
                                               blurRadius: 10,
                                               offset: const Offset(0, 4),
                                             ),
@@ -1893,7 +1934,9 @@ class _SwipeTutorialOverlayState extends State<_SwipeTutorialOverlay>
                             TextButton(
                               onPressed: _handleDontShowAgain,
                               style: TextButton.styleFrom(
-                                foregroundColor: kWhiteColor.withValues(alpha: 0.6),
+                                foregroundColor: kWhiteColor.withValues(
+                                  alpha: 0.6,
+                                ),
                               ),
                               child: Text(
                                 "Don't show again",
@@ -1905,9 +1948,13 @@ class _SwipeTutorialOverlayState extends State<_SwipeTutorialOverlay>
                               onPressed: animateOut,
                               style: TextButton.styleFrom(
                                 foregroundColor: kWhiteColor,
-                                backgroundColor: kWhiteColor.withValues(alpha: 0.1),
+                                backgroundColor: kWhiteColor.withValues(
+                                  alpha: 0.1,
+                                ),
                                 padding: EdgeInsets.symmetric(
-                                    horizontal: 24.w, vertical: 12.h),
+                                  horizontal: 24.w,
+                                  vertical: 12.h,
+                                ),
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(30.br),
                                 ),
@@ -1949,11 +1996,12 @@ class _BorderProgressPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     if (progress <= 0) return;
 
-    final paint = Paint()
-      ..color = color
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = strokeWidth
-      ..strokeCap = StrokeCap.round;
+    final paint =
+        Paint()
+          ..color = color
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = strokeWidth
+          ..strokeCap = StrokeCap.round;
 
     final w = size.width;
     final h = size.height;
@@ -1962,26 +2010,39 @@ class _BorderProgressPainter extends CustomPainter {
     final bottomCenter = w / 2;
 
     // Right Path (Clockwise: Top-Center -> Top-Right -> Right -> Bottom-Right -> Bottom-Center)
-    final rightPath = Path()
-      ..moveTo(topCenter, 0)
-      ..lineTo(w - r, 0)
-      ..arcToPoint(Offset(w, r), radius: Radius.circular(r))
-      ..lineTo(w, h - r)
-      ..arcToPoint(Offset(w - r, h), radius: Radius.circular(r))
-      ..lineTo(bottomCenter, h);
+    final rightPath =
+        Path()
+          ..moveTo(topCenter, 0)
+          ..lineTo(w - r, 0)
+          ..arcToPoint(Offset(w, r), radius: Radius.circular(r))
+          ..lineTo(w, h - r)
+          ..arcToPoint(Offset(w - r, h), radius: Radius.circular(r))
+          ..lineTo(bottomCenter, h);
 
     // Left Path (Counter-Clockwise: Top-Center -> Top-Left -> Left -> Bottom-Left -> Bottom-Center)
-    final leftPath = Path()
-      ..moveTo(topCenter, 0)
-      ..lineTo(r, 0)
-      ..arcToPoint(Offset(0, r), radius: Radius.circular(r), clockwise: false)
-      ..lineTo(0, h - r)
-      ..arcToPoint(Offset(r, h), radius: Radius.circular(r), clockwise: false)
-      ..lineTo(bottomCenter, h);
+    final leftPath =
+        Path()
+          ..moveTo(topCenter, 0)
+          ..lineTo(r, 0)
+          ..arcToPoint(
+            Offset(0, r),
+            radius: Radius.circular(r),
+            clockwise: false,
+          )
+          ..lineTo(0, h - r)
+          ..arcToPoint(
+            Offset(r, h),
+            radius: Radius.circular(r),
+            clockwise: false,
+          )
+          ..lineTo(bottomCenter, h);
 
     // Draw Right Segment
     final rightMetric = rightPath.computeMetrics().first;
-    final rightExtract = rightMetric.extractPath(0, rightMetric.length * progress);
+    final rightExtract = rightMetric.extractPath(
+      0,
+      rightMetric.length * progress,
+    );
     canvas.drawPath(rightExtract, paint);
 
     // Draw Left Segment
@@ -1993,9 +2054,9 @@ class _BorderProgressPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant _BorderProgressPainter oldDelegate) {
     return oldDelegate.progress != progress ||
-           oldDelegate.color != color ||
-           oldDelegate.strokeWidth != strokeWidth ||
-           oldDelegate.borderRadius != borderRadius;
+        oldDelegate.color != color ||
+        oldDelegate.strokeWidth != strokeWidth ||
+        oldDelegate.borderRadius != borderRadius;
   }
 }
 
@@ -2123,155 +2184,155 @@ class _LoadingScreen extends StatelessWidget {
             enabled: true,
             child: Column(
               children: [
-            // Top player skeleton
-            Container(
-              margin: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
-              padding: EdgeInsets.all(8.sp),
-              decoration: BoxDecoration(
-                color: kBlack2Color,
-                borderRadius: BorderRadius.circular(8.br),
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    width: 40.w,
-                    height: 40.h,
-                    decoration: BoxDecoration(
-                      color: kWhiteColor.withValues(alpha: 0.1),
-                      shape: BoxShape.circle,
-                    ),
+                // Top player skeleton
+                Container(
+                  margin: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
+                  padding: EdgeInsets.all(8.sp),
+                  decoration: BoxDecoration(
+                    color: kBlack2Color,
+                    borderRadius: BorderRadius.circular(8.br),
                   ),
-                  SizedBox(width: 8.w),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Container(
-                          width: 120.w,
-                          height: 14.h,
-                          decoration: BoxDecoration(
-                            color: kWhiteColor.withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(4.br),
-                          ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 40.w,
+                        height: 40.h,
+                        decoration: BoxDecoration(
+                          color: kWhiteColor.withValues(alpha: 0.1),
+                          shape: BoxShape.circle,
                         ),
-                        SizedBox(height: 4.h),
-                        Container(
-                          width: 60.w,
-                          height: 12.h,
-                          decoration: BoxDecoration(
-                            color: kWhiteColor.withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(4.br),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            SizedBox(height: 2.h),
-            // Board skeleton
-            Container(
-              margin: EdgeInsets.symmetric(horizontal: 16.sp),
-              child: Row(
-                children: [
-                  // Eval bar skeleton
-                  Container(
-                    width: sideBarWidth,
-                    height: boardSize,
-                    decoration: BoxDecoration(
-                      color: kWhiteColor.withValues(alpha: 0.05),
-                      borderRadius: BorderRadius.circular(4.br),
-                    ),
-                  ),
-                  // Board skeleton
-                  Container(
-                    width: boardSize,
-                    height: boardSize,
-                    decoration: BoxDecoration(
-                      color: kWhiteColor.withValues(alpha: 0.05),
-                      borderRadius: BorderRadius.circular(4.br),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            SizedBox(height: 2.h),
-            // Bottom player skeleton
-            Container(
-              margin: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
-              padding: EdgeInsets.all(8.sp),
-              decoration: BoxDecoration(
-                color: kBlack2Color,
-                borderRadius: BorderRadius.circular(8.br),
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    width: 40.w,
-                    height: 40.h,
-                    decoration: BoxDecoration(
-                      color: kWhiteColor.withValues(alpha: 0.1),
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                  SizedBox(width: 8.w),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Container(
-                          width: 120.w,
-                          height: 14.h,
-                          decoration: BoxDecoration(
-                            color: kWhiteColor.withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(4.br),
-                          ),
-                        ),
-                        SizedBox(height: 4.h),
-                        Container(
-                          width: 60.w,
-                          height: 12.h,
-                          decoration: BoxDecoration(
-                            color: kWhiteColor.withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(4.br),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            // Moves area skeleton
-            Expanded(
-              child: Container(
-                width: double.infinity,
-                margin: EdgeInsets.only(top: 8.h),
-                decoration: BoxDecoration(
-                  color: kDarkGreyColor.withValues(alpha: 0.3),
-                  borderRadius: BorderRadius.only(
-                    topLeft: Radius.circular(12.sp),
-                    topRight: Radius.circular(12.sp),
-                  ),
-                ),
-                padding: EdgeInsets.all(20.sp),
-                child: Wrap(
-                  spacing: 6.sp,
-                  runSpacing: 6.sp,
-                  children: List.generate(8, (index) {
-                    return Container(
-                      width: (35 + (index % 5) * 20).w,
-                      height: 14.h,
-                      decoration: BoxDecoration(
-                        color: kWhiteColor.withValues(alpha: 0.05),
-                        borderRadius: BorderRadius.circular(3.sp),
                       ),
-                    );
-                  }),
+                      SizedBox(width: 8.w),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Container(
+                              width: 120.w,
+                              height: 14.h,
+                              decoration: BoxDecoration(
+                                color: kWhiteColor.withValues(alpha: 0.1),
+                                borderRadius: BorderRadius.circular(4.br),
+                              ),
+                            ),
+                            SizedBox(height: 4.h),
+                            Container(
+                              width: 60.w,
+                              height: 12.h,
+                              decoration: BoxDecoration(
+                                color: kWhiteColor.withValues(alpha: 0.1),
+                                borderRadius: BorderRadius.circular(4.br),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            ),
+                SizedBox(height: 2.h),
+                // Board skeleton
+                Container(
+                  margin: EdgeInsets.symmetric(horizontal: 16.sp),
+                  child: Row(
+                    children: [
+                      // Eval bar skeleton
+                      Container(
+                        width: sideBarWidth,
+                        height: boardSize,
+                        decoration: BoxDecoration(
+                          color: kWhiteColor.withValues(alpha: 0.05),
+                          borderRadius: BorderRadius.circular(4.br),
+                        ),
+                      ),
+                      // Board skeleton
+                      Container(
+                        width: boardSize,
+                        height: boardSize,
+                        decoration: BoxDecoration(
+                          color: kWhiteColor.withValues(alpha: 0.05),
+                          borderRadius: BorderRadius.circular(4.br),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                SizedBox(height: 2.h),
+                // Bottom player skeleton
+                Container(
+                  margin: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
+                  padding: EdgeInsets.all(8.sp),
+                  decoration: BoxDecoration(
+                    color: kBlack2Color,
+                    borderRadius: BorderRadius.circular(8.br),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 40.w,
+                        height: 40.h,
+                        decoration: BoxDecoration(
+                          color: kWhiteColor.withValues(alpha: 0.1),
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      SizedBox(width: 8.w),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Container(
+                              width: 120.w,
+                              height: 14.h,
+                              decoration: BoxDecoration(
+                                color: kWhiteColor.withValues(alpha: 0.1),
+                                borderRadius: BorderRadius.circular(4.br),
+                              ),
+                            ),
+                            SizedBox(height: 4.h),
+                            Container(
+                              width: 60.w,
+                              height: 12.h,
+                              decoration: BoxDecoration(
+                                color: kWhiteColor.withValues(alpha: 0.1),
+                                borderRadius: BorderRadius.circular(4.br),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                // Moves area skeleton
+                Expanded(
+                  child: Container(
+                    width: double.infinity,
+                    margin: EdgeInsets.only(top: 8.h),
+                    decoration: BoxDecoration(
+                      color: kDarkGreyColor.withValues(alpha: 0.3),
+                      borderRadius: BorderRadius.only(
+                        topLeft: Radius.circular(12.sp),
+                        topRight: Radius.circular(12.sp),
+                      ),
+                    ),
+                    padding: EdgeInsets.all(20.sp),
+                    child: Wrap(
+                      spacing: 6.sp,
+                      runSpacing: 6.sp,
+                      children: List.generate(8, (index) {
+                        return Container(
+                          width: (35 + (index % 5) * 20).w,
+                          height: 14.h,
+                          decoration: BoxDecoration(
+                            color: kWhiteColor.withValues(alpha: 0.05),
+                            borderRadius: BorderRadius.circular(3.sp),
+                          ),
+                        );
+                      }),
+                    ),
+                  ),
+                ),
               ],
             ),
           ),
@@ -2418,11 +2479,12 @@ class _AppBarState extends ConsumerState<_AppBar> {
         constraints: ResponsiveHelper.bottomSheetConstraints,
         isDismissible: false, // We handle dismissal ourselves with timing guard
         enableDrag: true,
-        builder: (sheetContext) => _TabletSafeBottomSheet(
-          openedAt: openedAt,
-          minOpenDuration: minOpenDuration,
-          child: _EventInfoSheet(game: widget.game, pgn: pgn),
-        ),
+        builder:
+            (sheetContext) => _TabletSafeBottomSheet(
+              openedAt: openedAt,
+              minOpenDuration: minOpenDuration,
+              child: _EventInfoSheet(game: widget.game, pgn: pgn),
+            ),
       ).then((_) {
         _ChessBoardPopupState.markClosed();
       });
@@ -2446,15 +2508,17 @@ class _AppBarState extends ConsumerState<_AppBar> {
     );
     final infoSheetPgn =
         ref.watch(
-          chessBoardScreenProviderNew(params).select(
-            (state) => state.valueOrNull?.pgnData,
-          ),
+          chessBoardScreenProviderNew(
+            params,
+          ).select((state) => state.valueOrNull?.pgnData),
         ) ??
         widget.game.pgn;
 
     // Debug: Log when AppBar rebuilds on tablets while popup is open
     if (ResponsiveHelper.isTablet && _ChessBoardPopupState.isAnyPopupOpen) {
-      debugPrint('⚠️ TABLET APPBAR REBUILD while popup open: gameIndex=${widget.currentGameIndex}');
+      debugPrint(
+        '⚠️ TABLET APPBAR REBUILD while popup open: gameIndex=${widget.currentGameIndex}',
+      );
     }
 
     return AppBar(
@@ -2525,9 +2589,13 @@ class _AppBarState extends ConsumerState<_AppBar> {
                   game: widget.game,
                   index: widget.currentGameIndex,
                 );
-                final boardState = ref.read(chessBoardScreenProviderNew(params));
+                final boardState = ref.read(
+                  chessBoardScreenProviderNew(params),
+                );
                 final analysisGame = boardState.valueOrNull?.analysisState.game;
-                final hasCustomAnalysis = _gameHasCustomVariations(analysisGame);
+                final hasCustomAnalysis = _gameHasCustomVariations(
+                  analysisGame,
+                );
 
                 if (!hasCustomAnalysis) {
                   ScaffoldMessenger.of(context).showSnackBar(
@@ -2627,9 +2695,13 @@ class _AppBarState extends ConsumerState<_AppBar> {
                   game: widget.game,
                   index: widget.currentGameIndex,
                 );
-                final boardState = ref.read(chessBoardScreenProviderNew(params));
+                final boardState = ref.read(
+                  chessBoardScreenProviderNew(params),
+                );
                 final analysisGame = boardState.valueOrNull?.analysisState.game;
-                final hasCustomAnalysis = _gameHasCustomVariations(analysisGame);
+                final hasCustomAnalysis = _gameHasCustomVariations(
+                  analysisGame,
+                );
 
                 if (!hasCustomAnalysis) {
                   ScaffoldMessenger.of(context).showSnackBar(
@@ -2735,7 +2807,8 @@ class _TabletSafePopupMenu<T> extends StatefulWidget {
   });
 
   @override
-  State<_TabletSafePopupMenu<T>> createState() => _TabletSafePopupMenuState<T>();
+  State<_TabletSafePopupMenu<T>> createState() =>
+      _TabletSafePopupMenuState<T>();
 }
 
 class _TabletSafePopupMenuState<T> extends State<_TabletSafePopupMenu<T>>
@@ -2780,7 +2853,9 @@ class _TabletSafePopupMenuState<T> extends State<_TabletSafePopupMenu<T>>
     if (_openedAt == null) return true;
     final elapsed = DateTime.now().difference(_openedAt!);
     if (elapsed < _minOpenDuration) {
-      debugPrint('🛡️ TABLET POPUP: _canDismiss() returning false, elapsed=${elapsed.inMilliseconds}ms');
+      debugPrint(
+        '🛡️ TABLET POPUP: _canDismiss() returning false, elapsed=${elapsed.inMilliseconds}ms',
+      );
       return false;
     }
     return true;
@@ -2803,8 +2878,13 @@ class _TabletSafePopupMenuState<T> extends State<_TabletSafePopupMenu<T>>
   void _closeMenu({bool force = false}) {
     if (!_isOpen) return;
 
-    final elapsed = _openedAt != null ? DateTime.now().difference(_openedAt!) : Duration.zero;
-    debugPrint('📕 TABLET POPUP _closeMenu called: force=$force, elapsed=${elapsed.inMilliseconds}ms');
+    final elapsed =
+        _openedAt != null
+            ? DateTime.now().difference(_openedAt!)
+            : Duration.zero;
+    debugPrint(
+      '📕 TABLET POPUP _closeMenu called: force=$force, elapsed=${elapsed.inMilliseconds}ms',
+    );
 
     if (!force && !_canDismiss()) {
       debugPrint('🛡️ TABLET POPUP dismiss blocked - opened too recently');
@@ -2836,77 +2916,85 @@ class _TabletSafePopupMenuState<T> extends State<_TabletSafePopupMenu<T>>
     final items = widget.itemBuilder(context);
 
     _overlayEntry = OverlayEntry(
-      builder: (context) => Stack(
-        children: [
-          // Barrier with timing guard
-          Positioned.fill(
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () {
-                debugPrint('🔲 TABLET POPUP BARRIER TAP: calling _closeMenu');
-                _closeMenu();
-              },
-              onHorizontalDragStart: (_) {},
-              onHorizontalDragUpdate: (_) {},
-              onHorizontalDragEnd: (_) {},
-              child: Container(color: Colors.black.withValues(alpha: 0.01)),
-            ),
-          ),
-          // Menu positioned near the trigger
-          Positioned(
-            // Position to the left of the button, aligned to top
-            right: screenWidth - offset.dx - size.width,
-            top: offset.dy + size.height + 4,
-            child: AnimatedBuilder(
-              animation: _animation,
-              builder: (context, child) {
-                final progress = _animation.value.clamp(0.0, 1.0);
-                return Transform.scale(
-                  scale: 0.92 + (progress * 0.08),
-                  alignment: Alignment.topRight,
-                  child: Opacity(opacity: progress, child: child),
-                );
-              },
-              child: Material(
-                elevation: 8,
-                borderRadius: BorderRadius.circular(12),
-                color: const Color(0xFF2A2A2A),
-                child: IntrinsicWidth(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: items.map((item) {
-                      if (item is PopupMenuItem<T>) {
-                        return InkWell(
-                          onTap: () {
-                            _closeMenu(force: true);
-                            if (item.onTap != null) {
-                              item.onTap!();
-                            }
-                            if (item.value != null && widget.onSelected != null) {
-                              widget.onSelected!(item.value as T);
-                            }
-                          },
-                          child: Padding(
-                            padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
-                            child: item.child,
-                          ),
-                        );
-                      } else if (item is PopupMenuDivider) {
-                        return Divider(
-                          height: 1,
-                          color: kWhiteColor.withValues(alpha: 0.1),
-                        );
-                      }
-                      return const SizedBox.shrink();
-                    }).toList(),
+      builder:
+          (context) => Stack(
+            children: [
+              // Barrier with timing guard
+              Positioned.fill(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () {
+                    debugPrint(
+                      '🔲 TABLET POPUP BARRIER TAP: calling _closeMenu',
+                    );
+                    _closeMenu();
+                  },
+                  onHorizontalDragStart: (_) {},
+                  onHorizontalDragUpdate: (_) {},
+                  onHorizontalDragEnd: (_) {},
+                  child: Container(color: Colors.black.withValues(alpha: 0.01)),
+                ),
+              ),
+              // Menu positioned near the trigger
+              Positioned(
+                // Position to the left of the button, aligned to top
+                right: screenWidth - offset.dx - size.width,
+                top: offset.dy + size.height + 4,
+                child: AnimatedBuilder(
+                  animation: _animation,
+                  builder: (context, child) {
+                    final progress = _animation.value.clamp(0.0, 1.0);
+                    return Transform.scale(
+                      scale: 0.92 + (progress * 0.08),
+                      alignment: Alignment.topRight,
+                      child: Opacity(opacity: progress, child: child),
+                    );
+                  },
+                  child: Material(
+                    elevation: 8,
+                    borderRadius: BorderRadius.circular(12),
+                    color: const Color(0xFF2A2A2A),
+                    child: IntrinsicWidth(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children:
+                            items.map((item) {
+                              if (item is PopupMenuItem<T>) {
+                                return InkWell(
+                                  onTap: () {
+                                    _closeMenu(force: true);
+                                    if (item.onTap != null) {
+                                      item.onTap!();
+                                    }
+                                    if (item.value != null &&
+                                        widget.onSelected != null) {
+                                      widget.onSelected!(item.value as T);
+                                    }
+                                  },
+                                  child: Padding(
+                                    padding: EdgeInsets.symmetric(
+                                      horizontal: 16.w,
+                                      vertical: 12.h,
+                                    ),
+                                    child: item.child,
+                                  ),
+                                );
+                              } else if (item is PopupMenuDivider) {
+                                return Divider(
+                                  height: 1,
+                                  color: kWhiteColor.withValues(alpha: 0.1),
+                                );
+                              }
+                              return const SizedBox.shrink();
+                            }).toList(),
+                      ),
+                    ),
                   ),
                 ),
               ),
-            ),
+            ],
           ),
-        ],
-      ),
     );
 
     overlay.insert(_overlayEntry!);
@@ -2955,17 +3043,16 @@ class _TabletSafeBottomSheet extends StatelessWidget {
               if (_canDismiss()) {
                 Navigator.of(context).pop();
               } else {
-                debugPrint('🛡️ TABLET SHEET: barrier tap blocked - opened too recently');
+                debugPrint(
+                  '🛡️ TABLET SHEET: barrier tap blocked - opened too recently',
+                );
               }
             },
             child: Container(color: Colors.transparent),
           ),
         ),
         // The actual bottom sheet content
-        Align(
-          alignment: Alignment.bottomCenter,
-          child: child,
-        ),
+        Align(alignment: Alignment.bottomCenter, child: child),
       ],
     );
   }
@@ -2981,7 +3068,8 @@ class _TabletPopupMenuWrapper extends StatefulWidget {
   const _TabletPopupMenuWrapper({required this.child});
 
   @override
-  State<_TabletPopupMenuWrapper> createState() => _TabletPopupMenuWrapperState();
+  State<_TabletPopupMenuWrapper> createState() =>
+      _TabletPopupMenuWrapperState();
 }
 
 class _TabletPopupMenuWrapperState extends State<_TabletPopupMenuWrapper>
@@ -3035,7 +3123,9 @@ class _TabletPopupMenuWrapperState extends State<_TabletPopupMenuWrapper>
             // Check if there's still an open popup route
             final navigator = Navigator.of(context, rootNavigator: true);
             final hasPopupRoute = navigator.canPop();
-            debugPrint('🕐 TABLET WRAPPER CLEANUP: hasPopupRoute=$hasPopupRoute, isAnyPopupOpen=${_ChessBoardPopupState.isAnyPopupOpen}');
+            debugPrint(
+              '🕐 TABLET WRAPPER CLEANUP: hasPopupRoute=$hasPopupRoute, isAnyPopupOpen=${_ChessBoardPopupState.isAnyPopupOpen}',
+            );
             if (!hasPopupRoute && !_ChessBoardPopupState.isAnyPopupOpen) {
               debugPrint('🕐 TABLET WRAPPER: Resetting popup state');
               _wasPopupOpen = false;
@@ -3112,7 +3202,9 @@ class _GameSelectionDropdownState extends State<_GameSelectionDropdown>
   void deactivate() {
     // Called when widget is removed from tree (before dispose)
     if (_isOpen && ResponsiveHelper.isTablet) {
-      debugPrint('🚨 TABLET DROPDOWN: deactivate() called while open! Stack trace:');
+      debugPrint(
+        '🚨 TABLET DROPDOWN: deactivate() called while open! Stack trace:',
+      );
       debugPrint(StackTrace.current.toString().split('\n').take(10).join('\n'));
     }
     super.deactivate();
@@ -3122,7 +3214,9 @@ class _GameSelectionDropdownState extends State<_GameSelectionDropdown>
   void dispose() {
     // Log when dispose is called while dropdown is open - this is the likely culprit
     if (_isOpen && ResponsiveHelper.isTablet) {
-      debugPrint('🚨 TABLET DROPDOWN: dispose() called while open! This is likely the bug.');
+      debugPrint(
+        '🚨 TABLET DROPDOWN: dispose() called while open! This is likely the bug.',
+      );
       debugPrint('🚨 Stack trace:');
       debugPrint(StackTrace.current.toString().split('\n').take(15).join('\n'));
     }
@@ -3150,7 +3244,9 @@ class _GameSelectionDropdownState extends State<_GameSelectionDropdown>
     final elapsed = DateTime.now().difference(_openedAt!);
     final canDismiss = elapsed >= _minOpenDuration;
     if (!canDismiss) {
-      debugPrint('🛡️ TABLET: _canDismiss() returning false, elapsed=${elapsed.inMilliseconds}ms');
+      debugPrint(
+        '🛡️ TABLET: _canDismiss() returning false, elapsed=${elapsed.inMilliseconds}ms',
+      );
     }
     return canDismiss;
   }
@@ -3233,7 +3329,9 @@ class _GameSelectionDropdownState extends State<_GameSelectionDropdown>
     _ChessBoardPopupState.markOpen(); // Mark globally that a popup is open
 
     if (ResponsiveHelper.isTablet) {
-      debugPrint('📂 TABLET DROPDOWN OPENED: openId=$currentOpenId, time=${_openedAt}');
+      debugPrint(
+        '📂 TABLET DROPDOWN OPENED: openId=$currentOpenId, time=${_openedAt}',
+      );
     }
 
     setState(() => _isOpen = true);
@@ -3244,10 +3342,15 @@ class _GameSelectionDropdownState extends State<_GameSelectionDropdown>
   void _closeDropdown({bool force = false}) {
     if (!_isOpen) return;
 
-    final elapsed = _openedAt != null ? DateTime.now().difference(_openedAt!) : Duration.zero;
+    final elapsed =
+        _openedAt != null
+            ? DateTime.now().difference(_openedAt!)
+            : Duration.zero;
 
     if (ResponsiveHelper.isTablet) {
-      debugPrint('📕 TABLET DROPDOWN _closeDropdown called: force=$force, elapsed=${elapsed.inMilliseconds}ms, openId=$_openId');
+      debugPrint(
+        '📕 TABLET DROPDOWN _closeDropdown called: force=$force, elapsed=${elapsed.inMilliseconds}ms, openId=$_openId',
+      );
       debugPrint('📕 Stack trace (first 8 lines):');
       debugPrint(StackTrace.current.toString().split('\n').take(8).join('\n'));
     }
@@ -3255,7 +3358,9 @@ class _GameSelectionDropdownState extends State<_GameSelectionDropdown>
     // On tablets, prevent immediate dismissal to guard against
     // gesture/rebuild timing issues causing unwanted closes
     if (!force && !_canDismiss()) {
-      debugPrint('🛡️ Dropdown dismiss blocked - opened too recently (${elapsed.inMilliseconds}ms < ${_minOpenDuration.inMilliseconds}ms)');
+      debugPrint(
+        '🛡️ Dropdown dismiss blocked - opened too recently (${elapsed.inMilliseconds}ms < ${_minOpenDuration.inMilliseconds}ms)',
+      );
       return;
     }
 
@@ -3328,7 +3433,9 @@ class _GameSelectionDropdownState extends State<_GameSelectionDropdown>
 
     // Debug: Log when dropdown widget rebuilds while open
     if (ResponsiveHelper.isTablet && _isOpen) {
-      debugPrint('🔄 TABLET DROPDOWN REBUILD while open: _isOpen=$_isOpen, openId=$_openId');
+      debugPrint(
+        '🔄 TABLET DROPDOWN REBUILD while open: _isOpen=$_isOpen, openId=$_openId',
+      );
     }
 
     final currentGame = widget.games[widget.currentGameIndex];
@@ -3589,7 +3696,9 @@ class _GameDropdownOverlay extends StatelessWidget {
           },
           onHorizontalDragUpdate: (_) {},
           onHorizontalDragEnd: (_) {},
-          child: Container(color: Colors.black.withOpacity(0.01)), // Slightly visible for hit testing
+          child: Container(
+            color: Colors.black.withOpacity(0.01),
+          ), // Slightly visible for hit testing
         );
       }
       // On mobile, simple transparent barrier works fine
@@ -3784,9 +3893,8 @@ class _GameDropdownContentState extends State<_GameDropdownContent> {
 
     final resolvedHeight = itemHeight ?? _itemHeight;
     // Convert to content-space (viewport Y + scroll offset)
-    final resolvedBaseTop = firstTop != null
-        ? firstTop + scrollAtMeasure
-        : _itemBaseTop;
+    final resolvedBaseTop =
+        firstTop != null ? firstTop + scrollAtMeasure : _itemBaseTop;
     final fallbackStride = resolvedHeight + 2.h; // margin/padding allowance
 
     double resolvedStride = _itemStride;
@@ -3820,13 +3928,14 @@ class _GameDropdownContentState extends State<_GameDropdownContent> {
       if (box != null && box.hasSize) {
         final scrollOffset =
             _scrollController.hasClients ? _scrollController.offset : 0.0;
-        final vpY =
-            listBox.globalToLocal(box.localToGlobal(Offset.zero)).dy;
+        final vpY = listBox.globalToLocal(box.localToGlobal(Offset.zero)).dy;
         final contentY = vpY + scrollOffset;
         // If the item includes a round separator header, its total height
         // exceeds _itemHeight. Offset to the game row at the bottom.
-        final separatorOffset =
-            (box.size.height - _itemHeight).clamp(0.0, double.infinity);
+        final separatorOffset = (box.size.height - _itemHeight).clamp(
+          0.0,
+          double.infinity,
+        );
         return contentY + separatorOffset;
       }
     }
@@ -3963,13 +4072,13 @@ class _GameDropdownContentState extends State<_GameDropdownContent> {
       final box = ctx?.findRenderObject() as RenderBox?;
       if (box == null || !box.hasSize) continue;
 
-      final vpY =
-          listBox.globalToLocal(box.localToGlobal(Offset.zero)).dy;
+      final vpY = listBox.globalToLocal(box.localToGlobal(Offset.zero)).dy;
       final itemContentY = vpY + scrollOffset;
-      final separatorOffset =
-          (box.size.height - _itemHeight).clamp(0.0, double.infinity);
-      final gameRowCenter =
-          itemContentY + separatorOffset + _itemHeight / 2;
+      final separatorOffset = (box.size.height - _itemHeight).clamp(
+        0.0,
+        double.infinity,
+      );
+      final gameRowCenter = itemContentY + separatorOffset + _itemHeight / 2;
 
       final dist = (contentY - gameRowCenter).abs();
       if (dist < bestDist) {
@@ -4899,7 +5008,8 @@ class _AnalysisGameBody extends ConsumerWidget {
     final isGamebaseActive = showGamebaseButton ? gamebaseEnabled : false;
 
     // Check for tablet landscape mode for side-by-side layout
-    final isTabletLandscape = ResponsiveHelper.isTablet && ResponsiveHelper.isLandscape;
+    final isTabletLandscape =
+        ResponsiveHelper.isTablet && ResponsiveHelper.isLandscape;
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -4910,7 +5020,8 @@ class _AnalysisGameBody extends ConsumerWidget {
                 ? constraints.maxHeight
                 : MediaQuery.sizeOf(context).height;
         final compactThreshold = 620.h;
-        final useCompactLayout = availableHeight < compactThreshold && !isTabletLandscape;
+        final useCompactLayout =
+            availableHeight < compactThreshold && !isTabletLandscape;
 
         final pvSection = <Widget>[];
         // Hide standard PV section if Gamebase is active (it has its own)
@@ -4934,10 +5045,9 @@ class _AnalysisGameBody extends ConsumerWidget {
         ValueChanged<String> editNameCallback(bool isWhite) {
           return (newName) {
             final params = ChessBoardProviderParams(game: game, index: index);
-            ref.read(chessBoardScreenProviderNew(params).notifier).updatePlayerName(
-              isWhite: isWhite,
-              newName: newName,
-            );
+            ref
+                .read(chessBoardScreenProviderNew(params).notifier)
+                .updatePlayerName(isWhite: isWhite, newName: newName);
           };
         }
 
@@ -4949,7 +5059,10 @@ class _AnalysisGameBody extends ConsumerWidget {
             state: state,
             playerProfileDataSource: playerProfileDataSource,
             showClock: showClock,
-            onEditName: showGamebaseButton ? editNameCallback(state.isBoardFlipped) : null,
+            onEditName:
+                showGamebaseButton
+                    ? editNameCallback(state.isBoardFlipped)
+                    : null,
           ),
           SizedBox(height: 1.h),
           _BoardWithSidebar(
@@ -4966,7 +5079,10 @@ class _AnalysisGameBody extends ConsumerWidget {
             state: state,
             playerProfileDataSource: playerProfileDataSource,
             showClock: showClock,
-            onEditName: showGamebaseButton ? editNameCallback(!state.isBoardFlipped) : null,
+            onEditName:
+                showGamebaseButton
+                    ? editNameCallback(!state.isBoardFlipped)
+                    : null,
           ),
           ...pvSection,
         ];
@@ -4989,10 +5105,7 @@ class _AnalysisGameBody extends ConsumerWidget {
           final gamebaseDisplay = GamebaseExplorerView(
             state: state,
             onMoveSelected: (uci) {
-              final params = ChessBoardProviderParams(
-                game: game,
-                index: index,
-              );
+              final params = ChessBoardProviderParams(game: game, index: index);
               final notifier = ref.read(
                 chessBoardScreenProviderNew(params).notifier,
               );
@@ -5099,7 +5212,8 @@ class _AnalysisGameBody extends ConsumerWidget {
                     'Black',
                   );
 
-                  final event = (preview['event']?.toString() ?? 'Gamebase').trim();
+                  final event =
+                      (preview['event']?.toString() ?? 'Gamebase').trim();
                   final site = preview['site']?.toString();
                   final eco = (preview['eco']?.toString() ?? '').trim();
                   final opening = (preview['opening']?.toString() ?? '').trim();
@@ -5163,13 +5277,12 @@ class _AnalysisGameBody extends ConsumerWidget {
                   // Best-effort: fetch the full game payload (moves + PGN headers)
                   // and show it if available; fall back to preview-only if the
                   // backend errors or returns an incomplete record.
-                  final full =
-                      await repo
-                          .getGameById(gameId)
-                          .timeout(
-                            const Duration(seconds: 2),
-                            onTimeout: () => null,
-                          );
+                  final full = await repo
+                      .getGameById(gameId)
+                      .timeout(
+                        const Duration(seconds: 2),
+                        onTimeout: () => null,
+                      );
 
                   GamesTourModel resolvedForOpen = resolvedGame;
                   if (full != null) {
@@ -5302,7 +5415,8 @@ class _AnalysisGameBody extends ConsumerWidget {
           final playerCardHeight = 56.sp;
           final verticalSpacing = 8.sp;
           final verticalPadding = 8.sp * 2; // top + bottom
-          final totalVerticalExtra = (playerCardHeight * 2) + (verticalSpacing * 2) + verticalPadding;
+          final totalVerticalExtra =
+              (playerCardHeight * 2) + (verticalSpacing * 2) + verticalPadding;
 
           // Board size based on height constraint
           final maxBoardFromHeight = screenHeight - totalVerticalExtra;
@@ -5322,7 +5436,10 @@ class _AnalysisGameBody extends ConsumerWidget {
                 // LEFT SECTION: Board with players and evaluation
                 // ─────────────────────────────────────────────────────────────
                 SizedBox(
-                  width: optimalBoardSize + evalBarWidth + 24.sp, // board + eval + margins
+                  width:
+                      optimalBoardSize +
+                      evalBarWidth +
+                      24.sp, // board + eval + margins
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -5333,7 +5450,10 @@ class _AnalysisGameBody extends ConsumerWidget {
                         blackPlayer: false,
                         state: state,
                         showClock: showClock,
-                        onEditName: showGamebaseButton ? editNameCallback(state.isBoardFlipped) : null,
+                        onEditName:
+                            showGamebaseButton
+                                ? editNameCallback(state.isBoardFlipped)
+                                : null,
                       ),
                       SizedBox(height: verticalSpacing),
                       // Board with evaluation bar
@@ -5353,7 +5473,10 @@ class _AnalysisGameBody extends ConsumerWidget {
                         blackPlayer: true,
                         state: state,
                         showClock: showClock,
-                        onEditName: showGamebaseButton ? editNameCallback(!state.isBoardFlipped) : null,
+                        onEditName:
+                            showGamebaseButton
+                                ? editNameCallback(!state.isBoardFlipped)
+                                : null,
                       ),
                     ],
                   ),
@@ -5409,9 +5532,9 @@ class _AnalysisGameBody extends ConsumerWidget {
 
           return SizedBox.expand(
             child: Center(
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(maxWidth: contentMaxWidth),
-                  child: Column(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: contentMaxWidth),
+                child: Column(
                   children: [
                     SizedBox(height: 4.sp),
                     // Top player with padding
@@ -5423,7 +5546,10 @@ class _AnalysisGameBody extends ConsumerWidget {
                         blackPlayer: false,
                         state: state,
                         showClock: showClock,
-                        onEditName: showGamebaseButton ? editNameCallback(state.isBoardFlipped) : null,
+                        onEditName:
+                            showGamebaseButton
+                                ? editNameCallback(state.isBoardFlipped)
+                                : null,
                       ),
                     ),
                     SizedBox(height: 4.sp),
@@ -5444,7 +5570,10 @@ class _AnalysisGameBody extends ConsumerWidget {
                         blackPlayer: true,
                         state: state,
                         showClock: showClock,
-                        onEditName: showGamebaseButton ? editNameCallback(!state.isBoardFlipped) : null,
+                        onEditName:
+                            showGamebaseButton
+                                ? editNameCallback(!state.isBoardFlipped)
+                                : null,
                       ),
                     ),
                     // PV section
@@ -5606,14 +5735,14 @@ class _TabletPlayerCard extends StatelessWidget {
     // For tablet, wrap in a refined container (no horizontal margin - parent controls spacing)
     return Container(
       decoration: BoxDecoration(
-        color: isCurrentPlayer
-            ? const Color(0xFF1E1E1E)
-            : const Color(0xFF141414),
+        color:
+            isCurrentPlayer ? const Color(0xFF1E1E1E) : const Color(0xFF141414),
         borderRadius: BorderRadius.circular(10.sp),
         border: Border.all(
-          color: isCurrentPlayer
-              ? Colors.white.withValues(alpha: 0.12)
-              : Colors.white.withValues(alpha: 0.04),
+          color:
+              isCurrentPlayer
+                  ? Colors.white.withValues(alpha: 0.12)
+                  : Colors.white.withValues(alpha: 0.04),
           width: 1,
         ),
       ),
@@ -5654,7 +5783,9 @@ class _TabletBoardWithSidebar extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     // PERF: Use .select() to only rebuild when showEngineGauge changes
     final showEngineGauge = ref.watch(
-      engineSettingsProviderNew.select((s) => s.valueOrNull?.showEngineGauge ?? true),
+      engineSettingsProviderNew.select(
+        (s) => s.valueOrNull?.showEngineGauge ?? true,
+      ),
     );
 
     final effectiveEvalWidth = showEngineGauge ? evalBarWidth : 0.0;
@@ -5673,8 +5804,7 @@ class _TabletBoardWithSidebar extends ConsumerWidget {
                     state.isAnalysisMode
                         ? state.analysisState.position
                         : state.position;
-                final bool isWhiteToMove =
-                    activePosition?.turn != Side.black;
+                final bool isWhiteToMove = activePosition?.turn != Side.black;
 
                 return EvaluationBarWidget(
                   width: effectiveEvalWidth,
@@ -5730,7 +5860,9 @@ class _BoardWithSidebar extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     // PERF: Use .select() to only rebuild when showEngineGauge changes
     final showEngineGauge = ref.watch(
-      engineSettingsProviderNew.select((s) => s.valueOrNull?.showEngineGauge ?? true),
+      engineSettingsProviderNew.select(
+        (s) => s.valueOrNull?.showEngineGauge ?? true,
+      ),
     );
 
     return LayoutBuilder(
@@ -5867,8 +5999,8 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard> {
     final analysisState = widget.chessBoardState.analysisState;
     final isAtGameEnd = _isAtGameEnd(analysisState);
     final gameStatus = widget.game.gameStatus;
-    final isGameOver = gameStatus != GameStatus.ongoing &&
-                       gameStatus != GameStatus.unknown;
+    final isGameOver =
+        gameStatus != GameStatus.ongoing && gameStatus != GameStatus.unknown;
     final shouldShowEffect = isGameOver && isAtGameEnd;
 
     // When navigating TO the final position, delay showing the effect for animation
@@ -5904,8 +6036,8 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard> {
 
     // If starting at the end position, show effect immediately
     final gameStatus = widget.game.gameStatus;
-    final isGameOver = gameStatus != GameStatus.ongoing &&
-                       gameStatus != GameStatus.unknown;
+    final isGameOver =
+        gameStatus != GameStatus.ongoing && gameStatus != GameStatus.unknown;
     if (isGameOver && _wasAtEnd) {
       _showDelayedGameEndingEffect = true;
     }
@@ -5916,38 +6048,47 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard> {
     // PERF: Use .select() to only rebuild when specific properties change
     final colorScheme = ref.watch(
       boardSettingsProviderNew.select(
-        (s) => s.valueOrNull?.colorScheme ?? const BoardSettingsNew().colorScheme,
+        (s) =>
+            s.valueOrNull?.colorScheme ?? const BoardSettingsNew().colorScheme,
       ),
     );
     final pieceAssets = ref.watch(
       boardSettingsProviderNew.select(
-        (s) => s.valueOrNull?.pieceAssets ?? const BoardSettingsNew().pieceAssets,
+        (s) =>
+            s.valueOrNull?.pieceAssets ?? const BoardSettingsNew().pieceAssets,
       ),
     );
-    final params = ChessBoardProviderParams(game: widget.game, index: widget.index);
+    final params = ChessBoardProviderParams(
+      game: widget.game,
+      index: widget.index,
+    );
     final notifier = ref.read(chessBoardScreenProviderNew(params).notifier);
 
     // PERF: Use .select() to only rebuild when showPvArrows changes
     final showPvArrows = ref.watch(
-      engineSettingsProviderNew.select((s) => s.valueOrNull?.showPvArrows ?? true),
+      engineSettingsProviderNew.select(
+        (s) => s.valueOrNull?.showPvArrows ?? true,
+      ),
     );
 
     // Check if game has ended and we're at the final position of the mainline
     final gameStatus = widget.game.gameStatus;
     final isAtGameEnd = _isAtGameEnd(widget.chessBoardState.analysisState);
-    final isGameOver = gameStatus != GameStatus.ongoing &&
-                       gameStatus != GameStatus.unknown;
+    final isGameOver =
+        gameStatus != GameStatus.ongoing && gameStatus != GameStatus.unknown;
 
     // Use delayed flag to allow move animation to complete first
-    final showGameEndingEffect = isGameOver && isAtGameEnd && _showDelayedGameEndingEffect;
+    final showGameEndingEffect =
+        isGameOver && isAtGameEnd && _showDelayedGameEndingEffect;
 
     // Calculate square highlights and annotations for game ending
-    final gameEndingData = showGameEndingEffect
-        ? _calculateGameEndingData(
-            widget.chessBoardState.analysisState.position,
-            gameStatus,
-          )
-        : null;
+    final gameEndingData =
+        showGameEndingEffect
+            ? _calculateGameEndingData(
+              widget.chessBoardState.analysisState.position,
+              gameStatus,
+            )
+            : null;
 
     // PERF: RepaintBoundary isolates chessboard repaints from propagating
     // to parent widgets during piece animations and drag operations
@@ -6011,7 +6152,8 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard> {
     if (showGameEndingEffect && gameEndingData?.loserKingSquare != null) {
       final squareSize = widget.size / 8;
       final loserSquare = gameEndingData!.loserKingSquare!;
-      final loserSide = gameStatus == GameStatus.whiteWins ? Side.black : Side.white;
+      final loserSide =
+          gameStatus == GameStatus.whiteWins ? Side.black : Side.white;
 
       // Calculate square position on board
       final file = loserSquare.file;
@@ -6021,9 +6163,8 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard> {
       final effectiveFile = widget.isFlipped ? 7 - file : file;
       final effectiveRank = widget.isFlipped ? rank : 7 - rank;
 
-      final pieceKind = loserSide == Side.white
-          ? PieceKind.whiteKing
-          : PieceKind.blackKing;
+      final pieceKind =
+          loserSide == Side.white ? PieceKind.whiteKing : PieceKind.blackKing;
       final pieceImage = pieceAssets[pieceKind];
 
       return RepaintBoundary(
@@ -6043,7 +6184,9 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard> {
     }
 
     // If game ended in a draw, add peace icons on both kings with motor animation
-    if (showGameEndingEffect && gameStatus == GameStatus.draw && gameEndingData != null) {
+    if (showGameEndingEffect &&
+        gameStatus == GameStatus.draw &&
+        gameEndingData != null) {
       final squareSize = widget.size / 8;
       final position = widget.chessBoardState.analysisState.position;
       final board = position.board;
@@ -6168,7 +6311,9 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard> {
     // Remove the king at the file position
     final fileIndex = square.file;
     final chars = expanded.toString().split('');
-    if (fileIndex >= 0 && fileIndex < chars.length && chars[fileIndex] == kingChar) {
+    if (fileIndex >= 0 &&
+        fileIndex < chars.length &&
+        chars[fileIndex] == kingChar) {
       chars[fileIndex] = '1';
     }
 
@@ -6263,10 +6408,7 @@ class _FallenKingOverlayState extends State<_FallenKingOverlay> {
                 child: child,
               );
             },
-            child: Image(
-              image: widget.pieceImage,
-              fit: BoxFit.contain,
-            ),
+            child: Image(image: widget.pieceImage, fit: BoxFit.contain),
           ),
         ),
       ),
@@ -6321,7 +6463,11 @@ class _AnimatedPeaceIconState extends State<_AnimatedPeaceIcon> {
 
     return Positioned(
       // Position at top-right corner of the king's square
-      left: effectiveFile * widget.squareSize + widget.squareSize - containerSize - 1,
+      left:
+          effectiveFile * widget.squareSize +
+          widget.squareSize -
+          containerSize -
+          1,
       top: effectiveRank * widget.squareSize + 1,
       child: SingleMotionBuilder(
         motion: const CupertinoMotion.bouncy(),
@@ -6458,7 +6604,9 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     final lichessGameId = _extractLichessGameId(navigatorState.game);
     final lichessSiteUrl = _extractLichessSiteUrl(navigatorState.game);
     // Debug: Log extracted Lichess identifiers
-    debugPrint('🎯 [Notation] Extracted: gameId=$lichessGameId, siteUrl=$lichessSiteUrl, isLive=${navigatorState.game.isLiveGame}, moves=${mainlineSans.length}');
+    debugPrint(
+      '🎯 [Notation] Extracted: gameId=$lichessGameId, siteUrl=$lichessSiteUrl, isLive=${navigatorState.game.isLiveGame}, moves=${mainlineSans.length}',
+    );
     final lichessAnnotationsAsync = ref.watch(
       lichessMoveAnnotationsProvider(
         LichessMoveAnnotationsParams(
@@ -6476,7 +6624,9 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
 
     // Debug: Log annotation state
     if (lichessAnnotations.isNotEmpty) {
-      debugPrint('🎯 [Annotations] Got ${lichessAnnotations.length} annotations for game $lichessGameId');
+      debugPrint(
+        '🎯 [Annotations] Got ${lichessAnnotations.length} annotations for game $lichessGameId',
+      );
       debugPrint('🎯 [Annotations] Keys: ${lichessAnnotations.keys.toList()}');
     } else if (lichessAnnotationsAsync.isLoading) {
       debugPrint('🎯 [Annotations] Loading for game $lichessGameId...');
@@ -6486,11 +6636,14 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
 
     // Get figurine notation setting and piece assets for rendering
     final useFigurine = ref.watch(
-      boardSettingsProviderNew.select((s) => s.valueOrNull?.useFigurine ?? false),
+      boardSettingsProviderNew.select(
+        (s) => s.valueOrNull?.useFigurine ?? false,
+      ),
     );
     final pieceAssets = ref.watch(
       boardSettingsProviderNew.select(
-        (s) => s.valueOrNull?.pieceAssets ?? const BoardSettingsNew().pieceAssets,
+        (s) =>
+            s.valueOrNull?.pieceAssets ?? const BoardSettingsNew().pieceAssets,
       ),
     );
 
@@ -6619,7 +6772,8 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
 
     // On tablet landscape, wrap in a gesture detector that absorbs horizontal
     // drags to prevent them from reaching the parent PageView.
-    final isTabletLandscape = ResponsiveHelper.isTablet && ResponsiveHelper.isLandscape;
+    final isTabletLandscape =
+        ResponsiveHelper.isTablet && ResponsiveHelper.isLandscape;
 
     Widget content = Container(
       decoration: BoxDecoration(
@@ -6914,7 +7068,9 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     if (lichessAnnotations.isNotEmpty && token.moveIndex != null) {
       final hasAnnotation = lichessAnnotations.containsKey(token.moveIndex);
       if (hasAnnotation) {
-        debugPrint('🎯 [MoveChip] Move ${token.moveIndex} "${token.text}" has annotation: ${annotation?.type.name}');
+        debugPrint(
+          '🎯 [MoveChip] Move ${token.moveIndex} "${token.text}" has annotation: ${annotation?.type.name}',
+        );
       }
     }
     final annotationColor = annotation?.type.color;
@@ -6994,9 +7150,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
                 width: 0.7,
               ),
             ),
-            child: Text.rich(
-              TextSpan(children: moveSpans),
-            ),
+            child: Text.rich(TextSpan(children: moveSpans)),
           ),
           if (isTail && widget.state.hasUnseenMoves)
             Positioned(
@@ -7445,7 +7599,9 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     final result = annotations[moveIndex];
     // Debug: Only log when we should find an annotation but don't
     if (result == null && annotations.containsKey(moveIndex)) {
-      debugPrint('⚠️ [Annotation] MISMATCH: moveIndex=$moveIndex exists in annotations but lookup returned null');
+      debugPrint(
+        '⚠️ [Annotation] MISMATCH: moveIndex=$moveIndex exists in annotations but lookup returned null',
+      );
     }
     return result;
   }
@@ -7775,11 +7931,13 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
 
     // Calculate where we want the target to be positioned (based on alignment)
     // alignment 0.0 = top of viewport, 0.5 = center, 1.0 = bottom
-    final desiredPosition = viewportHeight * alignment - targetHeight * alignment;
+    final desiredPosition =
+        viewportHeight * alignment - targetHeight * alignment;
 
     // Calculate the scroll offset needed
     final currentScroll = _scrollController.offset;
-    final targetScrollOffset = currentScroll + targetOffset.dy - desiredPosition;
+    final targetScrollOffset =
+        currentScroll + targetOffset.dy - desiredPosition;
 
     // Clamp to valid scroll range
     final maxScroll = _scrollController.position.maxScrollExtent;
@@ -8721,7 +8879,8 @@ class _PrincipalVariationListState
     final desiredPosition = viewportWidth * alignment - targetWidth * alignment;
 
     final currentScroll = _previewScrollController.offset;
-    final targetScrollOffset = currentScroll + targetOffset.dx - desiredPosition;
+    final targetScrollOffset =
+        currentScroll + targetOffset.dx - desiredPosition;
 
     final maxScroll = _previewScrollController.position.maxScrollExtent;
     final clampedOffset = targetScrollOffset.clamp(0.0, maxScroll);
@@ -8760,11 +8919,14 @@ class _PrincipalVariationListState
 
     // Get figurine notation setting and piece assets for PV card rendering
     final useFigurine = ref.watch(
-      boardSettingsProviderNew.select((s) => s.valueOrNull?.useFigurine ?? false),
+      boardSettingsProviderNew.select(
+        (s) => s.valueOrNull?.useFigurine ?? false,
+      ),
     );
     final pieceAssets = ref.watch(
       boardSettingsProviderNew.select(
-        (s) => s.valueOrNull?.pieceAssets ?? const BoardSettingsNew().pieceAssets,
+        (s) =>
+            s.valueOrNull?.pieceAssets ?? const BoardSettingsNew().pieceAssets,
       ),
     );
 
@@ -8857,7 +9019,12 @@ class _PrincipalVariationListState
             pieceSize: 12.sp,
           );
           moveContent = Text.rich(
-            TextSpan(children: [...figurineSpans, TextSpan(text: ' ', style: moveStyle)]),
+            TextSpan(
+              children: [
+                ...figurineSpans,
+                TextSpan(text: ' ', style: moveStyle),
+              ],
+            ),
           );
         } else {
           moveContent = Text('${token.text} ', style: moveStyle);
@@ -9042,7 +9209,9 @@ class _PrincipalVariationListState
       required bool hasLockedPreview,
     }) {
       final sanMoves = _formatPv(
-        line.sanMoves, baseMoveNumber, isWhiteToMove,
+        line.sanMoves,
+        baseMoveNumber,
+        isWhiteToMove,
         isThreatsMode: widget.state.isThreatsMode,
       );
       final evalText = _formatEvalLabel(line);
@@ -9553,7 +9722,9 @@ class _PrincipalVariationListState
           pieceSize: 12.sp,
         );
         moveContent = Text.rich(
-          TextSpan(children: [...figurineSpans, TextSpan(text: ' ', style: moveStyle)]),
+          TextSpan(
+            children: [...figurineSpans, TextSpan(text: ' ', style: moveStyle)],
+          ),
         );
       } else {
         moveContent = Text('${token.text} ', style: moveStyle);
@@ -9586,10 +9757,7 @@ class _PrincipalVariationListState
                 variantColor,
               );
             },
-            child: Material(
-              color: Colors.transparent,
-              child: moveContent,
-            ),
+            child: Material(color: Colors.transparent, child: moveContent),
           ),
         ),
       );
@@ -9946,14 +10114,24 @@ class _ShareGameScreen extends ConsumerWidget {
       moveTimes: state.moveTimes, // Pass clock times for GIF animation
       whitePlayerName: game.whitePlayer.name,
       blackPlayerName: game.blackPlayer.name,
-      whitePlayerCountry: game.whitePlayer.federation,
-      blackPlayerCountry: game.blackPlayer.federation,
-      whitePlayerElo: game.whitePlayer.rating > 0
-          ? game.whitePlayer.rating.toString()
-          : null,
-      blackPlayerElo: game.blackPlayer.rating > 0
-          ? game.blackPlayer.rating.toString()
-          : null,
+      // Use countryCode first (inactive profile games often only populate this),
+      // then fall back to federation for older payloads.
+      whitePlayerCountry:
+          game.whitePlayer.countryCode.isNotEmpty
+              ? game.whitePlayer.countryCode
+              : game.whitePlayer.federation,
+      blackPlayerCountry:
+          game.blackPlayer.countryCode.isNotEmpty
+              ? game.blackPlayer.countryCode
+              : game.blackPlayer.federation,
+      whitePlayerElo:
+          game.whitePlayer.rating > 0
+              ? game.whitePlayer.rating.toString()
+              : null,
+      blackPlayerElo:
+          game.blackPlayer.rating > 0
+              ? game.blackPlayer.rating.toString()
+              : null,
       whitePlayerTitle: game.whitePlayer.title,
       blackPlayerTitle: game.blackPlayer.title,
       whitePlayerClock: whiteTime,
@@ -9965,7 +10143,9 @@ class _ShareGameScreen extends ConsumerWidget {
       mate: state.mate ?? 0,
       isFlipped: state.isBoardFlipped,
       gameStatus: game.gameStatus,
-      isAtGameEnd: state.analysisState.isAtEnd && state.analysisState.movePointer.length == 1,
+      isAtGameEnd:
+          state.analysisState.isAtEnd &&
+          state.analysisState.movePointer.length == 1,
       gameId: game.gameId, // Pass game ID for correct eval display
       onClose: () => Navigator.of(context).pop(),
     );
@@ -11408,8 +11588,7 @@ class _EventInfoSheet extends ConsumerWidget {
                         ),
                       ),
                     ),
-                errorWidget:
-                    (_, __, ___) => const LogoPatternFallback(),
+                errorWidget: (_, __, ___) => const LogoPatternFallback(),
               ),
             ),
           ),

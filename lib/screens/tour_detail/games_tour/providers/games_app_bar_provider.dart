@@ -837,22 +837,22 @@ class _GamesAppBarNotifier
             stageStatus = RoundStatus.upcoming;
           }
 
-          // Use the earliest start time from this stage's rounds
+          // Use the latest event datetime from this stage's rounds
           final stageStartsAt = stageRounds
               .map((m) => m.startsAt)
               .whereType<DateTime>()
-              .fold<DateTime?>(null, (earliest, date) {
-                if (earliest == null) return date;
-                return date.isBefore(earliest) ? date : earliest;
+              .fold<DateTime?>(null, (latest, date) {
+                if (latest == null) return date;
+                return date.isAfter(latest) ? date : latest;
               });
 
           final stageCreatedAt =
               stageRounds
                   .map((m) => _roundSortMeta[m.id]?.createdAt)
                   .whereType<DateTime>()
-                  .fold<DateTime?>(null, (earliest, date) {
-                    if (earliest == null) return date;
-                    return date.isBefore(earliest) ? date : earliest;
+                  .fold<DateTime?>(null, (latest, date) {
+                    if (latest == null) return date;
+                    return date.isAfter(latest) ? date : latest;
                   }) ??
               DateTime.now();
 
@@ -904,23 +904,23 @@ class _GamesAppBarNotifier
       roundStatus = RoundStatus.upcoming;
     }
 
-    // Use the earliest start time
+    // Use the latest event datetime across all sub-rounds.
     final startsAt = models
         .map((m) => m.startsAt)
         .whereType<DateTime>()
-        .fold<DateTime?>(null, (earliest, date) {
-          if (earliest == null) return date;
-          return date.isBefore(earliest) ? date : earliest;
+        .fold<DateTime?>(null, (latest, date) {
+          if (latest == null) return date;
+          return date.isAfter(latest) ? date : latest;
         });
 
-    // Get created date from earliest sub-round
+    // Get created date from latest sub-round
     final createdAt =
         models
             .map((m) => _roundSortMeta[m.id]?.createdAt)
             .whereType<DateTime>()
-            .fold<DateTime?>(null, (earliest, date) {
-              if (earliest == null) return date;
-              return date.isBefore(earliest) ? date : earliest;
+            .fold<DateTime?>(null, (latest, date) {
+              if (latest == null) return date;
+              return date.isAfter(latest) ? date : latest;
             }) ??
         DateTime.now();
 
@@ -1091,8 +1091,8 @@ class _GamesAppBarNotifier
   }
 
   int _compareByStart(GamesAppBarModel a, GamesAppBarModel b, bool ascending) {
-    final aStart = a.startsAt;
-    final bStart = b.startsAt;
+    final aStart = _roundEventDateTime(a);
+    final bStart = _roundEventDateTime(b);
 
     int compare;
     if (aStart == null && bStart == null) {
@@ -1109,6 +1109,11 @@ class _GamesAppBarNotifier
     }
 
     return ascending ? compare : -compare;
+  }
+
+  DateTime? _roundEventDateTime(GamesAppBarModel model) {
+    final meta = _roundSortMeta[model.id];
+    return meta?.startsAt ?? model.startsAt ?? meta?.createdAt;
   }
 
   GamesAppBarModel? _selectAutoRound(
@@ -1137,15 +1142,11 @@ class _GamesAppBarNotifier
   }
 
   void _sortRounds(List<GamesAppBarModel> models) {
-    // Sort by round start date descending (latest round first)
-    // Falls back to round number descending when dates are equal or missing
+    // Sort strictly by round event datetime descending (latest first).
+    // If a start time is unavailable, use createdAt as a date fallback.
     models.sort((a, b) {
-      final aMeta = _roundSortMeta[a.id];
-      final bMeta = _roundSortMeta[b.id];
-
-      // Primary: start date descending (most recent first)
-      final aStarts = aMeta?.startsAt ?? a.startsAt;
-      final bStarts = bMeta?.startsAt ?? b.startsAt;
+      final aStarts = _roundEventDateTime(a);
+      final bStarts = _roundEventDateTime(b);
       if (aStarts != null && bStarts != null) {
         final startCompare = bStarts.compareTo(aStarts);
         if (startCompare != 0) return startCompare;
@@ -1155,19 +1156,7 @@ class _GamesAppBarNotifier
         return 1;
       }
 
-      // Secondary: round number descending (7 > 6 > 5 > ...)
-      final aRoundNum = aMeta?.roundNumber ?? _extractRoundNumber(a.name);
-      final bRoundNum = bMeta?.roundNumber ?? _extractRoundNumber(b.name);
-      if (aRoundNum != null && bRoundNum != null) {
-        final roundCompare = bRoundNum.compareTo(aRoundNum);
-        if (roundCompare != 0) return roundCompare;
-      } else if (aRoundNum != null) {
-        return -1;
-      } else if (bRoundNum != null) {
-        return 1;
-      }
-
-      // Tertiary: name alphabetically
+      // Final fallback: name alphabetically for deterministic ordering.
       return a.name.compareTo(b.name);
     });
   }

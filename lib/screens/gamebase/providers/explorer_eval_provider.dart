@@ -1,7 +1,7 @@
 import 'package:dartchess/dartchess.dart';
-import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
+import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/screens/chessboard/provider/stockfish_singleton.dart';
 
 class ExplorerPvLine {
@@ -9,11 +9,7 @@ class ExplorerPvLine {
   final int? mate;
   final List<String> sanMoves;
 
-  const ExplorerPvLine({
-    this.evaluation,
-    this.mate,
-    this.sanMoves = const [],
-  });
+  const ExplorerPvLine({this.evaluation, this.mate, this.sanMoves = const []});
 
   bool get isEmpty => sanMoves.isEmpty;
 
@@ -66,55 +62,103 @@ class ExplorerEvalState {
 }
 
 class ExplorerEvalNotifier extends StateNotifier<ExplorerEvalState> {
-  ExplorerEvalNotifier() : super(const ExplorerEvalState());
+  ExplorerEvalNotifier(this.ref) : super(const ExplorerEvalState());
 
   static const _ownerId = 'explorer_eval';
+  final Ref ref;
+  int _requestId = 0;
+  bool _isDisposed = false;
 
-  void evaluatePosition(String fen) {
-    if (fen.isEmpty || fen.split(' ').length < 4) return;
+  void setEngineEnabled({
+    required bool enabled,
+    required String fen,
+    bool force = false,
+  }) {
+    if (!enabled) {
+      _stopAndClear(reason: 'disabled');
+      return;
+    }
+    if (fen.trim().isEmpty) return;
+    evaluatePosition(fen, force: force);
+  }
+
+  void evaluatePosition(String fen, {bool force = false, int attempt = 0}) {
+    final normalizedFen = fen.trim();
+    if (_isDisposed ||
+        normalizedFen.isEmpty ||
+        normalizedFen.split(' ').length < 4) {
+      return;
+    }
+
+    if (!force && state.fen == normalizedFen) {
+      if (state.isEvaluating) return;
+      if (state.pvLines.isNotEmpty) return;
+    }
+
+    final settings =
+        ref.read(engineSettingsProviderNew).valueOrNull ??
+        const EngineSettings();
+    final multiPv = settings.multiPvForStockfish().clamp(1, 5);
+    final maxDepth = settings.maxDepthFor(EngineComponent.evaluationGauge);
+    final searchDuration = settings.searchDurationFor(
+      EngineComponent.evaluationGauge,
+    );
+    final requestId = ++_requestId;
 
     // Cancel any prior job for this owner.
     StockfishSingleton().cancelEvaluationsForOwner(_ownerId);
 
     state = state.copyWith(
-      fen: fen,
+      fen: normalizedFen,
       isEvaluating: true,
       depth: 0,
       clearEval: true,
       clearMate: true,
+      pvLines: const [],
     );
 
     StockfishSingleton()
         .evaluatePosition(
-          fen,
-          depth: 20,
-          multiPV: 3,
-          isCurrentPosition: false,
+          normalizedFen,
+          depth: maxDepth,
+          searchDuration: searchDuration,
+          maxDepth: maxDepth,
+          multiPV: multiPv,
+          isCurrentPosition: true,
+          allowCache: false,
           ownerId: _ownerId,
-          onDepthUpdate: (depth, _) {
-            if (!mounted) return;
-            if (state.fen != fen) return;
-            state = state.copyWith(depth: depth);
+          onDepthUpdate: (depth, knodes) {
+            if (!_isActiveRequest(requestId, normalizedFen)) return;
+            state = state.copyWith(depth: depth, isEvaluating: true);
+            _updateDepthTracking(
+              depth: depth,
+              knodes: knodes,
+              fen: normalizedFen,
+              allowDecrease: true,
+              context: 'opening explorer depth',
+            );
           },
           onPvUpdate: (pvs, depth) {
-            if (!mounted) return;
-            if (state.fen != fen) return;
+            if (!_isActiveRequest(requestId, normalizedFen)) return;
             if (pvs.isEmpty) return;
 
             final lines = <ExplorerPvLine>[];
             for (final pv in pvs) {
               final cp = pv.cp / 100.0;
-              final normalizedEval = _normalizeEval(cp, fen);
-              final normalizedMate = _normalizeMate(pv.mate, fen);
-              final sanMoves = _uciToSanMoves(fen, pv.moves);
+              final normalizedEval = _normalizeEval(cp, normalizedFen);
+              final normalizedMate = _normalizeMate(pv.mate, normalizedFen);
+              final sanMoves = _uciToSanMoves(normalizedFen, pv.moves);
 
-              lines.add(ExplorerPvLine(
-                evaluation: normalizedEval,
-                mate: (normalizedMate != null && normalizedMate != 0)
-                    ? normalizedMate
-                    : null,
-                sanMoves: sanMoves,
-              ));
+              lines.add(
+                ExplorerPvLine(
+                  evaluation: normalizedEval,
+                  mate:
+                      (normalizedMate != null && normalizedMate != 0)
+                          ? normalizedMate
+                          : null,
+                  sanMoves: sanMoves,
+                ),
+              );
             }
 
             final first = lines.first;
@@ -123,13 +167,29 @@ class ExplorerEvalNotifier extends StateNotifier<ExplorerEvalState> {
               mate: first.mate,
               depth: depth,
               pvLines: lines,
+              isEvaluating: true,
               clearMate: first.mate == null,
+            );
+            _updateDepthTracking(
+              depth: depth,
+              knodes: 0,
+              fen: normalizedFen,
+              allowDecrease: true,
+              context: 'opening explorer pv',
             );
           },
         )
         .then((result) {
-          if (!mounted) return;
-          if (state.fen != fen) return;
+          if (!_isActiveRequest(requestId, normalizedFen)) return;
+
+          if (result.isCancelled) {
+            if (attempt < 1) {
+              _scheduleRetry(normalizedFen, attempt + 1);
+              return;
+            }
+            state = state.copyWith(isEvaluating: false);
+            return;
+          }
 
           final lines = <ExplorerPvLine>[];
           for (final pv in result.pvs) {
@@ -140,37 +200,120 @@ class ExplorerEvalNotifier extends StateNotifier<ExplorerEvalState> {
             // double-normalize.
             final normalizedMate =
                 (pv.mate != null && pv.mate != 0) ? pv.mate : null;
-            final sanMoves = _uciToSanMoves(fen, pv.moves);
+            final sanMoves = _uciToSanMoves(normalizedFen, pv.moves);
 
-            lines.add(ExplorerPvLine(
-              evaluation: cp,
-              mate: normalizedMate,
-              sanMoves: sanMoves,
-            ));
+            lines.add(
+              ExplorerPvLine(
+                evaluation: cp,
+                mate: normalizedMate,
+                sanMoves: sanMoves,
+              ),
+            );
           }
 
-          final pv = result.pvs.firstOrNull;
-          if (pv != null && pv.moves.isNotEmpty) {
-            final cp = pv.cp / 100.0;
-            final normalizedMate =
-                (pv.mate != null && pv.mate != 0) ? pv.mate : null;
+          if (lines.isEmpty && attempt < 1) {
+            _scheduleRetry(normalizedFen, attempt + 1);
+            return;
+          }
+
+          if (lines.isNotEmpty) {
+            final first = lines.first;
+            final resolvedDepth = result.depth > 0 ? result.depth : state.depth;
 
             state = state.copyWith(
-              evaluation: cp,
-              mate: normalizedMate,
-              depth: result.depth,
+              evaluation: first.evaluation,
+              mate: first.mate,
+              depth: resolvedDepth,
               isEvaluating: false,
               pvLines: lines,
-              clearMate: normalizedMate == null,
+              clearMate: first.mate == null,
+            );
+            _updateDepthTracking(
+              depth: resolvedDepth,
+              knodes: result.knodes,
+              fen: normalizedFen,
+              allowDecrease: false,
+              context: 'opening explorer final',
             );
           } else {
-            state = state.copyWith(isEvaluating: false, pvLines: lines);
+            state = state.copyWith(
+              depth: 0,
+              isEvaluating: false,
+              pvLines: const [],
+              clearEval: true,
+              clearMate: true,
+            );
           }
         })
-        .catchError((Object _) {
-          if (!mounted) return;
+        .catchError((Object _, StackTrace __) {
+          if (!_isActiveRequest(requestId, normalizedFen)) return;
+          if (attempt < 1) {
+            _scheduleRetry(normalizedFen, attempt + 1);
+            return;
+          }
           state = state.copyWith(isEvaluating: false);
         });
+  }
+
+  bool _isActiveRequest(int requestId, String fen) {
+    return !_isDisposed &&
+        mounted &&
+        _requestId == requestId &&
+        state.fen == fen;
+  }
+
+  void _scheduleRetry(String fen, int attempt) {
+    Future<void>.delayed(const Duration(milliseconds: 180), () {
+      if (_isDisposed || !mounted || state.fen != fen) return;
+      evaluatePosition(fen, force: true, attempt: attempt);
+    });
+  }
+
+  void _updateDepthTracking({
+    required int depth,
+    required int knodes,
+    required String fen,
+    required bool allowDecrease,
+    required String context,
+  }) {
+    final progress = EngineSearchProgress(
+      depth: depth,
+      kiloNodes: knodes,
+      fenFragment: fen,
+    );
+    final tracker = ref.read(engineDepthTrackerProvider.notifier);
+    tracker.update(
+      component: EngineComponent.evaluationGauge,
+      progress: progress,
+      context: context,
+      allowDecrease: allowDecrease,
+    );
+    tracker.update(
+      component: EngineComponent.principalVariation,
+      progress: progress,
+      context: context,
+      allowDecrease: allowDecrease,
+    );
+  }
+
+  void _stopAndClear({required String reason}) {
+    StockfishSingleton().cancelEvaluationsForOwner(_ownerId);
+    final tracker = ref.read(engineDepthTrackerProvider.notifier);
+    tracker.clear(
+      EngineComponent.evaluationGauge,
+      reason: 'opening explorer $reason',
+    );
+    tracker.clear(
+      EngineComponent.principalVariation,
+      reason: 'opening explorer $reason',
+    );
+    state = state.copyWith(
+      isEvaluating: false,
+      depth: 0,
+      pvLines: const [],
+      clearEval: true,
+      clearMate: true,
+    );
   }
 
   List<String> _uciToSanMoves(String baseFen, String uciMoves) {
@@ -217,12 +360,14 @@ class ExplorerEvalNotifier extends StateNotifier<ExplorerEvalState> {
 
   @override
   void dispose() {
-    StockfishSingleton().cancelEvaluationsForOwner(_ownerId);
+    _isDisposed = true;
+    _requestId++;
+    _stopAndClear(reason: 'dispose');
     super.dispose();
   }
 }
 
 final explorerEvalProvider =
     StateNotifierProvider.autoDispose<ExplorerEvalNotifier, ExplorerEvalState>(
-  (ref) => ExplorerEvalNotifier(),
-);
+      (ref) => ExplorerEvalNotifier(ref),
+    );
