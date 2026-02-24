@@ -381,6 +381,24 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
     _scheduleFetch();
   }
 
+  /// Initialize the explorer pre-filtered to a specific player.
+  ///
+  /// Sets the player filter and starting position atomically, then fires a
+  /// single fetch. Avoids the double-fetch that would occur if [goToStart]
+  /// and [addPlayerFilter] were called separately.
+  void initializeWithPlayer(GamebasePlayer player) {
+    _chess = Chess();
+    state = GamebaseExplorerState(
+      currentFen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+      currentMoveIndex: -1,
+      filters: GamebaseFilters(
+        playerIds: [player.id],
+        selectedPlayers: [player],
+      ),
+    );
+    _scheduleFetch(Duration.zero);
+  }
+
   /// Reset to initial position
   void reset() {
     _chess = Chess();

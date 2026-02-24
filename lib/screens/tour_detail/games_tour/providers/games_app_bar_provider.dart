@@ -1137,25 +1137,13 @@ class _GamesAppBarNotifier
   }
 
   void _sortRounds(List<GamesAppBarModel> models) {
-    // Simple sorting: always by round number descending (7, 6, 5, 4, 3, 2, 1)
-    // No status-based grouping - just pure numeric order
+    // Sort by round start date descending (latest round first)
+    // Falls back to round number descending when dates are equal or missing
     models.sort((a, b) {
       final aMeta = _roundSortMeta[a.id];
       final bMeta = _roundSortMeta[b.id];
-      final aRoundNum = aMeta?.roundNumber ?? _extractRoundNumber(a.name);
-      final bRoundNum = bMeta?.roundNumber ?? _extractRoundNumber(b.name);
 
-      // Primary: round number descending (7 > 6 > 5 > ...)
-      if (aRoundNum != null && bRoundNum != null) {
-        final roundCompare = bRoundNum.compareTo(aRoundNum);
-        if (roundCompare != 0) return roundCompare;
-      } else if (aRoundNum != null) {
-        return -1;
-      } else if (bRoundNum != null) {
-        return 1;
-      }
-
-      // Secondary: start date descending (most recent first)
+      // Primary: start date descending (most recent first)
       final aStarts = aMeta?.startsAt ?? a.startsAt;
       final bStarts = bMeta?.startsAt ?? b.startsAt;
       if (aStarts != null && bStarts != null) {
@@ -1164,6 +1152,18 @@ class _GamesAppBarNotifier
       } else if (aStarts != null) {
         return -1;
       } else if (bStarts != null) {
+        return 1;
+      }
+
+      // Secondary: round number descending (7 > 6 > 5 > ...)
+      final aRoundNum = aMeta?.roundNumber ?? _extractRoundNumber(a.name);
+      final bRoundNum = bMeta?.roundNumber ?? _extractRoundNumber(b.name);
+      if (aRoundNum != null && bRoundNum != null) {
+        final roundCompare = bRoundNum.compareTo(aRoundNum);
+        if (roundCompare != 0) return roundCompare;
+      } else if (aRoundNum != null) {
+        return -1;
+      } else if (bRoundNum != null) {
         return 1;
       }
 

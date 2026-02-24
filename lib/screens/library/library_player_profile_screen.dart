@@ -12,6 +12,7 @@ import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/png_asset.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
+import 'package:chessever2/screens/gamebase/gamebase_explorer_screen.dart';
 import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 import 'package:chessever2/widgets/federation_flag.dart';
 import 'package:chessever2/widgets/segmented_switcher.dart';
@@ -289,6 +290,28 @@ class _LibraryPlayerProfileScreenState
                 ],
               ),
             ),
+          ),
+
+          // Explorer button
+          IconButton(
+            iconSize: 24.ic,
+            padding: EdgeInsets.zero,
+            onPressed: () {
+              HapticFeedbackService.buttonPress();
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => GamebaseExplorerScreen(
+                    initialPlayer: widget.player,
+                  ),
+                ),
+              );
+            },
+            icon: Icon(
+              Icons.account_tree_outlined,
+              size: 22.ic,
+              color: kWhiteColor,
+            ),
+            tooltip: 'Opening Explorer',
           ),
 
           // Favorite button
