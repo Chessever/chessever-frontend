@@ -110,6 +110,15 @@ class _LibraryPlayerProfileScreenState
     }
   }
 
+  void _openExplorer() {
+    HapticFeedbackService.buttonPress();
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => GamebaseExplorerScreen(initialPlayer: widget.player),
+      ),
+    );
+  }
+
   Future<void> _toggleFavorite() async {
     final allowed = await requireFullAuthGuard(context);
     if (!allowed) return;
@@ -184,6 +193,8 @@ class _LibraryPlayerProfileScreenState
 
               // Tab switcher
               _buildTabSwitcher(selectedTab),
+
+              _buildOpeningRepertoireButton(),
 
               // Tab content
               Expanded(
@@ -296,16 +307,7 @@ class _LibraryPlayerProfileScreenState
           IconButton(
             iconSize: 24.ic,
             padding: EdgeInsets.zero,
-            onPressed: () {
-              HapticFeedbackService.buttonPress();
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => GamebaseExplorerScreen(
-                    initialPlayer: widget.player,
-                  ),
-                ),
-              );
-            },
+            onPressed: _openExplorer,
             icon: Icon(
               Icons.account_tree_outlined,
               size: 22.ic,
@@ -335,6 +337,84 @@ class _LibraryPlayerProfileScreenState
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildOpeningRepertoireButton() {
+    final horizontalPadding = ResponsiveHelper.adaptive(
+      phone: 20.sp,
+      tablet: 32.sp,
+    );
+
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        horizontalPadding,
+        10.h,
+        horizontalPadding,
+        6.h,
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12.br),
+          onTap: _openExplorer,
+          child: Ink(
+            padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 11.h),
+            decoration: BoxDecoration(
+              color: kPopUpColor,
+              borderRadius: BorderRadius.circular(12.br),
+              border: Border.all(color: kPrimaryColor.withValues(alpha: 0.34)),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 34.w,
+                  height: 34.h,
+                  decoration: BoxDecoration(
+                    color: kPrimaryColor.withValues(alpha: 0.16),
+                    borderRadius: BorderRadius.circular(9.br),
+                  ),
+                  child: Icon(
+                    Icons.account_tree_outlined,
+                    size: 18.ic,
+                    color: kWhiteColor,
+                  ),
+                ),
+                SizedBox(width: 11.w),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'Study opening repertoire',
+                        style: AppTypography.textSmBold.copyWith(
+                          color: kWhiteColor,
+                        ),
+                      ),
+                      SizedBox(height: 2.h),
+                      Text(
+                        '${widget.player.displayName} only',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppTypography.textXsRegular.copyWith(
+                          color: kWhiteColor.withValues(alpha: 0.72),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                SizedBox(width: 8.w),
+                Icon(
+                  Icons.chevron_right_rounded,
+                  color: kWhiteColor.withValues(alpha: 0.8),
+                  size: 20.ic,
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
