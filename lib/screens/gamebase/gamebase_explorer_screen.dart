@@ -20,6 +20,7 @@ import 'package:chessever2/utils/figurine_notation.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/screen_wrapper.dart';
 import 'package:chessever2/screens/gamebase/providers/gamebase_providers.dart';
+import 'package:chessever2/screens/gamebase/providers/gamebase_explorer_state.dart';
 import 'package:chessever2/screens/gamebase/widgets/widgets.dart';
 import 'package:chessever2/screens/gamebase/models/models.dart';
 import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
@@ -737,14 +738,61 @@ class _ExplorerEvalBarState extends ConsumerState<_ExplorerEvalBar> {
   }
 }
 
-/// Filter sheet for time controls, ratings, and players.
-class _FilterSheet extends ConsumerWidget {
+/// Filter sheet for time controls and ratings.
+///
+/// Uses local draft state and only applies changes when the user taps "Apply".
+/// This prevents multiple expensive aggregate requests while toggling controls.
+class _FilterSheet extends ConsumerStatefulWidget {
   const _FilterSheet();
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final state = ref.watch(gamebaseExplorerProvider);
-    final filters = state.filters;
+  ConsumerState<_FilterSheet> createState() => _FilterSheetState();
+}
+
+class _FilterSheetState extends ConsumerState<_FilterSheet> {
+  late GamebaseFilters _draftFilters;
+
+  @override
+  void initState() {
+    super.initState();
+    _draftFilters = ref.read(gamebaseExplorerProvider).filters;
+  }
+
+  void _toggleTimeControl(TimeControl timeControl) {
+    final current = _draftFilters.timeControls;
+    if (current.contains(timeControl)) {
+      setState(() {
+        _draftFilters = _draftFilters.copyWith(timeControls: const []);
+      });
+      return;
+    }
+    setState(() {
+      _draftFilters = _draftFilters.copyWith(timeControls: [timeControl]);
+    });
+  }
+
+  void _setRatingRange({int? minRating, int? maxRating}) {
+    setState(() {
+      _draftFilters = _draftFilters.copyWith(
+        minRating: minRating,
+        maxRating: maxRating,
+      );
+    });
+  }
+
+  void _apply() {
+    ref.read(gamebaseExplorerProvider.notifier).updateFilters(_draftFilters);
+    Navigator.pop(context);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final filters = _draftFilters;
+    final hasActiveDraft =
+        filters.timeControls.isNotEmpty ||
+        filters.minRating != null ||
+        filters.maxRating != null ||
+        filters.playerIds.isNotEmpty;
 
     return SafeArea(
       child: Padding(
@@ -765,7 +813,7 @@ class _FilterSheet extends ConsumerWidget {
                     fontWeight: FontWeight.w600,
                   ),
                 ),
-                if (state.hasActiveFilters)
+                if (hasActiveDraft)
                   TextButton(
                     onPressed: () {
                       ref
@@ -800,11 +848,7 @@ class _FilterSheet extends ConsumerWidget {
                     return FilterChip(
                       label: Text(tc.displayName),
                       selected: isSelected,
-                      onSelected: (_) {
-                        ref
-                            .read(gamebaseExplorerProvider.notifier)
-                            .toggleTimeControl(tc);
-                      },
+                      onSelected: (_) => _toggleTimeControl(tc),
                       selectedColor: kPrimaryColor.withValues(alpha: 0.2),
                       checkmarkColor: kPrimaryColor,
                       labelStyle: TextStyle(
@@ -836,11 +880,11 @@ class _FilterSheet extends ConsumerWidget {
                   child: _RatingDropdown(
                     value: filters.minRating,
                     hint: 'Min',
-                    onChanged: (value) {
-                      ref
-                          .read(gamebaseExplorerProvider.notifier)
-                          .setRatingRange(value, filters.maxRating);
-                    },
+                    onChanged:
+                        (value) => _setRatingRange(
+                          minRating: value,
+                          maxRating: filters.maxRating,
+                        ),
                   ),
                 ),
                 SizedBox(width: 16.sp),
@@ -853,11 +897,11 @@ class _FilterSheet extends ConsumerWidget {
                   child: _RatingDropdown(
                     value: filters.maxRating,
                     hint: 'Max',
-                    onChanged: (value) {
-                      ref
-                          .read(gamebaseExplorerProvider.notifier)
-                          .setRatingRange(filters.minRating, value);
-                    },
+                    onChanged:
+                        (value) => _setRatingRange(
+                          minRating: filters.minRating,
+                          maxRating: value,
+                        ),
                   ),
                 ),
               ],
@@ -868,7 +912,7 @@ class _FilterSheet extends ConsumerWidget {
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
-                onPressed: () => Navigator.pop(context),
+                onPressed: _apply,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: kPrimaryColor,
                   padding: EdgeInsets.symmetric(vertical: 12.sp),
