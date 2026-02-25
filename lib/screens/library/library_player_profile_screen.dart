@@ -114,7 +114,8 @@ class _LibraryPlayerProfileScreenState
     HapticFeedbackService.buttonPress();
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => GamebaseExplorerScreen(initialPlayer: widget.player),
+        builder:
+            (_) => GamebaseExplorerScreen.scoped(initialPlayer: widget.player),
       ),
     );
   }

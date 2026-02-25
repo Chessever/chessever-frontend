@@ -81,6 +81,16 @@ class ExplorerEvalNotifier extends StateNotifier<ExplorerEvalState> {
   int _requestId = 0;
   bool _isDisposed = false;
 
+  /// Stable position identity (board + side/castling/ep).
+  ///
+  /// Halfmove/fullmove counters are intentionally ignored because they can
+  /// change without a meaningful position change for engine evaluation.
+  String _positionKey(String fen) {
+    final parts = fen.trim().split(RegExp(r'\s+'));
+    if (parts.length < 4) return fen.trim();
+    return parts.take(4).join(' ');
+  }
+
   void setEngineEnabled({
     required bool enabled,
     required String fen,
@@ -102,14 +112,19 @@ class ExplorerEvalNotifier extends StateNotifier<ExplorerEvalState> {
       return;
     }
 
-    if (!force && state.fen == normalizedFen) {
+    final normalizedKey = _positionKey(normalizedFen);
+    final stateKey = _positionKey(state.fen);
+
+    if (!force && stateKey == normalizedKey) {
       if (state.isEvaluating) return;
       if (state.pvLines.isNotEmpty) return;
     }
 
     // Guard against duplicate forced starts for the same position while
     // analysis is already in progress (e.g. multiple post-frame triggers).
-    if (force && state.fen == normalizedFen && state.isEvaluating) {
+    if (force &&
+        stateKey == normalizedKey &&
+        (state.isEvaluating || state.pvLines.isNotEmpty)) {
       return;
     }
 
@@ -122,7 +137,7 @@ class ExplorerEvalNotifier extends StateNotifier<ExplorerEvalState> {
       EngineComponent.evaluationGauge,
     );
     final requestId = ++_requestId;
-    final isSameFen = state.fen == normalizedFen;
+    final isSameFen = stateKey == normalizedKey;
 
     // Do not fire-and-forget owner cancellation here: it races with the new
     // request and can cancel the freshly enqueued job, causing indefinite
@@ -163,7 +178,7 @@ class ExplorerEvalNotifier extends StateNotifier<ExplorerEvalState> {
           allowCache: false,
           ownerId: _ownerId,
           onDepthUpdate: (depth, knodes) {
-            if (!_isActiveRequest(requestId, normalizedFen)) return;
+            if (!_isActiveRequest(requestId, normalizedKey)) return;
             final nextDepth = depth > state.depth ? depth : state.depth;
             state = state.copyWith(depth: nextDepth, isEvaluating: true);
             _updateDepthTracking(
@@ -175,7 +190,7 @@ class ExplorerEvalNotifier extends StateNotifier<ExplorerEvalState> {
             );
           },
           onPvUpdate: (pvs, depth) {
-            if (!_isActiveRequest(requestId, normalizedFen)) return;
+            if (!_isActiveRequest(requestId, normalizedKey)) return;
             if (pvs.isEmpty) return;
 
             final lines = <ExplorerPvLine>[];
@@ -219,11 +234,11 @@ class ExplorerEvalNotifier extends StateNotifier<ExplorerEvalState> {
           },
         )
         .then((result) {
-          if (!_isActiveRequest(requestId, normalizedFen)) return;
+          if (!_isActiveRequest(requestId, normalizedKey)) return;
 
           if (result.isCancelled) {
             if (attempt < 1) {
-              _scheduleRetry(normalizedFen, attempt + 1);
+              _scheduleRetry(normalizedFen, attempt + 1, fenKey: normalizedKey);
               return;
             }
             state = state.copyWith(isEvaluating: false);
@@ -248,7 +263,7 @@ class ExplorerEvalNotifier extends StateNotifier<ExplorerEvalState> {
           }
 
           if (lines.isEmpty && attempt < 1) {
-            _scheduleRetry(normalizedFen, attempt + 1);
+            _scheduleRetry(normalizedFen, attempt + 1, fenKey: normalizedKey);
             return;
           }
 
@@ -285,25 +300,25 @@ class ExplorerEvalNotifier extends StateNotifier<ExplorerEvalState> {
           }
         })
         .catchError((Object _, StackTrace __) {
-          if (!_isActiveRequest(requestId, normalizedFen)) return;
+          if (!_isActiveRequest(requestId, normalizedKey)) return;
           if (attempt < 1) {
-            _scheduleRetry(normalizedFen, attempt + 1);
+            _scheduleRetry(normalizedFen, attempt + 1, fenKey: normalizedKey);
             return;
           }
           state = state.copyWith(isEvaluating: false);
         });
   }
 
-  bool _isActiveRequest(int requestId, String fen) {
+  bool _isActiveRequest(int requestId, String fenKey) {
     return !_isDisposed &&
         mounted &&
         _requestId == requestId &&
-        state.fen == fen;
+        _positionKey(state.fen) == fenKey;
   }
 
-  void _scheduleRetry(String fen, int attempt) {
+  void _scheduleRetry(String fen, int attempt, {required String fenKey}) {
     Future<void>.delayed(const Duration(milliseconds: 180), () {
-      if (_isDisposed || !mounted || state.fen != fen) return;
+      if (_isDisposed || !mounted || _positionKey(state.fen) != fenKey) return;
       evaluatePosition(fen, force: true, attempt: attempt);
     });
   }

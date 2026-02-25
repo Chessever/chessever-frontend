@@ -129,9 +129,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       ).push(MaterialPageRoute(builder: (_) => const BoardEditorScreen()));
     },
     onOpeningExplorerPressed: () {
-      Navigator.of(
-        context,
-      ).push(MaterialPageRoute(builder: (_) => const GamebaseExplorerScreen()));
+      Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => GamebaseExplorerScreen.scoped()),
+      );
     },
     onSupportPressed: () {
       // Handle support action

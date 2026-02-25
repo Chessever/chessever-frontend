@@ -143,21 +143,39 @@ class StockfishSingleton {
       return pending.completer.future;
     }
 
-    // If this is the active board position, cancel any in-progress job for a different FEN
-    if (isCurrentPosition &&
+    // If this is the active board position, cancel any in-progress job for a
+    // different FEN when it is safe to preempt:
+    // - always preempt low-priority jobs (isCurrentPosition == false)
+    // - preempt same-owner current jobs
+    // - when ownerId is known, also preempt legacy ownerless current jobs
+    // This keeps foreground explorer analysis responsive without reintroducing
+    // cross-owner cancellation loops.
+    final canPreemptCurrent =
         _currentJob != null &&
         _currentJob!.fen != fen &&
-        !_currentJob!.completer.isCompleted) {
+        !_currentJob!.completer.isCompleted &&
+        (!_currentJob!.isCurrentPosition ||
+            (ownerId == null
+                ? _currentJob!.ownerId == null
+                : (_currentJob!.ownerId == ownerId ||
+                    _currentJob!.ownerId == null)));
+    if (isCurrentPosition && canPreemptCurrent) {
       debugPrint(
         '🛑 QUEUE: Cancelling in-flight evaluation for ${_currentJob!.fen} → new position $fen',
       );
       await _cancelCurrentEvaluation();
     }
 
-    // Remove pending duplicate current-position jobs to avoid stale searches
+    // Remove pending duplicate current-position jobs to avoid stale searches.
+    // Scope this cleanup to the same owner. When ownerId is known, also clean
+    // up legacy ownerless pending current-position jobs.
     if (isCurrentPosition && _jobQueue.isNotEmpty) {
       _jobQueue.removeWhere((job) {
-        final shouldDrop = job.isCurrentPosition && job.fen != fen;
+        final sameOwner =
+            ownerId == null
+                ? job.ownerId == null
+                : (job.ownerId == ownerId || job.ownerId == null);
+        final shouldDrop = job.isCurrentPosition && sameOwner && job.fen != fen;
         if (shouldDrop) {
           _pendingJobs.remove(job.key);
           if (!job.completer.isCompleted) {

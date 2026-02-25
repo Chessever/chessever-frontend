@@ -64,7 +64,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     HapticFeedback.mediumImpact();
     Navigator.of(
       context,
-    ).push(MaterialPageRoute(builder: (_) => const GamebaseExplorerScreen()));
+    ).push(MaterialPageRoute(builder: (_) => GamebaseExplorerScreen.scoped()));
   }
 
   List<LibraryFolder> _filterFolders(List<LibraryFolder> folders) {
