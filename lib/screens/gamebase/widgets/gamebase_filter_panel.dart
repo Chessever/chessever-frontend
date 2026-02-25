@@ -167,12 +167,6 @@ class _FilterContent extends HookConsumerWidget {
           _SectionLabel(label: 'Player'),
           SizedBox(height: 8.h),
           const _PlayerSearchField(),
-
-          // Selected Players
-          if (filters.selectedPlayers.isNotEmpty) ...[
-            SizedBox(height: 8.h),
-            _SelectedPlayerChips(players: filters.selectedPlayers),
-          ],
         ],
       ),
     );
@@ -406,9 +400,72 @@ class _RatingRangeInputs extends HookConsumerWidget {
   }
 }
 
-/// Player search field with autocomplete.
+/// Player search field with inline selected player display.
 class _PlayerSearchField extends HookConsumerWidget {
   const _PlayerSearchField();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final state = ref.watch(gamebaseExplorerProvider);
+    final selectedPlayer =
+        state.filters.selectedPlayers.isNotEmpty
+            ? state.filters.selectedPlayers.first
+            : null;
+
+    // If a player is selected, show inline display instead of search field
+    if (selectedPlayer != null) {
+      return Container(
+        padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 10.h),
+        decoration: BoxDecoration(
+          color: kBlack3Color,
+          borderRadius: BorderRadius.circular(8.br),
+          border: Border.all(color: kWhiteColor.withOpacity(0.25)),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              Icons.person_rounded,
+              size: 20.sp,
+              color: kWhiteColor,
+            ),
+            SizedBox(width: 8.w),
+            Expanded(
+              child: Text(
+                selectedPlayer.titleAndName,
+                style: AppTypography.textSmMedium.copyWith(
+                  color: kWhiteColor,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            GestureDetector(
+              onTap: () {
+                ref
+                    .read(gamebaseExplorerProvider.notifier)
+                    .removePlayerFilter(selectedPlayer.id);
+              },
+              child: Padding(
+                padding: EdgeInsets.all(4.sp),
+                child: Icon(
+                  Icons.close_rounded,
+                  size: 18.sp,
+                  color: kSecondaryTextColor,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return _PlayerSearchInput();
+  }
+}
+
+/// Search input with autocomplete dropdown (shown when no player is selected).
+class _PlayerSearchInput extends HookConsumerWidget {
+  const _PlayerSearchInput();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -421,8 +478,7 @@ class _PlayerSearchField extends HookConsumerWidget {
     useEffect(() {
       if (searchQuery.value.length < 2) return null;
 
-      final timer = Future.delayed(const Duration(milliseconds: 300), () {
-        // Trigger search by reading the provider
+      Future.delayed(const Duration(milliseconds: 300), () {
         ref.invalidate(playerSearchProvider(searchQuery.value));
       });
 
@@ -444,7 +500,7 @@ class _PlayerSearchField extends HookConsumerWidget {
             focusNode: focusNode,
             style: AppTypography.textSmRegular.copyWith(color: kWhiteColor),
             decoration: InputDecoration(
-              hintText: 'Search',
+              hintText: 'Search player...',
               hintStyle: AppTypography.textSmRegular.copyWith(
                 color: kSecondaryTextColor.withOpacity(0.5),
               ),
@@ -620,60 +676,3 @@ class _PlayerSearchResult extends StatelessWidget {
   }
 }
 
-/// Selected player chips display.
-class _SelectedPlayerChips extends ConsumerWidget {
-  const _SelectedPlayerChips({required this.players});
-
-  final List<GamebasePlayer> players;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return Wrap(
-      spacing: 8.w,
-      runSpacing: 8.h,
-      children:
-          players.map((player) {
-            return Container(
-              padding: EdgeInsets.only(
-                left: 12.w,
-                right: 4.w,
-                top: 6.h,
-                bottom: 6.h,
-              ),
-              decoration: BoxDecoration(
-                color: kWhiteColor.withOpacity(0.12),
-                borderRadius: BorderRadius.circular(20.br),
-                border: Border.all(color: kWhiteColor.withOpacity(0.2)),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    player.titleAndName,
-                    style: AppTypography.textSmMedium.copyWith(
-                      color: kWhiteColor,
-                    ),
-                  ),
-                  SizedBox(width: 4.w),
-                  GestureDetector(
-                    onTap: () {
-                      ref
-                          .read(gamebaseExplorerProvider.notifier)
-                          .removePlayerFilter(player.id);
-                    },
-                    child: Container(
-                      padding: EdgeInsets.all(4.sp),
-                      child: Icon(
-                        Icons.close_rounded,
-                        size: 16.sp,
-                        color: kWhiteColor.withOpacity(0.85),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            );
-          }).toList(),
-    );
-  }
-}
