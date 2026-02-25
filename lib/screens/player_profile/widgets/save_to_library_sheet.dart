@@ -5,6 +5,7 @@ import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:smooth_sheets/smooth_sheets.dart';
@@ -44,20 +45,43 @@ class _SaveToLibrarySheet extends ConsumerStatefulWidget {
 class _SaveToLibrarySheetState extends ConsumerState<_SaveToLibrarySheet> {
   bool _isLoadingAll = false;
 
+  int _resolveBulkMaxPages(PlayerProfileGamesState state) {
+    const defaultMaxPages = 250;
+    const fallbackPageSize = 50;
+    final totalCount = state.totalCount;
+    if (totalCount == null || totalCount <= 0) return defaultMaxPages;
+    final remaining = totalCount - state.allGames.length;
+    if (remaining <= 0) return defaultMaxPages;
+    final estimatedPages = (remaining / fallbackPageSize).ceil();
+    final safeWithBuffer = estimatedPages + 10;
+    return safeWithBuffer.clamp(defaultMaxPages, 5000);
+  }
+
   Future<void> _handleSaveAll() async {
     if (_isLoadingAll) return;
     HapticFeedbackService.light();
 
+    final initialState = ref.read(
+      playerProfileGamesKeyProvider(widget.playerKey),
+    );
+    final totalCount =
+        initialState.totalCount ?? initialState.filteredGames.length;
+    if (totalCount > 1) {
+      final hasPremium = await requirePremiumGuard(context, ref);
+      if (!hasPremium || !mounted) return;
+    }
+
     setState(() => _isLoadingAll = true);
     try {
-      final state = ref.read(playerProfileGamesKeyProvider(widget.playerKey));
       final notifier = ref.read(
         playerProfileGamesKeyProvider(widget.playerKey).notifier,
       );
 
       if (widget.playerKey.source == PlayerProfileDataSource.twic &&
-          state.hasMorePages) {
-        await notifier.loadAllRemainingPages();
+          initialState.hasMorePages) {
+        await notifier.loadAllRemainingPages(
+          maxPages: _resolveBulkMaxPages(initialState),
+        );
       }
 
       final refreshed = ref.read(
@@ -95,7 +119,7 @@ class _SaveToLibrarySheetState extends ConsumerState<_SaveToLibrarySheet> {
     }
   }
 
-  void _handleSelectSpecific() {
+  Future<void> _handleSelectSpecific() async {
     HapticFeedbackService.light();
     Navigator.of(context).pop();
     widget.onSelectSpecific();
@@ -158,8 +182,8 @@ class _SaveToLibrarySheetState extends ConsumerState<_SaveToLibrarySheet> {
                               SizedBox(height: 12.h),
                               _ActionTile(
                                 icon: Icons.checklist_rounded,
-                                title: 'Select specific games',
-                                subtitle: 'Manually choose which games to save',
+                                title: 'Choose games manually',
+                                subtitle: 'Open selection mode in Games tab',
                                 onTap: _handleSelectSpecific,
                               ),
                               SizedBox(

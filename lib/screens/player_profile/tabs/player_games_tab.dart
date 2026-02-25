@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
-import 'package:chessever2/providers/board_settings_provider_new.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/screens/library/widgets/add_to_folder_sheet.dart';
@@ -104,6 +103,18 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
     });
   }
 
+  int _resolveBulkMaxPages(PlayerProfileGamesState state) {
+    const defaultMaxPages = 250;
+    const fallbackPageSize = 50;
+    final totalCount = state.totalCount;
+    if (totalCount == null || totalCount <= 0) return defaultMaxPages;
+    final remaining = totalCount - state.allGames.length;
+    if (remaining <= 0) return defaultMaxPages;
+    final estimatedPages = (remaining / fallbackPageSize).ceil();
+    final safeWithBuffer = estimatedPages + 10;
+    return safeWithBuffer.clamp(defaultMaxPages, 5000);
+  }
+
   void _clearSearch() {
     HapticFeedback.lightImpact();
     _debounceTimer?.cancel();
@@ -142,6 +153,11 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
 
   Future<void> _selectAllFilteredGames(PlayerProfileGamesState state) async {
     if (_isLoadingAllPagesForSelection) return;
+    final totalCount = state.totalCount ?? state.filteredGames.length;
+    if (totalCount > 1) {
+      final hasPremium = await requirePremiumGuard(context, ref);
+      if (!hasPremium || !mounted) return;
+    }
 
     setState(() => _isLoadingAllPagesForSelection = true);
     try {
@@ -149,7 +165,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
           state.hasMorePages) {
         await ref
             .read(playerProfileGamesKeyProvider(_playerKey).notifier)
-            .loadAllRemainingPages();
+            .loadAllRemainingPages(maxPages: _resolveBulkMaxPages(state));
       }
 
       final refreshed = ref.read(playerProfileGamesKeyProvider(_playerKey));
@@ -192,10 +208,6 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
   }
 
   Future<void> _addSelectedToLibrary(PlayerProfileGamesState state) async {
-    final hasPremium = await requirePremiumGuard(context, ref);
-    if (!hasPremium) return;
-    if (!mounted) return;
-
     final selectedGames = state.filteredGames
         .where((g) => _selectedGameIds.contains(g.gameId))
         .toList(growable: false);
@@ -212,6 +224,11 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
         ),
       );
       return;
+    }
+
+    if (selectedGames.length > 1) {
+      final hasPremium = await requirePremiumGuard(context, ref);
+      if (!hasPremium || !mounted) return;
     }
 
     await showBulkAddToFolderSheet(
@@ -310,7 +327,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
       tablet: 24.w,
     );
     final headerHeight =
-        88.h +
+        68.h +
         (state.hasActiveFilters ? 36.h : 0) +
         (isSelectionMode ? 72.h : 0);
 
@@ -416,9 +433,9 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
           Padding(
             padding: EdgeInsets.fromLTRB(
               horizontalPadding,
-              6.h,
+              2.h,
               horizontalPadding,
-              8.h,
+              4.h,
             ),
             child: _buildSearchBar(state),
           ),
@@ -428,7 +445,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
                 horizontalPadding,
                 0,
                 horizontalPadding,
-                state.hasActiveFilters ? 6.h : 8.h,
+                state.hasActiveFilters ? 4.h : 6.h,
               ),
               child: _buildSelectionToolbar(state, selectedVisibleCount),
             ),
@@ -695,7 +712,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
                           ),
                           SizedBox(width: 6.w),
                           Text(
-                            'Save to Library',
+                            'Add selected',
                             style: AppTypography.textSmBold.copyWith(
                               color:
                                   selectedVisibleCount > 0
@@ -1406,38 +1423,6 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
         ],
       ),
     ).animate().fadeIn(duration: 220.ms);
-  }
-}
-
-class _PinnedHeaderDelegate extends SliverPersistentHeaderDelegate {
-  _PinnedHeaderDelegate({
-    required this.minExtent,
-    required this.maxExtent,
-    required this.child,
-  });
-
-  @override
-  final double minExtent;
-
-  @override
-  final double maxExtent;
-
-  final Widget child;
-
-  @override
-  Widget build(
-    BuildContext context,
-    double shrinkOffset,
-    bool overlapsContent,
-  ) {
-    return SizedBox.expand(child: child);
-  }
-
-  @override
-  bool shouldRebuild(covariant _PinnedHeaderDelegate oldDelegate) {
-    return minExtent != oldDelegate.minExtent ||
-        maxExtent != oldDelegate.maxExtent ||
-        child != oldDelegate.child;
   }
 }
 
