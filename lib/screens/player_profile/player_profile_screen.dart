@@ -100,6 +100,37 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
   String? _currentGamebasePlayerId;
   bool _didPrefetchExplorerRoot = false;
 
+  bool _showHeaderExtras = true;
+  double _scrollAccumulator = 0.0;
+  static const _scrollCollapseThreshold = 40.0;
+
+  bool _handleScrollNotification(ScrollUpdateNotification notification) {
+    if (notification.metrics.axis != Axis.vertical) return false;
+
+    final delta = notification.scrollDelta ?? 0.0;
+    final offset = notification.metrics.pixels;
+
+    if (offset <= 0) {
+      if (!_showHeaderExtras) setState(() => _showHeaderExtras = true);
+      _scrollAccumulator = 0.0;
+      return false;
+    }
+
+    if ((delta > 0 && _scrollAccumulator < 0) ||
+        (delta < 0 && _scrollAccumulator > 0)) {
+      _scrollAccumulator = 0.0;
+    }
+    _scrollAccumulator += delta;
+
+    if (_scrollAccumulator > _scrollCollapseThreshold && _showHeaderExtras) {
+      setState(() => _showHeaderExtras = false);
+    } else if (_scrollAccumulator < -_scrollCollapseThreshold &&
+        !_showHeaderExtras) {
+      setState(() => _showHeaderExtras = true);
+    }
+    return false;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -527,21 +558,43 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
                 isTwicLoading: isTwicLoading,
               ),
 
-              _buildDataSourceSelector(twicSummaryAsync),
-
-              if (hasPlayerExplorer)
-                _buildActionButtons(
-                  displayName: _formatDisplayName(
-                    name: effectiveName,
-                    title: effectiveTitle,
-                  ),
+              SingleMotionBuilder(
+                motion: const CupertinoMotion.snappy(),
+                value: _showHeaderExtras ? 1.0 : 0.0,
+                builder: (context, progress, child) {
+                  final clamped = progress.clamp(0.0, 1.0);
+                  if (clamped == 0) return const SizedBox.shrink();
+                  return ClipRect(
+                    child: Align(
+                      heightFactor: clamped,
+                      alignment: Alignment.topCenter,
+                      child: Opacity(opacity: clamped, child: child),
+                    ),
+                  );
+                },
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _buildDataSourceSelector(twicSummaryAsync),
+                    if (hasPlayerExplorer)
+                      _buildActionButtons(
+                        displayName: _formatDisplayName(
+                          name: effectiveName,
+                          title: effectiveTitle,
+                        ),
+                      ),
+                  ],
                 ),
+              ),
 
               // Tab content
               Expanded(
-                child: _buildTabContent(
-                  effectiveTitle: effectiveTitle,
-                  effectiveFederation: effectiveFederation,
+                child: NotificationListener<ScrollUpdateNotification>(
+                  onNotification: _handleScrollNotification,
+                  child: _buildTabContent(
+                    effectiveTitle: effectiveTitle,
+                    effectiveFederation: effectiveFederation,
+                  ),
                 ),
               ),
             ],
@@ -1178,4 +1231,25 @@ class _ActionCardState extends State<_ActionCard> {
       ),
     );
   }
+}
+
+/// Model for recent opponent data (keeping for backward compatibility)
+class RecentOpponent {
+  const RecentOpponent({
+    required this.name,
+    required this.title,
+    required this.countryCode,
+    required this.rating,
+    required this.result,
+    required this.playedAsWhite,
+    this.fideId,
+  });
+
+  final String name;
+  final String? title;
+  final String countryCode;
+  final int rating;
+  final double result; // 1.0 = win, 0.5 = draw, 0.0 = loss
+  final bool playedAsWhite;
+  final String? fideId;
 }

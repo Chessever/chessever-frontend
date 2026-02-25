@@ -30,6 +30,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:motor/motor.dart';
 
 /// Games tab showing all games of a player with comprehensive filters
 class PlayerGamesTab extends ConsumerStatefulWidget {
@@ -162,24 +163,6 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
       } else {
         _selectedGameIds.add(gameId);
       }
-    });
-  }
-
-  void _selectLoadedGames(List<GamesTourModel> games) {
-    if (games.isEmpty) return;
-    HapticFeedbackService.light();
-    setState(() {
-      for (final game in games) {
-        _selectedGameIds.add(game.gameId);
-      }
-    });
-  }
-
-  void _clearSelection() {
-    HapticFeedbackService.light();
-    setState(() {
-      _selectedGameIds.clear();
-      _isLoadingAllPagesForSelection = false;
     });
   }
 
@@ -365,12 +348,19 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
           parent: BouncingScrollPhysics(),
         ),
         slivers: [
-          SliverPersistentHeader(
-            pinned: true,
-            delegate: _PinnedHeaderDelegate(
-              minExtent: headerHeight,
-              maxExtent: headerHeight,
-              child: _buildStickyHeader(state, horizontalPadding),
+          SliverAppBar(
+            floating: true,
+            snap: true,
+            pinned: false,
+            elevation: 0,
+            backgroundColor: Colors.transparent,
+            automaticallyImplyLeading: false,
+            toolbarHeight: headerHeight,
+            flexibleSpace: FlexibleSpaceBar(
+              background: Align(
+                alignment: Alignment.bottomCenter,
+                child: _buildStickyHeader(state, horizontalPadding),
+              ),
             ),
           ),
 
@@ -655,7 +645,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
     int selectedVisibleCount,
   ) {
     return SingleMotionBuilder(
-      motion: const CupertinoMotion.spring(),
+      motion: const CupertinoMotion.bouncy(),
       value: 1.0,
       builder: (context, progress, child) {
         return Opacity(
@@ -1469,17 +1459,10 @@ class _PinnedHeaderDelegate extends SliverPersistentHeaderDelegate {
 }
 
 class _SelectionChipButton extends StatelessWidget {
-  const _SelectionChipButton({
-    required this.label,
-    required this.onTap,
-    this.icon,
-    this.highlighted = false,
-  });
+  const _SelectionChipButton({required this.label, required this.onTap});
 
   final String label;
   final VoidCallback? onTap;
-  final IconData? icon;
-  final bool highlighted;
 
   @override
   Widget build(BuildContext context) {
@@ -1491,39 +1474,15 @@ class _SelectionChipButton extends StatelessWidget {
         child: Container(
           padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 6.h),
           decoration: BoxDecoration(
-            color:
-                highlighted
-                    ? kPrimaryColor.withValues(alpha: 0.18)
-                    : kWhiteColor.withValues(alpha: 0.08),
+            color: kWhiteColor.withValues(alpha: 0.08),
             borderRadius: BorderRadius.circular(8.br),
-            border: Border.all(
-              color:
-                  highlighted
-                      ? kPrimaryColor.withValues(alpha: 0.42)
-                      : kWhiteColor.withValues(alpha: 0.12),
-            ),
+            border: Border.all(color: kWhiteColor.withValues(alpha: 0.12)),
           ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (icon != null) ...[
-                Icon(
-                  icon,
-                  size: 14.sp,
-                  color: highlighted ? kPrimaryColor : kWhiteColor,
-                ),
-                SizedBox(width: 4.w),
-              ],
-              Text(
-                label,
-                style: AppTypography.textXsMedium.copyWith(
-                  color:
-                      highlighted
-                          ? kPrimaryColor
-                          : kWhiteColor.withValues(alpha: 0.9),
-                ),
-              ),
-            ],
+          child: Text(
+            label,
+            style: AppTypography.textXsMedium.copyWith(
+              color: kWhiteColor.withValues(alpha: 0.9),
+            ),
           ),
         ),
       ),

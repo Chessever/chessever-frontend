@@ -209,8 +209,14 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
     required GamebaseFilters filters,
   }) {
     // Keep this conservative: it's a perf win, but we don't want to DDOS our own API.
+    // With the current backend architecture (indexed through ~20 plies + rest),
+    // deep-node requests can be heavier. Reduce fanout once we enter deep lines.
     final playerScoped = _isPlayerScopedOnlyFilter(filters);
-    final maxPrefetch = playerScoped ? 4 : 3;
+    final currentPly = _pliesFromFen(baseFen);
+    final isDeepRestZone = currentPly >= 20;
+    final maxPrefetch =
+        isDeepRestZone ? (playerScoped ? 1 : 0) : (playerScoped ? 4 : 3);
+    if (maxPrefetch <= 0) return;
     final candidates =
         aggregates.length <= maxPrefetch
             ? aggregates
@@ -256,7 +262,11 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
             _putCacheEntry(nextCacheKey, prefetched);
 
             // Prefetch one extra ply from top branches in player mode only.
-            if (playerScoped && i < 2 && prefetched.isNotEmpty) {
+            // Skip this in deep rest zone to avoid overloading backend.
+            if (!isDeepRestZone &&
+                playerScoped &&
+                i < 2 &&
+                prefetched.isNotEmpty) {
               final reply = prefetched.first;
               final replyChess = Chess.fromFEN(nextFen);
               final replyFrom = reply.uci.substring(0, 2);
