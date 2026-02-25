@@ -1380,10 +1380,6 @@ class _ExplorerEngineLines extends ConsumerWidget {
     final lines = pvLines.take(_kMaxRows).toList();
     final notifier = ref.read(gamebaseExplorerProvider.notifier);
     final uciRegex = RegExp(r'^[a-h][1-8][a-h][1-8][qrbn]?$');
-    final depthLabel =
-        evalState.depth > 0
-            ? 'D:${evalState.depth.toString().padLeft(2, '0')}'
-            : '...';
 
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -1415,7 +1411,6 @@ class _ExplorerEngineLines extends ConsumerWidget {
             _EngineLinePlaceholder(
               isPrimary: i == 0,
               isEvaluating: evalState.isEvaluating,
-              depthLabel: depthLabel,
             ),
         ],
         Divider(color: kDividerColor, height: 1),
@@ -1428,17 +1423,14 @@ class _EngineLinePlaceholder extends StatelessWidget {
   const _EngineLinePlaceholder({
     required this.isPrimary,
     required this.isEvaluating,
-    required this.depthLabel,
   });
 
   final bool isPrimary;
   final bool isEvaluating;
-  final String depthLabel;
 
   @override
   Widget build(BuildContext context) {
-    final label =
-        isPrimary && isEvaluating ? 'Analyzing engine line ($depthLabel)' : ' ';
+    final label = ' ';
 
     return Padding(
       padding: EdgeInsets.symmetric(vertical: 5.sp, horizontal: 12.sp),

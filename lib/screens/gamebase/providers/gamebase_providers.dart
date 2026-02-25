@@ -247,11 +247,23 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
 
   /// Make a move on the board (UCI format)
   void makeMove(String uci) {
+    final normalizedUci = uci.trim().toLowerCase();
+    if (!_uciRegex.hasMatch(normalizedUci)) return;
+
+    // Rapid taps can race with async aggregate refreshes; ignore stale moves
+    // that are no longer legal in the current explorer position.
+    if (!_isLegalUciForFen(normalizedUci, state.currentFen)) {
+      debugPrint(
+        '[GamebaseExplorer] Ignoring stale/illegal move: $normalizedUci',
+      );
+      return;
+    }
+
     try {
       // Parse UCI move
-      final from = uci.substring(0, 2);
-      final to = uci.substring(2, 4);
-      final promotion = uci.length > 4 ? uci[4] : null;
+      final from = normalizedUci.substring(0, 2);
+      final to = normalizedUci.substring(2, 4);
+      final promotion = normalizedUci.length > 4 ? normalizedUci[4] : null;
 
       // Reset chess to current position if needed
       _rebuildChessPosition();
@@ -268,7 +280,7 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
         final newHistory = state.moveHistory.sublist(
           0,
           state.currentMoveIndex + 1,
-        )..add(uci);
+        )..add(normalizedUci);
 
         state = state.copyWith(
           currentFen: normalizeFenForGamebase(chess.fen),
@@ -277,11 +289,9 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
         );
 
         _scheduleFetch(Duration.zero);
-      } else {
-        state = state.copyWith(error: 'Invalid move: $uci');
       }
     } catch (e) {
-      state = state.copyWith(error: 'Invalid move: $uci');
+      debugPrint('[GamebaseExplorer] makeMove error for $normalizedUci: $e');
     }
   }
 
@@ -365,7 +375,7 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
       );
 
       _scheduleFetch(Duration.zero);
-    } else if (state.moveAggregates.isNotEmpty) {
+    } else if (!state.isLoading && state.moveAggregates.isNotEmpty) {
       // At the frontier — play the most-played move from current position.
       makeMove(state.moveAggregates.first.uci);
     }
@@ -390,7 +400,7 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
     final targetIndex = state.maxNavigableMoveIndex;
     if (targetIndex > state.currentMoveIndex) {
       goToMove(targetIndex);
-    } else if (state.moveAggregates.isNotEmpty) {
+    } else if (!state.isLoading && state.moveAggregates.isNotEmpty) {
       makeMove(state.moveAggregates.first.uci);
     }
   }
