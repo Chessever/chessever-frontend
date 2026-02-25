@@ -13,13 +13,16 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 /// Provider for the library search query.
 /// Updated from library screen when search text changes.
-final librarySearchQueryProvider = StateProvider.autoDispose<String>((ref) => '');
+final librarySearchQueryProvider = StateProvider.autoDispose<String>(
+  (ref) => '',
+);
 
 /// Pagination state for database games
 class DatabaseGamesPaginationState {
   final List<GamesTourModel> games;
   final int currentPage;
   final int totalCount;
+  final bool totalCountIsEstimate;
   final bool isLoading;
   final bool hasMore;
   final String? error;
@@ -28,6 +31,7 @@ class DatabaseGamesPaginationState {
     this.games = const [],
     this.currentPage = 1,
     this.totalCount = 0,
+    this.totalCountIsEstimate = false,
     this.isLoading = false,
     this.hasMore = true,
     this.error,
@@ -37,6 +41,7 @@ class DatabaseGamesPaginationState {
     List<GamesTourModel>? games,
     int? currentPage,
     int? totalCount,
+    bool? totalCountIsEstimate,
     bool? isLoading,
     bool? hasMore,
     String? error,
@@ -45,6 +50,7 @@ class DatabaseGamesPaginationState {
       games: games ?? this.games,
       currentPage: currentPage ?? this.currentPage,
       totalCount: totalCount ?? this.totalCount,
+      totalCountIsEstimate: totalCountIsEstimate ?? this.totalCountIsEstimate,
       isLoading: isLoading ?? this.isLoading,
       hasMore: hasMore ?? this.hasMore,
       error: error,
@@ -80,6 +86,7 @@ class DatabaseGamesPaginationNotifier
         games: result.games,
         currentPage: 1,
         totalCount: result.totalCount,
+        totalCountIsEstimate: result.totalCountIsEstimate,
         isLoading: false,
         hasMore: result.hasMore,
       );
@@ -105,6 +112,7 @@ class DatabaseGamesPaginationNotifier
         games: [...state.games, ...result.games],
         currentPage: nextPage,
         totalCount: result.totalCount,
+        totalCountIsEstimate: result.totalCountIsEstimate,
         isLoading: false,
         hasMore: result.hasMore,
       );
@@ -152,6 +160,7 @@ class DatabaseGamesPaginationNotifier
       return _PageResult(
         games: const [],
         totalCount: response.metadata.totalCount ?? 0,
+        totalCountIsEstimate: response.metadata.totalCountIsEstimate,
         hasMore: false,
       );
     }
@@ -346,8 +355,14 @@ class DatabaseGamesPaginationNotifier
 
     final totalCount = response.metadata.totalCount ?? 0;
     final hasMore = response.metadata.hasMore;
+    final totalCountIsEstimate = response.metadata.totalCountIsEstimate;
 
-    return _PageResult(games: games, totalCount: totalCount, hasMore: hasMore);
+    return _PageResult(
+      games: games,
+      totalCount: totalCount,
+      totalCountIsEstimate: totalCountIsEstimate,
+      hasMore: hasMore,
+    );
   }
 
   static DateTime? _parseDate(Object? raw) {
@@ -359,14 +374,29 @@ class DatabaseGamesPaginationNotifier
 class _PageResult {
   final List<GamesTourModel> games;
   final int totalCount;
+  final bool totalCountIsEstimate;
   final bool hasMore;
 
   const _PageResult({
     required this.games,
     required this.totalCount,
+    required this.totalCountIsEstimate,
     required this.hasMore,
   });
 }
+
+/// Exact unfiltered TWIC game count from opening-root aggregates.
+///
+/// Search metadata count is currently estimate-only and can be far below the
+/// actual gamebase size, so the TWIC landing view uses this for correctness.
+final twicDatabaseTotalGamesProvider = FutureProvider<int>((ref) async {
+  final repo = ref.read(gamebaseRepositoryProvider);
+  final response = await repo.getMoveAggregates(
+    fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+  );
+
+  return response.data.moves.fold<int>(0, (sum, move) => sum + move.total);
+});
 
 /// Provider for paginated database games with filter support
 final gamebaseDatabaseGamesPaginatedProvider =

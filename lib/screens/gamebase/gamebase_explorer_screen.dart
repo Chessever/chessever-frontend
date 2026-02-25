@@ -44,9 +44,49 @@ class _GamebaseExplorerScreenState
   Timer? _backwardLongPressTimer;
   Timer? _forwardLongPressTimer;
 
-  void _resetExplorerState({bool fetch = false}) {
-    ref.read(gamebaseExplorerProvider.notifier).reset(fetch: fetch);
+  void _resetExplorerState({bool fetch = false, bool preserveScope = true}) {
+    final notifier = ref.read(gamebaseExplorerProvider.notifier);
+    final scopedPlayer = preserveScope ? widget.initialPlayer : null;
+
+    if (fetch && scopedPlayer != null) {
+      // Player-scoped explorer reset: keep the original player filter.
+      notifier.initializeWithPlayer(scopedPlayer);
+    } else {
+      notifier.reset(fetch: fetch);
+    }
+
     ref.invalidate(explorerEvalProvider);
+  }
+
+  bool _shouldShowClearFilters(GamebaseExplorerState state) {
+    final scopedPlayer = widget.initialPlayer;
+    if (scopedPlayer == null) return state.hasActiveFilters;
+
+    final hasRatingOrTimeFilters =
+        state.filters.timeControls.isNotEmpty ||
+        state.filters.minRating != null ||
+        state.filters.maxRating != null;
+
+    final hasDifferentPlayerScope =
+        state.filters.playerIds.length != 1 ||
+        state.filters.playerIds.first != scopedPlayer.id ||
+        state.filters.selectedPlayers.length != 1 ||
+        state.filters.selectedPlayers.first.id != scopedPlayer.id;
+
+    return hasRatingOrTimeFilters || hasDifferentPlayerScope;
+  }
+
+  void _clearFiltersForCurrentScope() {
+    final notifier = ref.read(gamebaseExplorerProvider.notifier);
+    final scopedPlayer = widget.initialPlayer;
+
+    if (scopedPlayer != null) {
+      // In player-scoped explorer, "clear filters" should keep player scope.
+      notifier.initializeWithPlayer(scopedPlayer);
+      return;
+    }
+
+    notifier.clearFilters();
   }
 
   @override
@@ -59,14 +99,8 @@ class _GamebaseExplorerScreenState
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
 
-      final notifier = ref.read(gamebaseExplorerProvider.notifier);
-
-      if (widget.initialPlayer != null) {
-        notifier.initializeWithPlayer(widget.initialPlayer!);
-      } else {
-        // Always start fresh when opening standalone explorer.
-        notifier.reset();
-      }
+      // Always start fresh; preserve player scope when present.
+      _resetExplorerState(fetch: true);
     });
   }
 
@@ -401,6 +435,8 @@ class _GamebaseExplorerScreenState
     return AppBar(
       backgroundColor: kBlack2Color,
       elevation: 0,
+      centerTitle: false,
+      titleSpacing: 0,
       leading: IconButton(
         icon: Icon(Icons.arrow_back, size: 24.ic),
         onPressed: () => Navigator.of(context).pop(),
@@ -409,6 +445,7 @@ class _GamebaseExplorerScreenState
           state.filters.selectedPlayers.isNotEmpty
               ? Column(
                 mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
                     state.filters.selectedPlayers.first.titleAndName,
@@ -427,6 +464,8 @@ class _GamebaseExplorerScreenState
                       fontSize: 12.f,
                       fontWeight: FontWeight.w400,
                     ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ],
               )
@@ -437,19 +476,20 @@ class _GamebaseExplorerScreenState
                   fontSize: 18.f,
                   fontWeight: FontWeight.w600,
                 ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
       actions: [
-        if (state.hasActiveFilters)
+        if (_shouldShowClearFilters(state))
           IconButton(
             icon: Icon(Icons.filter_alt_off, size: 24.ic),
-            onPressed:
-                () =>
-                    ref.read(gamebaseExplorerProvider.notifier).clearFilters(),
+            onPressed: _clearFiltersForCurrentScope,
             tooltip: 'Clear filters',
           ),
         IconButton(
           icon: Icon(Icons.restart_alt, size: 24.ic),
-          onPressed: () => _resetExplorerState(fetch: true),
+          onPressed:
+              () => _resetExplorerState(fetch: true, preserveScope: true),
           tooltip: 'Reset explorer',
         ),
         IconButton(
@@ -460,8 +500,8 @@ class _GamebaseExplorerScreenState
         GestureDetector(
           onTap: () => _openAnalysis(context),
           child: Container(
-            margin: EdgeInsets.only(right: 12.sp),
-            padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 6.sp),
+            margin: EdgeInsets.only(right: 8.sp),
+            padding: EdgeInsets.symmetric(horizontal: 8.sp, vertical: 6.sp),
             decoration: BoxDecoration(
               color: kWhiteColor,
               borderRadius: BorderRadius.circular(8.br),
@@ -571,12 +611,13 @@ class _GamebaseExplorerScreenState
   void _showFilterSheet(BuildContext context) {
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       backgroundColor: kBlack3Color,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16.br)),
       ),
       constraints: ResponsiveHelper.bottomSheetConstraints,
-      builder: (context) => const _FilterSheet(),
+      builder: (context) => _FilterSheet(scopedPlayer: widget.initialPlayer),
     );
   }
 }
@@ -752,7 +793,9 @@ class _ExplorerEvalBarState extends ConsumerState<_ExplorerEvalBar> {
 /// Uses local draft state and only applies changes when the user taps "Apply".
 /// This prevents multiple expensive aggregate requests while toggling controls.
 class _FilterSheet extends ConsumerStatefulWidget {
-  const _FilterSheet();
+  const _FilterSheet({this.scopedPlayer});
+
+  final GamebasePlayer? scopedPlayer;
 
   @override
   ConsumerState<_FilterSheet> createState() => _FilterSheetState();
@@ -768,6 +811,13 @@ class _FilterSheetState extends ConsumerState<_FilterSheet> {
   void initState() {
     super.initState();
     _draftFilters = ref.read(gamebaseExplorerProvider).filters;
+    final scopedPlayer = widget.scopedPlayer;
+    if (scopedPlayer != null) {
+      _draftFilters = _draftFilters.copyWith(
+        playerIds: [scopedPlayer.id],
+        selectedPlayers: [scopedPlayer],
+      );
+    }
   }
 
   @override
@@ -832,256 +882,305 @@ class _FilterSheetState extends ConsumerState<_FilterSheet> {
     Navigator.pop(context);
   }
 
+  bool _isScopedPlayerDraft(GamebaseFilters filters) {
+    final scopedPlayer = widget.scopedPlayer;
+    if (scopedPlayer == null) return false;
+    return filters.playerIds.length == 1 &&
+        filters.playerIds.first == scopedPlayer.id &&
+        filters.selectedPlayers.length == 1 &&
+        filters.selectedPlayers.first.id == scopedPlayer.id;
+  }
+
+  bool _hasActiveDraft(GamebaseFilters filters) {
+    final hasTimeOrRating =
+        filters.timeControls.isNotEmpty ||
+        filters.minRating != null ||
+        filters.maxRating != null;
+    if (widget.scopedPlayer == null) {
+      return hasTimeOrRating || filters.playerIds.isNotEmpty;
+    }
+    return hasTimeOrRating || !_isScopedPlayerDraft(filters);
+  }
+
+  void _clearAll() {
+    final notifier = ref.read(gamebaseExplorerProvider.notifier);
+    final scopedPlayer = widget.scopedPlayer;
+    if (scopedPlayer != null) {
+      notifier.updateFilters(
+        GamebaseFilters(
+          playerIds: [scopedPlayer.id],
+          selectedPlayers: [scopedPlayer],
+        ),
+      );
+    } else {
+      notifier.clearFilters();
+    }
+    Navigator.pop(context);
+  }
+
   @override
   Widget build(BuildContext context) {
     final filters = _draftFilters;
-    final hasActiveDraft =
-        filters.timeControls.isNotEmpty ||
-        filters.minRating != null ||
-        filters.maxRating != null ||
-        filters.playerIds.isNotEmpty;
+    final hasActiveDraft = _hasActiveDraft(filters);
 
     return SafeArea(
-      child: Padding(
-        padding: EdgeInsets.all(16.sp),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Header
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      top: false,
+      child: AnimatedPadding(
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOut,
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(context).viewInsets.bottom,
+        ),
+        child: SingleChildScrollView(
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+          child: Padding(
+            padding: EdgeInsets.all(16.sp),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // Header
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Filters',
+                      style: TextStyle(
+                        color: kWhiteColor,
+                        fontSize: 18.f,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    if (hasActiveDraft)
+                      TextButton(
+                        onPressed: _clearAll,
+                        child: Text(
+                          'Clear all',
+                          style: TextStyle(
+                            color: kPrimaryColor,
+                            fontSize: 14.f,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+                SizedBox(height: 16.sp),
+
+                // Time control filters
                 Text(
-                  'Filters',
+                  'Time Control',
                   style: TextStyle(
-                    color: kWhiteColor,
-                    fontSize: 18.f,
-                    fontWeight: FontWeight.w600,
+                    color: kSecondaryTextColor,
+                    fontSize: 12.f,
+                    fontWeight: FontWeight.w500,
                   ),
                 ),
-                if (hasActiveDraft)
-                  TextButton(
-                    onPressed: () {
-                      ref
-                          .read(gamebaseExplorerProvider.notifier)
-                          .clearFilters();
-                      Navigator.pop(context);
+                SizedBox(height: 8.sp),
+                Wrap(
+                  spacing: 8.sp,
+                  children:
+                      TimeControl.values.map((tc) {
+                        final isSelected = filters.timeControls.contains(tc);
+                        return FilterChip(
+                          label: Text(tc.displayName),
+                          selected: isSelected,
+                          onSelected: (_) => _toggleTimeControl(tc),
+                          selectedColor: kPrimaryColor.withValues(alpha: 0.2),
+                          checkmarkColor: kPrimaryColor,
+                          labelStyle: TextStyle(
+                            color: isSelected ? kPrimaryColor : kWhiteColor,
+                            fontSize: 12.f,
+                          ),
+                          backgroundColor: kBlack2Color,
+                          side: BorderSide(
+                            color: isSelected ? kPrimaryColor : kDividerColor,
+                          ),
+                        );
+                      }).toList(),
+                ),
+                SizedBox(height: 16.sp),
+
+                // Rating range
+                Text(
+                  'Rating Range',
+                  style: TextStyle(
+                    color: kSecondaryTextColor,
+                    fontSize: 12.f,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                SizedBox(height: 8.sp),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _RatingDropdown(
+                        value: filters.minRating,
+                        hint: 'Min',
+                        onChanged:
+                            (value) => _setRatingRange(
+                              minRating: value,
+                              maxRating: filters.maxRating,
+                            ),
+                      ),
+                    ),
+                    SizedBox(width: 16.sp),
+                    Text(
+                      'to',
+                      style: TextStyle(
+                        color: kSecondaryTextColor,
+                        fontSize: 14.f,
+                      ),
+                    ),
+                    SizedBox(width: 16.sp),
+                    Expanded(
+                      child: _RatingDropdown(
+                        value: filters.maxRating,
+                        hint: 'Max',
+                        onChanged:
+                            (value) => _setRatingRange(
+                              minRating: filters.minRating,
+                              maxRating: value,
+                            ),
+                      ),
+                    ),
+                  ],
+                ),
+                SizedBox(height: 24.sp),
+
+                if (widget.scopedPlayer == null) ...[
+                  // Player search (hidden in player-scoped explorer)
+                  Text(
+                    'Player',
+                    style: TextStyle(
+                      color: kSecondaryTextColor,
+                      fontSize: 12.f,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  SizedBox(height: 8.sp),
+                  TextField(
+                    controller: _playerSearchController,
+                    focusNode: _playerSearchFocusNode,
+                    style: TextStyle(color: kWhiteColor, fontSize: 13.f),
+                    decoration: InputDecoration(
+                      hintText: 'Search player',
+                      hintStyle: TextStyle(
+                        color: kSecondaryTextColor.withValues(alpha: 0.65),
+                        fontSize: 13.f,
+                      ),
+                      prefixIcon: Icon(
+                        Icons.search_rounded,
+                        size: 18.sp,
+                        color: kSecondaryTextColor,
+                      ),
+                      filled: true,
+                      fillColor: kBlack2Color,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8.br),
+                        borderSide: BorderSide(color: kDividerColor),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8.br),
+                        borderSide: BorderSide(color: kDividerColor),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8.br),
+                        borderSide: BorderSide(color: kPrimaryColor),
+                      ),
+                      contentPadding: EdgeInsets.symmetric(
+                        horizontal: 12.sp,
+                        vertical: 10.sp,
+                      ),
+                    ),
+                    onChanged: (value) {
+                      setState(() {
+                        _playerSearchQuery = value.trim();
+                      });
                     },
-                    child: Text(
-                      'Clear all',
-                      style: TextStyle(color: kPrimaryColor, fontSize: 14.f),
+                  ),
+                  if (_playerSearchQuery.length >= 2) ...[
+                    SizedBox(height: 8.sp),
+                    _PlayerSearchResults(
+                      query: _playerSearchQuery,
+                      onPlayerSelected: _setPlayer,
                     ),
-                  ),
-              ],
-            ),
-            SizedBox(height: 16.sp),
-
-            // Time control filters
-            Text(
-              'Time Control',
-              style: TextStyle(
-                color: kSecondaryTextColor,
-                fontSize: 12.f,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-            SizedBox(height: 8.sp),
-            Wrap(
-              spacing: 8.sp,
-              children:
-                  TimeControl.values.map((tc) {
-                    final isSelected = filters.timeControls.contains(tc);
-                    return FilterChip(
-                      label: Text(tc.displayName),
-                      selected: isSelected,
-                      onSelected: (_) => _toggleTimeControl(tc),
-                      selectedColor: kPrimaryColor.withValues(alpha: 0.2),
-                      checkmarkColor: kPrimaryColor,
-                      labelStyle: TextStyle(
-                        color: isSelected ? kPrimaryColor : kWhiteColor,
-                        fontSize: 12.f,
-                      ),
-                      backgroundColor: kBlack2Color,
-                      side: BorderSide(
-                        color: isSelected ? kPrimaryColor : kDividerColor,
-                      ),
-                    );
-                  }).toList(),
-            ),
-            SizedBox(height: 16.sp),
-
-            // Rating range
-            Text(
-              'Rating Range',
-              style: TextStyle(
-                color: kSecondaryTextColor,
-                fontSize: 12.f,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-            SizedBox(height: 8.sp),
-            Row(
-              children: [
-                Expanded(
-                  child: _RatingDropdown(
-                    value: filters.minRating,
-                    hint: 'Min',
-                    onChanged:
-                        (value) => _setRatingRange(
-                          minRating: value,
-                          maxRating: filters.maxRating,
-                        ),
-                  ),
-                ),
-                SizedBox(width: 16.sp),
-                Text(
-                  'to',
-                  style: TextStyle(color: kSecondaryTextColor, fontSize: 14.f),
-                ),
-                SizedBox(width: 16.sp),
-                Expanded(
-                  child: _RatingDropdown(
-                    value: filters.maxRating,
-                    hint: 'Max',
-                    onChanged:
-                        (value) => _setRatingRange(
-                          minRating: filters.minRating,
-                          maxRating: value,
-                        ),
-                  ),
-                ),
-              ],
-            ),
-            SizedBox(height: 24.sp),
-
-            // Player search
-            Text(
-              'Player',
-              style: TextStyle(
-                color: kSecondaryTextColor,
-                fontSize: 12.f,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-            SizedBox(height: 8.sp),
-            TextField(
-              controller: _playerSearchController,
-              focusNode: _playerSearchFocusNode,
-              style: TextStyle(color: kWhiteColor, fontSize: 13.f),
-              decoration: InputDecoration(
-                hintText: 'Search player',
-                hintStyle: TextStyle(
-                  color: kSecondaryTextColor.withValues(alpha: 0.65),
-                  fontSize: 13.f,
-                ),
-                prefixIcon: Icon(
-                  Icons.search_rounded,
-                  size: 18.sp,
-                  color: kSecondaryTextColor,
-                ),
-                filled: true,
-                fillColor: kBlack2Color,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8.br),
-                  borderSide: BorderSide(color: kDividerColor),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8.br),
-                  borderSide: BorderSide(color: kDividerColor),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8.br),
-                  borderSide: BorderSide(color: kPrimaryColor),
-                ),
-                contentPadding: EdgeInsets.symmetric(
-                  horizontal: 12.sp,
-                  vertical: 10.sp,
-                ),
-              ),
-              onChanged: (value) {
-                setState(() {
-                  _playerSearchQuery = value.trim();
-                });
-              },
-            ),
-            if (_playerSearchQuery.length >= 2) ...[
-              SizedBox(height: 8.sp),
-              _PlayerSearchResults(
-                query: _playerSearchQuery,
-                onPlayerSelected: _setPlayer,
-              ),
-            ],
-            if (filters.selectedPlayers.isNotEmpty) ...[
-              SizedBox(height: 10.sp),
-              Wrap(
-                spacing: 8.sp,
-                runSpacing: 8.sp,
-                children: [
-                  for (final player in filters.selectedPlayers)
-                    Container(
-                      padding: EdgeInsets.symmetric(
-                        horizontal: 10.sp,
-                        vertical: 6.sp,
-                      ),
-                      decoration: BoxDecoration(
-                        color: kPrimaryColor.withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(24.br),
-                        border: Border.all(
-                          color: kPrimaryColor.withValues(alpha: 0.45),
-                        ),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            player.titleAndName,
-                            style: TextStyle(
-                              color: kWhiteColor,
-                              fontSize: 12.f,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                          SizedBox(width: 6.sp),
-                          GestureDetector(
-                            onTap: () => _removePlayer(player.id),
-                            child: Icon(
-                              Icons.close_rounded,
-                              size: 14.sp,
-                              color: kWhiteColor,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
+                  ],
                 ],
-              ),
-            ],
-            SizedBox(height: 24.sp),
+                if (widget.scopedPlayer == null &&
+                    filters.selectedPlayers.isNotEmpty) ...[
+                  SizedBox(height: 10.sp),
+                  Wrap(
+                    spacing: 8.sp,
+                    runSpacing: 8.sp,
+                    children: [
+                      for (final player in filters.selectedPlayers)
+                        Container(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: 10.sp,
+                            vertical: 6.sp,
+                          ),
+                          decoration: BoxDecoration(
+                            color: kPrimaryColor.withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(24.br),
+                            border: Border.all(
+                              color: kPrimaryColor.withValues(alpha: 0.45),
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                player.titleAndName,
+                                style: TextStyle(
+                                  color: kWhiteColor,
+                                  fontSize: 12.f,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                              SizedBox(width: 6.sp),
+                              GestureDetector(
+                                onTap: () => _removePlayer(player.id),
+                                child: Icon(
+                                  Icons.close_rounded,
+                                  size: 14.sp,
+                                  color: kWhiteColor,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                    ],
+                  ),
+                ] else ...[
+                  SizedBox(height: 4.sp),
+                ],
+                SizedBox(height: 24.sp),
 
-            // Apply button
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: _apply,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: kPrimaryColor,
-                  padding: EdgeInsets.symmetric(vertical: 12.sp),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8.br),
+                // Apply button
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: _apply,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: kPrimaryColor,
+                      padding: EdgeInsets.symmetric(vertical: 12.sp),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8.br),
+                      ),
+                    ),
+                    child: Text(
+                      'Apply',
+                      style: TextStyle(
+                        color: kWhiteColor,
+                        fontSize: 14.f,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                   ),
                 ),
-                child: Text(
-                  'Apply',
-                  style: TextStyle(
-                    color: kWhiteColor,
-                    fontSize: 14.f,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );
@@ -1252,63 +1351,12 @@ class _RatingDropdown extends StatelessWidget {
 /// with an eval badge and SAN moves.
 class _ExplorerEngineLines extends ConsumerWidget {
   const _ExplorerEngineLines();
+  static const int _kMaxRows = 3;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final evalState = ref.watch(explorerEvalProvider);
     final pvLines = evalState.pvLines;
-
-    if (pvLines.isEmpty) {
-      if (!evalState.isEvaluating) return const SizedBox.shrink();
-      final depthLabel =
-          evalState.depth > 0
-              ? 'D:${evalState.depth.toString().padLeft(2, '0')}'
-              : '...';
-      return Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Padding(
-            padding: EdgeInsets.symmetric(vertical: 5.sp, horizontal: 12.sp),
-            child: Row(
-              children: [
-                Container(
-                  width: 44.w,
-                  padding: EdgeInsets.symmetric(vertical: 2.sp),
-                  decoration: BoxDecoration(
-                    color: kSecondaryTextColor.withValues(alpha: 0.3),
-                    borderRadius: BorderRadius.circular(3.br),
-                  ),
-                  child: Text(
-                    '...',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: kWhiteColor,
-                      fontSize: 11.f,
-                      fontWeight: FontWeight.w700,
-                      fontFeatures: const [FontFeature.tabularFigures()],
-                    ),
-                  ),
-                ),
-                SizedBox(width: 8.sp),
-                Expanded(
-                  child: Text(
-                    'Analyzing engine line ($depthLabel)',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: kWhiteColor.withValues(alpha: 0.65),
-                      fontSize: 12.f,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Divider(color: kDividerColor, height: 1),
-        ],
-      );
-    }
 
     final useFigurine = ref.watch(
       boardSettingsProviderNew.select(
@@ -1329,14 +1377,18 @@ class _ExplorerEngineLines extends ConsumerWidget {
     final startMoveNumber =
         fenParts.length > 5 ? (int.tryParse(fenParts[5]) ?? 1) : 1;
 
-    final lines = pvLines.take(3).toList();
+    final lines = pvLines.take(_kMaxRows).toList();
     final notifier = ref.read(gamebaseExplorerProvider.notifier);
     final uciRegex = RegExp(r'^[a-h][1-8][a-h][1-8][qrbn]?$');
+    final depthLabel =
+        evalState.depth > 0
+            ? 'D:${evalState.depth.toString().padLeft(2, '0')}'
+            : '...';
 
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        for (var i = 0; i < lines.length; i++) ...[
+        for (var i = 0; i < _kMaxRows; i++) ...[
           if (i > 0)
             Divider(
               height: 1,
@@ -1344,23 +1396,87 @@ class _ExplorerEngineLines extends ConsumerWidget {
               indent: 12.sp,
               endIndent: 12.sp,
             ),
-          _EngineLine(
-            line: lines[i],
-            lineIndex: i,
-            isWhiteToMove: isWhiteToMove,
-            startMoveNumber: startMoveNumber,
-            useFigurine: useFigurine,
-            pieceAssets: pieceAssets,
-            onTap: () {
-              if (lines[i].uciMoves.isEmpty) return;
-              final firstUci = lines[i].uciMoves.first.trim().toLowerCase();
-              if (!uciRegex.hasMatch(firstUci)) return;
-              notifier.makeMove(firstUci);
-            },
-          ),
+          if (i < lines.length)
+            _EngineLine(
+              line: lines[i],
+              lineIndex: i,
+              isWhiteToMove: isWhiteToMove,
+              startMoveNumber: startMoveNumber,
+              useFigurine: useFigurine,
+              pieceAssets: pieceAssets,
+              onTap: () {
+                if (lines[i].uciMoves.isEmpty) return;
+                final firstUci = lines[i].uciMoves.first.trim().toLowerCase();
+                if (!uciRegex.hasMatch(firstUci)) return;
+                notifier.makeMove(firstUci);
+              },
+            )
+          else
+            _EngineLinePlaceholder(
+              isPrimary: i == 0,
+              isEvaluating: evalState.isEvaluating,
+              depthLabel: depthLabel,
+            ),
         ],
         Divider(color: kDividerColor, height: 1),
       ],
+    );
+  }
+}
+
+class _EngineLinePlaceholder extends StatelessWidget {
+  const _EngineLinePlaceholder({
+    required this.isPrimary,
+    required this.isEvaluating,
+    required this.depthLabel,
+  });
+
+  final bool isPrimary;
+  final bool isEvaluating;
+  final String depthLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    final label =
+        isPrimary && isEvaluating ? 'Analyzing engine line ($depthLabel)' : ' ';
+
+    return Padding(
+      padding: EdgeInsets.symmetric(vertical: 5.sp, horizontal: 12.sp),
+      child: Row(
+        children: [
+          Container(
+            width: 44.w,
+            padding: EdgeInsets.symmetric(vertical: 2.sp),
+            decoration: BoxDecoration(
+              color: kSecondaryTextColor.withValues(alpha: 0.2),
+              borderRadius: BorderRadius.circular(3.br),
+            ),
+            child: Text(
+              '...',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: kWhiteColor.withValues(alpha: 0.35),
+                fontSize: 11.f,
+                fontWeight: FontWeight.w700,
+                fontFeatures: const [FontFeature.tabularFigures()],
+              ),
+            ),
+          ),
+          SizedBox(width: 8.sp),
+          Expanded(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: kWhiteColor.withValues(alpha: isPrimary ? 0.65 : 0.18),
+                fontSize: 12.f,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

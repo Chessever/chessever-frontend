@@ -1,3 +1,7 @@
+import 'package:intl/intl.dart';
+
+final NumberFormat _decimalCountFormatter = NumberFormat.decimalPattern();
+
 /// Formats a number with compact notation for display.
 ///
 /// - Under 1,000: "842"
@@ -22,12 +26,5 @@ String formatCompactCount(int count) {
     return '${millions.toStringAsFixed(1)}M';
   }
 
-  // 1,000 – 999,999: comma-separated
-  final s = count.toString();
-  final buf = StringBuffer();
-  for (var i = 0; i < s.length; i++) {
-    if (i > 0 && (s.length - i) % 3 == 0) buf.write(',');
-    buf.write(s[i]);
-  }
-  return buf.toString();
+  return _decimalCountFormatter.format(count);
 }

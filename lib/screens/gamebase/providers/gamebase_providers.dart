@@ -73,6 +73,16 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
     _debounceTimer = Timer(delay, _fetchMoveAggregates);
   }
 
+  bool _canPrefetchWithActiveFilters() {
+    // Safe prefetch mode: player-scoped explorer with no extra filters.
+    // This keeps load bounded while making per-move navigation feel instant.
+    final f = state.filters;
+    return f.playerIds.length == 1 &&
+        f.timeControls.isEmpty &&
+        f.minRating == null &&
+        f.maxRating == null;
+  }
+
   /// Fetch move aggregates for current position
   Future<void> _fetchMoveAggregates() async {
     final fetchId = ++_fetchToken;
@@ -124,7 +134,7 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
       // Opportunistically prefetch a few likely next positions to make the
       // explorer feel instantaneous even when backend caches are cold.
       // Skip prefetch when filters are active because those paths can be slow.
-      if (!state.hasActiveFilters) {
+      if (!state.hasActiveFilters || _canPrefetchWithActiveFilters()) {
         _prefetchNextPositions(
           repository: repository,
           baseFen: state.currentFen,
@@ -149,7 +159,7 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
     required List<MoveAggregate> aggregates,
   }) {
     // Keep this conservative: it's a perf win, but we don't want to DDOS our own API.
-    const int maxPrefetch = 3;
+    final maxPrefetch = _canPrefetchWithActiveFilters() ? 2 : 3;
     final timeControlFilter =
         state.filters.timeControls.isNotEmpty
             ? state.filters.timeControls.first
@@ -244,7 +254,7 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
           currentMoveIndex: newHistory.length - 1,
         );
 
-        _scheduleFetch();
+        _scheduleFetch(Duration.zero);
       } else {
         state = state.copyWith(error: 'Invalid move: $uci');
       }
@@ -301,7 +311,7 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
               : 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
     );
 
-    _scheduleFetch();
+    _scheduleFetch(Duration.zero);
   }
 
   /// Go to next move.
@@ -332,7 +342,7 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
         currentFen: normalizeFenForGamebase(chess.fen),
       );
 
-      _scheduleFetch();
+      _scheduleFetch(Duration.zero);
     } else if (state.moveAggregates.isNotEmpty) {
       // At the frontier — play the most-played move from current position.
       makeMove(state.moveAggregates.first.uci);
@@ -346,7 +356,7 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
       currentMoveIndex: -1,
       currentFen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
     );
-    _scheduleFetch();
+    _scheduleFetch(Duration.zero);
   }
 
   /// Go to last position.
@@ -388,7 +398,7 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
               : 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
     );
 
-    _scheduleFetch();
+    _scheduleFetch(Duration.zero);
   }
 
   /// Initialize the explorer pre-filtered to a specific player.
@@ -479,7 +489,7 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
   /// Update filters and refetch data
   void updateFilters(GamebaseFilters filters) {
     state = state.copyWith(filters: filters);
-    _scheduleFetch();
+    _scheduleFetch(Duration.zero);
   }
 
   /// Toggle a time control filter

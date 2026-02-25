@@ -213,11 +213,7 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen> {
         ),
       ),
       child: Column(
-        children: [
-          _buildHeader(),
-          _buildSearchRow(),
-          _buildResultCount(),
-        ],
+        children: [_buildHeader(), _buildSearchRow(), _buildResultCount()],
       ),
     );
   }
@@ -291,9 +287,32 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen> {
 
   Widget _buildResultCount() {
     final paginationState = ref.watch(gamebaseDatabaseGamesPaginatedProvider);
-    final totalCount = paginationState.totalCount;
+    final searchQuery = ref.watch(librarySearchQueryProvider).trim();
+    final hasActiveFilters = ref.watch(hasActiveGamebaseFiltersProvider);
+    final selectedEvent = ref.watch(twicSelectedEventProvider);
+    final rootTotalAsync = ref.watch(twicDatabaseTotalGamesProvider);
 
-    if (totalCount <= 0) return const SizedBox.shrink();
+    final isDefaultView =
+        searchQuery.isEmpty &&
+        !hasActiveFilters &&
+        (selectedEvent == null || selectedEvent.trim().isEmpty);
+
+    final int? totalCount;
+    final bool isEstimate;
+
+    if (isDefaultView) {
+      // Never show the estimated search count on default TWIC view.
+      final exactTotal = rootTotalAsync.valueOrNull;
+      totalCount = (exactTotal != null && exactTotal > 0) ? exactTotal : null;
+      isEstimate = false;
+    } else {
+      final fallbackTotal =
+          paginationState.totalCount > 0 ? paginationState.totalCount : null;
+      totalCount = fallbackTotal;
+      isEstimate = paginationState.totalCountIsEstimate;
+    }
+
+    if (totalCount == null || totalCount <= 0) return const SizedBox.shrink();
 
     final horizontalPadding = ResponsiveHelper.adaptive(
       phone: 16.w,
@@ -301,11 +320,16 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen> {
     );
 
     return Padding(
-      padding: EdgeInsets.fromLTRB(horizontalPadding, 0, horizontalPadding, 4.h),
+      padding: EdgeInsets.fromLTRB(
+        horizontalPadding,
+        0,
+        horizontalPadding,
+        4.h,
+      ),
       child: Align(
         alignment: Alignment.centerLeft,
         child: Text(
-          '${formatCompactCount(totalCount)} games',
+          '${isEstimate ? '~' : ''}${formatCompactCount(totalCount)} games',
           style: AppTypography.textXsRegular.copyWith(
             color: kWhiteColor.withValues(alpha: 0.4),
           ),
@@ -866,9 +890,7 @@ class _SkeletonGameCard extends StatelessWidget {
             padding: EdgeInsets.fromLTRB(14.w, 10.h, 14.w, 10.h),
             decoration: BoxDecoration(
               color: _topBg,
-              borderRadius: BorderRadius.vertical(
-                top: Radius.circular(12.br),
-              ),
+              borderRadius: BorderRadius.vertical(top: Radius.circular(12.br)),
             ),
             child: Row(
               children: [

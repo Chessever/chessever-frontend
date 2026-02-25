@@ -19,8 +19,9 @@ class MoveStatisticsPanel extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(gamebaseExplorerProvider);
+    final hasStaleData = state.moveAggregates.isNotEmpty;
 
-    if (state.isLoading) {
+    if (state.isLoading && !hasStaleData) {
       return const Center(
         child: CircularProgressIndicator(color: kWhiteColor, strokeWidth: 2),
       );
@@ -55,6 +56,12 @@ class MoveStatisticsPanel extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        if (state.isLoading)
+          const LinearProgressIndicator(
+            minHeight: 2,
+            color: kWhiteColor,
+            backgroundColor: Colors.transparent,
+          ),
         // Header with total games
         Padding(
           padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 8.sp),
@@ -176,11 +183,14 @@ class _MoveStatisticsRow extends ConsumerWidget {
             : '${_fullMoveNumberFromFen(currentFen)}...';
 
     final useFigurine = ref.watch(
-      boardSettingsProviderNew.select((s) => s.valueOrNull?.useFigurine ?? false),
+      boardSettingsProviderNew.select(
+        (s) => s.valueOrNull?.useFigurine ?? false,
+      ),
     );
     final pieceAssets = ref.watch(
       boardSettingsProviderNew.select(
-        (s) => s.valueOrNull?.pieceAssets ?? const BoardSettingsNew().pieceAssets,
+        (s) =>
+            s.valueOrNull?.pieceAssets ?? const BoardSettingsNew().pieceAssets,
       ),
     );
 
@@ -211,24 +221,25 @@ class _MoveStatisticsRow extends ConsumerWidget {
                   ),
                   SizedBox(width: 4.w),
                   Expanded(
-                    child: useFigurine
-                        ? RichText(
-                            overflow: TextOverflow.ellipsis,
-                            maxLines: 1,
-                            text: TextSpan(
-                              children: buildFigurineSpans(
-                                text: sanMove,
-                                pieceAssets: pieceAssets,
-                                style: moveStyle,
-                                pieceSize: 16.f,
+                    child:
+                        useFigurine
+                            ? RichText(
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: 1,
+                              text: TextSpan(
+                                children: buildFigurineSpans(
+                                  text: sanMove,
+                                  pieceAssets: pieceAssets,
+                                  style: moveStyle,
+                                  pieceSize: 16.f,
+                                ),
                               ),
+                            )
+                            : Text(
+                              sanMove,
+                              style: moveStyle,
+                              overflow: TextOverflow.ellipsis,
                             ),
-                          )
-                        : Text(
-                            sanMove,
-                            style: moveStyle,
-                            overflow: TextOverflow.ellipsis,
-                          ),
                   ),
                 ],
               ),
