@@ -738,12 +738,6 @@ class _ExplorerEvalBarState extends ConsumerState<_ExplorerEvalBar> {
         );
   }
 
-  bool _shouldTriggerEvaluation(ExplorerEvalState evalState) {
-    if (!widget.showEngineAnalysis || widget.fen.isEmpty) return false;
-    if (evalState.fen != widget.fen) return true;
-    return !evalState.isEvaluating && evalState.pvLines.isEmpty;
-  }
-
   @override
   void initState() {
     super.initState();
@@ -769,13 +763,6 @@ class _ExplorerEvalBarState extends ConsumerState<_ExplorerEvalBar> {
     }
 
     final evalState = ref.watch(explorerEvalProvider);
-    if (_shouldTriggerEvaluation(evalState)) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        _syncEngineState(force: true);
-      });
-    }
-
     return EvaluationBarWidget(
       width: widget.width,
       height: widget.height,

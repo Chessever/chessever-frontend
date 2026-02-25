@@ -102,6 +102,12 @@ class ExplorerEvalNotifier extends StateNotifier<ExplorerEvalState> {
       if (state.pvLines.isNotEmpty) return;
     }
 
+    // Guard against duplicate forced starts for the same position while
+    // analysis is already in progress (e.g. multiple post-frame triggers).
+    if (force && state.fen == normalizedFen && state.isEvaluating) {
+      return;
+    }
+
     final settings =
         ref.read(engineSettingsProviderNew).valueOrNull ??
         const EngineSettings();
@@ -112,9 +118,22 @@ class ExplorerEvalNotifier extends StateNotifier<ExplorerEvalState> {
     );
     final requestId = ++_requestId;
     final isSameFen = state.fen == normalizedFen;
+    final allowDepthDecrease = !isSameFen;
 
     // Cancel any prior job for this owner.
     StockfishSingleton().cancelEvaluationsForOwner(_ownerId);
+
+    if (!isSameFen) {
+      final tracker = ref.read(engineDepthTrackerProvider.notifier);
+      tracker.clear(
+        EngineComponent.evaluationGauge,
+        reason: 'opening explorer new position',
+      );
+      tracker.clear(
+        EngineComponent.principalVariation,
+        reason: 'opening explorer new position',
+      );
+    }
 
     state = state.copyWith(
       fen: normalizedFen,
@@ -144,7 +163,7 @@ class ExplorerEvalNotifier extends StateNotifier<ExplorerEvalState> {
               depth: depth,
               knodes: knodes,
               fen: normalizedFen,
-              allowDecrease: true,
+              allowDecrease: allowDepthDecrease,
               context: 'opening explorer depth',
             );
           },
@@ -185,7 +204,7 @@ class ExplorerEvalNotifier extends StateNotifier<ExplorerEvalState> {
               depth: resolvedDepth,
               knodes: 0,
               fen: normalizedFen,
-              allowDecrease: true,
+              allowDecrease: allowDepthDecrease,
               context: 'opening explorer pv',
             );
           },

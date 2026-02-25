@@ -847,9 +847,9 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
     return Padding(
       padding: EdgeInsets.fromLTRB(
         horizontalPadding,
-        10.h,
+        4.h,
         horizontalPadding,
-        6.h,
+        2.h,
       ),
       child: Row(
         children: [
