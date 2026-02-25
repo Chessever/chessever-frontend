@@ -58,9 +58,7 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
     if (state == AppLifecycleState.resumed) {
-      unawaited(
-        ref.read(forYouEventsProvider.notifier).refreshIfStale(),
-      );
+      unawaited(ref.read(forYouEventsProvider.notifier).refreshIfStale());
     }
   }
 
@@ -96,7 +94,10 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
       },
       color: kPrimaryColor,
       backgroundColor: kBlack2Color,
-      child: _buildEventsList(state.events, showLoadingMore: state.hasMore && !state.isLoading),
+      child: _buildEventsList(
+        state.events,
+        showLoadingMore: state.hasMore && !state.isLoading,
+      ),
     );
   }
 
@@ -160,7 +161,10 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
     );
   }
 
-  Widget _buildEventsList(List<GroupEventCardModel> events, {bool showLoadingMore = false}) {
+  Widget _buildEventsList(
+    List<GroupEventCardModel> events, {
+    bool showLoadingMore = false,
+  }) {
     // On tablet, use a beautiful grid layout
     if (ResponsiveHelper.isTablet) {
       return _buildTabletGridLayout(events, showLoadingMore: showLoadingMore);
@@ -224,7 +228,10 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
   /// Tablet: 2-column grid where each column = event card + its games
   /// Creates a beautiful magazine-style layout that fills tablet width
   /// Uses ListView.builder for lazy, on-demand rendering
-  Widget _buildTabletGridLayout(List<GroupEventCardModel> events, {bool showLoadingMore = false}) {
+  Widget _buildTabletGridLayout(
+    List<GroupEventCardModel> events, {
+    bool showLoadingMore = false,
+  }) {
     final horizontalPadding = ResponsiveHelper.isLandscape ? 32.sp : 24.sp;
     final columnSpacing = 16.sp;
 
@@ -415,6 +422,23 @@ class _ForYouEventSection extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final gamesAsync = ref.watch(
+      forYouEventGamesWithAutoRefreshProvider(event.id),
+    );
+    final hasNoAvailableGames = gamesAsync.when(
+      data: (games) => games.isEmpty,
+      loading: () => false,
+      error: (_, __) => false,
+    );
+
+    if (hasNoAvailableGames) {
+      // Remove event from list so it no longer appears in For You.
+      Future.microtask(() {
+        ref.read(forYouEventsProvider.notifier).removeEvent(event.id);
+      });
+      return const SizedBox.shrink();
+    }
+
     final shouldAnimate = !forYouAnimatedEventIds.contains(event.id);
     if (shouldAnimate) {
       forYouAnimatedEventIds.add(event.id);
@@ -454,6 +478,23 @@ class _ForYouTabletEventColumn extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final gamesAsync = ref.watch(
+      forYouEventGamesWithAutoRefreshProvider(event.id),
+    );
+    final hasNoAvailableGames = gamesAsync.when(
+      data: (games) => games.isEmpty,
+      loading: () => false,
+      error: (_, __) => false,
+    );
+
+    if (hasNoAvailableGames) {
+      // Remove event from list so tablet rows compact without this event.
+      Future.microtask(() {
+        ref.read(forYouEventsProvider.notifier).removeEvent(event.id);
+      });
+      return const SizedBox.shrink();
+    }
+
     final shouldAnimate = !forYouAnimatedEventIds.contains(event.id);
     if (shouldAnimate) {
       forYouAnimatedEventIds.add(event.id);
@@ -508,18 +549,14 @@ class _ForYouTabletColumnGames extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     // Use auto-refresh provider that watches live game status
-    final gamesAsync = ref.watch(forYouEventGamesWithAutoRefreshProvider(eventId));
+    final gamesAsync = ref.watch(
+      forYouEventGamesWithAutoRefreshProvider(eventId),
+    );
 
     return gamesAsync.when(
       data: (games) {
         if (games.isEmpty) {
-          return Padding(
-            padding: EdgeInsets.only(bottom: 8.sp),
-            child: Text(
-              'No games available yet',
-              style: TextStyle(color: kWhiteColor70, fontSize: 12.sp),
-            ),
-          );
+          return const SizedBox.shrink();
         }
 
         // Convert to GamesTourModel - limit to 4 games (2 rows of 2)
@@ -685,19 +722,15 @@ class _ForYouEventGames extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     // Use auto-refresh provider that watches live game status
-    final gamesAsync = ref.watch(forYouEventGamesWithAutoRefreshProvider(eventId));
+    final gamesAsync = ref.watch(
+      forYouEventGamesWithAutoRefreshProvider(eventId),
+    );
     final viewMode = ref.watch(gamesListViewModeProvider);
 
     return gamesAsync.when(
       data: (games) {
         if (games.isEmpty) {
-          return Padding(
-            padding: EdgeInsets.only(bottom: 8.sp),
-            child: Text(
-              'No games available yet',
-              style: TextStyle(color: kWhiteColor70, fontSize: 12.sp),
-            ),
-          );
+          return const SizedBox.shrink();
         }
 
         // Convert to GamesTourModel

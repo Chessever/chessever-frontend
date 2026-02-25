@@ -2,6 +2,7 @@ import 'package:chessever2/repository/library/library_repository.dart';
 import 'package:chessever2/repository/library/models/library_folder.dart';
 import 'package:chessever2/repository/library/models/saved_analysis.dart';
 import 'package:chessever2/screens/library/providers/library_folders_provider.dart';
+import 'package:chessever2/screens/library/utils/load_saved_analysis.dart';
 import 'package:chessever2/screens/library/widgets/book_saved_game_card.dart';
 import 'package:chessever2/screens/library/widgets/swipe_action_card.dart';
 import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
@@ -11,6 +12,7 @@ import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:chessever2/widgets/screen_wrapper.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -417,7 +419,12 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
                   padding: EdgeInsets.only(bottom: 12.h),
                   child: BookSavedGameCard(
                     analysis: analysis,
-                    onTap: () => _openSharedGame(analysis),
+                    onTap: () async {
+                      final allowed =
+                          await requirePremiumGuard(context, ref);
+                      if (!allowed || !mounted) return;
+                      _openSharedGame(analysis);
+                    },
                   ).animate()
                       .fadeIn(
                         duration: 200.ms,
@@ -447,8 +454,15 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
                   // Show swipe hint only for the first card
                   showSwipeHint: index == 0,
                   swipeHintKey: 'book_remove',
-                  child: BookSavedGameCard(analysis: analysis)
-                      .animate()
+                  child: BookSavedGameCard(
+                    analysis: analysis,
+                    onTap: () async {
+                      final allowed =
+                          await requirePremiumGuard(context, ref);
+                      if (!allowed || !mounted) return;
+                      loadSavedAnalysis(context, analysis);
+                    },
+                  ).animate()
                       .fadeIn(
                         duration: 200.ms,
                         delay: Duration(milliseconds: (index % 10) * 30),

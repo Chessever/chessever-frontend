@@ -72,14 +72,14 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
   void _setupListeners() {
     // Listen to favorite events changes and re-sort list immediately
     ref.listen(favoriteEventsProvider, (_, __) => _reSortList());
-    
+
     // Listen to favorite player cache updates (affects heart counts)
     ref.listen(eventFavoritePlayersCacheProvider, (_, __) => _reSortList());
   }
 
   Future<void> _reSortList() async {
     if (state.events.isEmpty) return;
-    
+
     // Re-sort current events list with updated favorite data
     final sorted = await _sortModels(state.events);
     if (mounted) {
@@ -98,7 +98,9 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
     await _fetchPage(isInitial: true);
   }
 
-  Future<void> refreshIfStale({Duration maxAge = _kForYouStaleThreshold}) async {
+  Future<void> refreshIfStale({
+    Duration maxAge = _kForYouStaleThreshold,
+  }) async {
     if (_isFetching || state.isLoading) return;
     final lastRefreshAt = _lastRefreshAt;
     if (lastRefreshAt == null ||
@@ -112,6 +114,17 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
     await _fetchPage(isInitial: false);
   }
 
+  /// Removes an event from the rendered For You list.
+  /// Used by the UI when an event resolves to zero available games.
+  void removeEvent(String eventId) {
+    if (!mounted) return;
+    if (!state.events.any((event) => event.id == eventId)) return;
+
+    state = state.copyWith(
+      events: state.events.where((event) => event.id != eventId).toList(),
+    );
+  }
+
   Future<void> _fetchPage({required bool isInitial}) async {
     if (_isFetching) return;
     _isFetching = true;
@@ -121,15 +134,19 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
       final appliedFilters = ref.read(forYouAppliedFilterProvider);
 
       // Parse filters
-      final formatFilters = appliedFilters.formatsAndStates
-          .where((f) => ['blitz', 'rapid', 'standard'].contains(f.toLowerCase()))
-          .map((f) => f.toLowerCase())
-          .toList();
+      final formatFilters =
+          appliedFilters.formatsAndStates
+              .where(
+                (f) => ['blitz', 'rapid', 'standard'].contains(f.toLowerCase()),
+              )
+              .map((f) => f.toLowerCase())
+              .toList();
 
-      final statusFilters = appliedFilters.formatsAndStates
-          .where((f) => ['live', 'completed'].contains(f.toLowerCase()))
-          .map((f) => f.toLowerCase())
-          .toSet();
+      final statusFilters =
+          appliedFilters.formatsAndStates
+              .where((f) => ['live', 'completed'].contains(f.toLowerCase()))
+              .map((f) => f.toLowerCase())
+              .toSet();
 
       final minElo = appliedFilters.eloRange.start.round();
       final maxElo = appliedFilters.eloRange.end.round();
@@ -147,7 +164,9 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
         maxElo: hasEloFilter ? maxElo : null,
       );
 
-      debugPrint('[ForYou] Fetched ${broadcasts.length} from Supabase (offset: $_offset, filters: format=$formatFilters, elo=$hasEloFilter)');
+      debugPrint(
+        '[ForYou] Fetched ${broadcasts.length} from Supabase (offset: $_offset, filters: format=$formatFilters, elo=$hasEloFilter)',
+      );
 
       // Get live IDs for status filtering
       final liveIds = ref.read(liveGroupBroadcastIdsProvider).valueOrNull ?? [];
@@ -155,17 +174,19 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
       // Apply status filter (live/completed) - can't do in DB query
       List<GroupBroadcast> filteredBroadcasts = broadcasts;
       if (statusFilters.isNotEmpty) {
-        filteredBroadcasts = broadcasts.where((tour) {
-          final isLive = liveIds.contains(tour.id);
-          return (statusFilters.contains('live') && isLive) ||
-                 (statusFilters.contains('completed') && !isLive);
-        }).toList();
+        filteredBroadcasts =
+            broadcasts.where((tour) {
+              final isLive = liveIds.contains(tour.id);
+              return (statusFilters.contains('live') && isLive) ||
+                  (statusFilters.contains('completed') && !isLive);
+            }).toList();
       }
 
       // Convert to models
-      final models = filteredBroadcasts
-          .map((b) => GroupEventCardModel.fromGroupBroadcast(b, liveIds))
-          .toList();
+      final models =
+          filteredBroadcasts
+              .map((b) => GroupEventCardModel.fromGroupBroadcast(b, liveIds))
+              .toList();
 
       // Pre-fetch heart data in background — don't block page render.
       // This prevents For You from saturating the HTTP connection pool
@@ -193,14 +214,10 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
       }
 
       _offset += broadcasts.length;
-
     } catch (e, stack) {
       debugPrint('[ForYou] Error: $e');
       debugPrint('[ForYou] Stack: $stack');
-      state = state.copyWith(
-        isLoading: false,
-        error: e.toString(),
-      );
+      state = state.copyWith(isLoading: false, error: e.toString());
     } finally {
       _isFetching = false;
     }
@@ -214,8 +231,9 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
   Future<void> _prefetchHeartData(List<GroupEventCardModel> models) async {
     try {
       // 1. Get the user's favorite players
-      final favoritePlayersState =
-          await ref.read(favoritePlayersNotifierProvider.future);
+      final favoritePlayersState = await ref.read(
+        favoritePlayersNotifierProvider.future,
+      );
       final favoritePlayers = favoritePlayersState.players;
 
       if (favoritePlayers.isEmpty) {
@@ -223,20 +241,25 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
         final map = {
           for (final m in models) m.id: const EventFavoritePlayers.empty(),
         };
-        ref.read(eventFavoritePlayersCacheProvider.notifier).updateCacheBatch(map);
+        ref
+            .read(eventFavoritePlayersCacheProvider.notifier)
+            .updateCacheBatch(map);
         return;
       }
 
-      final favoriteFideIds = favoritePlayers
-          .where((p) => p.fideId != null)
-          .map((p) => p.fideId!)
-          .toSet();
+      final favoriteFideIds =
+          favoritePlayers
+              .where((p) => p.fideId != null)
+              .map((p) => p.fideId!)
+              .toSet();
 
       if (favoriteFideIds.isEmpty) {
         final map = {
           for (final m in models) m.id: const EventFavoritePlayers.empty(),
         };
-        ref.read(eventFavoritePlayersCacheProvider.notifier).updateCacheBatch(map);
+        ref
+            .read(eventFavoritePlayersCacheProvider.notifier)
+            .updateCacheBatch(map);
         return;
       }
 
@@ -263,26 +286,33 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
         final matchingFideIds =
             eventPlayerFideIds.intersection(favoriteFideIds).toList();
 
-        resultMap[model.id] = matchingFideIds.isEmpty
-            ? const EventFavoritePlayers.empty()
-            : EventFavoritePlayers(
-                count: matchingFideIds.length,
-                fideIds: matchingFideIds,
-              );
+        resultMap[model.id] =
+            matchingFideIds.isEmpty
+                ? const EventFavoritePlayers.empty()
+                : EventFavoritePlayers(
+                  count: matchingFideIds.length,
+                  fideIds: matchingFideIds,
+                );
       }
 
-      ref.read(eventFavoritePlayersCacheProvider.notifier).updateCacheBatch(resultMap);
+      ref
+          .read(eventFavoritePlayersCacheProvider.notifier)
+          .updateCacheBatch(resultMap);
     } catch (e) {
       debugPrint('[ForYou] Error in batch _prefetchHeartData: $e');
       // On error, cache empty for all events so we don't retry endlessly
       final map = {
         for (final m in models) m.id: const EventFavoritePlayers.empty(),
       };
-      ref.read(eventFavoritePlayersCacheProvider.notifier).updateCacheBatch(map);
+      ref
+          .read(eventFavoritePlayersCacheProvider.notifier)
+          .updateCacheBatch(map);
     }
   }
 
-  Future<List<GroupEventCardModel>> _sortModels(List<GroupEventCardModel> models) async {
+  Future<List<GroupEventCardModel>> _sortModels(
+    List<GroupEventCardModel> models,
+  ) async {
     final favoriteEventsAsync = ref.read(favoriteEventsProvider);
     final favoriteEvents = favoriteEventsAsync.valueOrNull ?? [];
     final starredIds = favoriteEvents.map((e) => e.eventId).toList();
@@ -294,19 +324,22 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
 
     final cache = ref.read(eventFavoritePlayersCacheProvider);
 
-    return ref.read(tournamentSortingServiceProvider).sortBasedOnFavorite(
-      tours: models,
-      favorites: starredIds,
-      eventFavoritePlayersMap: cache,
-      favoriteTimestamps: favoriteTimestamps,
-    );
+    return ref
+        .read(tournamentSortingServiceProvider)
+        .sortBasedOnFavorite(
+          tours: models,
+          favorites: starredIds,
+          eventFavoritePlayersMap: cache,
+          favoriteTimestamps: favoriteTimestamps,
+        );
   }
 }
 
-final forYouEventsProvider = StateNotifierProvider.autoDispose<ForYouNotifier, ForYouState>((ref) {
-  ref.keepAlive();
-  return ForYouNotifier(ref);
-});
+final forYouEventsProvider =
+    StateNotifierProvider.autoDispose<ForYouNotifier, ForYouState>((ref) {
+      ref.keepAlive();
+      return ForYouNotifier(ref);
+    });
 
 // ============================================================================
 // LAZY GAMES PER EVENT PROVIDER
@@ -317,8 +350,10 @@ final forYouEventsProvider = StateNotifierProvider.autoDispose<ForYouNotifier, F
 // 4. Board number ASCENDING
 // ============================================================================
 
-final eventGamesProvider = FutureProvider.autoDispose
-    .family<List<Games>, String>((ref, eventId) async {
+final eventGamesProvider = FutureProvider.autoDispose.family<
+  List<Games>,
+  String
+>((ref, eventId) async {
   // Keep data cached for 2 minutes after scrolling out of view,
   // then dispose to free RAM (PGN strings, player data, etc.)
   final link = ref.keepAlive();
@@ -340,7 +375,8 @@ final eventGamesProvider = FutureProvider.autoDispose
       // This ensures knockout events (e.g. Speed Chess Championship) show
       // the current stage (finals) instead of a completed stage that had
       // more participants and therefore a higher average Elo.
-      final liveTourIds = ref.read(liveTourIdProvider).valueOrNull ?? <String>[];
+      final liveTourIds =
+          ref.read(liveTourIdProvider).valueOrNull ?? <String>[];
       final liveTour = eventTours.firstWhereOrNull(
         (t) => liveTourIds.contains(t.id),
       );
@@ -348,13 +384,17 @@ final eventGamesProvider = FutureProvider.autoDispose
       if (liveTour != null) {
         selectedTourId = liveTour.id;
         tourFormatString = liveTour.info.format;
-        debugPrint('[ForYou] Selected LIVE tour "${liveTour.name}" from ${eventTours.length} tours');
+        debugPrint(
+          '[ForYou] Selected LIVE tour "${liveTour.name}" from ${eventTours.length} tours',
+        );
       } else {
         // No live tour — fall back to highest avgElo
         eventTours.sort((a, b) => (b.avgElo ?? 0).compareTo(a.avgElo ?? 0));
         selectedTourId = eventTours.first.id;
         tourFormatString = eventTours.first.info.format;
-        debugPrint('[ForYou] Selected tour "${eventTours.first.name}" (avgElo: ${eventTours.first.avgElo}) from ${eventTours.length} tours');
+        debugPrint(
+          '[ForYou] Selected tour "${eventTours.first.name}" (avgElo: ${eventTours.first.avgElo}) from ${eventTours.length} tours',
+        );
       }
     }
   } catch (e) {
@@ -364,7 +404,9 @@ final eventGamesProvider = FutureProvider.autoDispose
   // Fallback: try getting tour IDs directly
   if (selectedTourId == null) {
     try {
-      final tourIds = await groupBroadcastRepo.getTourIdsForGroupBroadcast(eventId);
+      final tourIds = await groupBroadcastRepo.getTourIdsForGroupBroadcast(
+        eventId,
+      );
       if (tourIds.isNotEmpty) {
         selectedTourId = tourIds.first;
       }
@@ -384,7 +426,9 @@ final eventGamesProvider = FutureProvider.autoDispose
     final games = await gamesStorage.refresh(selectedTourId);
     for (final game in games) {
       // Only include games that have ACTUALLY started (have moves or finished)
-      if (_hasActuallyStarted(game) && game.players != null && game.players!.length >= 2) {
+      if (_hasActuallyStarted(game) &&
+          game.players != null &&
+          game.players!.length >= 2) {
         allGames.add(game);
       }
     }
@@ -401,14 +445,18 @@ final eventGamesProvider = FutureProvider.autoDispose
       try {
         final games = await gamesStorage.refresh(tour.id);
         for (final game in games) {
-          if (_hasActuallyStarted(game) && game.players != null && game.players!.length >= 2) {
+          if (_hasActuallyStarted(game) &&
+              game.players != null &&
+              game.players!.length >= 2) {
             allGames.add(game);
           }
         }
         if (allGames.isNotEmpty) {
           selectedTourId = tour.id;
           tourFormatString = tour.info.format;
-          debugPrint('[ForYou] Fallback to tour "${tour.name}" which has ${allGames.length} started games');
+          debugPrint(
+            '[ForYou] Fallback to tour "${tour.name}" which has ${allGames.length} started games',
+          );
           break;
         }
       } catch (e) {
@@ -436,10 +484,14 @@ final eventGamesProvider = FutureProvider.autoDispose
   // so the "latest round" filter would return only 1 game. Instead, show
   // the most recent N games across the entire match.
   if (_isMatchFormatEvent(tourFormatString, allGames)) {
-    debugPrint('[ForYou] Match format detected for event $eventId — showing latest games across all rounds');
+    debugPrint(
+      '[ForYou] Match format detected for event $eventId — showing latest games across all rounds',
+    );
     final sortedGames = _sortGamesLikeGamesTab(allGames, pinnedIds);
     final result = sortedGames.take(kGamesPerEvent).toList();
-    debugPrint('[ForYou] Selected ${result.length} games for match event $eventId (from ${allGames.length} total)');
+    debugPrint(
+      '[ForYou] Selected ${result.length} games for match event $eventId (from ${allGames.length} total)',
+    );
     return result;
   }
 
@@ -458,11 +510,14 @@ final eventGamesProvider = FutureProvider.autoDispose
   }
 
   // Filter to only games from the latest round
-  final latestRoundGames = latestRoundId != null
-      ? allGames.where((game) => game.roundId == latestRoundId).toList()
-      : allGames;
+  final latestRoundGames =
+      latestRoundId != null
+          ? allGames.where((game) => game.roundId == latestRoundId).toList()
+          : allGames;
 
-  debugPrint('[ForYou] Latest round by time: $latestRoundId with ${latestRoundGames.length} games');
+  debugPrint(
+    '[ForYou] Latest round by time: $latestRoundId with ${latestRoundGames.length} games',
+  );
 
   if (latestRoundGames.isEmpty) {
     return [];
@@ -473,7 +528,9 @@ final eventGamesProvider = FutureProvider.autoDispose
 
   // Return first 4 games
   final result = sortedGames.take(kGamesPerEvent).toList();
-  debugPrint('[ForYou] Selected ${result.length} games for event $eventId (from ${latestRoundGames.length} in round $latestRoundId)');
+  debugPrint(
+    '[ForYou] Selected ${result.length} games for event $eventId (from ${latestRoundGames.length} in round $latestRoundId)',
+  );
   return result;
 });
 
@@ -482,9 +539,10 @@ final eventGamesProvider = FutureProvider.autoDispose
 /// Note: We don't check pgn.isNotEmpty because future games have PGN headers (~700 chars)
 /// but no actual moves. Only lastMove and lastMoveTime indicate actual play.
 bool _hasActuallyStarted(Games game) {
-  final hasMoves = (game.lastMove?.isNotEmpty ?? false) ||
-      game.lastMoveTime != null;
-  final isFinished = game.status == '1-0' ||
+  final hasMoves =
+      (game.lastMove?.isNotEmpty ?? false) || game.lastMoveTime != null;
+  final isFinished =
+      game.status == '1-0' ||
       game.status == '0-1' ||
       game.status == '1/2-1/2' ||
       game.status == '½-½';
@@ -569,7 +627,9 @@ int _extractRoundNumber(String roundSlug) {
 
   // Named knockout stages — ranked above any numbered round.
   // Check more-specific names first to avoid substring false-positives.
-  if (slug.contains('final') && !slug.contains('quarter') && !slug.contains('semi')) {
+  if (slug.contains('final') &&
+      !slug.contains('quarter') &&
+      !slug.contains('semi')) {
     return 10000;
   }
   if (slug.contains('semifinal') || slug.contains('semi-final')) {
@@ -579,13 +639,17 @@ int _extractRoundNumber(String roundSlug) {
     return 8000;
   }
 
-  final match = RegExp(r'round-?(\d+)', caseSensitive: false).firstMatch(roundSlug) ??
-                RegExp(r'(\d+)').firstMatch(roundSlug);
+  final match =
+      RegExp(r'round-?(\d+)', caseSensitive: false).firstMatch(roundSlug) ??
+      RegExp(r'(\d+)').firstMatch(roundSlug);
   return int.tryParse(match?.group(1) ?? '0') ?? 0;
 }
 
 int _extractGameNumber(String roundSlug) {
-  final match = RegExp(r'game-?(\d+)', caseSensitive: false).firstMatch(roundSlug);
+  final match = RegExp(
+    r'game-?(\d+)',
+    caseSensitive: false,
+  ).firstMatch(roundSlug);
   return int.tryParse(match?.group(1) ?? '0') ?? 0;
 }
 
@@ -603,14 +667,19 @@ final _lastKnownLiveRoundsProvider = StateProvider<Set<String>>((ref) => {});
 
 /// Watches the status of displayed games and returns updated list
 /// When a live game finishes OR a new round starts, it automatically re-fetches
-final forYouEventGamesWithAutoRefreshProvider = Provider.autoDispose
-    .family<AsyncValue<List<Games>>, String>((ref, eventId) {
+final forYouEventGamesWithAutoRefreshProvider = Provider.autoDispose.family<
+  AsyncValue<List<Games>>,
+  String
+>((ref, eventId) {
   // Watch the base games provider
   final gamesAsync = ref.watch(eventGamesProvider(eventId));
 
   // Listen for live round changes - this triggers refresh when new rounds start
   // Using listen instead of watch to get previous value for comparison
-  ref.listen<AsyncValue<List<String>>>(liveRoundsIdProvider, (previous, current) {
+  ref.listen<AsyncValue<List<String>>>(liveRoundsIdProvider, (
+    previous,
+    current,
+  ) {
     final currRounds = current.valueOrNull;
     if (currRounds == null) return;
 
@@ -622,7 +691,9 @@ final forYouEventGamesWithAutoRefreshProvider = Provider.autoDispose
     if (lastKnown.isNotEmpty) {
       final newRounds = currSet.difference(lastKnown);
       if (newRounds.isNotEmpty) {
-        debugPrint('[ForYou] New rounds started: ${newRounds.length} rounds - refreshing games for event $eventId');
+        debugPrint(
+          '[ForYou] New rounds started: ${newRounds.length} rounds - refreshing games for event $eventId',
+        );
         // Invalidate to re-fetch games with new round data
         Future.microtask(() {
           ref.invalidate(eventGamesProvider(eventId));
@@ -641,9 +712,8 @@ final forYouEventGamesWithAutoRefreshProvider = Provider.autoDispose
   return gamesAsync.when(
     data: (games) {
       // Find live games in current selection
-      final liveGames = games.where((g) =>
-        g.status == '*' || g.status == 'ongoing'
-      ).toList();
+      final liveGames =
+          games.where((g) => g.status == '*' || g.status == 'ongoing').toList();
 
       // Watch game update streams for all live games.
       // Reuses gameUpdatesStreamProvider (same as liveGameCardProvider in game cards)
@@ -655,7 +725,9 @@ final forYouEventGamesWithAutoRefreshProvider = Provider.autoDispose
           final status = data?['status'] as String?;
           // If status changed to finished, invalidate to re-fetch
           if (status != null && _isFinishedStatus(status)) {
-            debugPrint('[ForYou] Game ${game.id} finished ($status), refreshing games for event $eventId');
+            debugPrint(
+              '[ForYou] Game ${game.id} finished ($status), refreshing games for event $eventId',
+            );
             // Use Future.microtask to avoid invalidating during build
             Future.microtask(() {
               ref.invalidate(eventGamesProvider(eventId));
@@ -673,18 +745,20 @@ final forYouEventGamesWithAutoRefreshProvider = Provider.autoDispose
 
 bool _isFinishedStatus(String status) {
   return status == '1-0' ||
-         status == '0-1' ||
-         status == '1/2-1/2' ||
-         status == '½-½';
+      status == '0-1' ||
+      status == '1/2-1/2' ||
+      status == '½-½';
 }
 
 // ============================================================================
 // BACKWARD COMPATIBILITY
 // ============================================================================
 
-final convertedForYouGamesProvider = Provider.autoDispose<List<GamesTourModel>>((ref) {
-  return const [];
-});
+final convertedForYouGamesProvider = Provider.autoDispose<List<GamesTourModel>>(
+  (ref) {
+    return const [];
+  },
+);
 
 final forYouAnimatedGameIds = <String>{};
 final forYouAnimatedEventIds = <String>{};
