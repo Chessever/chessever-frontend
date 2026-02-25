@@ -41,6 +41,22 @@ Future<bool> requirePremiumGuard(BuildContext context, WidgetRef ref) async {
 
   final subscriptionState = ref.read(subscriptionProvider);
   if (subscriptionState.isSubscribed) return true;
+  if (!context.mounted) return false;
+
+  return await showPremiumPaywallSheet(context: context);
+}
+
+/// Guard variant for places where WidgetRef is not conveniently available.
+/// Returns true if user has premium or just subscribed from paywall.
+Future<bool> requirePremiumGuardNoRef(BuildContext context) async {
+  if (kDebugMode) return true;
+
+  final isAuthenticated = await requireFullAuthGuard(context);
+  if (!isAuthenticated) return false;
+
+  final isSubscribed = await RevenueCatService().isSubscribed();
+  if (isSubscribed) return true;
+  if (!context.mounted) return false;
 
   return await showPremiumPaywallSheet(context: context);
 }

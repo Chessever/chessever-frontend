@@ -71,7 +71,12 @@ class ExplorerEvalState {
 class ExplorerEvalNotifier extends StateNotifier<ExplorerEvalState> {
   ExplorerEvalNotifier(this.ref) : super(const ExplorerEvalState());
 
-  static const _ownerId = 'explorer_eval';
+  // Unique owner per notifier instance so stale cancellations from a disposed
+  // explorer cannot cancel jobs enqueued by a freshly created instance.
+  final String _ownerId = StockfishSingleton.generateOwnerId(
+    'explorer_eval',
+    0,
+  );
   final Ref ref;
   int _requestId = 0;
   bool _isDisposed = false;
@@ -118,7 +123,6 @@ class ExplorerEvalNotifier extends StateNotifier<ExplorerEvalState> {
     );
     final requestId = ++_requestId;
     final isSameFen = state.fen == normalizedFen;
-    final allowDepthDecrease = !isSameFen;
 
     // Do not fire-and-forget owner cancellation here: it races with the new
     // request and can cancel the freshly enqueued job, causing indefinite
@@ -160,12 +164,13 @@ class ExplorerEvalNotifier extends StateNotifier<ExplorerEvalState> {
           ownerId: _ownerId,
           onDepthUpdate: (depth, knodes) {
             if (!_isActiveRequest(requestId, normalizedFen)) return;
-            state = state.copyWith(depth: depth, isEvaluating: true);
+            final nextDepth = depth > state.depth ? depth : state.depth;
+            state = state.copyWith(depth: nextDepth, isEvaluating: true);
             _updateDepthTracking(
-              depth: depth,
+              depth: nextDepth,
               knodes: knodes,
               fen: normalizedFen,
-              allowDecrease: allowDepthDecrease,
+              allowDecrease: false,
               context: 'opening explorer depth',
             );
           },
@@ -193,7 +198,9 @@ class ExplorerEvalNotifier extends StateNotifier<ExplorerEvalState> {
             }
 
             final first = lines.first;
-            final resolvedDepth = depth > 0 ? depth : state.depth;
+            final streamedDepth = depth > 0 ? depth : state.depth;
+            final resolvedDepth =
+                streamedDepth > state.depth ? streamedDepth : state.depth;
             state = state.copyWith(
               evaluation: first.evaluation,
               mate: first.mate,
@@ -206,7 +213,7 @@ class ExplorerEvalNotifier extends StateNotifier<ExplorerEvalState> {
               depth: resolvedDepth,
               knodes: 0,
               fen: normalizedFen,
-              allowDecrease: allowDepthDecrease,
+              allowDecrease: false,
               context: 'opening explorer pv',
             );
           },
@@ -247,7 +254,9 @@ class ExplorerEvalNotifier extends StateNotifier<ExplorerEvalState> {
 
           if (lines.isNotEmpty) {
             final first = lines.first;
-            final resolvedDepth = result.depth > 0 ? result.depth : state.depth;
+            final finalDepth = result.depth > 0 ? result.depth : state.depth;
+            final resolvedDepth =
+                finalDepth > state.depth ? finalDepth : state.depth;
 
             state = state.copyWith(
               evaluation: first.evaluation,

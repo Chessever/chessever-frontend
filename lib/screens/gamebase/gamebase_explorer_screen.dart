@@ -55,7 +55,17 @@ class _GamebaseExplorerScreenState
       notifier.reset(fetch: fetch);
     }
 
-    ref.invalidate(explorerEvalProvider);
+    final fenAfterReset = ref.read(gamebaseExplorerProvider).currentFen;
+    final showEngineAnalysis =
+        ref.read(engineSettingsProviderNew).valueOrNull?.showEngineAnalysis ??
+        true;
+    ref
+        .read(explorerEvalProvider.notifier)
+        .setEngineEnabled(
+          enabled: fetch && showEngineAnalysis,
+          fen: fenAfterReset,
+          force: fetch,
+        );
   }
 
   bool _shouldShowClearFilters(GamebaseExplorerState state) {
@@ -1418,6 +1428,7 @@ class _EngineLinePlaceholder extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final label = ' ';
+    final badgeText = isEvaluating ? '...' : '-';
 
     return Padding(
       padding: EdgeInsets.symmetric(vertical: 5.sp, horizontal: 12.sp),
@@ -1431,10 +1442,12 @@ class _EngineLinePlaceholder extends StatelessWidget {
               borderRadius: BorderRadius.circular(3.br),
             ),
             child: Text(
-              '...',
+              badgeText,
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: kWhiteColor.withValues(alpha: 0.35),
+                color: kWhiteColor.withValues(
+                  alpha: isEvaluating ? 0.35 : 0.18,
+                ),
                 fontSize: 11.f,
                 fontWeight: FontWeight.w700,
                 fontFeatures: const [FontFeature.tabularFigures()],
