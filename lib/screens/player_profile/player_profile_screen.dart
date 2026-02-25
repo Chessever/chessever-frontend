@@ -346,7 +346,8 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
 
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => GamebaseExplorerScreen(initialPlayer: initialPlayer),
+        builder:
+            (_) => GamebaseExplorerScreen.scoped(initialPlayer: initialPlayer),
       ),
     );
 

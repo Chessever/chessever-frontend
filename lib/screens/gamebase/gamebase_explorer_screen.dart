@@ -30,6 +30,21 @@ import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 class GamebaseExplorerScreen extends ConsumerStatefulWidget {
   const GamebaseExplorerScreen({super.key, this.initialPlayer});
 
+  /// Creates an isolated explorer scope so other mounted routes (for example
+  /// hidden player-profile/game-card widgets) cannot mutate this explorer's
+  /// provider state and continuously restart engine analysis.
+  static Widget scoped({Key? key, GamebasePlayer? initialPlayer}) {
+    return ProviderScope(
+      overrides: [
+        gamebaseExplorerProvider.overrideWith(
+          (ref) => GamebaseExplorerNotifier(ref),
+        ),
+        explorerEvalProvider.overrideWith((ref) => ExplorerEvalNotifier(ref)),
+      ],
+      child: GamebaseExplorerScreen(key: key, initialPlayer: initialPlayer),
+    );
+  }
+
   /// When non-null, the explorer opens pre-filtered to this player's games.
   final GamebasePlayer? initialPlayer;
 
@@ -55,17 +70,18 @@ class _GamebaseExplorerScreenState
       notifier.reset(fetch: fetch);
     }
 
-    final fenAfterReset = ref.read(gamebaseExplorerProvider).currentFen;
-    final showEngineAnalysis =
-        ref.read(engineSettingsProviderNew).valueOrNull?.showEngineAnalysis ??
-        true;
-    ref
-        .read(explorerEvalProvider.notifier)
-        .setEngineEnabled(
-          enabled: fetch && showEngineAnalysis,
-          fen: fenAfterReset,
-          force: fetch,
-        );
+    // On teardown (fetch=false), explicitly stop the engine.
+    // On init (fetch=true), let _ExplorerEvalBar handle engine lifecycle
+    // via its initState/didUpdateWidget to avoid double-start conflicts
+    // that cause depth jitter and perpetual "..." states.
+    if (!fetch) {
+      ref
+          .read(explorerEvalProvider.notifier)
+          .setEngineEnabled(
+            enabled: false,
+            fen: ref.read(gamebaseExplorerProvider).currentFen,
+          );
+    }
   }
 
   bool _shouldShowClearFilters(GamebaseExplorerState state) {
@@ -738,6 +754,14 @@ class _ExplorerEvalBar extends ConsumerStatefulWidget {
 }
 
 class _ExplorerEvalBarState extends ConsumerState<_ExplorerEvalBar> {
+  String _positionKey(String fen) {
+    final parts = fen.trim().split(RegExp(r'\s+'));
+    if (parts.length < 4) return fen.trim();
+    return parts.take(4).join(' ');
+  }
+
+  bool _samePosition(String a, String b) => _positionKey(a) == _positionKey(b);
+
   void _syncEngineState({bool force = false}) {
     ref
         .read(explorerEvalProvider.notifier)
@@ -760,9 +784,14 @@ class _ExplorerEvalBarState extends ConsumerState<_ExplorerEvalBar> {
   @override
   void didUpdateWidget(covariant _ExplorerEvalBar oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.fen != oldWidget.fen ||
-        widget.showEngineAnalysis != oldWidget.showEngineAnalysis) {
+    if (!_samePosition(widget.fen, oldWidget.fen)) {
+      // Position changed meaningfully (not just halfmove/fullmove counters) —
+      // force restart for the new FEN.
       _syncEngineState(force: true);
+    } else if (widget.showEngineAnalysis != oldWidget.showEngineAnalysis) {
+      // Visibility toggled but same position — soft start (no force) to avoid
+      // restarting an evaluation that is already running for this FEN.
+      _syncEngineState();
     }
   }
 
@@ -780,7 +809,7 @@ class _ExplorerEvalBarState extends ConsumerState<_ExplorerEvalBar> {
       evaluation: evalState.evaluation,
       mate: evalState.mate,
       isEvaluating: evalState.isEvaluating,
-      positionKey: widget.fen,
+      positionKey: _positionKey(widget.fen),
     );
   }
 }
@@ -1367,8 +1396,9 @@ class _ExplorerEngineLines extends ConsumerWidget {
       ),
     );
 
-    final explorerState = ref.watch(gamebaseExplorerProvider);
-    final baseFen = explorerState.currentFen;
+    final baseFen = ref.watch(
+      gamebaseExplorerProvider.select((s) => s.currentFen),
+    );
     final fenParts = baseFen.split(' ');
     final isWhiteToMove = fenParts.length > 1 ? fenParts[1] == 'w' : true;
     final startMoveNumber =
