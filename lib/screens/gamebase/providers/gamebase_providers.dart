@@ -22,6 +22,16 @@ String normalizeFenForGamebase(String fen) {
   return parts.take(6).join(' ');
 }
 
+/// Convert a 6-field FEN into number of played plies.
+int _pliesFromFen(String fen) {
+  final parts = fen.trim().split(RegExp(r'\s+'));
+  if (parts.length < 6) return 0;
+  final turn = parts[1];
+  final fullMove = int.tryParse(parts[5]) ?? 1;
+  final base = (fullMove - 1) * 2;
+  return base + (turn == 'b' ? 1 : 0);
+}
+
 /// StateNotifier for managing Gamebase explorer state.
 class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
   GamebaseExplorerNotifier(this.ref) : super(const GamebaseExplorerState());
@@ -399,14 +409,22 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
     _scheduleFetch(Duration.zero);
   }
 
-  /// Reset to initial position
-  void reset() {
+  /// Reset to initial position.
+  ///
+  /// When [fetch] is false, this is used for exit/teardown paths where we
+  /// want local state cleared without firing a new network request.
+  void reset({bool fetch = true}) {
+    _debounceTimer?.cancel();
+    // Invalidate any in-flight response from a previous position.
+    _fetchToken++;
     _chess = Chess();
     state = const GamebaseExplorerState(
       currentFen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
       currentMoveIndex: -1,
     );
-    _scheduleFetch(Duration.zero);
+    if (fetch) {
+      _scheduleFetch(Duration.zero);
+    }
   }
 
   /// Set position from FEN (for loading a specific position)
@@ -425,12 +443,17 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
           .map((m) => m.trim().toLowerCase())
           .where((m) => RegExp(r'^[a-h][1-8][a-h][1-8][qrbn]?$').hasMatch(m))
           .toList(growable: false);
-      final newIndex = sanitizedMoves.isEmpty ? -1 : sanitizedMoves.length - 1;
+      final expectedPlyCount = _pliesFromFen(normalized);
+      final clampedMoves =
+          sanitizedMoves.length > expectedPlyCount
+              ? sanitizedMoves.sublist(0, expectedPlyCount)
+              : sanitizedMoves;
+      final newIndex = clampedMoves.isEmpty ? -1 : clampedMoves.length - 1;
 
       // Skip if nothing changed to avoid unnecessary API calls.
       if (state.currentFen == normalized &&
           state.currentMoveIndex == newIndex &&
-          listEquals(state.moveHistory, sanitizedMoves)) {
+          listEquals(state.moveHistory, clampedMoves)) {
         debugPrint(
           '[GamebaseExplorer] setPositionWithMoves: position unchanged, skipping',
         );
@@ -443,7 +466,7 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
       _chess = Chess.fromFEN(normalized);
       state = state.copyWith(
         currentFen: normalized,
-        moveHistory: sanitizedMoves,
+        moveHistory: clampedMoves,
         currentMoveIndex: newIndex,
       );
       _scheduleFetch();

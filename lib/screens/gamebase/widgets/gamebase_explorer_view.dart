@@ -33,7 +33,14 @@ class GamebaseExplorerView extends HookConsumerWidget {
     // library game, live game, etc.).
     final currentPosition = state.analysisState.position;
     final currentFen = currentPosition.fen;
-    final lineToCurrent = state.analysisState.combinedMoves
+    final combinedMoves = state.analysisState.combinedMoves;
+    final currentMoveIndex = state.analysisState.currentMoveIndex;
+    final movesToCurrentCount =
+        currentMoveIndex < 0
+            ? 0
+            : (currentMoveIndex + 1).clamp(0, combinedMoves.length);
+    final lineToCurrent = combinedMoves
+        .take(movesToCurrentCount)
         .map((m) => m.uci.trim().toLowerCase())
         .where((uci) => RegExp(r'^[a-h][1-8][a-h][1-8][qrbn]?$').hasMatch(uci))
         .toList(growable: false);
@@ -178,11 +185,14 @@ class _HorizontalPvLines extends ConsumerWidget {
     if (lines.isEmpty) return const SizedBox.shrink();
 
     final useFigurine = ref.watch(
-      boardSettingsProviderNew.select((s) => s.valueOrNull?.useFigurine ?? false),
+      boardSettingsProviderNew.select(
+        (s) => s.valueOrNull?.useFigurine ?? false,
+      ),
     );
     final pieceAssets = ref.watch(
       boardSettingsProviderNew.select(
-        (s) => s.valueOrNull?.pieceAssets ?? const BoardSettingsNew().pieceAssets,
+        (s) =>
+            s.valueOrNull?.pieceAssets ?? const BoardSettingsNew().pieceAssets,
       ),
     );
 
@@ -238,15 +248,15 @@ class _HorizontalPvLines extends ConsumerWidget {
                     SizedBox(width: 8.w),
                     useFigurine
                         ? RichText(
-                            text: TextSpan(
-                              children: buildFigurineSpans(
-                                text: moves,
-                                pieceAssets: pieceAssets,
-                                style: movesStyle,
-                                pieceSize: 12.f,
-                              ),
+                          text: TextSpan(
+                            children: buildFigurineSpans(
+                              text: moves,
+                              pieceAssets: pieceAssets,
+                              style: movesStyle,
+                              pieceSize: 12.f,
                             ),
-                          )
+                          ),
+                        )
                         : Text(moves, style: movesStyle),
                   ],
                 ),
@@ -487,17 +497,18 @@ class _MoveRow extends ConsumerWidget {
     }
 
     final useFigurine = ref.watch(
-      boardSettingsProviderNew.select((s) => s.valueOrNull?.useFigurine ?? false),
+      boardSettingsProviderNew.select(
+        (s) => s.valueOrNull?.useFigurine ?? false,
+      ),
     );
     final pieceAssets = ref.watch(
       boardSettingsProviderNew.select(
-        (s) => s.valueOrNull?.pieceAssets ?? const BoardSettingsNew().pieceAssets,
+        (s) =>
+            s.valueOrNull?.pieceAssets ?? const BoardSettingsNew().pieceAssets,
       ),
     );
 
-    final sanStyle = AppTypography.textSmBold.copyWith(
-      color: kWhiteColor,
-    );
+    final sanStyle = AppTypography.textSmBold.copyWith(color: kWhiteColor);
 
     return InkWell(
       onTap: onPressed,
@@ -524,17 +535,17 @@ class _MoveRow extends ConsumerWidget {
                   SizedBox(width: 4.w),
                   useFigurine
                       ? RichText(
-                          overflow: TextOverflow.ellipsis,
-                          maxLines: 1,
-                          text: TextSpan(
-                            children: buildFigurineSpans(
-                              text: san,
-                              pieceAssets: pieceAssets,
-                              style: sanStyle,
-                              pieceSize: 14.f,
-                            ),
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 1,
+                        text: TextSpan(
+                          children: buildFigurineSpans(
+                            text: san,
+                            pieceAssets: pieceAssets,
+                            style: sanStyle,
+                            pieceSize: 14.f,
                           ),
-                        )
+                        ),
+                      )
                       : Text(san, style: sanStyle),
                 ],
               ),
