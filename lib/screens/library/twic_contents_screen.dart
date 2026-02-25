@@ -6,6 +6,7 @@ import 'package:chessever2/screens/library/providers/gamebase_database_games_pro
 import 'package:chessever2/screens/library/providers/gamebase_filter_provider.dart';
 import 'package:chessever2/screens/library/providers/twic_event_aggregates_provider.dart';
 import 'package:chessever2/screens/library/widgets/add_to_folder_sheet.dart';
+import 'package:chessever2/screens/library/widgets/bulk_add_to_folder_sheet.dart';
 import 'package:chessever2/screens/library/widgets/gamebase_search_game_card.dart';
 import 'package:chessever2/screens/library/widgets/library_gamebase_filter_dialog.dart';
 import 'package:chessever2/screens/library/widgets/library_search_bar.dart';
