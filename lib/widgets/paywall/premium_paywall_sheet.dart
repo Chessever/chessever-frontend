@@ -167,10 +167,7 @@ class _PaywallContent extends HookConsumerWidget {
           ),
           // Hero Icon
           Center(
-            child: Image.asset(
-              'assets/pngs/new_app_logo.png',
-              height: 80.h,
-            ),
+            child: Image.asset('assets/pngs/new_app_logo.png', height: 80.h),
           ),
           SizedBox(height: 16.h),
           // Title
@@ -270,9 +267,8 @@ class _FeaturesList extends StatelessWidget {
     ];
 
     return Column(
-      children: features
-          .map((f) => _FeatureItem(icon: f.$1, text: f.$2))
-          .toList(),
+      children:
+          features.map((f) => _FeatureItem(icon: f.$1, text: f.$2)).toList(),
     );
   }
 }
@@ -423,9 +419,7 @@ class _PricingCard extends HookWidget {
     final showLoading = isLoading || price == null;
 
     final borderColor =
-        isSelected
-            ? kPrimaryColor
-            : kWhiteColor.withOpacity(0.1);
+        isSelected ? kPrimaryColor : kWhiteColor.withOpacity(0.1);
 
     final backgroundColor =
         isSelected
@@ -694,45 +688,43 @@ class _PurchaseButton extends HookWidget {
         scale: isPressed.value ? 0.97 : 1.0,
         duration: const Duration(milliseconds: 100),
         child: Container(
-              width: double.infinity,
-              height: 54.h,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(16.br),
-                gradient: LinearGradient(
-                  colors: [kPrimaryColor, kDarkBlue],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: kPrimaryColor.withValues(alpha: 0.4),
-                    blurRadius: 25,
-                    offset: const Offset(0, 8),
-                  ),
-                ],
-              ),
-              child: Center(
-                child:
-                    isLoading
-                        ? SizedBox(
-                          width: 24.w,
-                          height: 24.h,
-                          child: const CircularProgressIndicator(
-                            strokeWidth: 2.5,
-                            valueColor: AlwaysStoppedAnimation<Color>(
-                              kBlackColor,
-                            ),
-                          ),
-                        )
-                        : Text(
-                          buttonText,
-                          style: AppTypography.textLgBold.copyWith(
-                            color: kBlackColor,
-                            letterSpacing: 0.5,
-                          ),
-                        ),
-              ),
+          width: double.infinity,
+          height: 54.h,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16.br),
+            gradient: LinearGradient(
+              colors: [kPrimaryColor, kDarkBlue],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
             ),
+            boxShadow: [
+              BoxShadow(
+                color: kPrimaryColor.withValues(alpha: 0.4),
+                blurRadius: 25,
+                offset: const Offset(0, 8),
+              ),
+            ],
+          ),
+          child: Center(
+            child:
+                isLoading
+                    ? SizedBox(
+                      width: 24.w,
+                      height: 24.h,
+                      child: const CircularProgressIndicator(
+                        strokeWidth: 2.5,
+                        valueColor: AlwaysStoppedAnimation<Color>(kBlackColor),
+                      ),
+                    )
+                    : Text(
+                      buttonText,
+                      style: AppTypography.textLgBold.copyWith(
+                        color: kBlackColor,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+          ),
+        ),
       ),
     );
   }

@@ -27,9 +27,10 @@ class GroupBroadcastRepository extends BaseRepository {
         return <String>{};
       }
 
-      final currentGroupIds = (currentGroupsResponse as List)
-          .map((row) => row['id'] as String)
-          .toSet();
+      final currentGroupIds =
+          (currentGroupsResponse as List)
+              .map((row) => row['id'] as String)
+              .toSet();
 
       if (currentGroupIds.isEmpty) {
         return <String>{};
@@ -47,14 +48,14 @@ class GroupBroadcastRepository extends BaseRepository {
         return <String>{};
       }
 
-      return (toursResponse as List)
-          .map((row) => row['id'] as String)
-          .toSet();
+      return (toursResponse as List).map((row) => row['id'] as String).toSet();
     });
   }
 
   /// Get group_broadcast IDs that contain tours with any of the given favorite player FIDE IDs
-  Future<Set<String>> getEventIdsWithFavoritePlayers(List<int> favoriteFideIds) async {
+  Future<Set<String>> getEventIdsWithFavoritePlayers(
+    List<int> favoriteFideIds,
+  ) async {
     if (favoriteFideIds.isEmpty) return {};
 
     return handleApiCall(() async {
@@ -79,7 +80,8 @@ class GroupBroadcastRepository extends BaseRepository {
           if (player is Map) {
             final fideId = player['fideId'];
             if (fideId != null) {
-              final fideIdInt = fideId is int ? fideId : int.tryParse(fideId.toString());
+              final fideIdInt =
+                  fideId is int ? fideId : int.tryParse(fideId.toString());
               if (fideIdInt != null && favoriteFideIds.contains(fideIdInt)) {
                 matchingIds.add(groupBroadcastId);
                 break; // Found a match, no need to check other players
@@ -251,7 +253,9 @@ class GroupBroadcastRepository extends BaseRepository {
         // If the tour knows its group_broadcast_id, prefer the canonical record
         final groupBroadcastId = tourRow['group_broadcast_id'] as String?;
         if (groupBroadcastId != null && groupBroadcastId.isNotEmpty) {
-          final fromGroupId = await _getGroupBroadcastByIdOrNull(groupBroadcastId);
+          final fromGroupId = await _getGroupBroadcastByIdOrNull(
+            groupBroadcastId,
+          );
           if (fromGroupId != null) return fromGroupId;
         }
 
@@ -308,7 +312,9 @@ class GroupBroadcastRepository extends BaseRepository {
       // Primary search: FTS on search_fts column, sorted by date_start descending (latest first).
       final res = await supabase
           .from('group_broadcasts')
-          .select('id, created_at, name, search, max_avg_elo, date_start, date_end, time_control')
+          .select(
+            'id, created_at, name, search, max_avg_elo, date_start, date_end, time_control',
+          )
           .textSearch('search_fts', ftsQuery)
           .order('date_start', ascending: false, nullsFirst: false)
           .limit(80);
@@ -327,7 +333,9 @@ class GroupBroadcastRepository extends BaseRepository {
       if (resultsById.length < 10) {
         final trigramRes = await supabase
             .from('group_broadcasts')
-            .select('id, created_at, name, search, max_avg_elo, date_start, date_end, time_control')
+            .select(
+              'id, created_at, name, search, max_avg_elo, date_start, date_end, time_control',
+            )
             .ilike('name', '%$trimmedQuery%')
             .order('date_start', ascending: false, nullsFirst: false)
             .limit(40);
@@ -342,15 +350,15 @@ class GroupBroadcastRepository extends BaseRepository {
       }
 
       // Sort final results by date_start descending (latest events first).
-      final results = resultsById.values.toList()
-        ..sort((a, b) {
-          final aDate = a.dateStart;
-          final bDate = b.dateStart;
-          if (aDate == null && bDate == null) return 0;
-          if (aDate == null) return 1;
-          if (bDate == null) return -1;
-          return bDate.compareTo(aDate); // Descending: latest first
-        });
+      final results =
+          resultsById.values.toList()..sort((a, b) {
+            final aDate = a.dateStart;
+            final bDate = b.dateStart;
+            if (aDate == null && bDate == null) return 0;
+            if (aDate == null) return 1;
+            if (bDate == null) return -1;
+            return bDate.compareTo(aDate); // Descending: latest first
+          });
 
       return results;
     } catch (e) {
@@ -438,22 +446,23 @@ class GroupBroadcastRepository extends BaseRepository {
   };
 
   List<String> _extractSearchTokens(String query) {
-    final normalized = query
-        .toLowerCase()
-        .replaceAll(RegExp(r'[^a-z0-9]+'), ' ')
-        .trim();
+    final normalized =
+        query.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), ' ').trim();
     if (normalized.isEmpty) return const [];
-    final tokens = normalized
-        .split(RegExp(r'\s+'))
-        .where((t) => t.isNotEmpty && !_searchStopWords.contains(t))
-        .toSet()
-        .toList();
+    final tokens =
+        normalized
+            .split(RegExp(r'\s+'))
+            .where((t) => t.isNotEmpty && !_searchStopWords.contains(t))
+            .toSet()
+            .toList();
     return tokens;
   }
 
   /// Get tour IDs that belong to a specific group_broadcast
   /// Used to fetch games for a single event in the For You tab
-  Future<List<String>> getTourIdsForGroupBroadcast(String groupBroadcastId) async {
+  Future<List<String>> getTourIdsForGroupBroadcast(
+    String groupBroadcastId,
+  ) async {
     return handleApiCall(() async {
       final dynamic response = await supabase
           .from('tours')
@@ -462,15 +471,15 @@ class GroupBroadcastRepository extends BaseRepository {
 
       if (response == null) return <String>[];
 
-      return (response as List)
-          .map((row) => row['id'] as String)
-          .toList();
+      return (response as List).map((row) => row['id'] as String).toList();
     });
   }
 
   /// Get mapping from tour_id to group_broadcast_id for given tour IDs
   /// This is used to group games by their parent event (group_broadcast) in For You tab
-  Future<Map<String, String>> getTourToGroupBroadcastMapping(List<String> tourIds) async {
+  Future<Map<String, String>> getTourToGroupBroadcastMapping(
+    List<String> tourIds,
+  ) async {
     if (tourIds.isEmpty) return {};
 
     return handleApiCall(() async {
@@ -489,7 +498,9 @@ class GroupBroadcastRepository extends BaseRepository {
       for (final row in response as List) {
         final tourId = row['id'] as String?;
         final groupBroadcastId = row['group_broadcast_id'] as String?;
-        if (tourId != null && groupBroadcastId != null && groupBroadcastId.isNotEmpty) {
+        if (tourId != null &&
+            groupBroadcastId != null &&
+            groupBroadcastId.isNotEmpty) {
           mapping[tourId] = groupBroadcastId;
         }
       }
@@ -499,13 +510,17 @@ class GroupBroadcastRepository extends BaseRepository {
 
   /// Get GroupBroadcast details with average ELO for given group_broadcast IDs
   /// Returns a map of group_broadcast_id → GroupBroadcast (with maxAvgElo populated)
-  Future<Map<String, GroupBroadcast>> getGroupBroadcastsWithElo(List<String> groupBroadcastIds) async {
+  Future<Map<String, GroupBroadcast>> getGroupBroadcastsWithElo(
+    List<String> groupBroadcastIds,
+  ) async {
     if (groupBroadcastIds.isEmpty) return {};
 
     return handleApiCall(() async {
       final dynamic response = await supabase
           .from('group_broadcasts')
-          .select('id, name, max_avg_elo, date_start, date_end, time_control, created_at, search')
+          .select(
+            'id, name, max_avg_elo, date_start, date_end, time_control, created_at, search',
+          )
           .inFilter('id', groupBroadcastIds);
 
       if (response == null) return <String, GroupBroadcast>{};
@@ -549,7 +564,9 @@ class GroupBroadcastRepository extends BaseRepository {
 
       var tourQuery = supabase
           .from('tours')
-          .select('id, group_broadcast_id, name, slug, info, dates, avg_elo, search, created_at')
+          .select(
+            'id, group_broadcast_id, name, slug, info, dates, avg_elo, search, created_at',
+          )
           .or(orConditions);
 
       // Add search filter if provided
@@ -580,7 +597,9 @@ class GroupBroadcastRepository extends BaseRepository {
       // Step 3: Fetch actual group_broadcasts for those that have group_broadcast_id
       Map<String, GroupBroadcast> groupBroadcastsMap = {};
       if (groupBroadcastIds.isNotEmpty) {
-        groupBroadcastsMap = await getGroupBroadcastsWithElo(groupBroadcastIds.toList());
+        groupBroadcastsMap = await getGroupBroadcastsWithElo(
+          groupBroadcastIds.toList(),
+        );
       }
 
       // Step 4: Build result list - use group_broadcast if available, otherwise create from tour
@@ -593,7 +612,9 @@ class GroupBroadcastRepository extends BaseRepository {
 
         GroupBroadcast? broadcast;
 
-        if (groupId != null && groupId.isNotEmpty && groupBroadcastsMap.containsKey(groupId)) {
+        if (groupId != null &&
+            groupId.isNotEmpty &&
+            groupBroadcastsMap.containsKey(groupId)) {
           // Use the actual group_broadcast
           if (!seenIds.contains(groupId)) {
             broadcast = groupBroadcastsMap[groupId];
@@ -667,7 +688,8 @@ class GroupBroadcastRepository extends BaseRepository {
     Map<String, dynamic> tourRow, {
     String? overrideGroupBroadcastId,
   }) {
-    final dates = (tourRow['dates'] as List?)
+    final dates =
+        (tourRow['dates'] as List?)
             ?.whereType<String>()
             .map((d) => DateTime.tryParse(d))
             .whereType<DateTime>()
@@ -677,25 +699,32 @@ class GroupBroadcastRepository extends BaseRepository {
     final info = tourRow['info'] as Map<String, dynamic>?;
     final timeControl = info?['fideTc'] as String? ?? info?['tc'] as String?;
 
-    final search = (tourRow['search'] as List?)
+    final search =
+        (tourRow['search'] as List?)
             ?.map((e) => e.toString())
             .where((e) => e.isNotEmpty)
             .toList() ??
         <String>[];
 
-    final fallbackSearch = <String?>[
-      tourRow['slug'] as String?,
-      tourRow['name'] as String?,
-      tourRow['id'] as String?,
-    ].whereType<String>().where((e) => e.isNotEmpty).toList();
+    final fallbackSearch =
+        <String?>[
+          tourRow['slug'] as String?,
+          tourRow['name'] as String?,
+          tourRow['id'] as String?,
+        ].whereType<String>().where((e) => e.isNotEmpty).toList();
 
     // Get group_broadcast_id, treating empty string as null
     final groupBroadcastIdFromRow = tourRow['group_broadcast_id'] as String?;
     final effectiveGroupBroadcastId =
-        (groupBroadcastIdFromRow?.isNotEmpty == true) ? groupBroadcastIdFromRow : null;
+        (groupBroadcastIdFromRow?.isNotEmpty == true)
+            ? groupBroadcastIdFromRow
+            : null;
 
     return GroupBroadcast(
-      id: overrideGroupBroadcastId ?? effectiveGroupBroadcastId ?? tourRow['id'] as String,
+      id:
+          overrideGroupBroadcastId ??
+          effectiveGroupBroadcastId ??
+          tourRow['id'] as String,
       createdAt:
           tourRow['created_at'] != null
               ? DateTime.tryParse(tourRow['created_at'] as String) ??
@@ -712,8 +741,8 @@ class GroupBroadcastRepository extends BaseRepository {
           dates.length > 1
               ? dates.last
               : dates.isNotEmpty
-                  ? dates.first
-                  : null,
+              ? dates.first
+              : null,
       timeControl: timeControl,
     );
   }
@@ -733,7 +762,9 @@ class GroupBroadcastRepository extends BaseRepository {
     variations.add(countryName);
 
     // Add gamebase variations (e.g., Turkey -> Turkiye)
-    final gamebaseVariations = CountryUtils.getGamebaseCountryVariations(countryName);
+    final gamebaseVariations = CountryUtils.getGamebaseCountryVariations(
+      countryName,
+    );
     variations.addAll(gamebaseVariations);
 
     // If we have the ISO2 country code, add FIDE code variation

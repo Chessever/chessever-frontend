@@ -87,26 +87,30 @@ class _SmoothAlertWrapperState<T> extends State<_SmoothAlertWrapper<T>> {
         return Material(
           color: Colors.transparent,
           child: GestureDetector(
-            onTap: widget.barrierDismissible
-                ? () => Navigator.pop(context)
-                : null,
+            onTap:
+                widget.barrierDismissible ? () => Navigator.pop(context) : null,
             child: Stack(
               children: [
                 // Backdrop with blur
                 Positioned.fill(
-                  child: widget.useBlur
-                      ? BackdropFilter(
-                          filter: ImageFilter.blur(
-                            sigmaX: blurAmount,
-                            sigmaY: blurAmount,
+                  child:
+                      widget.useBlur
+                          ? BackdropFilter(
+                            filter: ImageFilter.blur(
+                              sigmaX: blurAmount,
+                              sigmaY: blurAmount,
+                            ),
+                            child: Container(
+                              color: widget.barrierColor.withValues(
+                                alpha: opacity * 0.7,
+                              ),
+                            ),
+                          )
+                          : Container(
+                            color: widget.barrierColor.withValues(
+                              alpha: opacity * 0.7,
+                            ),
                           ),
-                          child: Container(
-                            color: widget.barrierColor.withValues(alpha: opacity * 0.7),
-                          ),
-                        )
-                      : Container(
-                          color: widget.barrierColor.withValues(alpha: opacity * 0.7),
-                        ),
                 ),
                 // Dialog content
                 Center(
@@ -155,10 +159,7 @@ Future<bool?> showSmoothConfirmDialog({
       decoration: BoxDecoration(
         color: kBlack2Color,
         borderRadius: BorderRadius.circular(16.br),
-        border: Border.all(
-          color: kWhiteColor.withValues(alpha: 0.1),
-          width: 1,
-        ),
+        border: Border.all(color: kWhiteColor.withValues(alpha: 0.1), width: 1),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -196,8 +197,8 @@ Future<bool?> showSmoothConfirmDialog({
                 child: _DialogButton(
                   text: confirmText,
                   onTap: () => Navigator.pop(context, true),
-                  color: confirmColor ??
-                      (isDangerous ? kRedColor : kPrimaryColor),
+                  color:
+                      confirmColor ?? (isDangerous ? kRedColor : kPrimaryColor),
                 ),
               ),
             ],
@@ -239,24 +240,23 @@ class _DialogButtonState extends State<_DialogButton> {
         motion: const CupertinoMotion.snappy(),
         value: _scale,
         builder: (context, scale, child) {
-          return Transform.scale(
-            scale: scale,
-            child: child,
-          );
+          return Transform.scale(scale: scale, child: child);
         },
         child: Container(
           padding: EdgeInsets.symmetric(vertical: 14.h),
           decoration: BoxDecoration(
-            color: widget.isOutlined
-                ? Colors.transparent
-                : (widget.color ?? kPrimaryColor),
+            color:
+                widget.isOutlined
+                    ? Colors.transparent
+                    : (widget.color ?? kPrimaryColor),
             borderRadius: BorderRadius.circular(12.br),
-            border: widget.isOutlined
-                ? Border.all(
-                    color: kWhiteColor.withValues(alpha: 0.3),
-                    width: 1,
-                  )
-                : null,
+            border:
+                widget.isOutlined
+                    ? Border.all(
+                      color: kWhiteColor.withValues(alpha: 0.3),
+                      width: 1,
+                    )
+                    : null,
           ),
           child: Center(
             child: Text(

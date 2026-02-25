@@ -19,19 +19,20 @@ class _LichessEvalRepository {
 
   Future<CloudEval> getEval(String fen, {int multiPv = 3}) async {
     try {
-      final uri = Uri.parse('$baseUrl?fen=${Uri.encodeComponent(fen)}&multiPv=$multiPv');
+      final uri = Uri.parse(
+        '$baseUrl?fen=${Uri.encodeComponent(fen)}&multiPv=$multiPv',
+      );
       print('🌐 Lichess: Requesting eval from $uri');
 
-      final resp = await http.get(
-        uri,
-        headers: {'User-Agent': _lichessUserAgent},
-      ).timeout(
-        const Duration(seconds: 8),
-        onTimeout: () {
-          print('⏱️ Lichess: Request timeout after 8 seconds for $fen');
-          throw TimeoutException('Lichess API timeout');
-        },
-      );
+      final resp = await http
+          .get(uri, headers: {'User-Agent': _lichessUserAgent})
+          .timeout(
+            const Duration(seconds: 8),
+            onTimeout: () {
+              print('⏱️ Lichess: Request timeout after 8 seconds for $fen');
+              throw TimeoutException('Lichess API timeout');
+            },
+          );
 
       print('📡 Lichess: Response status ${resp.statusCode} for $fen');
 
@@ -71,7 +72,11 @@ class _LichessEvalRepository {
   /// Lichess API returns evaluations ALREADY in white's perspective
   /// This method just validates and marks them with whitePerspective flag
   /// NO CONVERSION NEEDED - Lichess API always gives white's perspective
-  CloudEval _convertToWhitePerspective(CloudEval cloudEval, String fen, int multiPv) {
+  CloudEval _convertToWhitePerspective(
+    CloudEval cloudEval,
+    String fen,
+    int multiPv,
+  ) {
     // Parse FEN for logging only
     final fenParts = fen.split(' ');
     final sideToMove = fenParts.length >= 2 ? fenParts[1] : 'w';
@@ -84,15 +89,16 @@ class _LichessEvalRepository {
     // CRITICAL: Lichess API already returns evaluations in white's perspective!
     // Positive = white advantage, Negative = black advantage
     // We just need to mark the PVs with whitePerspective flag
-    final adjustedPvs = cloudEval.pvs.map((pv) {
-      return Pv(
-        moves: pv.moves,
-        cp: pv.cp, // NO CONVERSION - already in white's perspective!
-        isMate: pv.isMate,
-        mate: pv.mate, // NO CONVERSION - already in white's perspective!
-        whitePerspective: true,
-      );
-    }).toList();
+    final adjustedPvs =
+        cloudEval.pvs.map((pv) {
+          return Pv(
+            moves: pv.moves,
+            cp: pv.cp, // NO CONVERSION - already in white's perspective!
+            isMate: pv.isMate,
+            mate: pv.mate, // NO CONVERSION - already in white's perspective!
+            whitePerspective: true,
+          );
+        }).toList();
 
     print(
       "✅ LICHESS: Already in white's perspective - side=$sideToMove, cp=$originalCp",

@@ -154,7 +154,9 @@ class RoundRepository extends BaseRepository {
       // Primary: find round with most recent last_move_time (precise timestamp)
       final response = await supabase
           .from('games')
-          .select('round:round_id(id,slug,tour_id,tour_slug,name,created_at,starts_at,url),round_id,last_move_time')
+          .select(
+            'round:round_id(id,slug,tour_id,tour_slug,name,created_at,starts_at,url),round_id,last_move_time',
+          )
           .eq('tour_id', tourId)
           .not('last_move_time', 'is', null)
           .order('last_move_time', ascending: false)
@@ -168,7 +170,9 @@ class RoundRepository extends BaseRepository {
       // Fallback: use game_day (date-only, near-universal coverage)
       final fallbackResponse = await supabase
           .from('games')
-          .select('round:round_id(id,slug,tour_id,tour_slug,name,created_at,starts_at,url),round_id,game_day')
+          .select(
+            'round:round_id(id,slug,tour_id,tour_slug,name,created_at,starts_at,url),round_id,game_day',
+          )
           .eq('tour_id', tourId)
           .not('last_move', 'is', null)
           .not('game_day', 'is', null)

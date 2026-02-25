@@ -57,6 +57,8 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
   static const int _memoryCacheMaxEntries = 300;
   final LinkedHashMap<String, _PositionAggregateCacheEntry> _positionCache =
       LinkedHashMap<String, _PositionAggregateCacheEntry>();
+  final Map<String, Future<List<MoveAggregate>>> _inFlightAggregateRequests =
+      {};
 
   Chess get chess {
     _chess ??= Chess();
@@ -74,20 +76,71 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
     _debounceTimer = Timer(delay, _fetchMoveAggregates);
   }
 
-  bool _canPrefetchWithActiveFilters() {
-    // Safe prefetch mode: player-scoped explorer with no extra filters.
-    // This keeps load bounded while making per-move navigation feel instant.
-    final f = state.filters;
+  bool _isPlayerScopedOnlyFilter(GamebaseFilters f) {
+    // Safe aggressive prefetch mode: player-scoped explorer with no extra
+    // filters. Keeps load bounded while making per-move navigation feel instant.
     return f.playerIds.length == 1 &&
         f.timeControls.isEmpty &&
         f.minRating == null &&
         f.maxRating == null;
   }
 
+  bool _hasActiveFilters(GamebaseFilters f) {
+    return f.playerIds.isNotEmpty ||
+        f.timeControls.isNotEmpty ||
+        f.minRating != null ||
+        f.maxRating != null;
+  }
+
+  Future<List<MoveAggregate>> _getOrStartAggregatesRequest({
+    required String cacheKey,
+    required GamebaseRepository repository,
+    required String fen,
+    required List<String> exploredMoves,
+    required GamebaseFilters filters,
+  }) {
+    final existing = _inFlightAggregateRequests[cacheKey];
+    if (existing != null) return existing;
+
+    final timeControlFilter =
+        filters.timeControls.isNotEmpty ? filters.timeControls.first : null;
+    final playerIdFilter =
+        filters.playerIds.isNotEmpty ? filters.playerIds.first : null;
+
+    final future = () async {
+      final response = await repository.getMoveAggregates(
+        fen: fen,
+        moves: exploredMoves,
+        timeControl: timeControlFilter,
+        minRating: filters.minRating,
+        maxRating: filters.maxRating,
+        playerId: playerIdFilter,
+      );
+
+      final aggregates = response.data.moves
+          .where((m) => _isLegalUciForFen(m.uci, fen))
+          .toList(growable: false);
+      aggregates.sort((a, b) => b.total.compareTo(a.total));
+      return aggregates;
+    }();
+
+    _inFlightAggregateRequests[cacheKey] = future;
+    unawaited(
+      future.whenComplete(() {
+        if (identical(_inFlightAggregateRequests[cacheKey], future)) {
+          _inFlightAggregateRequests.remove(cacheKey);
+        }
+      }),
+    );
+
+    return future;
+  }
+
   /// Fetch move aggregates for current position
   Future<void> _fetchMoveAggregates() async {
     final fetchId = ++_fetchToken;
     final requestedFen = state.currentFen;
+    final filtersSnapshot = state.filters;
 
     // Only send the explored line up to the current position.
     // moveHistory may contain "future" moves when the user navigates back.
@@ -99,7 +152,7 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
     final cacheKey = _buildCacheKey(
       fen: requestedFen,
       exploredMoves: exploredMoves,
-      filters: state.filters,
+      filters: filtersSnapshot,
     );
     final cached = _getFreshCacheEntry(cacheKey);
     if (cached != null) {
@@ -115,35 +168,16 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
 
     try {
       final repository = ref.read(gamebaseRepositoryProvider);
-
-      // Current API supports a single time control / player filter.
-      final timeControlFilter =
-          state.filters.timeControls.isNotEmpty
-              ? state.filters.timeControls.first
-              : null;
-      final playerIdFilter =
-          state.filters.playerIds.isNotEmpty
-              ? state.filters.playerIds.first
-              : null;
-
-      final response = await repository.getMoveAggregates(
-        fen: state.currentFen,
-        moves: exploredMoves,
-        timeControl: timeControlFilter,
-        minRating: state.filters.minRating,
-        maxRating: state.filters.maxRating,
-        playerId: playerIdFilter,
+      final aggregates = await _getOrStartAggregatesRequest(
+        cacheKey: cacheKey,
+        repository: repository,
+        fen: requestedFen,
+        exploredMoves: exploredMoves,
+        filters: filtersSnapshot,
       );
 
       // Ignore if a newer request started or FEN changed while awaiting.
       if (fetchId != _fetchToken || requestedFen != state.currentFen) return;
-
-      final aggregates = response.data.moves
-          .where((m) => _isLegalUciForFen(m.uci, state.currentFen))
-          .toList(growable: false);
-
-      // Sort by total games descending
-      aggregates.sort((a, b) => b.total.compareTo(a.total));
 
       _putCacheEntry(cacheKey, aggregates);
       state = state.copyWith(moveAggregates: aggregates, isLoading: false);
@@ -151,12 +185,14 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
       // Opportunistically prefetch a few likely next positions to make the
       // explorer feel instantaneous even when backend caches are cold.
       // Skip prefetch when filters are active because those paths can be slow.
-      if (!state.hasActiveFilters || _canPrefetchWithActiveFilters()) {
+      if (!_hasActiveFilters(filtersSnapshot) ||
+          _isPlayerScopedOnlyFilter(filtersSnapshot)) {
         _prefetchNextPositions(
           repository: repository,
-          baseFen: state.currentFen,
+          baseFen: requestedFen,
           exploredMoves: exploredMoves,
           aggregates: aggregates,
+          filters: filtersSnapshot,
         );
       }
     } catch (e) {
@@ -170,16 +206,18 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
     required String baseFen,
     required List<String> exploredMoves,
     required List<MoveAggregate> aggregates,
+    required GamebaseFilters filters,
   }) {
     // Keep this conservative: it's a perf win, but we don't want to DDOS our own API.
-    final maxPrefetch = _canPrefetchWithActiveFilters() ? 2 : 3;
-    final filters = state.filters;
-    final timeControlFilter =
-        filters.timeControls.isNotEmpty ? filters.timeControls.first : null;
-    final playerIdFilter =
-        filters.playerIds.isNotEmpty ? filters.playerIds.first : null;
+    final playerScoped = _isPlayerScopedOnlyFilter(filters);
+    final maxPrefetch = playerScoped ? 4 : 3;
+    final candidates =
+        aggregates.length <= maxPrefetch
+            ? aggregates
+            : aggregates.sublist(0, maxPrefetch);
 
-    for (final a in aggregates.take(maxPrefetch)) {
+    for (var i = 0; i < candidates.length; i++) {
+      final a = candidates[i];
       try {
         final chess = Chess.fromFEN(baseFen);
         final from = a.uci.substring(0, 2);
@@ -194,30 +232,63 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
 
         final nextFen = normalizeFenForGamebase(chess.fen);
         final nextMoves = <String>[...exploredMoves, a.uci];
+        final nextCacheKey = _buildCacheKey(
+          fen: nextFen,
+          exploredMoves: nextMoves,
+          filters: filters,
+        );
+
+        if (_getFreshCacheEntry(nextCacheKey) != null ||
+            _inFlightAggregateRequests.containsKey(nextCacheKey)) {
+          continue;
+        }
 
         // Fire-and-forget; cache fill only.
         unawaited(() async {
           try {
-            final response = await repository.getMoveAggregates(
+            final prefetched = await _getOrStartAggregatesRequest(
+              cacheKey: nextCacheKey,
+              repository: repository,
               fen: nextFen,
-              moves: nextMoves,
-              timeControl: timeControlFilter,
-              minRating: filters.minRating,
-              maxRating: filters.maxRating,
-              playerId: playerIdFilter,
+              exploredMoves: nextMoves,
+              filters: filters,
             );
-            final prefetched = response.data.moves
-                .where((m) => _isLegalUciForFen(m.uci, nextFen))
-                .toList(growable: false)
-              ..sort((a, b) => b.total.compareTo(a.total));
-            _putCacheEntry(
-              _buildCacheKey(
-                fen: nextFen,
-                exploredMoves: nextMoves,
-                filters: filters,
-              ),
-              prefetched,
-            );
+            _putCacheEntry(nextCacheKey, prefetched);
+
+            // Prefetch one extra ply from top branches in player mode only.
+            if (playerScoped && i < 2 && prefetched.isNotEmpty) {
+              final reply = prefetched.first;
+              final replyChess = Chess.fromFEN(nextFen);
+              final replyFrom = reply.uci.substring(0, 2);
+              final replyTo = reply.uci.substring(2, 4);
+              final replyPromotion = reply.uci.length > 4 ? reply.uci[4] : null;
+              final replyMoved = replyChess.move({
+                'from': replyFrom,
+                'to': replyTo,
+                if (replyPromotion != null) 'promotion': replyPromotion,
+              });
+              if (replyMoved) {
+                final replyFen = normalizeFenForGamebase(replyChess.fen);
+                final replyMoves = <String>[...nextMoves, reply.uci];
+                final replyCacheKey = _buildCacheKey(
+                  fen: replyFen,
+                  exploredMoves: replyMoves,
+                  filters: filters,
+                );
+                if (_getFreshCacheEntry(replyCacheKey) == null &&
+                    !_inFlightAggregateRequests.containsKey(replyCacheKey)) {
+                  unawaited(
+                    _getOrStartAggregatesRequest(
+                      cacheKey: replyCacheKey,
+                      repository: repository,
+                      fen: replyFen,
+                      exploredMoves: replyMoves,
+                      filters: filters,
+                    ),
+                  );
+                }
+              }
+            }
           } catch (_) {
             // Ignore prefetch failures.
           }

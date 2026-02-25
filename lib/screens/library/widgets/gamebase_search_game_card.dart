@@ -59,10 +59,12 @@ class GamebaseSearchGameCard extends ConsumerWidget {
     final card = LibraryGameCard(
       game: game,
       eventName: game.tourSlug ?? game.tourId,
-      eco: game.eco,  // Only ECO code, never round info
+      eco: game.eco, // Only ECO code, never round info
       date: game.lastMoveTime,
       showRound: showRound,
-      onTap: onTap ?? () => _handleGamebaseTap(context, ref, game, allGames, gameIndex),
+      onTap:
+          onTap ??
+          () => _handleGamebaseTap(context, ref, game, allGames, gameIndex),
       onLongPress: onAdd,
     );
 
@@ -117,16 +119,19 @@ class GamebaseSearchGameCard extends ConsumerWidget {
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (ctx) => const Center(
-        child: CircularProgressIndicator(color: kWhiteColor),
-      ),
+      builder:
+          (ctx) => const Center(
+            child: CircularProgressIndicator(color: kWhiteColor),
+          ),
     );
 
     try {
       final gamebaseRepo = ref.read(gamebaseRepositoryProvider);
       final supabaseRepo = ref.read(gameRepositoryProvider);
 
-      debugPrint('[GamebaseSearchGameCard] Fetching PGN for game ID: ${game.gameId}');
+      debugPrint(
+        '[GamebaseSearchGameCard] Fetching PGN for game ID: ${game.gameId}',
+      );
 
       String? pgn;
 
@@ -152,7 +157,9 @@ class GamebaseSearchGameCard extends ConsumerWidget {
           if (gameWithPgn.pgn != null && gameWithPgn.pgn!.trim().isNotEmpty) {
             if (pgnHasMoves(gameWithPgn.pgn)) {
               pgn = gameWithPgn.pgn;
-              debugPrint('[GamebaseSearchGameCard] Using raw PGN from Gamebase');
+              debugPrint(
+                '[GamebaseSearchGameCard] Using raw PGN from Gamebase',
+              );
             }
           }
 
@@ -161,7 +168,9 @@ class GamebaseSearchGameCard extends ConsumerWidget {
             final builtPgn = buildPgnFromGamebaseData(gameWithPgn.data);
             if (builtPgn != null && pgnHasMoves(builtPgn)) {
               pgn = builtPgn;
-              debugPrint('[GamebaseSearchGameCard] Built PGN from Gamebase data');
+              debugPrint(
+                '[GamebaseSearchGameCard] Built PGN from Gamebase data',
+              );
             }
           }
         } else {
@@ -179,9 +188,10 @@ class GamebaseSearchGameCard extends ConsumerWidget {
           whiteName: game.whitePlayer.name,
           blackName: game.blackPlayer.name,
           result: game.gameStatus.displayText,
-          event: game.tourSlug?.trim().isNotEmpty == true
-              ? game.tourSlug
-              : game.tourId,
+          event:
+              game.tourSlug?.trim().isNotEmpty == true
+                  ? game.tourSlug
+                  : game.tourId,
           eco: game.roundSlug,
           date: game.lastMoveTime,
         );
@@ -197,9 +207,10 @@ class GamebaseSearchGameCard extends ConsumerWidget {
 
       // Fallback to header-only PGN on error
       final patched = List<GamesTourModel>.from(allGames);
-      final eventName = game.tourSlug?.trim().isNotEmpty == true
-          ? game.tourSlug
-          : game.tourId;
+      final eventName =
+          game.tourSlug?.trim().isNotEmpty == true
+              ? game.tourSlug
+              : game.tourId;
       final pgn = buildHeaderOnlyPgn(
         whiteName: game.whitePlayer.name,
         blackName: game.blackPlayer.name,
@@ -222,15 +233,17 @@ class GamebaseSearchGameCard extends ConsumerWidget {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => ChessBoardScreenNew(
-          games: games,
-          currentIndex: index,
-          hideEventInfo: hideEventInfo,
-          playerProfileDataSource: playerProfileDataSource,
-          showGamebaseButton: showGamebaseButton,
-          disableGamebaseOverlayByDefault: true,
-          showClock: playerProfileDataSource != PlayerProfileDataSource.twic,
-        ),
+        builder:
+            (_) => ChessBoardScreenNew(
+              games: games,
+              currentIndex: index,
+              hideEventInfo: hideEventInfo,
+              playerProfileDataSource: playerProfileDataSource,
+              showGamebaseButton: showGamebaseButton,
+              disableGamebaseOverlayByDefault: true,
+              showClock:
+                  playerProfileDataSource != PlayerProfileDataSource.twic,
+            ),
       ),
     );
   }

@@ -39,21 +39,22 @@ class _AddToFolderSheetShell extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final navigator = Navigator(
-      onGenerateInitialRoutes: (_, __) => [
-        SpringPagedSheetRoute(
-          scrollConfiguration: const SheetScrollConfiguration(),
-          dragConfiguration: ChessSheetConfigs.commentEditor,
-          initialOffset: const SheetOffset.proportionalToViewport(0.55),
-          snapGrid: SheetSnapGrid(
-            snaps: const [
-              SheetOffset.proportionalToViewport(0.55),
-              SheetOffset.proportionalToViewport(0.75),
-            ],
-            minFlingSpeed: 600.0,
-          ),
-          builder: (context) => _AddToFolderPage(game: game),
-        ),
-      ],
+      onGenerateInitialRoutes:
+          (_, __) => [
+            SpringPagedSheetRoute(
+              scrollConfiguration: const SheetScrollConfiguration(),
+              dragConfiguration: ChessSheetConfigs.commentEditor,
+              initialOffset: const SheetOffset.proportionalToViewport(0.55),
+              snapGrid: SheetSnapGrid(
+                snaps: const [
+                  SheetOffset.proportionalToViewport(0.55),
+                  SheetOffset.proportionalToViewport(0.75),
+                ],
+                minFlingSpeed: 600.0,
+              ),
+              builder: (context) => _AddToFolderPage(game: game),
+            ),
+          ],
     );
 
     return SheetKeyboardDismissible(
@@ -61,10 +62,7 @@ class _AddToFolderSheetShell extends ConsumerWidget {
         isContentScrollAware: true,
       ),
       child: PagedSheet(
-        decoration: ChessSheetDecoration.dark(
-          alpha: 0.97,
-          borderRadius: 28.sp,
-        ),
+        decoration: ChessSheetDecoration.dark(alpha: 0.97, borderRadius: 28.sp),
         shrinkChildToAvoidDynamicOverlap: true,
         navigator: navigator,
       ),
@@ -108,7 +106,9 @@ class _AddToFolderPageState extends ConsumerState<_AddToFolderPage> {
 
       // If still no moves, try Gamebase API with includePgn=true
       if (pgn == null || !pgnHasMoves(pgn)) {
-        final fullGame = await gamebaseRepository.getGameWithPgn(widget.game.gameId);
+        final fullGame = await gamebaseRepository.getGameWithPgn(
+          widget.game.gameId,
+        );
         if (fullGame != null) {
           // Try raw PGN first
           if (fullGame.pgn != null && pgnHasMoves(fullGame.pgn!)) {
@@ -136,12 +136,14 @@ class _AddToFolderPageState extends ConsumerState<_AddToFolderPage> {
     meta['Black'] = widget.game.blackPlayer.name;
 
     // Always set player federations/country codes for flag display
-    final whiteFed = widget.game.whitePlayer.countryCode.isNotEmpty
-        ? widget.game.whitePlayer.countryCode
-        : widget.game.whitePlayer.federation;
-    final blackFed = widget.game.blackPlayer.countryCode.isNotEmpty
-        ? widget.game.blackPlayer.countryCode
-        : widget.game.blackPlayer.federation;
+    final whiteFed =
+        widget.game.whitePlayer.countryCode.isNotEmpty
+            ? widget.game.whitePlayer.countryCode
+            : widget.game.whitePlayer.federation;
+    final blackFed =
+        widget.game.blackPlayer.countryCode.isNotEmpty
+            ? widget.game.blackPlayer.countryCode
+            : widget.game.blackPlayer.federation;
     if (whiteFed.isNotEmpty) meta['WhiteFed'] = whiteFed;
     if (blackFed.isNotEmpty) meta['BlackFed'] = blackFed;
 
@@ -189,8 +191,9 @@ class _AddToFolderPageState extends ConsumerState<_AddToFolderPage> {
     if (name == null || name.trim().isEmpty) return;
 
     try {
-      final created =
-          await ref.read(libraryRepositoryProvider).createFolder(name: name);
+      final created = await ref
+          .read(libraryRepositoryProvider)
+          .createFolder(name: name);
       ref.invalidate(libraryFoldersStreamProvider);
 
       if (!mounted) return;
@@ -321,163 +324,164 @@ class _AddToFolderPageState extends ConsumerState<_AddToFolderPage> {
       child: Padding(
         padding: EdgeInsets.symmetric(vertical: 20.h),
         child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Padding(
-            padding: EdgeInsets.symmetric(horizontal: 20.w),
-            child: Text(
-              'Add to Books',
-              style: AppTypography.textLgBold.copyWith(color: kWhiteColor),
-            ),
-          ),
-          SizedBox(height: 16.h),
-          Flexible(
-            child: IgnorePointer(
-              ignoring: _isSaving,
-              child: foldersAsync.when(
-                data: (folders) {
-                  if (folders.isEmpty) {
-                    return Padding(
-                      padding: EdgeInsets.all(20.sp),
-                      child: Text(
-                        'No books yet.',
-                        style: AppTypography.textSmRegular.copyWith(
-                          color: kWhiteColor.withValues(alpha: 0.5),
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                    );
-                  }
-                  return ListView.separated(
-                    shrinkWrap: true,
-                    padding: EdgeInsets.symmetric(horizontal: 16.w),
-                    itemCount: folders.length,
-                    separatorBuilder: (_, __) => SizedBox(height: 8.h),
-                    itemBuilder: (context, index) {
-                      final folder = folders[index];
-                      return _FolderSelectionTile(
-                        folder: folder,
-                        selected: _selectedFolderIds.contains(folder.id),
-                        onTap: () => _toggleFolder(folder),
-                      );
-                    },
-                  );
-                },
-                loading:
-                    () => const Center(
-                      child: CircularProgressIndicator(color: kWhiteColor),
-                    ),
-                error:
-                    (e, _) => Center(
-                      child: Text(
-                        'Error loading books',
-                        style: AppTypography.textSmRegular.copyWith(
-                          color: kRedColor,
-                        ),
-                      ),
-                    ),
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: 20.w),
+              child: Text(
+                'Add to Books',
+                style: AppTypography.textLgBold.copyWith(color: kWhiteColor),
               ),
             ),
-          ),
-          SizedBox(height: 16.h),
-          Padding(
-            padding: EdgeInsets.symmetric(horizontal: 16.w),
-            child: Row(
-              children: [
-                Expanded(
-                  child: GestureDetector(
-                    onTap: _isSaving ? null : _handleCreateNewBook,
-                    child: Opacity(
-                      opacity: _isSaving ? 0.6 : 1,
-                      child: Container(
-                        padding: EdgeInsets.symmetric(vertical: 14.h),
-                        decoration: BoxDecoration(
-                          color: kWhiteColor.withValues(alpha: 0.10),
-                          borderRadius: BorderRadius.circular(12.br),
-                          border: Border.all(
-                            color: kWhiteColor.withValues(alpha: 0.14),
+            SizedBox(height: 16.h),
+            Flexible(
+              child: IgnorePointer(
+                ignoring: _isSaving,
+                child: foldersAsync.when(
+                  data: (folders) {
+                    if (folders.isEmpty) {
+                      return Padding(
+                        padding: EdgeInsets.all(20.sp),
+                        child: Text(
+                          'No books yet.',
+                          style: AppTypography.textSmRegular.copyWith(
+                            color: kWhiteColor.withValues(alpha: 0.5),
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      );
+                    }
+                    return ListView.separated(
+                      shrinkWrap: true,
+                      padding: EdgeInsets.symmetric(horizontal: 16.w),
+                      itemCount: folders.length,
+                      separatorBuilder: (_, __) => SizedBox(height: 8.h),
+                      itemBuilder: (context, index) {
+                        final folder = folders[index];
+                        return _FolderSelectionTile(
+                          folder: folder,
+                          selected: _selectedFolderIds.contains(folder.id),
+                          onTap: () => _toggleFolder(folder),
+                        );
+                      },
+                    );
+                  },
+                  loading:
+                      () => const Center(
+                        child: CircularProgressIndicator(color: kWhiteColor),
+                      ),
+                  error:
+                      (e, _) => Center(
+                        child: Text(
+                          'Error loading books',
+                          style: AppTypography.textSmRegular.copyWith(
+                            color: kRedColor,
                           ),
                         ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.create_new_folder_outlined,
-                              color: kWhiteColor,
-                              size: 20.sp,
-                            ),
-                            SizedBox(width: 8.w),
-                            Text(
-                              'New Book',
-                              style: AppTypography.textSmMedium.copyWith(
-                                color: kWhiteColor,
-                              ),
-                            ),
-                          ],
-                        ),
                       ),
-                    ),
-                  ),
                 ),
-                SizedBox(width: 10.w),
-                Expanded(
-                  child: GestureDetector(
-                    onTap:
-                        _isSaving
-                            ? null
-                            : () => _handleAddToSelected(selectedFolders),
-                    child: Opacity(
-                      opacity: (_isSaving || selectedFolders.isEmpty) ? 0.6 : 1,
-                      child: Container(
-                        padding: EdgeInsets.symmetric(vertical: 14.h),
-                        decoration: BoxDecoration(
-                          color: kPrimaryColor,
-                          borderRadius: BorderRadius.circular(12.br),
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            if (_isSaving) ...[
-                              SizedBox(
-                                height: 18.sp,
-                                width: 18.sp,
-                                child: const CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: kWhiteColor,
-                                ),
-                              ),
-                              SizedBox(width: 8.w),
-                            ] else ...[
+              ),
+            ),
+            SizedBox(height: 16.h),
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16.w),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: _isSaving ? null : _handleCreateNewBook,
+                      child: Opacity(
+                        opacity: _isSaving ? 0.6 : 1,
+                        child: Container(
+                          padding: EdgeInsets.symmetric(vertical: 14.h),
+                          decoration: BoxDecoration(
+                            color: kWhiteColor.withValues(alpha: 0.10),
+                            borderRadius: BorderRadius.circular(12.br),
+                            border: Border.all(
+                              color: kWhiteColor.withValues(alpha: 0.14),
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
                               Icon(
-                                Icons.add_rounded,
+                                Icons.create_new_folder_outlined,
                                 color: kWhiteColor,
                                 size: 20.sp,
                               ),
                               SizedBox(width: 8.w),
-                            ],
-                            Text(
-                              selectedFolders.isEmpty
-                                  ? 'Add'
-                                  : 'Add (${selectedFolders.length})',
-                              style: AppTypography.textSmMedium.copyWith(
-                                color: kWhiteColor,
+                              Text(
+                                'New Book',
+                                style: AppTypography.textSmMedium.copyWith(
+                                  color: kWhiteColor,
+                                ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                       ),
                     ),
                   ),
-                ),
-              ],
+                  SizedBox(width: 10.w),
+                  Expanded(
+                    child: GestureDetector(
+                      onTap:
+                          _isSaving
+                              ? null
+                              : () => _handleAddToSelected(selectedFolders),
+                      child: Opacity(
+                        opacity:
+                            (_isSaving || selectedFolders.isEmpty) ? 0.6 : 1,
+                        child: Container(
+                          padding: EdgeInsets.symmetric(vertical: 14.h),
+                          decoration: BoxDecoration(
+                            color: kPrimaryColor,
+                            borderRadius: BorderRadius.circular(12.br),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              if (_isSaving) ...[
+                                SizedBox(
+                                  height: 18.sp,
+                                  width: 18.sp,
+                                  child: const CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: kWhiteColor,
+                                  ),
+                                ),
+                                SizedBox(width: 8.w),
+                              ] else ...[
+                                Icon(
+                                  Icons.add_rounded,
+                                  color: kWhiteColor,
+                                  size: 20.sp,
+                                ),
+                                SizedBox(width: 8.w),
+                              ],
+                              Text(
+                                selectedFolders.isEmpty
+                                    ? 'Add'
+                                    : 'Add (${selectedFolders.length})',
+                                style: AppTypography.textSmMedium.copyWith(
+                                  color: kWhiteColor,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
-          SizedBox(height: MediaQuery.of(context).viewPadding.bottom + 10.h),
-        ],
+            SizedBox(height: MediaQuery.of(context).viewPadding.bottom + 10.h),
+          ],
+        ),
       ),
-    ),
-  );
+    );
   }
 }
 

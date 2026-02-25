@@ -25,9 +25,13 @@ void _scrollToRoundFromWidget(WidgetRef ref, String roundId) {
   final controller = scrollNotifier.scrollController;
 
   // Calculate the index using the app bar provider
-  final itemIndex = ref.read(gamesAppBarProvider.notifier).calculateRoundIndex(roundId);
+  final itemIndex = ref
+      .read(gamesAppBarProvider.notifier)
+      .calculateRoundIndex(roundId);
 
-  print('🎯 Widget scroll - scopeId: $scopeId, roundId: $roundId, index: $itemIndex, attached: ${controller.isAttached}');
+  print(
+    '🎯 Widget scroll - scopeId: $scopeId, roundId: $roundId, index: $itemIndex, attached: ${controller.isAttached}',
+  );
 
   if (itemIndex < 0) {
     print('❌ Widget scroll - round not found in visible rounds');
@@ -64,9 +68,17 @@ void _attemptScroll(
     }
     scrollNotifier.endProgrammaticScroll();
   } else if (attempt < maxAttempts) {
-    print('⏳ Widget scroll - controller not attached, retrying (attempt: ${attempt + 1})');
+    print(
+      '⏳ Widget scroll - controller not attached, retrying (attempt: ${attempt + 1})',
+    );
     Future.delayed(retryDelay, () {
-      _attemptScroll(controller, scrollNotifier, itemIndex, roundId, attempt + 1);
+      _attemptScroll(
+        controller,
+        scrollNotifier,
+        itemIndex,
+        roundId,
+        attempt + 1,
+      );
     });
   } else {
     print('❌ Widget scroll - gave up after $maxAttempts attempts');
@@ -78,10 +90,7 @@ void _attemptScroll(
 /// Single vertical ListView with expandable categories containing nested rounds.
 /// Tapping a category or round immediately switches to it (no Save button).
 class CategoryDropdown extends ConsumerWidget {
-  const CategoryDropdown({
-    super.key,
-    this.constrainWidth = true,
-  });
+  const CategoryDropdown({super.key, this.constrainWidth = true});
 
   final bool constrainWidth;
 
@@ -107,12 +116,13 @@ class CategoryDropdown extends ConsumerWidget {
           // Get rounds data
           final rounds = roundsAsync.valueOrNull?.gamesAppBarModels ?? [];
           final selectedRoundId = roundsAsync.valueOrNull?.selectedId;
-          final selectedRound = rounds.isNotEmpty && selectedRoundId != null
-              ? rounds.firstWhere(
-                  (r) => r.id == selectedRoundId,
-                  orElse: () => rounds.first,
-                )
-              : null;
+          final selectedRound =
+              rounds.isNotEmpty && selectedRoundId != null
+                  ? rounds.firstWhere(
+                    (r) => r.id == selectedRoundId,
+                    orElse: () => rounds.first,
+                  )
+                  : null;
 
           return _CategoryDropdownContent(
             categories: tourData.tours,
@@ -133,21 +143,25 @@ class CategoryDropdown extends ConsumerWidget {
             },
           );
         },
-        error: (e, _) => Center(
-          child: Text(
-            'Error',
-            style: AppTypography.textXsRegular.copyWith(color: kWhiteColor70),
-          ),
-        ),
-        loading: () => SkeletonWidget(
-          child: _StadiumChipButton(
-            label: 'Loading...',
-            isOpen: false,
-            onTap: () {},
-            showChevron: false,
-            constrainWidth: constrainWidth,
-          ),
-        ),
+        error:
+            (e, _) => Center(
+              child: Text(
+                'Error',
+                style: AppTypography.textXsRegular.copyWith(
+                  color: kWhiteColor70,
+                ),
+              ),
+            ),
+        loading:
+            () => SkeletonWidget(
+              child: _StadiumChipButton(
+                label: 'Loading...',
+                isOpen: false,
+                onTap: () {},
+                showChevron: false,
+                constrainWidth: constrainWidth,
+              ),
+            ),
       ),
     );
   }
@@ -276,56 +290,58 @@ class _CategoryDropdownContent extends HookConsumerWidget {
       final size = renderBox.size;
       final offset = renderBox.localToGlobal(Offset.zero);
       final screenSize = MediaQuery.of(context).size;
-      final availableHeight = screenSize.height - offset.dy - size.height - 32.sp;
+      final availableHeight =
+          screenSize.height - offset.dy - size.height - 32.sp;
 
       overlayEntry = OverlayEntry(
-        builder: (context) => _DropdownOverlay(
-          layerLink: layerLink,
-          triggerSize: size,
-          triggerOffset: offset,
-          screenWidth: screenSize.width,
-          availableHeight: availableHeight,
-          animation: animation,
-          categories: categories,
-          openedAt: openedAt,
-          onCategorySelect: (category) {
-            HapticFeedbackService.selection();
-            onCategoryChanged(category);
-            // Close immediately after selection
-            if (ResponsiveHelper.isTablet) {
-              TabletPopupState.markClosed();
-            }
-            animationController.reverse().then((_) {
-              isOpen.value = false;
-            });
-          },
-          onCategoryChange: (category) {
-            // Select category WITHOUT closing dropdown (for expand arrow)
-            HapticFeedbackService.selection();
-            onCategoryChanged(category);
-            // Don't close - let the dropdown stay open to show loaded rounds
-          },
-          onRoundSelect: (round) {
-            print('🟢 onRoundSelect called: ${round.name} (${round.id})');
-            HapticFeedbackService.selection();
-            onRoundChanged(round);
-            // Close immediately after selection
-            if (ResponsiveHelper.isTablet) {
-              TabletPopupState.markClosed();
-            }
-            animationController.reverse().then((_) {
-              isOpen.value = false;
-            });
-          },
-          onDismiss: () {
-            if (ResponsiveHelper.isTablet) {
-              TabletPopupState.markClosed();
-            }
-            animationController.reverse().then((_) {
-              isOpen.value = false;
-            });
-          },
-        ),
+        builder:
+            (context) => _DropdownOverlay(
+              layerLink: layerLink,
+              triggerSize: size,
+              triggerOffset: offset,
+              screenWidth: screenSize.width,
+              availableHeight: availableHeight,
+              animation: animation,
+              categories: categories,
+              openedAt: openedAt,
+              onCategorySelect: (category) {
+                HapticFeedbackService.selection();
+                onCategoryChanged(category);
+                // Close immediately after selection
+                if (ResponsiveHelper.isTablet) {
+                  TabletPopupState.markClosed();
+                }
+                animationController.reverse().then((_) {
+                  isOpen.value = false;
+                });
+              },
+              onCategoryChange: (category) {
+                // Select category WITHOUT closing dropdown (for expand arrow)
+                HapticFeedbackService.selection();
+                onCategoryChanged(category);
+                // Don't close - let the dropdown stay open to show loaded rounds
+              },
+              onRoundSelect: (round) {
+                print('🟢 onRoundSelect called: ${round.name} (${round.id})');
+                HapticFeedbackService.selection();
+                onRoundChanged(round);
+                // Close immediately after selection
+                if (ResponsiveHelper.isTablet) {
+                  TabletPopupState.markClosed();
+                }
+                animationController.reverse().then((_) {
+                  isOpen.value = false;
+                });
+              },
+              onDismiss: () {
+                if (ResponsiveHelper.isTablet) {
+                  TabletPopupState.markClosed();
+                }
+                animationController.reverse().then((_) {
+                  isOpen.value = false;
+                });
+              },
+            ),
       );
 
       overlay.insert(overlayEntry!);
@@ -357,15 +373,19 @@ class _CategoryDropdownContent extends HookConsumerWidget {
     }
 
     // Look for common category patterns like "Boards X-Y" or "Boards X+"
-    final boardsMatch = RegExp(r'(Boards?\s+\d+[\-\+]?\d*\+?)$', caseSensitive: false)
-        .firstMatch(fullName);
+    final boardsMatch = RegExp(
+      r'(Boards?\s+\d+[\-\+]?\d*\+?)$',
+      caseSensitive: false,
+    ).firstMatch(fullName);
     if (boardsMatch != null) {
       return boardsMatch.group(0)!.trim();
     }
 
     // Look for patterns like "Group A", "Section B", "Division 1"
-    final groupMatch = RegExp(r'((?:Group|Section|Division|Category)\s+\w+)$', caseSensitive: false)
-        .firstMatch(fullName);
+    final groupMatch = RegExp(
+      r'((?:Group|Section|Division|Category)\s+\w+)$',
+      caseSensitive: false,
+    ).firstMatch(fullName);
     if (groupMatch != null) {
       return groupMatch.group(0)!.trim();
     }
@@ -414,11 +434,14 @@ class _StadiumChipButton extends HookWidget {
       animation: shimmerController,
       builder: (context, child) {
         return CustomPaint(
-          painter: isOpen ? null : _FluidShimmerPainter(
-            progress: shimmerValue,
-            shimmerColor: kPrimaryColor.withValues(alpha: 0.4),
-            borderRadius: 100.br,
-          ),
+          painter:
+              isOpen
+                  ? null
+                  : _FluidShimmerPainter(
+                    progress: shimmerValue,
+                    shimmerColor: kPrimaryColor.withValues(alpha: 0.4),
+                    borderRadius: 100.br,
+                  ),
           child: child,
         );
       },
@@ -428,13 +451,15 @@ class _StadiumChipButton extends HookWidget {
         padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 8.sp),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(100.br),
-          color: isOpen
-              ? kPrimaryColor.withValues(alpha: 0.15)
-              : kWhiteColor.withValues(alpha: 0.06),
+          color:
+              isOpen
+                  ? kPrimaryColor.withValues(alpha: 0.15)
+                  : kWhiteColor.withValues(alpha: 0.06),
           border: Border.all(
-            color: isOpen
-                ? kPrimaryColor.withValues(alpha: 0.4)
-                : kWhiteColor.withValues(alpha: 0.12),
+            color:
+                isOpen
+                    ? kPrimaryColor.withValues(alpha: 0.4)
+                    : kWhiteColor.withValues(alpha: 0.12),
             width: 1.0,
           ),
         ),
@@ -463,9 +488,10 @@ class _StadiumChipButton extends HookWidget {
                 curve: Curves.easeOutCubic,
                 child: Icon(
                   Icons.keyboard_arrow_down_rounded,
-                  color: isOpen
-                      ? kPrimaryColor
-                      : kWhiteColor.withValues(alpha: 0.7),
+                  color:
+                      isOpen
+                          ? kPrimaryColor
+                          : kWhiteColor.withValues(alpha: 0.7),
                   size: 18.ic,
                 ),
               ),
@@ -480,12 +506,13 @@ class _StadiumChipButton extends HookWidget {
 
     return GestureDetector(
       onTap: onTap,
-      child: constrainWidth
-          ? ConstrainedBox(
-              constraints: BoxConstraints(maxWidth: chipMaxWidth),
-              child: button,
-            )
-          : button,
+      child:
+          constrainWidth
+              ? ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: chipMaxWidth),
+                child: button,
+              )
+              : button,
     );
   }
 }
@@ -520,11 +547,12 @@ class _FluidShimmerPainter extends CustomPainter {
       stops: const [0.0, 0.5, 1.0],
     );
 
-    final paint = Paint()
-      ..shader = gradient.createShader(rect)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2.0
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2.0);
+    final paint =
+        Paint()
+          ..shader = gradient.createShader(rect)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2.0
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2.0);
 
     canvas.drawRRect(rrect, paint);
   }
@@ -708,11 +736,7 @@ class _MarqueeText extends HookWidget {
             physics: const NeverScrollableScrollPhysics(),
             child: Padding(
               padding: EdgeInsets.only(left: 2.sp, right: 6.sp),
-              child: Text(
-                text,
-                style: style,
-                maxLines: 1,
-              ),
+              child: Text(text, style: style, maxLines: 1),
             ),
           ),
         );
@@ -795,21 +819,23 @@ class _DropdownOverlay extends ConsumerWidget {
     final roundsAsync = ref.watch(gamesAppBarProvider);
 
     final tourData = tourDetailAsync.valueOrNull;
-    final selectedCategory = tourData != null
-        ? (categories.firstWhere(
-            (t) => t.tour.id == tourData.aboutTourModel.id,
-            orElse: () => categories.first,
-          ))
-        : categories.first;
+    final selectedCategory =
+        tourData != null
+            ? (categories.firstWhere(
+              (t) => t.tour.id == tourData.aboutTourModel.id,
+              orElse: () => categories.first,
+            ))
+            : categories.first;
 
     final rounds = roundsAsync.valueOrNull?.gamesAppBarModels ?? [];
     final selectedRoundId = roundsAsync.valueOrNull?.selectedId;
-    final selectedRound = rounds.isNotEmpty && selectedRoundId != null
-        ? rounds.firstWhere(
-            (r) => r.id == selectedRoundId,
-            orElse: () => rounds.first,
-          )
-        : null;
+    final selectedRound =
+        rounds.isNotEmpty && selectedRoundId != null
+            ? rounds.firstWhere(
+              (r) => r.id == selectedRoundId,
+              orElse: () => rounds.first,
+            )
+            : null;
 
     // Wider dropdown for better readability - use available horizontal space
     final minWidth = ResponsiveHelper.isTablet ? 400.0 : 300.w;
@@ -822,7 +848,9 @@ class _DropdownOverlay extends ConsumerWidget {
       onTap: () {
         // Tablet phantom tap protection - ignore taps that come too soon after opening
         if (!_canDismiss()) {
-          debugPrint('🛡️ CATEGORY DROPDOWN: dismiss blocked - opened too recently');
+          debugPrint(
+            '🛡️ CATEGORY DROPDOWN: dismiss blocked - opened too recently',
+          );
           return;
         }
         onDismiss();
@@ -842,10 +870,7 @@ class _DropdownOverlay extends ConsumerWidget {
                   return Transform.scale(
                     scale: 0.92 + (progress * 0.08),
                     alignment: Alignment.topCenter,
-                    child: Opacity(
-                      opacity: progress,
-                      child: child,
-                    ),
+                    child: Opacity(opacity: progress, child: child),
                   );
                 },
                 child: GestureDetector(
@@ -897,7 +922,8 @@ class _DropdownContent extends StatefulWidget {
   final List<GamesAppBarModel> rounds;
   final GamesAppBarModel? selectedRound;
   final ValueChanged<TourModel> onCategorySelect;
-  final ValueChanged<TourModel> onCategoryChange; // Select without closing dropdown
+  final ValueChanged<TourModel>
+  onCategoryChange; // Select without closing dropdown
   final ValueChanged<GamesAppBarModel> onRoundSelect;
 
   const _DropdownContent({
@@ -945,14 +971,16 @@ class _DropdownContentState extends State<_DropdownContent> {
   void didUpdateWidget(covariant _DropdownContent oldWidget) {
     super.didUpdateWidget(oldWidget);
 
-    final categoriesChanged = !const ListEquality().equals(
-      oldWidget.categories.map((c) => c.tour.id).toList(),
-      widget.categories.map((c) => c.tour.id).toList(),
-    );
-    final roundsChanged = !const ListEquality().equals(
-      oldWidget.rounds.map((r) => r.id).toList(),
-      widget.rounds.map((r) => r.id).toList(),
-    );
+    final categoriesChanged =
+        !const ListEquality().equals(
+          oldWidget.categories.map((c) => c.tour.id).toList(),
+          widget.categories.map((c) => c.tour.id).toList(),
+        );
+    final roundsChanged =
+        !const ListEquality().equals(
+          oldWidget.rounds.map((r) => r.id).toList(),
+          widget.rounds.map((r) => r.id).toList(),
+        );
     final selectionChanged =
         oldWidget.selectedRound?.id != widget.selectedRound?.id ||
         oldWidget.selectedCategory.tour.id != widget.selectedCategory.tour.id;
@@ -989,35 +1017,34 @@ class _DropdownContentState extends State<_DropdownContent> {
 
     if (hasMultipleCategories) {
       for (final category in widget.categories) {
-        _flatItems.add(_DropdownItem(
-          type: _ItemType.category,
-          category: category,
-        ));
+        _flatItems.add(
+          _DropdownItem(type: _ItemType.category, category: category),
+        );
 
         // Add rounds if this category is expanded AND is the currently selected one
         // (rounds are loaded based on the selected tour)
         // When user expands a non-selected category, it triggers selection which
         // causes widget to rebuild with new selectedCategory and rounds
-        final isSelectedCategory = category.tour.id == widget.selectedCategory.tour.id;
+        final isSelectedCategory =
+            category.tour.id == widget.selectedCategory.tour.id;
         final isExpanded = _expandedCategoryId == category.tour.id;
 
         if (isExpanded && isSelectedCategory) {
           for (final round in widget.rounds) {
-            _flatItems.add(_DropdownItem(
-              type: _ItemType.round,
-              round: round,
-              parentCategoryId: category.tour.id,
-            ));
+            _flatItems.add(
+              _DropdownItem(
+                type: _ItemType.round,
+                round: round,
+                parentCategoryId: category.tour.id,
+              ),
+            );
           }
         }
       }
     } else {
       // Only one category - show rounds directly
       for (final round in widget.rounds) {
-        _flatItems.add(_DropdownItem(
-          type: _ItemType.round,
-          round: round,
-        ));
+        _flatItems.add(_DropdownItem(type: _ItemType.round, round: round));
       }
     }
   }
@@ -1034,7 +1061,8 @@ class _DropdownContentState extends State<_DropdownContent> {
       if (isSelectedCategoryExpanded && widget.selectedRound != null) {
         // Try to find the selected round first
         final roundIndex = _flatItems.indexWhere(
-          (item) => item.type == _ItemType.round &&
+          (item) =>
+              item.type == _ItemType.round &&
               item.round?.id == widget.selectedRound?.id,
         );
         if (roundIndex >= 0) {
@@ -1046,13 +1074,15 @@ class _DropdownContentState extends State<_DropdownContent> {
 
       // Fall back to selecting the category
       _selectedFlatIndex = _flatItems.indexWhere(
-        (item) => item.type == _ItemType.category &&
+        (item) =>
+            item.type == _ItemType.category &&
             item.category?.tour.id == widget.selectedCategory.tour.id,
       );
     } else {
       // Find the selected round
       _selectedFlatIndex = _flatItems.indexWhere(
-        (item) => item.type == _ItemType.round &&
+        (item) =>
+            item.type == _ItemType.round &&
             item.round?.id == widget.selectedRound?.id,
       );
     }
@@ -1096,9 +1126,10 @@ class _DropdownContentState extends State<_DropdownContent> {
   void _updateTargetY() {
     double y = 0;
     for (int i = 0; i < _selectedFlatIndex && i < _flatItems.length; i++) {
-      y += _flatItems[i].type == _ItemType.category
-          ? _categoryItemHeight
-          : _roundItemHeight;
+      y +=
+          _flatItems[i].type == _ItemType.category
+              ? _categoryItemHeight
+              : _roundItemHeight;
     }
     setState(() {
       _targetY = y;
@@ -1111,11 +1142,12 @@ class _DropdownContentState extends State<_DropdownContent> {
     final viewportHeight = _scrollController.position.viewportDimension;
     final maxScroll = _scrollController.position.maxScrollExtent;
 
-    final selectedHeight = _flatItems.isNotEmpty && _selectedFlatIndex < _flatItems.length
-        ? (_flatItems[_selectedFlatIndex].type == _ItemType.category
-            ? _categoryItemHeight
-            : _roundItemHeight)
-        : _categoryItemHeight;
+    final selectedHeight =
+        _flatItems.isNotEmpty && _selectedFlatIndex < _flatItems.length
+            ? (_flatItems[_selectedFlatIndex].type == _ItemType.category
+                ? _categoryItemHeight
+                : _roundItemHeight)
+            : _categoryItemHeight;
 
     final itemCenter = _targetY + (selectedHeight / 2);
     final targetScroll = itemCenter - (viewportHeight / 2);
@@ -1198,9 +1230,11 @@ class _DropdownContentState extends State<_DropdownContent> {
     if (box == null) return false;
 
     final localPos = box.globalToLocal(globalPosition);
-    final scrollOffset = _scrollController.hasClients ? _scrollController.offset : 0.0;
+    final scrollOffset =
+        _scrollController.hasClients ? _scrollController.offset : 0.0;
 
-    final selectorVisualTop = _targetY - scrollOffset + 6.sp; // Account for padding
+    final selectorVisualTop =
+        _targetY - scrollOffset + 6.sp; // Account for padding
     final selectorHeight = _getItemHeight(_selectedFlatIndex);
     final selectorVisualBottom = selectorVisualTop + selectorHeight;
 
@@ -1294,7 +1328,8 @@ class _DropdownContentState extends State<_DropdownContent> {
     if (box == null) return;
 
     final localPos = box.globalToLocal(globalPosition);
-    final scrollOffset = _scrollController.hasClients ? _scrollController.offset : 0.0;
+    final scrollOffset =
+        _scrollController.hasClients ? _scrollController.offset : 0.0;
 
     final adjustedY = localPos.dy + scrollOffset - 6.sp; // Account for padding
     final newIndex = _getIndexFromY(adjustedY).clamp(0, _flatItems.length - 1);
@@ -1322,14 +1357,20 @@ class _DropdownContentState extends State<_DropdownContent> {
     if (localPos.dy < edgeThreshold && _scrollController.offset > 0) {
       final intensity = 1.0 - (localPos.dy / edgeThreshold);
       final scrollAmount = scrollSpeed * intensity;
-      final newScroll = (_scrollController.offset - scrollAmount).clamp(0.0, maxScroll);
+      final newScroll = (_scrollController.offset - scrollAmount).clamp(
+        0.0,
+        maxScroll,
+      );
       _scrollController.jumpTo(newScroll);
       _updateIndexFromPosition(globalPosition);
     } else if (localPos.dy > listHeight - edgeThreshold &&
         _scrollController.offset < maxScroll) {
       final intensity = 1.0 - ((listHeight - localPos.dy) / edgeThreshold);
       final scrollAmount = scrollSpeed * intensity;
-      final newScroll = (_scrollController.offset + scrollAmount).clamp(0.0, maxScroll);
+      final newScroll = (_scrollController.offset + scrollAmount).clamp(
+        0.0,
+        maxScroll,
+      );
       _scrollController.jumpTo(newScroll);
       _updateIndexFromPosition(globalPosition);
     }
@@ -1362,10 +1403,13 @@ class _DropdownContentState extends State<_DropdownContent> {
         children: [
           // Scrollable list - shrinkWrap to fit content
           ScrollConfiguration(
-            behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
+            behavior: ScrollConfiguration.of(
+              context,
+            ).copyWith(scrollbars: false),
             child: ListView.builder(
               controller: _scrollController,
-              physics: _isDragging ? const NeverScrollableScrollPhysics() : null,
+              physics:
+                  _isDragging ? const NeverScrollableScrollPhysics() : null,
               shrinkWrap: true,
               padding: EdgeInsets.symmetric(vertical: 6.sp),
               itemCount: _flatItems.length,
@@ -1420,7 +1464,8 @@ class _DropdownContentState extends State<_DropdownContent> {
                         // Select the parent category ONLY if it's different from current
                         // This prevents unnecessary tour reload which loses round selection
                         if (parentCategoryId != null &&
-                            parentCategoryId != widget.selectedCategory.tour.id) {
+                            parentCategoryId !=
+                                widget.selectedCategory.tour.id) {
                           final parentCategory = widget.categories.firstWhere(
                             (c) => c.tour.id == parentCategoryId,
                             orElse: () => widget.selectedCategory,
@@ -1447,17 +1492,21 @@ class _DropdownContentState extends State<_DropdownContent> {
                   listenable: _scrollController,
                   builder: (context, _) {
                     final scrollOffset =
-                        _scrollController.hasClients ? _scrollController.offset : 0.0;
+                        _scrollController.hasClients
+                            ? _scrollController.offset
+                            : 0.0;
                     final selectorHeight = _getItemHeight(_selectedFlatIndex);
                     // Keep indicator centered within the row regardless of item height
                     final indicatorInset = 2.sp;
-                    final indicatorHeight =
-                        (selectorHeight - indicatorInset * 2).clamp(0.0, double.infinity);
+                    final indicatorHeight = (selectorHeight -
+                            indicatorInset * 2)
+                        .clamp(0.0, double.infinity);
 
                     return SingleMotionBuilder(
-                      motion: _isDragging
-                          ? CupertinoMotion.snappy()
-                          : CupertinoMotion.bouncy(),
+                      motion:
+                          _isDragging
+                              ? CupertinoMotion.snappy()
+                              : CupertinoMotion.bouncy(),
                       value: _targetY - scrollOffset + 6.sp + indicatorInset,
                       // Account for list padding and center the indicator vertically
                       builder: (context, animatedY, _) {
@@ -1542,10 +1591,7 @@ class _CategoryRow extends StatelessWidget {
         final clampedValue = itemAnimation.value.clamp(0.0, 1.0);
         return Transform.translate(
           offset: Offset(0, 12 * (1 - clampedValue)),
-          child: Opacity(
-            opacity: clampedValue,
-            child: child,
-          ),
+          child: Opacity(opacity: clampedValue, child: child),
         );
       },
       child: Container(
@@ -1571,7 +1617,8 @@ class _CategoryRow extends StatelessWidget {
                         text: _extractName(category.tour.name),
                         style: AppTypography.textSmMedium.copyWith(
                           color: isSelected ? kPrimaryColor : kWhiteColor,
-                          fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                          fontWeight:
+                              isSelected ? FontWeight.w600 : FontWeight.w500,
                         ),
                         continuous: true, // Continuous in open dropdown
                       ),
@@ -1596,9 +1643,10 @@ class _CategoryRow extends StatelessWidget {
                     child: Icon(
                       Icons.keyboard_arrow_down_rounded,
                       size: 20.ic,
-                      color: isExpanded
-                          ? kWhiteColor
-                          : kWhiteColor.withValues(alpha: 0.5),
+                      color:
+                          isExpanded
+                              ? kWhiteColor
+                              : kWhiteColor.withValues(alpha: 0.5),
                     ),
                   ),
                 ),
@@ -1620,15 +1668,19 @@ class _CategoryRow extends StatelessWidget {
     }
 
     // Look for common category patterns like "Boards X-Y" or "Boards X+"
-    final boardsMatch = RegExp(r'(Boards?\s+\d+[\-\+]?\d*\+?)$', caseSensitive: false)
-        .firstMatch(fullName);
+    final boardsMatch = RegExp(
+      r'(Boards?\s+\d+[\-\+]?\d*\+?)$',
+      caseSensitive: false,
+    ).firstMatch(fullName);
     if (boardsMatch != null) {
       return boardsMatch.group(0)!.trim();
     }
 
     // Look for patterns like "Group A", "Section B", "Division 1"
-    final groupMatch = RegExp(r'((?:Group|Section|Division|Category)\s+\w+)$', caseSensitive: false)
-        .firstMatch(fullName);
+    final groupMatch = RegExp(
+      r'((?:Group|Section|Division|Category)\s+\w+)$',
+      caseSensitive: false,
+    ).firstMatch(fullName);
     if (groupMatch != null) {
       return groupMatch.group(0)!.trim();
     }
@@ -1674,10 +1726,7 @@ class _RoundRow extends StatelessWidget {
         final clampedValue = itemAnimation.value.clamp(0.0, 1.0);
         return Transform.translate(
           offset: Offset(0, 8 * (1 - clampedValue)),
-          child: Opacity(
-            opacity: clampedValue,
-            child: child,
-          ),
+          child: Opacity(opacity: clampedValue, child: child),
         );
       },
       child: GestureDetector(
@@ -1707,10 +1756,12 @@ class _RoundRow extends StatelessWidget {
                     _MarqueeText(
                       text: round.name,
                       style: AppTypography.textSmRegular.copyWith(
-                        color: isSelected
-                            ? kPrimaryColor
-                            : kWhiteColor.withValues(alpha: 0.85),
-                        fontWeight: isSelected ? FontWeight.w500 : FontWeight.w400,
+                        color:
+                            isSelected
+                                ? kPrimaryColor
+                                : kWhiteColor.withValues(alpha: 0.85),
+                        fontWeight:
+                            isSelected ? FontWeight.w500 : FontWeight.w400,
                       ),
                       continuous: true, // Continuous in open dropdown
                     ),
@@ -1718,9 +1769,10 @@ class _RoundRow extends StatelessWidget {
                       Text(
                         round.formattedRoundDateTime,
                         style: AppTypography.textXxsRegular.copyWith(
-                          color: isSelected
-                              ? kPrimaryColor.withValues(alpha: 0.7)
-                              : kWhiteColor.withValues(alpha: 0.5),
+                          color:
+                              isSelected
+                                  ? kPrimaryColor.withValues(alpha: 0.7)
+                                  : kWhiteColor.withValues(alpha: 0.5),
                           fontSize: 10.sp,
                         ),
                         maxLines: 1,
@@ -1774,10 +1826,9 @@ class _DropletSelectionPainter extends CustomPainter {
     final r = baseRadius.clamp(0.0, math.min(w, h) / 2);
 
     if (bulge.abs() < 0.5) {
-      path.addRRect(RRect.fromRectAndRadius(
-        Rect.fromLTWH(x, y, w, h),
-        Radius.circular(r),
-      ));
+      path.addRRect(
+        RRect.fromRectAndRadius(Rect.fromLTWH(x, y, w, h), Radius.circular(r)),
+      );
     } else {
       final topBulge = bulge * math.sin(phaseOffset) * 0.7;
       final rightBulge = bulge * math.sin(phaseOffset + math.pi * 0.5) * 0.5;
@@ -1786,45 +1837,79 @@ class _DropletSelectionPainter extends CustomPainter {
       final cornerExpand = bulge * 0.4 * math.cos(phaseOffset * 0.8);
 
       path.moveTo(x + r + cornerExpand, y);
-      path.quadraticBezierTo(x + w / 2, y - topBulge, x + w - r - cornerExpand, y);
+      path.quadraticBezierTo(
+        x + w / 2,
+        y - topBulge,
+        x + w - r - cornerExpand,
+        y,
+      );
 
       final trCornerOffset = cornerExpand * 0.7;
       path.quadraticBezierTo(
-          x + w + trCornerOffset, y - trCornerOffset, x + w, y + r + cornerExpand);
+        x + w + trCornerOffset,
+        y - trCornerOffset,
+        x + w,
+        y + r + cornerExpand,
+      );
 
-      path.quadraticBezierTo(x + w + rightBulge, y + h / 2, x + w, y + h - r - cornerExpand);
+      path.quadraticBezierTo(
+        x + w + rightBulge,
+        y + h / 2,
+        x + w,
+        y + h - r - cornerExpand,
+      );
 
       final brCornerOffset = cornerExpand * 0.7;
       path.quadraticBezierTo(
-          x + w + brCornerOffset, y + h + brCornerOffset, x + w - r - cornerExpand, y + h);
+        x + w + brCornerOffset,
+        y + h + brCornerOffset,
+        x + w - r - cornerExpand,
+        y + h,
+      );
 
-      path.quadraticBezierTo(x + w / 2, y + h + bottomBulge, x + r + cornerExpand, y + h);
+      path.quadraticBezierTo(
+        x + w / 2,
+        y + h + bottomBulge,
+        x + r + cornerExpand,
+        y + h,
+      );
 
       final blCornerOffset = cornerExpand * 0.7;
       path.quadraticBezierTo(
-          x - blCornerOffset, y + h + blCornerOffset, x, y + h - r - cornerExpand);
+        x - blCornerOffset,
+        y + h + blCornerOffset,
+        x,
+        y + h - r - cornerExpand,
+      );
 
       path.quadraticBezierTo(x - leftBulge, y + h / 2, x, y + r + cornerExpand);
 
       final tlCornerOffset = cornerExpand * 0.7;
-      path.quadraticBezierTo(x - tlCornerOffset, y - tlCornerOffset, x + r + cornerExpand, y);
+      path.quadraticBezierTo(
+        x - tlCornerOffset,
+        y - tlCornerOffset,
+        x + r + cornerExpand,
+        y,
+      );
 
       path.close();
     }
 
     // Fill
-    final fillPaint = Paint()
-      ..color = baseColor.withValues(alpha: isDragging ? 0.18 : 0.10)
-      ..style = PaintingStyle.fill;
+    final fillPaint =
+        Paint()
+          ..color = baseColor.withValues(alpha: isDragging ? 0.18 : 0.10)
+          ..style = PaintingStyle.fill;
     canvas.drawPath(path, fillPaint);
 
     // Border
-    final borderPaint = Paint()
-      ..color = baseColor.withValues(alpha: isDragging ? 0.45 : 0.30)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = isDragging ? 1.5 : 1.0
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round;
+    final borderPaint =
+        Paint()
+          ..color = baseColor.withValues(alpha: isDragging ? 0.45 : 0.30)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = isDragging ? 1.5 : 1.0
+          ..strokeCap = StrokeCap.round
+          ..strokeJoin = StrokeJoin.round;
     canvas.drawPath(path, borderPaint);
   }
 

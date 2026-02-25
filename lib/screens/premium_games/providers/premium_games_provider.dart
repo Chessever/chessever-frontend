@@ -21,12 +21,7 @@ enum PremiumGamesType {
 }
 
 /// Date range filter for premium games.
-enum PremiumGamesDateRange {
-  last7Days,
-  last30Days,
-  last90Days,
-  allTime,
-}
+enum PremiumGamesDateRange { last7Days, last30Days, last90Days, allTime }
 
 extension PremiumGamesDateRangeExtension on PremiumGamesDateRange {
   String get displayText {
@@ -58,12 +53,7 @@ extension PremiumGamesDateRangeExtension on PremiumGamesDateRange {
 }
 
 /// Result filter for premium games.
-enum PremiumGamesResult {
-  all,
-  whiteWins,
-  blackWins,
-  draw,
-}
+enum PremiumGamesResult { all, whiteWins, blackWins, draw }
 
 extension PremiumGamesResultExtension on PremiumGamesResult {
   String get displayText {
@@ -175,23 +165,24 @@ class PremiumGamesState {
 /// Provider for premium games filter state (persists across rebuilds).
 final premiumGamesFilterProvider =
     StateProvider.family<PremiumGamesFilter, PremiumGamesType>(
-  (ref, type) => PremiumGamesFilter.defaultFilter,
-);
+      (ref, type) => PremiumGamesFilter.defaultFilter,
+    );
 
 /// Provider for premium games based on type.
-final premiumGamesProvider = StateNotifierProvider.autoDispose
-    .family<PremiumGamesNotifier, AsyncValue<PremiumGamesState>, PremiumGamesType>(
-  (ref, type) {
-    ref.keepAlive();
-    return PremiumGamesNotifier(ref, type);
-  },
-);
+final premiumGamesProvider = StateNotifierProvider.autoDispose.family<
+  PremiumGamesNotifier,
+  AsyncValue<PremiumGamesState>,
+  PremiumGamesType
+>((ref, type) {
+  ref.keepAlive();
+  return PremiumGamesNotifier(ref, type);
+});
 
 /// Notifier for managing premium games state.
 class PremiumGamesNotifier
     extends StateNotifier<AsyncValue<PremiumGamesState>> {
   PremiumGamesNotifier(this._ref, this._type)
-      : super(const AsyncValue.loading()) {
+    : super(const AsyncValue.loading()) {
     _initialize();
   }
 
@@ -313,10 +304,11 @@ class PremiumGamesNotifier
     }
 
     // Get FIDE IDs from favorites
-    final fideIds = favorites
-        .where((f) => f.fideId != null && f.fideId!.isNotEmpty)
-        .map((f) => f.fideId!)
-        .toList();
+    final fideIds =
+        favorites
+            .where((f) => f.fideId != null && f.fideId!.isNotEmpty)
+            .map((f) => f.fideId!)
+            .toList();
 
     if (fideIds.isEmpty) {
       debugPrint('[PremiumGames] No FIDE IDs for favorites');
@@ -353,7 +345,9 @@ class PremiumGamesNotifier
       return [];
     }
 
-    debugPrint('[PremiumGames] Fetching games for country ${country.countryCode}');
+    debugPrint(
+      '[PremiumGames] Fetching games for country ${country.countryCode}',
+    );
 
     try {
       final games = await repository.getGamesByCountryCodePaginated(
@@ -378,12 +372,14 @@ class PremiumGamesNotifier
         final eloCompare = bElo.compareTo(aElo);
         if (eloCompare != 0) return eloCompare;
 
-        return (b.lastMoveTime ?? DateTime(0))
-            .compareTo(a.lastMoveTime ?? DateTime(0));
+        return (b.lastMoveTime ?? DateTime(0)).compareTo(
+          a.lastMoveTime ?? DateTime(0),
+        );
       } else {
         // For Favorites: Primary is lastMoveTime DESC, Secondary is avgElo DESC
-        final timeCompare = (b.lastMoveTime ?? DateTime(0))
-            .compareTo(a.lastMoveTime ?? DateTime(0));
+        final timeCompare = (b.lastMoveTime ?? DateTime(0)).compareTo(
+          a.lastMoveTime ?? DateTime(0),
+        );
         if (timeCompare != 0) return timeCompare;
 
         final aElo = _avgElo(a);

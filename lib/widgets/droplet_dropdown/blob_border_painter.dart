@@ -44,33 +44,39 @@ class BlobBorderPainter extends CustomPainter {
 
     // Draw glow layer first (behind fill)
     if (showGlow && morphProgress > 0 && settleProgress < 1.0) {
-      final glowAmount = math.sin(morphProgress * math.pi) * (1.0 - settleProgress);
+      final glowAmount =
+          math.sin(morphProgress * math.pi) * (1.0 - settleProgress);
       if (glowAmount > 0.05) {
-        final glowPaint = Paint()
-          ..color = (glowColor ?? borderColor).withValues(alpha: glowAmount * 0.3)
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = borderWidth + 6.0
-          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8.0);
+        final glowPaint =
+            Paint()
+              ..color = (glowColor ?? borderColor).withValues(
+                alpha: glowAmount * 0.3,
+              )
+              ..style = PaintingStyle.stroke
+              ..strokeWidth = borderWidth + 6.0
+              ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8.0);
         canvas.drawPath(path, glowPaint);
       }
     }
 
     // Draw fill
     if (fillColor != null) {
-      final fillPaint = Paint()
-        ..color = fillColor!
-        ..style = PaintingStyle.fill;
+      final fillPaint =
+          Paint()
+            ..color = fillColor!
+            ..style = PaintingStyle.fill;
       canvas.drawPath(path, fillPaint);
     }
 
     // Draw border stroke
     if (borderWidth > 0) {
-      final borderPaint = Paint()
-        ..color = borderColor
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = borderWidth
-        ..strokeCap = StrokeCap.round
-        ..strokeJoin = StrokeJoin.round;
+      final borderPaint =
+          Paint()
+            ..color = borderColor
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = borderWidth
+            ..strokeCap = StrokeCap.round
+            ..strokeJoin = StrokeJoin.round;
       canvas.drawPath(path, borderPaint);
     }
   }
@@ -92,11 +98,9 @@ class BlobBorderPainter extends CustomPainter {
 
     // When distortion is minimal, use simple rounded rect for performance
     if (bulge.abs() < 0.5) {
-      return Path()
-        ..addRRect(RRect.fromRectAndRadius(
-          Rect.fromLTWH(0, 0, w, h),
-          Radius.circular(r),
-        ));
+      return Path()..addRRect(
+        RRect.fromRectAndRadius(Rect.fromLTWH(0, 0, w, h), Radius.circular(r)),
+      );
     }
 
     final path = Path();
@@ -121,57 +125,73 @@ class BlobBorderPainter extends CustomPainter {
     // Top edge: straight to midpoint, then curve with bulge
     final topMidX = w / 2;
     path.quadraticBezierTo(
-      topMidX, -topBulge, // Control point bulges up (negative Y)
-      w - r - cornerExpand, 0, // End at top-right before corner
+      topMidX,
+      -topBulge, // Control point bulges up (negative Y)
+      w - r - cornerExpand,
+      0, // End at top-right before corner
     );
 
     // Top-right corner: smooth curve with expansion
     final trCornerOffset = cornerExpand * 0.7;
     path.quadraticBezierTo(
-      w + trCornerOffset, -trCornerOffset, // Control point outside corner
-      w, r + cornerExpand, // End at right edge after corner
+      w + trCornerOffset,
+      -trCornerOffset, // Control point outside corner
+      w,
+      r + cornerExpand, // End at right edge after corner
     );
 
     // Right edge: curve with bulge
     final rightMidY = h / 2;
     path.quadraticBezierTo(
-      w + rightBulge, rightMidY, // Control point bulges right
-      w, h - r - cornerExpand, // End at bottom-right before corner
+      w + rightBulge,
+      rightMidY, // Control point bulges right
+      w,
+      h - r - cornerExpand, // End at bottom-right before corner
     );
 
     // Bottom-right corner
     final brCornerOffset = cornerExpand * 0.7;
     path.quadraticBezierTo(
-      w + brCornerOffset, h + brCornerOffset,
-      w - r - cornerExpand, h,
+      w + brCornerOffset,
+      h + brCornerOffset,
+      w - r - cornerExpand,
+      h,
     );
 
     // Bottom edge: curve with bulge
     final bottomMidX = w / 2;
     path.quadraticBezierTo(
-      bottomMidX, h + bottomBulge, // Control point bulges down
-      r + cornerExpand, h,
+      bottomMidX,
+      h + bottomBulge, // Control point bulges down
+      r + cornerExpand,
+      h,
     );
 
     // Bottom-left corner
     final blCornerOffset = cornerExpand * 0.7;
     path.quadraticBezierTo(
-      -blCornerOffset, h + blCornerOffset,
-      0, h - r - cornerExpand,
+      -blCornerOffset,
+      h + blCornerOffset,
+      0,
+      h - r - cornerExpand,
     );
 
     // Left edge: curve with bulge
     final leftMidY = h / 2;
     path.quadraticBezierTo(
-      -leftBulge, leftMidY, // Control point bulges left
-      0, r + cornerExpand,
+      -leftBulge,
+      leftMidY, // Control point bulges left
+      0,
+      r + cornerExpand,
     );
 
     // Top-left corner: close the path
     final tlCornerOffset = cornerExpand * 0.7;
     path.quadraticBezierTo(
-      -tlCornerOffset, -tlCornerOffset,
-      r + cornerExpand, 0,
+      -tlCornerOffset,
+      -tlCornerOffset,
+      r + cornerExpand,
+      0,
     );
 
     path.close();
@@ -181,11 +201,11 @@ class BlobBorderPainter extends CustomPainter {
   @override
   bool shouldRepaint(BlobBorderPainter oldDelegate) {
     return morphProgress != oldDelegate.morphProgress ||
-           settleProgress != oldDelegate.settleProgress ||
-           borderColor != oldDelegate.borderColor ||
-           fillColor != oldDelegate.fillColor ||
-           baseRadius != oldDelegate.baseRadius ||
-           morphIntensity != oldDelegate.morphIntensity;
+        settleProgress != oldDelegate.settleProgress ||
+        borderColor != oldDelegate.borderColor ||
+        fillColor != oldDelegate.fillColor ||
+        baseRadius != oldDelegate.baseRadius ||
+        morphIntensity != oldDelegate.morphIntensity;
   }
 }
 
@@ -218,11 +238,9 @@ class BlobClipper extends CustomClipper<Path> {
 
     // For clipping, use slightly inset path to avoid edge artifacts
     if (bulge.abs() < 0.5) {
-      return Path()
-        ..addRRect(RRect.fromRectAndRadius(
-          Rect.fromLTWH(0, 0, w, h),
-          Radius.circular(r),
-        ));
+      return Path()..addRRect(
+        RRect.fromRectAndRadius(Rect.fromLTWH(0, 0, w, h), Radius.circular(r)),
+      );
     }
 
     final phaseOffset = morphProgress * math.pi * 2.5;
@@ -237,48 +255,44 @@ class BlobClipper extends CustomClipper<Path> {
 
     path.moveTo(r + cornerExpand, 0);
 
-    path.quadraticBezierTo(
-      w / 2, -topBulge,
-      w - r - cornerExpand, 0,
-    );
+    path.quadraticBezierTo(w / 2, -topBulge, w - r - cornerExpand, 0);
 
     final trCornerOffset = cornerExpand * 0.7;
     path.quadraticBezierTo(
-      w + trCornerOffset, -trCornerOffset,
-      w, r + cornerExpand,
+      w + trCornerOffset,
+      -trCornerOffset,
+      w,
+      r + cornerExpand,
     );
 
-    path.quadraticBezierTo(
-      w + rightBulge, h / 2,
-      w, h - r - cornerExpand,
-    );
+    path.quadraticBezierTo(w + rightBulge, h / 2, w, h - r - cornerExpand);
 
     final brCornerOffset = cornerExpand * 0.7;
     path.quadraticBezierTo(
-      w + brCornerOffset, h + brCornerOffset,
-      w - r - cornerExpand, h,
+      w + brCornerOffset,
+      h + brCornerOffset,
+      w - r - cornerExpand,
+      h,
     );
 
-    path.quadraticBezierTo(
-      w / 2, h + bottomBulge,
-      r + cornerExpand, h,
-    );
+    path.quadraticBezierTo(w / 2, h + bottomBulge, r + cornerExpand, h);
 
     final blCornerOffset = cornerExpand * 0.7;
     path.quadraticBezierTo(
-      -blCornerOffset, h + blCornerOffset,
-      0, h - r - cornerExpand,
+      -blCornerOffset,
+      h + blCornerOffset,
+      0,
+      h - r - cornerExpand,
     );
 
-    path.quadraticBezierTo(
-      -leftBulge, h / 2,
-      0, r + cornerExpand,
-    );
+    path.quadraticBezierTo(-leftBulge, h / 2, 0, r + cornerExpand);
 
     final tlCornerOffset = cornerExpand * 0.7;
     path.quadraticBezierTo(
-      -tlCornerOffset, -tlCornerOffset,
-      r + cornerExpand, 0,
+      -tlCornerOffset,
+      -tlCornerOffset,
+      r + cornerExpand,
+      0,
     );
 
     path.close();
@@ -288,7 +302,7 @@ class BlobClipper extends CustomClipper<Path> {
   @override
   bool shouldReclip(BlobClipper oldClipper) {
     return morphProgress != oldClipper.morphProgress ||
-           settleProgress != oldClipper.settleProgress ||
-           baseRadius != oldClipper.baseRadius;
+        settleProgress != oldClipper.settleProgress ||
+        baseRadius != oldClipper.baseRadius;
   }
 }

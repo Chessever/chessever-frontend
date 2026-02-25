@@ -10,6 +10,7 @@ import 'package:motor/motor.dart';
 enum SwipeActionBehavior {
   /// Card dismisses with slide-out animation (for delete/remove actions)
   dismiss,
+
   /// Card bounces back with success flash (for add/save actions)
   bounceBack,
 }
@@ -101,9 +102,10 @@ class _SwipeActionCardState extends State<SwipeActionCard>
 
     // Slide out
     setState(() {
-      _dragExtent = widget.dismissDirection == DismissDirection.endToStart
-          ? -hintDistance
-          : hintDistance;
+      _dragExtent =
+          widget.dismissDirection == DismissDirection.endToStart
+              ? -hintDistance
+              : hintDistance;
     });
 
     await Future.delayed(const Duration(milliseconds: 600));
@@ -121,11 +123,15 @@ class _SwipeActionCardState extends State<SwipeActionCard>
 
     setState(() {
       if (widget.dismissDirection == DismissDirection.endToStart) {
-        _dragExtent =
-            (_dragExtent + details.delta.dx).clamp(-double.infinity, 0);
+        _dragExtent = (_dragExtent + details.delta.dx).clamp(
+          -double.infinity,
+          0,
+        );
       } else {
-        _dragExtent =
-            (_dragExtent + details.delta.dx).clamp(0, double.infinity);
+        _dragExtent = (_dragExtent + details.delta.dx).clamp(
+          0,
+          double.infinity,
+        );
       }
     });
   }
@@ -242,9 +248,9 @@ class _SwipeActionCardState extends State<SwipeActionCard>
           if (_showSuccessFlash)
             Positioned.fill(
               child: ClipRRect(
-                borderRadius: BorderRadius.circular(widget.borderRadius.br),
-                child: Container(color: widget.backgroundColor),
-              )
+                    borderRadius: BorderRadius.circular(widget.borderRadius.br),
+                    child: Container(color: widget.backgroundColor),
+                  )
                   .animate()
                   .fadeIn(duration: 100.ms)
                   .then()
@@ -264,13 +270,17 @@ class _SwipeActionCardState extends State<SwipeActionCard>
                         : MediaQuery.of(context).size.width)
                     : _dragExtent,
             builder: (context, offsetX, child) {
-              return Transform.translate(offset: Offset(offsetX, 0), child: child);
+              return Transform.translate(
+                offset: Offset(offsetX, 0),
+                child: child,
+              );
             },
             child:
                 _isDismissing
-                    ? widget.child
-                        .animate()
-                        .fadeOut(duration: 250.ms, curve: Curves.easeOut)
+                    ? widget.child.animate().fadeOut(
+                      duration: 250.ms,
+                      curve: Curves.easeOut,
+                    )
                     : widget.child,
           ),
         ],

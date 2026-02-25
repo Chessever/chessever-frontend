@@ -27,11 +27,12 @@ String _stripTitlePrefix(String playerName) {
 }
 
 String _normalizeNameForMatch(String name) {
-  final normalized = name
-      .toLowerCase()
-      .replaceAll(RegExp(r'[^a-z0-9\s]'), ' ')
-      .replaceAll(RegExp(r'\s+'), ' ')
-      .trim();
+  final normalized =
+      name
+          .toLowerCase()
+          .replaceAll(RegExp(r'[^a-z0-9\s]'), ' ')
+          .replaceAll(RegExp(r'\s+'), ' ')
+          .trim();
   return normalized;
 }
 
@@ -39,7 +40,8 @@ int? _parseRating(dynamic value) {
   if (value == null) return null;
   if (value is int) return value;
   if (value is num) return value.round();
-  if (value is String) return int.tryParse(value) ?? double.tryParse(value)?.round();
+  if (value is String)
+    return int.tryParse(value) ?? double.tryParse(value)?.round();
   return null;
 }
 
@@ -50,8 +52,9 @@ int? _parseRating(dynamic value) {
 /// 4. PGN-based ratings from games table
 /// This avoids nested widget issues with autoDispose providers.
 final unifiedRatingProvider = FutureProvider.family.autoDispose<
-    int?,
-    UnifiedRatingRequest>((ref, request) async {
+  int?,
+  UnifiedRatingRequest
+>((ref, request) async {
   final supabase = ref.read(supabaseProvider);
   final normalizedName = _stripTitlePrefix(request.playerName);
 
@@ -62,11 +65,12 @@ final unifiedRatingProvider = FutureProvider.family.autoDispose<
   if (request.fideId != null && request.fideId! > 0) {
     try {
       // print('📊 UnifiedRating: Trying chess_players by fideId ${request.fideId}');
-      final response = await supabase
-          .from('chess_players')
-          .select('rating, rapid_rating, blitz_rating')
-          .eq('fideid', request.fideId!)
-          .maybeSingle();
+      final response =
+          await supabase
+              .from('chess_players')
+              .select('rating, rapid_rating, blitz_rating')
+              .eq('fideid', request.fideId!)
+              .maybeSingle();
 
       // print('📊 UnifiedRating: chess_players response: $response');
       if (response != null) {
@@ -89,12 +93,13 @@ final unifiedRatingProvider = FutureProvider.family.autoDispose<
   if (normalizedName.isNotEmpty) {
     try {
       // print('📊 UnifiedRating: Trying chess_players by name "$normalizedName"');
-      final response = await supabase
-          .from('chess_players')
-          .select('rating, rapid_rating, blitz_rating')
-          .ilike('name', '%$normalizedName%')
-          .limit(1)
-          .maybeSingle();
+      final response =
+          await supabase
+              .from('chess_players')
+              .select('rating, rapid_rating, blitz_rating')
+              .ilike('name', '%$normalizedName%')
+              .limit(1)
+              .maybeSingle();
 
       // print('📊 UnifiedRating: Name search response: $response');
       if (response != null) {
@@ -169,7 +174,9 @@ final unifiedRatingProvider = FutureProvider.family.autoDispose<
       final response = await supabase
           .from('games')
           .select('pgn, players')
-          .or('player_white.ilike.%$normalizedName%,player_black.ilike.%$normalizedName%')
+          .or(
+            'player_white.ilike.%$normalizedName%,player_black.ilike.%$normalizedName%',
+          )
           .order('last_move_time', ascending: false)
           .limit(1);
 
@@ -215,7 +222,10 @@ final unifiedRatingProvider = FutureProvider.family.autoDispose<
 });
 
 /// Helper to extract rating by time control type from chess_players response
-int? _extractRatingByType(Map<String, dynamic> response, String timeControlType) {
+int? _extractRatingByType(
+  Map<String, dynamic> response,
+  String timeControlType,
+) {
   switch (timeControlType) {
     case 'standard':
       return _parseRating(response['rating']);
@@ -258,10 +268,7 @@ class AllRatingsRequest {
   final int? fideId;
   final String playerName;
 
-  const AllRatingsRequest({
-    this.fideId,
-    required this.playerName,
-  });
+  const AllRatingsRequest({this.fideId, required this.playerName});
 
   @override
   bool operator ==(Object other) =>
@@ -305,19 +312,21 @@ class AllRatingsResult {
 /// The result is cached by Riverpod since AllRatingsRequest only includes
 /// fideId and playerName (not timeControlType).
 final allRatingsProvider = FutureProvider.family.autoDispose<
-    AllRatingsResult,
-    AllRatingsRequest>((ref, request) async {
+  AllRatingsResult,
+  AllRatingsRequest
+>((ref, request) async {
   final supabase = ref.read(supabaseProvider);
   final normalizedName = _stripTitlePrefix(request.playerName);
 
   // Source 1: Try Supabase chess_players table by fideId (most reliable)
   if (request.fideId != null && request.fideId! > 0) {
     try {
-      final response = await supabase
-          .from('chess_players')
-          .select('rating, rapid_rating, blitz_rating')
-          .eq('fideid', request.fideId!)
-          .maybeSingle();
+      final response =
+          await supabase
+              .from('chess_players')
+              .select('rating, rapid_rating, blitz_rating')
+              .eq('fideid', request.fideId!)
+              .maybeSingle();
 
       if (response != null) {
         final standard = _parseRating(response['rating']);
@@ -341,12 +350,13 @@ final allRatingsProvider = FutureProvider.family.autoDispose<
   // Source 2: Try Supabase chess_players table by NAME
   if (normalizedName.isNotEmpty) {
     try {
-      final response = await supabase
-          .from('chess_players')
-          .select('rating, rapid_rating, blitz_rating')
-          .ilike('name', '%$normalizedName%')
-          .limit(1)
-          .maybeSingle();
+      final response =
+          await supabase
+              .from('chess_players')
+              .select('rating, rapid_rating, blitz_rating')
+              .ilike('name', '%$normalizedName%')
+              .limit(1)
+              .maybeSingle();
 
       if (response != null) {
         final standard = _parseRating(response['rating']);
@@ -374,9 +384,14 @@ final allRatingsProvider = FutureProvider.family.autoDispose<
       final player = await lichessRepo.getPlayerById(request.fideId!);
       if (player != null) {
         return AllRatingsResult(
-          standard: player.standard != null && player.standard! > 0 ? player.standard : null,
-          rapid: player.rapid != null && player.rapid! > 0 ? player.rapid : null,
-          blitz: player.blitz != null && player.blitz! > 0 ? player.blitz : null,
+          standard:
+              player.standard != null && player.standard! > 0
+                  ? player.standard
+                  : null,
+          rapid:
+              player.rapid != null && player.rapid! > 0 ? player.rapid : null,
+          blitz:
+              player.blitz != null && player.blitz! > 0 ? player.blitz : null,
         );
       }
     } catch (e) {
@@ -406,9 +421,18 @@ final allRatingsProvider = FutureProvider.family.autoDispose<
         }
         bestMatch ??= matches.first;
         return AllRatingsResult(
-          standard: bestMatch.standard != null && bestMatch.standard! > 0 ? bestMatch.standard : null,
-          rapid: bestMatch.rapid != null && bestMatch.rapid! > 0 ? bestMatch.rapid : null,
-          blitz: bestMatch.blitz != null && bestMatch.blitz! > 0 ? bestMatch.blitz : null,
+          standard:
+              bestMatch.standard != null && bestMatch.standard! > 0
+                  ? bestMatch.standard
+                  : null,
+          rapid:
+              bestMatch.rapid != null && bestMatch.rapid! > 0
+                  ? bestMatch.rapid
+                  : null,
+          blitz:
+              bestMatch.blitz != null && bestMatch.blitz! > 0
+                  ? bestMatch.blitz
+                  : null,
         );
       }
     } catch (e) {
@@ -423,18 +447,20 @@ final allRatingsProvider = FutureProvider.family.autoDispose<
 /// Provider to get player rating from chess_players table by FIDE ID
 /// This table has 23k+ players with all their ratings
 final chessPlayerRatingProvider = FutureProvider.family.autoDispose<
-    int?,
-    ChessPlayerRatingRequest>((ref, request) async {
+  int?,
+  ChessPlayerRatingRequest
+>((ref, request) async {
   if (request.fideId == null) return null;
 
   final supabase = ref.read(supabaseProvider);
 
   try {
-    final response = await supabase
-        .from('chess_players')
-        .select('rating, rapid_rating, blitz_rating')
-        .eq('fideid', request.fideId!)
-        .maybeSingle();
+    final response =
+        await supabase
+            .from('chess_players')
+            .select('rating, rapid_rating, blitz_rating')
+            .eq('fideid', request.fideId!)
+            .maybeSingle();
 
     if (response == null) return null;
 
@@ -450,7 +476,9 @@ final chessPlayerRatingProvider = FutureProvider.family.autoDispose<
         return response['rating'] as int?;
     }
   } catch (e) {
-    print('Error fetching rating from chess_players for fideId ${request.fideId}: $e');
+    print(
+      'Error fetching rating from chess_players for fideId ${request.fideId}: $e',
+    );
     return null;
   }
 });
@@ -479,16 +507,19 @@ class ChessPlayerRatingRequest {
 // Helper method to extract rating from PGN
 int? _extractRatingFromPGN(String pgn, String playerName) {
   try {
-    final normalizedTarget =
-        _normalizeNameForMatch(_stripTitlePrefix(playerName));
+    final normalizedTarget = _normalizeNameForMatch(
+      _stripTitlePrefix(playerName),
+    );
     // Check if player is White or Black
     final whiteMatch = RegExp(r'\[White "([^"]+)"\]').firstMatch(pgn);
     final blackMatch = RegExp(r'\[Black "([^"]+)"\]').firstMatch(pgn);
 
-    final whiteName =
-        _normalizeNameForMatch(_stripTitlePrefix(whiteMatch?.group(1) ?? ''));
-    final blackName =
-        _normalizeNameForMatch(_stripTitlePrefix(blackMatch?.group(1) ?? ''));
+    final whiteName = _normalizeNameForMatch(
+      _stripTitlePrefix(whiteMatch?.group(1) ?? ''),
+    );
+    final blackName = _normalizeNameForMatch(
+      _stripTitlePrefix(blackMatch?.group(1) ?? ''),
+    );
 
     final isWhite = whiteName == normalizedTarget;
     final isBlack = blackName == normalizedTarget;

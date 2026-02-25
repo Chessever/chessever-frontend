@@ -58,12 +58,13 @@ class ChessSvgBottomNavbar extends StatelessWidget {
     // On phone, use the original positioned layout
     if (isTablet && showDepth) {
       return GestureDetector(
-        onTap: onPressed != null
-            ? () {
-                HapticFeedbackService.buttonPress();
-                onPressed!();
-              }
-            : null,
+        onTap:
+            onPressed != null
+                ? () {
+                  HapticFeedbackService.buttonPress();
+                  onPressed!();
+                }
+                : null,
         onLongPress: onLongPress,
         // Absorb horizontal drags on tablet landscape to prevent PageView interference
         onHorizontalDragStart: isTabletLandscape ? (_) {} : null,
@@ -98,12 +99,13 @@ class ChessSvgBottomNavbar extends StatelessWidget {
     }
 
     return GestureDetector(
-      onTap: onPressed != null
-          ? () {
-              HapticFeedbackService.buttonPress();
-              onPressed!();
-            }
-          : null,
+      onTap:
+          onPressed != null
+              ? () {
+                HapticFeedbackService.buttonPress();
+                onPressed!();
+              }
+              : null,
       onLongPress: onLongPress,
       // Absorb horizontal drags on tablet landscape to prevent PageView interference
       onHorizontalDragStart: isTabletLandscape ? (_) {} : null,
@@ -132,9 +134,7 @@ class ChessSvgBottomNavbar extends StatelessWidget {
                 bottom: 4.h, // keep within bar bounds
                 left: 0,
                 right: 0,
-                child: Center(
-                  child: Text(depthText!, style: depthStyle),
-                ),
+                child: Center(child: Text(depthText!, style: depthStyle)),
               ),
           ],
         ),
@@ -165,16 +165,19 @@ class ChessSvgBottomNavbarWithLongPress extends StatelessWidget {
   Widget build(BuildContext context) {
     // On tablet landscape, absorb horizontal drags to prevent them from
     // triggering the PageView half-swipe bug when tapping buttons.
-    final isTabletLandscape = ResponsiveHelper.isTablet && ResponsiveHelper.isLandscape;
+    final isTabletLandscape =
+        ResponsiveHelper.isTablet && ResponsiveHelper.isLandscape;
 
     return GestureDetector(
-      onTap: onPressed != null
-          ? () {
-              HapticFeedbackService.buttonPress();
-              onPressed!();
-            }
-          : null,
-      onLongPressStart: onLongPressStart != null ? (_) => onLongPressStart!() : null,
+      onTap:
+          onPressed != null
+              ? () {
+                HapticFeedbackService.buttonPress();
+                onPressed!();
+              }
+              : null,
+      onLongPressStart:
+          onLongPressStart != null ? (_) => onLongPressStart!() : null,
       onLongPressEnd: onLongPressEnd != null ? (_) => onLongPressEnd!() : null,
       onLongPressCancel: onLongPressEnd,
       // Absorb horizontal drags on tablet landscape to prevent PageView interference
@@ -296,12 +299,13 @@ class ChessIconBottomNavbar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return InkWell(
-      onTap: onPressed != null
-          ? () {
-              HapticFeedbackService.buttonPress();
-              onPressed!();
-            }
-          : null,
+      onTap:
+          onPressed != null
+              ? () {
+                HapticFeedbackService.buttonPress();
+                onPressed!();
+              }
+              : null,
       child: Container(
         padding: EdgeInsets.all(8.sp),
         child: Icon(iconData, size: 24.ic),

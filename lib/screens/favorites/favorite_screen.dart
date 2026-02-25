@@ -59,7 +59,10 @@ class _FavoriteScreenState extends ConsumerState<FavoriteScreen> {
               children: [
                 // Top bar with back button and search
                 Padding(
-                  padding: EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: 8.sp),
+                  padding: EdgeInsets.symmetric(
+                    horizontal: horizontalPadding,
+                    vertical: 8.sp,
+                  ),
                   child: AnimatedBuilder(
                     animation: searchController,
                     builder: (cxt, _) {
@@ -101,14 +104,20 @@ class _FavoriteScreenState extends ConsumerState<FavoriteScreen> {
                       .when(
                         data: (_) {
                           final filteredPlayers = ref.read(
-                            filteredFavoritePlayersProvider(searchController.text),
+                            filteredFavoritePlayersProvider(
+                              searchController.text,
+                            ),
                           );
 
                           return _buildPlayersList(filteredPlayers);
                         },
                         loading:
-                            () => const Center(child: CircularProgressIndicator()),
-                        error: (error, stack) => _buildErrorState(error.toString()),
+                            () => const Center(
+                              child: CircularProgressIndicator(),
+                            ),
+                        error:
+                            (error, stack) =>
+                                _buildErrorState(error.toString()),
                       ),
                 ),
               ],
@@ -218,24 +227,26 @@ class _FavoriteScreenState extends ConsumerState<FavoriteScreen> {
                     onTap: () {
                       FocusScope.of(context).unfocus();
                       // Clear tournament context so scorecard shows player's full game history
-                      ref.read(selectedBroadcastModelProvider.notifier).state = null;
+                      ref.read(selectedBroadcastModelProvider.notifier).state =
+                          null;
                       ref.read(selectedPlayerProvider.notifier).state = player;
                       // Clear games context to use fallback (fetches all player games globally)
-                      ref.read(scoreCardGamesContextProvider.notifier).state = null;
+                      ref.read(scoreCardGamesContextProvider.notifier).state =
+                          null;
                       // No event context from favorites screen
-                      ref.read(scoreCardHasEventContextProvider.notifier).state = false;
                       ref
-                          .read(scoreCardPlayerProfileDataSourceProvider.notifier)
+                          .read(scoreCardHasEventContextProvider.notifier)
+                          .state = false;
+                      ref
+                          .read(
+                            scoreCardPlayerProfileDataSourceProvider.notifier,
+                          )
                           .state = PlayerProfileDataSource.supabase;
                       Navigator.pushNamed(context, '/scorecard_screen');
                     },
                     onToggleFavorite: () => _removeFavoritePlayer(player),
                     onLongPress: (details) {
-                      _showContextMenu(
-                        context,
-                        details.globalPosition,
-                        player,
-                      );
+                      _showContextMenu(context, details.globalPosition, player);
                     },
                     isFav: true,
                     hideScore: true,

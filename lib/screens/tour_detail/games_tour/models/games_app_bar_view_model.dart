@@ -34,7 +34,9 @@ class GamesAppBarModel extends Equatable {
     final startsAt = TimeUtils.toLocal(utcStart);
 
     // Debug: log round start times
-    print('📅 Round "${round.name}" startsAt: $startsAt (from DB: ${round.startsAt})');
+    print(
+      '📅 Round "${round.name}" startsAt: $startsAt (from DB: ${round.startsAt})',
+    );
 
     return GamesAppBarModel(
       id: round.id,

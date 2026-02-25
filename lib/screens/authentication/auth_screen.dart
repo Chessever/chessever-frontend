@@ -96,12 +96,19 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                   // Right side: Auth buttons centered
                   Expanded(
                     child: Center(
-                      child: state.isLoading
-                          ? SkeletonWidget(
-                              ignoreContainers: true,
-                              child: _AuthButtonWidget(state: state, isTabletLandscape: true),
-                            )
-                          : _AuthButtonWidget(state: state, isTabletLandscape: true),
+                      child:
+                          state.isLoading
+                              ? SkeletonWidget(
+                                ignoreContainers: true,
+                                child: _AuthButtonWidget(
+                                  state: state,
+                                  isTabletLandscape: true,
+                                ),
+                              )
+                              : _AuthButtonWidget(
+                                state: state,
+                                isTabletLandscape: true,
+                              ),
                     ),
                   ),
                 ],
@@ -136,12 +143,19 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
               ),
               Align(
                 alignment: Alignment.bottomCenter,
-                child: state.isLoading
-                    ? SkeletonWidget(
-                        ignoreContainers: true,
-                        child: _AuthButtonWidget(state: state, isTabletPortrait: true),
-                      )
-                    : _AuthButtonWidget(state: state, isTabletPortrait: true),
+                child:
+                    state.isLoading
+                        ? SkeletonWidget(
+                          ignoreContainers: true,
+                          child: _AuthButtonWidget(
+                            state: state,
+                            isTabletPortrait: true,
+                          ),
+                        )
+                        : _AuthButtonWidget(
+                          state: state,
+                          isTabletPortrait: true,
+                        ),
               ),
             ],
           ),
@@ -190,8 +204,6 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
       ),
     );
   }
-
-
 }
 
 class _AuthButtonWidget extends ConsumerWidget {
@@ -212,13 +224,16 @@ class _AuthButtonWidget extends ConsumerWidget {
 
     // Tablet landscape: centered in its container (parent handles centering)
     // Tablet portrait & phone: positioned at bottom via Align(bottomCenter)
-    final horizontalPadding = (isTabletLandscape || isTabletPortrait) ? 24.sp : 28.sp;
-    final maxWidth = (isTabletLandscape || isTabletPortrait) ? 500.0 : double.infinity;
+    final horizontalPadding =
+        (isTabletLandscape || isTabletPortrait) ? 24.sp : 28.sp;
+    final maxWidth =
+        (isTabletLandscape || isTabletPortrait) ? 500.0 : double.infinity;
 
     // Bottom padding for layouts that use Align(bottomCenter) - phone and tablet portrait
-    final bottomPadding = isTabletLandscape
-        ? 0.0
-        : MediaQuery.of(context).viewPadding.bottom + 28.sp;
+    final bottomPadding =
+        isTabletLandscape
+            ? 0.0
+            : MediaQuery.of(context).viewPadding.bottom + 28.sp;
 
     final buttonColumn = Column(
       mainAxisSize: MainAxisSize.min,
@@ -245,9 +260,11 @@ class _AuthButtonWidget extends ConsumerWidget {
         SizedBox(height: 12.h),
         TextButton(
           onPressed: () async {
-            final appUser = await ref.read(authScreenProvider.notifier).signInAsGuest();
+            final appUser =
+                await ref.read(authScreenProvider.notifier).signInAsGuest();
 
-            if (!context.mounted || appUser == null || !appUser.isAnonymous) return;
+            if (!context.mounted || appUser == null || !appUser.isAnonymous)
+              return;
 
             final onboardingRepo = ref.read(onboardingRepositoryProvider);
             final hasCompleted = await onboardingRepo.isCompleted(appUser.id);
@@ -309,7 +326,9 @@ class _AuthButtonWidget extends ConsumerWidget {
         children: [
           Flexible(
             child: ConstrainedBox(
-              constraints: BoxConstraints(maxWidth: maxWidth - (horizontalPadding * 2)),
+              constraints: BoxConstraints(
+                maxWidth: maxWidth - (horizontalPadding * 2),
+              ),
               child: buttonColumn,
             ),
           ),
@@ -392,7 +411,10 @@ class _CountryPickerWidgetState extends ConsumerState<CountryPickerWidget>
             if (isTablet && isLandscape) {
               return Stack(
                 children: [
-                  Opacity(opacity: _fadeAnimation.value, child: BlurBackground()),
+                  Opacity(
+                    opacity: _fadeAnimation.value,
+                    child: BlurBackground(),
+                  ),
                   FadeTransition(
                     opacity: _fadeAnimation,
                     child: SlideTransition(
@@ -403,7 +425,9 @@ class _CountryPickerWidgetState extends ConsumerState<CountryPickerWidget>
                           Expanded(
                             child: Center(
                               child: ConstrainedBox(
-                                constraints: const BoxConstraints(maxWidth: maxContentWidth),
+                                constraints: const BoxConstraints(
+                                  maxWidth: maxContentWidth,
+                                ),
                                 child: _buildCountrySelector(countryState),
                               ),
                             ),
@@ -412,10 +436,18 @@ class _CountryPickerWidgetState extends ConsumerState<CountryPickerWidget>
                           Expanded(
                             child: Center(
                               child: ConstrainedBox(
-                                constraints: const BoxConstraints(maxWidth: maxContentWidth),
+                                constraints: const BoxConstraints(
+                                  maxWidth: maxContentWidth,
+                                ),
                                 child: Padding(
-                                  padding: EdgeInsets.symmetric(horizontal: 40.sp),
-                                  child: _buildContinueButton(context, countryState, notifier),
+                                  padding: EdgeInsets.symmetric(
+                                    horizontal: 40.sp,
+                                  ),
+                                  child: _buildContinueButton(
+                                    context,
+                                    countryState,
+                                    notifier,
+                                  ),
                                 ),
                               ),
                             ),
@@ -441,12 +473,12 @@ class _CountryPickerWidgetState extends ConsumerState<CountryPickerWidget>
                     position: _slideAnimation,
                     child: Center(
                       child: ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: maxContentWidth),
+                        constraints: const BoxConstraints(
+                          maxWidth: maxContentWidth,
+                        ),
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            _buildCountrySelector(countryState),
-                          ],
+                          children: [_buildCountrySelector(countryState)],
                         ),
                       ),
                     ),
@@ -462,7 +494,9 @@ class _CountryPickerWidgetState extends ConsumerState<CountryPickerWidget>
                     opacity: _fadeAnimation,
                     child: Center(
                       child: ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: maxContentWidth),
+                        constraints: const BoxConstraints(
+                          maxWidth: maxContentWidth,
+                        ),
                         child: ClipRRect(
                           borderRadius: const BorderRadius.vertical(
                             top: Radius.circular(25),
@@ -474,7 +508,11 @@ class _CountryPickerWidgetState extends ConsumerState<CountryPickerWidget>
                               20.sp,
                               MediaQuery.of(context).viewPadding.bottom + 28.sp,
                             ),
-                            child: _buildContinueButton(context, countryState, notifier),
+                            child: _buildContinueButton(
+                              context,
+                              countryState,
+                              notifier,
+                            ),
                           ),
                         ),
                       ),
@@ -506,25 +544,30 @@ class _CountryPickerWidgetState extends ConsumerState<CountryPickerWidget>
           Container(
             padding: EdgeInsets.symmetric(horizontal: 10.sp, vertical: 5.sp),
             child: countryState.when(
-              loading: () => CountryDropdown(
-                selectedCountryCode: '',
-                onChanged: (_) {},
-                hintText: 'Loading country...',
-                isLoading: true,
-                requireAuthToChange: false,
-              ),
-              error: (err, _) => AppButton(
-                padding: EdgeInsets.symmetric(horizontal: 16.sp),
-                text: 'Retry Getting Countries',
-                onPressed: () => ref.invalidate(countryDropdownProvider),
-              ),
-              data: (country) => CountryDropdown(
-                selectedCountryCode: country.countryCode,
-                onChanged: (Country newCountry) {
-                  ref.read(countryDropdownProvider.notifier).selectCountry(newCountry.countryCode);
-                },
-                requireAuthToChange: false,
-              ),
+              loading:
+                  () => CountryDropdown(
+                    selectedCountryCode: '',
+                    onChanged: (_) {},
+                    hintText: 'Loading country...',
+                    isLoading: true,
+                    requireAuthToChange: false,
+                  ),
+              error:
+                  (err, _) => AppButton(
+                    padding: EdgeInsets.symmetric(horizontal: 16.sp),
+                    text: 'Retry Getting Countries',
+                    onPressed: () => ref.invalidate(countryDropdownProvider),
+                  ),
+              data:
+                  (country) => CountryDropdown(
+                    selectedCountryCode: country.countryCode,
+                    onChanged: (Country newCountry) {
+                      ref
+                          .read(countryDropdownProvider.notifier)
+                          .selectCountry(newCountry.countryCode);
+                    },
+                    requireAuthToChange: false,
+                  ),
             ),
           ),
         ],
@@ -570,21 +613,28 @@ class _CountryPickerWidgetState extends ConsumerState<CountryPickerWidget>
       child: ElevatedButton(
         onPressed: countryState.maybeWhen(
           loading: () => null,
-          orElse: () => () async {
-            await _dismissWithAnimation();
-            if (mounted) {
-              notifier.hideCountrySelection();
-              Navigator.of(context).pop();
-              if (!widget.isHamburgerMode) {
-                final onboardingRepo = ref.read(onboardingRepositoryProvider);
-                final userId = Supabase.instance.client.auth.currentUser?.id;
-                final hasCompleted = await onboardingRepo.isCompleted(userId);
-                if (!mounted) return;
-                final targetRoute = hasCompleted ? '/home_screen' : '/onboarding';
-                Navigator.pushReplacementNamed(context, targetRoute);
-              }
-            }
-          },
+          orElse:
+              () => () async {
+                await _dismissWithAnimation();
+                if (mounted) {
+                  notifier.hideCountrySelection();
+                  Navigator.of(context).pop();
+                  if (!widget.isHamburgerMode) {
+                    final onboardingRepo = ref.read(
+                      onboardingRepositoryProvider,
+                    );
+                    final userId =
+                        Supabase.instance.client.auth.currentUser?.id;
+                    final hasCompleted = await onboardingRepo.isCompleted(
+                      userId,
+                    );
+                    if (!mounted) return;
+                    final targetRoute =
+                        hasCompleted ? '/home_screen' : '/onboarding';
+                    Navigator.pushReplacementNamed(context, targetRoute);
+                  }
+                }
+              },
         ),
         style: ElevatedButton.styleFrom(
           backgroundColor: countryState.maybeWhen(
@@ -593,7 +643,9 @@ class _CountryPickerWidgetState extends ConsumerState<CountryPickerWidget>
           ),
           foregroundColor: kBlackColor,
           padding: EdgeInsets.symmetric(vertical: 16.sp),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12.br)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12.br),
+          ),
           elevation: 0,
           shadowColor: Colors.transparent,
         ),

@@ -273,12 +273,12 @@ extension GroupBroadcastLocalStorageSearch on GroupBroadcastLocalStorage {
         }
       }
 
-        return EnhancedSearchResult(
-          tournamentResults: tournamentResults,
-          playerResults: playerResults,
-          allPlayers: allPlayers,
-          countryFedCode: null,
-        );
+      return EnhancedSearchResult(
+        tournamentResults: tournamentResults,
+        playerResults: playerResults,
+        allPlayers: allPlayers,
+        countryFedCode: null,
+      );
     } catch (e) {
       return const EnhancedSearchResult(
         tournamentResults: [],

@@ -440,8 +440,9 @@ class _BoardEditorScreenState extends ConsumerState<BoardEditorScreen> {
     // Tray has 2 rows of pieces sized (boardSize/8)*0.9, so:
     // totalHeight = boardSize + trayVPadding + trayRowGap + boardSize*0.225
     // Solve for boardSize:
-    final boardSize = ((availableHeight - outerPadding - trayVPadding - trayRowGap) / 1.225)
-        .clamp(200.0, double.infinity);
+    final boardSize =
+        ((availableHeight - outerPadding - trayVPadding - trayRowGap) / 1.225)
+            .clamp(200.0, double.infinity);
     final boardColumnWidth = boardSize + evalBarWidth;
     final squareSize = boardSize / 8;
 
@@ -491,8 +492,7 @@ class _BoardEditorScreenState extends ConsumerState<BoardEditorScreen> {
     final boardSettingsAsync = ref.watch(boardSettingsProviderNew);
     final boardSettings =
         boardSettingsAsync.valueOrNull ?? const BoardSettingsNew();
-    final contentMaxWidth =
-        (constraints.maxWidth * 0.85).clamp(0.0, 720.0);
+    final contentMaxWidth = (constraints.maxWidth * 0.85).clamp(0.0, 720.0);
     final evalBarWidth = 20.sp;
     final squareSize = contentMaxWidth / 8;
 
@@ -648,13 +648,14 @@ class _BoardWithEvalBar extends ConsumerWidget {
                 orientation: editorState.orientation,
                 pieces: editorState.pieces,
                 pointerMode: editorState.pointerMode,
-                squareHighlights: editorState.selectedDragSquare != null
-                    ? IMap({
-                        editorState.selectedDragSquare!: SquareHighlight(
-                          details: boardSettings.colorScheme.selected,
-                        ),
-                      })
-                    : const IMap.empty(),
+                squareHighlights:
+                    editorState.selectedDragSquare != null
+                        ? IMap({
+                          editorState.selectedDragSquare!: SquareHighlight(
+                            details: boardSettings.colorScheme.selected,
+                          ),
+                        })
+                        : const IMap.empty(),
                 settings: ChessboardSettings(
                   colorScheme: boardSettings.colorScheme,
                   pieceAssets: boardSettings.pieceAssets,

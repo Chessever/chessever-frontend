@@ -165,11 +165,12 @@ class _GameSearchController extends StateNotifier<GameSearchState> {
       final gamesAppBar = ref.read(gamesAppBarProvider);
       if (gamesAppBar.hasValue) {
         final rounds = gamesAppBar.value?.gamesAppBarModels ?? [];
-        final stageTourIds = rounds
-            .where((r) => r.id.startsWith('$kKnockoutStagePrefix-'))
-            .map((r) => r.id.replaceFirst('$kKnockoutStagePrefix-', ''))
-            .where((stageId) => stageId != tourId)
-            .toSet();
+        final stageTourIds =
+            rounds
+                .where((r) => r.id.startsWith('$kKnockoutStagePrefix-'))
+                .map((r) => r.id.replaceFirst('$kKnockoutStagePrefix-', ''))
+                .where((stageId) => stageId != tourId)
+                .toSet();
 
         for (final stageTourId in stageTourIds) {
           try {

@@ -74,7 +74,9 @@ class EngineDepthTrackerNotifier
     bool allowDecrease = true,
   }) {
     final existing = state[component];
-    if (!allowDecrease && existing != null && progress.depth <= existing.depth) {
+    if (!allowDecrease &&
+        existing != null &&
+        progress.depth <= existing.depth) {
       state = {
         ...state,
         component: existing.copyWith(timestamp: progress.timestamp),
@@ -189,10 +191,12 @@ class EngineSettings {
   final bool showEngineGauge;
   final bool showDepthOverlay;
   final bool showPvArrows;
-  final bool showEngineAnalysis; // Controls visibility of PV cards & arrows (computer icon)
+  final bool
+  showEngineAnalysis; // Controls visibility of PV cards & arrows (computer icon)
   final int searchTimeIndex;
   final int principalVariationIndex;
-  final int maxArrowsOnBoard; // Index for max arrows on board (0-4 = 1-5 arrows)
+  final int
+  maxArrowsOnBoard; // Index for max arrows on board (0-4 = 1-5 arrows)
 
   // Principal variation options: 1, 2, 3, 4, 5 (max 5)
   static const List<int?> _principalVariationOptions = <int?>[1, 2, 3, 4, 5];
@@ -226,13 +230,7 @@ class EngineSettings {
   // Max arrows on board options: 1, 2, 3, 4, 5
   static const List<int> _maxArrowsOptions = <int>[1, 2, 3, 4, 5];
 
-  static const List<String> maxArrowsLabels = <String>[
-    '1',
-    '2',
-    '3',
-    '4',
-    '5',
-  ];
+  static const List<String> maxArrowsLabels = <String>['1', '2', '3', '4', '5'];
 
   /// Get the multiPV count for Lichess API requests
   /// Lichess only supports up to 5 variations, max is 5
@@ -329,8 +327,10 @@ class EngineSettings {
       principalVariationIndex: (principalVariationIndex ??
               this.principalVariationIndex)
           .clamp(0, principalVariationLabels.length - 1),
-      maxArrowsOnBoard: (maxArrowsOnBoard ?? this.maxArrowsOnBoard)
-          .clamp(0, maxArrowsLabels.length - 1),
+      maxArrowsOnBoard: (maxArrowsOnBoard ?? this.maxArrowsOnBoard).clamp(
+        0,
+        maxArrowsLabels.length - 1,
+      ),
     );
   }
 
@@ -471,20 +471,22 @@ class EngineSettingsNotifierNew extends AsyncNotifier<EngineSettings> {
   /// When turned off, also stops the Stockfish engine to save resources
   Future<void> toggleEngineAnalysis(bool value) async {
     // Optimistic local update so UI reacts instantly
-    final optimistic =
-        (state.valueOrNull ?? const EngineSettings())
-            .copyWith(showEngineAnalysis: value);
+    final optimistic = (state.valueOrNull ?? const EngineSettings()).copyWith(
+      showEngineAnalysis: value,
+    );
     debugPrint('🎯 EngineSettings: Engine analysis visibility set to $value');
     state = AsyncValue.data(optimistic);
 
     // When turning off, stop the Stockfish engine to save resources
     if (!value) {
-      debugPrint('🛑 EngineSettings: Stopping Stockfish engine (analysis disabled)');
+      debugPrint(
+        '🛑 EngineSettings: Stopping Stockfish engine (analysis disabled)',
+      );
       await StockfishSingleton().cancelAllEvaluations();
       // Clear depth tracker since engine is stopped
-      ref.read(engineDepthTrackerProvider.notifier).clearAll(
-        reason: 'engine analysis disabled',
-      );
+      ref
+          .read(engineDepthTrackerProvider.notifier)
+          .clearAll(reason: 'engine analysis disabled');
     }
 
     // Fire-and-forget persistence to avoid blocking UI or navigation
@@ -542,10 +544,7 @@ class EngineSettingsNotifierNew extends AsyncNotifier<EngineSettings> {
 
   /// Set max arrows on board index
   Future<void> setMaxArrowsOnBoard(int index) async {
-    final clamped = index.clamp(
-      0,
-      EngineSettings.maxArrowsLabels.length - 1,
-    );
+    final clamped = index.clamp(0, EngineSettings.maxArrowsLabels.length - 1);
     final currentState = state.valueOrNull ?? const EngineSettings();
     final newSettings = currentState.copyWith(maxArrowsOnBoard: clamped);
     final label = newSettings.maxArrowsLabel();
@@ -581,7 +580,9 @@ class EngineSettingsNotifierNew extends AsyncNotifier<EngineSettings> {
 
       final userId = _supabase.auth.currentUser?.id;
       if (userId == null) {
-        debugPrint('[EngineSettings] No user logged in, skipping Supabase persist');
+        debugPrint(
+          '[EngineSettings] No user logged in, skipping Supabase persist',
+        );
         return;
       }
 
@@ -650,7 +651,9 @@ class EngineSettingsNotifierNew extends AsyncNotifier<EngineSettings> {
       // Check if cache has all required fields - if not, it's stale
       // and we should return defaults (which triggers fresh Supabase fetch)
       if (!map.containsKey('maxArrowsOnBoard')) {
-        debugPrint('[EngineSettings] Cache is stale (missing fields), clearing and using defaults');
+        debugPrint(
+          '[EngineSettings] Cache is stale (missing fields), clearing and using defaults',
+        );
         await db.remove(_cacheKey);
         return const EngineSettings();
       }

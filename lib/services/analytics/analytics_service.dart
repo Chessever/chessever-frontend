@@ -255,11 +255,12 @@ class AnalyticsService {
   }
 
   String _toSnakeCase(String value) {
-    final withUnderscores =
-        value.replaceAll(RegExp(r'[\s\-]+'), '_').replaceAllMapped(
-              RegExp(r'(?<=[a-z0-9])([A-Z])'),
-              (match) => '_${match.group(0)}',
-            );
+    final withUnderscores = value
+        .replaceAll(RegExp(r'[\s\-]+'), '_')
+        .replaceAllMapped(
+          RegExp(r'(?<=[a-z0-9])([A-Z])'),
+          (match) => '_${match.group(0)}',
+        );
     final collapsed = withUnderscores.replaceAll(RegExp('_+'), '_');
     final trimmed = collapsed.replaceAll(RegExp('^_+|_+\$'), '');
     return trimmed.toLowerCase();

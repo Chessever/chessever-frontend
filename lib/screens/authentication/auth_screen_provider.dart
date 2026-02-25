@@ -38,7 +38,9 @@ class AuthScreenNotifier extends StateNotifier<AuthScreenState> {
     final currentSupabaseUser = Supabase.instance.client.auth.currentUser;
 
     if (currentSupabaseUser?.isAnonymous == true) {
-      debugPrint('ℹ️ [AUTH] Already in anonymous session (Supabase), skipping re-sign-in');
+      debugPrint(
+        'ℹ️ [AUTH] Already in anonymous session (Supabase), skipping re-sign-in',
+      );
       // Ensure state reflects this user
       state = state.copyWith(
         isLoading: false,
@@ -53,7 +55,9 @@ class AuthScreenNotifier extends StateNotifier<AuthScreenState> {
     );
   }
 
-  Future<AppUser?> _performSignIn(Future<AppUser> Function() signInMethod) async {
+  Future<AppUser?> _performSignIn(
+    Future<AppUser> Function() signInMethod,
+  ) async {
     debugPrint('🔵 [AUTH] Starting sign-in flow...');
     state = state.copyWith(isLoading: true, errorMessage: null);
 
@@ -63,7 +67,9 @@ class AuthScreenNotifier extends StateNotifier<AuthScreenState> {
       debugPrint('✅ [AUTH] OAuth sign-in succeeded!');
       debugPrint('   User ID: ${user.id}');
       if (!mounted) {
-        debugPrint('⚪ [AUTH] Notifier disposed before completing OAuth success handling');
+        debugPrint(
+          '⚪ [AUTH] Notifier disposed before completing OAuth success handling',
+        );
         return null;
       }
       state = state.copyWith(
@@ -86,10 +92,7 @@ class AuthScreenNotifier extends StateNotifier<AuthScreenState> {
         debugPrint('⚪ [AUTH] Notifier disposed before propagating error');
         return null;
       }
-      state = state.copyWith(
-        isLoading: false,
-        errorMessage: errorMessage,
-      );
+      state = state.copyWith(isLoading: false, errorMessage: errorMessage);
       debugPrint('🔴 [AUTH] Showing error to user: $errorMessage');
       return null;
     }
@@ -112,7 +115,8 @@ class AuthScreenNotifier extends StateNotifier<AuthScreenState> {
 
     if (lower.contains('cancelled')) {
       return 'Sign in was cancelled';
-    } else if (lower.contains('play services') || lower.contains('configuration')) {
+    } else if (lower.contains('play services') ||
+        lower.contains('configuration')) {
       return 'Google Sign-In is unavailable on this device. Please check Google Play Services or try again later.';
     } else if (lower.contains('network')) {
       return 'Network error. Please check your connection';

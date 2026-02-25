@@ -112,9 +112,11 @@ class GamebaseSearchResourceMetadata {
       columns:
           (json['columns'] as List?)
               ?.whereType<Map>()
-              .map((e) => GamebaseSearchColumnMetadata.fromJson(
-                    Map<String, dynamic>.from(e),
-                  ))
+              .map(
+                (e) => GamebaseSearchColumnMetadata.fromJson(
+                  Map<String, dynamic>.from(e),
+                ),
+              )
               .where((c) => c.name.isNotEmpty)
               .toList() ??
           const [],
@@ -149,9 +151,11 @@ class GamebaseSearchMetadata {
       resources:
           (json['resources'] as List?)
               ?.whereType<Map>()
-              .map((e) => GamebaseSearchResourceMetadata.fromJson(
-                    Map<String, dynamic>.from(e),
-                  ))
+              .map(
+                (e) => GamebaseSearchResourceMetadata.fromJson(
+                  Map<String, dynamic>.from(e),
+                ),
+              )
               .where((r) => r.name.isNotEmpty)
               .toList() ??
           const [],

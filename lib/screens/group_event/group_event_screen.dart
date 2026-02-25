@@ -143,9 +143,7 @@ class GroupEventScreen extends HookConsumerWidget {
             searchController.clear();
           }
           if (next == GroupEventCategory.forYou) {
-            unawaited(
-              ref.read(forYouEventsProvider.notifier).refreshIfStale(),
-            );
+            unawaited(ref.read(forYouEventsProvider.notifier).refreshIfStale());
           }
           FocusScope.of(context).unfocus();
           // ignore: unused_result
@@ -248,13 +246,14 @@ class GroupEventScreen extends HookConsumerWidget {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (_) => PlayerProfileScreen(
-                              fideId: player.fideId,
-                              playerName: player.name,
-                              title: player.title,
-                              federation: player.fed,
-                              rating: player.rating,
-                            ),
+                            builder:
+                                (_) => PlayerProfileScreen(
+                                  fideId: player.fideId,
+                                  playerName: player.name,
+                                  title: player.title,
+                                  federation: player.fed,
+                                  rating: player.rating,
+                                ),
                           ),
                         );
                       },

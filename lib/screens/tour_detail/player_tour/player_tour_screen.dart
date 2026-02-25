@@ -23,9 +23,7 @@ class PlayerTourScreen extends ConsumerWidget {
 
     return Center(
       child: ConstrainedBox(
-        constraints: BoxConstraints(
-          maxWidth: ResponsiveHelper.contentMaxWidth,
-        ),
+        constraints: BoxConstraints(maxWidth: ResponsiveHelper.contentMaxWidth),
         child: Padding(
           padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
           child: Column(
@@ -41,21 +39,23 @@ class PlayerTourScreen extends ConsumerWidget {
                     data: (data) {
                       return data.isEmpty
                           ? Center(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.center,
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  SizedBox(height: 64.h),
-                                  EmptyWidget(title: "No data available"),
-                                ],
-                              ),
-                            )
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.center,
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                SizedBox(height: 64.h),
+                                EmptyWidget(title: "No data available"),
+                              ],
+                            ),
+                          )
                           : ref
                               .watch(favoritePlayersNotifierProvider)
                               .when(
                                 data: (favData) {
                                   final favIds =
-                                      favData.players.map((e) => e.fideId).toSet();
+                                      favData.players
+                                          .map((e) => e.fideId)
+                                          .toSet();
 
                                   // Keep players in their original ranking order (by score)
                                   // Do NOT reorder based on favorite status
@@ -73,7 +73,9 @@ class PlayerTourScreen extends ConsumerWidget {
                                       itemCount: data.length,
                                       itemBuilder: (context, index) {
                                         final player = data[index];
-                                        final isFav = favIds.contains(player.fideId);
+                                        final isFav = favIds.contains(
+                                          player.fideId,
+                                        );
                                         return FigmaPlayerCard(
                                           player: player,
                                           rank: index + 1,
@@ -82,13 +84,15 @@ class PlayerTourScreen extends ConsumerWidget {
                                           onTap: () {
                                             ref
                                                 .read(
-                                                  selectedPlayerProvider.notifier,
+                                                  selectedPlayerProvider
+                                                      .notifier,
                                                 )
                                                 .state = player;
                                             // Clear games context - tournament games come from gamesTourScreenProvider
                                             ref
                                                 .read(
-                                                  scoreCardGamesContextProvider.notifier,
+                                                  scoreCardGamesContextProvider
+                                                      .notifier,
                                                 )
                                                 .state = null;
                                             ref
@@ -96,7 +100,8 @@ class PlayerTourScreen extends ConsumerWidget {
                                                   scoreCardPlayerProfileDataSourceProvider
                                                       .notifier,
                                                 )
-                                                .state = PlayerProfileDataSource.supabase;
+                                                .state = PlayerProfileDataSource
+                                                    .supabase;
                                             Navigator.of(
                                               context,
                                             ).pushNamed('/scorecard_screen');

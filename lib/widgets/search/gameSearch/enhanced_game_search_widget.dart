@@ -153,7 +153,6 @@ class _EnhancedGamesSearchBarState extends ConsumerState<EnhancedGamesSearchBar>
         //       child: Container(color: Colors.transparent),
         //     ),
         //   ),
-
         Column(
           children: [
             // Search bar

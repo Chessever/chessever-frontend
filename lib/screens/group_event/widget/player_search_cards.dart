@@ -1,6 +1,8 @@
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:chessever2/repository/supabase/game/games.dart' show SearchPlayer;
-import 'package:chessever2/screens/group_event/group_event_screen.dart' show searchTabQueryProvider;
+import 'package:chessever2/repository/supabase/game/games.dart'
+    show SearchPlayer;
+import 'package:chessever2/screens/group_event/group_event_screen.dart'
+    show searchTabQueryProvider;
 import 'package:chessever2/screens/group_event/providers/supabase_combined_search_provider.dart';
 import 'package:chessever2/screens/player_profile/player_profile_screen.dart';
 import 'package:chessever2/services/fide_photo_service.dart';
@@ -9,7 +11,8 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/country_utils.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
-import 'package:chessever2/widgets/player_initials_avatar.dart' show getTitleBadgeColor;
+import 'package:chessever2/widgets/player_initials_avatar.dart'
+    show getTitleBadgeColor;
 import 'package:country_flags/country_flags.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -19,7 +22,9 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 const int _maxPlayerCards = 4;
 
 /// Provider that extracts the top searched players from search results (up to 4)
-final topSearchedPlayersProvider = Provider.autoDispose<List<SearchPlayer>>((ref) {
+final topSearchedPlayersProvider = Provider.autoDispose<List<SearchPlayer>>((
+  ref,
+) {
   final searchQuery = ref.watch(searchTabQueryProvider);
   if (searchQuery.isEmpty) return [];
 
@@ -83,9 +88,13 @@ class PlayerSearchCards extends ConsumerWidget {
       // Two players: single row
       return Row(
         children: [
-          Expanded(child: _PlayerSearchCard(player: players[0], isCompact: true)),
+          Expanded(
+            child: _PlayerSearchCard(player: players[0], isCompact: true),
+          ),
           SizedBox(width: 12.sp),
-          Expanded(child: _PlayerSearchCard(player: players[1], isCompact: true)),
+          Expanded(
+            child: _PlayerSearchCard(player: players[1], isCompact: true),
+          ),
         ],
       );
     }
@@ -95,18 +104,26 @@ class PlayerSearchCards extends ConsumerWidget {
       children: [
         Row(
           children: [
-            Expanded(child: _PlayerSearchCard(player: players[0], isCompact: true)),
+            Expanded(
+              child: _PlayerSearchCard(player: players[0], isCompact: true),
+            ),
             SizedBox(width: 12.sp),
-            Expanded(child: _PlayerSearchCard(player: players[1], isCompact: true)),
+            Expanded(
+              child: _PlayerSearchCard(player: players[1], isCompact: true),
+            ),
           ],
         ),
         SizedBox(height: 12.sp),
         Row(
           children: [
-            Expanded(child: _PlayerSearchCard(player: players[2], isCompact: true)),
+            Expanded(
+              child: _PlayerSearchCard(player: players[2], isCompact: true),
+            ),
             SizedBox(width: 12.sp),
             if (players.length > 3)
-              Expanded(child: _PlayerSearchCard(player: players[3], isCompact: true))
+              Expanded(
+                child: _PlayerSearchCard(player: players[3], isCompact: true),
+              )
             else
               const Expanded(child: SizedBox()), // Empty space for 3 players
           ],
@@ -117,10 +134,7 @@ class PlayerSearchCards extends ConsumerWidget {
 }
 
 class _PlayerSearchCard extends ConsumerWidget {
-  const _PlayerSearchCard({
-    required this.player,
-    this.isCompact = false,
-  });
+  const _PlayerSearchCard({required this.player, this.isCompact = false});
 
   final SearchPlayer player;
   final bool isCompact;
@@ -132,13 +146,14 @@ class _PlayerSearchCard extends ConsumerWidget {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => PlayerProfileScreen(
-          fideId: player.fideId,
-          playerName: player.name,
-          title: player.title,
-          federation: player.fed,
-          rating: player.rating,
-        ),
+        builder:
+            (_) => PlayerProfileScreen(
+              fideId: player.fideId,
+              playerName: player.name,
+              title: player.title,
+              federation: player.fed,
+              rating: player.rating,
+            ),
       ),
     );
   }
@@ -151,119 +166,120 @@ class _PlayerSearchCard extends ConsumerWidget {
       behavior: HitTestBehavior.opaque,
       onTap: () => _navigateToProfile(context),
       child: Container(
-      height: isCompact ? 108.sp : 120.sp,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(12.br),
-        border: Border.all(
-          color: kWhiteColor.withValues(alpha: 0.25),
-          width: 1,
+        height: isCompact ? 108.sp : 120.sp,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12.br),
+          border: Border.all(
+            color: kWhiteColor.withValues(alpha: 0.25),
+            width: 1,
+          ),
         ),
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(12.br),
-        child: Stack(
-          clipBehavior: Clip.hardEdge,
-          children: [
-            // Background: Country flag (full bleed, subtle)
-            if (countryCode != null) _FlagBackground(countryCode: countryCode),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(12.br),
+          child: Stack(
+            clipBehavior: Clip.hardEdge,
+            children: [
+              // Background: Country flag (full bleed, subtle)
+              if (countryCode != null)
+                _FlagBackground(countryCode: countryCode),
 
-            // Player photo overlay (positioned on right side)
-            _PlayerPhotoOverlay(player: player, isCompact: isCompact),
+              // Player photo overlay (positioned on right side)
+              _PlayerPhotoOverlay(player: player, isCompact: isCompact),
 
-            // Gradient overlay for text readability
-            Positioned.fill(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.centerRight,
-                    end: Alignment.centerLeft,
-                    colors: [
-                      Colors.transparent,
-                      kBlack2Color.withValues(alpha: 0.5),
-                      kBlack2Color.withValues(alpha: 0.85),
-                      kBlack2Color.withValues(alpha: 0.95),
-                    ],
-                    stops: const [0.0, 0.25, 0.55, 1.0],
+              // Gradient overlay for text readability
+              Positioned.fill(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.centerRight,
+                      end: Alignment.centerLeft,
+                      colors: [
+                        Colors.transparent,
+                        kBlack2Color.withValues(alpha: 0.5),
+                        kBlack2Color.withValues(alpha: 0.85),
+                        kBlack2Color.withValues(alpha: 0.95),
+                      ],
+                      stops: const [0.0, 0.25, 0.55, 1.0],
+                    ),
                   ),
                 ),
               ),
-            ),
 
-            // Foreground content
-            Padding(
-              padding: EdgeInsets.all(isCompact ? 12.sp : 14.sp),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  // Title badge (GM, IM, etc)
-                  if (player.title != null && player.title!.isNotEmpty)
-                    Padding(
-                      padding: EdgeInsets.only(bottom: 4.sp),
-                      child: Container(
-                        padding: EdgeInsets.symmetric(
-                          horizontal: 5.sp,
-                          vertical: 2.sp,
-                        ),
-                        decoration: BoxDecoration(
-                          color: getTitleBadgeColor(player.title!),
-                          borderRadius: BorderRadius.circular(4.br),
-                        ),
-                        child: Text(
-                          player.title!,
-                          style: AppTypography.textXsBold.copyWith(
-                            color: kWhiteColor,
-                            fontSize: isCompact ? 9.sp : 10.sp,
-                            letterSpacing: 0.5,
+              // Foreground content
+              Padding(
+                padding: EdgeInsets.all(isCompact ? 12.sp : 14.sp),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    // Title badge (GM, IM, etc)
+                    if (player.title != null && player.title!.isNotEmpty)
+                      Padding(
+                        padding: EdgeInsets.only(bottom: 4.sp),
+                        child: Container(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: 5.sp,
+                            vertical: 2.sp,
+                          ),
+                          decoration: BoxDecoration(
+                            color: getTitleBadgeColor(player.title!),
+                            borderRadius: BorderRadius.circular(4.br),
+                          ),
+                          child: Text(
+                            player.title!,
+                            style: AppTypography.textXsBold.copyWith(
+                              color: kWhiteColor,
+                              fontSize: isCompact ? 9.sp : 10.sp,
+                              letterSpacing: 0.5,
+                            ),
                           ),
                         ),
                       ),
+                    // Player name
+                    Text(
+                      _formatPlayerName(player.name),
+                      style: (isCompact
+                              ? AppTypography.textMdBold
+                              : AppTypography.textLgBold)
+                          .copyWith(color: kWhiteColor, letterSpacing: 0.3),
+                      maxLines: isCompact ? 1 : 2,
+                      overflow: TextOverflow.ellipsis,
                     ),
-                  // Player name
-                  Text(
-                    _formatPlayerName(player.name),
-                    style: (isCompact ? AppTypography.textMdBold : AppTypography.textLgBold).copyWith(
-                      color: kWhiteColor,
-                      letterSpacing: 0.3,
-                    ),
-                    maxLines: isCompact ? 1 : 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  SizedBox(height: 2.sp),
-                  // Subtitle: Rating + Country
-                  Row(
-                    children: [
-                      // Small flag icon
-                      if (countryCode != null) ...[
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(2.br),
-                          child: CountryFlag.fromCountryCode(
-                            countryCode,
-                            width: isCompact ? 14.sp : 16.sp,
-                            height: isCompact ? 10.sp : 12.sp,
+                    SizedBox(height: 2.sp),
+                    // Subtitle: Rating + Country
+                    Row(
+                      children: [
+                        // Small flag icon
+                        if (countryCode != null) ...[
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(2.br),
+                            child: CountryFlag.fromCountryCode(
+                              countryCode,
+                              width: isCompact ? 14.sp : 16.sp,
+                              height: isCompact ? 10.sp : 12.sp,
+                            ),
+                          ),
+                          SizedBox(width: 5.sp),
+                        ],
+                        Expanded(
+                          child: Text(
+                            _buildSubtitle(),
+                            style: AppTypography.textXsRegular.copyWith(
+                              color: kWhiteColor.withValues(alpha: 0.7),
+                              fontSize: isCompact ? 10.sp : 11.sp,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
-                        SizedBox(width: 5.sp),
                       ],
-                      Expanded(
-                        child: Text(
-                          _buildSubtitle(),
-                          style: AppTypography.textXsRegular.copyWith(
-                            color: kWhiteColor.withValues(alpha: 0.7),
-                            fontSize: isCompact ? 10.sp : 11.sp,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
+                    ),
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
-      ),
       ),
     );
   }
@@ -327,25 +343,24 @@ class _FlagBackground extends StatelessWidget {
 }
 
 /// Provider to cache player photo URLs
-final _searchPlayerPhotoUrlProvider =
-    FutureProvider.family.autoDispose<String?, int?>((ref, fideId) async {
-  if (fideId == null) return null;
-  return FidePhotoService.getPhotoUrlOrNull(fideId.toString());
-});
+final _searchPlayerPhotoUrlProvider = FutureProvider.family
+    .autoDispose<String?, int?>((ref, fideId) async {
+      if (fideId == null) return null;
+      return FidePhotoService.getPhotoUrlOrNull(fideId.toString());
+    });
 
 /// Player photo overlay positioned on the right side of the card
 class _PlayerPhotoOverlay extends ConsumerWidget {
-  const _PlayerPhotoOverlay({
-    required this.player,
-    this.isCompact = false,
-  });
+  const _PlayerPhotoOverlay({required this.player, this.isCompact = false});
 
   final SearchPlayer player;
   final bool isCompact;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final photoUrlAsync = ref.watch(_searchPlayerPhotoUrlProvider(player.fideId));
+    final photoUrlAsync = ref.watch(
+      _searchPlayerPhotoUrlProvider(player.fideId),
+    );
 
     return Positioned(
       right: isCompact ? -15.sp : -20.sp,
@@ -357,17 +372,18 @@ class _PlayerPhotoOverlay extends ConsumerWidget {
           return AspectRatio(
             aspectRatio: 0.8,
             child: ShaderMask(
-              shaderCallback: (bounds) => LinearGradient(
-                begin: Alignment.centerRight,
-                end: Alignment.centerLeft,
-                colors: [
-                  Colors.white,
-                  Colors.white.withValues(alpha: 0.85),
-                  Colors.white.withValues(alpha: 0.3),
-                  Colors.transparent,
-                ],
-                stops: const [0.0, 0.25, 0.55, 1.0],
-              ).createShader(bounds),
+              shaderCallback:
+                  (bounds) => LinearGradient(
+                    begin: Alignment.centerRight,
+                    end: Alignment.centerLeft,
+                    colors: [
+                      Colors.white,
+                      Colors.white.withValues(alpha: 0.85),
+                      Colors.white.withValues(alpha: 0.3),
+                      Colors.transparent,
+                    ],
+                    stops: const [0.0, 0.25, 0.55, 1.0],
+                  ).createShader(bounds),
               blendMode: BlendMode.dstIn,
               child: CachedNetworkImage(
                 imageUrl: photoUrl,

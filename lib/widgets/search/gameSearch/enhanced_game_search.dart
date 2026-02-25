@@ -39,7 +39,11 @@ extension GamesLocalStorageEnhancedSearch on GamesLocalStorage {
       }
 
       final normalizedQuery = query.toLowerCase().trim();
-      final queryTokens = normalizedQuery.split(' ').where((token) => token.isNotEmpty).toList();
+      final queryTokens =
+          normalizedQuery
+              .split(' ')
+              .where((token) => token.isNotEmpty)
+              .toList();
       final results = <GameSearchResult>[];
 
       for (final game in games) {
@@ -61,7 +65,9 @@ extension GamesLocalStorageEnhancedSearch on GamesLocalStorage {
         // Check player data if available
         if (!hasMatch && game.players != null) {
           for (final player in game.players!) {
-            final playerData = '${player.name} ${player.rating} ${player.title} ${player.fed}'.toLowerCase();
+            final playerData =
+                '${player.name} ${player.rating} ${player.title} ${player.fed}'
+                    .toLowerCase();
             // Check if all query tokens are found in player data
             if (_allTokensMatch(queryTokens, playerData)) {
               hasMatch = true;
@@ -78,7 +84,8 @@ extension GamesLocalStorageEnhancedSearch on GamesLocalStorage {
           if (eco.isNotEmpty && _allTokensMatch(queryTokens, eco)) {
             hasMatch = true;
             matchedText = game.eco!;
-          } else if (openingName.isNotEmpty && _allTokensMatch(queryTokens, openingName)) {
+          } else if (openingName.isNotEmpty &&
+              _allTokensMatch(queryTokens, openingName)) {
             hasMatch = true;
             matchedText = game.openingName!;
           }
@@ -376,11 +383,7 @@ extension GamesLocalStorageEnhancedSearch on GamesLocalStorage {
     final searchTerms = game.search ?? [];
     for (final term in searchTerms) {
       if (term.trim().isNotEmpty) {
-        items.add(SearchableItem(
-          text: term,
-          displayText: term,
-          type: 'name',
-        ));
+        items.add(SearchableItem(text: term, displayText: term, type: 'name'));
       }
     }
 
@@ -390,50 +393,62 @@ extension GamesLocalStorageEnhancedSearch on GamesLocalStorage {
         // Player ratings
         if (player.rating > 0) {
           final rating = player.rating.toString();
-          items.add(SearchableItem(
-            text: rating,
-            displayText: '${player.name} ($rating)',
-            type: 'rating',
-          ));
+          items.add(
+            SearchableItem(
+              text: rating,
+              displayText: '${player.name} ($rating)',
+              type: 'rating',
+            ),
+          );
 
           // Add rating ranges for easier searching
           if (player.rating >= 2700) {
-            items.add(SearchableItem(
-              text: '2700+',
-              displayText: '${player.name} (2700+)',
-              type: 'rating_range',
-            ));
+            items.add(
+              SearchableItem(
+                text: '2700+',
+                displayText: '${player.name} (2700+)',
+                type: 'rating_range',
+              ),
+            );
           } else if (player.rating >= 2500) {
-            items.add(SearchableItem(
-              text: '2500+',
-              displayText: '${player.name} (2500+)',
-              type: 'rating_range',
-            ));
+            items.add(
+              SearchableItem(
+                text: '2500+',
+                displayText: '${player.name} (2500+)',
+                type: 'rating_range',
+              ),
+            );
           } else if (player.rating >= 2300) {
-            items.add(SearchableItem(
-              text: '2300+',
-              displayText: '${player.name} (2300+)',
-              type: 'rating_range',
-            ));
+            items.add(
+              SearchableItem(
+                text: '2300+',
+                displayText: '${player.name} (2300+)',
+                type: 'rating_range',
+              ),
+            );
           }
         }
 
         // Player titles
         if (player.title.trim().isNotEmpty) {
-          items.add(SearchableItem(
-            text: player.title,
-            displayText: '${player.title} ${player.name}',
-            type: 'title',
-          ));
+          items.add(
+            SearchableItem(
+              text: player.title,
+              displayText: '${player.title} ${player.name}',
+              type: 'title',
+            ),
+          );
         }
 
         // Player federations/countries
         if (player.fed.trim().isNotEmpty) {
-          items.add(SearchableItem(
-            text: player.fed,
-            displayText: '${player.name} (${player.fed})',
-            type: 'country',
-          ));
+          items.add(
+            SearchableItem(
+              text: player.fed,
+              displayText: '${player.name} (${player.fed})',
+              type: 'country',
+            ),
+          );
         }
       }
     }
@@ -444,18 +459,22 @@ extension GamesLocalStorageEnhancedSearch on GamesLocalStorage {
       // Convert status to more readable format
       if (game.status == '1/2-1/2' || game.status == '½-½') {
         displayStatus = 'draw';
-        items.add(SearchableItem(
-          text: 'draw',
-          displayText: 'Draw result',
-          type: 'result',
-        ));
+        items.add(
+          SearchableItem(
+            text: 'draw',
+            displayText: 'Draw result',
+            type: 'result',
+          ),
+        );
       }
 
-      items.add(SearchableItem(
-        text: game.status!,
-        displayText: 'Result: $displayStatus',
-        type: 'result',
-      ));
+      items.add(
+        SearchableItem(
+          text: game.status!,
+          displayText: 'Result: $displayStatus',
+          type: 'result',
+        ),
+      );
     }
 
     return items;
@@ -464,9 +483,8 @@ extension GamesLocalStorageEnhancedSearch on GamesLocalStorage {
   /// Get priority order for match types (lower number = higher priority)
   int _getMatchTypePriority(String matchType) {
     // Extract the base match type (remove prefix like 'name_', 'rating_', etc.)
-    final baseType = matchType.contains('_')
-        ? matchType.split('_').last
-        : matchType;
+    final baseType =
+        matchType.contains('_') ? matchType.split('_').last : matchType;
 
     // Prioritize certain content types
     if (matchType.startsWith('name_')) {
@@ -515,9 +533,9 @@ extension GamesLocalStorageEnhancedSearch on GamesLocalStorage {
 
 /// Helper class to represent a searchable item with metadata
 class SearchableItem {
-  final String text;         // The text to search against
-  final String displayText;  // The text to show in results
-  final String type;         // The type of content (name, rating, title, etc.)
+  final String text; // The text to search against
+  final String displayText; // The text to show in results
+  final String type; // The type of content (name, rating, title, etc.)
 
   SearchableItem({
     required this.text,

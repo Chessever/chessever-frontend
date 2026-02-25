@@ -4,7 +4,8 @@ import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-export 'package:shared_preferences/shared_preferences.dart' show SharedPreferences;
+export 'package:shared_preferences/shared_preferences.dart'
+    show SharedPreferences;
 
 /// Singleton class to hold the pre-initialized SharedPreferences instance.
 /// This prevents multiple calls to SharedPreferences.getInstance() which can
@@ -15,7 +16,8 @@ export 'package:shared_preferences/shared_preferences.dart' show SharedPreferenc
 /// If SharedPreferences fails/times out, operations fail gracefully.
 class SharedPreferencesService {
   SharedPreferencesService._();
-  static final SharedPreferencesService _instance = SharedPreferencesService._();
+  static final SharedPreferencesService _instance =
+      SharedPreferencesService._();
   static SharedPreferencesService get instance => _instance;
 
   SharedPreferences? _prefs;

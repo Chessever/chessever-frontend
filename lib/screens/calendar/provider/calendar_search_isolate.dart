@@ -1,11 +1,31 @@
 /// Month name constants for search matching
 const _monthNamesLower = [
-  'january', 'february', 'march', 'april', 'may', 'june',
-  'july', 'august', 'september', 'october', 'november', 'december'
+  'january',
+  'february',
+  'march',
+  'april',
+  'may',
+  'june',
+  'july',
+  'august',
+  'september',
+  'october',
+  'november',
+  'december',
 ];
 const _monthShortLower = [
-  'jan', 'feb', 'mar', 'apr', 'may', 'jun',
-  'jul', 'aug', 'sep', 'oct', 'nov', 'dec'
+  'jan',
+  'feb',
+  'mar',
+  'apr',
+  'may',
+  'jun',
+  'jul',
+  'aug',
+  'sep',
+  'oct',
+  'nov',
+  'dec',
 ];
 
 /// Parameters for isolate-based calendar search filtering
@@ -157,15 +177,14 @@ CalendarSearchResult filterCalendarEventsIsolate(CalendarSearchParams params) {
 
   final summaries = <MonthEventsData>[];
   for (int i = 1; i <= 12; i++) {
-    final sorted = _sortEvents(
-      monthEvents[i]!,
-      filterMode: params.filterMode,
+    final sorted = _sortEvents(monthEvents[i]!, filterMode: params.filterMode);
+    summaries.add(
+      MonthEventsData(
+        monthName: params.monthNames[i - 1],
+        monthNumber: i,
+        events: sorted,
+      ),
     );
-    summaries.add(MonthEventsData(
-      monthName: params.monthNames[i - 1],
-      monthNumber: i,
-      events: sorted,
-    ));
   }
 
   return CalendarSearchResult(
@@ -263,12 +282,32 @@ List<String> _buildSearchTokens(CalendarEventData event) {
 
 void _addDateTokens(Set<String> tokens, DateTime date) {
   const months = [
-    'january', 'february', 'march', 'april', 'may', 'june',
-    'july', 'august', 'september', 'october', 'november', 'december'
+    'january',
+    'february',
+    'march',
+    'april',
+    'may',
+    'june',
+    'july',
+    'august',
+    'september',
+    'october',
+    'november',
+    'december',
   ];
   const monthShort = [
-    'jan', 'feb', 'mar', 'apr', 'may', 'jun',
-    'jul', 'aug', 'sep', 'oct', 'nov', 'dec'
+    'jan',
+    'feb',
+    'mar',
+    'apr',
+    'may',
+    'jun',
+    'jul',
+    'aug',
+    'sep',
+    'oct',
+    'nov',
+    'dec',
   ];
 
   final index = date.month - 1;
@@ -385,10 +424,7 @@ class DetailSearchResult {
   final List<CalendarEventData> events;
   final List<String> eventsToPrime;
 
-  const DetailSearchResult({
-    required this.events,
-    required this.eventsToPrime,
-  });
+  const DetailSearchResult({required this.events, required this.eventsToPrime});
 }
 
 /// Top-level function for detail screen filtering
@@ -445,10 +481,7 @@ DetailSearchResult filterDetailEventsIsolate(DetailSearchParams params) {
   }
 
   return DetailSearchResult(
-    events: _sortEvents(
-      filteredEvents,
-      filterMode: params.filterMode,
-    ),
+    events: _sortEvents(filteredEvents, filterMode: params.filterMode),
     eventsToPrime: eventsToPrime,
   );
 }

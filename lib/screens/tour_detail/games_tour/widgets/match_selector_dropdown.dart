@@ -14,29 +14,33 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 class MatchSelectorDropdown extends ConsumerWidget {
   final Function(String matchKey)? onMatchSelected;
 
-  const MatchSelectorDropdown({
-    super.key,
-    this.onMatchSelected,
-  });
+  const MatchSelectorDropdown({super.key, this.onMatchSelected});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return SizedBox(
       height: 38.h,
       width: 180.w,
-      child: ref.watch(gamesTourScreenProvider).when(
+      child: ref
+          .watch(gamesTourScreenProvider)
+          .when(
             data: (gamesData) {
               final allGames = gamesData.gamesTourModels;
 
               // Group games by matches
-              final matchesMap = KnockoutMatchDetector.groupByMatchesAcrossAllRounds(allGames);
+              final matchesMap =
+                  KnockoutMatchDetector.groupByMatchesAcrossAllRounds(allGames);
 
               // Convert to list of match headers using the detector's helper
-              final matches = matchesMap.entries.map((entry) {
-                final matchKey = entry.key;
-                final matchGames = entry.value;
-                return KnockoutMatchDetector.createMatchHeader(matchKey, matchGames);
-              }).toList();
+              final matches =
+                  matchesMap.entries.map((entry) {
+                    final matchKey = entry.key;
+                    final matchGames = entry.value;
+                    return KnockoutMatchDetector.createMatchHeader(
+                      matchKey,
+                      matchGames,
+                    );
+                  }).toList();
 
               // Sort matches by completion status and name
               matches.sort((a, b) {
@@ -54,29 +58,26 @@ class MatchSelectorDropdown extends ConsumerWidget {
                 },
               );
             },
-            error: (e, _) => Center(
-              child: Text(
-                'Error loading matches',
-                style: AppTypography.textXsRegular.copyWith(
-                  color: kWhiteColor70,
+            error:
+                (e, _) => Center(
+                  child: Text(
+                    'Error loading matches',
+                    style: AppTypography.textXsRegular.copyWith(
+                      color: kWhiteColor70,
+                    ),
+                  ),
                 ),
-              ),
-            ),
             loading: () => const SizedBox.shrink(),
           ),
     );
   }
-
 }
 
 class _MatchDropdown extends HookConsumerWidget {
   final List<MatchHeaderModel> matches;
   final ValueChanged<MatchHeaderModel> onChanged;
 
-  const _MatchDropdown({
-    required this.matches,
-    required this.onChanged,
-  });
+  const _MatchDropdown({required this.matches, required this.onChanged});
 
   Widget _buildMatchRow(MatchHeaderModel match) {
     return Row(
@@ -135,17 +136,10 @@ class _MatchDropdown extends HookConsumerWidget {
             SvgAsset.check,
             width: 14.w,
             height: 14.h,
-            colorFilter: const ColorFilter.mode(
-              Colors.green,
-              BlendMode.srcIn,
-            ),
+            colorFilter: const ColorFilter.mode(Colors.green, BlendMode.srcIn),
           )
         else
-          SvgPicture.asset(
-            SvgAsset.selectedSvg,
-            width: 14.w,
-            height: 14.h,
-          ),
+          SvgPicture.asset(SvgAsset.selectedSvg, width: 14.w, height: 14.h),
       ],
     );
   }
@@ -175,73 +169,80 @@ class _MatchDropdown extends HookConsumerWidget {
         final availableHeight =
             MediaQuery.of(context).size.height - offset.dy - size.height - 20;
         overlayEntry = OverlayEntry(
-          builder: (context) => GestureDetector(
-            behavior: HitTestBehavior.translucent,
-            onTap: () => isOpen.value = false,
-            child: Stack(
-              children: [
-                Positioned(
-                  left: offset.dx,
-                  top: offset.dy + size.height,
-                  width: 280.w,
-                  child: CompositedTransformFollower(
-                    link: layerLink,
-                    showWhenUnlinked: false,
-                    offset: Offset(-50.w, size.height),
-                    child: Material(
-                      color: Colors.transparent,
-                      child: ConstrainedBox(
-                        constraints: BoxConstraints(
-                          maxHeight: availableHeight,
-                          minWidth: size.width,
-                        ),
-                        child: Container(
-                          decoration: BoxDecoration(
-                            color: kBlack2Color,
-                            borderRadius: BorderRadius.circular(20.br),
-                          ),
-                          padding: EdgeInsets.symmetric(vertical: 8.h),
-                          child: ListView.separated(
-                            padding: EdgeInsets.zero,
-                            shrinkWrap: true,
-                            itemCount: matches.length,
-                            separatorBuilder: (context, index) {
-                              return Padding(
-                                padding: EdgeInsets.symmetric(vertical: 5.h),
-                                child: DividerWidget(),
-                              );
-                            },
-                            itemBuilder: (context, index) {
-                              final match = matches[index];
-                              final isSelected = index == selectedIndex.value;
-
-                              return InkWell(
-                                onTap: () {
-                                  selectedIndex.value = index;
-                                  onChanged(match);
-                                  isOpen.value = false;
+          builder:
+              (context) => GestureDetector(
+                behavior: HitTestBehavior.translucent,
+                onTap: () => isOpen.value = false,
+                child: Stack(
+                  children: [
+                    Positioned(
+                      left: offset.dx,
+                      top: offset.dy + size.height,
+                      width: 280.w,
+                      child: CompositedTransformFollower(
+                        link: layerLink,
+                        showWhenUnlinked: false,
+                        offset: Offset(-50.w, size.height),
+                        child: Material(
+                          color: Colors.transparent,
+                          child: ConstrainedBox(
+                            constraints: BoxConstraints(
+                              maxHeight: availableHeight,
+                              minWidth: size.width,
+                            ),
+                            child: Container(
+                              decoration: BoxDecoration(
+                                color: kBlack2Color,
+                                borderRadius: BorderRadius.circular(20.br),
+                              ),
+                              padding: EdgeInsets.symmetric(vertical: 8.h),
+                              child: ListView.separated(
+                                padding: EdgeInsets.zero,
+                                shrinkWrap: true,
+                                itemCount: matches.length,
+                                separatorBuilder: (context, index) {
+                                  return Padding(
+                                    padding: EdgeInsets.symmetric(
+                                      vertical: 5.h,
+                                    ),
+                                    child: DividerWidget(),
+                                  );
                                 },
-                                child: Container(
-                                  color: isSelected
-                                      ? kBlack2Color.withValues(alpha: 0.5)
-                                      : Colors.transparent,
-                                  padding: EdgeInsets.symmetric(
-                                    horizontal: 12.w,
-                                    vertical: 6.h,
-                                  ),
-                                  child: _buildMatchRow(match),
-                                ),
-                              );
-                            },
+                                itemBuilder: (context, index) {
+                                  final match = matches[index];
+                                  final isSelected =
+                                      index == selectedIndex.value;
+
+                                  return InkWell(
+                                    onTap: () {
+                                      selectedIndex.value = index;
+                                      onChanged(match);
+                                      isOpen.value = false;
+                                    },
+                                    child: Container(
+                                      color:
+                                          isSelected
+                                              ? kBlack2Color.withValues(
+                                                alpha: 0.5,
+                                              )
+                                              : Colors.transparent,
+                                      padding: EdgeInsets.symmetric(
+                                        horizontal: 12.w,
+                                        vertical: 6.h,
+                                      ),
+                                      child: _buildMatchRow(match),
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
                           ),
                         ),
                       ),
                     ),
-                  ),
+                  ],
                 ),
-              ],
-            ),
-          ),
+              ),
         );
         overlay.insert(overlayEntry!);
         void removeOverlay() {
@@ -295,7 +296,8 @@ class _MatchDropdown extends HookConsumerWidget {
       return const SizedBox.shrink();
     }
 
-    final selectedMatch = matches[selectedIndex.value.clamp(0, matches.length - 1)];
+    final selectedMatch =
+        matches[selectedIndex.value.clamp(0, matches.length - 1)];
 
     return CompositedTransformTarget(
       link: layerLink,

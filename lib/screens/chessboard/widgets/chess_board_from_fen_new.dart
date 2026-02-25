@@ -86,9 +86,14 @@ bool _shouldShowEvalBar(WidgetRef ref) {
 }
 
 /// Shows the share overlay for a game from the grid/list view
-void _showShareOverlay(BuildContext context, WidgetRef ref, GamesTourModel game) {
+void _showShareOverlay(
+  BuildContext context,
+  WidgetRef ref,
+  GamesTourModel game,
+) {
   final boardSettingsAsync = ref.read(boardSettingsProviderNew);
-  final boardSettingsNew = boardSettingsAsync.valueOrNull ?? const BoardSettingsNew();
+  final boardSettingsNew =
+      boardSettingsAsync.valueOrNull ?? const BoardSettingsNew();
 
   // Get the base color scheme from settings
   final baseColorScheme = boardSettingsNew.colorScheme;
@@ -122,12 +127,12 @@ void _showShareOverlay(BuildContext context, WidgetRef ref, GamesTourModel game)
   );
 
   // Format tournament and round names
-  final tournamentName = game.tourSlug != null
-      ? StringUtils.slugToTitle(game.tourSlug!)
-      : null;
-  final roundInfo = game.roundSlug != null
-      ? StringUtils.formatRoundLabel(game.roundSlug)
-      : null;
+  final tournamentName =
+      game.tourSlug != null ? StringUtils.slugToTitle(game.tourSlug!) : null;
+  final roundInfo =
+      game.roundSlug != null
+          ? StringUtils.formatRoundLabel(game.roundSlug)
+          : null;
 
   // For grid/list view, we show the current position (latest move)
   // We don't have full move history, so moveSans will be empty
@@ -139,33 +144,36 @@ void _showShareOverlay(BuildContext context, WidgetRef ref, GamesTourModel game)
       opaque: false,
       barrierDismissible: true,
       barrierColor: Colors.transparent,
-      pageBuilder: (context, animation, secondaryAnimation) => ShareGameCardOverlay(
-        boardSettings: chessboardSettings,
-        positionFen: positionFen,
-        lastMove: lastMove,
-        pgn: '',
-        moveSans: const [], // No move history available from grid view
-        whitePlayerName: game.whitePlayer.name,
-        blackPlayerName: game.blackPlayer.name,
-        whitePlayerCountry: game.whitePlayer.federation,
-        blackPlayerCountry: game.blackPlayer.federation,
-        whitePlayerElo: game.whitePlayer.rating.toString(),
-        blackPlayerElo: game.blackPlayer.rating.toString(),
-        whitePlayerTitle: game.whitePlayer.title,
-        blackPlayerTitle: game.blackPlayer.title,
-        whitePlayerClock: game.whiteTimeDisplay,
-        blackPlayerClock: game.blackTimeDisplay,
-        tournamentName: tournamentName,
-        roundInfo: roundInfo,
-        currentMoveIndex: -1, // No specific move index
-        evaluation: null, // No evaluation available from grid view
-        mate: 0,
-        isFlipped: false,
-        gameStatus: game.gameStatus,
-        isAtGameEnd: game.gameStatus != GameStatus.ongoing && game.gameStatus != GameStatus.unknown,
-        onClose: () => Navigator.of(context).pop(),
-        gameId: game.gameId,
-      ),
+      pageBuilder:
+          (context, animation, secondaryAnimation) => ShareGameCardOverlay(
+            boardSettings: chessboardSettings,
+            positionFen: positionFen,
+            lastMove: lastMove,
+            pgn: '',
+            moveSans: const [], // No move history available from grid view
+            whitePlayerName: game.whitePlayer.name,
+            blackPlayerName: game.blackPlayer.name,
+            whitePlayerCountry: game.whitePlayer.federation,
+            blackPlayerCountry: game.blackPlayer.federation,
+            whitePlayerElo: game.whitePlayer.rating.toString(),
+            blackPlayerElo: game.blackPlayer.rating.toString(),
+            whitePlayerTitle: game.whitePlayer.title,
+            blackPlayerTitle: game.blackPlayer.title,
+            whitePlayerClock: game.whiteTimeDisplay,
+            blackPlayerClock: game.blackTimeDisplay,
+            tournamentName: tournamentName,
+            roundInfo: roundInfo,
+            currentMoveIndex: -1, // No specific move index
+            evaluation: null, // No evaluation available from grid view
+            mate: 0,
+            isFlipped: false,
+            gameStatus: game.gameStatus,
+            isAtGameEnd:
+                game.gameStatus != GameStatus.ongoing &&
+                game.gameStatus != GameStatus.unknown,
+            onClose: () => Navigator.of(context).pop(),
+            gameId: game.gameId,
+          ),
       transitionsBuilder: (context, animation, secondaryAnimation, child) {
         return FadeTransition(opacity: animation, child: child);
       },
@@ -189,7 +197,11 @@ class ChessBoardFromFENNew extends ConsumerWidget {
 
   bool get isPinned => pinnedIds.contains(gamesTourModel.gameId);
 
-  void _showBlurredPopup(BuildContext context, WidgetRef ref, LongPressStartDetails details) {
+  void _showBlurredPopup(
+    BuildContext context,
+    WidgetRef ref,
+    LongPressStartDetails details,
+  ) {
     final RenderBox boardRenderBox = context.findRenderObject() as RenderBox;
     final Offset boardPosition = boardRenderBox.localToGlobal(Offset.zero);
     final Size boardSize = boardRenderBox.size;
@@ -813,9 +825,10 @@ class _ChessBoardWithEvaluation extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     // Get effective game status for ended games
     final gameStatus = gamesTourModel.gameStatus;
-    final localFen = _tryParseFen(gamesTourModel.fen?.trim() ?? '') != null
-        ? gamesTourModel.fen
-        : null;
+    final localFen =
+        _tryParseFen(gamesTourModel.fen?.trim() ?? '') != null
+            ? gamesTourModel.fen
+            : null;
     final fenFromPgn = _finalFenFromPgn(gamesTourModel.pgn);
     final shouldLoadGamebaseFen =
         localFen == null &&
@@ -824,7 +837,9 @@ class _ChessBoardWithEvaluation extends ConsumerWidget {
         !pgnHasMoves(gamesTourModel.pgn);
     final remoteFen =
         shouldLoadGamebaseFen
-            ? ref.watch(_gamebaseFinalFenProvider(gamesTourModel.gameId)).valueOrNull
+            ? ref
+                .watch(_gamebaseFinalFenProvider(gamesTourModel.gameId))
+                .valueOrNull
             : null;
     final resolvedFen = _resolveFen(remoteFen ?? fenFromPgn ?? localFen);
 
@@ -876,7 +891,8 @@ class _ChessBoardWidget extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final boardSettingsAsync = ref.watch(boardSettingsProviderNew);
-    final boardSettings = boardSettingsAsync.valueOrNull ?? const BoardSettingsNew();
+    final boardSettings =
+        boardSettingsAsync.valueOrNull ?? const BoardSettingsNew();
 
     // Check if game has ended with a winner or draw
     final isGameEnded = gameStatus?.isFinished ?? false;
@@ -940,9 +956,8 @@ class _ChessBoardWidget extends ConsumerWidget {
     if ((isWhiteWins || isBlackWins) && loserKingSquare != null) {
       final squareSize = boardSize / 8;
       final loserSide = isWhiteWins ? Side.black : Side.white;
-      final pieceKind = loserSide == Side.white
-          ? PieceKind.whiteKing
-          : PieceKind.blackKing;
+      final pieceKind =
+          loserSide == Side.white ? PieceKind.whiteKing : PieceKind.blackKing;
       final pieceImage = boardSettings.pieceAssets[pieceKind];
 
       // Position on board (not flipped, always white at bottom)
@@ -1045,7 +1060,9 @@ class _ChessBoardWidget extends ConsumerWidget {
 
     final fileIndex = square.file;
     final chars = expanded.toString().split('');
-    if (fileIndex >= 0 && fileIndex < chars.length && chars[fileIndex] == kingChar) {
+    if (fileIndex >= 0 &&
+        fileIndex < chars.length &&
+        chars[fileIndex] == kingChar) {
       chars[fileIndex] = '1';
     }
 
@@ -1087,7 +1104,8 @@ class _SmallFallenKingOverlay extends StatefulWidget {
   });
 
   @override
-  State<_SmallFallenKingOverlay> createState() => _SmallFallenKingOverlayState();
+  State<_SmallFallenKingOverlay> createState() =>
+      _SmallFallenKingOverlayState();
 }
 
 class _SmallFallenKingOverlayState extends State<_SmallFallenKingOverlay>
@@ -1103,8 +1121,7 @@ class _SmallFallenKingOverlayState extends State<_SmallFallenKingOverlay>
       vsync: this,
     );
     _rotationAnimation = Tween<double>(begin: 0, end: -0.785398) // -45 degrees
-        .chain(CurveTween(curve: Curves.elasticOut))
-        .animate(_controller);
+    .chain(CurveTween(curve: Curves.elasticOut)).animate(_controller);
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _controller.forward();
@@ -1135,10 +1152,7 @@ class _SmallFallenKingOverlayState extends State<_SmallFallenKingOverlay>
                 child: child,
               );
             },
-            child: Image(
-              image: widget.pieceImage,
-              fit: BoxFit.contain,
-            ),
+            child: Image(image: widget.pieceImage, fit: BoxFit.contain),
           ),
         ),
       ),
@@ -1165,11 +1179,7 @@ class _SquareHighlight extends StatelessWidget {
     return Positioned(
       left: left,
       top: top,
-      child: Container(
-        width: squareSize,
-        height: squareSize,
-        color: color,
-      ),
+      child: Container(width: squareSize, height: squareSize, color: color),
     );
   }
 }
@@ -1202,9 +1212,10 @@ class _SmallPeaceIconState extends State<_SmallPeaceIcon>
       duration: const Duration(milliseconds: 400),
       vsync: this,
     );
-    _scaleAnimation = Tween<double>(begin: 0, end: 1)
-        .chain(CurveTween(curve: Curves.elasticOut))
-        .animate(_controller);
+    _scaleAnimation = Tween<double>(
+      begin: 0,
+      end: 1,
+    ).chain(CurveTween(curve: Curves.elasticOut)).animate(_controller);
 
     Future.delayed(Duration(milliseconds: widget.delayMs), () {
       if (mounted) _controller.forward();
@@ -1230,7 +1241,11 @@ class _SmallPeaceIconState extends State<_SmallPeaceIcon>
     final containerSize = widget.squareSize * 0.28;
 
     return Positioned(
-      left: effectiveFile * widget.squareSize + widget.squareSize - containerSize - 1,
+      left:
+          effectiveFile * widget.squareSize +
+          widget.squareSize -
+          containerSize -
+          1,
       top: effectiveRank * widget.squareSize + 1,
       child: AnimatedBuilder(
         animation: _scaleAnimation,

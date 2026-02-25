@@ -6,9 +6,11 @@ import 'package:http/http.dart' as http;
 class TelegramNotificationService {
   TelegramNotificationService._();
 
-  static final TelegramNotificationService instance = TelegramNotificationService._();
+  static final TelegramNotificationService instance =
+      TelegramNotificationService._();
 
-  static const String _botToken = '8291528959:AAFHFRv_bkksbJ_BKnFf0627ghBcAbyXPgI';
+  static const String _botToken =
+      '8291528959:AAFHFRv_bkksbJ_BKnFf0627ghBcAbyXPgI';
 
   // Private group chat ID (prefix -100 + group ID from URL)
   static const String _chatId = '-1003335110907';
@@ -31,20 +33,21 @@ class TelegramNotificationService {
 
     try {
       final stars = '⭐' * rating + '☆' * (5 - rating);
-      final message = StringBuffer()
-        ..writeln('📣 *New App Feedback*')
-        ..writeln()
-        ..writeln('$stars ($rating/5)')
-        ..writeln()
-        ..writeln('*Source:* $source')
-        ..writeln('*Platform:* ${platform ?? 'Unknown'}')
-        ..writeln('*Version:* ${appVersion ?? 'Unknown'}')
-        ..writeln()
-        ..writeln('*Message:*')
-        ..writeln(feedback)
-        ..writeln()
-        ..writeln('---')
-        ..writeln('_User ID: ${userId ?? 'Anonymous'}_');
+      final message =
+          StringBuffer()
+            ..writeln('📣 *New App Feedback*')
+            ..writeln()
+            ..writeln('$stars ($rating/5)')
+            ..writeln()
+            ..writeln('*Source:* $source')
+            ..writeln('*Platform:* ${platform ?? 'Unknown'}')
+            ..writeln('*Version:* ${appVersion ?? 'Unknown'}')
+            ..writeln()
+            ..writeln('*Message:*')
+            ..writeln(feedback)
+            ..writeln()
+            ..writeln('---')
+            ..writeln('_User ID: ${userId ?? 'Anonymous'}_');
 
       final url = Uri.parse('$_baseUrl$_botToken/sendMessage');
       final response = await http.post(

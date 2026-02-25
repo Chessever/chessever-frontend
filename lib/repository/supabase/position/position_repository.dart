@@ -7,7 +7,6 @@ final positionRepositoryProvider = AutoDisposeProvider<PositionRepository>(
 );
 
 class PositionRepository extends BaseRepository {
-
   Future<Position?> getById(int id) => handleApiCall(() async {
     final response =
         await supabase.from('positions').select().eq('id', id).maybeSingle();
@@ -15,17 +14,18 @@ class PositionRepository extends BaseRepository {
   });
 
   Future<Position> create(String fen) => handleApiCall(() async {
-    final response = await supabase
-    .from('positions')
-    .upsert({'fen': fen}, onConflict: 'fen')
-    .select()
-    .single();
+    final response =
+        await supabase
+            .from('positions')
+            .upsert({'fen': fen}, onConflict: 'fen')
+            .select()
+            .single();
     return Position.fromJson(response);
   });
 
   Future<Position?> getByFen(String fen) => handleApiCall(() async {
     final res =
-    await supabase.from('positions').select().eq('fen', fen).maybeSingle();
+        await supabase.from('positions').select().eq('fen', fen).maybeSingle();
     return res == null ? null : Position.fromJson(res);
   });
 

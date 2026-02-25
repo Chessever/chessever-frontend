@@ -6,8 +6,8 @@ import 'package:equatable/equatable.dart';
 enum TourEventCategory { live, ongoing, upcoming, completed }
 
 enum EventSource {
-  lichessBroadcast,  // From group_broadcasts (Lichess events)
-  communityEvent,    // From calendar_events (external sources)
+  lichessBroadcast, // From group_broadcasts (Lichess events)
+  communityEvent, // From calendar_events (external sources)
 }
 
 class GroupEventCardModel extends Equatable {
@@ -67,18 +67,17 @@ class GroupEventCardModel extends Equatable {
     );
   }
 
-  factory GroupEventCardModel.fromCalendarEvent(
-    CalendarEvent calendarEvent,
-  ) {
+  factory GroupEventCardModel.fromCalendarEvent(CalendarEvent calendarEvent) {
     final utcStart = calendarEvent.startDate;
     final utcEnd = calendarEvent.endDate;
 
     // Use event name as ID for calendar events (name is primary key in DB)
     // Replace special characters to ensure valid ID format
-    final sanitizedName = calendarEvent.name
-        .replaceAll(' ', '_')
-        .replaceAll(RegExp(r'[^\w\-]'), '')
-        .toLowerCase();
+    final sanitizedName =
+        calendarEvent.name
+            .replaceAll(' ', '_')
+            .replaceAll(RegExp(r'[^\w\-]'), '')
+            .toLowerCase();
     final eventId = 'cal_event_$sanitizedName';
 
     return GroupEventCardModel(

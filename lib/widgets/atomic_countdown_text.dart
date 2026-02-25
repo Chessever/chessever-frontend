@@ -17,8 +17,10 @@ class AtomicCountdownText extends ConsumerWidget {
   });
 
   final String? moveTime; // Legacy: for chessboard screen with PGN parsing
-  final int? clockSeconds; // Primary source: time in seconds from last_clock fields
-  final int clockCentiseconds; // Fallback source: raw database clock in centiseconds
+  final int?
+  clockSeconds; // Primary source: time in seconds from last_clock fields
+  final int
+  clockCentiseconds; // Fallback source: raw database clock in centiseconds
   final DateTime? lastMoveTime;
   final bool isActive;
   final TextStyle style;
@@ -27,7 +29,8 @@ class AtomicCountdownText extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     // Determine which time source to use: clockSeconds (primary), moveTime (secondary), clockCentiseconds (fallback)
     final useClockSeconds = clockSeconds != null;
-    final useCalculatedTime = !useClockSeconds && moveTime != null && moveTime!.isNotEmpty;
+    final useCalculatedTime =
+        !useClockSeconds && moveTime != null && moveTime!.isNotEmpty;
 
     // Only watch dateTimeProvider if clock is actively counting down
     if (!isActive || lastMoveTime == null) {
@@ -43,52 +46,55 @@ class AtomicCountdownText extends ConsumerWidget {
     }
 
     // Atomic rebuild - only this Text widget rebuilds every second
-    final displayTime = ref.watch(dateTimeProvider.select((timeAsync) {
-      final currentTime = timeAsync.valueOrNull;
-      if (currentTime == null) {
-        if (useClockSeconds) {
-          final staticTime = _formatTimeFromSeconds(clockSeconds!);
-          return _formatTimeWithHours(staticTime);
-        } else if (useCalculatedTime) {
-          return _formatTimeWithHours(moveTime!);
-        } else {
-          final staticTime = _formatTimeFromMs(clockCentiseconds * 10);
-          return _formatTimeWithHours(staticTime);
+    final displayTime = ref.watch(
+      dateTimeProvider.select((timeAsync) {
+        final currentTime = timeAsync.valueOrNull;
+        if (currentTime == null) {
+          if (useClockSeconds) {
+            final staticTime = _formatTimeFromSeconds(clockSeconds!);
+            return _formatTimeWithHours(staticTime);
+          } else if (useCalculatedTime) {
+            return _formatTimeWithHours(moveTime!);
+          } else {
+            final staticTime = _formatTimeFromMs(clockCentiseconds * 10);
+            return _formatTimeWithHours(staticTime);
+          }
         }
-      }
 
-      // Calculate elapsed time since lastMoveTime (when the previous player finished their move)
-      // This is how long the current player has been thinking on their turn
-      final elapsedSeconds = currentTime.difference(lastMoveTime!).inSeconds.abs();
+        // Calculate elapsed time since lastMoveTime (when the previous player finished their move)
+        // This is how long the current player has been thinking on their turn
+        final elapsedSeconds =
+            currentTime.difference(lastMoveTime!).inSeconds.abs();
 
-      int totalSeconds;
-      if (useClockSeconds) {
-        // Primary source: Use clock seconds directly
-        totalSeconds = clockSeconds!;
-      } else if (useCalculatedTime) {
-        // Secondary source: Parse calculated moveTime
-        totalSeconds = _parseTimeToSeconds(moveTime!);
-        if (totalSeconds == 0) {
-          // If parsing fails, fallback to clock centiseconds
+        int totalSeconds;
+        if (useClockSeconds) {
+          // Primary source: Use clock seconds directly
+          totalSeconds = clockSeconds!;
+        } else if (useCalculatedTime) {
+          // Secondary source: Parse calculated moveTime
+          totalSeconds = _parseTimeToSeconds(moveTime!);
+          if (totalSeconds == 0) {
+            // If parsing fails, fallback to clock centiseconds
+            totalSeconds = (clockCentiseconds / 100).floor();
+          }
+        } else {
+          // Fallback source: Use raw clock centiseconds (convert to seconds)
           totalSeconds = (clockCentiseconds / 100).floor();
         }
-      } else {
-        // Fallback source: Use raw clock centiseconds (convert to seconds)
-        totalSeconds = (clockCentiseconds / 100).floor();
-      }
 
-      // Calculate remaining time: total time minus elapsed time since last move
-      final remainingSeconds = totalSeconds - elapsedSeconds;
+        // Calculate remaining time: total time minus elapsed time since last move
+        final remainingSeconds = totalSeconds - elapsedSeconds;
 
-      // Ensure time doesn't go below 0
-      final clampedSeconds = remainingSeconds < 0 ? 0 : remainingSeconds;
+        // Ensure time doesn't go below 0
+        final clampedSeconds = remainingSeconds < 0 ? 0 : remainingSeconds;
 
-      // Format the remaining time
-      final remainingTime = _formatTimeFromSeconds(clampedSeconds);
+        // Format the remaining time
+        final remainingTime = _formatTimeFromSeconds(clampedSeconds);
 
-      // Convert to hh:mm:ss format if over 1 hour
-      return _formatTimeWithHours(remainingTime);
-    }));
+        // Convert to hh:mm:ss format if over 1 hour
+        return _formatTimeWithHours(remainingTime);
+      }),
+    );
 
     return Text(displayTime, style: style);
   }
@@ -128,7 +134,8 @@ class AtomicCountdownText extends ConsumerWidget {
         final minuteMatch = RegExp(r'(\d+)m').firstMatch(timeString);
 
         final hours = hourMatch != null ? int.parse(hourMatch.group(1)!) : 0;
-        final minutes = minuteMatch != null ? int.parse(minuteMatch.group(1)!) : 0;
+        final minutes =
+            minuteMatch != null ? int.parse(minuteMatch.group(1)!) : 0;
 
         return hours * 3600 + minutes * 60;
       }
@@ -157,7 +164,8 @@ class AtomicCountdownText extends ConsumerWidget {
   /// Input can be either MM:SS or HH:MM:SS format, or already formatted time from ChessClockExtension
   static String _formatTimeWithHours(String timeString) {
     // If it's already in the correct format or contains 'h' (like "1h23m"), return as is
-    if (timeString.contains('h') || timeString.contains(':') && timeString.split(':').length == 3) {
+    if (timeString.contains('h') ||
+        timeString.contains(':') && timeString.split(':').length == 3) {
       return timeString;
     }
 

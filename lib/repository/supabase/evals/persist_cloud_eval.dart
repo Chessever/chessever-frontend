@@ -40,7 +40,9 @@ class PersistCloudEval {
         final firstUci = firstMoves.split(' ').first;
         final move = Move.parse(firstUci);
         if (move == null || !position.isLegal(move)) {
-          print('⚠️ PERSIST BLOCKED: First PV move $firstUci is illegal for FEN $fen');
+          print(
+            '⚠️ PERSIST BLOCKED: First PV move $firstUci is illegal for FEN $fen',
+          );
           return Evals(positionId: 0, knodes: 0, depth: 0, pvs: []);
         }
       } catch (e) {
@@ -52,7 +54,9 @@ class PersistCloudEval {
     final fenParts = fen.split(' ');
     final sideToMove = fenParts.length >= 2 ? fenParts[1] : 'w';
     final cp = cloud.pvs.isNotEmpty ? cloud.pvs.first.cp : 0;
-    print("💾 SAVING TO SUPABASE: fen=$fen, side=$sideToMove, cp=$cp (should already be white's perspective)");
+    print(
+      "💾 SAVING TO SUPABASE: fen=$fen, side=$sideToMove, cp=$cp (should already be white's perspective)",
+    );
 
     final targetMultiPv = cloud.requestedMultiPv ?? cloud.pvs.length;
 
@@ -70,16 +74,17 @@ class PersistCloudEval {
           positionId: positionId,
           knodes: cloud.knodes,
           depth: cloud.depth,
-          pvs: cloud.pvs
-              .map(
-                (pv) => {
-                  'moves': pv.moves,
-                  'cp': pv.cp,
-                  'mate': pv.mate,
-                  'whitePerspective': pv.whitePerspective,
-                },
-              )
-              .toList(),
+          pvs:
+              cloud.pvs
+                  .map(
+                    (pv) => {
+                      'moves': pv.moves,
+                      'cp': pv.cp,
+                      'mate': pv.mate,
+                      'whitePerspective': pv.whitePerspective,
+                    },
+                  )
+                  .toList(),
           multiPv: targetMultiPv, // Track user-requested PV count
         ),
       );
@@ -92,7 +97,9 @@ class PersistCloudEval {
           final existingEval = existingEvals.first;
           return existingEval; // Return existing eval, don't try to insert PVs again
         }
-        throw StateError('Failed to create eval record for position: $positionId');
+        throw StateError(
+          'Failed to create eval record for position: $positionId',
+        );
       }
 
       // 3️⃣ pvs rows - only insert if eval was created successfully and doesn't have PVs yet
@@ -123,9 +130,8 @@ class PersistCloudEval {
               cp = null; // Don't store cp for mate positions
             } else if (pv.cp.abs() >= 100_000) {
               // Fallback: derive mate from high cp value
-              final derivedMate = pv.cp > 0 ?
-                  (100000 - pv.cp.abs()) :
-                  -(100000 - pv.cp.abs());
+              final derivedMate =
+                  pv.cp > 0 ? (100000 - pv.cp.abs()) : -(100000 - pv.cp.abs());
               mate = derivedMate;
               cp = null;
             } else {
@@ -139,7 +145,10 @@ class PersistCloudEval {
               'idx': idx,
               'cp': cp,
               'mate': mate,
-              'line': pv.moves.isNotEmpty ? pv.moves : 'no moves', // Ensure line is not empty
+              'line':
+                  pv.moves.isNotEmpty
+                      ? pv.moves
+                      : 'no moves', // Ensure line is not empty
             };
           }).toList();
 

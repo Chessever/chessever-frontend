@@ -43,26 +43,43 @@ class _CalendarDetailScreenController
 
   Timer? _debounceTimer;
   int _filterVersion = 0; // For cancellation of stale queries
-  bool _isInitialized = false; // Guard against filter runs before data is fetched
+  bool _isInitialized =
+      false; // Guard against filter runs before data is fetched
 
   void _listenToFilters() {
-    ref.listen(calendarSearchQueryProvider, (_, __) => _applyFiltersDebounced());
-    ref.listen(calendarTimeControlProvider, (_, __) => _applyFiltersDebounced());
+    ref.listen(
+      calendarSearchQueryProvider,
+      (_, __) => _applyFiltersDebounced(),
+    );
+    ref.listen(
+      calendarTimeControlProvider,
+      (_, __) => _applyFiltersDebounced(),
+    );
     ref.listen(calendarFilterModeProvider, (_, __) => _applyFiltersDebounced());
-    ref.listen(liveGroupBroadcastIdsProvider, (_, __) => _applyFiltersDebounced());
+    ref.listen(
+      liveGroupBroadcastIdsProvider,
+      (_, __) => _applyFiltersDebounced(),
+    );
     ref.listen(favoriteEventsProvider, (_, __) => _applyFiltersDebounced());
-    ref.listen(favoritePlayersNotifierProvider, (_, __) => _applyFiltersDebounced());
+    ref.listen(
+      favoritePlayersNotifierProvider,
+      (_, __) => _applyFiltersDebounced(),
+    );
     // Listen to the favorite event IDs provider so we re-filter when it updates
-    ref.listen(calendarFavoriteEventIdsProvider, (_, __) => _applyFiltersDebounced());
+    ref.listen(
+      calendarFavoriteEventIdsProvider,
+      (_, __) => _applyFiltersDebounced(),
+    );
   }
 
   void _applyFiltersDebounced() {
     _debounceTimer?.cancel();
     final searchQuery = ref.read(calendarSearchQueryProvider);
     // Use longer debounce when search is active to avoid hanging
-    final debounceTime = searchQuery.isNotEmpty
-        ? const Duration(milliseconds: 500)
-        : const Duration(milliseconds: 150);
+    final debounceTime =
+        searchQuery.isNotEmpty
+            ? const Duration(milliseconds: 500)
+            : const Duration(milliseconds: 150);
     _debounceTimer = Timer(debounceTime, _applyFilters);
   }
 
@@ -106,7 +123,10 @@ class _CalendarDetailScreenController
     }
   }
 
-  CalendarEventData _broadcastToEventData(GroupBroadcast b, List<String> liveIds) {
+  CalendarEventData _broadcastToEventData(
+    GroupBroadcast b,
+    List<String> liveIds,
+  ) {
     final model = GroupEventCardModel.fromGroupBroadcast(b, liveIds);
     return CalendarEventData(
       id: model.id,
@@ -168,7 +188,9 @@ class _CalendarDetailScreenController
         // If still loading, wait for it
         if (favoriteIdsAsync.isLoading) {
           try {
-            favoriteEventIds = await ref.read(calendarFavoriteEventIdsProvider.future);
+            favoriteEventIds = await ref.read(
+              calendarFavoriteEventIdsProvider.future,
+            );
           } catch (_) {
             // Continue with empty set if loading fails
           }
@@ -199,22 +221,26 @@ class _CalendarDetailScreenController
 
       // Convert back to GroupEventCardModel for UI
       final liveIds = ref.read(liveBroadcastIdsProvider);
-      final events = result.events.map((data) {
-        // Try to find the original model for efficiency
-        for (final broadcast in groupBroadcast) {
-          if (broadcast.id == data.id) {
-            return GroupEventCardModel.fromGroupBroadcast(broadcast, liveIds);
-          }
-        }
-        for (final calEvent in calendarEvents) {
-          final model = GroupEventCardModel.fromCalendarEvent(calEvent);
-          if (model.id == data.id) {
-            return model;
-          }
-        }
-        // Fallback to reconstructing from data
-        return _fromEventData(data);
-      }).toList();
+      final events =
+          result.events.map((data) {
+            // Try to find the original model for efficiency
+            for (final broadcast in groupBroadcast) {
+              if (broadcast.id == data.id) {
+                return GroupEventCardModel.fromGroupBroadcast(
+                  broadcast,
+                  liveIds,
+                );
+              }
+            }
+            for (final calEvent in calendarEvents) {
+              final model = GroupEventCardModel.fromCalendarEvent(calEvent);
+              if (model.id == data.id) {
+                return model;
+              }
+            }
+            // Fallback to reconstructing from data
+            return _fromEventData(data);
+          }).toList();
 
       if (!mounted) return;
       state = AsyncValue.data(events);

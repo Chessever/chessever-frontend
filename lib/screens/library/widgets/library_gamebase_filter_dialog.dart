@@ -137,15 +137,15 @@ class GamebaseFilter {
 
   @override
   int get hashCode => Object.hash(
-        tournamentType,
-        result,
-        color,
-        timeControl,
-        minYear,
-        maxYear,
-        minRating,
-        maxRating,
-      );
+    tournamentType,
+    result,
+    color,
+    timeControl,
+    minYear,
+    maxYear,
+    minRating,
+    maxRating,
+  );
 }
 
 /// Shows the gamebase filter dialog and returns the selected filter or null if cancelled
@@ -281,8 +281,7 @@ class _LibraryGamebaseFilterDialogState
                         value: _result,
                         items: GameResultFilter.values,
                         itemLabel: (v) => v.displayText,
-                        onChanged: (v) =>
-                            setState(() => _result = v),
+                        onChanged: (v) => setState(() => _result = v),
                       ),
                       SizedBox(height: 20.h),
 

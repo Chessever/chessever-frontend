@@ -14,9 +14,5 @@ class TourDetailViewModel extends Equatable {
   final List<TourModel> tours;
 
   @override
-  List<Object?> get props => [
-    aboutTourModel,
-    liveTourIds,
-    tours,
-  ];
+  List<Object?> get props => [aboutTourModel, liveTourIds, tours];
 }

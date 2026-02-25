@@ -67,7 +67,8 @@ class DeepLinkService {
     // Listen for links while app is running (warm start / already open)
     _subscription = _appLinks.uriLinkStream.listen(
       (uri) => _handleDeepLink(uri, navigatorKey, ref),
-      onError: (e) => debugPrint('DeepLinkService: Error listening to links: $e'),
+      onError:
+          (e) => debugPrint('DeepLinkService: Error listening to links: $e'),
     );
   }
 
@@ -93,9 +94,7 @@ class DeepLinkService {
     }
 
     // Custom scheme: com.chessever.app://games/<id>
-    if (gameId == null &&
-        uri.host == 'games' &&
-        uri.pathSegments.isNotEmpty) {
+    if (gameId == null && uri.host == 'games' && uri.pathSegments.isNotEmpty) {
       gameId = uri.pathSegments[0];
     }
 
@@ -134,7 +133,9 @@ class DeepLinkService {
     try {
       await _appReadyCompleter.future.timeout(const Duration(seconds: 30));
     } catch (_) {
-      debugPrint('DeepLinkService: Timed out waiting for app ready, proceeding');
+      debugPrint(
+        'DeepLinkService: Timed out waiting for app ready, proceeding',
+      );
     }
 
     AppAuthState? resolvedState = ref.read(authStateProvider).value;
@@ -210,7 +211,9 @@ class DeepLinkService {
     try {
       await _appReadyCompleter.future.timeout(const Duration(seconds: 30));
     } catch (_) {
-      debugPrint('DeepLinkService: Timed out waiting for app ready, proceeding');
+      debugPrint(
+        'DeepLinkService: Timed out waiting for app ready, proceeding',
+      );
     }
 
     // Check auth state - wait for loading to resolve so Universal Links stay in-app.
@@ -224,7 +227,9 @@ class DeepLinkService {
     }
 
     if (resolvedState?.status != AppAuthStatus.authenticated) {
-      debugPrint('DeepLinkService: User not authenticated yet, routing to home');
+      debugPrint(
+        'DeepLinkService: User not authenticated yet, routing to home',
+      );
       navigatorKey.currentState?.pushNamedAndRemoveUntil(
         '/home_screen',
         (route) => false,
@@ -257,10 +262,11 @@ class DeepLinkService {
         // Then push the new game screen
         navigator.pushAndRemoveUntil(
           MaterialPageRoute(
-            builder: (_) => ChessBoardScreenNew(
-              games: [gameTourModel],
-              currentIndex: 0,
-            ),
+            builder:
+                (_) => ChessBoardScreenNew(
+                  games: [gameTourModel],
+                  currentIndex: 0,
+                ),
           ),
           (route) {
             // Keep the home screen (first route) or any non-game screen
@@ -341,7 +347,9 @@ class DeepLinkService {
     try {
       await _appReadyCompleter.future.timeout(const Duration(seconds: 30));
     } catch (_) {
-      debugPrint('DeepLinkService: Timed out waiting for app ready, proceeding');
+      debugPrint(
+        'DeepLinkService: Timed out waiting for app ready, proceeding',
+      );
     }
 
     AppAuthState? resolvedState = ref.read(authStateProvider).value;
@@ -367,14 +375,17 @@ class DeepLinkService {
       debugPrint('DeepLinkService: Fetching event: $groupBroadcastId');
 
       final broadcastRepo = ref.read(groupBroadcastRepositoryProvider);
-      final broadcast =
-          await broadcastRepo.getGroupBroadcastById(groupBroadcastId);
+      final broadcast = await broadcastRepo.getGroupBroadcastById(
+        groupBroadcastId,
+      );
 
       ref.read(selectedBroadcastModelProvider.notifier).state = broadcast;
       ref.read(selectedTourModeProvider.notifier).state =
           TournamentDetailScreenMode.games;
 
-      debugPrint('DeepLinkService: Event loaded, navigating to tournament detail');
+      debugPrint(
+        'DeepLinkService: Event loaded, navigating to tournament detail',
+      );
 
       navigatorKey.currentState?.pushNamedAndRemoveUntil(
         '/tournament_detail_screen',

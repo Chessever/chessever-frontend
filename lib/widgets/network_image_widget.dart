@@ -36,7 +36,9 @@ class NetworkImageWidget extends StatelessWidget {
               image: DecorationImage(
                 alignment: Alignment.topCenter,
                 image: imageProvider,
-                fit: BoxFit.contain, // Optional: specify how the image should fit
+                fit:
+                    BoxFit
+                        .contain, // Optional: specify how the image should fit
               ),
             ),
           );

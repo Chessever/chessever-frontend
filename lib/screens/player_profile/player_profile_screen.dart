@@ -530,7 +530,7 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
               _buildDataSourceSelector(twicSummaryAsync),
 
               if (hasPlayerExplorer)
-                _buildOpeningRepertoireButton(
+                _buildActionButtons(
                   displayName: _formatDisplayName(
                     name: effectiveName,
                     title: effectiveTitle,
@@ -780,7 +780,7 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
     );
   }
 
-  Widget _buildOpeningRepertoireButton({required String displayName}) {
+  Widget _buildActionButtons({required String displayName}) {
     final horizontalPadding = ResponsiveHelper.adaptive(
       phone: 20.sp,
       tablet: 32.sp,
@@ -793,67 +793,43 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
         horizontalPadding,
         6.h,
       ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(12.br),
-          onTap: _openExplorer,
-          child: Ink(
-            padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 11.h),
-            decoration: BoxDecoration(
-              color: kPopUpColor,
-              borderRadius: BorderRadius.circular(12.br),
-              border: Border.all(color: kPrimaryColor.withValues(alpha: 0.34)),
-            ),
-            child: Row(
-              children: [
-                Container(
-                  width: 34.w,
-                  height: 34.h,
-                  decoration: BoxDecoration(
-                    color: kPrimaryColor.withValues(alpha: 0.16),
-                    borderRadius: BorderRadius.circular(9.br),
-                  ),
-                  child: Icon(
-                    Icons.account_tree_outlined,
-                    size: 18.ic,
-                    color: kWhiteColor,
-                  ),
-                ),
-                SizedBox(width: 11.w),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        'Study opening repertoire',
-                        style: AppTypography.textSmBold.copyWith(
-                          color: kWhiteColor,
-                        ),
-                      ),
-                      SizedBox(height: 2.h),
-                      Text(
-                        '$displayName only',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: AppTypography.textXsRegular.copyWith(
-                          color: kWhiteColor.withValues(alpha: 0.72),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                SizedBox(width: 8.w),
-                Icon(
-                  Icons.chevron_right_rounded,
-                  color: kWhiteColor.withValues(alpha: 0.8),
-                  size: 20.ic,
-                ),
-              ],
+      child: Row(
+        children: [
+          Expanded(
+            child: _ActionCard(
+              icon: Icons.account_tree_outlined,
+              title: 'Study opening',
+              subtitle: 'Repertoire view',
+              onTap: _openExplorer,
             ),
           ),
-        ),
+          SizedBox(width: 12.w),
+          Expanded(
+            child: _ActionCard(
+              icon: Icons.library_add_outlined,
+              title: 'Save to Library',
+              subtitle: 'Games collection',
+              onTap: () {
+                _handleTabSelection(
+                  PlayerProfileTab.values.indexOf(PlayerProfileTab.games),
+                );
+                // We'll optionally show a nice message to select games.
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      'Select games to add them to your library.',
+                      style: AppTypography.textSmMedium.copyWith(
+                        color: kWhiteColor,
+                      ),
+                    ),
+                    backgroundColor: kBlack2Color.withValues(alpha: 0.95),
+                    behavior: SnackBarBehavior.floating,
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1114,22 +1090,92 @@ class _DataSourceBannerState extends State<_DataSourceBanner> {
 }
 
 /// Model for recent opponent data (keeping for backward compatibility)
-class RecentOpponent {
-  const RecentOpponent({
-    required this.name,
+class _ActionCard extends StatefulWidget {
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+
+  const _ActionCard({
+    required this.icon,
     required this.title,
-    required this.countryCode,
-    required this.rating,
-    required this.result,
-    required this.playedAsWhite,
-    this.fideId,
+    required this.subtitle,
+    required this.onTap,
   });
 
-  final String name;
-  final String? title;
-  final String countryCode;
-  final int rating;
-  final double result; // 1.0 = win, 0.5 = draw, 0.0 = loss
-  final bool playedAsWhite;
-  final String? fideId;
+  @override
+  State<_ActionCard> createState() => _ActionCardState();
+}
+
+class _ActionCardState extends State<_ActionCard> {
+  bool _pressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTapDown: (_) => setState(() => _pressed = true),
+      onTapUp: (_) {
+        setState(() => _pressed = false);
+        HapticFeedbackService.light();
+        widget.onTap();
+      },
+      onTapCancel: () => setState(() => _pressed = false),
+      child: SingleMotionBuilder(
+        motion: const CupertinoMotion.snappy(),
+        value: _pressed ? 1.0 : 0.0,
+        builder: (context, pressProgress, _) {
+          return Transform.scale(
+            scale: 1.0 - 0.03 * pressProgress,
+            child: Container(
+              padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 10.h),
+              decoration: BoxDecoration(
+                color: kPopUpColor,
+                borderRadius: BorderRadius.circular(12.br),
+                border: Border.all(color: kPrimaryColor.withValues(alpha: 0.2)),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 34.w,
+                    height: 34.h,
+                    decoration: BoxDecoration(
+                      color: kPrimaryColor.withValues(alpha: 0.16),
+                      borderRadius: BorderRadius.circular(9.br),
+                    ),
+                    child: Icon(widget.icon, size: 18.ic, color: kWhiteColor),
+                  ),
+                  SizedBox(width: 8.w),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          widget.title,
+                          style: AppTypography.textSmBold.copyWith(
+                            color: kWhiteColor,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        SizedBox(height: 2.h),
+                        Text(
+                          widget.subtitle,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppTypography.textXsRegular.copyWith(
+                            color: kWhiteColor.withValues(alpha: 0.72),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
 }

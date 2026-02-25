@@ -78,9 +78,9 @@ class FavoritesCombinedGamesState {
 // --- Provider ---
 
 final favoritesCombinedGamesProvider = StateNotifierProvider.autoDispose<
-    FavoritesCombinedGamesNotifier, FavoritesCombinedGamesState>(
-  (ref) => FavoritesCombinedGamesNotifier(ref),
-);
+  FavoritesCombinedGamesNotifier,
+  FavoritesCombinedGamesState
+>((ref) => FavoritesCombinedGamesNotifier(ref));
 
 class FavoritesCombinedGamesNotifier
     extends StateNotifier<FavoritesCombinedGamesState> {
@@ -92,7 +92,7 @@ class FavoritesCombinedGamesNotifier
   bool _hasMoreDates = true;
 
   FavoritesCombinedGamesNotifier(this._ref)
-      : super(FavoritesCombinedGamesState(isLoading: true)) {
+    : super(FavoritesCombinedGamesState(isLoading: true)) {
     _loadInitialGames();
   }
 
@@ -270,10 +270,11 @@ class FavoritesCombinedGamesNotifier
 
     try {
       final gameRepo = _ref.read(gameRepositoryProvider);
-      final fideIds = favorites
-          .where((f) => f.fideId != null)
-          .map((f) => f.fideId!.toString())
-          .toList();
+      final fideIds =
+          favorites
+              .where((f) => f.fideId != null)
+              .map((f) => f.fideId!.toString())
+              .toList();
 
       final games = await gameRepo.searchFavoritesGames(
         fideIds: fideIds,
@@ -337,10 +338,11 @@ class FavoritesCombinedGamesNotifier
       }
 
       // Get FIDE IDs (convert int? to String)
-      var fideIds = favorites
-          .where((f) => f.fideId != null)
-          .map((f) => f.fideId!.toString())
-          .toList();
+      var fideIds =
+          favorites
+              .where((f) => f.fideId != null)
+              .map((f) => f.fideId!.toString())
+              .toList();
 
       // Apply filter if selected
       final selectedFilters = state.selectedFideIds;
@@ -369,10 +371,8 @@ class FavoritesCombinedGamesNotifier
 
       // Determine which dates to load
       final dateOffset = isInitial ? 0 : state.dateOffset;
-      final datesToLoad = _availableDates
-          .skip(dateOffset)
-          .take(_datesPerBatch)
-          .toList();
+      final datesToLoad =
+          _availableDates.skip(dateOffset).take(_datesPerBatch).toList();
 
       if (datesToLoad.isEmpty) {
         // Try to get more dates
@@ -385,10 +385,8 @@ class FavoritesCombinedGamesNotifier
           _availableDates.addAll(moreDates);
           _hasMoreDates = moreDates.length >= 30;
 
-          final retryDates = _availableDates
-              .skip(dateOffset)
-              .take(_datesPerBatch)
-              .toList();
+          final retryDates =
+              _availableDates.skip(dateOffset).take(_datesPerBatch).toList();
 
           if (retryDates.isNotEmpty) {
             await _loadGamesForDates(
@@ -430,7 +428,9 @@ class FavoritesCombinedGamesNotifier
     final seenKeys = Set<String>.from(isInitial ? {} : state.seenGameIds);
 
     for (final date in dates) {
-      debugPrint('[FavoritesGames] Loading ALL games for ${date.toString().split(' ')[0]}');
+      debugPrint(
+        '[FavoritesGames] Loading ALL games for ${date.toString().split(' ')[0]}',
+      );
 
       final dayGames = await gameRepo.getGamesByFideIdsAndDate(
         fideIds: fideIds,
@@ -438,7 +438,9 @@ class FavoritesCombinedGamesNotifier
         eco: state.filter.eco.isAll ? null : state.filter.eco.code,
       );
 
-      debugPrint('[FavoritesGames] Got ${dayGames.length} games for ${date.toString().split(' ')[0]}');
+      debugPrint(
+        '[FavoritesGames] Got ${dayGames.length} games for ${date.toString().split(' ')[0]}',
+      );
 
       for (final game in dayGames) {
         final gameModel = GamesTourModel.fromGame(game);
@@ -456,7 +458,9 @@ class FavoritesCombinedGamesNotifier
     final newDateOffset = dateOffset + dates.length;
     final hasMore = newDateOffset < _availableDates.length || _hasMoreDates;
 
-    debugPrint('[FavoritesGames] Total games: ${allGames.length}, hasMore: $hasMore');
+    debugPrint(
+      '[FavoritesGames] Total games: ${allGames.length}, hasMore: $hasMore',
+    );
 
     if (!mounted) return;
 
@@ -499,14 +503,23 @@ class FavoritesCombinedGamesNotifier
     if (aRound != bRound) return bRound.compareTo(aRound);
 
     // Final fallback: by max rating
-    final aMaxRating = [a.whitePlayer.rating, a.blackPlayer.rating].reduce((a, b) => a > b ? a : b);
-    final bMaxRating = [b.whitePlayer.rating, b.blackPlayer.rating].reduce((a, b) => a > b ? a : b);
+    final aMaxRating = [
+      a.whitePlayer.rating,
+      a.blackPlayer.rating,
+    ].reduce((a, b) => a > b ? a : b);
+    final bMaxRating = [
+      b.whitePlayer.rating,
+      b.blackPlayer.rating,
+    ].reduce((a, b) => a > b ? a : b);
     return bMaxRating.compareTo(aMaxRating);
   }
 
   /// Extracts round number from round slug/id (e.g., "round-11" -> 11, "round7" -> 7)
   int _extractRoundNumber(String roundSlugOrId) {
-    final match = RegExp(r'round[-_]?(\d+)', caseSensitive: false).firstMatch(roundSlugOrId);
+    final match = RegExp(
+      r'round[-_]?(\d+)',
+      caseSensitive: false,
+    ).firstMatch(roundSlugOrId);
     if (match != null) {
       return int.tryParse(match.group(1)!) ?? 0;
     }

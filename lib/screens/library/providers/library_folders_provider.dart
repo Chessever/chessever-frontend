@@ -21,48 +21,49 @@ final kTwicFolder = LibraryFolder(
 
 final libraryFoldersStreamProvider =
     StreamProvider.autoDispose<List<LibraryFolder>>((ref) {
-  final repository = ref.watch(libraryRepositoryProvider);
-  return repository.subscribeFolders();
-});
+      final repository = ref.watch(libraryRepositoryProvider);
+      return repository.subscribeFolders();
+    });
 
 /// Analysis count per folder for subtitle display
-final folderAnalysisCountProvider =
-    FutureProvider.autoDispose.family<int, String>((ref, folderId) async {
-  final repository = ref.watch(libraryRepositoryProvider);
-  return repository.getAnalysisCountInFolder(folderId);
-});
+final folderAnalysisCountProvider = FutureProvider.autoDispose
+    .family<int, String>((ref, folderId) async {
+      final repository = ref.watch(libraryRepositoryProvider);
+      return repository.getAnalysisCountInFolder(folderId);
+    });
 
 /// Fetches folders the current user is subscribed to.
-final subscribedBooksProvider =
-    FutureProvider.autoDispose<List<LibraryFolder>>((ref) async {
-  final repository = ref.watch(libraryRepositoryProvider);
-  return repository.getSubscribedBooks();
-});
+final subscribedBooksProvider = FutureProvider.autoDispose<List<LibraryFolder>>(
+  (ref) async {
+    final repository = ref.watch(libraryRepositoryProvider);
+    return repository.getSubscribedBooks();
+  },
+);
 
 /// Combined library folders: owned folders + subscribed books.
 /// Owned folders come first (order_index), then subscribed books (alphabetical).
 final combinedLibraryFoldersProvider =
     FutureProvider.autoDispose<List<LibraryFolder>>((ref) async {
-  // Watch both owned stream and subscribed future
-  final ownedAsync = ref.watch(libraryFoldersStreamProvider);
-  final subscribedAsync = ref.watch(subscribedBooksProvider);
+      // Watch both owned stream and subscribed future
+      final ownedAsync = ref.watch(libraryFoldersStreamProvider);
+      final subscribedAsync = ref.watch(subscribedBooksProvider);
 
-  final owned = ownedAsync.valueOrNull ?? [];
-  final subscribed = subscribedAsync.valueOrNull ?? [];
+      final owned = ownedAsync.valueOrNull ?? [];
+      final subscribed = subscribedAsync.valueOrNull ?? [];
 
-  return [...owned, ...subscribed];
-});
+      return [...owned, ...subscribed];
+    });
 
 /// Preview data for a shared book by its share token (for deep link landing).
 final sharedBookPreviewProvider = FutureProvider.autoDispose
     .family<SharedBookPreview?, String>((ref, shareToken) async {
-  final repository = ref.watch(libraryRepositoryProvider);
-  return repository.getBookByShareToken(shareToken);
-});
+      final repository = ref.watch(libraryRepositoryProvider);
+      return repository.getBookByShareToken(shareToken);
+    });
 
 /// Stream analyses in a subscribed (shared) folder.
 final subscribedFolderAnalysesProvider = StreamProvider.autoDispose
     .family<List<SavedAnalysis>, String>((ref, folderId) {
-  final repository = ref.watch(libraryRepositoryProvider);
-  return repository.subscribeSharedFolderAnalyses(folderId);
-});
+      final repository = ref.watch(libraryRepositoryProvider);
+      return repository.subscribeSharedFolderAnalyses(folderId);
+    });

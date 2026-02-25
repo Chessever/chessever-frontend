@@ -18,7 +18,9 @@ class MoveAnnotationOverlay extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (!isVisible || impactType == null || impactType == MoveImpactType.normal) {
+    if (!isVisible ||
+        impactType == null ||
+        impactType == MoveImpactType.normal) {
       return const SizedBox.shrink();
     }
 
@@ -30,10 +32,7 @@ class MoveAnnotationOverlay extends StatelessWidget {
           duration: const Duration(milliseconds: 300),
           opacity: isVisible ? 1.0 : 0.0,
           child: Container(
-            padding: EdgeInsets.symmetric(
-              horizontal: 6.sp,
-              vertical: 3.sp,
-            ),
+            padding: EdgeInsets.symmetric(horizontal: 6.sp, vertical: 3.sp),
             decoration: BoxDecoration(
               color: Colors.black.withOpacity(0.7),
               borderRadius: BorderRadius.circular(4.sp),
@@ -91,17 +90,11 @@ class _BoardMoveAnnotationState extends State<BoardMoveAnnotation>
     _fadeAnimation = Tween<double>(
       begin: 0.0,
       end: 1.0,
-    ).animate(CurvedAnimation(
-      parent: _controller,
-      curve: Curves.easeInOut,
-    ));
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
     _scaleAnimation = Tween<double>(
       begin: 0.8,
       end: 1.0,
-    ).animate(CurvedAnimation(
-      parent: _controller,
-      curve: Curves.elasticOut,
-    ));
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.elasticOut));
 
     if (widget.moveImpact != null &&
         widget.moveImpact!.impact != MoveImpactType.normal) {

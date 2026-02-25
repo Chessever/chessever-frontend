@@ -84,10 +84,9 @@ final twicScorecardEventGamesProvider = FutureProvider.family.autoDispose<
     }
   }
 
-  var games =
-      rows
-          .map((row) => _mapPlayerGameRowToModel(row, gamebasePlayersById))
-          .toList(growable: false);
+  var games = rows
+      .map((row) => _mapPlayerGameRowToModel(row, gamebasePlayersById))
+      .toList(growable: false);
   final fideIds = collectFideIdsFromGames(games);
   if (fideIds.isNotEmpty) {
     final playersByFideId = await ref

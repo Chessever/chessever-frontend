@@ -1,4 +1,1 @@
-enum PlayerProfileDataSource {
-  supabase,
-  twic,
-}
+enum PlayerProfileDataSource { supabase, twic }

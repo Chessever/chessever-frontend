@@ -166,10 +166,7 @@ class SafeGotrueAsyncStorage extends GotrueAsyncStorage {
   }
 
   @override
-  Future<void> setItem({
-    required String key,
-    required String value,
-  }) async {
+  Future<void> setItem({required String key, required String value}) async {
     await _ensurePrefs();
     if (_prefsAvailable) {
       await _prefs!.setString(key, value);

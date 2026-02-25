@@ -654,10 +654,7 @@ class ChessBoardStateNew {
           ),
         ) &&
         other.lockedPvBaseMoveCount == lockedPvBaseMoveCount &&
-        _stringMapEquality.equals(
-          other.variationComments,
-          variationComments,
-        ) &&
+        _stringMapEquality.equals(other.variationComments, variationComments) &&
         other.selectedVariantIndex == selectedVariantIndex &&
         other.shapes == shapes &&
         other.analysisState == analysisState &&
@@ -672,10 +669,7 @@ class ChessBoardStateNew {
           principalVariations,
         ) &&
         other.principalVariationsBaseFen == principalVariationsBaseFen &&
-        _intListEquality.equals(
-          other.variantMovePointer,
-          variantMovePointer,
-        ) &&
+        _intListEquality.equals(other.variantMovePointer, variantMovePointer) &&
         other.isThreatsMode == isThreatsMode;
   }
 

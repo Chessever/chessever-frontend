@@ -12,13 +12,13 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 /// Board color enum matching index values stored in Supabase (DEPRECATED - kept for migration)
 enum BoardColor {
   defaultColor, // index 0
-  brown,        // index 1
-  grey,         // index 2
-  green,        // index 3
-  orange,       // index 4
-  purple,       // index 5
-  blue,         // index 6
-  pink          // index 7
+  brown, // index 1
+  grey, // index 2
+  green, // index 3
+  orange, // index 4
+  purple, // index 5
+  blue, // index 6
+  pink, // index 7
 }
 
 /// Board settings configuration class
@@ -31,20 +31,25 @@ class BoardSettingsNew {
     this.chatEnabled = true,
     this.pieceStyleIndex = 0, // Now used for chessground PieceSet
     this.gamesListViewModeIndex = 0,
-    this.useFigurine = false, // Use chess piece symbols (♔♕♖♗♘) instead of letters
+    this.useFigurine =
+        false, // Use chess piece symbols (♔♕♖♗♘) instead of letters
   });
 
   /// DEPRECATED: Kept for backwards compatibility migration only
   final int boardColorIndex;
+
   /// New: Index into kBoardThemes list (chessground themes)
   final int boardThemeIndex;
   final bool showEvaluationBar;
   final bool soundEnabled;
   final bool chatEnabled;
+
   /// Index into PieceSet.values (chessground piece sets)
   final int pieceStyleIndex;
+
   /// Games list view mode: 0=gamesCard, 1=chessBoardGrid, 2=chessBoard
   final int gamesListViewModeIndex;
+
   /// Use figurine notation (chess piece symbols) instead of letters (K, Q, R, B, N)
   final bool useFigurine;
 
@@ -55,7 +60,8 @@ class BoardSettingsNew {
   PieceAssets get pieceAssets => pieceSet.assets;
 
   /// Get the ChessboardColorScheme with our custom last move highlight
-  ChessboardColorScheme get colorScheme => getColorSchemeByIndex(boardThemeIndex);
+  ChessboardColorScheme get colorScheme =>
+      getColorSchemeByIndex(boardThemeIndex);
 
   /// Get the board theme option
   BoardThemeOption get boardTheme => getBoardThemeByIndex(boardThemeIndex);
@@ -122,7 +128,8 @@ class BoardSettingsNew {
       soundEnabled: soundEnabled ?? this.soundEnabled,
       chatEnabled: chatEnabled ?? this.chatEnabled,
       pieceStyleIndex: pieceStyleIndex ?? this.pieceStyleIndex,
-      gamesListViewModeIndex: gamesListViewModeIndex ?? this.gamesListViewModeIndex,
+      gamesListViewModeIndex:
+          gamesListViewModeIndex ?? this.gamesListViewModeIndex,
       useFigurine: useFigurine ?? this.useFigurine,
     );
   }
@@ -154,11 +161,12 @@ class BoardSettingsNotifierNew extends AsyncNotifier<BoardSettingsNew> {
 
       // Fetch from Supabase (source of truth)
       // Note: Using user_engine_settings table (unified settings table)
-      final response = await _supabase
-          .from('user_engine_settings')
-          .select()
-          .eq('user_id', userId)
-          .maybeSingle();
+      final response =
+          await _supabase
+              .from('user_engine_settings')
+              .select()
+              .eq('user_id', userId)
+              .maybeSingle();
 
       if (response == null) {
         debugPrint(
@@ -183,7 +191,9 @@ class BoardSettingsNotifierNew extends AsyncNotifier<BoardSettingsNew> {
       int boardThemeIndex = model.boardThemeIndex;
       if (boardThemeIndex == 0 && model.boardColorIndex > 0) {
         boardThemeIndex = migrateOldBoardColorToTheme(model.boardColorIndex);
-        debugPrint('[BoardSettings] Migrated old boardColorIndex ${model.boardColorIndex} to boardThemeIndex $boardThemeIndex');
+        debugPrint(
+          '[BoardSettings] Migrated old boardColorIndex ${model.boardColorIndex} to boardThemeIndex $boardThemeIndex',
+        );
       }
 
       final settings = BoardSettingsNew(
@@ -271,7 +281,9 @@ class BoardSettingsNotifierNew extends AsyncNotifier<BoardSettingsNew> {
     final clamped = index.clamp(0, kBoardThemes.length - 1);
     final currentState = state.valueOrNull ?? const BoardSettingsNew();
     final newSettings = currentState.copyWith(boardThemeIndex: clamped);
-    debugPrint('🎨 BoardSettings: Board theme changed to index=$clamped (${kBoardThemes[clamped].name})');
+    debugPrint(
+      '🎨 BoardSettings: Board theme changed to index=$clamped (${kBoardThemes[clamped].name})',
+    );
     state = AsyncValue.data(newSettings);
     await _persist(newSettings);
   }
@@ -281,7 +293,9 @@ class BoardSettingsNotifierNew extends AsyncNotifier<BoardSettingsNew> {
     final clamped = index.clamp(0, PieceSet.values.length - 1);
     final currentState = state.valueOrNull ?? const BoardSettingsNew();
     final newSettings = currentState.copyWith(pieceStyleIndex: clamped);
-    debugPrint('♟️ BoardSettings: Piece set changed to index=$clamped (${PieceSet.values[clamped].label})');
+    debugPrint(
+      '♟️ BoardSettings: Piece set changed to index=$clamped (${PieceSet.values[clamped].label})',
+    );
     state = AsyncValue.data(newSettings);
     await _persist(newSettings);
   }
@@ -291,7 +305,9 @@ class BoardSettingsNotifierNew extends AsyncNotifier<BoardSettingsNew> {
     final clamped = index.clamp(0, 2);
     final currentState = state.valueOrNull ?? const BoardSettingsNew();
     final newSettings = currentState.copyWith(gamesListViewModeIndex: clamped);
-    debugPrint('📋 BoardSettings: Games list view mode changed to index=$clamped');
+    debugPrint(
+      '📋 BoardSettings: Games list view mode changed to index=$clamped',
+    );
     state = AsyncValue.data(newSettings);
     await _persist(newSettings);
   }
@@ -300,7 +316,9 @@ class BoardSettingsNotifierNew extends AsyncNotifier<BoardSettingsNew> {
   Future<void> toggleFigurine(bool value) async {
     final currentState = state.valueOrNull ?? const BoardSettingsNew();
     final newSettings = currentState.copyWith(useFigurine: value);
-    debugPrint('♔ BoardSettings: Figurine notation ${value ? 'enabled' : 'disabled'}');
+    debugPrint(
+      '♔ BoardSettings: Figurine notation ${value ? 'enabled' : 'disabled'}',
+    );
     state = AsyncValue.data(newSettings);
     await _persist(newSettings);
   }
@@ -337,9 +355,7 @@ class BoardSettingsNotifierNew extends AsyncNotifier<BoardSettingsNew> {
       await _cacheSettings(settings);
 
       // Save to Supabase in background (fire-and-forget, non-blocking)
-      unawaited(
-        _saveToSupabase(settings, userId),
-      );
+      unawaited(_saveToSupabase(settings, userId));
     } catch (e, st) {
       debugPrint('[BoardSettings] Error persisting settings: $e');
       debugPrint('[BoardSettings] Stack: $st');
@@ -410,7 +426,9 @@ class BoardSettingsNotifierNew extends AsyncNotifier<BoardSettingsNew> {
       // migrate old color to new theme
       if (boardThemeIndex == 0 && boardColorIndex > 0) {
         boardThemeIndex = migrateOldBoardColorToTheme(boardColorIndex);
-        debugPrint('[BoardSettings] Cache migration: boardColorIndex $boardColorIndex -> boardThemeIndex $boardThemeIndex');
+        debugPrint(
+          '[BoardSettings] Cache migration: boardColorIndex $boardColorIndex -> boardThemeIndex $boardThemeIndex',
+        );
       }
 
       final settings = BoardSettingsNew(

@@ -19,18 +19,19 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 // Provider for player photo URLs - autoDispose for memory efficiency
-final playerPhotoProvider = FutureProvider.autoDispose.family<String?, int?>(
-  (ref, fideId) async {
-    if (fideId == null) return null;
-    return FidePhotoService.getPhotoUrlOrNull(fideId.toString());
-  },
-);
+final playerPhotoProvider = FutureProvider.autoDispose.family<String?, int?>((
+  ref,
+  fideId,
+) async {
+  if (fideId == null) return null;
+  return FidePhotoService.getPhotoUrlOrNull(fideId.toString());
+});
 
 // Provider for world players search
 final worldPlayersSearchProvider = StateNotifierProvider.autoDispose<
-    WorldPlayersSearchNotifier, WorldPlayersSearchState>(
-  (ref) => WorldPlayersSearchNotifier(ref),
-);
+  WorldPlayersSearchNotifier,
+  WorldPlayersSearchState
+>((ref) => WorldPlayersSearchNotifier(ref));
 
 class WorldPlayersSearchState {
   final List<PlayerStandingModel> players;
@@ -70,12 +71,13 @@ class WorldPlayersSearchState {
   }
 }
 
-class WorldPlayersSearchNotifier extends StateNotifier<WorldPlayersSearchState> {
+class WorldPlayersSearchNotifier
+    extends StateNotifier<WorldPlayersSearchState> {
   final Ref _ref;
   static const int _pageSize = 30;
 
   WorldPlayersSearchNotifier(this._ref)
-      : super(const WorldPlayersSearchState(isLoading: true)) {
+    : super(const WorldPlayersSearchState(isLoading: true)) {
     _loadInitial();
   }
 
@@ -92,28 +94,29 @@ class WorldPlayersSearchNotifier extends StateNotifier<WorldPlayersSearchState> 
       final repo = _ref.read(chessPlayerRepositoryProvider);
       final offset = isInitial ? 0 : state.offset;
 
-      final players = state.isSearching
-          ? await repo.searchAllPlayers(
-              query: state.searchQuery,
-              limit: _pageSize,
-              offset: offset,
-            )
-          : await repo.getTopPlayers(
-              limit: _pageSize,
-              offset: offset,
-            );
+      final players =
+          state.isSearching
+              ? await repo.searchAllPlayers(
+                query: state.searchQuery,
+                limit: _pageSize,
+                offset: offset,
+              )
+              : await repo.getTopPlayers(limit: _pageSize, offset: offset);
 
-      final playerModels = players
-          .map((p) => PlayerStandingModel(
-                name: p.name,
-                countryCode: _fideFedToCountryCode(p.country),
-                score: p.rating ?? 0,
-                scoreChange: 0,
-                matchScore: null,
-                title: p.title,
-                fideId: p.fideid,
-              ))
-          .toList();
+      final playerModels =
+          players
+              .map(
+                (p) => PlayerStandingModel(
+                  name: p.name,
+                  countryCode: _fideFedToCountryCode(p.country),
+                  score: p.rating ?? 0,
+                  scoreChange: 0,
+                  matchScore: null,
+                  title: p.title,
+                  fideId: p.fideid,
+                ),
+              )
+              .toList();
 
       final allPlayers =
           isInitial ? playerModels : [...state.players, ...playerModels];
@@ -411,7 +414,8 @@ class _FavoritesPlayersTabState extends ConsumerState<FavoritesPlayersTab>
     final state = ref.watch(worldPlayersSearchProvider);
     // Watch favoritePlayersNotifierProvider for optimistic updates
     final favoritesAsync = ref.watch(favoritePlayersNotifierProvider);
-    final favoriteIds = favoritesAsync.valueOrNull?.players
+    final favoriteIds =
+        favoritesAsync.valueOrNull?.players
             .map((p) => p.fideId)
             .where((id) => id != null)
             .cast<int>()
@@ -527,14 +531,14 @@ class _FavoritesPlayersTabState extends ConsumerState<FavoritesPlayersTab>
     return SliverPadding(
       padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
       sliver: SliverList(
-        delegate: SliverChildBuilderDelegate(
-          (context, index) {
-            if (index >= players.length) {
-              return Padding(
-                padding: EdgeInsets.symmetric(vertical: 24.h),
-                child: Center(
-                  child: state.isLoading
-                      ? Column(
+        delegate: SliverChildBuilderDelegate((context, index) {
+          if (index >= players.length) {
+            return Padding(
+              padding: EdgeInsets.symmetric(vertical: 24.h),
+              child: Center(
+                child:
+                    state.isLoading
+                        ? Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             SizedBox(
@@ -554,32 +558,30 @@ class _FavoritesPlayersTabState extends ConsumerState<FavoritesPlayersTab>
                             ),
                           ],
                         )
-                      : state.hasMore
-                          ? const SizedBox.shrink()
-                          : Text(
-                              'No more players',
-                              style: AppTypography.textXsRegular.copyWith(
-                                color: const Color(0xFF52525B),
-                              ),
-                            ),
-                ),
-              );
-            }
-
-            final player = players[index];
-            final isFavorite = favoriteIds.contains(player.fideId);
-
-            return FigmaPlayerCard(
-              player: player,
-              isFavorite: isFavorite,
-              rank: index + 1,
-              showFavoriteButton: true,
-              onTap: () => _navigateToPlayerDetail(player),
-              onToggleFavorite: () => _toggleFavorite(player, isFavorite),
+                        : state.hasMore
+                        ? const SizedBox.shrink()
+                        : Text(
+                          'No more players',
+                          style: AppTypography.textXsRegular.copyWith(
+                            color: const Color(0xFF52525B),
+                          ),
+                        ),
+              ),
             );
-          },
-          childCount: players.length + (showLoadingIndicator ? 1 : 0),
-        ),
+          }
+
+          final player = players[index];
+          final isFavorite = favoriteIds.contains(player.fideId);
+
+          return FigmaPlayerCard(
+            player: player,
+            isFavorite: isFavorite,
+            rank: index + 1,
+            showFavoriteButton: true,
+            onTap: () => _navigateToPlayerDetail(player),
+            onToggleFavorite: () => _toggleFavorite(player, isFavorite),
+          );
+        }, childCount: players.length + (showLoadingIndicator ? 1 : 0)),
       ),
     );
   }
@@ -588,21 +590,19 @@ class _FavoritesPlayersTabState extends ConsumerState<FavoritesPlayersTab>
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => PlayerProfileScreen(
-          fideId: player.fideId,
-          playerName: player.name,
-          title: player.title,
-          federation: player.countryCode,
-          rating: player.score,
-        ),
+        builder:
+            (context) => PlayerProfileScreen(
+              fideId: player.fideId,
+              playerName: player.name,
+              title: player.title,
+              federation: player.countryCode,
+              rating: player.score,
+            ),
       ),
     );
   }
 
-  void _toggleFavorite(
-    PlayerStandingModel player,
-    bool currentlyFavorite,
-  ) {
+  void _toggleFavorite(PlayerStandingModel player, bool currentlyFavorite) {
     // Check auth first, then toggle without blocking
     requireFullAuthGuard(context).then((allowed) {
       if (!allowed) return;
@@ -687,8 +687,8 @@ class _FavoritesPlayersTabState extends ConsumerState<FavoritesPlayersTab>
           ),
           SizedBox(height: 24.h),
           TextButton(
-            onPressed: () =>
-                ref.read(worldPlayersSearchProvider.notifier).refresh(),
+            onPressed:
+                () => ref.read(worldPlayersSearchProvider.notifier).refresh(),
             style: TextButton.styleFrom(
               backgroundColor: kWhiteColor.withValues(alpha: 0.1),
               padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 12.h),
@@ -771,5 +771,3 @@ class _FavoritesPlayersTabState extends ConsumerState<FavoritesPlayersTab>
     ).animate().fadeIn(duration: 300.ms);
   }
 }
-
-

@@ -35,19 +35,22 @@ class KnockoutMatchDetector {
     if (games.length < 4) return false; // Need at least 2 matches of 2 games
 
     // Check for game-N pattern in round slugs
-    final gamePatternCount = games.where((g) {
-      final slug = g.roundSlug?.toLowerCase() ?? '';
-      return RegExp(r'game-\d+').hasMatch(slug);
-    }).length;
+    final gamePatternCount =
+        games.where((g) {
+          final slug = g.roundSlug?.toLowerCase() ?? '';
+          return RegExp(r'game-\d+').hasMatch(slug);
+        }).length;
 
     // Check for tiebreak pattern
-    final tiebreakPatternCount = games.where((g) {
-      final slug = g.roundSlug?.toLowerCase() ?? '';
-      return slug.contains('tiebreak');
-    }).length;
+    final tiebreakPatternCount =
+        games.where((g) {
+          final slug = g.roundSlug?.toLowerCase() ?? '';
+          return slug.contains('tiebreak');
+        }).length;
 
     // If more than 30% of games follow these patterns, likely a knockout format
-    final patternRatio = (gamePatternCount + tiebreakPatternCount) / games.length;
+    final patternRatio =
+        (gamePatternCount + tiebreakPatternCount) / games.length;
     if (patternRatio < 0.3) return false;
 
     // Check for repeated player matchups
@@ -63,7 +66,8 @@ class KnockoutMatchDetector {
     if (matchups.length <= 1) return false;
 
     // Count matchups with 2+ games (actual matches)
-    final multiGameMatchups = matchups.values.where((count) => count >= 2).length;
+    final multiGameMatchups =
+        matchups.values.where((count) => count >= 2).length;
     final matchupRatio = multiGameMatchups / matchups.length;
 
     // If more than 50% of matchups have multiple games, it's a knockout format
@@ -132,7 +136,10 @@ class KnockoutMatchDetector {
     }
 
     // Check if the tour name itself contains round indicators
-    final roundMatch = RegExp(r'round\s+(\d+)', caseSensitive: false).firstMatch(tourName);
+    final roundMatch = RegExp(
+      r'round\s+(\d+)',
+      caseSensitive: false,
+    ).firstMatch(tourName);
     if (roundMatch != null) {
       return 'Round ${roundMatch.group(1)}';
     }
@@ -162,7 +169,10 @@ class KnockoutMatchDetector {
     final roundId = firstGame.roundId;
 
     // Check if there's a round number in the roundId
-    final match = RegExp(r'round[\s-]*(\d+)', caseSensitive: false).firstMatch(roundId);
+    final match = RegExp(
+      r'round[\s-]*(\d+)',
+      caseSensitive: false,
+    ).firstMatch(roundId);
     if (match != null) {
       return 'Round ${match.group(1)}';
     }
@@ -315,7 +325,9 @@ class KnockoutMatchDetector {
       final blitzMatch = RegExp(r'blitz-(\d+)').firstMatch(lower);
 
       final tiebreakNum = int.tryParse(tiebreakMatch?.group(1) ?? '1') ?? 1;
-      final subNum = int.tryParse(rapidMatch?.group(1) ?? blitzMatch?.group(1) ?? '1') ?? 1;
+      final subNum =
+          int.tryParse(rapidMatch?.group(1) ?? blitzMatch?.group(1) ?? '1') ??
+          1;
 
       // Priority: 10 for rapid, 20 for blitz, 30 for armageddon
       int typePriority = 10;
@@ -388,7 +400,10 @@ class KnockoutMatchDetector {
 
     // For tournaments with actual round numbers in roundId
     final roundId = games.first.roundId;
-    final match = RegExp(r'round[\s-]*(\d+)', caseSensitive: false).firstMatch(roundId);
+    final match = RegExp(
+      r'round[\s-]*(\d+)',
+      caseSensitive: false,
+    ).firstMatch(roundId);
     if (match != null) {
       return 'Round ${match.group(1)}';
     }

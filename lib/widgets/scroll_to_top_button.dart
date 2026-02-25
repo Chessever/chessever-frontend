@@ -62,31 +62,33 @@ class _ScrollToTopButtonState extends State<ScrollToTopButton> {
         ignoring: !_isVisible,
         child: Padding(
           padding: EdgeInsets.only(bottom: 16.h, right: 16.w),
-          child: GestureDetector(
-            onTap: _scrollToTop,
-            child: Container(
-              width: 48.w,
-              height: 48.h,
-              decoration: BoxDecoration(
-                color: kPrimaryColor,
-                borderRadius: BorderRadius.circular(24.br),
-                boxShadow: [
-                  BoxShadow(
-                    color: kPrimaryColor.withValues(alpha: 0.3),
-                    blurRadius: 12,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: Icon(
-                Icons.keyboard_arrow_up_rounded,
-                color: kWhiteColor,
-                size: 28.sp,
-              ),
-            ),
-          ).animate(target: _isVisible ? 1 : 0)
-            .scale(begin: const Offset(0.8, 0.8), end: const Offset(1, 1))
-            .fadeIn(),
+          child:
+              GestureDetector(
+                    onTap: _scrollToTop,
+                    child: Container(
+                      width: 48.w,
+                      height: 48.h,
+                      decoration: BoxDecoration(
+                        color: kPrimaryColor,
+                        borderRadius: BorderRadius.circular(24.br),
+                        boxShadow: [
+                          BoxShadow(
+                            color: kPrimaryColor.withValues(alpha: 0.3),
+                            blurRadius: 12,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: Icon(
+                        Icons.keyboard_arrow_up_rounded,
+                        color: kWhiteColor,
+                        size: 28.sp,
+                      ),
+                    ),
+                  )
+                  .animate(target: _isVisible ? 1 : 0)
+                  .scale(begin: const Offset(0.8, 0.8), end: const Offset(1, 1))
+                  .fadeIn(),
         ),
       ),
     );

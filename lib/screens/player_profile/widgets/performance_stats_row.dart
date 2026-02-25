@@ -38,55 +38,40 @@ class PerformanceStatsRow extends StatelessWidget {
           // Score - always show, "-" when no data
           _buildStatItem(
             label: 'Score',
-            value: (score != null && totalGames != null)
-                ? _formatScore(score!, totalGames!)
-                : '-',
+            value:
+                (score != null && totalGames != null)
+                    ? _formatScore(score!, totalGames!)
+                    : '-',
           ),
 
           // Rating Diff - always show, "-" when no data
           if (ratingDiff != null)
-            _buildRatingDiffItem(
-              label: 'Rating',
-              diff: ratingDiff!,
-            )
+            _buildRatingDiffItem(label: 'Rating', diff: ratingDiff!)
           else
-            _buildStatItem(
-              label: 'Rating',
-              value: '-',
-            ),
+            _buildStatItem(label: 'Rating', value: '-'),
         ],
       ),
     );
   }
 
-  Widget _buildStatItem({
-    required String label,
-    required String value,
-  }) {
+  Widget _buildStatItem({required String label, required String value}) {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
         Text(
           label,
-          style: AppTypography.textXsMedium.copyWith(
-            color: kWhiteColor70,
-          ),
+          style: AppTypography.textXsMedium.copyWith(color: kWhiteColor70),
         ),
         SizedBox(height: 4.h),
         Text(
           value,
-          style: AppTypography.textLgBold.copyWith(
-            color: kWhiteColor,
-          ),
+          style: AppTypography.textLgBold.copyWith(color: kWhiteColor),
         ),
       ],
     );
   }
 
-  Widget _buildRatingDiffItem({
-    required String label,
-    required int diff,
-  }) {
+  Widget _buildRatingDiffItem({required String label, required int diff}) {
     final isPositive = diff >= 0;
     final displayText = isPositive ? '+$diff' : '$diff';
     final color = isPositive ? kGreenColor : kRedColor;
@@ -96,16 +81,12 @@ class PerformanceStatsRow extends StatelessWidget {
       children: [
         Text(
           label,
-          style: AppTypography.textXsMedium.copyWith(
-            color: kWhiteColor70,
-          ),
+          style: AppTypography.textXsMedium.copyWith(color: kWhiteColor70),
         ),
         SizedBox(height: 4.h),
         Text(
           displayText,
-          style: AppTypography.textLgBold.copyWith(
-            color: color,
-          ),
+          style: AppTypography.textLgBold.copyWith(color: color),
         ),
       ],
     );
@@ -113,9 +94,10 @@ class PerformanceStatsRow extends StatelessWidget {
 
   String _formatScore(double score, int totalGames) {
     // Format score as "2.5/3" or "2/3"
-    final scoreStr = score == score.truncate()
-        ? score.truncate().toString()
-        : score.toString();
+    final scoreStr =
+        score == score.truncate()
+            ? score.truncate().toString()
+            : score.toString();
     return '$scoreStr/$totalGames';
   }
 }

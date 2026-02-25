@@ -114,10 +114,9 @@ class GamesLocalStorage {
           final db = ref.read(appDatabaseProvider);
           await db.setCache(key: _getCacheKey(tourId), value: compressed);
         } catch (e) {
-          ref.read(loggerProvider).logError(
-            'Failed to save games to cache: $e',
-            null,
-          );
+          ref
+              .read(loggerProvider)
+              .logError('Failed to save games to cache: $e', null);
         }
       });
 
@@ -169,14 +168,10 @@ class GamesLocalStorage {
       final gameJsonList = await ref
           .read(gameRepositoryProvider)
           .getGamesByCountryCode(countryCode)
-          .then(
-            (games) => games.map((g) => json.encode(g.toJson())).toList(),
-          );
+          .then((games) => games.map((g) => json.encode(g.toJson())).toList());
 
       if (gameJsonList.length <= loadNow) {
-        return gameJsonList
-            .map((e) => Games.fromJson(json.decode(e)))
-            .toList();
+        return gameJsonList.map((e) => Games.fromJson(json.decode(e))).toList();
       }
 
       final initial = gameJsonList.take(loadNow).toList();

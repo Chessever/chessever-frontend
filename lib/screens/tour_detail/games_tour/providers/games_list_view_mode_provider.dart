@@ -7,8 +7,13 @@ enum GamesListViewMode { gamesCard, chessBoardGrid, chessBoard }
 /// Provider that returns the persisted games list view mode from board settings
 final gamesListViewModeProvider = Provider<GamesListViewMode>((ref) {
   final boardSettings = ref.watch(boardSettingsProviderNew);
-  final index = boardSettings.valueOrNull?.gamesListViewModeIndex ?? 1; // Default to chessBoardGrid
-  return GamesListViewMode.values[index.clamp(0, GamesListViewMode.values.length - 1)];
+  final index =
+      boardSettings.valueOrNull?.gamesListViewModeIndex ??
+      1; // Default to chessBoardGrid
+  return GamesListViewMode.values[index.clamp(
+    0,
+    GamesListViewMode.values.length - 1,
+  )];
 });
 
 final gamesListViewModeSwitcher = AutoDisposeProvider(
@@ -38,6 +43,8 @@ class _GamesListViewModeController {
     }
 
     // Persist the new mode to Supabase via board settings
-    _ref.read(boardSettingsProviderNew.notifier).setGamesListViewModeIndex(newMode.index);
+    _ref
+        .read(boardSettingsProviderNew.notifier)
+        .setGamesListViewModeIndex(newMode.index);
   }
 }

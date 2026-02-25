@@ -28,15 +28,11 @@ class PushTokenSyncController {
     if (_started) return;
     _started = true;
 
-    ref.listen(
-      currentUserProvider,
-      (previous, next) {
-        _userId = next?.id;
-        if (_userId == null) return;
-        unawaited(_syncCurrentSubscription());
-      },
-      fireImmediately: true,
-    );
+    ref.listen(currentUserProvider, (previous, next) {
+      _userId = next?.id;
+      if (_userId == null) return;
+      unawaited(_syncCurrentSubscription());
+    }, fireImmediately: true);
 
     PushNotificationsService.instance.addPushSubscriptionObserver(
       _handlePushSubscriptionChanged,
@@ -50,10 +46,7 @@ class PushTokenSyncController {
   void _handlePushSubscriptionChanged(OSPushSubscriptionChangedState state) {
     if (_disposed) return;
     unawaited(
-      _syncSubscription(
-        current: state.current,
-        previous: state.previous,
-      ),
+      _syncSubscription(current: state.current, previous: state.previous),
     );
   }
 
@@ -133,20 +126,15 @@ class PushTokenSyncController {
     _lastSyncedSignature = signature;
 
     try {
-      await Supabase.instance.client
-          .from('user_push_tokens')
-          .upsert(
-            {
-              'user_id': userId,
-              'provider': 'onesignal',
-              'subscription_id': subscriptionId,
-              'push_token': token,
-              'platform': _platformLabel(),
-              'opted_in': optedIn,
-              'last_seen_at': DateTime.now().toUtc().toIso8601String(),
-            },
-            onConflict: 'provider,subscription_id',
-          );
+      await Supabase.instance.client.from('user_push_tokens').upsert({
+        'user_id': userId,
+        'provider': 'onesignal',
+        'subscription_id': subscriptionId,
+        'push_token': token,
+        'platform': _platformLabel(),
+        'opted_in': optedIn,
+        'last_seen_at': DateTime.now().toUtc().toIso8601String(),
+      }, onConflict: 'provider,subscription_id');
     } catch (_) {
       // Don't block app flow on token updates.
     }

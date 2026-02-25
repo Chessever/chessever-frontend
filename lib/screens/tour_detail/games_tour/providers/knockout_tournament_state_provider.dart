@@ -52,7 +52,8 @@ final knockoutTournamentStateProvider = Provider.autoDispose
 
       // Check format string first (fast), only analyze games if inconclusive
       final explicitKnockout = _formatSuggestsKnockout(formatString);
-      final inferredKnockout = !explicitKnockout &&
+      final inferredKnockout =
+          !explicitKnockout &&
           models.isNotEmpty &&
           KnockoutMatchDetector.isKnockoutMatchFormat(models);
       final isKnockout = explicitKnockout || inferredKnockout;

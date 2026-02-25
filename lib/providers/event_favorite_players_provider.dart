@@ -9,14 +9,9 @@ class EventFavoritePlayers {
   final int count;
   final List<int> fideIds;
 
-  const EventFavoritePlayers({
-    required this.count,
-    required this.fideIds,
-  });
+  const EventFavoritePlayers({required this.count, required this.fideIds});
 
-  const EventFavoritePlayers.empty()
-      : count = 0,
-        fideIds = const [];
+  const EventFavoritePlayers.empty() : count = 0, fideIds = const [];
 
   bool get hasFavorites => count > 0;
 
@@ -34,12 +29,16 @@ class EventFavoritePlayers {
 /// Provider that checks if an event contains favorite players
 /// This is a family provider that takes an event ID
 /// This provider is REACTIVE - it automatically updates when favorite players change
-final eventFavoritePlayersProvider = FutureProvider.autoDispose
-    .family<EventFavoritePlayers, String>((ref, eventId) async {
+final eventFavoritePlayersProvider = FutureProvider.autoDispose.family<
+  EventFavoritePlayers,
+  String
+>((ref, eventId) async {
   try {
     // Read the favorite players (not watch) to avoid infinite rebuild loops
     // Reactivity is handled by the parent provider (forYouEventsProvider)
-    final favoritePlayersState = await ref.read(favoritePlayersNotifierProvider.future);
+    final favoritePlayersState = await ref.read(
+      favoritePlayersNotifierProvider.future,
+    );
     final favoritePlayers = favoritePlayersState.players;
 
     // If no favorites, return empty
@@ -48,10 +47,11 @@ final eventFavoritePlayersProvider = FutureProvider.autoDispose
     }
 
     // Get favorite player FIDE IDs (filter out nulls)
-    final favoriteFideIds = favoritePlayers
-        .where((p) => p.fideId != null)
-        .map((p) => p.fideId!)
-        .toSet();
+    final favoriteFideIds =
+        favoritePlayers
+            .where((p) => p.fideId != null)
+            .map((p) => p.fideId!)
+            .toSet();
 
     if (favoriteFideIds.isEmpty) {
       return const EventFavoritePlayers.empty();
@@ -124,7 +124,8 @@ final eventFavoritePlayersProvider = FutureProvider.autoDispose
 
 /// Cached provider that maintains event favorite player counts
 /// This helps avoid repeated expensive lookups
-class EventFavoritePlayersCache extends StateNotifier<Map<String, EventFavoritePlayers>> {
+class EventFavoritePlayersCache
+    extends StateNotifier<Map<String, EventFavoritePlayers>> {
   EventFavoritePlayersCache() : super({});
 
   void updateCache(String eventId, EventFavoritePlayers data) {
@@ -145,7 +146,7 @@ class EventFavoritePlayersCache extends StateNotifier<Map<String, EventFavoriteP
   }
 }
 
-final eventFavoritePlayersCacheProvider =
-    StateNotifierProvider<EventFavoritePlayersCache, Map<String, EventFavoritePlayers>>(
-  (ref) => EventFavoritePlayersCache(),
-);
+final eventFavoritePlayersCacheProvider = StateNotifierProvider<
+  EventFavoritePlayersCache,
+  Map<String, EventFavoritePlayers>
+>((ref) => EventFavoritePlayersCache());

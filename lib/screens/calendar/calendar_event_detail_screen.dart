@@ -97,68 +97,75 @@ class CalendarEventDetailScreen extends StatelessWidget {
           ),
           child: Container(
             margin: EdgeInsets.symmetric(
-              horizontal: ResponsiveHelper.adaptive(phone: 20.sp, tablet: 32.sp),
+              horizontal: ResponsiveHelper.adaptive(
+                phone: 20.sp,
+                tablet: 32.sp,
+              ),
             ),
             child: SingleChildScrollView(
               padding: EdgeInsets.zero,
               child: Column(
-            mainAxisAlignment: MainAxisAlignment.start,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              SizedBox(height: 16.h),
-              ClipRRect(
-                borderRadius: BorderRadius.only(
-                  topLeft: Radius.circular(12.br),
-                  topRight: Radius.circular(12.br),
-                ),
-                child: SizedBox(
-                  height: 240.h,
-                  width: double.infinity,
-                  child: _buildHeroImage(context),
-                ),
-              ),
-              SizedBox(height: 12.h),
-              if (event.description != null &&
-                  event.description!.isNotEmpty) ...[
-                SelectableText(
-                  event.description!,
-                  style: AppTypography.textSmMedium.copyWith(
-                    color: kWhiteColor70,
+                mainAxisAlignment: MainAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SizedBox(height: 16.h),
+                  ClipRRect(
+                    borderRadius: BorderRadius.only(
+                      topLeft: Radius.circular(12.br),
+                      topRight: Radius.circular(12.br),
+                    ),
+                    child: SizedBox(
+                      height: 240.h,
+                      width: double.infinity,
+                      child: _buildHeroImage(context),
+                    ),
                   ),
-                ),
-                SizedBox(height: 12.h),
-              ],
-              if (topPlayers.isNotEmpty) ...[
-                _TitleDescWidget(
-                  title: 'Players',
-                  description: topPlayers.join(', '),
-                ),
-                SizedBox(height: 12.h),
-              ],
-              _TitleDescWidget(
-                title: 'Time Control',
-                description: event.timeControl ?? 'Standard',
+                  SizedBox(height: 12.h),
+                  if (event.description != null &&
+                      event.description!.isNotEmpty) ...[
+                    SelectableText(
+                      event.description!,
+                      style: AppTypography.textSmMedium.copyWith(
+                        color: kWhiteColor70,
+                      ),
+                    ),
+                    SizedBox(height: 12.h),
+                  ],
+                  if (topPlayers.isNotEmpty) ...[
+                    _TitleDescWidget(
+                      title: 'Players',
+                      description: topPlayers.join(', '),
+                    ),
+                    SizedBox(height: 12.h),
+                  ],
+                  _TitleDescWidget(
+                    title: 'Time Control',
+                    description: event.timeControl ?? 'Standard',
+                  ),
+                  SizedBox(height: 12.h),
+                  _TitleDescWidget(
+                    title: 'Date',
+                    description: _formatDateRange(),
+                  ),
+                  SizedBox(height: 12.h),
+                  _CountryFlag(
+                    title: 'Location',
+                    flag:
+                        event.countryCode != null &&
+                                event.countryCode!.isNotEmpty
+                            ? CountryFlag.fromCountryCode(
+                              event.countryCode!,
+                              width: 16.w,
+                              height: 12.h,
+                            )
+                            : null,
+                    description: event.location ?? 'TBA',
+                  ),
+                  SizedBox(height: MediaQuery.of(context).viewPadding.bottom),
+                ],
               ),
-              SizedBox(height: 12.h),
-              _TitleDescWidget(title: 'Date', description: _formatDateRange()),
-              SizedBox(height: 12.h),
-              _CountryFlag(
-                title: 'Location',
-                flag:
-                    event.countryCode != null && event.countryCode!.isNotEmpty
-                        ? CountryFlag.fromCountryCode(
-                          event.countryCode!,
-                          width: 16.w,
-                          height: 12.h,
-                        )
-                        : null,
-                description: event.location ?? 'TBA',
-              ),
-              SizedBox(height: MediaQuery.of(context).viewPadding.bottom),
-            ],
+            ),
           ),
-          ),
-        ),
         ),
       ),
     );
@@ -200,7 +207,11 @@ class CalendarEventDetailScreen extends StatelessWidget {
       height: 240.h,
       color: kLightBlack,
       alignment: Alignment.center,
-      child: Image.asset(PngAsset.premiumIcon, height: 100.h, fit: BoxFit.contain),
+      child: Image.asset(
+        PngAsset.premiumIcon,
+        height: 100.h,
+        fit: BoxFit.contain,
+      ),
     );
   }
 

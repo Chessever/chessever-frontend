@@ -20,8 +20,5 @@ String _getEnv(String key) {
 }
 
 final supabaseProvider = Provider<SupabaseClient>((ref) {
-  return SupabaseClient(
-    _getEnv('SUPABASE_URL'),
-    _getEnv('SUPABASE_ANON_KEY'),
-  );
+  return SupabaseClient(_getEnv('SUPABASE_URL'), _getEnv('SUPABASE_ANON_KEY'));
 });

@@ -111,9 +111,10 @@ class _ChessBoardNotificationSettingsPageState
                         value: pushEnabled,
                         thumbColor: WidgetStatePropertyAll(kPrimaryColor),
                         trackColor: WidgetStateProperty.resolveWith(
-                          (states) => states.contains(WidgetState.selected)
-                              ? kPrimaryColor.withValues(alpha: 0.35)
-                              : kDividerColor.withValues(alpha: 0.5),
+                          (states) =>
+                              states.contains(WidgetState.selected)
+                                  ? kPrimaryColor.withValues(alpha: 0.35)
+                                  : kDividerColor.withValues(alpha: 0.5),
                         ),
                         onChanged: (value) {
                           _trackPersist(
@@ -125,7 +126,8 @@ class _ChessBoardNotificationSettingsPageState
                             _trackPersist(
                               ref
                                   .read(
-                                      notificationPreferencesProvider.notifier)
+                                    notificationPreferencesProvider.notifier,
+                                  )
                                   .disableAll(),
                             );
                           }
@@ -140,51 +142,63 @@ class _ChessBoardNotificationSettingsPageState
                 _SettingCard(
                   child: _ToggleRow(
                     title: 'Favorite players',
-                    description: 'Get updates when your starred players start or finish.',
+                    description:
+                        'Get updates when your starred players start or finish.',
                     value: prefs.favoritePlayerAlerts,
-                    onChanged: (!pushEnabled || prefsLoading)
-                        ? null
-                        : (value) {
-                            _trackPersist(
-                              ref
-                                  .read(notificationPreferencesProvider.notifier)
-                                  .setFavoritePlayerAlerts(value),
-                            );
-                          },
+                    onChanged:
+                        (!pushEnabled || prefsLoading)
+                            ? null
+                            : (value) {
+                              _trackPersist(
+                                ref
+                                    .read(
+                                      notificationPreferencesProvider.notifier,
+                                    )
+                                    .setFavoritePlayerAlerts(value),
+                              );
+                            },
                   ),
                 ),
                 SizedBox(height: 12.h),
                 _SettingCard(
                   child: _ToggleRow(
                     title: 'Favorite events',
-                    description: 'Stay notified when your saved tournaments begin.',
+                    description:
+                        'Stay notified when your saved tournaments begin.',
                     value: prefs.favoriteEventAlerts,
-                    onChanged: (!pushEnabled || prefsLoading)
-                        ? null
-                        : (value) {
-                            _trackPersist(
-                              ref
-                                  .read(notificationPreferencesProvider.notifier)
-                                  .setFavoriteEventAlerts(value),
-                            );
-                          },
+                    onChanged:
+                        (!pushEnabled || prefsLoading)
+                            ? null
+                            : (value) {
+                              _trackPersist(
+                                ref
+                                    .read(
+                                      notificationPreferencesProvider.notifier,
+                                    )
+                                    .setFavoriteEventAlerts(value),
+                              );
+                            },
                   ),
                 ),
                 SizedBox(height: 12.h),
                 _SettingCard(
                   child: _ToggleRow(
                     title: 'Heads-up alerts',
-                    description: 'Optional reminders shortly before a round starts.',
+                    description:
+                        'Optional reminders shortly before a round starts.',
                     value: prefs.headsUpAlerts,
-                    onChanged: (!pushEnabled || prefsLoading)
-                        ? null
-                        : (value) {
-                            _trackPersist(
-                              ref
-                                  .read(notificationPreferencesProvider.notifier)
-                                  .setHeadsUpAlerts(value),
-                            );
-                          },
+                    onChanged:
+                        (!pushEnabled || prefsLoading)
+                            ? null
+                            : (value) {
+                              _trackPersist(
+                                ref
+                                    .read(
+                                      notificationPreferencesProvider.notifier,
+                                    )
+                                    .setHeadsUpAlerts(value),
+                              );
+                            },
                   ),
                 ),
                 SizedBox(height: 12.h),
@@ -209,17 +223,21 @@ class _ChessBoardNotificationSettingsPageState
                         ),
                       ),
                     ),
-                    description: 'Receive move-by-move Live Activity and live alerts.',
+                    description:
+                        'Receive move-by-move Live Activity and live alerts.',
                     value: prefs.liveGameUpdates,
-                    onChanged: (!pushEnabled || prefsLoading)
-                        ? null
-                        : (value) {
-                            _trackPersist(
-                              ref
-                                  .read(notificationPreferencesProvider.notifier)
-                                  .setLiveGameUpdates(value),
-                            );
-                          },
+                    onChanged:
+                        (!pushEnabled || prefsLoading)
+                            ? null
+                            : (value) {
+                              _trackPersist(
+                                ref
+                                    .read(
+                                      notificationPreferencesProvider.notifier,
+                                    )
+                                    .setLiveGameUpdates(value),
+                              );
+                            },
                   ),
                 ),
                 SizedBox(height: 18.h),
@@ -228,17 +246,21 @@ class _ChessBoardNotificationSettingsPageState
                 _SettingCard(
                   child: _ToggleRow(
                     title: 'Book updates',
-                    description: 'Get notified when new games are added to your subscribed books.',
+                    description:
+                        'Get notified when new games are added to your subscribed books.',
                     value: prefs.bookUpdateAlerts,
-                    onChanged: (!pushEnabled || prefsLoading)
-                        ? null
-                        : (value) {
-                            _trackPersist(
-                              ref
-                                  .read(notificationPreferencesProvider.notifier)
-                                  .setBookUpdateAlerts(value),
-                            );
-                          },
+                    onChanged:
+                        (!pushEnabled || prefsLoading)
+                            ? null
+                            : (value) {
+                              _trackPersist(
+                                ref
+                                    .read(
+                                      notificationPreferencesProvider.notifier,
+                                    )
+                                    .setBookUpdateAlerts(value),
+                              );
+                            },
                   ),
                 ),
                 SizedBox(height: 18.h),
@@ -247,17 +269,21 @@ class _ChessBoardNotificationSettingsPageState
                 _SettingCard(
                   child: _ToggleRow(
                     title: 'Chess world updates',
-                    description: 'Get occasional highlights from the chess and ChessEver world.',
+                    description:
+                        'Get occasional highlights from the chess and ChessEver world.',
                     value: prefs.callToActionAlerts,
-                    onChanged: (!pushEnabled || prefsLoading)
-                        ? null
-                        : (value) {
-                            _trackPersist(
-                              ref
-                                  .read(notificationPreferencesProvider.notifier)
-                                  .setCallToActionAlerts(value),
-                            );
-                          },
+                    onChanged:
+                        (!pushEnabled || prefsLoading)
+                            ? null
+                            : (value) {
+                              _trackPersist(
+                                ref
+                                    .read(
+                                      notificationPreferencesProvider.notifier,
+                                    )
+                                    .setCallToActionAlerts(value),
+                              );
+                            },
                   ),
                 ),
               ],
@@ -362,14 +388,16 @@ class _ToggleRow extends StatelessWidget {
           value: value,
           onChanged: onChanged,
           thumbColor: WidgetStateProperty.resolveWith(
-            (states) => states.contains(WidgetState.selected)
-                ? kPrimaryColor
-                : kWhiteColor.withValues(alpha: 0.6),
+            (states) =>
+                states.contains(WidgetState.selected)
+                    ? kPrimaryColor
+                    : kWhiteColor.withValues(alpha: 0.6),
           ),
           trackColor: WidgetStateProperty.resolveWith(
-            (states) => states.contains(WidgetState.selected)
-                ? kPrimaryColor.withValues(alpha: 0.35)
-                : kDividerColor.withValues(alpha: 0.5),
+            (states) =>
+                states.contains(WidgetState.selected)
+                    ? kPrimaryColor.withValues(alpha: 0.35)
+                    : kDividerColor.withValues(alpha: 0.5),
           ),
         ),
       ],

@@ -36,11 +36,7 @@ class EventFavoriteCard extends ConsumerWidget {
         ),
         alignment: Alignment.centerRight,
         padding: EdgeInsets.only(right: 20.sp),
-        child: Icon(
-          Icons.delete_outline,
-          color: kWhiteColor,
-          size: 24.ic,
-        ),
+        child: Icon(Icons.delete_outline, color: kWhiteColor, size: 24.ic),
       ),
       confirmDismiss: (direction) async {
         final allowed = await requireFullAuthGuard(context);
@@ -61,116 +57,112 @@ class EventFavoriteCard extends ConsumerWidget {
           _showContextMenu(context, details.globalPosition, title);
         },
         child: Container(
-        decoration: BoxDecoration(
-          color: kBlack2Color,
-          borderRadius: BorderRadius.circular(8.br),
-        ),
-        padding: EdgeInsets.all(16.sp),
-        child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Event title
-                Text(
-                  title,
-                  style: AppTypography.textMdMedium.copyWith(
-                    color: kWhiteColor,
-                  ),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-
-                SizedBox(height: 8.h),
-
-                // Event details
-                Row(
+          decoration: BoxDecoration(
+            color: kBlack2Color,
+            borderRadius: BorderRadius.circular(8.br),
+          ),
+          padding: EdgeInsets.all(16.sp),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Date
-                    if (dates.isNotEmpty) ...[
-                      Icon(
-                        Icons.calendar_today,
-                        size: 14.ic,
-                        color: kWhiteColor.withValues(alpha: 0.7),
+                    // Event title
+                    Text(
+                      title,
+                      style: AppTypography.textMdMedium.copyWith(
+                        color: kWhiteColor,
                       ),
-                      SizedBox(width: 4.w),
-                      Text(
-                        dates,
-                        style: AppTypography.textSmRegular.copyWith(
-                          color: kWhiteColor.withValues(alpha: 0.7),
-                        ),
-                      ),
-                    ],
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
 
-                    // Time control
-                    if (timeControl.isNotEmpty) ...[
-                      if (dates.isNotEmpty) ...[
-                        SizedBox(width: 8.w),
-                        Container(
-                          width: 4.w,
-                          height: 4.h,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: kWhiteColor.withValues(alpha: 0.5),
+                    SizedBox(height: 8.h),
+
+                    // Event details
+                    Row(
+                      children: [
+                        // Date
+                        if (dates.isNotEmpty) ...[
+                          Icon(
+                            Icons.calendar_today,
+                            size: 14.ic,
+                            color: kWhiteColor.withValues(alpha: 0.7),
                           ),
-                        ),
-                        SizedBox(width: 8.w),
+                          SizedBox(width: 4.w),
+                          Text(
+                            dates,
+                            style: AppTypography.textSmRegular.copyWith(
+                              color: kWhiteColor.withValues(alpha: 0.7),
+                            ),
+                          ),
+                        ],
+
+                        // Time control
+                        if (timeControl.isNotEmpty) ...[
+                          if (dates.isNotEmpty) ...[
+                            SizedBox(width: 8.w),
+                            Container(
+                              width: 4.w,
+                              height: 4.h,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: kWhiteColor.withValues(alpha: 0.5),
+                              ),
+                            ),
+                            SizedBox(width: 8.w),
+                          ],
+                          _buildTimeControlIcon(timeControl),
+                          SizedBox(width: 4.w),
+                          Text(
+                            timeControl,
+                            style: AppTypography.textSmRegular.copyWith(
+                              color: kWhiteColor.withValues(alpha: 0.7),
+                            ),
+                          ),
+                        ],
                       ],
-                      _buildTimeControlIcon(timeControl),
-                      SizedBox(width: 4.w),
-                      Text(
-                        timeControl,
-                        style: AppTypography.textSmRegular.copyWith(
-                          color: kWhiteColor.withValues(alpha: 0.7),
-                        ),
+                    ),
+
+                    // Average ELO
+                    if (maxAvgElo > 0) ...[
+                      SizedBox(height: 4.h),
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.trending_up,
+                            size: 14.ic,
+                            color: kWhiteColor.withValues(alpha: 0.7),
+                          ),
+                          SizedBox(width: 4.w),
+                          Text(
+                            'Avg ELO: $maxAvgElo',
+                            style: AppTypography.textSmRegular.copyWith(
+                              color: kWhiteColor.withValues(alpha: 0.7),
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ],
                 ),
-
-                // Average ELO
-                if (maxAvgElo > 0) ...[
-                  SizedBox(height: 4.h),
-                  Row(
-                    children: [
-                      Icon(
-                        Icons.trending_up,
-                        size: 14.ic,
-                        color: kWhiteColor.withValues(alpha: 0.7),
-                      ),
-                      SizedBox(width: 4.w),
-                      Text(
-                        'Avg ELO: $maxAvgElo',
-                        style: AppTypography.textSmRegular.copyWith(
-                          color: kWhiteColor.withValues(alpha: 0.7),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ],
-            ),
-          ),
-
-          // Remove favorite button
-          GestureDetector(
-            onTap: () async {
-              final allowed = await requireFullAuthGuard(context);
-              if (!allowed) return;
-              onRemoveFavorite?.call();
-            },
-            child: Container(
-              padding: EdgeInsets.all(8.sp),
-              child: Icon(
-                Icons.star,
-                size: 20.ic,
-                color: kPrimaryColor,
               ),
-            ),
+
+              // Remove favorite button
+              GestureDetector(
+                onTap: () async {
+                  final allowed = await requireFullAuthGuard(context);
+                  if (!allowed) return;
+                  onRemoveFavorite?.call();
+                },
+                child: Container(
+                  padding: EdgeInsets.all(8.sp),
+                  child: Icon(Icons.star, size: 20.ic, color: kPrimaryColor),
+                ),
+              ),
+            ],
           ),
-        ],
-        ),
         ),
       ),
     );
@@ -190,7 +182,7 @@ class EventFavoriteCard extends ConsumerWidget {
         timeControl: eventData['timeControl'] as String?,
         maxAvgElo: eventData['maxAvgElo'] as int?,
         dateStart: null, // Could parse from eventData if needed
-        dateEnd: null,   // Could parse from eventData if needed
+        dateEnd: null, // Could parse from eventData if needed
       );
 
       // Set the selected broadcast model
@@ -205,8 +197,13 @@ class EventFavoriteCard extends ConsumerWidget {
     }
   }
 
-  void _showContextMenu(BuildContext context, Offset position, String eventTitle) {
-    final RenderBox overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
+  void _showContextMenu(
+    BuildContext context,
+    Offset position,
+    String eventTitle,
+  ) {
+    final RenderBox overlay =
+        Overlay.of(context).context.findRenderObject() as RenderBox;
 
     showTabletSafeMenu(
       context: context,
@@ -215,25 +212,17 @@ class EventFavoriteCard extends ConsumerWidget {
         Offset.zero & overlay.size,
       ),
       color: kBlack2Color,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(8.br),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8.br)),
       items: [
         PopupMenuItem(
           value: 'delete',
           child: Row(
             children: [
-              Icon(
-                Icons.delete_outline,
-                color: kRedColor,
-                size: 20.ic,
-              ),
+              Icon(Icons.delete_outline, color: kRedColor, size: 20.ic),
               SizedBox(width: 12.w),
               Text(
                 'Remove from favorites',
-                style: AppTypography.textSmRegular.copyWith(
-                  color: kRedColor,
-                ),
+                style: AppTypography.textSmRegular.copyWith(color: kRedColor),
               ),
             ],
           ),
@@ -251,7 +240,10 @@ class EventFavoriteCard extends ConsumerWidget {
     });
   }
 
-  Future<bool?> _showDeleteConfirmation(BuildContext context, String eventTitle) {
+  Future<bool?> _showDeleteConfirmation(
+    BuildContext context,
+    String eventTitle,
+  ) {
     return showDialog<bool>(
       context: context,
       builder: (BuildContext context) {
@@ -301,7 +293,8 @@ class EventFavoriteCard extends ConsumerWidget {
       assetPath = 'assets/pngs/blitz.png';
     } else if (lowerTimeControl.contains('rapid')) {
       assetPath = 'assets/pngs/rapid.png';
-    } else if (lowerTimeControl.contains('classic') || lowerTimeControl.contains('standard')) {
+    } else if (lowerTimeControl.contains('classic') ||
+        lowerTimeControl.contains('standard')) {
       assetPath = 'assets/pngs/classical.png';
     } else {
       // Fallback to timer icon for unknown time controls

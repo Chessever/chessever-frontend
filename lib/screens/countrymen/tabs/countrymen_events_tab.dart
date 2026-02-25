@@ -21,9 +21,9 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 // --- Provider ---
 
 final countrymenEventsProvider = StateNotifierProvider.autoDispose<
-    CountrymenEventsNotifier, CountrymenEventsState>(
-  (ref) => CountrymenEventsNotifier(ref),
-);
+  CountrymenEventsNotifier,
+  CountrymenEventsState
+>((ref) => CountrymenEventsNotifier(ref));
 
 class CountrymenEventsState {
   final List<GroupBroadcast> events;
@@ -68,7 +68,7 @@ class CountrymenEventsNotifier extends StateNotifier<CountrymenEventsState> {
   static const int _pageSize = 20;
 
   CountrymenEventsNotifier(this._ref)
-      : super(const CountrymenEventsState(isLoading: true)) {
+    : super(const CountrymenEventsState(isLoading: true)) {
     _loadInitial();
 
     // Listen to effective country changes (includes temporary selections)
@@ -235,7 +235,10 @@ class _CountrymenEventsTabState extends ConsumerState<CountrymenEventsTab>
     super.build(context);
 
     final state = ref.watch(countrymenEventsProvider);
-    final horizontalPadding = ResponsiveHelper.adaptive(phone: 16.w, tablet: 24.w);
+    final horizontalPadding = ResponsiveHelper.adaptive(
+      phone: 16.w,
+      tablet: 24.w,
+    );
 
     Widget content = RefreshIndicator(
       onRefresh: () async {
@@ -253,7 +256,12 @@ class _CountrymenEventsTabState extends ConsumerState<CountrymenEventsTab>
           // Search bar (scrolls with content)
           SliverToBoxAdapter(
             child: Padding(
-              padding: EdgeInsets.fromLTRB(horizontalPadding, 12.h, horizontalPadding, 8.h),
+              padding: EdgeInsets.fromLTRB(
+                horizontalPadding,
+                12.h,
+                horizontalPadding,
+                8.h,
+              ),
               child: SearchBarWidget(
                 hintText: 'Search',
                 margin: 0.sp,
@@ -335,20 +343,27 @@ class _CountrymenEventsTabState extends ConsumerState<CountrymenEventsTab>
         (state.hasMore || state.isLoading) && events.isNotEmpty;
 
     // Get live event IDs for status indicators
-    final liveEventIds = ref.watch(liveGroupBroadcastIdsProvider).valueOrNull ?? [];
+    final liveEventIds =
+        ref.watch(liveGroupBroadcastIdsProvider).valueOrNull ?? [];
 
-    final horizontalPadding = ResponsiveHelper.adaptive(phone: 16.w, tablet: 24.w);
+    final horizontalPadding = ResponsiveHelper.adaptive(
+      phone: 16.w,
+      tablet: 24.w,
+    );
     return SliverPadding(
-      padding: EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: 8.h),
+      padding: EdgeInsets.symmetric(
+        horizontal: horizontalPadding,
+        vertical: 8.h,
+      ),
       sliver: SliverList(
-        delegate: SliverChildBuilderDelegate(
-          (context, index) {
-            if (index >= events.length) {
-              return Padding(
-                padding: EdgeInsets.symmetric(vertical: 24.h),
-                child: Center(
-                  child: state.isLoading
-                      ? Column(
+        delegate: SliverChildBuilderDelegate((context, index) {
+          if (index >= events.length) {
+            return Padding(
+              padding: EdgeInsets.symmetric(vertical: 24.h),
+              child: Center(
+                child:
+                    state.isLoading
+                        ? Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             SizedBox(
@@ -368,36 +383,34 @@ class _CountrymenEventsTabState extends ConsumerState<CountrymenEventsTab>
                             ),
                           ],
                         )
-                      : state.hasMore
-                          ? const SizedBox.shrink()
-                          : Text(
-                              'No more events',
-                              style: AppTypography.textXsRegular.copyWith(
-                                color: const Color(0xFF52525B),
-                              ),
-                            ),
-                ),
-              );
-            }
-
-            final event = events[index];
-            // Convert GroupBroadcast to GroupEventCardModel for EventCard widget
-            final cardModel = GroupEventCardModel.fromGroupBroadcast(
-              event,
-              liveEventIds,
-            );
-
-            return Padding(
-              padding: EdgeInsets.only(bottom: 8.h),
-              child: EventCard(
-                tourEventCardModel: cardModel,
-                heroTagSuffix: 'countrymen-events-$index',
-                onTap: () => _onEventTap(event),
+                        : state.hasMore
+                        ? const SizedBox.shrink()
+                        : Text(
+                          'No more events',
+                          style: AppTypography.textXsRegular.copyWith(
+                            color: const Color(0xFF52525B),
+                          ),
+                        ),
               ),
             );
-          },
-          childCount: events.length + (showLoadingIndicator ? 1 : 0),
-        ),
+          }
+
+          final event = events[index];
+          // Convert GroupBroadcast to GroupEventCardModel for EventCard widget
+          final cardModel = GroupEventCardModel.fromGroupBroadcast(
+            event,
+            liveEventIds,
+          );
+
+          return Padding(
+            padding: EdgeInsets.only(bottom: 8.h),
+            child: EventCard(
+              tourEventCardModel: cardModel,
+              heroTagSuffix: 'countrymen-events-$index',
+              onTap: () => _onEventTap(event),
+            ),
+          );
+        }, childCount: events.length + (showLoadingIndicator ? 1 : 0)),
       ),
     );
   }
@@ -468,8 +481,8 @@ class _CountrymenEventsTabState extends ConsumerState<CountrymenEventsTab>
           ),
           SizedBox(height: 24.h),
           TextButton(
-            onPressed: () =>
-                ref.read(countrymenEventsProvider.notifier).refresh(),
+            onPressed:
+                () => ref.read(countrymenEventsProvider.notifier).refresh(),
             style: TextButton.styleFrom(
               backgroundColor: kWhiteColor.withValues(alpha: 0.1),
               padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 12.h),
@@ -566,4 +579,3 @@ class _CountrymenEventsTabState extends ConsumerState<CountrymenEventsTab>
     ).animate().fadeIn(duration: 300.ms);
   }
 }
-

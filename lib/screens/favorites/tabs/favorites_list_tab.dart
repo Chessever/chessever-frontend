@@ -52,18 +52,21 @@ class _FavoritesListTabState extends ConsumerState<FavoritesListTab>
 
     return Stack(
       children: [
-        ref.watch(favoritePlayersNotifierProvider).when(
-          data: (_) {
-            final filteredPlayers = ref.read(
-              filteredFavoritePlayersProvider(_searchController.text),
-            );
-            return _buildContent(filteredPlayers);
-          },
-          loading: () => const Center(
-            child: CircularProgressIndicator(color: kWhiteColor),
-          ),
-          error: (error, stack) => _buildErrorState(error.toString()),
-        ),
+        ref
+            .watch(favoritePlayersNotifierProvider)
+            .when(
+              data: (_) {
+                final filteredPlayers = ref.read(
+                  filteredFavoritePlayersProvider(_searchController.text),
+                );
+                return _buildContent(filteredPlayers);
+              },
+              loading:
+                  () => const Center(
+                    child: CircularProgressIndicator(color: kWhiteColor),
+                  ),
+              error: (error, stack) => _buildErrorState(error.toString()),
+            ),
         // Scroll to top button
         Positioned(
           bottom: 0,
@@ -77,53 +80,51 @@ class _FavoritesListTabState extends ConsumerState<FavoritesListTab>
   Widget _buildContent(List<PlayerStandingModel> filteredPlayers) {
     return Center(
       child: ConstrainedBox(
-        constraints: BoxConstraints(
-          maxWidth: ResponsiveHelper.contentMaxWidth,
-        ),
+        constraints: BoxConstraints(maxWidth: ResponsiveHelper.contentMaxWidth),
         child: RefreshIndicator(
-      onRefresh: () async {
-        HapticFeedbackService.medium();
-        await ref
-            .read(favoritePlayersNotifierProvider.notifier)
-            .refreshFavorites();
-      },
-      color: kWhiteColor,
-      backgroundColor: kBlack2Color,
-      child: CustomScrollView(
-        controller: _scrollController,
-        physics: const AlwaysScrollableScrollPhysics(
-          parent: BouncingScrollPhysics(),
-        ),
-        slivers: [
-          // Search bar
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: EdgeInsets.fromLTRB(16.w, 12.h, 16.w, 8.h),
-              child: AnimatedBuilder(
-                animation: _searchController,
-                builder: (context, _) {
-                  return SearchBarWidget(
-                    hintText: 'Search',
-                    margin: 0.sp,
-                    autoFocus: false,
-                    controller: _searchController,
-                    focusNode: _focusNode,
-                    onChanged: (_) => setState(() {}),
-                    onClose: _clearSearch,
-                  );
-                },
-              ),
+          onRefresh: () async {
+            HapticFeedbackService.medium();
+            await ref
+                .read(favoritePlayersNotifierProvider.notifier)
+                .refreshFavorites();
+          },
+          color: kWhiteColor,
+          backgroundColor: kBlack2Color,
+          child: CustomScrollView(
+            controller: _scrollController,
+            physics: const AlwaysScrollableScrollPhysics(
+              parent: BouncingScrollPhysics(),
             ),
+            slivers: [
+              // Search bar
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: EdgeInsets.fromLTRB(16.w, 12.h, 16.w, 8.h),
+                  child: AnimatedBuilder(
+                    animation: _searchController,
+                    builder: (context, _) {
+                      return SearchBarWidget(
+                        hintText: 'Search',
+                        margin: 0.sp,
+                        autoFocus: false,
+                        controller: _searchController,
+                        focusNode: _focusNode,
+                        onChanged: (_) => setState(() {}),
+                        onClose: _clearSearch,
+                      );
+                    },
+                  ),
+                ),
+              ),
+
+              // Content
+              _buildPlayersSliver(filteredPlayers),
+
+              // Bottom padding
+              SliverToBoxAdapter(child: SizedBox(height: 24.h)),
+            ],
           ),
-
-          // Content
-          _buildPlayersSliver(filteredPlayers),
-
-          // Bottom padding
-          SliverToBoxAdapter(child: SizedBox(height: 24.h)),
-        ],
-      ),
-      ),
+        ),
       ),
     );
   }
@@ -160,41 +161,35 @@ class _FavoritesListTabState extends ConsumerState<FavoritesListTab>
     return SliverPadding(
       padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
       sliver: SliverList(
-        delegate: SliverChildBuilderDelegate(
-          (context, index) {
-            final player = sortedPlayers[index];
-            return FigmaPlayerCard(
-              player: player,
-              rank: index + 1,
-              isFavorite: true,
-              showFavoriteButton: true,
-              onTap: () {
-                FocusScope.of(context).unfocus();
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => PlayerProfileScreen(
-                      fideId: player.fideId,
-                      playerName: player.name,
-                      title: player.title,
-                      federation: player.countryCode,
-                      rating: player.score,
-                    ),
-                  ),
-                );
-              },
-              onToggleFavorite: () => _removeFavoritePlayer(player),
-              onLongPress: (details) {
-                _showContextMenu(
-                  context,
-                  details.globalPosition,
-                  player,
-                );
-              },
-            );
-          },
-          childCount: sortedPlayers.length,
-        ),
+        delegate: SliverChildBuilderDelegate((context, index) {
+          final player = sortedPlayers[index];
+          return FigmaPlayerCard(
+            player: player,
+            rank: index + 1,
+            isFavorite: true,
+            showFavoriteButton: true,
+            onTap: () {
+              FocusScope.of(context).unfocus();
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder:
+                      (context) => PlayerProfileScreen(
+                        fideId: player.fideId,
+                        playerName: player.name,
+                        title: player.title,
+                        federation: player.countryCode,
+                        rating: player.score,
+                      ),
+                ),
+              );
+            },
+            onToggleFavorite: () => _removeFavoritePlayer(player),
+            onLongPress: (details) {
+              _showContextMenu(context, details.globalPosition, player);
+            },
+          );
+        }, childCount: sortedPlayers.length),
       ),
     );
   }

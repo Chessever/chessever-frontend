@@ -90,16 +90,19 @@ class _PositionedListScrollbarState extends State<PositionedListScrollbar> {
     }
 
     // Calculate scroll progress based on the first visible item
-    final visibleItems = positions
-        .where((position) => position.itemLeadingEdge >= 0);
+    final visibleItems = positions.where(
+      (position) => position.itemLeadingEdge >= 0,
+    );
 
     // Guard against empty filtered collection (tablet layout edge case)
     if (visibleItems.isEmpty) {
       // Fallback: use any position if available
       if (positions.isEmpty) return;
-      final fallbackItem = positions.reduce((current, next) =>
-          current.index < next.index ? current : next);
-      final fallbackProgress = fallbackItem.index / (widget.itemCount - 1).clamp(1, double.infinity);
+      final fallbackItem = positions.reduce(
+        (current, next) => current.index < next.index ? current : next,
+      );
+      final fallbackProgress =
+          fallbackItem.index / (widget.itemCount - 1).clamp(1, double.infinity);
       if (mounted) {
         setState(() {
           _scrollProgress = fallbackProgress.clamp(0.0, 1.0);
@@ -109,10 +112,12 @@ class _PositionedListScrollbarState extends State<PositionedListScrollbar> {
       return;
     }
 
-    final firstItem = visibleItems.reduce((current, next) =>
-        current.index < next.index ? current : next);
+    final firstItem = visibleItems.reduce(
+      (current, next) => current.index < next.index ? current : next,
+    );
 
-    final progress = firstItem.index / (widget.itemCount - 1).clamp(1, double.infinity);
+    final progress =
+        firstItem.index / (widget.itemCount - 1).clamp(1, double.infinity);
 
     if (mounted) {
       setState(() {
@@ -148,9 +153,7 @@ class _PositionedListScrollbarState extends State<PositionedListScrollbar> {
     final targetIndex = (progress * (widget.itemCount - 1)).round();
 
     // Scroll to the target item with no animation for instant feedback
-    widget.itemScrollController.jumpTo(
-      index: targetIndex,
-    );
+    widget.itemScrollController.jumpTo(index: targetIndex);
   }
 
   void _handleDragEnd() {
@@ -185,7 +188,8 @@ class _PositionedListScrollbarState extends State<PositionedListScrollbar> {
                   // Only drag is enabled - tap removed for track visibility only
                   onVerticalDragStart: _handleDragStart,
                   onVerticalDragUpdate: (details) {
-                    final RenderBox box = context.findRenderObject() as RenderBox;
+                    final RenderBox box =
+                        context.findRenderObject() as RenderBox;
                     final localY = details.localPosition.dy;
                     final trackHeight = box.size.height;
                     _handleDragUpdate(localY, trackHeight);
@@ -195,12 +199,19 @@ class _PositionedListScrollbarState extends State<PositionedListScrollbar> {
                   child: Align(
                     alignment: Alignment.centerRight,
                     child: Padding(
-                      padding: EdgeInsets.only(right: (widget.padding?.right ?? 0) + 2),
+                      padding: EdgeInsets.only(
+                        right: (widget.padding?.right ?? 0) + 2,
+                      ),
                       child: _ScrollbarThumb(
-                        scrollProgress: _isDragging ? _dragProgress : _scrollProgress,
+                        scrollProgress:
+                            _isDragging ? _dragProgress : _scrollProgress,
                         thumbWidth: widget.thumbWidth,
-                        thumbColor: widget.thumbColor ?? kPrimaryColor.withValues(alpha: 0.7),
-                        trackColor: widget.trackColor ?? kDarkGreyColor.withValues(alpha: 0.3),
+                        thumbColor:
+                            widget.thumbColor ??
+                            kPrimaryColor.withValues(alpha: 0.7),
+                        trackColor:
+                            widget.trackColor ??
+                            kDarkGreyColor.withValues(alpha: 0.3),
                         trackBorderRadius: widget.trackBorderRadius ?? 8.0,
                         isDragging: _isDragging,
                       ),
@@ -243,9 +254,8 @@ class _ScrollbarThumb extends StatelessWidget {
 
         // Make thumb wider and more opaque when dragging - dramatic 2.5x expansion!
         final activeThumbWidth = isDragging ? thumbWidth * 2.5 : thumbWidth;
-        final activeThumbColor = isDragging
-            ? thumbColor.withValues(alpha: 1.0)
-            : thumbColor;
+        final activeThumbColor =
+            isDragging ? thumbColor.withValues(alpha: 1.0) : thumbColor;
 
         // Custom spring curve for snappy, dynamic feel
         final dynamicCurve = Sprung.custom(
@@ -265,7 +275,8 @@ class _ScrollbarThumb extends StatelessWidget {
           child: Stack(
             children: [
               AnimatedPositioned(
-                duration: Duration.zero, // Instant position update for liquid feel
+                duration:
+                    Duration.zero, // Instant position update for liquid feel
                 top: thumbOffset,
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 180),

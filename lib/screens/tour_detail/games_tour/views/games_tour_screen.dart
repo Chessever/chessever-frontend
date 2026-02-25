@@ -71,10 +71,14 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen> {
             // Force normal mode rendering for knockout tournaments on tablet.
             final effectiveMode = mode;
             final bool useNormalMode;
-            if (ResponsiveHelper.isTablet && effectiveMode == GamesTourScreenMode.groupEvent) {
+            if (ResponsiveHelper.isTablet &&
+                effectiveMode == GamesTourScreenMode.groupEvent) {
               final gamesAppBar = ref.watch(gamesAppBarProvider);
-              final hasKnockoutRounds = gamesAppBar.valueOrNull?.gamesAppBarModels
-                  .any((r) => r.id.startsWith('$kKnockoutStagePrefix-')) ?? false;
+              final hasKnockoutRounds =
+                  gamesAppBar.valueOrNull?.gamesAppBarModels.any(
+                    (r) => r.id.startsWith('$kKnockoutStagePrefix-'),
+                  ) ??
+                  false;
               useNormalMode = hasKnockoutRounds;
             } else {
               useNormalMode = effectiveMode == GamesTourScreenMode.normal;

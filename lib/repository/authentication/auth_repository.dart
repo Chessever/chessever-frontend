@@ -58,9 +58,7 @@ class AuthController extends AutoDisposeAsyncNotifier<AppAuthState> {
     // Quick path: SDK already has a valid session from Supabase.initialize().
     final earlySession = _supabase.auth.currentSession;
     final earlyUser = _supabase.auth.currentUser;
-    if (earlySession != null &&
-        earlyUser != null &&
-        !earlySession.isExpired) {
+    if (earlySession != null && earlyUser != null && !earlySession.isExpired) {
       return AppAuthState.authenticated(AppUser.fromSupabaseUser(earlyUser));
     }
 

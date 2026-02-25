@@ -11,8 +11,4 @@ final selectedTourModeProvider =
     );
 
 /// For Tabs
-enum TournamentDetailScreenMode {
-  about,
-  games,
-  standings,
-}
+enum TournamentDetailScreenMode { about, games, standings }

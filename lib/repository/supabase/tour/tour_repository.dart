@@ -21,9 +21,8 @@ class TourRepository extends BaseRepository {
           .eq('group_broadcast_id', groupId)
           .order('avg_elo', ascending: false);
 
-      final byGroupTours = (byGroupResponse as List)
-          .map((json) => Tour.fromJson(json))
-          .toList();
+      final byGroupTours =
+          (byGroupResponse as List).map((json) => Tour.fromJson(json)).toList();
 
       if (byGroupTours.isNotEmpty) {
         return byGroupTours;
@@ -36,9 +35,7 @@ class TourRepository extends BaseRepository {
           .select()
           .eq('id', groupId);
 
-      return (byIdResponse as List)
-          .map((json) => Tour.fromJson(json))
-          .toList();
+      return (byIdResponse as List).map((json) => Tour.fromJson(json)).toList();
     });
   }
 
@@ -93,7 +90,9 @@ class TourRepository extends BaseRepository {
     int offset = 0,
   }) async {
     return handleApiCall(() async {
-      debugPrint('[TourRepository] getToursByCountryLocation: countryName=$countryName, searchQuery=$searchQuery');
+      debugPrint(
+        '[TourRepository] getToursByCountryLocation: countryName=$countryName, searchQuery=$searchQuery',
+      );
 
       var query = supabase
           .from('tours')
@@ -109,9 +108,12 @@ class TourRepository extends BaseRepository {
           .order('dates->0', ascending: false) // Most recent first
           .range(offset, offset + limit - 1);
 
-      final tours = (response as List).map((json) => Tour.fromJson(json)).toList();
+      final tours =
+          (response as List).map((json) => Tour.fromJson(json)).toList();
 
-      debugPrint('[TourRepository] getToursByCountryLocation: found ${tours.length} tours');
+      debugPrint(
+        '[TourRepository] getToursByCountryLocation: found ${tours.length} tours',
+      );
       return tours;
     });
   }
@@ -124,7 +126,9 @@ class TourRepository extends BaseRepository {
     int offset = 0,
   }) async {
     return handleApiCall(() async {
-      debugPrint('[TourRepository] searchTours: query=$query, countryName=$countryName');
+      debugPrint(
+        '[TourRepository] searchTours: query=$query, countryName=$countryName',
+      );
 
       var dbQuery = supabase.from('tours').select();
 
@@ -140,7 +144,8 @@ class TourRepository extends BaseRepository {
           .order('dates->0', ascending: false)
           .range(offset, offset + limit - 1);
 
-      final tours = (response as List).map((json) => Tour.fromJson(json)).toList();
+      final tours =
+          (response as List).map((json) => Tour.fromJson(json)).toList();
 
       debugPrint('[TourRepository] searchTours: found ${tours.length} tours');
       return tours;
@@ -148,10 +153,7 @@ class TourRepository extends BaseRepository {
   }
 
   /// Get recent tours (for featured/home screen).
-  Future<List<Tour>> getRecentTours({
-    int limit = 30,
-    int offset = 0,
-  }) async {
+  Future<List<Tour>> getRecentTours({int limit = 30, int offset = 0}) async {
     return handleApiCall(() async {
       final response = await supabase
           .from('tours')

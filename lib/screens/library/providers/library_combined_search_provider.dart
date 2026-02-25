@@ -45,7 +45,8 @@ class LibrarySearchResult {
       folders.isEmpty && analyses.isEmpty && players.isEmpty && games.isEmpty;
 
   /// Creates a copy with additional players appended
-  LibrarySearchResult appendPlayers(List<GamebasePlayer> morePlayers, {
+  LibrarySearchResult appendPlayers(
+    List<GamebasePlayer> morePlayers, {
     required int newPageNumber,
     required int totalCount,
     required bool hasMore,
@@ -65,7 +66,8 @@ class LibrarySearchResult {
   }
 
   /// Creates a copy with additional games appended
-  LibrarySearchResult appendGames(List<Map<String, dynamic>> moreGames, {
+  LibrarySearchResult appendGames(
+    List<Map<String, dynamic>> moreGames, {
     required int newPageNumber,
     required int totalCount,
     required bool hasMore,
@@ -149,7 +151,9 @@ class LibraryCombinedSearchNotifier
                 .where((f) => f.name.toLowerCase().contains(queryLower))
                 .toList();
       }
-      debugPrint('[LibrarySearch] Local folders found: ${filteredFolders.length}');
+      debugPrint(
+        '[LibrarySearch] Local folders found: ${filteredFolders.length}',
+      );
 
       if (analysesAsync.hasValue) {
         filteredAnalyses =
@@ -174,7 +178,9 @@ class LibraryCombinedSearchNotifier
                   site.contains(queryLower);
             }).toList();
       }
-      debugPrint('[LibrarySearch] Local analyses found: ${filteredAnalyses.length}');
+      debugPrint(
+        '[LibrarySearch] Local analyses found: ${filteredAnalyses.length}',
+      );
 
       // 2. Gamebase Global Search - queries ALL columns (players, games, events, etc.)
       // Use smaller page size for quick dropdown results
@@ -187,36 +193,48 @@ class LibraryCombinedSearchNotifier
       bool hasMoreGames = false;
 
       try {
-        debugPrint('[LibrarySearch] Calling gamebaseRepo.globalSearch with query="$queryTrimmed"');
+        debugPrint(
+          '[LibrarySearch] Calling gamebaseRepo.globalSearch with query="$queryTrimmed"',
+        );
         // Use globalSearch to search across ALL SQL columns with pagination
         final searchResponse = await gamebaseRepo.globalSearch(
           query: queryTrimmed,
           pageNumber: 1,
-          pageSize: _dropdownPageSize * 2, // Fetch enough for both players and games
+          pageSize:
+              _dropdownPageSize * 2, // Fetch enough for both players and games
         );
-        debugPrint('[LibrarySearch] globalSearch returned ${searchResponse.results.length} results');
+        debugPrint(
+          '[LibrarySearch] globalSearch returned ${searchResponse.results.length} results',
+        );
 
         // Parse results by resource type
         for (final result in searchResponse.results) {
-          debugPrint('[LibrarySearch] Result: resource=${result.resource}, label=${result.label}, id=${result.id}');
+          debugPrint(
+            '[LibrarySearch] Result: resource=${result.resource}, label=${result.label}, id=${result.id}',
+          );
 
           if (result.resource == 'player') {
             // Convert search result to GamebasePlayer
             final preview = result.preview ?? {};
             final genderStr = (preview['gender'] as String?)?.toUpperCase();
-            final gender = genderStr == 'FEMALE' ? PlayerGender.female : PlayerGender.male;
-            final normalizedTitle = ChessTitleUtils.normalize(preview['title'] as String?);
-            players.add(GamebasePlayer(
-              id: result.id,
-              name: result.label,
-              fideId: (preview['fideId'] as String?) ?? '',
-              gender: gender,
-              fed: (preview['fed'] as String?) ?? '',
-              title: normalizedTitle,
-              ratingClassical: (preview['ratingClassical'] as num?)?.toInt(),
-              ratingRapid: (preview['ratingRapid'] as num?)?.toInt(),
-              ratingBlitz: (preview['ratingBlitz'] as num?)?.toInt(),
-            ));
+            final gender =
+                genderStr == 'FEMALE' ? PlayerGender.female : PlayerGender.male;
+            final normalizedTitle = ChessTitleUtils.normalize(
+              preview['title'] as String?,
+            );
+            players.add(
+              GamebasePlayer(
+                id: result.id,
+                name: result.label,
+                fideId: (preview['fideId'] as String?) ?? '',
+                gender: gender,
+                fed: (preview['fed'] as String?) ?? '',
+                title: normalizedTitle,
+                ratingClassical: (preview['ratingClassical'] as num?)?.toInt(),
+                ratingRapid: (preview['ratingRapid'] as num?)?.toInt(),
+                ratingBlitz: (preview['ratingBlitz'] as num?)?.toInt(),
+              ),
+            );
           } else if (result.resource == 'game') {
             // Add game data from preview to games list
             // IMPORTANT: Use preview's 'id' (actual game UUID) not result.id (search result ID)
@@ -317,7 +335,9 @@ class LibraryCombinedSearchNotifier
           }
         }
 
-        debugPrint('[LibrarySearch] Parsed ${players.length} players, ${games.length} games');
+        debugPrint(
+          '[LibrarySearch] Parsed ${players.length} players, ${games.length} games',
+        );
       } catch (e) {
         debugPrint('[LibrarySearch] globalSearch failed: $e');
         // Fallback to player-only search if globalSearch fails
@@ -330,13 +350,17 @@ class LibraryCombinedSearchNotifier
           );
           playerTotalCount = players.length;
           hasMorePlayers = players.length >= _dropdownPageSize;
-          debugPrint('[LibrarySearch] getPlayers fallback returned ${players.length} players');
+          debugPrint(
+            '[LibrarySearch] getPlayers fallback returned ${players.length} players',
+          );
         } catch (e2) {
           debugPrint('[LibrarySearch] getPlayers fallback also failed: $e2');
         }
       }
 
-      debugPrint('[LibrarySearch] Final results - players: ${players.length}, games: ${games.length}');
+      debugPrint(
+        '[LibrarySearch] Final results - players: ${players.length}, games: ${games.length}',
+      );
 
       if (!mounted) return;
 

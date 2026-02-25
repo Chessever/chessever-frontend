@@ -65,9 +65,7 @@ class _LibraryPlayerGamesTabState extends ConsumerState<LibraryPlayerGamesTab>
 
   Widget _buildBody(LibraryPlayerGamesState state) {
     if (state.isLoading && state.games.isEmpty) {
-      return const Center(
-        child: CircularProgressIndicator(color: kWhiteColor),
-      );
+      return const Center(child: CircularProgressIndicator(color: kWhiteColor));
     }
 
     if (state.error != null && state.games.isEmpty) {
@@ -83,9 +81,15 @@ class _LibraryPlayerGamesTabState extends ConsumerState<LibraryPlayerGamesTab>
             ),
             SizedBox(height: 8.h),
             TextButton(
-              onPressed: () => ref
-                  .read(libraryPlayerGamesProvider(widget.playerKey).notifier)
-                  .refreshGames(),
+              onPressed:
+                  () =>
+                      ref
+                          .read(
+                            libraryPlayerGamesProvider(
+                              widget.playerKey,
+                            ).notifier,
+                          )
+                          .refreshGames(),
               child: Text(
                 'Retry',
                 style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
@@ -124,9 +128,11 @@ class _LibraryPlayerGamesTabState extends ConsumerState<LibraryPlayerGamesTab>
     }
 
     return RefreshIndicator(
-      onRefresh: () => ref
-          .read(libraryPlayerGamesProvider(widget.playerKey).notifier)
-          .refreshGames(),
+      onRefresh:
+          () =>
+              ref
+                  .read(libraryPlayerGamesProvider(widget.playerKey).notifier)
+                  .refreshGames(),
       color: kWhiteColor,
       backgroundColor: kBlack2Color,
       child: Column(

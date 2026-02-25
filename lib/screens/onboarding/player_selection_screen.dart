@@ -773,11 +773,7 @@ class _PlayerTile extends HookWidget {
           child: Row(
             children: [
               // Player photo avatar
-              _PlayerAvatar(
-                fideId: fideId,
-                initials: _initials,
-                size: 44,
-              ),
+              _PlayerAvatar(fideId: fideId, initials: _initials, size: 44),
               SizedBox(width: 12.w),
               // Player info with flag emoji
               Expanded(
@@ -837,9 +833,7 @@ class _PlayerTile extends HookWidget {
                   isSelected ? Icons.check : Icons.add,
                   size: isSelected ? 14.ic : 12.ic,
                   color:
-                      isSelected
-                          ? kWhiteColor
-                          : kWhiteColor.withOpacity(0.3),
+                      isSelected ? kWhiteColor : kWhiteColor.withOpacity(0.3),
                 ),
               ),
             ],

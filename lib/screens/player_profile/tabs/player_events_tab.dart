@@ -136,25 +136,24 @@ class _PlayerEventsTabState extends ConsumerState<PlayerEventsTab>
       );
       if (!mounted || token != _loadToken) return;
 
-      final incoming =
-          response.events
-              .where((item) => item.event.trim().isNotEmpty)
-              .map(
-                (item) => PlayerEventData(
-                  tourId: item.event.trim(),
-                  tourName: item.event.trim(),
-                  tourSlug: item.event.trim(),
-                  gamesPlayed: item.gameCount,
-                  score: null,
-                  startDate: item.startDate,
-                  endDate: item.endDate,
-                  site: item.site,
-                  dominantTimeControl: item.dominantTimeControl,
-                  avgElo: item.avgElo,
-                  maxElo: item.maxElo,
-                ),
-              )
-              .toList(growable: false);
+      final incoming = response.events
+          .where((item) => item.event.trim().isNotEmpty)
+          .map(
+            (item) => PlayerEventData(
+              tourId: item.event.trim(),
+              tourName: item.event.trim(),
+              tourSlug: item.event.trim(),
+              gamesPlayed: item.gameCount,
+              score: null,
+              startDate: item.startDate,
+              endDate: item.endDate,
+              site: item.site,
+              dominantTimeControl: item.dominantTimeControl,
+              avgElo: item.avgElo,
+              maxElo: item.maxElo,
+            ),
+          )
+          .toList(growable: false);
 
       final byTourId = <String, PlayerEventData>{
         for (final event in _twicEvents) event.tourId: event,
@@ -162,12 +161,11 @@ class _PlayerEventsTabState extends ConsumerState<PlayerEventsTab>
       for (final event in incoming) {
         byTourId[event.tourId] = event;
       }
-      _twicEvents = byTourId.values.toList(growable: false)
-        ..sort((a, b) {
-          final aDate = a.startDate ?? DateTime(1900);
-          final bDate = b.startDate ?? DateTime(1900);
-          return bDate.compareTo(aDate);
-        });
+      _twicEvents = byTourId.values.toList(growable: false)..sort((a, b) {
+        final aDate = a.startDate ?? DateTime(1900);
+        final bDate = b.startDate ?? DateTime(1900);
+        return bDate.compareTo(aDate);
+      });
 
       _twicHasMore = response.metadata.hasMore;
       _twicTotalEvents ??= response.metadata.totalCount;
@@ -252,11 +250,12 @@ class _PlayerEventsTabState extends ConsumerState<PlayerEventsTab>
               return _buildEmptyState();
             }
 
-            final sortedEvents = List<PlayerEventData>.from(events)..sort((a, b) {
-              final aDate = a.startDate ?? DateTime(1900);
-              final bDate = b.startDate ?? DateTime(1900);
-              return bDate.compareTo(aDate);
-            });
+            final sortedEvents = List<PlayerEventData>.from(events)
+              ..sort((a, b) {
+                final aDate = a.startDate ?? DateTime(1900);
+                final bDate = b.startDate ?? DateTime(1900);
+                return bDate.compareTo(aDate);
+              });
 
             return _EventsListContent(
               events: sortedEvents,
@@ -521,10 +520,12 @@ class _EventsListContent extends ConsumerWidget {
     Widget buildEventList(Map<String, GroupEventCardModel> eventCards) {
       final filteredEvents =
           hasActiveFilter
-              ? events.where((event) {
-                final eventCard = eventCards[event.tourId];
-                return _eventMatchesTimeControl(event, eventCard);
-              }).toList(growable: false)
+              ? events
+                  .where((event) {
+                    final eventCard = eventCards[event.tourId];
+                    return _eventMatchesTimeControl(event, eventCard);
+                  })
+                  .toList(growable: false)
               : events;
 
       final computedTotalGames = filteredEvents.fold<int>(
@@ -536,9 +537,12 @@ class _EventsListContent extends ConsumerWidget {
         (sum, e) => sum + (e.score ?? 0),
       );
       final computedAvgScore =
-          computedTotalGames > 0 ? computedTotalScore / computedTotalGames : 0.0;
+          computedTotalGames > 0
+              ? computedTotalScore / computedTotalGames
+              : 0.0;
 
-      final totalGames = twicStats?.resultStats.totalGames ?? computedTotalGames;
+      final totalGames =
+          twicStats?.resultStats.totalGames ?? computedTotalGames;
       final avgScore = twicStats?.resultStats.score ?? computedAvgScore;
 
       final horizontalPadding = ResponsiveHelper.adaptive(
@@ -559,7 +563,10 @@ class _EventsListContent extends ConsumerWidget {
         physics: const AlwaysScrollableScrollPhysics(
           parent: BouncingScrollPhysics(),
         ),
-        padding: EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: 16.h),
+        padding: EdgeInsets.symmetric(
+          horizontal: horizontalPadding,
+          vertical: 16.h,
+        ),
         itemCount: totalItems,
         itemBuilder: (context, index) {
           if (showFooter && index == totalItems - 1) {

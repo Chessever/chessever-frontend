@@ -18,7 +18,9 @@ Future<T?> showSmoothDialog<T>({
     barrierDismissible: true,
     barrierLabel: 'Dismiss',
     barrierColor: Colors.black54,
-    transitionDuration: const Duration(milliseconds: 0), // We handle animation manually
+    transitionDuration: const Duration(
+      milliseconds: 0,
+    ), // We handle animation manually
     pageBuilder: (context, animation, secondaryAnimation) {
       return SmoothDialogWrapper(
         builder: builder,
@@ -42,7 +44,8 @@ class SmoothDialogWrapper extends ConsumerStatefulWidget {
   });
 
   @override
-  ConsumerState<SmoothDialogWrapper> createState() => _SmoothDialogWrapperState();
+  ConsumerState<SmoothDialogWrapper> createState() =>
+      _SmoothDialogWrapperState();
 }
 
 class _SmoothDialogWrapperState extends ConsumerState<SmoothDialogWrapper> {
@@ -75,7 +78,7 @@ class _SmoothDialogWrapperState extends ConsumerState<SmoothDialogWrapper> {
       builder: (context, value, child) {
         final scale = 0.95 + (0.05 * value);
         final opacity = value.clamp(0.0, 1.0).toDouble();
-        
+
         return Opacity(
           opacity: opacity,
           child: Transform.scale(

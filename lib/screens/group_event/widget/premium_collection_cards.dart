@@ -50,10 +50,7 @@ class PremiumCollectionCards extends StatelessWidget {
 }
 
 class _PremiumCollectionCard extends ConsumerWidget {
-  const _PremiumCollectionCard({
-    required this.type,
-    required this.title,
-  });
+  const _PremiumCollectionCard({required this.type, required this.title});
 
   final PremiumGamesType type;
   final String title;
@@ -155,17 +152,13 @@ class _PremiumCollectionCard extends ConsumerWidget {
     // Navigate freely - paywall is shown on actions (tapping games, saving to book)
     // This creates FOMO by letting users see what they're missing
     if (type == PremiumGamesType.favorites) {
-      Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => const FavoritesTabScreen(),
-        ),
-      );
+      Navigator.of(
+        context,
+      ).push(MaterialPageRoute(builder: (_) => const FavoritesTabScreen()));
     } else {
-      Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => const CountrymenTabScreen(),
-        ),
-      );
+      Navigator.of(
+        context,
+      ).push(MaterialPageRoute(builder: (_) => const CountrymenTabScreen()));
     }
   }
 }
@@ -238,7 +231,11 @@ class _FavoritePlayersGridBackground extends HookConsumerWidget {
       return const _GridConfig(rows: 3, baseCellSize: 38.0, maxVisibleCells: 9);
     } else {
       // Many players: smaller cells, 3 rows
-      return const _GridConfig(rows: 3, baseCellSize: 34.0, maxVisibleCells: 12);
+      return const _GridConfig(
+        rows: 3,
+        baseCellSize: 34.0,
+        maxVisibleCells: 12,
+      );
     }
   }
 }
@@ -277,7 +274,8 @@ class _IrregularPlayerGrid extends StatelessWidget {
     // Calculate cell sizes with slight variation for irregular look
     final cellSize = gridConfig.baseCellSize;
     final cellSpacing = 4.0;
-    final rowHeight = (cardHeight - (gridConfig.rows - 1) * cellSpacing) / gridConfig.rows;
+    final rowHeight =
+        (cardHeight - (gridConfig.rows - 1) * cellSpacing) / gridConfig.rows;
     final actualCellSize = math.min(cellSize, rowHeight - 2);
     final verticalPadding = (rowHeight - actualCellSize) / 2;
 
@@ -337,7 +335,9 @@ class _IrregularPlayerGrid extends StatelessWidget {
               left: x + sizeOffset,
               top: y + sizeOffset,
               child: _PlayerPhotoCell(
-                key: ValueKey('${player.fideId ?? player.playerName}_${row}_$index'),
+                key: ValueKey(
+                  '${player.fideId ?? player.playerName}_${row}_$index',
+                ),
                 player: player,
                 size: finalCellSize,
               ),
@@ -356,21 +356,16 @@ class _IrregularPlayerGrid extends StatelessWidget {
   }
 }
 
-
-
 /// Provider to cache player photo URLs - prevents re-fetching on every animation frame
-final _playerPhotoUrlProvider = FutureProvider.family.autoDispose<String?, String?>((ref, fideId) async {
-  if (fideId == null || fideId.isEmpty) return null;
-  return FidePhotoService.getPhotoUrlOrNull(fideId);
-});
+final _playerPhotoUrlProvider = FutureProvider.family
+    .autoDispose<String?, String?>((ref, fideId) async {
+      if (fideId == null || fideId.isEmpty) return null;
+      return FidePhotoService.getPhotoUrlOrNull(fideId);
+    });
 
 /// Individual player photo cell with loading and error states
 class _PlayerPhotoCell extends ConsumerWidget {
-  const _PlayerPhotoCell({
-    super.key,
-    required this.player,
-    required this.size,
-  });
+  const _PlayerPhotoCell({super.key, required this.player, required this.size});
 
   final FavoritePlayer player;
   final double size;
@@ -399,14 +394,16 @@ class _PlayerPhotoCell extends ConsumerWidget {
       ),
       child: ClipOval(
         child: photoUrlAsync.when(
-          data: (photoUrl) => photoUrl != null
-              ? CachedNetworkImage(
-                  imageUrl: photoUrl,
-                  fit: BoxFit.cover,
-                  placeholder: (_, __) => _buildPlaceholder(),
-                  errorWidget: (_, __, ___) => _buildInitials(),
-                )
-              : _buildInitials(),
+          data:
+              (photoUrl) =>
+                  photoUrl != null
+                      ? CachedNetworkImage(
+                        imageUrl: photoUrl,
+                        fit: BoxFit.cover,
+                        placeholder: (_, __) => _buildPlaceholder(),
+                        errorWidget: (_, __, ___) => _buildInitials(),
+                      )
+                      : _buildInitials(),
           loading: () => _buildPlaceholder(),
           error: (_, __) => _buildInitials(),
         ),
@@ -443,15 +440,17 @@ class _PlayerPhotoCell extends ConsumerWidget {
     if (nameParts.length > 1) {
       final lastName = nameParts[0].trim();
       final firstName = nameParts[1].trim();
-      initials = '${lastName.isNotEmpty ? lastName[0] : ''}'
+      initials =
+          '${lastName.isNotEmpty ? lastName[0] : ''}'
           '${firstName.isNotEmpty ? firstName[0] : ''}';
     } else {
       // Fallback for "Firstname Lastname" format
       final parts = player.playerName.split(' ');
-      initials = parts
-          .take(2)
-          .map((w) => w.isNotEmpty ? w[0].toUpperCase() : '')
-          .join();
+      initials =
+          parts
+              .take(2)
+              .map((w) => w.isNotEmpty ? w[0].toUpperCase() : '')
+              .join();
     }
 
     return Container(
@@ -514,9 +513,10 @@ class _FloatingHeartsPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = accentColor.withValues(alpha: 0.15)
-      ..style = PaintingStyle.fill;
+    final paint =
+        Paint()
+          ..color = accentColor.withValues(alpha: 0.15)
+          ..style = PaintingStyle.fill;
 
     // Draw scattered hearts at various positions and sizes
     final positions = [
@@ -543,14 +543,20 @@ class _FloatingHeartsPainter extends CustomPainter {
 
     path.moveTo(center.dx, center.dy + h * 0.3);
     path.cubicTo(
-      center.dx - w * 0.5, center.dy - h * 0.1,
-      center.dx - w * 0.5, center.dy - h * 0.5,
-      center.dx, center.dy - h * 0.25,
+      center.dx - w * 0.5,
+      center.dy - h * 0.1,
+      center.dx - w * 0.5,
+      center.dy - h * 0.5,
+      center.dx,
+      center.dy - h * 0.25,
     );
     path.cubicTo(
-      center.dx + w * 0.5, center.dy - h * 0.5,
-      center.dx + w * 0.5, center.dy - h * 0.1,
-      center.dx, center.dy + h * 0.3,
+      center.dx + w * 0.5,
+      center.dy - h * 0.5,
+      center.dx + w * 0.5,
+      center.dy - h * 0.1,
+      center.dx,
+      center.dy + h * 0.3,
     );
 
     canvas.drawPath(path, paint);
@@ -571,19 +577,20 @@ class _FlagFullBackground extends StatelessWidget {
     final countryAsync = ref.watch(countryDropdownProvider);
 
     return countryAsync.when(
-      data: (country) => SizedBox.expand(
-        child: Opacity(
-          opacity: 0.25,
-          child: FittedBox(
-            fit: BoxFit.cover,
-            child: CountryFlag.fromCountryCode(
-              country.countryCode,
-              width: 200,
-              height: 150,
+      data:
+          (country) => SizedBox.expand(
+            child: Opacity(
+              opacity: 0.25,
+              child: FittedBox(
+                fit: BoxFit.cover,
+                child: CountryFlag.fromCountryCode(
+                  country.countryCode,
+                  width: 200,
+                  height: 150,
+                ),
+              ),
             ),
           ),
-        ),
-      ),
       loading: () => _FlagPlaceholder(),
       error: (_, __) => _FlagPlaceholder(),
     );

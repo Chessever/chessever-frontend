@@ -59,7 +59,9 @@ PgnParseResult parsePgnWorker(String pgn) {
       String? timeString;
       if (nodeData.comments != null) {
         for (String comment in nodeData.comments!) {
-          final timeMatch = RegExp(r'\[%clk (\d+:\d+:\d+)\]').firstMatch(comment);
+          final timeMatch = RegExp(
+            r'\[%clk (\d+:\d+:\d+)\]',
+          ).firstMatch(comment);
           if (timeMatch != null) {
             timeString = timeMatch.group(1);
             break;

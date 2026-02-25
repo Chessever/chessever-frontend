@@ -27,7 +27,9 @@ class PlayersRepository extends BaseRepository {
 
       // Apply country filter (only when not searching)
       // Convert ISO 2-letter to FIDE 3-letter code
-      if (countryCode != null && countryCode.isNotEmpty && search.trim().isEmpty) {
+      if (countryCode != null &&
+          countryCode.isNotEmpty &&
+          search.trim().isEmpty) {
         final fideCode = CountryUtils.toFideCode(countryCode);
         builder = builder.eq('country', fideCode);
       }

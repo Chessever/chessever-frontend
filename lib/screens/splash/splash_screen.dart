@@ -39,7 +39,9 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
     });
 
     try {
-      await ref.read(splashScreenProvider).runAuthenticationPreProcessor(context);
+      await ref
+          .read(splashScreenProvider)
+          .runAuthenticationPreProcessor(context);
       // Navigation happens inside runAuthenticationPreProcessor
       // Remove native splash right before navigating (handled there)
     } on NoNetworkException catch (e) {
@@ -89,10 +91,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
           fit: StackFit.expand,
           children: [
             // Same background as native splash
-            Image.asset(
-              'assets/launch.jpg',
-              fit: BoxFit.cover,
-            ),
+            Image.asset('assets/launch.jpg', fit: BoxFit.cover),
 
             // Error UI overlay (only visible when there's an error)
             if (_errorMessage != null)
@@ -130,28 +129,31 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
                         style: ElevatedButton.styleFrom(
                           backgroundColor: kPrimaryColor,
                           foregroundColor: kWhiteColor,
-                          disabledBackgroundColor: kPrimaryColor.withOpacity(0.5),
+                          disabledBackgroundColor: kPrimaryColor.withOpacity(
+                            0.5,
+                          ),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12),
                           ),
                           elevation: 0,
                         ),
-                        child: _isRetrying
-                            ? SizedBox(
-                                width: 20.w,
-                                height: 20.h,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: kWhiteColor.withOpacity(0.8),
+                        child:
+                            _isRetrying
+                                ? SizedBox(
+                                  width: 20.w,
+                                  height: 20.h,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: kWhiteColor.withOpacity(0.8),
+                                  ),
+                                )
+                                : Text(
+                                  'Retry',
+                                  style: TextStyle(
+                                    fontSize: 15.sp,
+                                    fontWeight: FontWeight.w600,
+                                  ),
                                 ),
-                              )
-                            : Text(
-                                'Retry',
-                                style: TextStyle(
-                                  fontSize: 15.sp,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
                       ),
                     ),
                   ],

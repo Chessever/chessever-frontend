@@ -72,7 +72,9 @@ _GifEncodeResult _encodeGifFromRawFrames(_GifEncodeInput input) {
         // Validate data
         final expectedSize = width * height * 4;
         if (rgba.length != expectedSize) {
-          errors.add('Frame $i: size mismatch (got ${rgba.length}, expected $expectedSize)');
+          errors.add(
+            'Frame $i: size mismatch (got ${rgba.length}, expected $expectedSize)',
+          );
           continue;
         }
 
@@ -83,7 +85,14 @@ _GifEncodeResult _encodeGifFromRawFrames(_GifEncodeInput input) {
         for (int y = 0; y < height; y++) {
           for (int x = 0; x < width; x++) {
             final idx = (y * width + x) * 4;
-            image.setPixelRgba(x, y, rgba[idx], rgba[idx + 1], rgba[idx + 2], rgba[idx + 3]);
+            image.setPixelRgba(
+              x,
+              y,
+              rgba[idx],
+              rgba[idx + 1],
+              rgba[idx + 2],
+              rgba[idx + 3],
+            );
           }
         }
 
@@ -142,7 +151,8 @@ class ShareGameCardOverlay extends StatefulWidget {
   final int mate;
   final bool isFlipped;
   final GameStatus gameStatus;
-  final bool isAtGameEnd; // Whether viewing the actual final position of the game
+  final bool
+  isAtGameEnd; // Whether viewing the actual final position of the game
   final VoidCallback onClose;
   final String gameId; // CRITICAL: Include game ID for correct eval caching
 
@@ -199,14 +209,14 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
 
   // Board settings with animations disabled for instant frame capture
   ChessboardSettings get _gifBoardSettings => ChessboardSettings(
-        enableCoordinates: widget.boardSettings.enableCoordinates,
-        colorScheme: widget.boardSettings.colorScheme,
-        pieceAssets: widget.boardSettings.pieceAssets,
-        borderRadius: widget.boardSettings.borderRadius,
-        boxShadow: widget.boardSettings.boxShadow,
-        // CRITICAL: Disable animations for instant static frame capture
-        animationDuration: Duration.zero,
-      );
+    enableCoordinates: widget.boardSettings.enableCoordinates,
+    colorScheme: widget.boardSettings.colorScheme,
+    pieceAssets: widget.boardSettings.pieceAssets,
+    borderRadius: widget.boardSettings.borderRadius,
+    boxShadow: widget.boardSettings.boxShadow,
+    // CRITICAL: Disable animations for instant static frame capture
+    animationDuration: Duration.zero,
+  );
 
   /// Calculate clock times at a given move index
   /// Returns (whiteClock, blackClock) tuple
@@ -241,14 +251,18 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
   /// This avoids PNG encoding issues on iOS P3 displays
   Future<_RawFrame?> _captureRawFrame(double pixelRatio) async {
     try {
-      final boundary = _gifFrameKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
+      final boundary =
+          _gifFrameKey.currentContext?.findRenderObject()
+              as RenderRepaintBoundary?;
       if (boundary == null) {
         debugPrint('GIF: RepaintBoundary not found');
         return null;
       }
 
       final image = await boundary.toImage(pixelRatio: pixelRatio);
-      final byteData = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+      final byteData = await image.toByteData(
+        format: ui.ImageByteFormat.rawRgba,
+      );
       if (byteData == null) {
         debugPrint('GIF: toByteData returned null');
         return null;
@@ -336,7 +350,8 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
       // Phase 1: Capture raw RGBA frames (avoids PNG encoding issues on iOS P3 displays)
       Position position = Chess.initial;
       final rawFrames = <_RawFrame>[];
-      const pixelRatio = 1.5; // Lower ratio for smaller file size and faster encoding
+      const pixelRatio =
+          1.5; // Lower ratio for smaller file size and faster encoding
 
       // Initial position - set state and wait for widget to build
       // At initial position (before any moves), no clocks to show yet
@@ -353,7 +368,9 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
 
       final initial = await _captureRawFrame(pixelRatio);
       if (initial != null) {
-        debugPrint('GIF: Initial frame captured (${initial.width}x${initial.height}, ${initial.rgba.length} bytes)');
+        debugPrint(
+          'GIF: Initial frame captured (${initial.width}x${initial.height}, ${initial.rgba.length} bytes)',
+        );
         rawFrames.add(initial);
       } else {
         debugPrint('GIF WARNING: Initial frame capture returned null');
@@ -387,8 +404,10 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
           _gifFrameLastMove = lastMoveForDisplay;
           _gifFrameWhiteClock = whiteClock;
           _gifFrameBlackClock = blackClock;
-          _gifFrameIsFinal = isLastFrame; // Only show game ending effects on final frame
-          _gifProgress = (i + 1) / movesToAnimate.length * 0.7; // 70% for capture
+          _gifFrameIsFinal =
+              isLastFrame; // Only show game ending effects on final frame
+          _gifProgress =
+              (i + 1) / movesToAnimate.length * 0.7; // 70% for capture
         });
 
         // Minimal wait - animations are disabled so position is instantly set
@@ -401,7 +420,10 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
 
       if (rawFrames.isEmpty) {
         debugPrint('GIF ERROR: No frames were captured');
-        _showMessage('No frames captured - check board rendering', isError: true);
+        _showMessage(
+          'No frames captured - check board rendering',
+          isError: true,
+        );
         return;
       }
 
@@ -433,9 +455,10 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
         debugPrint('GIF ERROR: ${result.error}');
         debugPrint('GIF: Frames processed: ${result.framesProcessed}');
         // Show truncated error in UI for debugging on real devices
-        final shortError = result.error!.length > 100
-            ? result.error!.substring(0, 100)
-            : result.error!;
+        final shortError =
+            result.error!.length > 100
+                ? result.error!.substring(0, 100)
+                : result.error!;
         _showMessage('GIF encode failed: $shortError', isError: true);
         return;
       }
@@ -447,7 +470,9 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
         return;
       }
 
-      debugPrint('GIF: Encoded ${gifBytes.length} bytes (${result.framesProcessed} frames)');
+      debugPrint(
+        'GIF: Encoded ${gifBytes.length} bytes (${result.framesProcessed} frames)',
+      );
 
       // Phase 3: Save and share
       setState(() => _gifProgress = 0.95);
@@ -585,7 +610,8 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
           decoration: BoxDecoration(
             color: isPrimary ? kPrimaryColor : kBlack3Color,
             borderRadius: BorderRadius.circular(8.br),
-            border: isPrimary ? null : Border.all(color: kDividerColor, width: 1),
+            border:
+                isPrimary ? null : Border.all(color: kDividerColor, width: 1),
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -776,9 +802,10 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
                       .scale(begin: Offset(0.95, 0.95), duration: 300.ms),
                   SizedBox(height: 16.h),
                   // Eval bar toggle - modern pill style
-                  _buildEvalToggle()
-                      .animate()
-                      .fadeIn(delay: 150.ms, duration: 300.ms),
+                  _buildEvalToggle().animate().fadeIn(
+                    delay: 150.ms,
+                    duration: 300.ms,
+                  ),
                   SizedBox(height: 16.h),
                   // Action buttons or progress
                   if (_isGenerating)
@@ -787,13 +814,12 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
                       strokeWidth: 2,
                     )
                   else if (_isGeneratingGif)
-                    _buildGifProgress()
-                        .animate()
-                        .fadeIn(duration: 200.ms)
+                    _buildGifProgress().animate().fadeIn(duration: 200.ms)
                   else
-                    _buildActionButtons()
-                        .animate()
-                        .fadeIn(delay: 200.ms, duration: 300.ms),
+                    _buildActionButtons().animate().fadeIn(
+                      delay: 200.ms,
+                      duration: 300.ms,
+                    ),
                 ],
               ),
             ),
@@ -844,7 +870,8 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
               child: RepaintBoundary(
                 key: _gifFrameKey,
                 child: _ShareCard(
-                  boardSettings: _gifBoardSettings, // Animation disabled settings
+                  boardSettings:
+                      _gifBoardSettings, // Animation disabled settings
                   positionFen: _gifFrameFen ?? widget.positionFen,
                   lastMove: _gifFrameLastMove,
                   onClose: null,
@@ -858,8 +885,10 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
                   blackPlayerElo: widget.blackPlayerElo,
                   whitePlayerTitle: widget.whitePlayerTitle,
                   blackPlayerTitle: widget.blackPlayerTitle,
-                  whitePlayerClock: _gifFrameWhiteClock, // Dynamic clock per frame
-                  blackPlayerClock: _gifFrameBlackClock, // Dynamic clock per frame
+                  whitePlayerClock:
+                      _gifFrameWhiteClock, // Dynamic clock per frame
+                  blackPlayerClock:
+                      _gifFrameBlackClock, // Dynamic clock per frame
                   tournamentName: widget.tournamentName,
                   roundInfo: widget.roundInfo,
                   currentMoveIndex: widget.currentMoveIndex,
@@ -867,7 +896,8 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
                   mate: 0,
                   isFlipped: widget.isFlipped,
                   // Only show game ending effects (fallen king, peace icons) on final frame
-                  gameStatus: _gifFrameIsFinal ? widget.gameStatus : GameStatus.ongoing,
+                  gameStatus:
+                      _gifFrameIsFinal ? widget.gameStatus : GameStatus.ongoing,
                   isAtGameEnd: _gifFrameIsFinal,
                   isPreview: false,
                   showEvalBar: false, // No eval bar in GIF
@@ -964,11 +994,7 @@ class _ShareCard extends ConsumerWidget {
           textAlign: TextAlign.center,
         );
       case GameStatus.draw:
-        return Text(
-          '½',
-          style: scoreStyle,
-          textAlign: TextAlign.center,
-        );
+        return Text('½', style: scoreStyle, textAlign: TextAlign.center);
       case GameStatus.ongoing:
       case GameStatus.unknown:
         return SizedBox.shrink();
@@ -1034,7 +1060,9 @@ class _ShareCard extends ConsumerWidget {
           // Score area - matches eval bar width
           SizedBox(
             width: sideBarWidth.w,
-            child: Center(child: _buildEndScoreWidget(isWhitePlayer: isWhitePlayer)),
+            child: Center(
+              child: _buildEndScoreWidget(isWhitePlayer: isWhitePlayer),
+            ),
           ),
           SizedBox(width: elementSpacing.w),
           // Country flag
@@ -1067,21 +1095,25 @@ class _ShareCard extends ConsumerWidget {
                 );
 
                 String displaySurname = surname;
-                String displayFirstName = firstName.isNotEmpty ? ', $firstName' : '';
+                String displayFirstName =
+                    firstName.isNotEmpty ? ', $firstName' : '';
 
                 if (surname.isNotEmpty) {
                   // Strategy 1: Try full surname + full first name + rating
                   textPainter.text = TextSpan(
                     children: [
-                      if (title.isNotEmpty) TextSpan(text: '$title ', style: titleStyle),
+                      if (title.isNotEmpty)
+                        TextSpan(text: '$title ', style: titleStyle),
                       TextSpan(text: surname, style: nameStyle),
-                      if (firstName.isNotEmpty) TextSpan(text: ', $firstName', style: nameStyle),
+                      if (firstName.isNotEmpty)
+                        TextSpan(text: ', $firstName', style: nameStyle),
                       TextSpan(text: rating, style: ratingStyle),
                     ],
                   );
                   textPainter.layout();
 
-                  if (textPainter.width > constraints.maxWidth && firstName.isNotEmpty) {
+                  if (textPainter.width > constraints.maxWidth &&
+                      firstName.isNotEmpty) {
                     // Strategy 2: Keep full surname + abbreviate first name
                     final firstNameParts = firstName.split(' ');
                     final abbreviatedFirst = firstNameParts
@@ -1092,7 +1124,8 @@ class _ShareCard extends ConsumerWidget {
 
                     textPainter.text = TextSpan(
                       children: [
-                        if (title.isNotEmpty) TextSpan(text: '$title ', style: titleStyle),
+                        if (title.isNotEmpty)
+                          TextSpan(text: '$title ', style: titleStyle),
                         TextSpan(text: surname, style: nameStyle),
                         TextSpan(text: displayFirstName, style: nameStyle),
                         TextSpan(text: rating, style: ratingStyle),
@@ -1115,9 +1148,12 @@ class _ShareCard extends ConsumerWidget {
                   text: TextSpan(
                     style: nameStyle,
                     children: [
-                      if (title.isNotEmpty) TextSpan(text: '$title ', style: titleStyle),
-                      if (displaySurname.isNotEmpty) TextSpan(text: displaySurname, style: nameStyle),
-                      if (displayFirstName.isNotEmpty) TextSpan(text: displayFirstName, style: nameStyle),
+                      if (title.isNotEmpty)
+                        TextSpan(text: '$title ', style: titleStyle),
+                      if (displaySurname.isNotEmpty)
+                        TextSpan(text: displaySurname, style: nameStyle),
+                      if (displayFirstName.isNotEmpty)
+                        TextSpan(text: displayFirstName, style: nameStyle),
                       TextSpan(text: rating, style: ratingStyle),
                     ],
                   ),
@@ -1128,10 +1164,7 @@ class _ShareCard extends ConsumerWidget {
           // Clock time on far right (if available)
           if (playerClock != null) ...[
             SizedBox(width: 8.w),
-            Text(
-              playerClock,
-              style: timeStyle,
-            ),
+            Text(playerClock, style: timeStyle),
           ],
         ],
       ),
@@ -1242,14 +1275,19 @@ class _ShareCard extends ConsumerWidget {
                     fenParts.length > 1 ? fenParts[1] == 'w' : true;
 
                 // Calculate game ending data for overlays — only at the actual final position
-                final gameEndingData = _calculateShareGameEndingData(positionFen, gameStatus);
-                final showGameEndingEffect = isAtGameEnd &&
+                final gameEndingData = _calculateShareGameEndingData(
+                  positionFen,
+                  gameStatus,
+                );
+                final showGameEndingEffect =
+                    isAtGameEnd &&
                     gameStatus != GameStatus.ongoing &&
                     gameStatus != GameStatus.unknown;
 
                 // Prepare FEN - remove loser's king if showing fallen king overlay
                 String displayFen = positionFen;
-                if (showGameEndingEffect && gameEndingData?.loserKingSquare != null) {
+                if (showGameEndingEffect &&
+                    gameEndingData?.loserKingSquare != null) {
                   final loserSide = gameEndingData!.loserSide;
                   final kingChar = loserSide == Side.white ? 'K' : 'k';
                   displayFen = _removeKingFromShareFen(
@@ -1267,14 +1305,19 @@ class _ShareCard extends ConsumerWidget {
                   lastMove: lastMove,
                   game: null,
                   settings: boardSettings,
-                  squareHighlights: showGameEndingEffect ? (gameEndingData?.squareHighlights ?? const IMap.empty()) : const IMap.empty(),
+                  squareHighlights:
+                      showGameEndingEffect
+                          ? (gameEndingData?.squareHighlights ??
+                              const IMap.empty())
+                          : const IMap.empty(),
                 );
 
                 // Build board widget with overlays if game ended
                 Widget boardWidget;
                 final squareSize = boardSize / 8;
 
-                if (showGameEndingEffect && gameEndingData?.loserKingSquare != null) {
+                if (showGameEndingEffect &&
+                    gameEndingData?.loserKingSquare != null) {
                   // Game ended with a winner - show fallen king overlay
                   final loserSquare = gameEndingData!.loserKingSquare!;
                   final loserSide = gameEndingData.loserSide!;
@@ -1288,9 +1331,10 @@ class _ShareCard extends ConsumerWidget {
                   final effectiveRank = isFlipped ? rank : 7 - rank;
 
                   // Get piece image from board settings
-                  final pieceKind = loserSide == Side.white
-                      ? PieceKind.whiteKing
-                      : PieceKind.blackKing;
+                  final pieceKind =
+                      loserSide == Side.white
+                          ? PieceKind.whiteKing
+                          : PieceKind.blackKing;
                   final pieceImage = boardSettings.pieceAssets[pieceKind];
 
                   boardWidget = Stack(
@@ -1307,7 +1351,8 @@ class _ShareCard extends ConsumerWidget {
                         ),
                     ],
                   );
-                } else if (showGameEndingEffect && gameStatus == GameStatus.draw) {
+                } else if (showGameEndingEffect &&
+                    gameStatus == GameStatus.draw) {
                   // Game ended in draw - show peace icons on both kings
                   final position = Chess.fromSetup(Setup.parseFen(positionFen));
                   final board = position.board;
@@ -1386,7 +1431,9 @@ class _ShareCard extends ConsumerWidget {
             isWhitePlayer: bottomIsWhitePlayer,
             sideBarWidth: sideBarWidth,
           ),
-          SizedBox(height: 20.h), // Extra padding to prevent bottom border cutoff in GIF
+          SizedBox(
+            height: 20.h,
+          ), // Extra padding to prevent bottom border cutoff in GIF
         ],
       ),
     );
@@ -1524,7 +1571,9 @@ String _removeKingFromShareFen(String fen, Square square, String kingChar) {
   // Remove the king at the file position
   final fileIndex = square.file;
   final chars = expanded.toString().split('');
-  if (fileIndex >= 0 && fileIndex < chars.length && chars[fileIndex] == kingChar) {
+  if (fileIndex >= 0 &&
+      fileIndex < chars.length &&
+      chars[fileIndex] == kingChar) {
     chars[fileIndex] = '1';
   }
 
@@ -1569,7 +1618,8 @@ class _ShareFallenKingOverlay extends StatefulWidget {
   });
 
   @override
-  State<_ShareFallenKingOverlay> createState() => _ShareFallenKingOverlayState();
+  State<_ShareFallenKingOverlay> createState() =>
+      _ShareFallenKingOverlayState();
 }
 
 class _ShareFallenKingOverlayState extends State<_ShareFallenKingOverlay> {
@@ -1600,30 +1650,28 @@ class _ShareFallenKingOverlayState extends State<_ShareFallenKingOverlay> {
         width: widget.squareSize,
         height: widget.squareSize,
         child: Center(
-          child: widget.animate
-              ? SingleMotionBuilder(
-                  motion: const CupertinoMotion.bouncy(),
-                  value: _animate ? -math.pi / 4 : 0.0, // -45 degrees when animated
-                  builder: (context, rotation, child) {
-                    return Transform.rotate(
-                      angle: rotation,
-                      alignment: Alignment.center,
-                      child: child,
-                    );
-                  },
-                  child: Image(
-                    image: widget.pieceImage,
-                    fit: BoxFit.contain,
+          child:
+              widget.animate
+                  ? SingleMotionBuilder(
+                    motion: const CupertinoMotion.bouncy(),
+                    value:
+                        _animate
+                            ? -math.pi / 4
+                            : 0.0, // -45 degrees when animated
+                    builder: (context, rotation, child) {
+                      return Transform.rotate(
+                        angle: rotation,
+                        alignment: Alignment.center,
+                        child: child,
+                      );
+                    },
+                    child: Image(image: widget.pieceImage, fit: BoxFit.contain),
+                  )
+                  : Transform.rotate(
+                    angle: -math.pi / 4, // -45 degrees (static)
+                    alignment: Alignment.center,
+                    child: Image(image: widget.pieceImage, fit: BoxFit.contain),
                   ),
-                )
-              : Transform.rotate(
-                  angle: -math.pi / 4, // -45 degrees (static)
-                  alignment: Alignment.center,
-                  child: Image(
-                    image: widget.pieceImage,
-                    fit: BoxFit.contain,
-                  ),
-                ),
         ),
       ),
     );
@@ -1684,22 +1732,27 @@ class _SharePeaceIconState extends State<_SharePeaceIcon> {
 
     return Positioned(
       // Position at top-right corner of the king's square
-      left: effectiveFile * widget.squareSize + widget.squareSize - containerSize - 1,
+      left:
+          effectiveFile * widget.squareSize +
+          widget.squareSize -
+          containerSize -
+          1,
       top: effectiveRank * widget.squareSize + 1,
-      child: widget.animate
-          ? SingleMotionBuilder(
-              motion: const CupertinoMotion.bouncy(),
-              value: _animate ? 1.0 : 0.0,
-              builder: (context, scale, child) {
-                return Transform.scale(
-                  scale: scale,
-                  alignment: Alignment.topRight,
-                  child: child,
-                );
-              },
-              child: _buildIcon(containerSize),
-            )
-          : _buildIcon(containerSize),
+      child:
+          widget.animate
+              ? SingleMotionBuilder(
+                motion: const CupertinoMotion.bouncy(),
+                value: _animate ? 1.0 : 0.0,
+                builder: (context, scale, child) {
+                  return Transform.scale(
+                    scale: scale,
+                    alignment: Alignment.topRight,
+                    child: child,
+                  );
+                },
+                child: _buildIcon(containerSize),
+              )
+              : _buildIcon(containerSize),
     );
   }
 
@@ -1720,14 +1773,8 @@ class _SharePeaceIconState extends State<_SharePeaceIcon> {
       ),
       child: Center(
         child: ColorFiltered(
-          colorFilter: const ColorFilter.mode(
-            Colors.black,
-            BlendMode.srcIn,
-          ),
-          child: Text(
-            '🕊️',
-            style: TextStyle(fontSize: containerSize * 0.6),
-          ),
+          colorFilter: const ColorFilter.mode(Colors.black, BlendMode.srcIn),
+          child: Text('🕊️', style: TextStyle(fontSize: containerSize * 0.6)),
         ),
       ),
     );

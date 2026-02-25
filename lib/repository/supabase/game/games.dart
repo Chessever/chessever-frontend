@@ -22,7 +22,8 @@ class Games {
   final DateTime? dateStart;
   final String? eco;
   final String? openingName;
-  final String? timeControl; // From group_broadcasts: 'standard', 'rapid', 'blitz'
+  final String?
+  timeControl; // From group_broadcasts: 'standard', 'rapid', 'blitz'
 
   Games({
     required this.id,

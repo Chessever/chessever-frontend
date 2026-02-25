@@ -11,10 +11,10 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 /// Provides player standings for the tournament detail "Players" tab.
 /// Uses [AutoDisposeAsyncNotifier] so the heavy computation only runs when needed
 /// and automatically refreshes when any dependency changes.
-final playerTourScreenProvider =
-    AutoDisposeAsyncNotifierProvider<PlayerTourScreenNotifier, List<PlayerStandingModel>>(
-      PlayerTourScreenNotifier.new,
-    );
+final playerTourScreenProvider = AutoDisposeAsyncNotifierProvider<
+  PlayerTourScreenNotifier,
+  List<PlayerStandingModel>
+>(PlayerTourScreenNotifier.new);
 
 class PlayerTourScreenNotifier
     extends AutoDisposeAsyncNotifier<List<PlayerStandingModel>> {
@@ -66,13 +66,14 @@ class PlayerTourScreenNotifier
     // Remove duplicates using a composite key (name + fideId + team) to avoid
     // merging similarly named players across different teams.
     final seen = <String>{};
-    tournamentPlayers = tournamentPlayers.where((player) {
-      final key =
-          '${_canonicalName(player.name)}-${player.fideId ?? 0}-${player.team ?? ''}';
-      if (seen.contains(key)) return false;
-      seen.add(key);
-      return true;
-    }).toList();
+    tournamentPlayers =
+        tournamentPlayers.where((player) {
+          final key =
+              '${_canonicalName(player.name)}-${player.fideId ?? 0}-${player.team ?? ''}';
+          if (seen.contains(key)) return false;
+          seen.add(key);
+          return true;
+        }).toList();
 
     // Fallback: if tour has no player roster but has games, extract players
     // from the games themselves. This handles tournaments where the upstream
@@ -84,14 +85,16 @@ class PlayerTourScreenNotifier
           final key = _canonicalName(card.name);
           if (key.isEmpty || seenKeys.contains(key)) continue;
           seenKeys.add(key);
-          tournamentPlayers.add(TournamentPlayer(
-            name: card.name,
-            federation: card.federation.isNotEmpty ? card.federation : null,
-            title: card.title.isNotEmpty ? card.title : null,
-            fideId: card.fideId,
-            rating: card.rating > 0 ? card.rating : null,
-            played: 0,
-          ));
+          tournamentPlayers.add(
+            TournamentPlayer(
+              name: card.name,
+              federation: card.federation.isNotEmpty ? card.federation : null,
+              title: card.title.isNotEmpty ? card.title : null,
+              fideId: card.fideId,
+              rating: card.rating > 0 ? card.rating : null,
+              played: 0,
+            ),
+          );
         }
       }
     }
@@ -112,7 +115,8 @@ class PlayerTourScreenNotifier
     for (final player in tournamentPlayers) {
       final key = _canonicalName(player.name);
       final playerGames = gamesByPlayerKey[key] ?? const <_PlayerGameRef>[];
-      final referenceCard = playerGames.isNotEmpty ? playerGames.first.playerCard : null;
+      final referenceCard =
+          playerGames.isNotEmpty ? playerGames.first.playerCard : null;
 
       final updatedPlayer = player.copyWith(
         federation:
@@ -159,22 +163,19 @@ class PlayerTourScreenNotifier
       }
 
       enrichedPlayers.add(
-        updatedPlayer.copyWith(
-          score: calculatedScore,
-          played: gamesPlayed,
-        ),
+        updatedPlayer.copyWith(score: calculatedScore, played: gamesPlayed),
       );
     }
 
     // Step 4: Sort by ABSOLUTE SCORE (not percentage!)
     // Example: 3.5/4 (87.5%) should rank HIGHER than 3/3 (100%) because 3.5 > 3
     enrichedPlayers.sort((a, b) {
-      final aScore = a.score ?? 0.0;  // Absolute points collected (e.g., 3.5)
-      final bScore = b.score ?? 0.0;  // Absolute points collected (e.g., 3.0)
-      
+      final aScore = a.score ?? 0.0; // Absolute points collected (e.g., 3.5)
+      final bScore = b.score ?? 0.0; // Absolute points collected (e.g., 3.0)
+
       // Primary sort: by absolute score descending (whoever collected MORE points)
       if (bScore != aScore) return bScore.compareTo(aScore);
-      
+
       // Secondary sort: by rating/ELO descending (higher rated player first when scores equal)
       return (b.rating ?? 0).compareTo(a.rating ?? 0);
     });

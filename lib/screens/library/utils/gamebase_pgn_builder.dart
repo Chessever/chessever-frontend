@@ -40,7 +40,9 @@ String? buildPgnFromGamebaseData(Map<String, dynamic>? data) {
   final movesRaw = data['m'] ?? data['moves'] ?? data['moveList'];
 
   if (kDebugMode) {
-    debugPrint('[GamebasePgnBuilder] movesRaw type: ${movesRaw?.runtimeType}, isEmpty: ${movesRaw is List ? movesRaw.isEmpty : 'N/A'}');
+    debugPrint(
+      '[GamebasePgnBuilder] movesRaw type: ${movesRaw?.runtimeType}, isEmpty: ${movesRaw is List ? movesRaw.isEmpty : 'N/A'}',
+    );
     if (movesRaw is List && movesRaw.isNotEmpty) {
       debugPrint('[GamebasePgnBuilder] first move sample: ${movesRaw.first}');
     }
@@ -53,7 +55,8 @@ String? buildPgnFromGamebaseData(Map<String, dynamic>? data) {
     return null;
   }
 
-  final startingFen = (data['sf'] ?? data['fen'] ?? data['startFen'] as String?)?.trim();
+  final startingFen =
+      (data['sf'] ?? data['fen'] ?? data['startFen'] as String?)?.trim();
   final effectiveFen =
       (startingFen != null && startingFen.isNotEmpty)
           ? startingFen

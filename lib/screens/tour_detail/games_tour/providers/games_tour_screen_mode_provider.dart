@@ -58,10 +58,14 @@ class _GamesTourScreenModeNotifier
 
     final tourId = tourDetail.aboutTourModel.id;
     final knockoutState = ref.read(knockoutTournamentStateProvider(tourId));
-    print('🥊 Knockout state: isKnockout=${knockoutState.isKnockout}, games=${knockoutState.allGames.length}');
+    print(
+      '🥊 Knockout state: isKnockout=${knockoutState.isKnockout}, games=${knockoutState.allGames.length}',
+    );
 
     if (knockoutState.isKnockout) {
-      print('🥊 Knockout format active - Using normal mode for match-based display');
+      print(
+        '🥊 Knockout format active - Using normal mode for match-based display',
+      );
       state = const AsyncValue.data(GamesTourScreenMode.normal);
       return;
     }
@@ -69,7 +73,8 @@ class _GamesTourScreenModeNotifier
     // PRIORITY 2: Check for team-based group events
     // Must have at least one player AND all players must have teams
     final players = tourDetail.aboutTourModel.players;
-    final hasAllTeams = players.isNotEmpty &&
+    final hasAllTeams =
+        players.isNotEmpty &&
         players.where((e) => e.team != null).length == players.length;
 
     print('👥 Players count: ${players.length}, All have teams: $hasAllTeams');

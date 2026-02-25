@@ -208,10 +208,7 @@ class MatchHeader extends ConsumerWidget {
 class CompactMatchHeader extends ConsumerWidget {
   final MatchHeaderModel match;
 
-  const CompactMatchHeader({
-    super.key,
-    required this.match,
-  });
+  const CompactMatchHeader({super.key, required this.match});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -241,10 +238,7 @@ class CompactMatchHeader extends ConsumerWidget {
           Expanded(
             child: Row(
               children: [
-                if (player1Flag != null) ...[
-                  player1Flag,
-                  SizedBox(width: 4.w),
-                ],
+                if (player1Flag != null) ...[player1Flag, SizedBox(width: 4.w)],
                 Flexible(
                   child: Text(
                     match.player1,
@@ -265,10 +259,7 @@ class CompactMatchHeader extends ConsumerWidget {
                   ),
                 ),
                 SizedBox(width: 6.w),
-                if (player2Flag != null) ...[
-                  player2Flag,
-                  SizedBox(width: 4.w),
-                ],
+                if (player2Flag != null) ...[player2Flag, SizedBox(width: 4.w)],
                 Flexible(
                   child: Text(
                     match.player2,

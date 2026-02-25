@@ -30,14 +30,12 @@ class SettingsMenu extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     Widget buildMenuIcon(Widget? icon, IconData fallback) {
-      final Widget resolved = icon ?? Icon(fallback, color: Colors.white, size: 16.ic);
+      final Widget resolved =
+          icon ?? Icon(fallback, color: Colors.white, size: 16.ic);
       return Center(
         child: SizedBox.square(
           dimension: 16.ic,
-          child: FittedBox(
-            fit: BoxFit.contain,
-            child: resolved,
-          ),
+          child: FittedBox(fit: BoxFit.contain, child: resolved),
         ),
       );
     }
@@ -64,12 +62,13 @@ class SettingsMenu extends ConsumerWidget {
           SizedBox(height: 25.h),
           // Board settings
           InkWell(
-            onTap: onBoardSettingsPressed != null
-                ? () {
-                    HapticFeedbackService.navigation();
-                    onBoardSettingsPressed!();
-                  }
-                : null,
+            onTap:
+                onBoardSettingsPressed != null
+                    ? () {
+                      HapticFeedbackService.navigation();
+                      onBoardSettingsPressed!();
+                    }
+                    : null,
             child: SizedBox(
               height: 36.h,
               child: Row(
@@ -104,12 +103,13 @@ class SettingsMenu extends ConsumerWidget {
           SizedBox(height: 15.h),
           // Notification settings
           InkWell(
-            onTap: onNotificationSettingsPressed != null
-                ? () {
-                    HapticFeedbackService.navigation();
-                    onNotificationSettingsPressed!();
-                  }
-                : null,
+            onTap:
+                onNotificationSettingsPressed != null
+                    ? () {
+                      HapticFeedbackService.navigation();
+                      onNotificationSettingsPressed!();
+                    }
+                    : null,
             child: SizedBox(
               height: 36.h,
               child: Row(
@@ -161,7 +161,11 @@ class SettingsMenu extends ConsumerWidget {
                   children: [
                     SizedBox(
                       width: 24.w,
-                      child: Icon(Icons.delete_forever, color: kRedColor, size: 20.ic),
+                      child: Icon(
+                        Icons.delete_forever,
+                        color: kRedColor,
+                        size: 20.ic,
+                      ),
                     ),
                     SizedBox(width: 4.w),
                     Expanded(
@@ -178,7 +182,10 @@ class SettingsMenu extends ConsumerWidget {
                         SvgAsset.right_arrow,
                         height: 24.h,
                         width: 24.w,
-                        colorFilter: const ColorFilter.mode(kRedColor, BlendMode.srcIn),
+                        colorFilter: const ColorFilter.mode(
+                          kRedColor,
+                          BlendMode.srcIn,
+                        ),
                       ),
                     ),
                   ],

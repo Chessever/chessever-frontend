@@ -16,7 +16,8 @@ class AppAuthState {
   const AppAuthState.authenticated(AppUser user)
     : this(status: AppAuthStatus.authenticated, user: user);
 
-  const AppAuthState.unauthenticated() : this(status: AppAuthStatus.unauthenticated);
+  const AppAuthState.unauthenticated()
+    : this(status: AppAuthStatus.unauthenticated);
 
   const AppAuthState.error(String message)
     : this(status: AppAuthStatus.error, errorMessage: message);

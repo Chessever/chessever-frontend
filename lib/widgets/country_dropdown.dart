@@ -98,8 +98,8 @@ class _CountryDropdownState extends ConsumerState<CountryDropdown> {
               isDropDownOpen
                   ? null
                   : isCompact
-                      ? null
-                      : Border.all(color: kDarkGreyColor, width: 1.w),
+                  ? null
+                  : Border.all(color: kDarkGreyColor, width: 1.w),
         ),
         child: DropdownButtonHideUnderline(
           child: DropdownButton2<String>(
@@ -110,8 +110,7 @@ class _CountryDropdownState extends ConsumerState<CountryDropdown> {
               padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
               child: Row(
                 children: [
-                  if (!widget.isLoading &&
-                      selectedCountryCode.isNotEmpty)
+                  if (!widget.isLoading && selectedCountryCode.isNotEmpty)
                     CountryFlag.fromCountryCode(
                       selectedCountryCode,
                       width: isCompact ? 20.w : 16.w,
@@ -132,9 +131,10 @@ class _CountryDropdownState extends ConsumerState<CountryDropdown> {
                               ref
                                   .read(countryDropdownProvider.notifier)
                                   .getCountryName(selectedCountryCode),
-                              style: (isCompact ? AppTypography.textXsMedium : AppTypography.textSmMedium).copyWith(
-                                color: kWhiteColor,
-                              ),
+                              style: (isCompact
+                                      ? AppTypography.textXsMedium
+                                      : AppTypography.textSmMedium)
+                                  .copyWith(color: kWhiteColor),
                               overflow: TextOverflow.ellipsis,
                             ),
                   ),
@@ -204,7 +204,10 @@ class _CountryDropdownState extends ConsumerState<CountryDropdown> {
                     ),
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(8.br),
-                      borderSide: BorderSide(color: kWhiteColor.withValues(alpha: 0.3), width: 1),
+                      borderSide: BorderSide(
+                        color: kWhiteColor.withValues(alpha: 0.3),
+                        width: 1,
+                      ),
                     ),
                   ),
                 ),
@@ -216,7 +219,9 @@ class _CountryDropdownState extends ConsumerState<CountryDropdown> {
                   (c) => c.countryCode == countryCode,
                   orElse: () => allCountries.first,
                 );
-                return country.name.toLowerCase().contains(searchValue.toLowerCase());
+                return country.name.toLowerCase().contains(
+                  searchValue.toLowerCase(),
+                );
               },
             ),
             buttonStyleData: ButtonStyleData(

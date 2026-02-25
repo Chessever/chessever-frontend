@@ -95,17 +95,25 @@ class LibrarySearchOverlay extends ConsumerWidget {
           // 1. Books (folders) - highest priority, always shown first
           if (result.folders.isNotEmpty) ...[
             _buildSectionHeader('Books'),
-            ...result.folders.take(_maxBooksInDropdown).map((f) => _buildFolderTile(f)),
+            ...result.folders
+                .take(_maxBooksInDropdown)
+                .map((f) => _buildFolderTile(f)),
             if (result.folders.length > _maxBooksInDropdown)
-              _buildMoreIndicator(result.folders.length - _maxBooksInDropdown, 'books'),
+              _buildMoreIndicator(
+                result.folders.length - _maxBooksInDropdown,
+                'books',
+              ),
             SizedBox(height: 8.h),
           ],
 
           // 2. Players - second priority, shown prominently
           if (result.players.isNotEmpty) ...[
             _buildSectionHeader('Players', count: result.players.length),
-            ...result.players.take(_maxPlayersInDropdown).map((p) => _buildPlayerTile(p)),
-            if (result.players.length > _maxPlayersInDropdown || result.hasMorePlayers)
+            ...result.players
+                .take(_maxPlayersInDropdown)
+                .map((p) => _buildPlayerTile(p)),
+            if (result.players.length > _maxPlayersInDropdown ||
+                result.hasMorePlayers)
               _buildMoreIndicator(
                 result.hasMorePlayers
                     ? null // Unknown total, show "more..."
@@ -118,17 +126,25 @@ class LibrarySearchOverlay extends ConsumerWidget {
           // 3. Saved Games (analyses) - user's own games
           if (result.analyses.isNotEmpty) ...[
             _buildSectionHeader('Saved Games'),
-            ...result.analyses.take(_maxSavedGamesInDropdown).map((a) => _buildAnalysisTile(a)),
+            ...result.analyses
+                .take(_maxSavedGamesInDropdown)
+                .map((a) => _buildAnalysisTile(a)),
             if (result.analyses.length > _maxSavedGamesInDropdown)
-              _buildMoreIndicator(result.analyses.length - _maxSavedGamesInDropdown, 'saved games'),
+              _buildMoreIndicator(
+                result.analyses.length - _maxSavedGamesInDropdown,
+                'saved games',
+              ),
             SizedBox(height: 8.h),
           ],
 
           // 4. Database Games - lowest priority in dropdown, scroll to see more
           if (result.games.isNotEmpty) ...[
             _buildSectionHeader('Games', count: result.games.length),
-            ...result.games.take(_maxGamesInDropdown).map((g) => _buildGameTile(g)),
-            if (result.games.length > _maxGamesInDropdown || result.hasMoreGames)
+            ...result.games
+                .take(_maxGamesInDropdown)
+                .map((g) => _buildGameTile(g)),
+            if (result.games.length > _maxGamesInDropdown ||
+                result.hasMoreGames)
               _buildMoreIndicator(
                 result.hasMoreGames
                     ? null
@@ -178,9 +194,7 @@ class LibrarySearchOverlay extends ConsumerWidget {
   }
 
   Widget _buildMoreIndicator(int? remaining, String type) {
-    final text = remaining != null
-        ? '+$remaining more $type'
-        : 'More $type...';
+    final text = remaining != null ? '+$remaining more $type' : 'More $type...';
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 6.h),
       child: Text(
@@ -252,10 +266,12 @@ class LibrarySearchOverlay extends ConsumerWidget {
         '';
 
     final whiteTitle = ChessTitleUtils.normalize(
-      row['whiteTitle']?.toString() ?? row['white_player']?['title']?.toString(),
+      row['whiteTitle']?.toString() ??
+          row['white_player']?['title']?.toString(),
     );
     final blackTitle = ChessTitleUtils.normalize(
-      row['blackTitle']?.toString() ?? row['black_player']?['title']?.toString(),
+      row['blackTitle']?.toString() ??
+          row['black_player']?['title']?.toString(),
     );
 
     int parseRating(Object? value) {

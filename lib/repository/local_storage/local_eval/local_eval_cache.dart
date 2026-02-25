@@ -133,12 +133,12 @@ class LocalEvalCache {
           }
           return eval.requestedMultiPv == null
               ? CloudEval(
-                  fen: eval.fen,
-                  knodes: eval.knodes,
-                  depth: eval.depth,
-                  pvs: eval.pvs,
-                  requestedMultiPv: eval.pvs.length,
-                )
+                fen: eval.fen,
+                knodes: eval.knodes,
+                depth: eval.depth,
+                pvs: eval.pvs,
+                requestedMultiPv: eval.pvs.length,
+              )
               : eval;
         } catch (_) {
           // corrupted entry - skip it

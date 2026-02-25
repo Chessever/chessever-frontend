@@ -40,14 +40,11 @@ class _CountryManRepository {
   /// Internal method to save to Supabase (fire-and-forget)
   Future<void> _saveToSupabase(String userId, String countryCode) async {
     try {
-      await _supabase.from('user_engine_settings').upsert(
-        {
-          'user_id': userId,
-          'selected_country_code': countryCode,
-          'updated_at': DateTime.now().toUtc().toIso8601String(),
-        },
-        onConflict: 'user_id',
-      );
+      await _supabase.from('user_engine_settings').upsert({
+        'user_id': userId,
+        'selected_country_code': countryCode,
+        'updated_at': DateTime.now().toUtc().toIso8601String(),
+      }, onConflict: 'user_id');
       debugPrint('[CountryMan] Saved to Supabase: $countryCode');
     } catch (e) {
       debugPrint('[CountryMan] Failed to save to Supabase: $e');
@@ -69,14 +66,11 @@ class _CountryManRepository {
   /// Internal method to remove from Supabase (fire-and-forget)
   Future<void> _removeFromSupabase(String userId) async {
     try {
-      await _supabase.from('user_engine_settings').upsert(
-        {
-          'user_id': userId,
-          'selected_country_code': null,
-          'updated_at': DateTime.now().toUtc().toIso8601String(),
-        },
-        onConflict: 'user_id',
-      );
+      await _supabase.from('user_engine_settings').upsert({
+        'user_id': userId,
+        'selected_country_code': null,
+        'updated_at': DateTime.now().toUtc().toIso8601String(),
+      }, onConflict: 'user_id');
       debugPrint('[CountryMan] Removed from Supabase');
     } catch (e) {
       debugPrint('[CountryMan] Failed to remove from Supabase: $e');
@@ -92,11 +86,12 @@ class _CountryManRepository {
       // If user is logged in, try Supabase first (source of truth)
       if (userId != null) {
         try {
-          final response = await _supabase
-              .from('user_engine_settings')
-              .select('selected_country_code')
-              .eq('user_id', userId)
-              .maybeSingle();
+          final response =
+              await _supabase
+                  .from('user_engine_settings')
+                  .select('selected_country_code')
+                  .eq('user_id', userId)
+                  .maybeSingle();
 
           if (response != null && response['selected_country_code'] != null) {
             final countryCode = response['selected_country_code'] as String;
@@ -143,7 +138,9 @@ class _CountryManRepository {
 
     try {
       await _saveToSupabase(userId, cachedCode);
-      debugPrint('[CountryMan] Synced local selection to Supabase: $cachedCode');
+      debugPrint(
+        '[CountryMan] Synced local selection to Supabase: $cachedCode',
+      );
     } catch (e) {
       debugPrint('[CountryMan] Failed to sync cached country to Supabase: $e');
     }
@@ -157,7 +154,9 @@ class _CountryManRepository {
         value: countryCode,
         userId: userId,
       );
-      debugPrint('[CountryMan] Saved locally for ${userId ?? "guest"}: $countryCode');
+      debugPrint(
+        '[CountryMan] Saved locally for ${userId ?? "guest"}: $countryCode',
+      );
     } catch (e) {
       // Local storage failure is not critical
     }
@@ -166,7 +165,10 @@ class _CountryManRepository {
   Future<String?> _getLocalCountry(String? userId) async {
     try {
       final db = ref.read(appDatabaseProvider);
-      final entry = await db.getCache(key: _countryCodeCacheKey, userId: userId);
+      final entry = await db.getCache(
+        key: _countryCodeCacheKey,
+        userId: userId,
+      );
       if (entry != null) return entry.value;
 
       // Fallback to guest cache

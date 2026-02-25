@@ -22,6 +22,7 @@ class ExpandableFilterDropdown<T> extends StatefulWidget {
   final String Function(T) itemLabel;
   final ValueChanged<T> onChanged;
   final IconData Function(T)? itemIcon;
+
   /// Asset path for image-based icons (e.g., time control icons)
   final String? Function(T)? itemAssetPath;
 
@@ -50,10 +51,7 @@ class _ExpandableFilterDropdownState<T>
       curve: Curves.easeInOut,
     );
     _rotationAnimation = Tween<double>(begin: 0, end: 0.5).animate(
-      CurvedAnimation(
-        parent: _animationController,
-        curve: Curves.easeInOut,
-      ),
+      CurvedAnimation(parent: _animationController, curve: Curves.easeInOut),
     );
   }
 
@@ -92,13 +90,15 @@ class _ExpandableFilterDropdownState<T>
             padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 14.h),
             decoration: BoxDecoration(
               color: _isExpanded ? kWhiteColor : kBlack2Color,
-              borderRadius: _isExpanded
-                  ? BorderRadius.vertical(top: Radius.circular(12.br))
-                  : BorderRadius.circular(12.br),
+              borderRadius:
+                  _isExpanded
+                      ? BorderRadius.vertical(top: Radius.circular(12.br))
+                      : BorderRadius.circular(12.br),
               border: Border.all(
-                color: _isExpanded
-                    ? kWhiteColor.withValues(alpha: 0.2)
-                    : kDividerColor,
+                color:
+                    _isExpanded
+                        ? kWhiteColor.withValues(alpha: 0.2)
+                        : kDividerColor,
               ),
             ),
             child: Row(
@@ -138,9 +138,10 @@ class _ExpandableFilterDropdownState<T>
                   child: Icon(
                     Icons.keyboard_arrow_down_rounded,
                     size: 20.ic,
-                    color: _isExpanded
-                        ? kBlackColor.withValues(alpha: 0.7)
-                        : kSecondaryTextColor,
+                    color:
+                        _isExpanded
+                            ? kBlackColor.withValues(alpha: 0.7)
+                            : kSecondaryTextColor,
                   ),
                 ),
               ],
@@ -166,10 +167,11 @@ class _ExpandableFilterDropdownState<T>
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
-              children: widget.items
-                  .where((item) => item != widget.value)
-                  .map((item) => _buildOptionItem(item))
-                  .toList(),
+              children:
+                  widget.items
+                      .where((item) => item != widget.value)
+                      .map((item) => _buildOptionItem(item))
+                      .toList(),
             ),
           ),
         ),
@@ -196,27 +198,17 @@ class _ExpandableFilterDropdownState<T>
           children: [
             // Asset image icon (preferred)
             if (hasAssetIcon) ...[
-              Image.asset(
-                assetPath,
-                width: 16.sp,
-                height: 16.sp,
-              ),
+              Image.asset(assetPath, width: 16.sp, height: 16.sp),
               SizedBox(width: 8.w),
             ] else if (hasIcon && iconData != null) ...[
               // Fallback to IconData
-              Icon(
-                iconData,
-                size: 18.ic,
-                color: kWhiteColor,
-              ),
+              Icon(iconData, size: 18.ic, color: kWhiteColor),
               SizedBox(width: 8.w),
             ],
             Expanded(
               child: Text(
                 widget.itemLabel(item),
-                style: AppTypography.textSmMedium.copyWith(
-                  color: kWhiteColor,
-                ),
+                style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
               ),
             ),
           ],

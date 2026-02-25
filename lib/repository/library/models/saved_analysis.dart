@@ -60,9 +60,7 @@ class SavedAnalysis with SavedAnalysisMappable {
       title: json['title'] as String,
       sourceGameId: json['source_game_id'] as String?,
       sourceTournamentId: json['source_tournament_id'] as String?,
-      chessGame: ChessGame.fromJson(
-        json['chess_game'] as Map<String, dynamic>,
-      ),
+      chessGame: ChessGame.fromJson(json['chess_game'] as Map<String, dynamic>),
       analysisState: (json['analysis_state'] as Map<String, dynamic>?) ?? {},
       variationComments:
           ((json['variation_comments'] as Map<String, dynamic>?) ?? {})
@@ -73,9 +71,10 @@ class SavedAnalysis with SavedAnalysisMappable {
       isFavorite: json['is_favorite'] as bool? ?? false,
       createdAt: DateTime.parse(json['created_at'] as String),
       updatedAt: DateTime.parse(json['updated_at'] as String),
-      lastOpenedAt: json['last_opened_at'] != null
-          ? DateTime.parse(json['last_opened_at'] as String)
-          : null,
+      lastOpenedAt:
+          json['last_opened_at'] != null
+              ? DateTime.parse(json['last_opened_at'] as String)
+              : null,
     );
   }
 
@@ -119,7 +118,6 @@ class SavedAnalysis with SavedAnalysisMappable {
       'is_favorite': isFavorite,
     };
   }
-
 
   /// Get move count from chess game
   int get moveCount => chessGame.mainline.length;

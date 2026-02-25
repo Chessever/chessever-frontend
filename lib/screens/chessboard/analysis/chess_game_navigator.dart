@@ -722,12 +722,17 @@ class ChessGameNavigator extends StateNotifier<ChessGameNavigatorState> {
 
     final variationIndexPosition = variationHeadPointer.length - 2;
     if (!variationIndexPosition.isOdd) {
-      debugPrint('🎯 NAVIGATOR promoteVariation: pointer missing variation info');
+      debugPrint(
+        '🎯 NAVIGATOR promoteVariation: pointer missing variation info',
+      );
       return;
     }
 
     final variationIndex = variationHeadPointer[variationIndexPosition];
-    final parentPointer = variationHeadPointer.sublist(0, variationIndexPosition);
+    final parentPointer = variationHeadPointer.sublist(
+      0,
+      variationIndexPosition,
+    );
 
     ChessMovePointer? promotedPointer;
 
@@ -792,10 +797,7 @@ class ChessGameNavigator extends StateNotifier<ChessGameNavigatorState> {
   ChessLine _stripLineVariations(ChessLine line) {
     return line
         .map(
-          (move) => move.copyWith(
-            variations: null,
-            overrideVariations: true,
-          ),
+          (move) => move.copyWith(variations: null, overrideVariations: true),
         )
         .toList();
   }
@@ -1172,11 +1174,10 @@ class ChessGameNavigator extends StateNotifier<ChessGameNavigatorState> {
 
 // PERF: Added autoDispose to prevent memory buildup during rapid page swiping
 // Navigator state is recreated when needed - ChessGame param ensures proper keying
-final chessGameNavigatorProvider = StateNotifierProvider.autoDispose.family<
-  ChessGameNavigator,
-  ChessGameNavigatorState,
-  ChessGame
->((ref, game) => ChessGameNavigator(game));
+final chessGameNavigatorProvider = StateNotifierProvider.autoDispose
+    .family<ChessGameNavigator, ChessGameNavigatorState, ChessGame>(
+      (ref, game) => ChessGameNavigator(game),
+    );
 
 ChessLine? _lineForPointerInGame(ChessGame game, ChessMovePointer pointer) {
   ChessLine? line = game.mainline;

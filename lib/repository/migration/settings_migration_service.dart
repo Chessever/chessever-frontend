@@ -4,7 +4,9 @@ import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-final settingsMigrationServiceProvider = Provider((ref) => SettingsMigrationService(ref));
+final settingsMigrationServiceProvider = Provider(
+  (ref) => SettingsMigrationService(ref),
+);
 
 /// Service to handle one-time migration of local settings from SharedPreferences to Supabase
 /// NOTE: This reads from SharedPreferences as the SOURCE (legacy data) to migrate to Supabase.
@@ -40,7 +42,9 @@ class SettingsMigrationService {
         return;
       }
 
-      debugPrint('[Migration] 🔄 Starting settings migration for user: $userId');
+      debugPrint(
+        '[Migration] 🔄 Starting settings migration for user: $userId',
+      );
 
       final prefs = ref.read(sharedPreferencesRepository);
       final migrationData = <String, dynamic>{
@@ -70,7 +74,9 @@ class SettingsMigrationService {
       final showEngineAnalysis = await prefs.getBool('show_engine_analysis');
       if (showEngineAnalysis != null) {
         migrationData['show_engine_analysis'] = showEngineAnalysis;
-        debugPrint('[Migration]   📦 show_engine_analysis: $showEngineAnalysis');
+        debugPrint(
+          '[Migration]   📦 show_engine_analysis: $showEngineAnalysis',
+        );
       }
 
       final searchTimeIndex = await prefs.getInt('search_time_index');
@@ -79,10 +85,14 @@ class SettingsMigrationService {
         debugPrint('[Migration]   📦 search_time_index: $searchTimeIndex');
       }
 
-      final principalVariationIndex = await prefs.getInt('principal_variation_index');
+      final principalVariationIndex = await prefs.getInt(
+        'principal_variation_index',
+      );
       if (principalVariationIndex != null) {
         migrationData['principal_variation_index'] = principalVariationIndex;
-        debugPrint('[Migration]   📦 principal_variation_index: $principalVariationIndex');
+        debugPrint(
+          '[Migration]   📦 principal_variation_index: $principalVariationIndex',
+        );
       }
 
       // Migrate board settings
@@ -126,7 +136,9 @@ class SettingsMigrationService {
         if (countryName != null && countryName.isNotEmpty) {
           // We'll store the legacy name with LEGACY prefix so the system can convert it
           countryCode = 'MIGRATE:$countryName';
-          debugPrint('[Migration]   📦 selected_country (legacy name): $countryName');
+          debugPrint(
+            '[Migration]   📦 selected_country (legacy name): $countryName',
+          );
         }
       } else {
         debugPrint('[Migration]   📦 selected_country_code: $countryCode');
@@ -139,7 +151,9 @@ class SettingsMigrationService {
           // Strip MIGRATE prefix for now, let the app handle conversion later
           // We just want to preserve the data
           final legacyName = countryCode.substring(8);
-          debugPrint('[Migration]   ⚠️ Legacy country name found: $legacyName (will be converted by app)');
+          debugPrint(
+            '[Migration]   ⚠️ Legacy country name found: $legacyName (will be converted by app)',
+          );
           // Don't migrate legacy format - let the app's normal flow handle it
         } else {
           migrationData['selected_country_code'] = countryCode;
@@ -149,11 +163,12 @@ class SettingsMigrationService {
       // Only perform upsert if we have data to migrate (beyond just user_id and updated_at)
       if (migrationData.length > 2) {
         try {
-          await _supabase.from('user_engine_settings').upsert(
-            migrationData,
-            onConflict: 'user_id',
+          await _supabase
+              .from('user_engine_settings')
+              .upsert(migrationData, onConflict: 'user_id');
+          debugPrint(
+            '[Migration] ✅ Successfully migrated ${migrationData.length - 2} settings to Supabase',
           );
-          debugPrint('[Migration] ✅ Successfully migrated ${migrationData.length - 2} settings to Supabase');
         } catch (e) {
           debugPrint('[Migration] ❌ Failed to upsert to Supabase: $e');
           // Don't mark as migrated if it failed

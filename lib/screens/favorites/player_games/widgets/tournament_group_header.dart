@@ -8,10 +8,7 @@ import 'package:intl/intl.dart';
 class TournamentGroupHeader extends StatelessWidget {
   final TournamentGamesGroup tournamentGroup;
 
-  const TournamentGroupHeader({
-    super.key,
-    required this.tournamentGroup,
-  });
+  const TournamentGroupHeader({super.key, required this.tournamentGroup});
 
   @override
   Widget build(BuildContext context) {
@@ -33,7 +30,8 @@ class TournamentGroupHeader extends StatelessWidget {
                 width: 56.w,
                 height: 56.h,
                 fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) => _buildPlaceholderImage(),
+                errorBuilder:
+                    (context, error, stackTrace) => _buildPlaceholderImage(),
                 loadingBuilder: (context, child, loadingProgress) {
                   if (loadingProgress == null) return child;
                   return _buildPlaceholderImage();
@@ -121,7 +119,10 @@ class TournamentGroupHeader extends StatelessWidget {
   String _formatDateRange(DateTime start, DateTime? end) {
     final dateFormat = DateFormat('MMM d, yyyy');
 
-    if (end == null || start.year == end.year && start.month == end.month && start.day == end.day) {
+    if (end == null ||
+        start.year == end.year &&
+            start.month == end.month &&
+            start.day == end.day) {
       return dateFormat.format(start);
     }
 

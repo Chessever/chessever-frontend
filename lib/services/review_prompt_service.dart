@@ -11,7 +11,13 @@ import 'package:in_app_review/in_app_review.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-enum ReviewPromptTrigger { session, premium, favoriteEvent, favoritePlayer, sidebar }
+enum ReviewPromptTrigger {
+  session,
+  premium,
+  favoriteEvent,
+  favoritePlayer,
+  sidebar,
+}
 
 class ReviewPromptService {
   ReviewPromptService._();
@@ -57,7 +63,9 @@ class ReviewPromptService {
     bool force = false,
     bool skipSurveyForHighRating = false,
   }) async {
-    debugPrint('[Feedback] maybePrompt called - trigger: $trigger, force: $force');
+    debugPrint(
+      '[Feedback] maybePrompt called - trigger: $trigger, force: $force',
+    );
     if (_promptActive) {
       debugPrint('[Feedback] BLOCKED: prompt already active');
       return;
@@ -84,7 +92,9 @@ class ReviewPromptService {
         skipSurveyForHighRating: skipSurveyForHighRating,
       );
 
-      debugPrint('[Feedback] Dialog result: rating=${result?.rating}, feedback=${result?.feedback}, featureRequest=${result?.featureRequest}');
+      debugPrint(
+        '[Feedback] Dialog result: rating=${result?.rating}, feedback=${result?.feedback}, featureRequest=${result?.featureRequest}',
+      );
 
       await _recordPromptShown();
 
@@ -100,7 +110,8 @@ class ReviewPromptService {
       if (result.feedback != null && result.feedback!.trim().isNotEmpty) {
         parts.add('Feedback: ${result.feedback!.trim()}');
       }
-      if (result.featureRequest != null && result.featureRequest!.trim().isNotEmpty) {
+      if (result.featureRequest != null &&
+          result.featureRequest!.trim().isNotEmpty) {
         parts.add('Feature Request: ${result.featureRequest!.trim()}');
       }
 
@@ -187,7 +198,9 @@ class ReviewPromptService {
     required String feedback,
     required ReviewPromptTrigger trigger,
   }) async {
-    debugPrint('[Feedback] _submitFeedback called - rating: $rating, trigger: $trigger');
+    debugPrint(
+      '[Feedback] _submitFeedback called - rating: $rating, trigger: $trigger',
+    );
     final supabase = Supabase.instance.client;
     final userId = supabase.auth.currentUser?.id;
     debugPrint('[Feedback] userId: $userId');

@@ -42,9 +42,10 @@ class _LibraryPlayerAboutTabState extends ConsumerState<LibraryPlayerAboutTab>
     super.build(context);
 
     // Profile data only available with fideId
-    final profileDataAsync = _fideIdInt != null
-        ? ref.watch(playerProfileDataProvider(_fideIdInt!))
-        : const AsyncValue<PlayerProfileData?>.data(null);
+    final profileDataAsync =
+        _fideIdInt != null
+            ? ref.watch(playerProfileDataProvider(_fideIdInt!))
+            : const AsyncValue<PlayerProfileData?>.data(null);
 
     // Watch games from library provider (gamebase)
     final gamesState = ref.watch(libraryPlayerGamesProvider(widget.playerKey));
@@ -162,21 +163,20 @@ class _LibraryPlayerAboutTabState extends ConsumerState<LibraryPlayerAboutTab>
 
   Widget _buildLoadingAnalytics() {
     return Column(
-      children: List.generate(
-        3,
-        (index) => Container(
-          margin: EdgeInsets.only(bottom: 16.h),
-          height: 120.h,
-          decoration: BoxDecoration(
-            color: kBlack2Color,
-            borderRadius: BorderRadius.circular(12.br),
+          children: List.generate(
+            3,
+            (index) => Container(
+              margin: EdgeInsets.only(bottom: 16.h),
+              height: 120.h,
+              decoration: BoxDecoration(
+                color: kBlack2Color,
+                borderRadius: BorderRadius.circular(12.br),
+              ),
+            ),
           ),
-        ),
-      ),
-    ).animate(onPlay: (c) => c.repeat()).shimmer(
-      duration: 1500.ms,
-      color: kWhiteColor.withValues(alpha: 0.1),
-    );
+        )
+        .animate(onPlay: (c) => c.repeat())
+        .shimmer(duration: 1500.ms, color: kWhiteColor.withValues(alpha: 0.1));
   }
 
   Widget _buildErrorMessage(String error) {
@@ -214,10 +214,7 @@ class _LibraryPlayerAboutTabState extends ConsumerState<LibraryPlayerAboutTab>
 
 /// Player header with photo and rating cards
 class _PlayerHeaderSection extends StatefulWidget {
-  const _PlayerHeaderSection({
-    required this.player,
-    this.profileData,
-  });
+  const _PlayerHeaderSection({required this.player, this.profileData});
 
   final GamebasePlayer player;
   final PlayerProfileData? profileData;
@@ -247,7 +244,8 @@ class _PlayerHeaderSectionState extends State<_PlayerHeaderSection> {
     final displayTitle = ChessTitleUtils.normalize(widget.player.title);
 
     // Use profile data ratings, fallback to gamebase ratings
-    final classicalRating = widget.profileData?.classicalRating ??
+    final classicalRating =
+        widget.profileData?.classicalRating ??
         widget.player.ratingClassical ??
         widget.player.highestRating;
     final rapidRating =
@@ -326,7 +324,9 @@ class _PlayerHeaderSectionState extends State<_PlayerHeaderSection> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        countryName.isNotEmpty ? countryName : widget.player.fed,
+                        countryName.isNotEmpty
+                            ? countryName
+                            : widget.player.fed,
                         style: AppTypography.textSmMedium.copyWith(
                           color: kWhiteColor,
                         ),
@@ -484,13 +484,15 @@ class _OverallStatsSection extends StatelessWidget {
                   SizedBox(width: 12.w),
                   _StatBox(
                     label: 'Draw Rate',
-                    value: '${(resultStats.drawRate * 100).toStringAsFixed(1)}%',
+                    value:
+                        '${(resultStats.drawRate * 100).toStringAsFixed(1)}%',
                     color: kWhiteColor70,
                   ),
                   SizedBox(width: 12.w),
                   _StatBox(
                     label: 'Loss Rate',
-                    value: '${(resultStats.lossRate * 100).toStringAsFixed(1)}%',
+                    value:
+                        '${(resultStats.lossRate * 100).toStringAsFixed(1)}%',
                     color: Colors.redAccent,
                   ),
                 ],
@@ -617,10 +619,7 @@ class _StatBox extends StatelessWidget {
         ),
         child: Column(
           children: [
-            Text(
-              value,
-              style: AppTypography.textMdBold.copyWith(color: color),
-            ),
+            Text(value, style: AppTypography.textMdBold.copyWith(color: color)),
             SizedBox(height: 2.h),
             Text(
               label,
@@ -797,36 +796,37 @@ class _RecentFormSection extends StatelessWidget {
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: form.map((result) {
-              Color bgColor;
-              String text;
-              if (result == 1.0) {
-                bgColor = kGreenColor;
-                text = 'W';
-              } else if (result == 0.5) {
-                bgColor = kWhiteColor.withValues(alpha: 0.5);
-                text = 'D';
-              } else {
-                bgColor = Colors.redAccent;
-                text = 'L';
-              }
-              return Container(
-                width: 28.w,
-                height: 28.w,
-                decoration: BoxDecoration(
-                  color: bgColor,
-                  borderRadius: BorderRadius.circular(6.br),
-                ),
-                child: Center(
-                  child: Text(
-                    text,
-                    style: AppTypography.textXsBold.copyWith(
-                      color: result == 0.5 ? kBlackColor : kWhiteColor,
+            children:
+                form.map((result) {
+                  Color bgColor;
+                  String text;
+                  if (result == 1.0) {
+                    bgColor = kGreenColor;
+                    text = 'W';
+                  } else if (result == 0.5) {
+                    bgColor = kWhiteColor.withValues(alpha: 0.5);
+                    text = 'D';
+                  } else {
+                    bgColor = Colors.redAccent;
+                    text = 'L';
+                  }
+                  return Container(
+                    width: 28.w,
+                    height: 28.w,
+                    decoration: BoxDecoration(
+                      color: bgColor,
+                      borderRadius: BorderRadius.circular(6.br),
                     ),
-                  ),
-                ),
-              );
-            }).toList(),
+                    child: Center(
+                      child: Text(
+                        text,
+                        style: AppTypography.textXsBold.copyWith(
+                          color: result == 0.5 ? kBlackColor : kWhiteColor,
+                        ),
+                      ),
+                    ),
+                  );
+                }).toList(),
           ),
         ),
       ],
@@ -861,12 +861,13 @@ class _OpeningRepertoireSection extends StatelessWidget {
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
             itemCount: topOpenings.length,
-            separatorBuilder: (_, __) => Divider(
-              color: kDividerColor,
-              height: 1,
-              indent: 16.w,
-              endIndent: 16.w,
-            ),
+            separatorBuilder:
+                (_, __) => Divider(
+                  color: kDividerColor,
+                  height: 1,
+                  indent: 16.w,
+                  endIndent: 16.w,
+                ),
             itemBuilder: (context, index) {
               final opening = topOpenings[index];
               return _OpeningRow(opening: opening);
@@ -913,18 +914,32 @@ class _OpeningRow extends StatelessWidget {
               children: [
                 Text(
                   opening.openingName ?? opening.eco,
-                  style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+                  style: AppTypography.textSmMedium.copyWith(
+                    color: kWhiteColor,
+                  ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
                 SizedBox(height: 4.h),
                 Row(
                   children: [
-                    _WLDIndicator(value: opening.wins, type: 'W', compact: true),
+                    _WLDIndicator(
+                      value: opening.wins,
+                      type: 'W',
+                      compact: true,
+                    ),
                     SizedBox(width: 4.w),
-                    _WLDIndicator(value: opening.draws, type: 'D', compact: true),
+                    _WLDIndicator(
+                      value: opening.draws,
+                      type: 'D',
+                      compact: true,
+                    ),
                     SizedBox(width: 4.w),
-                    _WLDIndicator(value: opening.losses, type: 'L', compact: true),
+                    _WLDIndicator(
+                      value: opening.losses,
+                      type: 'L',
+                      compact: true,
+                    ),
                     SizedBox(width: 8.w),
                     Text(
                       '${opening.count} games',
@@ -1031,16 +1046,18 @@ class _WLDIndicator extends StatelessWidget {
         children: [
           Text(
             type,
-            style:
-                (compact ? AppTypography.textXsBold : AppTypography.textXsMedium)
-                    .copyWith(color: textColor),
+            style: (compact
+                    ? AppTypography.textXsBold
+                    : AppTypography.textXsMedium)
+                .copyWith(color: textColor),
           ),
           SizedBox(width: compact ? 2.w : 4.w),
           Text(
             value.toString(),
-            style:
-                (compact ? AppTypography.textXsBold : AppTypography.textXsMedium)
-                    .copyWith(color: textColor),
+            style: (compact
+                    ? AppTypography.textXsBold
+                    : AppTypography.textXsMedium)
+                .copyWith(color: textColor),
           ),
         ],
       ),

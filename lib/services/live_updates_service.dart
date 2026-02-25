@@ -55,7 +55,9 @@ class LiveUpdatesService {
       // The edge function will send live notifications via collapse_id
       _activeGameId = gameId;
       started = true;
-      debugPrint('[LiveUpdates] Android live subscription registered for game: $gameId');
+      debugPrint(
+        '[LiveUpdates] Android live subscription registered for game: $gameId',
+      );
     }
 
     // Register subscription in Supabase for server-side dispatch
@@ -162,7 +164,10 @@ class LiveUpdatesService {
     await endLiveActivity(activityId);
   }
 
-  Future<void> _registerSubscription(String? gameId, {required bool enabled}) async {
+  Future<void> _registerSubscription(
+    String? gameId, {
+    required bool enabled,
+  }) async {
     if (gameId == null) return;
 
     try {
@@ -174,16 +179,13 @@ class LiveUpdatesService {
 
       await Supabase.instance.client
           .from('user_live_game_subscriptions')
-          .upsert(
-            {
-              'user_id': userId,
-              'game_id': gameId,
-              'platform': platform,
-              'enabled': enabled,
-              if (enabled) 'started_at': null,
-            },
-            onConflict: 'user_id,game_id,platform',
-          );
+          .upsert({
+            'user_id': userId,
+            'game_id': gameId,
+            'platform': platform,
+            'enabled': enabled,
+            if (enabled) 'started_at': null,
+          }, onConflict: 'user_id,game_id,platform');
     } catch (e) {
       debugPrint('[LiveUpdates] Failed to register subscription: $e');
     }

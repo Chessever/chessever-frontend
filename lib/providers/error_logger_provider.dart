@@ -12,8 +12,10 @@ class _ErrorLoggerService {
   /// Has a 2s timeout to prevent hanging
   Future<void> logError(dynamic error, StackTrace stackTrace) async {
     try {
-      await Sentry.captureException(error, stackTrace: stackTrace)
-          .timeout(const Duration(seconds: 2));
+      await Sentry.captureException(
+        error,
+        stackTrace: stackTrace,
+      ).timeout(const Duration(seconds: 2));
     } catch (e) {
       // Silently ignore - monitoring should never break the app
       debugPrint('⚠️ Sentry capture failed: $e');

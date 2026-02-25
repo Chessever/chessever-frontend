@@ -45,7 +45,6 @@ class CustomUpgradeAlert extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-
     // Wrap with custom theme for the dialog
     return Theme(
       data: Theme.of(context).copyWith(
@@ -55,9 +54,7 @@ class CustomUpgradeAlert extends StatelessWidget {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(20.sp),
           ),
-          titleTextStyle: AppTypography.textXlBold.copyWith(
-            color: kWhiteColor,
-          ),
+          titleTextStyle: AppTypography.textXlBold.copyWith(color: kWhiteColor),
           contentTextStyle: AppTypography.textSmRegular.copyWith(
             color: kWhiteColor70,
           ),
@@ -91,14 +88,17 @@ class CustomUpgradeAlert extends StatelessWidget {
         navigatorKey: navigatorKey,
         showIgnore: false,
         showLater: false,
-        shouldPopScope: () => kDebugMode, // Block back button in release, allow in debug
+        shouldPopScope:
+            () => kDebugMode, // Block back button in release, allow in debug
         barrierDismissible: kDebugMode, // Allow tap outside in debug only
-        dialogStyle: Platform.isIOS
-            ? UpgradeDialogStyle.cupertino
-            : UpgradeDialogStyle.material,
-        cupertinoButtonTextStyle: Platform.isIOS
-            ? AppTypography.textMdMedium.copyWith(color: kPrimaryColor)
-            : null,
+        dialogStyle:
+            Platform.isIOS
+                ? UpgradeDialogStyle.cupertino
+                : UpgradeDialogStyle.material,
+        cupertinoButtonTextStyle:
+            Platform.isIOS
+                ? AppTypography.textMdMedium.copyWith(color: kPrimaryColor)
+                : null,
         child: child,
       ),
     );

@@ -47,10 +47,14 @@ class AudioPlayerService with WidgetsBindingObserver {
         // - Respects the silent switch
         const channel = MethodChannel('com.chessever/audio_session');
         await channel.invokeMethod('configureAmbientSession');
-        debugPrint('🎧 AudioPlayerService: iOS audio session configured for ambient mode');
+        debugPrint(
+          '🎧 AudioPlayerService: iOS audio session configured for ambient mode',
+        );
       } catch (e) {
         // If the channel doesn't exist yet, we'll configure via native code
-        debugPrint('🎧 AudioPlayerService: iOS audio session configuration via MethodChannel not available, using native defaults');
+        debugPrint(
+          '🎧 AudioPlayerService: iOS audio session configuration via MethodChannel not available, using native defaults',
+        );
       }
     }
 
@@ -205,7 +209,9 @@ class AudioPlayerService with WidgetsBindingObserver {
   /// Dispose the native engine to avoid stale handles when the app goes
   /// background or is torn down by the OS.
   void _teardownPlayer() {
-    debugPrint('🎧 AudioPlayerService: tearing down player (wasInitialized: $_initialized, assetsLoaded: $_assetsLoaded)');
+    debugPrint(
+      '🎧 AudioPlayerService: tearing down player (wasInitialized: $_initialized, assetsLoaded: $_assetsLoaded)',
+    );
     try {
       if (player.isInitialized) {
         player.deinit();
@@ -226,10 +232,14 @@ class AudioPlayerService with WidgetsBindingObserver {
       // Only reinitialize if the native engine is gone. Avoids unnecessary
       // teardown→reinit cycles that create windows of broken audio.
       if (!player.isInitialized) {
-        debugPrint('🎧 AudioPlayerService: engine dead after resume, reinitializing');
+        debugPrint(
+          '🎧 AudioPlayerService: engine dead after resume, reinitializing',
+        );
         unawaited(initializeAndLoadAllAssets(force: true));
       } else {
-        debugPrint('🎧 AudioPlayerService: engine still alive after resume, no action');
+        debugPrint(
+          '🎧 AudioPlayerService: engine still alive after resume, no action',
+        );
       }
       return;
     }

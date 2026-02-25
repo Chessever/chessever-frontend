@@ -84,7 +84,9 @@ class _CountrymenTabScreenState extends ConsumerState<CountrymenTabScreen> {
     if (currentCountry != null) {
       HapticFeedbackService.medium();
       // Persist this country as the default
-      ref.read(countryDropdownProvider.notifier).selectCountry(currentCountry.countryCode);
+      ref
+          .read(countryDropdownProvider.notifier)
+          .selectCountry(currentCountry.countryCode);
       // Clear temporary selection since it's now the default
       ref.read(temporaryCountryProvider.notifier).state = null;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -114,47 +116,50 @@ class _CountrymenTabScreenState extends ConsumerState<CountrymenTabScreen> {
     final tempCountry = ref.watch(temporaryCountryProvider);
 
     // Effective country: temporary selection takes precedence
-    final effectiveCountryAsync = tempCountry != null
-        ? AsyncValue.data(tempCountry)
-        : persistedCountryAsync;
+    final effectiveCountryAsync =
+        tempCountry != null
+            ? AsyncValue.data(tempCountry)
+            : persistedCountryAsync;
 
     return Scaffold(
       backgroundColor: kBackgroundColor,
       body: Center(
         child: ConstrainedBox(
-          constraints: BoxConstraints(maxWidth: ResponsiveHelper.contentMaxWidth),
-          child: Column(
-        children: [
-          SizedBox(height: MediaQuery.of(context).viewPadding.top + 4.h),
-          _buildAppBar(context, effectiveCountryAsync, selectedMode),
-          SizedBox(height: 8.h),
-          _buildSegmentedSwitcher(selectedMode),
-          Expanded(
-            child: PageView.builder(
-              controller: _pageController,
-              itemCount: 3,
-              onPageChanged: _handlePageChanged,
-              itemBuilder: (context, index) {
-                switch (index) {
-                  case 0:
-                    return const CountrymenEventsTab();
-                  case 1:
-                    return const CountrymenGamesTab();
-                  case 2:
-                    return const CountrymenPlayersTab();
-                  default:
-                    return Center(
-                      child: Text(
-                        'Invalid page index: $index',
-                        style: const TextStyle(color: kWhiteColor),
-                      ),
-                    );
-                }
-              },
-            ),
+          constraints: BoxConstraints(
+            maxWidth: ResponsiveHelper.contentMaxWidth,
           ),
-        ],
-      ),
+          child: Column(
+            children: [
+              SizedBox(height: MediaQuery.of(context).viewPadding.top + 4.h),
+              _buildAppBar(context, effectiveCountryAsync, selectedMode),
+              SizedBox(height: 8.h),
+              _buildSegmentedSwitcher(selectedMode),
+              Expanded(
+                child: PageView.builder(
+                  controller: _pageController,
+                  itemCount: 3,
+                  onPageChanged: _handlePageChanged,
+                  itemBuilder: (context, index) {
+                    switch (index) {
+                      case 0:
+                        return const CountrymenEventsTab();
+                      case 1:
+                        return const CountrymenGamesTab();
+                      case 2:
+                        return const CountrymenPlayersTab();
+                      default:
+                        return Center(
+                          child: Text(
+                            'Invalid page index: $index',
+                            style: const TextStyle(color: kWhiteColor),
+                          ),
+                        );
+                    }
+                  },
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -193,77 +198,81 @@ class _CountrymenTabScreenState extends ConsumerState<CountrymenTabScreen> {
           Expanded(
             child: countryAsync.when(
               data: (country) => _buildCountrySelector(country),
-              loading: () => Container(
-                height: 36.h,
-                padding: EdgeInsets.symmetric(horizontal: 12.w),
-                decoration: BoxDecoration(
-                  color: kBlack2Color,
-                  borderRadius: BorderRadius.circular(8.br),
-                ),
-                child: Center(
-                  child: Text(
-                    'Loading...',
-                    style: AppTypography.textSmMedium.copyWith(
-                      color: kWhiteColor70,
+              loading:
+                  () => Container(
+                    height: 36.h,
+                    padding: EdgeInsets.symmetric(horizontal: 12.w),
+                    decoration: BoxDecoration(
+                      color: kBlack2Color,
+                      borderRadius: BorderRadius.circular(8.br),
+                    ),
+                    child: Center(
+                      child: Text(
+                        'Loading...',
+                        style: AppTypography.textSmMedium.copyWith(
+                          color: kWhiteColor70,
+                        ),
+                      ),
                     ),
                   ),
-                ),
-              ),
-              error: (_, __) => Container(
-                height: 36.h,
-                padding: EdgeInsets.symmetric(horizontal: 12.w),
-                decoration: BoxDecoration(
-                  color: kBlack2Color,
-                  borderRadius: BorderRadius.circular(8.br),
-                ),
-                child: Center(
-                  child: Text(
-                    'Error',
-                    style: AppTypography.textSmMedium.copyWith(
-                      color: kRedColor,
+              error:
+                  (_, __) => Container(
+                    height: 36.h,
+                    padding: EdgeInsets.symmetric(horizontal: 12.w),
+                    decoration: BoxDecoration(
+                      color: kBlack2Color,
+                      borderRadius: BorderRadius.circular(8.br),
+                    ),
+                    child: Center(
+                      child: Text(
+                        'Error',
+                        style: AppTypography.textSmMedium.copyWith(
+                          color: kRedColor,
+                        ),
+                      ),
                     ),
                   ),
-                ),
-              ),
             ),
           ),
           SizedBox(width: 10.w),
           // Pin button - only show when there's a temporary selection
           countryAsync.maybeWhen(
-            data: (_) => isTemporary
-              ? GestureDetector(
-                  onTap: _pinCurrentCountry,
-                  child: Container(
-                    height: 36.h,
-                    padding: EdgeInsets.symmetric(horizontal: 10.w),
-                    decoration: BoxDecoration(
-                      color: kPrimaryColor.withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(8.br),
-                      border: Border.all(
-                        color: kPrimaryColor.withValues(alpha: 0.3),
-                        width: 1,
-                      ),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.push_pin_rounded,
-                          size: 14.ic,
-                          color: kPrimaryColor,
-                        ),
-                        SizedBox(width: 4.w),
-                        Text(
-                          'Pin',
-                          style: AppTypography.textXsMedium.copyWith(
-                            color: kPrimaryColor,
+            data:
+                (_) =>
+                    isTemporary
+                        ? GestureDetector(
+                          onTap: _pinCurrentCountry,
+                          child: Container(
+                            height: 36.h,
+                            padding: EdgeInsets.symmetric(horizontal: 10.w),
+                            decoration: BoxDecoration(
+                              color: kPrimaryColor.withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(8.br),
+                              border: Border.all(
+                                color: kPrimaryColor.withValues(alpha: 0.3),
+                                width: 1,
+                              ),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.push_pin_rounded,
+                                  size: 14.ic,
+                                  color: kPrimaryColor,
+                                ),
+                                SizedBox(width: 4.w),
+                                Text(
+                                  'Pin',
+                                  style: AppTypography.textXsMedium.copyWith(
+                                    color: kPrimaryColor,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
-                        ),
-                      ],
-                    ),
-                  ),
-                )
-              : const SizedBox.shrink(), // Hide when already pinned
+                        )
+                        : const SizedBox.shrink(), // Hide when already pinned
             orElse: () => const SizedBox.shrink(),
           ),
         ],
@@ -285,7 +294,10 @@ class _CountrymenTabScreenState extends ConsumerState<CountrymenTabScreen> {
   }
 
   Widget _buildSegmentedSwitcher(CountrymenScreenMode selectedMode) {
-    final horizontalPadding = ResponsiveHelper.adaptive(phone: 20.sp, tablet: 32.sp);
+    final horizontalPadding = ResponsiveHelper.adaptive(
+      phone: 20.sp,
+      tablet: 32.sp,
+    );
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
       child: SegmentedSwitcher(

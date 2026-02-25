@@ -124,14 +124,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       Navigator.pushNamed(context, '/player_list_screen');
     },
     onAnalysisBoardPressed: () {
-      Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => const BoardEditorScreen()),
-      );
+      Navigator.of(
+        context,
+      ).push(MaterialPageRoute(builder: (_) => const BoardEditorScreen()));
     },
     onOpeningExplorerPressed: () {
-      Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => const GamebaseExplorerScreen()),
-      );
+      Navigator.of(
+        context,
+      ).push(MaterialPageRoute(builder: (_) => const GamebaseExplorerScreen()));
     },
     onSupportPressed: () {
       // Handle support action

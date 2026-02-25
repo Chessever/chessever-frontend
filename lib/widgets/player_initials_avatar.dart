@@ -47,7 +47,8 @@ class PlayerInitialsAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final effectiveBorderRadius = borderRadius ?? (isCircular ? size / 2 : 12.br);
+    final effectiveBorderRadius =
+        borderRadius ?? (isCircular ? size / 2 : 12.br);
     final hasPhoto = photoUrl != null && photoUrl!.isNotEmpty;
 
     return Stack(
@@ -55,16 +56,14 @@ class PlayerInitialsAvatar extends StatelessWidget {
       children: [
         ClipRRect(
           borderRadius: BorderRadius.circular(effectiveBorderRadius),
-          child: hasPhoto
-              ? _ValidatedNetworkImage(
-                  imageUrl: photoUrl!,
-                  size: size,
-                  initials: initials,
-                )
-              : _InitialsPlaceholder(
-                  initials: initials,
-                  size: size,
-                ),
+          child:
+              hasPhoto
+                  ? _ValidatedNetworkImage(
+                    imageUrl: photoUrl!,
+                    size: size,
+                    initials: initials,
+                  )
+                  : _InitialsPlaceholder(initials: initials, size: size),
         ),
         if (title != null && title!.isNotEmpty)
           Positioned(
@@ -121,10 +120,7 @@ class _ValidatedNetworkImageState extends State<_ValidatedNetworkImage> {
   Widget build(BuildContext context) {
     // If we've determined the image is invalid, show fallback immediately
     if (_showFallback) {
-      return _InitialsPlaceholder(
-        initials: widget.initials,
-        size: widget.size,
-      );
+      return _InitialsPlaceholder(initials: widget.initials, size: widget.size);
     }
 
     return CachedNetworkImage(
@@ -134,14 +130,16 @@ class _ValidatedNetworkImageState extends State<_ValidatedNetworkImage> {
       fit: BoxFit.cover,
       fadeInDuration: const Duration(milliseconds: 200),
       fadeOutDuration: const Duration(milliseconds: 200),
-      placeholder: (context, url) => _InitialsPlaceholder(
-        initials: widget.initials,
-        size: widget.size,
-      ),
-      errorWidget: (context, url, error) => _InitialsPlaceholder(
-        initials: widget.initials,
-        size: widget.size,
-      ),
+      placeholder:
+          (context, url) => _InitialsPlaceholder(
+            initials: widget.initials,
+            size: widget.size,
+          ),
+      errorWidget:
+          (context, url, error) => _InitialsPlaceholder(
+            initials: widget.initials,
+            size: widget.size,
+          ),
       imageBuilder: (context, imageProvider) {
         // Validate the image once loaded
         if (!_imageValidated) {
@@ -178,35 +176,40 @@ class _ValidatedNetworkImageState extends State<_ValidatedNetworkImage> {
     _imageValidated = true;
 
     try {
-      final ImageStream stream = imageProvider.resolve(ImageConfiguration.empty);
-      stream.addListener(ImageStreamListener(
-        (ImageInfo info, bool synchronousCall) async {
-          final image = info.image;
-          final width = image.width;
-          final height = image.height;
+      final ImageStream stream = imageProvider.resolve(
+        ImageConfiguration.empty,
+      );
+      stream.addListener(
+        ImageStreamListener(
+          (ImageInfo info, bool synchronousCall) async {
+            final image = info.image;
+            final width = image.width;
+            final height = image.height;
 
-          // Very small images are placeholders
-          if (width < 10 || height < 10) {
-            _setFallback();
-            return;
-          }
-
-          // Check if image is mostly black/dark by sampling pixels
-          try {
-            final byteData = await image.toByteData(
-              format: ui.ImageByteFormat.rawRgba,
-            );
-            if (byteData != null && _isImageMostlyBlack(byteData, width, height)) {
+            // Very small images are placeholders
+            if (width < 10 || height < 10) {
               _setFallback();
+              return;
             }
-          } catch (e) {
-            // If pixel sampling fails, keep the image
-          }
-        },
-        onError: (exception, stackTrace) {
-          _setFallback();
-        },
-      ));
+
+            // Check if image is mostly black/dark by sampling pixels
+            try {
+              final byteData = await image.toByteData(
+                format: ui.ImageByteFormat.rawRgba,
+              );
+              if (byteData != null &&
+                  _isImageMostlyBlack(byteData, width, height)) {
+                _setFallback();
+              }
+            } catch (e) {
+              // If pixel sampling fails, keep the image
+            }
+          },
+          onError: (exception, stackTrace) {
+            _setFallback();
+          },
+        ),
+      );
     } catch (e) {
       // If we can't validate, keep showing the image
     }
@@ -257,15 +260,13 @@ class _InitialsPlaceholder extends StatelessWidget {
   final String initials;
   final double size;
 
-  const _InitialsPlaceholder({
-    required this.initials,
-    required this.size,
-  });
+  const _InitialsPlaceholder({required this.initials, required this.size});
 
   @override
   Widget build(BuildContext context) {
     final fontSize = size * 0.38;
-    final effectiveInitials = initials.isNotEmpty ? initials.toUpperCase() : '?';
+    final effectiveInitials =
+        initials.isNotEmpty ? initials.toUpperCase() : '?';
 
     return Container(
       width: size,
@@ -313,16 +314,14 @@ class PlayerInitialsAvatarCompact extends StatelessWidget {
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(effectiveBorderRadius),
-      child: hasPhoto
-          ? _ValidatedNetworkImageCompact(
-              imageUrl: photoUrl!,
-              size: size,
-              initials: initials,
-            )
-          : _CompactInitialsPlaceholder(
-              initials: initials,
-              size: size,
-            ),
+      child:
+          hasPhoto
+              ? _ValidatedNetworkImageCompact(
+                imageUrl: photoUrl!,
+                size: size,
+                initials: initials,
+              )
+              : _CompactInitialsPlaceholder(initials: initials, size: size),
     );
   }
 }
@@ -365,14 +364,16 @@ class _ValidatedNetworkImageCompactState
       fit: BoxFit.cover,
       fadeInDuration: const Duration(milliseconds: 150),
       fadeOutDuration: const Duration(milliseconds: 150),
-      placeholder: (context, url) => _CompactInitialsPlaceholder(
-        initials: widget.initials,
-        size: widget.size,
-      ),
-      errorWidget: (context, url, error) => _CompactInitialsPlaceholder(
-        initials: widget.initials,
-        size: widget.size,
-      ),
+      placeholder:
+          (context, url) => _CompactInitialsPlaceholder(
+            initials: widget.initials,
+            size: widget.size,
+          ),
+      errorWidget:
+          (context, url, error) => _CompactInitialsPlaceholder(
+            initials: widget.initials,
+            size: widget.size,
+          ),
       imageBuilder: (context, imageProvider) {
         if (!_imageValidated) {
           _validateImage(imageProvider);
@@ -407,36 +408,40 @@ class _ValidatedNetworkImageCompactState
     _imageValidated = true;
 
     try {
-      final ImageStream stream =
-          imageProvider.resolve(ImageConfiguration.empty);
-      stream.addListener(ImageStreamListener(
-        (ImageInfo info, bool synchronousCall) async {
-          final image = info.image;
-          final width = image.width;
-          final height = image.height;
+      final ImageStream stream = imageProvider.resolve(
+        ImageConfiguration.empty,
+      );
+      stream.addListener(
+        ImageStreamListener(
+          (ImageInfo info, bool synchronousCall) async {
+            final image = info.image;
+            final width = image.width;
+            final height = image.height;
 
-          // Very small images are placeholders
-          if (width < 10 || height < 10) {
-            _setFallback();
-            return;
-          }
-
-          // Check if image is mostly black
-          try {
-            final byteData = await image.toByteData(
-              format: ui.ImageByteFormat.rawRgba,
-            );
-            if (byteData != null && _isImageMostlyBlack(byteData, width, height)) {
+            // Very small images are placeholders
+            if (width < 10 || height < 10) {
               _setFallback();
+              return;
             }
-          } catch (e) {
-            // If pixel sampling fails, keep the image
-          }
-        },
-        onError: (exception, stackTrace) {
-          _setFallback();
-        },
-      ));
+
+            // Check if image is mostly black
+            try {
+              final byteData = await image.toByteData(
+                format: ui.ImageByteFormat.rawRgba,
+              );
+              if (byteData != null &&
+                  _isImageMostlyBlack(byteData, width, height)) {
+                _setFallback();
+              }
+            } catch (e) {
+              // If pixel sampling fails, keep the image
+            }
+          },
+          onError: (exception, stackTrace) {
+            _setFallback();
+          },
+        ),
+      );
     } catch (e) {
       // If we can't validate, keep showing the image
     }
@@ -490,7 +495,8 @@ class _CompactInitialsPlaceholder extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final fontSize = size * 0.38;
-    final effectiveInitials = initials.isNotEmpty ? initials.toUpperCase() : '?';
+    final effectiveInitials =
+        initials.isNotEmpty ? initials.toUpperCase() : '?';
 
     return Container(
       width: size,

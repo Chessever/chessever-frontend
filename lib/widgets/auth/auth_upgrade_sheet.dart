@@ -11,9 +11,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Show the auth upgrade sheet.
 /// Returns `true` if the user ends up authenticated (non-anonymous) after closing.
-Future<bool> showAuthUpgradeSheet({
-  required BuildContext context,
-}) async {
+Future<bool> showAuthUpgradeSheet({required BuildContext context}) async {
   await showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
@@ -74,10 +72,7 @@ class _AuthUpgradeSheet extends HookWidget {
 }
 
 class _AuthUpgradePage extends HookWidget {
-  const _AuthUpgradePage({
-    required this.hostContext,
-    this.scrollController,
-  });
+  const _AuthUpgradePage({required this.hostContext, this.scrollController});
 
   final BuildContext hostContext;
   final ScrollController? scrollController;
@@ -100,87 +95,97 @@ class _AuthUpgradePage extends HookWidget {
             controller: scrollController,
             physics: const BouncingScrollPhysics(),
             child: Column(
-                children: [
-                  // Handle bar + close button row
-                  Stack(
-                    alignment: Alignment.center,
-                    children: [
-                      Container(
-                        width: 36.w,
-                        height: 4.h,
-                        decoration: BoxDecoration(
-                          color: kWhiteColor.withValues(alpha: 0.2),
-                          borderRadius: BorderRadius.circular(2.br),
-                        ),
+              children: [
+                // Handle bar + close button row
+                Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    Container(
+                      width: 36.w,
+                      height: 4.h,
+                      decoration: BoxDecoration(
+                        color: kWhiteColor.withValues(alpha: 0.2),
+                        borderRadius: BorderRadius.circular(2.br),
                       ),
-                      Align(
-                        alignment: Alignment.centerRight,
-                        child: IconButton(
-                          icon: Icon(Icons.close_rounded, color: kWhiteColor.withValues(alpha: 0.7), size: 22.ic),
-                          onPressed: () => Navigator.of(hostContext).pop(),
-                          padding: EdgeInsets.zero,
-                          constraints: const BoxConstraints(),
-                        ),
-                      ),
-                    ],
-                  ),
-                  SizedBox(height: 8.h),
-                  _UnlockVisual()
-                      .animate()
-                      .fadeIn(duration: 600.ms, curve: Motion.smoothSpring().toCurve)
-                      .scale(begin: const Offset(0.85, 0.85), end: const Offset(1, 1)),
-                  SizedBox(height: 16.h),
-                  Text(
-                    'Unlock the full\nexperience',
-                    textAlign: TextAlign.center,
-                    style: AppTypography.displayXsBold.copyWith(
-                      color: kWhiteColor,
-                      height: 1.2,
                     ),
-                  ),
-                  SizedBox(height: 8.h),
-                  Text(
-                    'Create an account to access all features',
-                    textAlign: TextAlign.center,
-                    style: AppTypography.textSmRegular.copyWith(
-                      color: kWhiteColor.withValues(alpha: 0.6),
-                    ),
-                  ),
-                  SizedBox(height: 24.h),
-                  _FeaturesList(),
-                  SizedBox(height: 28.h),
-                  _PrimaryButton(
-                    label: 'Create free account',
-                    onTap: startAuthFlow,
-                  ),
-                  SizedBox(height: 12.h),
-                  _SecondaryButton(
-                    label: 'Continue without account',
-                    onTap: () => Navigator.of(hostContext).pop(),
-                  ),
-                  SizedBox(height: 14.h),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        Icons.warning_amber_rounded,
-                        size: 14.ic,
-                        color: kPrimaryColor.withValues(alpha: 0.7),
-                      ),
-                      SizedBox(width: 6.w),
-                      Text(
-                        'Guest data can\'t be recovered if lost',
-                        style: AppTypography.textXsRegular.copyWith(
-                          color: kWhiteColor.withValues(alpha: 0.5),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: IconButton(
+                        icon: Icon(
+                          Icons.close_rounded,
+                          color: kWhiteColor.withValues(alpha: 0.7),
+                          size: 22.ic,
                         ),
+                        onPressed: () => Navigator.of(hostContext).pop(),
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
                       ),
-                    ],
+                    ),
+                  ],
+                ),
+                SizedBox(height: 8.h),
+                _UnlockVisual()
+                    .animate()
+                    .fadeIn(
+                      duration: 600.ms,
+                      curve: Motion.smoothSpring().toCurve,
+                    )
+                    .scale(
+                      begin: const Offset(0.85, 0.85),
+                      end: const Offset(1, 1),
+                    ),
+                SizedBox(height: 16.h),
+                Text(
+                  'Unlock the full\nexperience',
+                  textAlign: TextAlign.center,
+                  style: AppTypography.displayXsBold.copyWith(
+                    color: kWhiteColor,
+                    height: 1.2,
                   ),
-                  SizedBox(height: 8.h),
-                ],
-              ),
+                ),
+                SizedBox(height: 8.h),
+                Text(
+                  'Create an account to access all features',
+                  textAlign: TextAlign.center,
+                  style: AppTypography.textSmRegular.copyWith(
+                    color: kWhiteColor.withValues(alpha: 0.6),
+                  ),
+                ),
+                SizedBox(height: 24.h),
+                _FeaturesList(),
+                SizedBox(height: 28.h),
+                _PrimaryButton(
+                  label: 'Create free account',
+                  onTap: startAuthFlow,
+                ),
+                SizedBox(height: 12.h),
+                _SecondaryButton(
+                  label: 'Continue without account',
+                  onTap: () => Navigator.of(hostContext).pop(),
+                ),
+                SizedBox(height: 14.h),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.warning_amber_rounded,
+                      size: 14.ic,
+                      color: kPrimaryColor.withValues(alpha: 0.7),
+                    ),
+                    SizedBox(width: 6.w),
+                    Text(
+                      'Guest data can\'t be recovered if lost',
+                      style: AppTypography.textXsRegular.copyWith(
+                        color: kWhiteColor.withValues(alpha: 0.5),
+                      ),
+                    ),
+                  ],
+                ),
+                SizedBox(height: 8.h),
+              ],
             ),
           ),
+        ),
       ],
     );
   }
@@ -286,9 +291,7 @@ class _FeaturesList extends StatelessWidget {
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(20.br),
         color: kBlack2Color.withValues(alpha: 0.5),
-        border: Border.all(
-          color: kWhiteColor.withValues(alpha: 0.06),
-        ),
+        border: Border.all(color: kWhiteColor.withValues(alpha: 0.06)),
       ),
       child: Column(
         children: [
@@ -304,7 +307,9 @@ class _FeaturesList extends StatelessWidget {
             final index = entry.key;
             final feature = entry.value;
             return Padding(
-              padding: EdgeInsets.only(bottom: index < features.length - 1 ? 12.h : 0),
+              padding: EdgeInsets.only(
+                bottom: index < features.length - 1 ? 12.h : 0,
+              ),
               child: feature,
             );
           }),
@@ -338,13 +343,7 @@ class _FeatureItem extends StatelessWidget {
             borderRadius: BorderRadius.circular(10.br),
             color: color.withValues(alpha: 0.15),
           ),
-          child: Center(
-            child: Icon(
-              icon,
-              size: 20.ic,
-              color: color,
-            ),
-          ),
+          child: Center(child: Icon(icon, size: 20.ic, color: color)),
         ),
         SizedBox(width: 12.w),
         Expanded(
@@ -353,9 +352,7 @@ class _FeatureItem extends StatelessWidget {
             children: [
               Text(
                 title,
-                style: AppTypography.textSmMedium.copyWith(
-                  color: kWhiteColor,
-                ),
+                style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
               ),
               Text(
                 subtitle,
@@ -418,21 +415,22 @@ class _PrimaryButton extends HookWidget {
             ],
           ),
           child: Center(
-            child: isLoading
-                ? SizedBox(
-                    width: 18.w,
-                    height: 18.h,
-                    child: const CircularProgressIndicator(
-                      strokeWidth: 2,
-                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+            child:
+                isLoading
+                    ? SizedBox(
+                      width: 18.w,
+                      height: 18.h,
+                      child: const CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
+                    )
+                    : Text(
+                      label,
+                      style: AppTypography.textMdMedium.copyWith(
+                        color: kWhiteColor,
+                      ),
                     ),
-                  )
-                : Text(
-                    label,
-                    style: AppTypography.textMdMedium.copyWith(
-                      color: kWhiteColor,
-                    ),
-                  ),
           ),
         ),
       ),
@@ -441,10 +439,7 @@ class _PrimaryButton extends HookWidget {
 }
 
 class _SecondaryButton extends HookWidget {
-  const _SecondaryButton({
-    required this.label,
-    required this.onTap,
-  });
+  const _SecondaryButton({required this.label, required this.onTap});
 
   final String label;
   final VoidCallback onTap;
@@ -468,9 +463,7 @@ class _SecondaryButton extends HookWidget {
           height: 52.h,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(14.br),
-            border: Border.all(
-              color: kWhiteColor.withValues(alpha: 0.15),
-            ),
+            border: Border.all(color: kWhiteColor.withValues(alpha: 0.15)),
           ),
           child: Center(
             child: Text(
@@ -512,9 +505,10 @@ class _AmbientGlowPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final paint1 = Paint()
-      ..color = kPrimaryColor.withValues(alpha: 0.08 + (animation * 0.04))
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 120);
+    final paint1 =
+        Paint()
+          ..color = kPrimaryColor.withValues(alpha: 0.08 + (animation * 0.04))
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 120);
 
     canvas.drawCircle(
       Offset(
@@ -525,9 +519,12 @@ class _AmbientGlowPainter extends CustomPainter {
       paint1,
     );
 
-    final paint2 = Paint()
-      ..color = const Color(0xFF08647F).withValues(alpha: 0.06 + (animation * 0.03))
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 100);
+    final paint2 =
+        Paint()
+          ..color = const Color(
+            0xFF08647F,
+          ).withValues(alpha: 0.06 + (animation * 0.03))
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 100);
 
     canvas.drawCircle(
       Offset(
@@ -581,10 +578,15 @@ class _ParticlePainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     for (final particle in particles) {
       final y = ((particle.y + animation * particle.speed) % 1.2) - 0.1;
-      final x = particle.x + math.sin(animation * 2 * math.pi + particle.x * 10) * 0.02;
+      final x =
+          particle.x +
+          math.sin(animation * 2 * math.pi + particle.x * 10) * 0.02;
 
-      final paint = Paint()
-        ..color = kWhiteColor.withValues(alpha: particle.opacity * (1 - y.abs() * 0.5));
+      final paint =
+          Paint()
+            ..color = kWhiteColor.withValues(
+              alpha: particle.opacity * (1 - y.abs() * 0.5),
+            );
 
       canvas.drawCircle(
         Offset(x * size.width, y * size.height),

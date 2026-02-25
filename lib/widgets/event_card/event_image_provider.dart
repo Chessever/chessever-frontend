@@ -12,47 +12,47 @@ class EventImageData {
   bool get hasImage => imageUrl != null && imageUrl!.isNotEmpty;
 
   /// True if we have either an image or a valid fallback country flag
-  bool get hasVisual => hasImage || (fallbackCountryCode != null && fallbackCountryCode!.isNotEmpty);
+  bool get hasVisual =>
+      hasImage ||
+      (fallbackCountryCode != null && fallbackCountryCode!.isNotEmpty);
 }
 
 /// Fetches the image URL and fallback country for a group broadcast event
 /// Returns the first tour's image from the tours table, or a country code
 /// derived from location or dominant player federation if no image exists
-final eventImageProvider =
-    FutureProvider.autoDispose.family<EventImageData, String>(
-  (ref, groupBroadcastId) async {
-    try {
-      final tourRepo = ref.read(tourRepositoryProvider);
-      final tours = await tourRepo.getTourByGroupId(groupBroadcastId);
+final eventImageProvider = FutureProvider.autoDispose
+    .family<EventImageData, String>((ref, groupBroadcastId) async {
+      try {
+        final tourRepo = ref.read(tourRepositoryProvider);
+        final tours = await tourRepo.getTourByGroupId(groupBroadcastId);
 
-      if (tours.isEmpty) {
+        if (tours.isEmpty) {
+          return const EventImageData();
+        }
+
+        final tour = tours.first;
+
+        // If tour has an image, return it
+        if (tour.image != null && tour.image!.isNotEmpty) {
+          return EventImageData(imageUrl: tour.image);
+        }
+
+        // No image - try to get country from location or player federations
+        String? countryCode = _extractCountryFromLocation(tour.info.location);
+
+        // If no location, try to find dominant player federation
+        if (countryCode == null && tour.players.isNotEmpty) {
+          countryCode = _getDominantFederation(tour.players);
+        }
+
+        return EventImageData(fallbackCountryCode: countryCode);
+      } catch (e) {
+        debugPrint(
+          '[EventImageProvider] Error fetching image for $groupBroadcastId: $e',
+        );
         return const EventImageData();
       }
-
-      final tour = tours.first;
-
-      // If tour has an image, return it
-      if (tour.image != null && tour.image!.isNotEmpty) {
-        return EventImageData(imageUrl: tour.image);
-      }
-
-      // No image - try to get country from location or player federations
-      String? countryCode = _extractCountryFromLocation(tour.info.location);
-
-      // If no location, try to find dominant player federation
-      if (countryCode == null && tour.players.isNotEmpty) {
-        countryCode = _getDominantFederation(tour.players);
-      }
-
-      return EventImageData(fallbackCountryCode: countryCode);
-    } catch (e) {
-      debugPrint(
-        '[EventImageProvider] Error fetching image for $groupBroadcastId: $e',
-      );
-      return const EventImageData();
-    }
-  },
-);
+    });
 
 /// Extracts a 2-letter country code from location string
 String? _extractCountryFromLocation(String? location) {

@@ -48,10 +48,7 @@ class LogoPatternFallback extends StatelessWidget {
     );
 
     if (borderRadius != null) {
-      return ClipRRect(
-        borderRadius: borderRadius!,
-        child: pattern,
-      );
+      return ClipRRect(borderRadius: borderRadius!, child: pattern);
     }
 
     return pattern;

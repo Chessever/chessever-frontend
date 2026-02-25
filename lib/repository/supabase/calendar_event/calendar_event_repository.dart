@@ -5,8 +5,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 final calendarEventRepositoryProvider =
     AutoDisposeProvider<CalendarEventRepository>((ref) {
-  return CalendarEventRepository();
-});
+      return CalendarEventRepository();
+    });
 
 class CalendarEventRepository extends BaseRepository {
   /// Fetch calendar events for a specific month
