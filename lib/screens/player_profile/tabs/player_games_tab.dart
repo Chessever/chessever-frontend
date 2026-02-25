@@ -1,9 +1,11 @@
 import 'dart:async';
 
 import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
+import 'package:chessever2/providers/board_settings_provider_new.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/screens/library/widgets/add_to_folder_sheet.dart';
+import 'package:chessever2/screens/library/widgets/bulk_add_to_folder_sheet.dart';
 import 'package:chessever2/screens/library/widgets/live_gamebase_search_game_card.dart';
 import 'package:chessever2/screens/player_profile/player_profile_data_source.dart';
 import 'package:chessever2/screens/player_profile/provider/player_profile_provider.dart';
@@ -54,6 +56,9 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
   Timer? _debounceTimer;
+  bool _isSelectionMode = false;
+  bool _isLoadingAllPagesForSelection = false;
+  final Set<String> _selectedGameIds = <String>{};
 
   @override
   bool get wantKeepAlive => true;
@@ -121,6 +126,142 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
           .read(playerProfileGamesKeyProvider(_playerKey).notifier)
           .applyFilter(result);
     }
+  }
+
+  Future<void> _toggleSelectionMode() async {
+    if (!_isSelectionMode) {
+      final hasPremium = await requirePremiumGuard(context, ref);
+      if (!hasPremium) return;
+    }
+
+    HapticFeedbackService.buttonPress();
+    final enable = !_isSelectionMode;
+
+    if (enable &&
+        ref.read(gamesListViewModeProvider) != GamesListViewMode.gamesCard) {
+      ref
+          .read(boardSettingsProviderNew.notifier)
+          .setGamesListViewModeIndex(GamesListViewMode.gamesCard.index);
+    }
+
+    setState(() {
+      _isSelectionMode = enable;
+      if (!enable) {
+        _selectedGameIds.clear();
+        _isLoadingAllPagesForSelection = false;
+      }
+    });
+  }
+
+  void _toggleGameSelection(String gameId) {
+    if (!_isSelectionMode) return;
+    HapticFeedback.lightImpact();
+    setState(() {
+      if (_selectedGameIds.contains(gameId)) {
+        _selectedGameIds.remove(gameId);
+      } else {
+        _selectedGameIds.add(gameId);
+      }
+    });
+  }
+
+  void _selectLoadedGames(List<GamesTourModel> games) {
+    if (games.isEmpty) return;
+    HapticFeedbackService.light();
+    setState(() {
+      for (final game in games) {
+        _selectedGameIds.add(game.gameId);
+      }
+    });
+  }
+
+  void _clearSelection() {
+    HapticFeedbackService.light();
+    setState(() {
+      _selectedGameIds.clear();
+      _isLoadingAllPagesForSelection = false;
+    });
+  }
+
+  Future<void> _selectAllFilteredGames(PlayerProfileGamesState state) async {
+    if (_isLoadingAllPagesForSelection) return;
+
+    setState(() => _isLoadingAllPagesForSelection = true);
+    try {
+      if (widget.dataSource == PlayerProfileDataSource.twic &&
+          state.hasMorePages) {
+        await ref
+            .read(playerProfileGamesKeyProvider(_playerKey).notifier)
+            .loadAllRemainingPages();
+      }
+
+      final refreshed = ref.read(playerProfileGamesKeyProvider(_playerKey));
+      final allFilteredIds =
+          refreshed.filteredGames.map((g) => g.gameId).toSet();
+
+      if (!mounted) return;
+      setState(() {
+        _selectedGameIds
+          ..clear()
+          ..addAll(allFilteredIds);
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Selected ${allFilteredIds.length} filtered games',
+            style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+          ),
+          backgroundColor: kBlack2Color.withValues(alpha: 0.95),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Failed to select all games: $e',
+            style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+          ),
+          backgroundColor: kRedColor,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isLoadingAllPagesForSelection = false);
+      }
+    }
+  }
+
+  Future<void> _addSelectedToLibrary(PlayerProfileGamesState state) async {
+    final hasPremium = await requirePremiumGuard(context, ref);
+    if (!hasPremium) return;
+    if (!mounted) return;
+
+    final selectedGames = state.filteredGames
+        .where((g) => _selectedGameIds.contains(g.gameId))
+        .toList(growable: false);
+
+    if (selectedGames.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Select at least one game',
+            style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+          ),
+          backgroundColor: kBlack2Color.withValues(alpha: 0.95),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    await showBulkAddToFolderSheet(
+      context: context,
+      games: selectedGames,
+      sourceLabel: widget.playerName,
+    );
   }
 
   /// Group games by event (tourId).
@@ -195,6 +336,10 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
       phone: 16.w,
       tablet: 24.w,
     );
+    final headerHeight =
+        88.h +
+        (state.hasActiveFilters ? 36.h : 0) +
+        (_isSelectionMode ? 52.h : 0);
 
     // Watch event data for event-grouped display
     final eventCardsAsync =
@@ -223,8 +368,8 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
           SliverPersistentHeader(
             pinned: true,
             delegate: _PinnedHeaderDelegate(
-              minExtent: state.hasActiveFilters ? 124.h : 88.h,
-              maxExtent: state.hasActiveFilters ? 124.h : 88.h,
+              minExtent: headerHeight,
+              maxExtent: headerHeight,
               child: _buildStickyHeader(state, horizontalPadding),
             ),
           ),
@@ -267,6 +412,11 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
     PlayerProfileGamesState state,
     double horizontalPadding,
   ) {
+    final selectedVisibleCount =
+        state.filteredGames
+            .where((g) => _selectedGameIds.contains(g.gameId))
+            .length;
+
     return Container(
       color: kBackgroundColor,
       child: Column(
@@ -281,6 +431,16 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
             ),
             child: _buildSearchBar(state),
           ),
+          if (_isSelectionMode)
+            Padding(
+              padding: EdgeInsets.fromLTRB(
+                horizontalPadding,
+                0,
+                horizontalPadding,
+                state.hasActiveFilters ? 6.h : 8.h,
+              ),
+              child: _buildSelectionToolbar(state, selectedVisibleCount),
+            ),
           if (state.hasActiveFilters)
             Padding(
               padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
@@ -413,6 +573,37 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
             ),
           ),
 
+          // Multi-select / bulk-add mode button
+          SizedBox(width: 8.w),
+          GestureDetector(
+            onTap: _toggleSelectionMode,
+            child: Container(
+              width: searchBarHeight,
+              height: searchBarHeight,
+              decoration: BoxDecoration(
+                color:
+                    _isSelectionMode
+                        ? kPrimaryColor.withValues(alpha: 0.18)
+                        : const Color(0xFF09090B),
+                borderRadius: BorderRadius.circular(12.br),
+                border: Border.all(
+                  color:
+                      _isSelectionMode
+                          ? kPrimaryColor.withValues(alpha: 0.55)
+                          : const Color(0xFF27272A),
+                ),
+              ),
+              child: Icon(
+                _isSelectionMode
+                    ? Icons.checklist_rounded
+                    : Icons.library_add_outlined,
+                size: 20.sp,
+                color:
+                    _isSelectionMode ? kPrimaryColor : const Color(0xFFA1A1AA),
+              ),
+            ),
+          ),
+
           // Layout toggle button
           SizedBox(width: 8.w),
           GestureDetector(
@@ -438,6 +629,60 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
               ),
             ),
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSelectionToolbar(
+    PlayerProfileGamesState state,
+    int selectedVisibleCount,
+  ) {
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 8.h),
+      decoration: BoxDecoration(
+        color: const Color(0xFF09090B),
+        borderRadius: BorderRadius.circular(12.br),
+        border: Border.all(color: const Color(0xFF27272A)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              selectedVisibleCount == 0
+                  ? 'No games selected'
+                  : '$selectedVisibleCount selected',
+              style: AppTypography.textSmMedium.copyWith(
+                color:
+                    selectedVisibleCount == 0
+                        ? const Color(0xFFA1A1AA)
+                        : kWhiteColor,
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          SizedBox(width: 8.w),
+          _SelectionChipButton(
+            label: 'Loaded',
+            onTap: () => _selectLoadedGames(state.filteredGames),
+          ),
+          SizedBox(width: 6.w),
+          _SelectionChipButton(
+            label: _isLoadingAllPagesForSelection ? 'Loading...' : 'All',
+            onTap:
+                _isLoadingAllPagesForSelection
+                    ? null
+                    : () => _selectAllFilteredGames(state),
+          ),
+          SizedBox(width: 6.w),
+          _SelectionChipButton(
+            label: 'Add',
+            icon: Icons.library_add_rounded,
+            highlighted: true,
+            onTap: () => _addSelectedToLibrary(state),
+          ),
+          SizedBox(width: 6.w),
+          _SelectionChipButton(label: 'Clear', onTap: _clearSelection),
         ],
       ),
     );
@@ -492,7 +737,6 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
       ),
     );
   }
-
 
   Widget _buildContentSliver(
     PlayerProfileGamesState state,
@@ -669,20 +913,37 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
               ),
             );
           } else {
+            final isSelected = _selectedGameIds.contains(game.gameId);
+            Widget gameCard = LiveGamebaseSearchGameCard(
+              game: game,
+              allGames: games,
+              gameIndex: globalIndex,
+              animationIndex: items.length,
+              showRound: true,
+              showSwipeHint: showHint,
+              showGamebaseButton: false,
+              playerProfileDataSource: widget.dataSource,
+              onAdd:
+                  _isSelectionMode
+                      ? () => _toggleGameSelection(game.gameId)
+                      : () => _showAddToFolderSheet(game),
+              onTap:
+                  _isSelectionMode
+                      ? () => _toggleGameSelection(game.gameId)
+                      : null,
+            );
+
+            if (_isSelectionMode) {
+              gameCard = _buildSelectableCardWrapper(
+                gameCard,
+                isSelected: isSelected,
+              );
+            }
+
             items.add(
               Padding(
                 padding: EdgeInsets.only(bottom: isLast ? 0 : 12.h),
-                child: LiveGamebaseSearchGameCard(
-                  game: game,
-                  allGames: games,
-                  gameIndex: globalIndex,
-                  animationIndex: items.length,
-                  showRound: true,
-                  showSwipeHint: showHint,
-                  showGamebaseButton: false,
-                  playerProfileDataSource: widget.dataSource,
-                  onAdd: () => _showAddToFolderSheet(game),
-                ),
+                child: gameCard,
               ),
             );
           }
@@ -745,6 +1006,68 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
       },
       pinnedIds: const [],
       onPinToggle: (_) {},
+    );
+  }
+
+  Widget _buildSelectableCardWrapper(Widget child, {required bool isSelected}) {
+    return Stack(
+      children: [
+        AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
+          curve: Curves.easeOutCubic,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14.br),
+            border: Border.all(
+              color:
+                  isSelected
+                      ? kPrimaryColor.withValues(alpha: 0.85)
+                      : Colors.transparent,
+              width: 1.6,
+            ),
+            boxShadow:
+                isSelected
+                    ? [
+                      BoxShadow(
+                        color: kPrimaryColor.withValues(alpha: 0.22),
+                        blurRadius: 18,
+                        spreadRadius: 0.5,
+                        offset: const Offset(0, 2),
+                      ),
+                    ]
+                    : null,
+          ),
+          child: child,
+        ),
+        Positioned(
+          top: 8.h,
+          right: 8.w,
+          child: Container(
+            width: 22.w,
+            height: 22.h,
+            decoration: BoxDecoration(
+              color:
+                  isSelected
+                      ? kPrimaryColor
+                      : kBlack2Color.withValues(alpha: 0.95),
+              shape: BoxShape.circle,
+              border: Border.all(
+                color:
+                    isSelected
+                        ? kWhiteColor
+                        : kWhiteColor.withValues(alpha: 0.24),
+                width: 1,
+              ),
+            ),
+            child: Icon(
+              isSelected
+                  ? Icons.check_rounded
+                  : Icons.radio_button_unchecked_rounded,
+              size: 14.sp,
+              color: kWhiteColor,
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -1058,6 +1381,69 @@ class _PinnedHeaderDelegate extends SliverPersistentHeaderDelegate {
     return minExtent != oldDelegate.minExtent ||
         maxExtent != oldDelegate.maxExtent ||
         child != oldDelegate.child;
+  }
+}
+
+class _SelectionChipButton extends StatelessWidget {
+  const _SelectionChipButton({
+    required this.label,
+    required this.onTap,
+    this.icon,
+    this.highlighted = false,
+  });
+
+  final String label;
+  final VoidCallback? onTap;
+  final IconData? icon;
+  final bool highlighted;
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = onTap != null;
+    return GestureDetector(
+      onTap: onTap,
+      child: Opacity(
+        opacity: enabled ? 1 : 0.55,
+        child: Container(
+          padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 6.h),
+          decoration: BoxDecoration(
+            color:
+                highlighted
+                    ? kPrimaryColor.withValues(alpha: 0.18)
+                    : kWhiteColor.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(8.br),
+            border: Border.all(
+              color:
+                  highlighted
+                      ? kPrimaryColor.withValues(alpha: 0.42)
+                      : kWhiteColor.withValues(alpha: 0.12),
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (icon != null) ...[
+                Icon(
+                  icon,
+                  size: 14.sp,
+                  color: highlighted ? kPrimaryColor : kWhiteColor,
+                ),
+                SizedBox(width: 4.w),
+              ],
+              Text(
+                label,
+                style: AppTypography.textXsMedium.copyWith(
+                  color:
+                      highlighted
+                          ? kPrimaryColor
+                          : kWhiteColor.withValues(alpha: 0.9),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 

@@ -2562,8 +2562,7 @@ class PlayerProfileGamesNotifier
     String playerId, {
     required int pageNumber,
     required int pageSize,
-  }
-  ) async {
+  }) async {
     final filter = state.filter;
     final color = _colorToApi(filter.color) ?? 'all';
     final timeControl = _timeControlToApi(filter.timeControl);
@@ -2985,6 +2984,34 @@ class PlayerProfileGamesNotifier
         error: state.allGames.isEmpty ? e.toString() : state.error,
       );
     }
+  }
+
+  /// Loads all remaining TWIC pages for the current filter/search state.
+  /// Returns the final loaded game count in memory.
+  Future<int> loadAllRemainingPages({int maxPages = 250}) async {
+    if (_playerKey.source != PlayerProfileDataSource.twic) {
+      return state.allGames.length;
+    }
+
+    var pages = 0;
+    var previousCount = state.allGames.length;
+
+    while (mounted &&
+        state.hasMorePages &&
+        pages < maxPages &&
+        !state.isLoading &&
+        !state.isLoadingMore) {
+      await loadMore();
+      pages += 1;
+      final currentCount = state.allGames.length;
+      if (currentCount <= previousCount) {
+        // Defensive break to avoid spinning if backend pagination stalls.
+        break;
+      }
+      previousCount = currentCount;
+    }
+
+    return state.allGames.length;
   }
 
   void applyFilter(GameFilter filter) {

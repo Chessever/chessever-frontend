@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -297,114 +296,112 @@ class _FilterChip extends StatelessWidget {
   }
 }
 
-/// Rating range input fields.
+/// Rating range slider.
 class _RatingRangeInputs extends HookConsumerWidget {
   const _RatingRangeInputs({
     required this.minRating,
     required this.maxRating,
   });
 
+  static const double _absMin = 1000;
+  static const double _absMax = 2800;
+  static const int _step = 50;
+
   final int? minRating;
   final int? maxRating;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final minController = useTextEditingController(
-      text: minRating?.toString() ?? '',
-    );
-    final maxController = useTextEditingController(
-      text: maxRating?.toString() ?? '',
+    final range = useState(
+      RangeValues(
+        (minRating?.toDouble() ?? _absMin).clamp(_absMin, _absMax),
+        (maxRating?.toDouble() ?? _absMax).clamp(_absMin, _absMax),
+      ),
     );
 
-    // Update controllers when external state changes
+    // Sync when external state changes (e.g. "Clear all")
     useEffect(() {
-      final minText = minRating?.toString() ?? '';
-      final maxText = maxRating?.toString() ?? '';
-      if (minController.text != minText) minController.text = minText;
-      if (maxController.text != maxText) maxController.text = maxText;
+      final newStart =
+          (minRating?.toDouble() ?? _absMin).clamp(_absMin, _absMax);
+      final newEnd =
+          (maxRating?.toDouble() ?? _absMax).clamp(_absMin, _absMax);
+      if (range.value.start != newStart || range.value.end != newEnd) {
+        range.value = RangeValues(newStart, newEnd);
+      }
       return null;
     }, [minRating, maxRating]);
 
-    void updateRatings() {
-      final min = int.tryParse(minController.text);
-      final max = int.tryParse(maxController.text);
-      ref.read(gamebaseExplorerProvider.notifier).setRatingRange(min, max);
-    }
+    final isDefault =
+        range.value.start == _absMin && range.value.end == _absMax;
 
-    return Row(
+    return Column(
       children: [
-        Expanded(
-          child: _RatingTextField(
-            controller: minController,
-            hint: 'Min (e.g. 2000)',
-            onSubmitted: (_) => updateRatings(),
-          ),
-        ),
-        Padding(
-          padding: EdgeInsets.symmetric(horizontal: 12.w),
-          child: Text(
-            '—',
-            style: AppTypography.textSmRegular.copyWith(
-              color: kSecondaryTextColor,
+        // Labels
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              range.value.start.round().toString(),
+              style: AppTypography.textSmMedium.copyWith(
+                color: isDefault ? kSecondaryTextColor : kWhiteColor,
+              ),
             ),
-          ),
+            if (!isDefault)
+              GestureDetector(
+                onTap: () {
+                  range.value = const RangeValues(_absMin, _absMax);
+                  ref
+                      .read(gamebaseExplorerProvider.notifier)
+                      .setRatingRange(null, null);
+                },
+                child: Text(
+                  'Reset',
+                  style: AppTypography.textXsMedium.copyWith(
+                    color: kSecondaryTextColor,
+                  ),
+                ),
+              ),
+            Text(
+              range.value.end.round().toString(),
+              style: AppTypography.textSmMedium.copyWith(
+                color: isDefault ? kSecondaryTextColor : kWhiteColor,
+              ),
+            ),
+          ],
         ),
-        Expanded(
-          child: _RatingTextField(
-            controller: maxController,
-            hint: 'Max (e.g. 2800)',
-            onSubmitted: (_) => updateRatings(),
+        SizedBox(height: 4.h),
+        // Slider
+        SliderTheme(
+          data: SliderThemeData(
+            activeTrackColor: kWhiteColor.withOpacity(isDefault ? 0.15 : 0.4),
+            inactiveTrackColor: kWhiteColor.withOpacity(0.08),
+            thumbColor: kWhiteColor,
+            overlayColor: kWhiteColor.withOpacity(0.08),
+            thumbShape: RoundSliderThumbShape(enabledThumbRadius: 7.sp),
+            trackHeight: 3.h,
+            rangeThumbShape:
+                RoundRangeSliderThumbShape(enabledThumbRadius: 7.sp),
+            rangeTrackShape: const RoundedRectRangeSliderTrackShape(),
+          ),
+          child: RangeSlider(
+            values: range.value,
+            min: _absMin,
+            max: _absMax,
+            divisions: ((_absMax - _absMin) / _step).round(),
+            onChanged: (values) {
+              range.value = values;
+            },
+            onChangeEnd: (values) {
+              final min =
+                  values.start == _absMin ? null : values.start.round();
+              final max = values.end == _absMax ? null : values.end.round();
+              ref
+                  .read(gamebaseExplorerProvider.notifier)
+                  .setRatingRange(min, max);
+            },
           ),
         ),
       ],
-    );
-  }
-}
-
-/// Individual rating text field.
-class _RatingTextField extends StatelessWidget {
-  const _RatingTextField({
-    required this.controller,
-    required this.hint,
-    required this.onSubmitted,
-  });
-
-  final TextEditingController controller;
-  final String hint;
-  final ValueChanged<String> onSubmitted;
-
-  @override
-  Widget build(BuildContext context) {
-    return TextField(
-      controller: controller,
-      keyboardType: TextInputType.number,
-      inputFormatters: [
-        FilteringTextInputFormatter.digitsOnly,
-        LengthLimitingTextInputFormatter(4),
-      ],
-      style: AppTypography.textSmRegular.copyWith(color: kWhiteColor),
-      decoration: InputDecoration(
-        hintText: hint,
-        hintStyle: AppTypography.textSmRegular.copyWith(
-          color: kSecondaryTextColor.withOpacity(0.5),
-        ),
-        filled: true,
-        fillColor: kBlack3Color,
-        contentPadding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 10.h),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8.br),
-          borderSide: BorderSide.none,
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8.br),
-          borderSide: BorderSide.none,
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8.br),
-          borderSide: BorderSide(color: kWhiteColor.withOpacity(0.25), width: 1),
-        ),
-      ),
-      onSubmitted: onSubmitted,
     );
   }
 }
