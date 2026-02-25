@@ -2,14 +2,21 @@ import 'package:dartchess/dartchess.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 import 'package:chessever2/providers/engine_settings_provider.dart';
+import 'package:chessever2/repository/lichess/cloud_eval/cloud_eval.dart';
 import 'package:chessever2/screens/chessboard/provider/stockfish_singleton.dart';
 
 class ExplorerPvLine {
   final double? evaluation;
   final int? mate;
   final List<String> sanMoves;
+  final List<String> uciMoves;
 
-  const ExplorerPvLine({this.evaluation, this.mate, this.sanMoves = const []});
+  const ExplorerPvLine({
+    this.evaluation,
+    this.mate,
+    this.sanMoves = const [],
+    this.uciMoves = const [],
+  });
 
   bool get isEmpty => sanMoves.isEmpty;
 
@@ -144,9 +151,8 @@ class ExplorerEvalNotifier extends StateNotifier<ExplorerEvalState> {
 
             final lines = <ExplorerPvLine>[];
             for (final pv in pvs) {
-              final cp = pv.cp / 100.0;
-              final normalizedEval = _normalizeEval(cp, normalizedFen);
-              final normalizedMate = _normalizeMate(pv.mate, normalizedFen);
+              final normalizedEval = _pvToWhiteEval(pv, normalizedFen);
+              final normalizedMate = _pvToWhiteMate(pv, normalizedFen);
               final sanMoves = _uciToSanMoves(normalizedFen, pv.moves);
 
               lines.add(
@@ -157,6 +163,7 @@ class ExplorerEvalNotifier extends StateNotifier<ExplorerEvalState> {
                           ? normalizedMate
                           : null,
                   sanMoves: sanMoves,
+                  uciMoves: pv.moves.trim().split(RegExp(r'\s+')),
                 ),
               );
             }
@@ -194,19 +201,16 @@ class ExplorerEvalNotifier extends StateNotifier<ExplorerEvalState> {
           final lines = <ExplorerPvLine>[];
           for (final pv in result.pvs) {
             if (pv.moves.trim().isEmpty) continue;
-            final cp = pv.cp / 100.0;
-            // Result PVs are already normalized to white's perspective by
-            // StockfishSingleton._normalizeToWhitePerspective, so don't
-            // double-normalize.
-            final normalizedMate =
-                (pv.mate != null && pv.mate != 0) ? pv.mate : null;
+            final normalizedEval = _pvToWhiteEval(pv, normalizedFen);
+            final normalizedMate = _pvToWhiteMate(pv, normalizedFen);
             final sanMoves = _uciToSanMoves(normalizedFen, pv.moves);
 
             lines.add(
               ExplorerPvLine(
-                evaluation: cp,
+                evaluation: normalizedEval,
                 mate: normalizedMate,
                 sanMoves: sanMoves,
+                uciMoves: pv.moves.trim().split(RegExp(r'\s+')),
               ),
             );
           }
@@ -356,6 +360,22 @@ class ExplorerEvalNotifier extends StateNotifier<ExplorerEvalState> {
     final isWhiteToMove =
         fen.split(' ').length > 1 ? fen.split(' ')[1] == 'w' : true;
     return isWhiteToMove ? mate : -mate;
+  }
+
+  /// Normalize a PV score to White's perspective.
+  ///
+  /// `Pv.whitePerspective == false` means score is in side-to-move
+  /// perspective and must be normalized using FEN turn.
+  double _pvToWhiteEval(Pv pv, String fen) {
+    final cpEval = pv.cp / 100.0;
+    return pv.whitePerspective ? cpEval : _normalizeEval(cpEval, fen);
+  }
+
+  /// Normalize a mate score to White's perspective.
+  int? _pvToWhiteMate(Pv pv, String fen) {
+    final mate = pv.mate;
+    if (mate == null || mate == 0) return null;
+    return pv.whitePerspective ? mate : _normalizeMate(mate, fen);
   }
 
   @override

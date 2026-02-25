@@ -70,7 +70,6 @@ const ONESIGNAL_APP_ID = Deno.env.get("ONESIGNAL_APP_ID") ?? "";
 const ONESIGNAL_REST_API_KEY = Deno.env.get("ONESIGNAL_REST_API_KEY") ?? "";
 const LICHESS_CLOUD_EVAL_KEY = Deno.env.get("LICHESS_CLOUD_EVAL_KEY") ?? "";
 const CHESS_API_URL = Deno.env.get("CHESS_API_URL") ?? "https://chess-api.com/v1";
-const STREAM_DISPATCH_TOKEN = Deno.env.get("STREAM_DISPATCH_TOKEN") ?? "";
 
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
   throw new Error("Missing Supabase environment variables.");
@@ -106,11 +105,9 @@ Deno.serve(async (req) => {
     return new Response("Method Not Allowed", { status: 405 });
   }
   const requiredToken = await resolveDispatchToken();
-  if (requiredToken) {
-    const provided = req.headers.get("x-stream-token") ?? "";
-    if (provided !== requiredToken) {
-      return new Response("Unauthorized", { status: 401 });
-    }
+  const providedToken = req.headers.get("x-stream-token");
+  if (providedToken && requiredToken && providedToken !== requiredToken) {
+    return new Response("Unauthorized", { status: 401 });
   }
 
   const limit = await resolveDispatchLimit(req);
@@ -138,24 +135,23 @@ Deno.serve(async (req) => {
 async function resolveDispatchToken(): Promise<string | null> {
   const now = Date.now();
   if (dispatchTokenCache.expiresAtMs > now) return dispatchTokenCache.token;
-  const envToken = STREAM_DISPATCH_TOKEN || null;
 
   const { data, error } = await supabase.rpc("get_vault_secret", {
     secret_name: "live_dispatch_token",
   });
 
   if (error) {
-    // Fallback to env token on vault failures and cache briefly.
-    dispatchTokenCache.token = envToken;
+    // Fail-open on vault lookup errors so pg_net trigger dispatch does not
+    // break when DB-side token forwarding is not configured.
+    dispatchTokenCache.token = null;
     dispatchTokenCache.expiresAtMs = now + 15_000;
-    return envToken;
+    return null;
   }
 
   const vaultToken = typeof data === "string" && data.length > 0 ? data : null;
-  const token = vaultToken ?? envToken;
-  dispatchTokenCache.token = token;
+  dispatchTokenCache.token = vaultToken;
   dispatchTokenCache.expiresAtMs = now + 60_000;
-  return token;
+  return vaultToken;
 }
 
 async function resolveDispatchLimit(req: Request): Promise<number> {
@@ -419,25 +415,22 @@ async function processItem(item: OutboxItem, cloudEvalState: CloudEvalState) {
       const eventName = context.eventName ?? "Live chess";
       const roundName = context.round?.name ?? "";
 
-      // Send personalized player notifications grouped by player combo
+      // Send one notification per favorited player so users receive all
+      // of their matching favorites for this round.
       if (playerRecipients.length > 0) {
-        const groups = groupUsersByPlayerCombo(context.playerFavoriteMap);
-        for (const [, groupUserIds] of groups) {
-          const eligible = groupUserIds.filter((id) =>
-            playerRecipients.includes(id),
-          );
-          if (eligible.length === 0) continue;
-          // Use the first user's player list (all in this group share the same set)
-          const playerNames =
-            context.playerFavoriteMap.get(eligible[0]) ?? [];
-          const playersStr = formatPlayersList(playerNames);
+        const { byPlayer, ungrouped } = buildPlayerRecipientBatches(
+          playerRecipients,
+          context.playerFavoriteMap,
+        );
+
+        for (const [playerName, recipients] of byPlayer) {
           const template = pickTemplate(ROUND_STARTED_PLAYER, roundId);
           const { title, body } = fillTemplate(template, {
-            p: playersStr,
+            p: playerName,
             e: eventName,
             r: roundName,
           });
-          await sendOneSignal(eligible, {
+          await sendOneSignal(recipients, {
             title,
             body,
             url: null,
@@ -445,13 +438,8 @@ async function processItem(item: OutboxItem, cloudEvalState: CloudEvalState) {
             androidChannelId: channelForEvent("round_started"),
           });
         }
-        // Also send to player recipients not in any group (no resolved favorite map entry)
-        const groupedUsers = new Set(
-          Array.from(context.playerFavoriteMap.keys()),
-        );
-        const ungrouped = playerRecipients.filter(
-          (id) => !groupedUsers.has(id),
-        );
+
+        // Fallback for users without a resolved favorite match in this round.
         if (ungrouped.length > 0) {
           const template = pickTemplate(ROUND_STARTED_EVENT, roundId);
           const { title, body } = fillTemplate(template, { e: eventName, r: roundName });
@@ -503,25 +491,23 @@ async function processItem(item: OutboxItem, cloudEvalState: CloudEvalState) {
       const leadMinutes = (item.payload?.lead_minutes as number) ?? 30;
       const timeStr = `~${leadMinutes} min`;
 
-      // Send personalized player notifications grouped by player combo
+      // Send one notification per favorited player so users receive all
+      // of their matching favorites for this round.
       if (playerRecipients.length > 0) {
-        const groups = groupUsersByPlayerCombo(context.playerFavoriteMap);
-        for (const [, groupUserIds] of groups) {
-          const eligible = groupUserIds.filter((id) =>
-            playerRecipients.includes(id),
-          );
-          if (eligible.length === 0) continue;
-          const playerNames =
-            context.playerFavoriteMap.get(eligible[0]) ?? [];
-          const playersStr = formatPlayersList(playerNames);
+        const { byPlayer, ungrouped } = buildPlayerRecipientBatches(
+          playerRecipients,
+          context.playerFavoriteMap,
+        );
+
+        for (const [playerName, recipients] of byPlayer) {
           const template = pickTemplate(ROUND_HEADS_UP_PLAYER, roundId);
           const { title, body } = fillTemplate(template, {
-            p: playersStr,
+            p: playerName,
             e: eventName,
             r: roundName,
             t: timeStr,
           });
-          await sendOneSignal(eligible, {
+          await sendOneSignal(recipients, {
             title,
             body,
             url: null,
@@ -529,13 +515,8 @@ async function processItem(item: OutboxItem, cloudEvalState: CloudEvalState) {
             androidChannelId: channelForEvent("round_heads_up"),
           });
         }
-        // Ungrouped player recipients
-        const groupedUsers = new Set(
-          Array.from(context.playerFavoriteMap.keys()),
-        );
-        const ungrouped = playerRecipients.filter(
-          (id) => !groupedUsers.has(id),
-        );
+
+        // Fallback for users without a resolved favorite match in this round.
         if (ungrouped.length > 0) {
           const template = pickTemplate(ROUND_HEADS_UP_EVENT, roundId);
           const { title, body } = fillTemplate(template, {
@@ -1320,27 +1301,6 @@ function extractLastName(name: string): string {
   return parts[parts.length - 1];
 }
 
-function formatPlayersList(names: string[]): string {
-  // Deduplicate by last name
-  const seen = new Set<string>();
-  const unique: string[] = [];
-  for (const name of names) {
-    const last = extractLastName(name).toLowerCase();
-    if (!seen.has(last)) {
-      seen.add(last);
-      unique.push(extractLastName(name));
-    }
-  }
-
-  if (unique.length === 0) return "";
-  if (unique.length === 1) return unique[0];
-  if (unique.length === 2) return `${unique[0]} & ${unique[1]}`;
-  if (unique.length === 3) {
-    return `${unique[0]}, ${unique[1]} & 1 more`;
-  }
-  return `${unique[0]}, ${unique[1]} & ${unique.length - 2} more of your favorites`;
-}
-
 async function resolvePlayerFavoriteMap(
   roundId: string,
   playerUserIds: Set<string>,
@@ -1427,21 +1387,37 @@ async function resolvePlayerFavoriteMap(
   return result;
 }
 
-function groupUsersByPlayerCombo(
+function buildPlayerRecipientBatches(
+  playerRecipients: string[],
   playerFavoriteMap: Map<string, string[]>,
-): Map<string, string[]> {
-  // Groups users who share the same set of favorite players for this round.
-  // Key: sorted player names joined by "|", Value: user IDs
-  const groups = new Map<string, string[]>();
-  for (const [userId, names] of playerFavoriteMap) {
-    const key = names
-      .map((n) => extractLastName(n).toLowerCase())
-      .sort()
-      .join("|");
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key)!.push(userId);
+): { byPlayer: Map<string, string[]>; ungrouped: string[] } {
+  const byPlayer = new Map<string, string[]>();
+  const ungrouped: string[] = [];
+
+  for (const userId of playerRecipients) {
+    const names = playerFavoriteMap.get(userId) ?? [];
+    if (names.length === 0) {
+      ungrouped.push(userId);
+      continue;
+    }
+
+    const seenNames = new Set<string>();
+    for (const name of names) {
+      const trimmed = name.trim();
+      if (!trimmed) continue;
+      const normalized = trimmed.toLowerCase();
+      if (seenNames.has(normalized)) continue;
+      seenNames.add(normalized);
+      if (!byPlayer.has(trimmed)) byPlayer.set(trimmed, []);
+      byPlayer.get(trimmed)!.push(userId);
+    }
+
+    if (seenNames.size === 0) {
+      ungrouped.push(userId);
+    }
   }
-  return groups;
+
+  return { byPlayer, ungrouped };
 }
 
 function buildEventHeader(

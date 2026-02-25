@@ -50,8 +50,10 @@ class StockfishSingleton {
   final Map<String, _EvalJob> _pendingJobs = {}; // Keyed by cacheKey
   bool _isProcessing = false; // Flag to prevent concurrent processing
   int _queueGeneration = 0; // Incremented on cancelAll to signal stale loops
-  bool _isInitializing = false; // Lock to prevent concurrent engine initialization
-  bool _previousJobCompleted = true; // Track if last job ended via bestmove (engine idle)
+  bool _isInitializing =
+      false; // Lock to prevent concurrent engine initialization
+  bool _previousJobCompleted =
+      true; // Track if last job ended via bestmove (engine idle)
   Completer<void>? _initCompleter; // Completer for waiting on initialization
   static const int _maxQueueSize = 60; // Soft cap to avoid backlog
   static const int _maxBackgroundBacklog =
@@ -128,12 +130,16 @@ class StockfishSingleton {
     // Deduplicate: only coalesce with jobs from the SAME owner
     // Different owners get separate jobs to ensure results go to the correct provider
     if (_currentJob?.key == jobKey) {
-      debugPrint('📋 QUEUE: Coalesced with CURRENT job for $fen (owner: $ownerId)');
+      debugPrint(
+        '📋 QUEUE: Coalesced with CURRENT job for $fen (owner: $ownerId)',
+      );
       return _currentJob!.completer.future;
     }
     final pending = _pendingJobs[jobKey];
     if (pending != null) {
-      debugPrint('📋 QUEUE: Coalesced with PENDING job for $fen (owner: $ownerId)');
+      debugPrint(
+        '📋 QUEUE: Coalesced with PENDING job for $fen (owner: $ownerId)',
+      );
       return pending.completer.future;
     }
 
@@ -404,7 +410,9 @@ class StockfishSingleton {
       while (_jobQueue.isNotEmpty) {
         // If cancelAllEvaluations was called, this generation is stale — exit.
         if (_queueGeneration != myGeneration) {
-          debugPrint('🛑 QUEUE PROCESSOR: Generation changed, exiting stale loop');
+          debugPrint(
+            '🛑 QUEUE PROCESSOR: Generation changed, exiting stale loop',
+          );
           return;
         }
         final job = _jobQueue.removeAt(0);
@@ -458,7 +466,9 @@ class StockfishSingleton {
       int finalDepth = 0;
       bool evaluationComplete = false;
       int lastPvUpdateDepthReported = 0;
-      DateTime? lastInfoReceived; // Track when we last received info from engine
+      String lastPvSnapshotSignature = '';
+      DateTime?
+      lastInfoReceived; // Track when we last received info from engine
 
       final isDynamicSearch = searchDuration != null;
       debugPrint(
@@ -519,12 +529,25 @@ class StockfishSingleton {
 
             if (cpMatch != null) {
               final cp = int.parse(cpMatch.group(1)!);
-              final pv = Pv(moves: moves, cp: cp, isMate: false);
+              // Raw Stockfish info lines are from side-to-move perspective.
+              final pv = Pv(
+                moves: moves,
+                cp: cp,
+                isMate: false,
+                whitePerspective: false,
+              );
               pvs[multipvIndex - 1] = pv;
             } else if (mateMatch != null) {
               final mate = int.parse(mateMatch.group(1)!);
               final cp = mate.sign * 100000; // Convert mate to large cp value
-              final pv = Pv(moves: moves, cp: cp, isMate: true, mate: mate);
+              // Raw Stockfish info lines are from side-to-move perspective.
+              final pv = Pv(
+                moves: moves,
+                cp: cp,
+                isMate: true,
+                mate: mate,
+                whitePerspective: false,
+              );
               pvs[multipvIndex - 1] = pv;
             }
 
@@ -533,15 +556,25 @@ class StockfishSingleton {
             // non-PV info lines (currmove, stats) don't consume
             // lastPvUpdateDepthReported — which would prevent the real
             // PV lines at the same depth from being emitted.
-            if (job.onPvUpdate != null &&
-                finalDepth > lastPvUpdateDepthReported) {
+            if (job.onPvUpdate != null) {
               final snapshot = pvs
                   .where((pv) => pv.moves.isNotEmpty)
                   .toList(growable: false);
               if (snapshot.isNotEmpty) {
+                final snapshotSignature = snapshot
+                    .map((pv) => '${pv.cp}|${pv.mate}|${pv.moves}')
+                    .join('||');
+                final depthAdvanced = finalDepth > lastPvUpdateDepthReported;
+                final changedAtSameDepth =
+                    finalDepth == lastPvUpdateDepthReported &&
+                    snapshotSignature != lastPvSnapshotSignature;
+                if (!depthAdvanced && !changedAtSameDepth) {
+                  return;
+                }
                 try {
                   job.onPvUpdate!(snapshot, finalDepth);
                   lastPvUpdateDepthReported = finalDepth;
+                  lastPvSnapshotSignature = snapshotSignature;
                 } catch (_) {
                   // Ignore callback errors
                 }
@@ -673,7 +706,8 @@ class StockfishSingleton {
       } else {
         // Deep searches with multiPV take exponentially longer per depth level.
         // depth 15: ~10s, depth 25: ~60s, depth 40: ~300s, depth 50+: ~600s
-        final timeoutSeconds = depth <= 15 ? 15 : (depth <= 25 ? 60 : (depth <= 40 ? 300 : 600));
+        final timeoutSeconds =
+            depth <= 15 ? 15 : (depth <= 25 ? 60 : (depth <= 40 ? 300 : 600));
         safetyTimeout = Duration(seconds: timeoutSeconds);
       }
 
@@ -682,26 +716,38 @@ class StockfishSingleton {
 
       // At high depths with multiPV, a single depth level can take 5-10+ seconds
       // with no intermediate output. Scale the stall threshold accordingly.
-      final stallThreshold = Duration(milliseconds: depth <= 20 ? 1200 : (depth <= 40 ? 3500 : 8000));
+      final stallThreshold = Duration(
+        milliseconds: depth <= 20 ? 1200 : (depth <= 40 ? 3500 : 8000),
+      );
 
       stallDetector = Timer.periodic(const Duration(milliseconds: 500), (_) {
         if (lastInfoReceived != null) {
-          final timeSinceLastInfo = DateTime.now().difference(lastInfoReceived!);
+          final timeSinceLastInfo = DateTime.now().difference(
+            lastInfoReceived!,
+          );
           if (timeSinceLastInfo > stallThreshold) {
-            debugPrint('⚠️ STOCKFISH STALL DETECTED: No response for ${timeSinceLastInfo.inSeconds}s');
+            debugPrint(
+              '⚠️ STOCKFISH STALL DETECTED: No response for ${timeSinceLastInfo.inSeconds}s',
+            );
             stallDetector?.cancel();
 
             // Force completion with current best results
             if (!completer.isCompleted) {
-              final filteredPvs = pvs.where((pv) => pv.moves.isNotEmpty).toList(growable: false);
-              final normalizedPvs = _normalizeToWhitePerspective(filteredPvs, fen);
+              final filteredPvs = pvs
+                  .where((pv) => pv.moves.isNotEmpty)
+                  .toList(growable: false);
+              final normalizedPvs = _normalizeToWhitePerspective(
+                filteredPvs,
+                fen,
+              );
               final result = EnhancedCloudEval(
                 fen: fen,
                 knodes: knodes,
                 depth: finalDepth > 0 ? finalDepth : 1,
-                pvs: normalizedPvs.isEmpty
-                    ? [Pv(moves: '', cp: 0)]
-                    : normalizedPvs,
+                pvs:
+                    normalizedPvs.isEmpty
+                        ? [Pv(moves: '', cp: 0)]
+                        : normalizedPvs,
                 isCancelled: false,
                 requestedMultiPv: job.multiPV,
               );
@@ -722,19 +768,27 @@ class StockfishSingleton {
         await completer.future.timeout(
           safetyTimeout,
           onTimeout: () {
-            debugPrint('⚠️ STOCKFISH TIMEOUT: Evaluation took too long (${safetyTimeout.inSeconds}s)');
+            debugPrint(
+              '⚠️ STOCKFISH TIMEOUT: Evaluation took too long (${safetyTimeout.inSeconds}s)',
+            );
             stallDetector?.cancel();
 
             // Complete with whatever we have so far
-            final filteredPvs = pvs.where((pv) => pv.moves.isNotEmpty).toList(growable: false);
-            final normalizedPvs = _normalizeToWhitePerspective(filteredPvs, fen);
+            final filteredPvs = pvs
+                .where((pv) => pv.moves.isNotEmpty)
+                .toList(growable: false);
+            final normalizedPvs = _normalizeToWhitePerspective(
+              filteredPvs,
+              fen,
+            );
             final result = EnhancedCloudEval(
               fen: fen,
               knodes: knodes,
               depth: finalDepth > 0 ? finalDepth : 1,
-              pvs: normalizedPvs.isEmpty
-                  ? [Pv(moves: '', cp: 0)]
-                  : normalizedPvs,
+              pvs:
+                  normalizedPvs.isEmpty
+                      ? [Pv(moves: '', cp: 0)]
+                      : normalizedPvs,
               isCancelled: false,
               requestedMultiPv: job.multiPV,
             );
@@ -809,7 +863,9 @@ class StockfishSingleton {
   }
 
   Future<void> _waitUntilReady({
-    Duration timeout = const Duration(seconds: 3), // Slightly longer timeout for Android
+    Duration timeout = const Duration(
+      seconds: 3,
+    ), // Slightly longer timeout for Android
   }) async {
     if (_engine == null) {
       throw StateError('Stockfish engine is not initialized');
@@ -849,9 +905,10 @@ class StockfishSingleton {
     _engine!.state.addListener(listener);
 
     // Use longer timeout on Android
-    final effectiveTimeout = _isAndroid
-        ? Duration(milliseconds: timeout.inMilliseconds + 1000)
-        : timeout;
+    final effectiveTimeout =
+        _isAndroid
+            ? Duration(milliseconds: timeout.inMilliseconds + 1000)
+            : timeout;
 
     timer = Timer(effectiveTimeout, () {
       if (!completer.isCompleted) {
@@ -907,7 +964,9 @@ class StockfishSingleton {
   Future<void> _safeDisposeEngine() async {
     if (_engine == null) return;
 
-    debugPrint('🧹 STOCKFISH: Disposing engine (state: ${_engine!.state.value})');
+    debugPrint(
+      '🧹 STOCKFISH: Disposing engine (state: ${_engine!.state.value})',
+    );
 
     // Cancel any active subscription first
     try {
@@ -931,7 +990,9 @@ class StockfishSingleton {
     try {
       _engine!.dispose();
     } catch (e) {
-      debugPrint('⚠️ STOCKFISH: Dispose error (expected on some platforms): $e');
+      debugPrint(
+        '⚠️ STOCKFISH: Dispose error (expected on some platforms): $e',
+      );
     }
     _engine = null;
     _lastDisposeTime = DateTime.now();
@@ -939,7 +1000,9 @@ class StockfishSingleton {
     // CRITICAL: Wait for native cleanup based on platform
     // Android's native Stockfish library is very strict about single instances
     final waitTime = _minDisposalWait;
-    debugPrint('⏳ STOCKFISH: Waiting ${waitTime.inMilliseconds}ms for native cleanup...');
+    debugPrint(
+      '⏳ STOCKFISH: Waiting ${waitTime.inMilliseconds}ms for native cleanup...',
+    );
     await Future.delayed(waitTime);
 
     debugPrint('✅ STOCKFISH: Engine disposed and cleanup complete');
@@ -953,7 +1016,9 @@ class StockfishSingleton {
       final minWait = _minDisposalWait;
       if (timeSinceDispose < minWait) {
         final remainingWait = minWait - timeSinceDispose;
-        debugPrint('⏳ STOCKFISH: Waiting ${remainingWait.inMilliseconds}ms before creating new instance...');
+        debugPrint(
+          '⏳ STOCKFISH: Waiting ${remainingWait.inMilliseconds}ms before creating new instance...',
+        );
         await Future.delayed(remainingWait);
       }
     }
@@ -1002,7 +1067,9 @@ class StockfishSingleton {
           if (_engine == null ||
               _engine!.state.value == StockfishState.error ||
               _engine!.state.value == StockfishState.disposed) {
-            debugPrint('🔄 STOCKFISH: Reinitializing engine (state: ${_engine?.state.value}, attempt: $attempt/$maxAttempts)');
+            debugPrint(
+              '🔄 STOCKFISH: Reinitializing engine (state: ${_engine?.state.value}, attempt: $attempt/$maxAttempts)',
+            );
 
             // Properly dispose old engine first with platform-specific timing
             if (_engine != null) {
@@ -1022,19 +1089,22 @@ class StockfishSingleton {
           );
           debugPrint('$st');
 
-          final isMultipleInstanceError = e.toString().contains('Multiple instances');
+          final isMultipleInstanceError = e.toString().contains(
+            'Multiple instances',
+          );
 
           if (isMultipleInstanceError) {
-            debugPrint('🔄 STOCKFISH: Multiple instance error detected on Android');
+            debugPrint(
+              '🔄 STOCKFISH: Multiple instance error detected on Android',
+            );
             // Force null without calling dispose (it's already in bad state)
             _engine = null;
             _lastDisposeTime = DateTime.now();
 
             // Aggressive backoff for Android multiple instance errors
             // Each retry waits longer: 800ms, 1200ms, 1600ms, 2000ms, 2400ms
-            final waitMs = _isAndroid
-                ? 800 + (attempt * 400)
-                : 300 + (attempt * 200);
+            final waitMs =
+                _isAndroid ? 800 + (attempt * 400) : 300 + (attempt * 200);
             debugPrint('⏳ STOCKFISH: Waiting ${waitMs}ms before retry...');
             await Future.delayed(Duration(milliseconds: waitMs));
           } else {
@@ -1045,7 +1115,9 @@ class StockfishSingleton {
 
           // Give up after max attempts
           if (attempt >= maxAttempts) {
-            debugPrint('❌ STOCKFISH: Max attempts ($maxAttempts) reached, giving up');
+            debugPrint(
+              '❌ STOCKFISH: Max attempts ($maxAttempts) reached, giving up',
+            );
             _initCompleter?.completeError(e, st);
             rethrow;
           }
@@ -1121,9 +1193,10 @@ class StockfishSingleton {
     });
     try {
       _engine!.stdin = 'isready';
-      final timeout = _isAndroid
-          ? const Duration(milliseconds: 800)
-          : const Duration(milliseconds: 500);
+      final timeout =
+          _isAndroid
+              ? const Duration(milliseconds: 800)
+              : const Duration(milliseconds: 500);
       await completer.future.timeout(timeout);
     } catch (e) {
       debugPrint('⚠️ STOCKFISH READY WAIT FAILED: $e');
@@ -1238,7 +1311,9 @@ class StockfishSingleton {
       await Future.delayed(const Duration(milliseconds: 500));
     }
 
-    debugPrint('✅ STOCKFISH: Force recovery complete, engine will reinitialize on next request');
+    debugPrint(
+      '✅ STOCKFISH: Force recovery complete, engine will reinitialize on next request',
+    );
   }
 
   /// Check if the engine is currently in a healthy state
@@ -1297,7 +1372,8 @@ class _EvalJob {
   final int multiPV;
   final Function(int depth, int knodes)? onDepthUpdate;
   final Function(List<Pv> pvs, int depth)? onPvUpdate;
-  final bool isCurrentPosition; // True if this is the user's currently viewed position
+  final bool
+  isCurrentPosition; // True if this is the user's currently viewed position
   final bool allowCache;
   final String? ownerId; // Owner ID for per-provider job isolation
 }
