@@ -681,20 +681,6 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
             ),
           ),
 
-          // Explorer button
-          if (_resolveGamebasePlayerId() != null)
-            IconButton(
-              iconSize: 24.ic,
-              padding: EdgeInsets.zero,
-              onPressed: _openExplorer,
-              icon: Icon(
-                Icons.account_tree_outlined,
-                size: 22.ic,
-                color: kWhiteColor,
-              ),
-              tooltip: 'Opening Explorer',
-            ),
-
           // Favorite button
           GestureDetector(
             onTap: _toggleFavorite,
