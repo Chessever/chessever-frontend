@@ -19,6 +19,9 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:chessever2/utils/twic_player_enrichment.dart';
 
+final playerGamesSelectionModeProvider =
+    StateProvider.family<bool, PlayerProfileKey>((ref, key) => false);
+
 /// Key to identify a player - can use either fideId OR playerName
 /// This allows viewing player profiles even without a FIDE ID
 class PlayerProfileKey {

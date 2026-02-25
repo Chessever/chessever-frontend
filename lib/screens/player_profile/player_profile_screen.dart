@@ -10,6 +10,7 @@ import 'package:chessever2/screens/player_profile/provider/player_profile_provid
 import 'package:chessever2/screens/player_profile/tabs/player_about_tab.dart';
 import 'package:chessever2/screens/player_profile/tabs/player_events_tab.dart';
 import 'package:chessever2/screens/player_profile/tabs/player_games_tab.dart';
+import 'package:chessever2/screens/player_profile/widgets/save_to_library_sheet.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
@@ -582,6 +583,7 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
                           name: effectiveName,
                           title: effectiveTitle,
                         ),
+                        playerKey: activePlayerKey,
                       ),
                   ],
                 ),
@@ -833,7 +835,10 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
     );
   }
 
-  Widget _buildActionButtons({required String displayName}) {
+  Widget _buildActionButtons({
+    required String displayName,
+    required PlayerProfileKey playerKey,
+  }) {
     final horizontalPadding = ResponsiveHelper.adaptive(
       phone: 20.sp,
       tablet: 32.sp,
@@ -863,21 +868,20 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
               title: 'Save to Library',
               subtitle: 'Games collection',
               onTap: () {
-                _handleTabSelection(
-                  PlayerProfileTab.values.indexOf(PlayerProfileTab.games),
-                );
-                // We'll optionally show a nice message to select games.
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      'Select games to add them to your library.',
-                      style: AppTypography.textSmMedium.copyWith(
-                        color: kWhiteColor,
-                      ),
-                    ),
-                    backgroundColor: kBlack2Color.withValues(alpha: 0.95),
-                    behavior: SnackBarBehavior.floating,
-                  ),
+                showSaveToLibrarySheet(
+                  context: context,
+                  ref: ref,
+                  playerKey: playerKey,
+                  onSelectSpecific: () {
+                    _handleTabSelection(
+                      PlayerProfileTab.values.indexOf(PlayerProfileTab.games),
+                    );
+                    ref
+                        .read(
+                          playerGamesSelectionModeProvider(playerKey).notifier,
+                        )
+                        .state = true;
+                  },
                 );
               },
             ),

@@ -57,7 +57,6 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
   Timer? _debounceTimer;
-  bool _isSelectionMode = false;
   bool _isLoadingAllPagesForSelection = false;
   final Set<String> _selectedGameIds = <String>{};
 
@@ -129,33 +128,8 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
     }
   }
 
-  Future<void> _toggleSelectionMode() async {
-    if (!_isSelectionMode) {
-      final hasPremium = await requirePremiumGuard(context, ref);
-      if (!hasPremium) return;
-    }
-
-    HapticFeedbackService.buttonPress();
-    final enable = !_isSelectionMode;
-
-    if (enable &&
-        ref.read(gamesListViewModeProvider) != GamesListViewMode.gamesCard) {
-      ref
-          .read(boardSettingsProviderNew.notifier)
-          .setGamesListViewModeIndex(GamesListViewMode.gamesCard.index);
-    }
-
-    setState(() {
-      _isSelectionMode = enable;
-      if (!enable) {
-        _selectedGameIds.clear();
-        _isLoadingAllPagesForSelection = false;
-      }
-    });
-  }
-
   void _toggleGameSelection(String gameId) {
-    if (!_isSelectionMode) return;
+    if (!ref.read(playerGamesSelectionModeProvider(_playerKey))) return;
     HapticFeedback.lightImpact();
     setState(() {
       if (_selectedGameIds.contains(gameId)) {
@@ -313,6 +287,22 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
   Widget build(BuildContext context) {
     super.build(context);
 
+    final isSelectionMode = ref.watch(
+      playerGamesSelectionModeProvider(_playerKey),
+    );
+
+    // Listen for selection mode cancellation to clear local selections
+    ref.listen(playerGamesSelectionModeProvider(_playerKey), (previous, next) {
+      if (previous == true && next == false) {
+        if (mounted) {
+          setState(() {
+            _selectedGameIds.clear();
+            _isLoadingAllPagesForSelection = false;
+          });
+        }
+      }
+    });
+
     final state = ref.watch(playerProfileGamesKeyProvider(_playerKey));
     final viewMode = ref.watch(gamesListViewModeProvider);
     final horizontalPadding = ResponsiveHelper.adaptive(
@@ -322,7 +312,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
     final headerHeight =
         88.h +
         (state.hasActiveFilters ? 36.h : 0) +
-        (_isSelectionMode ? 72.h : 0);
+        (isSelectionMode ? 72.h : 0);
 
     // Watch event data for event-grouped display
     final eventCardsAsync =
@@ -359,13 +349,23 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
             flexibleSpace: FlexibleSpaceBar(
               background: Align(
                 alignment: Alignment.bottomCenter,
-                child: _buildStickyHeader(state, horizontalPadding),
+                child: _buildStickyHeader(
+                  state,
+                  horizontalPadding,
+                  isSelectionMode,
+                ),
               ),
             ),
           ),
 
           // Content
-          _buildContentSliver(state, viewMode, eventCardsAsync, eventsAsync),
+          _buildContentSliver(
+            state,
+            viewMode,
+            eventCardsAsync,
+            eventsAsync,
+            isSelectionMode,
+          ),
 
           // Bottom padding
           SliverToBoxAdapter(child: SizedBox(height: 24.h)),
@@ -401,6 +401,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
   Widget _buildStickyHeader(
     PlayerProfileGamesState state,
     double horizontalPadding,
+    bool isSelectionMode,
   ) {
     final selectedVisibleCount =
         state.filteredGames
@@ -421,7 +422,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
             ),
             child: _buildSearchBar(state),
           ),
-          if (_isSelectionMode)
+          if (isSelectionMode)
             Padding(
               padding: EdgeInsets.fromLTRB(
                 horizontalPadding,
@@ -558,53 +559,6 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
                         ),
                       ),
                     ),
-                ],
-              ),
-            ),
-          ),
-
-          // Multi-select / bulk-add mode button
-          SizedBox(width: 8.w),
-          GestureDetector(
-            onTap: _toggleSelectionMode,
-            child: Container(
-              height: searchBarHeight,
-              padding: EdgeInsets.symmetric(horizontal: 12.w),
-              decoration: BoxDecoration(
-                color:
-                    _isSelectionMode
-                        ? kPrimaryColor.withValues(alpha: 0.18)
-                        : const Color(0xFF09090B),
-                borderRadius: BorderRadius.circular(12.br),
-                border: Border.all(
-                  color:
-                      _isSelectionMode
-                          ? kPrimaryColor.withValues(alpha: 0.55)
-                          : const Color(0xFF27272A),
-                ),
-              ),
-              child: Row(
-                children: [
-                  Icon(
-                    _isSelectionMode
-                        ? Icons.checklist_rounded
-                        : Icons.library_add_outlined,
-                    size: 18.sp,
-                    color:
-                        _isSelectionMode
-                            ? kPrimaryColor
-                            : const Color(0xFFA1A1AA),
-                  ),
-                  SizedBox(width: 6.w),
-                  Text(
-                    _isSelectionMode ? 'Cancel' : 'Select',
-                    style: AppTypography.textSmMedium.copyWith(
-                      color:
-                          _isSelectionMode
-                              ? kPrimaryColor
-                              : const Color(0xFFA1A1AA),
-                    ),
-                  ),
                 ],
               ),
             ),
@@ -753,6 +707,34 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
                       ),
                     ),
                   ),
+                  SizedBox(width: 8.w),
+                  GestureDetector(
+                    onTap: () {
+                      HapticFeedback.lightImpact();
+                      ref
+                          .read(
+                            playerGamesSelectionModeProvider(
+                              _playerKey,
+                            ).notifier,
+                          )
+                          .state = false;
+                    },
+                    child: Container(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 10.w,
+                        vertical: 8.h,
+                      ),
+                      decoration: BoxDecoration(
+                        color: kWhiteColor.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(10.br),
+                      ),
+                      child: Icon(
+                        Icons.close_rounded,
+                        size: 16.sp,
+                        color: kWhiteColor.withValues(alpha: 0.7),
+                      ),
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -817,6 +799,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
     GamesListViewMode viewMode,
     AsyncValue<Map<String, GroupEventCardModel>> eventCardsAsync,
     AsyncValue<List<PlayerEventData>> eventsAsync,
+    bool isSelectionMode,
   ) {
     final isTwicBlockingLoading =
         widget.dataSource == PlayerProfileDataSource.twic && state.isLoading;
@@ -998,16 +981,16 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
               showGamebaseButton: false,
               playerProfileDataSource: widget.dataSource,
               onAdd:
-                  _isSelectionMode
+                  isSelectionMode
                       ? () => _toggleGameSelection(game.gameId)
                       : () => _showAddToFolderSheet(game),
               onTap:
-                  _isSelectionMode
+                  isSelectionMode
                       ? () => _toggleGameSelection(game.gameId)
                       : null,
             );
 
-            if (_isSelectionMode) {
+            if (isSelectionMode) {
               gameCard = _buildSelectableCardWrapper(
                 gameCard,
                 isSelected: isSelected,
