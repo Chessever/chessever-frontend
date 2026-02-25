@@ -120,8 +120,10 @@ class ExplorerEvalNotifier extends StateNotifier<ExplorerEvalState> {
     final isSameFen = state.fen == normalizedFen;
     final allowDepthDecrease = !isSameFen;
 
-    // Cancel any prior job for this owner.
-    StockfishSingleton().cancelEvaluationsForOwner(_ownerId);
+    // Do not fire-and-forget owner cancellation here: it races with the new
+    // request and can cancel the freshly enqueued job, causing indefinite
+    // "..." loading states. StockfishSingleton already cancels stale current
+    // jobs for `isCurrentPosition: true` requests.
 
     if (!isSameFen) {
       final tracker = ref.read(engineDepthTrackerProvider.notifier);

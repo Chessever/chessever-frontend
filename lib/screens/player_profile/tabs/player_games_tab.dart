@@ -320,6 +320,18 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
       }
     });
 
+    ref.listen(playerProfileGamesKeyProvider(_playerKey), (previous, next) {
+      if (!isSelectionMode || !mounted || _selectedGameIds.isEmpty) return;
+      final visibleIds = next.filteredGames.map((game) => game.gameId).toSet();
+      final retained = _selectedGameIds.where(visibleIds.contains).toSet();
+      if (retained.length == _selectedGameIds.length) return;
+      setState(() {
+        _selectedGameIds
+          ..clear()
+          ..addAll(retained);
+      });
+    });
+
     final state = ref.watch(playerProfileGamesKeyProvider(_playerKey));
     final viewMode = ref.watch(gamesListViewModeProvider);
     final horizontalPadding = ResponsiveHelper.adaptive(
@@ -327,9 +339,9 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
       tablet: 24.w,
     );
     final headerHeight =
-        68.h +
+        58.h +
         (state.hasActiveFilters ? 36.h : 0) +
-        (isSelectionMode ? 72.h : 0);
+        (isSelectionMode ? 108.h : 0);
 
     // Watch event data for event-grouped display
     final eventCardsAsync =
@@ -356,6 +368,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
         ),
         slivers: [
           SliverAppBar(
+            primary: false,
             floating: true,
             snap: true,
             pinned: false,
@@ -445,7 +458,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
                 horizontalPadding,
                 0,
                 horizontalPadding,
-                state.hasActiveFilters ? 4.h : 6.h,
+                state.hasActiveFilters ? 2.h : 4.h,
               ),
               child: _buildSelectionToolbar(state, selectedVisibleCount),
             ),
@@ -615,6 +628,17 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
     PlayerProfileGamesState state,
     int selectedVisibleCount,
   ) {
+    final title =
+        selectedVisibleCount == 0
+            ? 'Choose games to save'
+            : '$selectedVisibleCount selected';
+    final subtitle =
+        _isLoadingAllPagesForSelection
+            ? 'Preparing your filtered game list...'
+            : state.hasActiveFilters
+            ? 'Selection follows current filters and search'
+            : 'Tap games manually or use quick select';
+
     return SingleMotionBuilder(
       motion: const CupertinoMotion.bouncy(),
       value: 1.0,
@@ -637,120 +661,102 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
                   ),
                 ],
               ),
-              child: Row(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          selectedVisibleCount == 0
-                              ? 'Select games'
-                              : '$selectedVisibleCount selected',
-                          style: AppTypography.textSmMedium.copyWith(
-                            color:
-                                selectedVisibleCount == 0
-                                    ? kWhiteColor.withValues(alpha: 0.5)
-                                    : kPrimaryColor,
-                            fontWeight: FontWeight.bold,
-                          ),
-                          overflow: TextOverflow.ellipsis,
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              title,
+                              style: AppTypography.textSmMedium.copyWith(
+                                color:
+                                    selectedVisibleCount == 0
+                                        ? kWhiteColor.withValues(alpha: 0.75)
+                                        : kPrimaryColor,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            SizedBox(height: 2.h),
+                            Text(
+                              subtitle,
+                              style: AppTypography.textXsRegular.copyWith(
+                                color: kWhiteColor.withValues(alpha: 0.58),
+                              ),
+                              maxLines: 2,
+                            ),
+                          ],
                         ),
-                        if (selectedVisibleCount > 0) ...[
-                          SizedBox(height: 2.h),
-                          Text(
-                            'Ready to save to library',
-                            style: AppTypography.textXsRegular.copyWith(
-                              color: kWhiteColor.withValues(alpha: 0.5),
-                            ),
+                      ),
+                      SizedBox(width: 8.w),
+                      GestureDetector(
+                        onTap: () {
+                          HapticFeedback.lightImpact();
+                          ref
+                              .read(
+                                playerGamesSelectionModeProvider(
+                                  _playerKey,
+                                ).notifier,
+                              )
+                              .state = false;
+                        },
+                        child: Container(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: 10.w,
+                            vertical: 8.h,
                           ),
-                        ],
-                      ],
-                    ),
-                  ),
-                  SizedBox(width: 12.w),
-                  _SelectionChipButton(
-                    label:
-                        _isLoadingAllPagesForSelection
-                            ? 'Loading...'
-                            : 'Select All',
-                    onTap:
-                        _isLoadingAllPagesForSelection
-                            ? null
-                            : () => _selectAllFilteredGames(state),
-                  ),
-                  SizedBox(width: 8.w),
-                  GestureDetector(
-                    onTap:
-                        selectedVisibleCount > 0
-                            ? () => _addSelectedToLibrary(state)
-                            : null,
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 200),
-                      padding: EdgeInsets.symmetric(
-                        horizontal: 16.w,
-                        vertical: 8.h,
-                      ),
-                      decoration: BoxDecoration(
-                        color:
-                            selectedVisibleCount > 0
-                                ? kPrimaryColor
-                                : kWhiteColor.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(10.br),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.library_add_rounded,
+                          decoration: BoxDecoration(
+                            color: kWhiteColor.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(10.br),
+                          ),
+                          child: Icon(
+                            Icons.close_rounded,
                             size: 16.sp,
-                            color:
-                                selectedVisibleCount > 0
-                                    ? kWhiteColor
-                                    : kWhiteColor.withValues(alpha: 0.5),
+                            color: kWhiteColor.withValues(alpha: 0.8),
                           ),
-                          SizedBox(width: 6.w),
-                          Text(
-                            'Add selected',
-                            style: AppTypography.textSmBold.copyWith(
-                              color:
-                                  selectedVisibleCount > 0
-                                      ? kWhiteColor
-                                      : kWhiteColor.withValues(alpha: 0.5),
-                            ),
-                          ),
-                        ],
+                        ),
                       ),
-                    ),
+                    ],
                   ),
-                  SizedBox(width: 8.w),
-                  GestureDetector(
-                    onTap: () {
-                      HapticFeedback.lightImpact();
-                      ref
-                          .read(
-                            playerGamesSelectionModeProvider(
-                              _playerKey,
-                            ).notifier,
-                          )
-                          .state = false;
-                    },
-                    child: Container(
-                      padding: EdgeInsets.symmetric(
-                        horizontal: 10.w,
-                        vertical: 8.h,
+                  SizedBox(height: 10.h),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _SelectionActionButton(
+                          label:
+                              _isLoadingAllPagesForSelection
+                                  ? 'Selecting...'
+                                  : (state.hasActiveFilters
+                                      ? 'Select filtered'
+                                      : 'Select all'),
+                          icon: Icons.select_all_rounded,
+                          onTap:
+                              _isLoadingAllPagesForSelection
+                                  ? null
+                                  : () => _selectAllFilteredGames(state),
+                        ),
                       ),
-                      decoration: BoxDecoration(
-                        color: kWhiteColor.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(10.br),
+                      SizedBox(width: 8.w),
+                      Expanded(
+                        child: _SelectionActionButton(
+                          label:
+                              selectedVisibleCount > 0
+                                  ? 'Add selected'
+                                  : 'Select first',
+                          icon: Icons.library_add_rounded,
+                          emphasized: selectedVisibleCount > 0,
+                          onTap:
+                              selectedVisibleCount > 0
+                                  ? () => _addSelectedToLibrary(state)
+                                  : null,
+                        ),
                       ),
-                      child: Icon(
-                        Icons.close_rounded,
-                        size: 16.sp,
-                        color: kWhiteColor.withValues(alpha: 0.7),
-                      ),
-                    ),
+                    ],
                   ),
                 ],
               ),
@@ -1426,32 +1432,68 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
   }
 }
 
-class _SelectionChipButton extends StatelessWidget {
-  const _SelectionChipButton({required this.label, required this.onTap});
+class _SelectionActionButton extends StatelessWidget {
+  const _SelectionActionButton({
+    required this.label,
+    required this.icon,
+    required this.onTap,
+    this.emphasized = false,
+  });
 
   final String label;
+  final IconData icon;
   final VoidCallback? onTap;
+  final bool emphasized;
 
   @override
   Widget build(BuildContext context) {
     final enabled = onTap != null;
     return GestureDetector(
       onTap: onTap,
-      child: Opacity(
-        opacity: enabled ? 1 : 0.55,
-        child: Container(
-          padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 6.h),
-          decoration: BoxDecoration(
-            color: kWhiteColor.withValues(alpha: 0.08),
-            borderRadius: BorderRadius.circular(8.br),
-            border: Border.all(color: kWhiteColor.withValues(alpha: 0.12)),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 9.h),
+        decoration: BoxDecoration(
+          color:
+              enabled
+                  ? (emphasized
+                      ? kPrimaryColor
+                      : kWhiteColor.withValues(alpha: 0.1))
+                  : kWhiteColor.withValues(alpha: 0.06),
+          borderRadius: BorderRadius.circular(10.br),
+          border: Border.all(
+            color:
+                enabled
+                    ? (emphasized
+                        ? kPrimaryColor.withValues(alpha: 0.8)
+                        : kWhiteColor.withValues(alpha: 0.18))
+                    : kWhiteColor.withValues(alpha: 0.08),
           ),
-          child: Text(
-            label,
-            style: AppTypography.textXsMedium.copyWith(
-              color: kWhiteColor.withValues(alpha: 0.9),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              icon,
+              size: 16.sp,
+              color:
+                  enabled ? kWhiteColor : kWhiteColor.withValues(alpha: 0.45),
             ),
-          ),
+            SizedBox(width: 6.w),
+            Flexible(
+              child: Text(
+                label,
+                style: AppTypography.textSmBold.copyWith(
+                  color:
+                      enabled
+                          ? kWhiteColor
+                          : kWhiteColor.withValues(alpha: 0.45),
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
         ),
       ),
     );
