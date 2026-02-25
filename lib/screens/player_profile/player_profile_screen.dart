@@ -1,6 +1,10 @@
+import 'dart:async';
+
 import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/screens/favorites/favorite_players_provider.dart';
 import 'package:chessever2/providers/player_backfill_provider.dart';
+import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
+import 'package:chessever2/screens/gamebase/models/models.dart';
 import 'package:chessever2/screens/player_profile/player_profile_data_source.dart';
 import 'package:chessever2/screens/player_profile/provider/player_profile_provider.dart';
 import 'package:chessever2/screens/player_profile/tabs/player_about_tab.dart';
@@ -86,11 +90,15 @@ class PlayerProfileScreen extends ConsumerStatefulWidget {
 
 class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
     with SingleTickerProviderStateMixin {
+  static const String _startingFen =
+      'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+
   late PageController _pageController;
   late AnimationController _favoriteAnimationController;
   late Animation<double> _favoriteScaleAnimation;
   late PlayerProfileDataSource _currentDataSource;
   String? _currentGamebasePlayerId;
+  bool _didPrefetchExplorerRoot = false;
 
   @override
   void initState() {
@@ -234,29 +242,99 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
         ?.gamebasePlayerId;
   }
 
+  PlayerGender _mapSexToGender(String? sex) {
+    final normalized = sex?.trim().toLowerCase();
+    if (normalized == null || normalized.isEmpty) return PlayerGender.male;
+    if (normalized == 'f' || normalized.startsWith('female')) {
+      return PlayerGender.female;
+    }
+    return PlayerGender.male;
+  }
+
+  GamebasePlayer _buildExplorerFallbackPlayer(String id) {
+    final cached = ref.read(playerByIdProvider(id)).valueOrNull;
+    if (cached != null) return cached;
+
+    final activePlayerKey = PlayerProfileKey(
+      fideId: widget.fideId,
+      playerName: widget.playerName,
+      source: _currentDataSource,
+      gamebasePlayerId: _currentGamebasePlayerId,
+    );
+    final activeProfile =
+        ref.read(playerProfileDataKeyProvider(activePlayerKey)).valueOrNull;
+    final fallbackChessPlayer =
+        ref.read(chessPlayerByFideIdProvider(widget.fideId)).valueOrNull;
+
+    final name =
+        (activeProfile?.name.trim().isNotEmpty ?? false)
+            ? activeProfile!.name.trim()
+            : ((fallbackChessPlayer?.name.trim().isNotEmpty ?? false)
+                ? fallbackChessPlayer!.name.trim()
+                : widget.playerName);
+
+    final fed =
+        (activeProfile?.federation?.trim().isNotEmpty ?? false)
+            ? activeProfile!.federation!.trim()
+            : ((widget.federation?.trim().isNotEmpty ?? false)
+                ? widget.federation!.trim()
+                : (fallbackChessPlayer?.country?.trim() ?? ''));
+
+    final fideId = widget.fideId?.toString() ?? '';
+
+    final title =
+        (activeProfile?.title?.trim().isNotEmpty ?? false)
+            ? activeProfile!.title?.trim()
+            : ((widget.title?.trim().isNotEmpty ?? false)
+                ? widget.title?.trim()
+                : fallbackChessPlayer?.title?.trim());
+
+    return GamebasePlayer(
+      id: id,
+      fideId: fideId,
+      name: name,
+      gender: _mapSexToGender(activeProfile?.sex),
+      fed: fed,
+      title: title,
+      ratingClassical: activeProfile?.classicalRating ?? widget.rating,
+      ratingRapid: activeProfile?.rapidRating,
+      ratingBlitz: activeProfile?.blitzRating,
+    );
+  }
+
   Future<void> _openExplorer() async {
     HapticFeedbackService.buttonPress();
     final uuid = _resolveGamebasePlayerId();
     if (uuid == null) return;
 
-    try {
-      final player = await ref.read(playerByIdProvider(uuid).future);
-      if (player == null || !mounted) return;
+    _prefetchExplorerRootForPlayer(uuid);
 
-      Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => GamebaseExplorerScreen(initialPlayer: player),
-        ),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Could not load player data.'),
-          duration: Duration(seconds: 2),
-        ),
-      );
-    }
+    final initialPlayer = _buildExplorerFallbackPlayer(uuid);
+    if (!mounted) return;
+
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => GamebaseExplorerScreen(initialPlayer: initialPlayer),
+      ),
+    );
+
+    // Warm/update cache in background without blocking navigation.
+    unawaited(ref.read(playerByIdProvider(uuid).future));
+  }
+
+  void _prefetchExplorerRootForPlayer(String playerId) {
+    if (_didPrefetchExplorerRoot) return;
+    _didPrefetchExplorerRoot = true;
+
+    unawaited(() async {
+      try {
+        await ref
+            .read(gamebaseRepositoryProvider)
+            .getMoveAggregates(fen: _startingFen, playerId: playerId);
+      } catch (_) {
+        // Best-effort prefetch only; never block UI on this path.
+      }
+    }());
   }
 
   Future<void> _toggleFavorite() async {
@@ -304,6 +382,16 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
   Widget build(BuildContext context) {
     final selectedTab = ref.watch(selectedPlayerProfileTabProvider);
     final hasPlayerExplorer = _resolveGamebasePlayerId() != null;
+    if (hasPlayerExplorer && !_didPrefetchExplorerRoot) {
+      final playerId = _resolveGamebasePlayerId();
+      if (playerId != null && playerId.isNotEmpty) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          _prefetchExplorerRootForPlayer(playerId);
+        });
+      }
+    }
+
     final activePlayerKey = PlayerProfileKey(
       fideId: widget.fideId,
       playerName: widget.playerName,

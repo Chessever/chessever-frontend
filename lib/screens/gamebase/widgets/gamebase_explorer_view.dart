@@ -97,7 +97,7 @@ class GamebaseExplorerView extends HookConsumerWidget {
     GamebaseExplorerState gamebaseState,
     Position currentPosition,
   ) {
-    if (gamebaseState.isLoading) {
+    if (gamebaseState.isLoading && gamebaseState.moveAggregates.isEmpty) {
       return const Center(child: CircularProgressIndicator(color: kWhiteColor));
     }
 

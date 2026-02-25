@@ -111,6 +111,7 @@ class ExplorerEvalNotifier extends StateNotifier<ExplorerEvalState> {
       EngineComponent.evaluationGauge,
     );
     final requestId = ++_requestId;
+    final isSameFen = state.fen == normalizedFen;
 
     // Cancel any prior job for this owner.
     StockfishSingleton().cancelEvaluationsForOwner(_ownerId);
@@ -118,10 +119,12 @@ class ExplorerEvalNotifier extends StateNotifier<ExplorerEvalState> {
     state = state.copyWith(
       fen: normalizedFen,
       isEvaluating: true,
-      depth: 0,
-      clearEval: true,
-      clearMate: true,
-      pvLines: const [],
+      // Keep previous depth/eval/PVs when retrying the same position to avoid
+      // UI flicker (depth text jumping back to 0 and panel collapsing).
+      depth: isSameFen ? state.depth : 0,
+      clearEval: !isSameFen,
+      clearMate: !isSameFen,
+      pvLines: isSameFen ? state.pvLines : const [],
     );
 
     StockfishSingleton()
@@ -169,16 +172,17 @@ class ExplorerEvalNotifier extends StateNotifier<ExplorerEvalState> {
             }
 
             final first = lines.first;
+            final resolvedDepth = depth > 0 ? depth : state.depth;
             state = state.copyWith(
               evaluation: first.evaluation,
               mate: first.mate,
-              depth: depth,
+              depth: resolvedDepth,
               pvLines: lines,
               isEvaluating: true,
               clearMate: first.mate == null,
             );
             _updateDepthTracking(
-              depth: depth,
+              depth: resolvedDepth,
               knodes: 0,
               fen: normalizedFen,
               allowDecrease: true,
@@ -240,12 +244,13 @@ class ExplorerEvalNotifier extends StateNotifier<ExplorerEvalState> {
               context: 'opening explorer final',
             );
           } else {
+            final hasStableData = state.pvLines.isNotEmpty;
             state = state.copyWith(
-              depth: 0,
+              depth: state.depth,
               isEvaluating: false,
-              pvLines: const [],
-              clearEval: true,
-              clearMate: true,
+              pvLines: hasStableData ? state.pvLines : const [],
+              clearEval: !hasStableData,
+              clearMate: !hasStableData,
             );
           }
         })
