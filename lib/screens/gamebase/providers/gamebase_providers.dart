@@ -5,6 +5,7 @@ import 'package:chess/chess.dart' hide State;
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'dart:async';
+import 'dart:collection';
 
 import 'gamebase_explorer_state.dart';
 
@@ -52,6 +53,10 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
   /// Monotonic token to ignore stale responses
   int _fetchToken = 0;
   static final RegExp _uciRegex = RegExp(r'^[a-h][1-8][a-h][1-8][qrbn]?$');
+  static const Duration _memoryCacheTtl = Duration(minutes: 10);
+  static const int _memoryCacheMaxEntries = 300;
+  final LinkedHashMap<String, _PositionAggregateCacheEntry> _positionCache =
+      LinkedHashMap<String, _PositionAggregateCacheEntry>();
 
   Chess get chess {
     _chess ??= Chess();
@@ -60,10 +65,6 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
 
   void _scheduleFetch([Duration delay = const Duration(milliseconds: 200)]) {
     _debounceTimer?.cancel();
-
-    // Immediately reflect loading state so the UI doesn't flash "No games found"
-    // during the debounce window.
-    state = state.copyWith(isLoading: true, error: null);
 
     if (delay == Duration.zero) {
       Future.microtask(_fetchMoveAggregates);
@@ -88,6 +89,28 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
     final fetchId = ++_fetchToken;
     final requestedFen = state.currentFen;
 
+    // Only send the explored line up to the current position.
+    // moveHistory may contain "future" moves when the user navigates back.
+    final exploredMoves =
+        state.currentMoveIndex >= 0
+            ? state.moveHistory.sublist(0, state.currentMoveIndex + 1)
+            : const <String>[];
+
+    final cacheKey = _buildCacheKey(
+      fen: requestedFen,
+      exploredMoves: exploredMoves,
+      filters: state.filters,
+    );
+    final cached = _getFreshCacheEntry(cacheKey);
+    if (cached != null) {
+      state = state.copyWith(
+        moveAggregates: cached,
+        isLoading: false,
+        error: null,
+      );
+      return;
+    }
+
     state = state.copyWith(isLoading: true, error: null);
 
     try {
@@ -102,13 +125,6 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
           state.filters.playerIds.isNotEmpty
               ? state.filters.playerIds.first
               : null;
-
-      // Only send the explored line up to the current position.
-      // moveHistory may contain "future" moves when the user navigates back.
-      final exploredMoves =
-          state.currentMoveIndex >= 0
-              ? state.moveHistory.sublist(0, state.currentMoveIndex + 1)
-              : const <String>[];
 
       final response = await repository.getMoveAggregates(
         fen: state.currentFen,
@@ -129,6 +145,7 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
       // Sort by total games descending
       aggregates.sort((a, b) => b.total.compareTo(a.total));
 
+      _putCacheEntry(cacheKey, aggregates);
       state = state.copyWith(moveAggregates: aggregates, isLoading: false);
 
       // Opportunistically prefetch a few likely next positions to make the
@@ -144,11 +161,7 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
       }
     } catch (e) {
       if (fetchId != _fetchToken) return;
-      state = state.copyWith(
-        isLoading: false,
-        error: e.toString(),
-        moveAggregates: [],
-      );
+      state = state.copyWith(isLoading: false, error: e.toString());
     }
   }
 
@@ -160,14 +173,11 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
   }) {
     // Keep this conservative: it's a perf win, but we don't want to DDOS our own API.
     final maxPrefetch = _canPrefetchWithActiveFilters() ? 2 : 3;
+    final filters = state.filters;
     final timeControlFilter =
-        state.filters.timeControls.isNotEmpty
-            ? state.filters.timeControls.first
-            : null;
+        filters.timeControls.isNotEmpty ? filters.timeControls.first : null;
     final playerIdFilter =
-        state.filters.playerIds.isNotEmpty
-            ? state.filters.playerIds.first
-            : null;
+        filters.playerIds.isNotEmpty ? filters.playerIds.first : null;
 
     for (final a in aggregates.take(maxPrefetch)) {
       try {
@@ -188,13 +198,25 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
         // Fire-and-forget; cache fill only.
         unawaited(() async {
           try {
-            await repository.getMoveAggregates(
+            final response = await repository.getMoveAggregates(
               fen: nextFen,
               moves: nextMoves,
               timeControl: timeControlFilter,
-              minRating: state.filters.minRating,
-              maxRating: state.filters.maxRating,
+              minRating: filters.minRating,
+              maxRating: filters.maxRating,
               playerId: playerIdFilter,
+            );
+            final prefetched = response.data.moves
+                .where((m) => _isLegalUciForFen(m.uci, nextFen))
+                .toList(growable: false)
+              ..sort((a, b) => b.total.compareTo(a.total));
+            _putCacheEntry(
+              _buildCacheKey(
+                fen: nextFen,
+                exploredMoves: nextMoves,
+                filters: filters,
+              ),
+              prefetched,
             );
           } catch (_) {
             // Ignore prefetch failures.
@@ -479,7 +501,7 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
         moveHistory: clampedMoves,
         currentMoveIndex: newIndex,
       );
-      _scheduleFetch();
+      _scheduleFetch(Duration.zero);
     } catch (e) {
       debugPrint('[GamebaseExplorer] setPosition error: $e');
       state = state.copyWith(error: 'Invalid FEN: $fen');
@@ -558,6 +580,62 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
     _debounceTimer?.cancel();
     super.dispose();
   }
+
+  String _buildCacheKey({
+    required String fen,
+    required List<String> exploredMoves,
+    required GamebaseFilters filters,
+  }) {
+    final timeControl =
+        filters.timeControls.isNotEmpty
+            ? filters.timeControls.first.name
+            : 'any';
+    final playerId =
+        filters.playerIds.isNotEmpty ? filters.playerIds.first : 'any';
+    final minRating = filters.minRating?.toString() ?? 'any';
+    final maxRating = filters.maxRating?.toString() ?? 'any';
+
+    return [
+      fen,
+      exploredMoves.join(','),
+      timeControl,
+      playerId,
+      minRating,
+      maxRating,
+    ].join('|');
+  }
+
+  List<MoveAggregate>? _getFreshCacheEntry(String key) {
+    final entry = _positionCache[key];
+    if (entry == null) return null;
+    if (DateTime.now().difference(entry.cachedAt) > _memoryCacheTtl) {
+      _positionCache.remove(key);
+      return null;
+    }
+    return entry.moves;
+  }
+
+  void _putCacheEntry(String key, List<MoveAggregate> moves) {
+    if (moves.isEmpty) return;
+    _positionCache.remove(key);
+    _positionCache[key] = _PositionAggregateCacheEntry(
+      moves: List<MoveAggregate>.unmodifiable(moves),
+      cachedAt: DateTime.now(),
+    );
+    while (_positionCache.length > _memoryCacheMaxEntries) {
+      _positionCache.remove(_positionCache.keys.first);
+    }
+  }
+}
+
+class _PositionAggregateCacheEntry {
+  const _PositionAggregateCacheEntry({
+    required this.moves,
+    required this.cachedAt,
+  });
+
+  final List<MoveAggregate> moves;
+  final DateTime cachedAt;
 }
 
 /// Main provider for Gamebase explorer state.
