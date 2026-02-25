@@ -45,7 +45,8 @@ class EcoOpenings {
     'A': EcoCategory(
       letter: 'A',
       name: 'Flank Openings',
-      description: 'Openings that don\'t begin with 1.e4 or 1.d4, plus Queen\'s Pawn openings without an early c4.',
+      description:
+          'Openings that don\'t begin with 1.e4 or 1.d4, plus Queen\'s Pawn openings without an early c4.',
       keyOpenings: [
         'English Opening (1.c4)',
         'Réti Opening (1.Nf3)',
@@ -54,12 +55,14 @@ class EcoOpenings {
         'Benoni Defense',
         'Budapest Gambit',
       ],
-      characteristics: 'Hypermodern and flexible setups, fianchettoed bishops, delayed central tension',
+      characteristics:
+          'Hypermodern and flexible setups, fianchettoed bishops, delayed central tension',
     ),
     'B': EcoCategory(
       letter: 'B',
       name: 'Semi-Open Games',
-      description: 'Black responds to 1.e4 with moves other than 1...e5. Asymmetrical pawn structures.',
+      description:
+          'Black responds to 1.e4 with moves other than 1...e5. Asymmetrical pawn structures.',
       keyOpenings: [
         'Sicilian Defense (1.e4 c5)',
         'Caro-Kann Defense (1.e4 c6)',
@@ -68,12 +71,14 @@ class EcoOpenings {
         'Scandinavian Defense (1.e4 d5)',
         'Modern Defense (1.e4 g6)',
       ],
-      characteristics: 'Dynamic imbalances, complex middlegames, fighting chess',
+      characteristics:
+          'Dynamic imbalances, complex middlegames, fighting chess',
     ),
     'C': EcoCategory(
       letter: 'C',
       name: 'Open Games',
-      description: 'Classical openings beginning with 1.e4 e5, including the French Defense.',
+      description:
+          'Classical openings beginning with 1.e4 e5, including the French Defense.',
       keyOpenings: [
         'French Defense (1.e4 e6)',
         'Ruy López / Spanish Game',
@@ -82,12 +87,14 @@ class EcoOpenings {
         'King\'s Gambit',
         'Petrov\'s Defense',
       ],
-      characteristics: 'Classical pawn center, rapid piece development, tactical play',
+      characteristics:
+          'Classical pawn center, rapid piece development, tactical play',
     ),
     'D': EcoCategory(
       letter: 'D',
       name: 'Closed Games',
-      description: 'Queen\'s Pawn openings with 1.d4 d5, featuring the Queen\'s Gambit complex.',
+      description:
+          'Queen\'s Pawn openings with 1.d4 d5, featuring the Queen\'s Gambit complex.',
       keyOpenings: [
         'Queen\'s Gambit Declined',
         'Queen\'s Gambit Accepted',
@@ -96,12 +103,14 @@ class EcoOpenings {
         'Grünfeld Defense',
         'Catalan Opening',
       ],
-      characteristics: 'Solid pawn structures, strategic maneuvering, positional play',
+      characteristics:
+          'Solid pawn structures, strategic maneuvering, positional play',
     ),
     'E': EcoCategory(
       letter: 'E',
       name: 'Indian Defenses',
-      description: 'Openings where Black plays 1...Nf6 against 1.d4, declining to occupy the center early.',
+      description:
+          'Openings where Black plays 1...Nf6 against 1.d4, declining to occupy the center early.',
       keyOpenings: [
         'Nimzo-Indian Defense',
         'Queen\'s Indian Defense',
@@ -110,7 +119,8 @@ class EcoOpenings {
         'Catalan Opening (with Nf6)',
         'Old Indian Defense',
       ],
-      characteristics: 'Hypermodern approach, flexible pawn structures, complex strategic battles',
+      characteristics:
+          'Hypermodern approach, flexible pawn structures, complex strategic battles',
     ),
   };
 

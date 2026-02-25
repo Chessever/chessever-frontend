@@ -55,9 +55,10 @@ class AnimatedBlobContainer extends StatelessWidget {
           // Morph progress for border distortion effect
           // Peak distortion at 0.5, then settle back
           final morphProgress = scaleProgress;
-          final settleProgress = scaleProgress > 0.5
-              ? ((scaleProgress - 0.5) * 2.0).clamp(0.0, 1.0)
-              : 0.0;
+          final settleProgress =
+              scaleProgress > 0.5
+                  ? ((scaleProgress - 0.5) * 2.0).clamp(0.0, 1.0)
+                  : 0.0;
 
           return Opacity(
             opacity: opacity,
@@ -247,7 +248,12 @@ class _DropletPainter extends CustomPainter {
     path.quadraticBezierTo(w + rightWobble, h / 2, w + rightWobble, h - r);
 
     // Bottom-right corner
-    path.quadraticBezierTo(w + rightWobble, h + bottomWobble, w - r, h + bottomWobble);
+    path.quadraticBezierTo(
+      w + rightWobble,
+      h + bottomWobble,
+      w - r,
+      h + bottomWobble,
+    );
 
     // Bottom edge
     path.quadraticBezierTo(w / 2, h + bottomWobble + 1, r, h + bottomWobble);
@@ -264,17 +270,19 @@ class _DropletPainter extends CustomPainter {
     path.close();
 
     // Flat solid fill - no gradient
-    final paint = Paint()
-      ..color = color
-      ..style = PaintingStyle.fill;
+    final paint =
+        Paint()
+          ..color = color
+          ..style = PaintingStyle.fill;
 
     canvas.drawPath(path, paint);
 
     // Clean border stroke - no glow
-    final borderPaint = Paint()
-      ..color = color.withValues(alpha: 0.6)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.0;
+    final borderPaint =
+        Paint()
+          ..color = color.withValues(alpha: 0.6)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.0;
 
     canvas.drawPath(path, borderPaint);
   }
@@ -307,10 +315,7 @@ class MotorScaleTransition extends StatelessWidget {
         return Transform.scale(
           scale: 0.8 + (value * 0.2),
           alignment: alignment,
-          child: Opacity(
-            opacity: value.clamp(0.0, 1.0),
-            child: child,
-          ),
+          child: Opacity(opacity: value.clamp(0.0, 1.0), child: child),
         );
       },
       child: child,

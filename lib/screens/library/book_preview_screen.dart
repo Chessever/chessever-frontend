@@ -26,7 +26,9 @@ class _BookPreviewScreenState extends ConsumerState<BookPreviewScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final previewAsync = ref.watch(sharedBookPreviewProvider(widget.shareToken));
+    final previewAsync = ref.watch(
+      sharedBookPreviewProvider(widget.shareToken),
+    );
 
     return Scaffold(
       backgroundColor: kBackgroundColor,
@@ -42,12 +44,18 @@ class _BookPreviewScreenState extends ConsumerState<BookPreviewScreen> {
             child: previewAsync.when(
               data: (preview) {
                 if (preview == null) return _buildNotFound();
-                return _buildPreview(preview.id, preview.name,
-                    preview.ownerDisplayName, preview.gameCount, preview.color);
+                return _buildPreview(
+                  preview.id,
+                  preview.name,
+                  preview.ownerDisplayName,
+                  preview.gameCount,
+                  preview.color,
+                );
               },
-              loading: () => const Center(
-                child: CircularProgressIndicator(color: kWhiteColor),
-              ),
+              loading:
+                  () => const Center(
+                    child: CircularProgressIndicator(color: kWhiteColor),
+                  ),
               error: (error, _) => _buildError(error.toString()),
             ),
           ),
@@ -238,9 +246,7 @@ class _BookPreviewScreenState extends ConsumerState<BookPreviewScreen> {
 
       // Fetch the folder to navigate into it
       final subscribedBooks = await repo.getSubscribedBooks();
-      final folder = subscribedBooks
-          .where((f) => f.id == folderId)
-          .firstOrNull;
+      final folder = subscribedBooks.where((f) => f.id == folderId).firstOrNull;
 
       if (!mounted) return;
       if (folder != null) {
@@ -283,14 +289,16 @@ class _BookPreviewScreenState extends ConsumerState<BookPreviewScreen> {
       child: Container(
         padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 14.h),
         decoration: BoxDecoration(
-          color: isPrimary
-              ? kWhiteColor.withValues(alpha: 0.15)
-              : kWhiteColor.withValues(alpha: 0.07),
+          color:
+              isPrimary
+                  ? kWhiteColor.withValues(alpha: 0.15)
+                  : kWhiteColor.withValues(alpha: 0.07),
           borderRadius: BorderRadius.circular(12.br),
           border: Border.all(
-            color: isPrimary
-                ? kWhiteColor.withValues(alpha: 0.3)
-                : kWhiteColor.withValues(alpha: 0.1),
+            color:
+                isPrimary
+                    ? kWhiteColor.withValues(alpha: 0.3)
+                    : kWhiteColor.withValues(alpha: 0.1),
           ),
         ),
         child: Row(

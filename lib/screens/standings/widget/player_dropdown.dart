@@ -32,9 +32,7 @@ class PlayerDropDown extends ConsumerWidget {
         ),
         child: Text(
           selectedPlayer?.name ?? 'Unknown Player',
-          style: AppTypography.textSmMedium.copyWith(
-            color: kWhiteColor70,
-          ),
+          style: AppTypography.textSmMedium.copyWith(color: kWhiteColor70),
           overflow: TextOverflow.ellipsis,
         ),
       );
@@ -45,42 +43,42 @@ class PlayerDropDown extends ConsumerWidget {
       child: ref
           .watch(playerTourScreenProvider)
           .when(
-        data: (players) => _PlayerDropdown(players: players),
-        error:
-            (e, _) => Container(
-          height: 40.h,
-          padding: EdgeInsets.symmetric(horizontal: 12.sp),
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: kBackgroundColor,
-            borderRadius: BorderRadius.circular(8.br),
-            border: Border.all(color: kDarkGreyColor, width: 1.w),
+            data: (players) => _PlayerDropdown(players: players),
+            error:
+                (e, _) => Container(
+                  height: 40.h,
+                  padding: EdgeInsets.symmetric(horizontal: 12.sp),
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: kBackgroundColor,
+                    borderRadius: BorderRadius.circular(8.br),
+                    border: Border.all(color: kDarkGreyColor, width: 1.w),
+                  ),
+                  child: Text(
+                    'Error loading players',
+                    style: AppTypography.textXsRegular.copyWith(
+                      color: kWhiteColor70,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+            loading:
+                () => SkeletonWidget(
+                  child: _PlayerDropdown(
+                    players: [
+                      PlayerStandingModel(
+                        countryCode: 'USA',
+                        title: 'GM',
+                        name: 'Loading...',
+                        score: 0,
+                        scoreChange: 0,
+                        matchScore: '0.0 / 0',
+                      ),
+                    ],
+                    isLoading: true,
+                  ),
+                ),
           ),
-          child: Text(
-            'Error loading players',
-            style: AppTypography.textXsRegular.copyWith(
-              color: kWhiteColor70,
-            ),
-            overflow: TextOverflow.ellipsis,
-          ),
-        ),
-        loading:
-            () => SkeletonWidget(
-          child: _PlayerDropdown(
-            players: [
-              PlayerStandingModel(
-                countryCode: 'USA',
-                title: 'GM',
-                name: 'Loading...',
-                score: 0,
-                scoreChange: 0,
-                matchScore: '0.0 / 0',
-              ),
-            ],
-            isLoading: true,
-          ),
-        ),
-      ),
     );
   }
 }
@@ -126,12 +124,13 @@ class _PlayerDropdownState extends ConsumerState<_PlayerDropdown> {
             : BorderRadius.circular(8.br);
 
     final dropDownBorderRadius = BorderRadius.circular(10.br);
-    final currentPlayer = selectedPlayer != null
-        ? widget.players.firstWhere(
-          (p) => p.name == selectedPlayer.name,
-      orElse: () => widget.players.first,
-    )
-        : widget.players.first;
+    final currentPlayer =
+        selectedPlayer != null
+            ? widget.players.firstWhere(
+              (p) => p.name == selectedPlayer.name,
+              orElse: () => widget.players.first,
+            )
+            : widget.players.first;
     return ClipRRect(
       borderRadius: borderRadius,
       child: AnimatedContainer(

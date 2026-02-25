@@ -119,7 +119,10 @@ class _AboutTourScreenState extends ConsumerState<AboutTourScreen> {
 
     final domain = aboutModel.extractDomain();
 
-    final horizontalPadding = ResponsiveHelper.adaptive(phone: 20.sp, tablet: 32.sp);
+    final horizontalPadding = ResponsiveHelper.adaptive(
+      phone: 20.sp,
+      tablet: 32.sp,
+    );
 
     return Scaffold(
       bottomNavigationBar: _buildBottomBar(
@@ -130,83 +133,87 @@ class _AboutTourScreenState extends ConsumerState<AboutTourScreen> {
       ),
       body: Center(
         child: ConstrainedBox(
-          constraints: BoxConstraints(maxWidth: ResponsiveHelper.contentMaxWidth),
+          constraints: BoxConstraints(
+            maxWidth: ResponsiveHelper.contentMaxWidth,
+          ),
           child: Container(
-        margin: EdgeInsets.symmetric(horizontal: horizontalPadding),
-        child: SingleChildScrollView(
-          padding: EdgeInsets.zero,
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.start,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              SizedBox(height: 16.h),
-              Heroine(
-                tag: _heroTag,
-                flightShuttleBuilder: const NoPaddingFadeShuttleBuilder(),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.only(
-                    topLeft: Radius.circular(12.br),
-                    topRight: Radius.circular(12.br),
-                  ),
-                  child: SizedBox(
-                    height: 240.h,
-                    width: double.infinity,
-                    child: _buildHeroChild(context, aboutModel, isSkeleton),
-                  ),
-                ),
-              ),
-              SizedBox(height: 12.h),
-              Skeletonizer(
-                enabled: isSkeleton,
-                ignoreContainers: true,
-                effect: _skeletonEffect,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      aboutModel.description,
-                      style: AppTypography.textSmMedium.copyWith(
-                        color: kWhiteColor70,
+            margin: EdgeInsets.symmetric(horizontal: horizontalPadding),
+            child: SingleChildScrollView(
+              padding: EdgeInsets.zero,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SizedBox(height: 16.h),
+                  Heroine(
+                    tag: _heroTag,
+                    flightShuttleBuilder: const NoPaddingFadeShuttleBuilder(),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.only(
+                        topLeft: Radius.circular(12.br),
+                        topRight: Radius.circular(12.br),
+                      ),
+                      child: SizedBox(
+                        height: 240.h,
+                        width: double.infinity,
+                        child: _buildHeroChild(context, aboutModel, isSkeleton),
                       ),
                     ),
-                    SizedBox(height: 12.h),
-                    _TitleDescWidget(
-                      title: 'Players',
-                      description: ratedPlayers
-                          .map((e) => e.displayName)
-                          .join(', '),
+                  ),
+                  SizedBox(height: 12.h),
+                  Skeletonizer(
+                    enabled: isSkeleton,
+                    ignoreContainers: true,
+                    effect: _skeletonEffect,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          aboutModel.description,
+                          style: AppTypography.textSmMedium.copyWith(
+                            color: kWhiteColor70,
+                          ),
+                        ),
+                        SizedBox(height: 12.h),
+                        _TitleDescWidget(
+                          title: 'Players',
+                          description: ratedPlayers
+                              .map((e) => e.displayName)
+                              .join(', '),
+                        ),
+                        SizedBox(height: 12),
+                        _TitleDescWidget(
+                          title: 'Time Control',
+                          description: aboutModel.timeControl,
+                        ),
+                        SizedBox(height: 12.h),
+                        _TitleDescWidget(
+                          title: 'Date',
+                          description: aboutModel.date,
+                        ),
+                        SizedBox(height: 12.h),
+                        _CountryFlag(
+                          title: 'Location',
+                          flag:
+                              countryCode.isNotEmpty
+                                  ? CountryFlag.fromCountryCode(
+                                    countryCode,
+                                    width: 16.w,
+                                    height: 12.h,
+                                  )
+                                  : null,
+                          description: aboutModel.location,
+                        ),
+                        SizedBox(
+                          height: MediaQuery.of(context).viewPadding.bottom,
+                        ),
+                      ],
                     ),
-                    SizedBox(height: 12),
-                    _TitleDescWidget(
-                      title: 'Time Control',
-                      description: aboutModel.timeControl,
-                    ),
-                    SizedBox(height: 12.h),
-                    _TitleDescWidget(
-                      title: 'Date',
-                      description: aboutModel.date,
-                    ),
-                    SizedBox(height: 12.h),
-                    _CountryFlag(
-                      title: 'Location',
-                      flag:
-                          countryCode.isNotEmpty
-                              ? CountryFlag.fromCountryCode(
-                                countryCode,
-                                width: 16.w,
-                                height: 12.h,
-                              )
-                              : null,
-                      description: aboutModel.location,
-                    ),
-                    SizedBox(height: MediaQuery.of(context).viewPadding.bottom),
-                  ],
-                ),
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
-        ),
-      ),
         ),
       ),
     );

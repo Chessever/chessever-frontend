@@ -47,9 +47,7 @@ class _GameCardWrapperProvider {
     }
 
     try {
-      final fullGames = await _ref
-          .read(gamesLocalStorage)
-          .getGames(tourId);
+      final fullGames = await _ref.read(gamesLocalStorage).getGames(tourId);
 
       if (fullGames.isEmpty) {
         return _ResolvedNavigation(games: orderedGames, index: safeIndex);
@@ -74,9 +72,7 @@ class _GameCardWrapperProvider {
         return _ResolvedNavigation(games: orderedGames, index: safeIndex);
       }
 
-      final overrides = {
-        for (final game in orderedGames) game.gameId: game,
-      };
+      final overrides = {for (final game in orderedGames) game.gameId: game};
       final mergedModels =
           fullModels.map((game) {
             final override = overrides[game.gameId];
@@ -149,7 +145,9 @@ class _GameCardWrapperProvider {
   /// Named knockout stages get high numbers so they sort after numbered rounds.
   int _extractRoundNumber(String roundSlug) {
     final slug = roundSlug.toLowerCase();
-    if (slug.contains('final') && !slug.contains('quarter') && !slug.contains('semi')) {
+    if (slug.contains('final') &&
+        !slug.contains('quarter') &&
+        !slug.contains('semi')) {
       return 10000;
     }
     if (slug.contains('semifinal') || slug.contains('semi-final')) {
@@ -158,14 +156,18 @@ class _GameCardWrapperProvider {
     if (slug.contains('quarterfinal') || slug.contains('quarter-final')) {
       return 8000;
     }
-    final match = RegExp(r'round-?(\d+)', caseSensitive: false).firstMatch(roundSlug) ??
-                  RegExp(r'(\d+)').firstMatch(roundSlug);
+    final match =
+        RegExp(r'round-?(\d+)', caseSensitive: false).firstMatch(roundSlug) ??
+        RegExp(r'(\d+)').firstMatch(roundSlug);
     return int.tryParse(match?.group(1) ?? '0') ?? 0;
   }
 
   /// Extracts game number from round slug (e.g., "round-6--game-2" -> 2)
   int _extractGameNumber(String roundSlug) {
-    final match = RegExp(r'game-?(\d+)', caseSensitive: false).firstMatch(roundSlug);
+    final match = RegExp(
+      r'game-?(\d+)',
+      caseSensitive: false,
+    ).firstMatch(roundSlug);
     return int.tryParse(match?.group(1) ?? '0') ?? 0;
   }
 

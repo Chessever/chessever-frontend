@@ -12,7 +12,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 class _FakeGamebaseRepository extends GamebaseRepository {
-  _FakeGamebaseRepository() : super(Dio(), baseUrl: 'http://localhost', apiKey: 'test');
+  _FakeGamebaseRepository()
+    : super(Dio(), baseUrl: 'http://localhost', apiKey: 'test');
 
   @override
   Future<GamebaseResponse> getMoveAggregates({
@@ -63,7 +64,9 @@ GamesTourModel _dummyGame() {
 }
 
 void main() {
-  testWidgets('GamebaseExplorerView uses analysis position FEN', (tester) async {
+  testWidgets('GamebaseExplorerView uses analysis position FEN', (
+    tester,
+  ) async {
     final container = ProviderContainer(
       overrides: [
         gamebaseRepositoryProvider.overrideWithValue(_FakeGamebaseRepository()),
@@ -71,7 +74,8 @@ void main() {
     );
     addTearDown(container.dispose);
 
-    const analysisFen = 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1';
+    const analysisFen =
+        'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1';
     final position = Chess.fromSetup(Setup.parseFen(analysisFen));
 
     final state = ChessBoardStateNew(

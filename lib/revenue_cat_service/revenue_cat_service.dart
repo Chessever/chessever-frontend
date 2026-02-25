@@ -42,7 +42,9 @@ class RevenueCatService {
   Future<void> logIn(String userId) async {
     try {
       final result = await Purchases.logIn(userId);
-      debugPrint('✅ RevenueCat user logged in: ${result.customerInfo.originalAppUserId}');
+      debugPrint(
+        '✅ RevenueCat user logged in: ${result.customerInfo.originalAppUserId}',
+      );
     } catch (e) {
       debugPrint('❌ RevenueCat login error: $e');
     }
@@ -64,8 +66,9 @@ class RevenueCatService {
     try {
       final customerInfo = await Purchases.getCustomerInfo();
       // Check for our specific entitlement
-      final hasEntitlement =
-          customerInfo.entitlements.active.containsKey(premiumEntitlement);
+      final hasEntitlement = customerInfo.entitlements.active.containsKey(
+        premiumEntitlement,
+      );
       // Fallback: also check if any entitlement is active
       final hasAnyEntitlement = customerInfo.entitlements.active.isNotEmpty;
       return hasEntitlement || hasAnyEntitlement;
@@ -91,9 +94,13 @@ class RevenueCatService {
       final offerings = await Purchases.getOfferings();
       if (offerings.current != null) {
         debugPrint('📦 Current offering: ${offerings.current!.identifier}');
-        debugPrint('📦 Available packages: ${offerings.current!.availablePackages.length}');
+        debugPrint(
+          '📦 Available packages: ${offerings.current!.availablePackages.length}',
+        );
         for (final pkg in offerings.current!.availablePackages) {
-          debugPrint('  - ${pkg.packageType}: ${pkg.storeProduct.identifier} @ ${pkg.storeProduct.priceString}');
+          debugPrint(
+            '  - ${pkg.packageType}: ${pkg.storeProduct.identifier} @ ${pkg.storeProduct.priceString}',
+          );
         }
         return offerings.current!.availablePackages;
       }
@@ -108,7 +115,9 @@ class RevenueCatService {
   /// Purchase subscription with proper error handling
   Future<PurchaseAttemptResult> purchaseSubscription(Package package) async {
     try {
-      debugPrint('🛒 Starting purchase for: ${package.storeProduct.identifier}');
+      debugPrint(
+        '🛒 Starting purchase for: ${package.storeProduct.identifier}',
+      );
 
       final purchaseResult = await Purchases.purchase(
         PurchaseParams.package(package),
@@ -120,7 +129,9 @@ class RevenueCatService {
 
       return isActive
           ? PurchaseAttemptResult.success()
-          : PurchaseAttemptResult.error('Purchase completed but no entitlement activated');
+          : PurchaseAttemptResult.error(
+            'Purchase completed but no entitlement activated',
+          );
     } on PurchasesErrorCode catch (errorCode) {
       // Handle specific RevenueCat error codes
       if (errorCode == PurchasesErrorCode.purchaseCancelledError) {
@@ -138,7 +149,9 @@ class RevenueCatService {
         return PurchaseAttemptResult.cancelled();
       }
       debugPrint('❌ Platform error: ${e.code} - ${e.message}');
-      return PurchaseAttemptResult.error(e.message ?? 'Platform error occurred');
+      return PurchaseAttemptResult.error(
+        e.message ?? 'Platform error occurred',
+      );
     } catch (e) {
       // Check if error message indicates cancellation
       final errorStr = e.toString().toLowerCase();

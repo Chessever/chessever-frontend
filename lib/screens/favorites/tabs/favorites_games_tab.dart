@@ -108,22 +108,22 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
   }
 
   /// Group games by date
-  Map<String, List<GamesTourModel>> _groupGamesByDate(List<GamesTourModel> games) {
+  Map<String, List<GamesTourModel>> _groupGamesByDate(
+    List<GamesTourModel> games,
+  ) {
     final grouped = <String, List<GamesTourModel>>{};
     const unknownDateKey = '0000-00-00'; // Sort to end
 
     for (final game in games) {
       final date = game.lastMoveTime;
-      final dateKey = date != null
-          ? DateFormat('yyyy-MM-dd').format(date)
-          : unknownDateKey;
+      final dateKey =
+          date != null ? DateFormat('yyyy-MM-dd').format(date) : unknownDateKey;
       grouped.putIfAbsent(dateKey, () => []).add(game);
     }
 
     // Sort keys by date descending (most recent first)
     // Unknown dates (0000-00-00) will sort to the end
-    final sortedKeys = grouped.keys.toList()
-      ..sort((a, b) => b.compareTo(a));
+    final sortedKeys = grouped.keys.toList()..sort((a, b) => b.compareTo(a));
 
     return Map.fromEntries(
       sortedKeys.map((key) => MapEntry(key, grouped[key]!)),
@@ -179,8 +179,10 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
 
       // If content is shorter than viewport, or we're near the end, load more
       // We use a larger threshold here since collapsing can dramatically reduce height
-      final needsMore = maxScroll <= 0 || // Content fits in viewport
-          maxScroll - currentScroll <= viewportHeight; // Within one screen of end
+      final needsMore =
+          maxScroll <= 0 || // Content fits in viewport
+          maxScroll - currentScroll <=
+              viewportHeight; // Within one screen of end
 
       if (needsMore) {
         final state = ref.read(favoritesCombinedGamesProvider);
@@ -194,7 +196,9 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
   void _togglePlayerFilter(String fideId) {
     HapticFeedback.lightImpact();
     // Trigger Supabase re-query with the selected player filter
-    ref.read(favoritesCombinedGamesProvider.notifier).togglePlayerFilter(fideId);
+    ref
+        .read(favoritesCombinedGamesProvider.notifier)
+        .togglePlayerFilter(fideId);
   }
 
   void _clearAllFilters() {
@@ -244,15 +248,23 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
 
     // Convert PlayerStandingModel to FavoritePlayer for chip display
     final now = DateTime.now();
-    final favorites = playerModels.map((p) => FavoritePlayer(
-      id: p.fideId?.toString() ?? p.name,
-      userId: '', // Not needed for display
-      playerName: p.name,
-      fideId: p.fideId?.toString(),
-      metadata: {'countryCode': p.countryCode, 'federation': p.countryCode},
-      createdAt: now,
-      updatedAt: now,
-    )).toList();
+    final favorites =
+        playerModels
+            .map(
+              (p) => FavoritePlayer(
+                id: p.fideId?.toString() ?? p.name,
+                userId: '', // Not needed for display
+                playerName: p.name,
+                fideId: p.fideId?.toString(),
+                metadata: {
+                  'countryCode': p.countryCode,
+                  'federation': p.countryCode,
+                },
+                createdAt: now,
+                updatedAt: now,
+              ),
+            )
+            .toList();
 
     // Refresh games when favorites list changes
     ref.listen(favoritePlayersNotifierProvider, (prev, next) {
@@ -275,33 +287,31 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
       color: kWhiteColor,
       backgroundColor: kBlack2Color,
       child: CustomScrollView(
-            key: PageStorageKey<String>('favorites_games_list_${viewMode.index}'),
-            controller: _scrollController,
-            physics: const AlwaysScrollableScrollPhysics(
-              parent: BouncingScrollPhysics(),
+        key: PageStorageKey<String>('favorites_games_list_${viewMode.index}'),
+        controller: _scrollController,
+        physics: const AlwaysScrollableScrollPhysics(
+          parent: BouncingScrollPhysics(),
+        ),
+        slivers: [
+          // Search bar
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(16.w, 12.h, 16.w, 8.h),
+              child: _buildSearchBar(state),
             ),
-            slivers: [
-              // Search bar
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: EdgeInsets.fromLTRB(16.w, 12.h, 16.w, 8.h),
-                  child: _buildSearchBar(state),
-                ),
-              ),
-
-              // Filter chips (only show when not searching)
-              if (favorites.length > 1 && !state.isSearching)
-                SliverToBoxAdapter(
-                  child: _buildFilterChips(state, favorites),
-                ),
-
-              // Content
-              _buildContentSliver(state, favorites, viewMode),
-
-              // Bottom padding
-              SliverToBoxAdapter(child: SizedBox(height: 24.h)),
-            ],
           ),
+
+          // Filter chips (only show when not searching)
+          if (favorites.length > 1 && !state.isSearching)
+            SliverToBoxAdapter(child: _buildFilterChips(state, favorites)),
+
+          // Content
+          _buildContentSliver(state, favorites, viewMode),
+
+          // Bottom padding
+          SliverToBoxAdapter(child: SizedBox(height: 24.h)),
+        ],
+      ),
     );
 
     // Apply tablet max-width constraint
@@ -374,7 +384,8 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
                       ),
                     ),
                   ),
-                  if (_searchController.text.isNotEmpty || state.isSearching) ...[
+                  if (_searchController.text.isNotEmpty ||
+                      state.isSearching) ...[
                     GestureDetector(
                       onTap: _clearSearch,
                       child: Icon(
@@ -398,14 +409,16 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
               width: searchBarHeight,
               height: searchBarHeight,
               decoration: BoxDecoration(
-                color: hasActiveFilters
-                    ? const Color(0xFFEF4444).withValues(alpha: 0.15)
-                    : const Color(0xFF09090B),
+                color:
+                    hasActiveFilters
+                        ? const Color(0xFFEF4444).withValues(alpha: 0.15)
+                        : const Color(0xFF09090B),
                 borderRadius: BorderRadius.circular(12.br),
                 border: Border.all(
-                  color: hasActiveFilters
-                      ? const Color(0xFFEF4444).withValues(alpha: 0.5)
-                      : const Color(0xFF27272A),
+                  color:
+                      hasActiveFilters
+                          ? const Color(0xFFEF4444).withValues(alpha: 0.5)
+                          : const Color(0xFF27272A),
                 ),
               ),
               child: Stack(
@@ -414,7 +427,10 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
                   Icon(
                     Icons.tune_rounded,
                     size: 20.sp,
-                    color: hasActiveFilters ? const Color(0xFFEF4444) : const Color(0xFFA1A1AA),
+                    color:
+                        hasActiveFilters
+                            ? const Color(0xFFEF4444)
+                            : const Color(0xFFA1A1AA),
                   ),
                   // Badge showing active filter count
                   if (hasActiveFilters)
@@ -485,7 +501,10 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
     }
   }
 
-  Widget _buildFilterChips(FavoritesCombinedGamesState state, List<FavoritePlayer> favorites) {
+  Widget _buildFilterChips(
+    FavoritesCombinedGamesState state,
+    List<FavoritePlayer> favorites,
+  ) {
     final hasSelection = state.selectedFideIds.isNotEmpty;
 
     return SizedBox(
@@ -517,7 +536,10 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
                 child: GestureDetector(
                   onTap: _clearAllFilters,
                   child: Container(
-                    padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
+                    padding: EdgeInsets.symmetric(
+                      horizontal: 12.w,
+                      vertical: 8.h,
+                    ),
                     decoration: BoxDecoration(
                       color: const Color(0xFF27272A),
                       borderRadius: BorderRadius.circular(16.br),
@@ -567,16 +589,21 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
                 onTap: () => _togglePlayerFilter(fideId),
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 150),
-                  padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 8.h),
+                  padding: EdgeInsets.symmetric(
+                    horizontal: 10.w,
+                    vertical: 8.h,
+                  ),
                   decoration: BoxDecoration(
-                    color: isSelected
-                        ? const Color(0xFFEF4444)
-                        : const Color(0xFF27272A),
+                    color:
+                        isSelected
+                            ? const Color(0xFFEF4444)
+                            : const Color(0xFF27272A),
                     borderRadius: BorderRadius.circular(16.br),
                     border: Border.all(
-                      color: isSelected
-                          ? const Color(0xFFEF4444)
-                          : const Color(0xFF3F3F46),
+                      color:
+                          isSelected
+                              ? const Color(0xFFEF4444)
+                              : const Color(0xFF3F3F46),
                       width: 1,
                     ),
                   ),
@@ -594,7 +621,8 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
                         displayName,
                         style: TextStyle(
                           fontSize: 13.sp,
-                          fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                          fontWeight:
+                              isSelected ? FontWeight.w600 : FontWeight.w500,
                           color: kWhiteColor,
                         ),
                       ),
@@ -696,7 +724,8 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
         if (isGrid) {
           // Grid mode: dynamic columns based on device/orientation
           // Tablet landscape: 4 columns, Tablet portrait: 2 columns, Phone: 2 columns
-          final int gridColumns = ResponsiveHelper.isTablet && ResponsiveHelper.isLandscape ? 4 : 2;
+          final int gridColumns =
+              ResponsiveHelper.isTablet && ResponsiveHelper.isLandscape ? 4 : 2;
 
           for (int i = 0; i < dateGames.length; i += gridColumns) {
             final isLast = i + gridColumns >= dateGames.length;
@@ -715,14 +744,15 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
                     for (int j = 0; j < gridColumns; j++) ...[
                       if (j > 0) SizedBox(width: 12.sp),
                       Expanded(
-                        child: j < rowGames.length
-                            ? _buildGridGame(
-                                rowGames[j],
-                                gameIdToIndex[rowGames[j].gameId] ?? 0,
-                                games,
-                                items.length,
-                              )
-                            : const SizedBox.shrink(),
+                        child:
+                            j < rowGames.length
+                                ? _buildGridGame(
+                                  rowGames[j],
+                                  gameIdToIndex[rowGames[j].gameId] ?? 0,
+                                  games,
+                                  items.length,
+                                )
+                                : const SizedBox.shrink(),
                       ),
                     ],
                   ],
@@ -736,7 +766,8 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
             final game = dateGames[i];
             final gameIndex = gameIdToIndex[game.gameId] ?? 0;
             final isLast = i == dateGames.length - 1;
-            final showHint = isFirstGameCard && viewMode == GamesListViewMode.gamesCard;
+            final showHint =
+                isFirstGameCard && viewMode == GamesListViewMode.gamesCard;
             if (isFirstGameCard) isFirstGameCard = false;
 
             if (isChessBoardVisible) {
@@ -769,7 +800,10 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
                     showGamebaseButton: false,
                     onAdd: () => _showAddToFolderSheet(context, game),
                     onTap: () async {
-                      final hasPremium = await requirePremiumGuard(context, ref);
+                      final hasPremium = await requirePremiumGuard(
+                        context,
+                        ref,
+                      );
                       if (!hasPremium) return;
                       _navigateToChessBoard(game, games, gameIndex);
                     },
@@ -916,9 +950,11 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
           ),
           SizedBox(height: 24.h),
           TextButton(
-            onPressed: () => ref
-                .read(favoritesCombinedGamesProvider.notifier)
-                .refreshGames(),
+            onPressed:
+                () =>
+                    ref
+                        .read(favoritesCombinedGamesProvider.notifier)
+                        .refreshGames(),
             style: TextButton.styleFrom(
               backgroundColor: kWhiteColor.withValues(alpha: 0.1),
               padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 12.h),
@@ -1051,9 +1087,7 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
               ),
               child: Text(
                 'Clear Filters',
-                style: AppTypography.textSmMedium.copyWith(
-                  color: kWhiteColor,
-                ),
+                style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
               ),
             ),
           ),
@@ -1067,9 +1101,14 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
   }
 
   /// Navigate to chess board screen for the selected game.
-  void _navigateToChessBoard(GamesTourModel game, List<GamesTourModel> allGames, int gameIndex) {
+  void _navigateToChessBoard(
+    GamesTourModel game,
+    List<GamesTourModel> allGames,
+    int gameIndex,
+  ) {
     // Set view source to forYou (favorites is part of For You section)
-    ref.read(chessboardViewFromProviderNew.notifier).state = ChessboardView.forYou;
+    ref.read(chessboardViewFromProviderNew.notifier).state =
+        ChessboardView.forYou;
 
     // Disable tournament streaming while inside the chessboard
     ref.read(shouldStreamProvider.notifier).state = false;
@@ -1077,10 +1116,9 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
     Navigator.push<int>(
       context,
       MaterialPageRoute(
-        builder: (_) => ChessBoardScreenNew(
-          games: allGames,
-          currentIndex: gameIndex,
-        ),
+        builder:
+            (_) =>
+                ChessBoardScreenNew(games: allGames, currentIndex: gameIndex),
       ),
     ).then((_) {
       // Re-enable streaming when coming back
@@ -1188,7 +1226,12 @@ class _FavoritesKeepAliveGameCard extends ConsumerStatefulWidget {
   final List<GamesTourModel> allGames;
   final bool isChessBoardVisible;
   final bool isLast;
-  final void Function(GamesTourModel game, List<GamesTourModel> games, int index) onNavigateToChessBoard;
+  final void Function(
+    GamesTourModel game,
+    List<GamesTourModel> games,
+    int index,
+  )
+  onNavigateToChessBoard;
 
   @override
   ConsumerState<_FavoritesKeepAliveGameCard> createState() =>

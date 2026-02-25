@@ -24,6 +24,7 @@ import 'package:skeletonizer/skeletonizer.dart';
 class EventCard extends ConsumerWidget {
   final GroupEventCardModel tourEventCardModel;
   final VoidCallback? onTap;
+
   /// Optional suffix to make hero tag unique when same event appears in multiple lists
   final String? heroTagSuffix;
 
@@ -70,7 +71,11 @@ class EventCard extends ConsumerWidget {
   }
 
   /// Tablet grid layout: Image as background with text overlay
-  Widget _buildTabletGridCard(BuildContext context, WidgetRef ref, BoxConstraints constraints) {
+  Widget _buildTabletGridCard(
+    BuildContext context,
+    WidgetRef ref,
+    BoxConstraints constraints,
+  ) {
     return Container(
       decoration: BoxDecoration(
         color: kBlack2Color,
@@ -181,7 +186,11 @@ class EventCard extends ConsumerWidget {
   }
 
   /// Phone layout: Horizontal row with image on left
-  Widget _buildPhoneCard(BuildContext context, WidgetRef ref, BoxConstraints constraints) {
+  Widget _buildPhoneCard(
+    BuildContext context,
+    WidgetRef ref,
+    BoxConstraints constraints,
+  ) {
     return Container(
       decoration: BoxDecoration(
         color: kBlack2Color,
@@ -419,9 +428,8 @@ class _EventImage extends ConsumerWidget {
                             child: Container(color: kLightBlack),
                           ),
                       errorWidget:
-                          (context, url, error) => _buildFallbackFlag(
-                            imageData.fallbackCountryCode,
-                          ),
+                          (context, url, error) =>
+                              _buildFallbackFlag(imageData.fallbackCountryCode),
                     );
                   }
                   // No image - show country flag if available
@@ -609,8 +617,9 @@ class _TabletEventBackground extends ConsumerWidget {
             fadeInDuration: const Duration(milliseconds: 300),
             fadeOutDuration: const Duration(milliseconds: 200),
             placeholder: (context, url) => _buildLoadingBackground(),
-            errorWidget: (context, url, error) =>
-                _buildFlagBackground(imageData.fallbackCountryCode),
+            errorWidget:
+                (context, url, error) =>
+                    _buildFlagBackground(imageData.fallbackCountryCode),
           );
         }
         return _buildFlagBackground(imageData.fallbackCountryCode);
@@ -860,7 +869,9 @@ class _StarWidget extends ConsumerWidget {
             )
             .then((isFavorited) {
               final nextCount =
-                  isFavorited ? favoritesCount + 1 : (favoritesCount - 1).clamp(0, favoritesCount);
+                  isFavorited
+                      ? favoritesCount + 1
+                      : (favoritesCount - 1).clamp(0, favoritesCount);
               AnalyticsService.instance.trackEventDetached(
                 'Event Favorite Toggled',
                 properties: {

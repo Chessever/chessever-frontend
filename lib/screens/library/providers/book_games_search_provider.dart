@@ -5,12 +5,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_mode
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-enum BookGamesResultFilter {
-  all,
-  whiteWins,
-  blackWins,
-  draw,
-}
+enum BookGamesResultFilter { all, whiteWins, blackWins, draw }
 
 extension BookGamesResultFilterX on BookGamesResultFilter {
   String get displayText {
@@ -178,12 +173,12 @@ class BookGamesSearchState {
   final bool hasMore;
 
   static BookGamesSearchState initial() => BookGamesSearchState(
-        query: '',
-        games: const [],
-        filter: BookGamesFilter.defaultFilter(),
-        isLoadingMore: false,
-        hasMore: true,
-      );
+    query: '',
+    games: const [],
+    filter: BookGamesFilter.defaultFilter(),
+    isLoadingMore: false,
+    hasMore: true,
+  );
 
   BookGamesSearchState copyWith({
     String? query,
@@ -203,7 +198,9 @@ class BookGamesSearchState {
 }
 
 final bookGamesSearchProvider = StateNotifierProvider.autoDispose<
-    BookGamesSearchNotifier, AsyncValue<BookGamesSearchState>>((ref) {
+  BookGamesSearchNotifier,
+  AsyncValue<BookGamesSearchState>
+>((ref) {
   ref.keepAlive();
   return BookGamesSearchNotifier(ref);
 });
@@ -211,7 +208,7 @@ final bookGamesSearchProvider = StateNotifierProvider.autoDispose<
 class BookGamesSearchNotifier
     extends StateNotifier<AsyncValue<BookGamesSearchState>> {
   BookGamesSearchNotifier(this._ref)
-      : super(AsyncValue.data(BookGamesSearchState.initial()));
+    : super(AsyncValue.data(BookGamesSearchState.initial()));
 
   final Ref _ref;
 
@@ -324,16 +321,17 @@ class BookGamesSearchNotifier
       if (response.isEmpty) {
         _hasMore = false;
       } else {
-        final models = response
-            .map((g) {
-              try {
-                return GamesTourModel.fromGame(g);
-              } catch (_) {
-                return null;
-              }
-            })
-            .whereType<GamesTourModel>()
-            .toList();
+        final models =
+            response
+                .map((g) {
+                  try {
+                    return GamesTourModel.fromGame(g);
+                  } catch (_) {
+                    return null;
+                  }
+                })
+                .whereType<GamesTourModel>()
+                .toList();
         _rawGames.addAll(models);
         _offset += response.length;
       }
@@ -391,8 +389,7 @@ class BookGamesSearchNotifier
         if (year < filter.minYear || year > filter.maxYear) return false;
       }
 
-      final avgRating =
-          (game.whitePlayer.rating + game.blackPlayer.rating) / 2;
+      final avgRating = (game.whitePlayer.rating + game.blackPlayer.rating) / 2;
       if (avgRating < filter.minRating || avgRating > filter.maxRating) {
         return false;
       }

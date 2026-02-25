@@ -56,14 +56,17 @@ class _BookGamesFilterDialogState extends State<BookGamesFilterDialog> {
       widget.initialFilter.maxRating.toDouble(),
     );
 
-    _openingController =
-        TextEditingController(text: widget.initialFilter.opening);
+    _openingController = TextEditingController(
+      text: widget.initialFilter.opening,
+    );
     _ecoController = TextEditingController(text: widget.initialFilter.eco);
     _eventController = TextEditingController(text: widget.initialFilter.event);
-    _playerController =
-        TextEditingController(text: widget.initialFilter.player);
-    _federationController =
-        TextEditingController(text: widget.initialFilter.federation);
+    _playerController = TextEditingController(
+      text: widget.initialFilter.player,
+    );
+    _federationController = TextEditingController(
+      text: widget.initialFilter.federation,
+    );
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
@@ -308,9 +311,7 @@ class _BookGamesFilterDialogState extends State<BookGamesFilterDialog> {
                 ),
                 child: Text(
                   'Apply Filters',
-                  style: AppTypography.textSmBold.copyWith(
-                    color: kBlackColor,
-                  ),
+                  style: AppTypography.textSmBold.copyWith(color: kBlackColor),
                 ),
               ),
             ),
@@ -395,19 +396,20 @@ class _BookGamesFilterDialogState extends State<BookGamesFilterDialog> {
             color: kSecondaryTextColor,
             size: 20.ic,
           ),
-          items: items
-              .map(
-                (v) => DropdownMenuItem<T>(
-                  value: v,
-                  child: Text(
-                    itemLabel(v),
-                    style: AppTypography.textSmMedium.copyWith(
-                      color: kWhiteColor,
+          items:
+              items
+                  .map(
+                    (v) => DropdownMenuItem<T>(
+                      value: v,
+                      child: Text(
+                        itemLabel(v),
+                        style: AppTypography.textSmMedium.copyWith(
+                          color: kWhiteColor,
+                        ),
+                      ),
                     ),
-                  ),
-                ),
-              )
-              .toList(),
+                  )
+                  .toList(),
           onChanged: (v) {
             if (v == null) return;
             onChanged(v);
@@ -485,9 +487,7 @@ class _BookGamesFilterDialogState extends State<BookGamesFilterDialog> {
               thumbColor: kPrimaryColor,
               overlayColor: kPrimaryColor.withValues(alpha: 0.2),
               trackHeight: 4,
-              thumbShape: const RoundSliderThumbShape(
-                enabledThumbRadius: 8,
-              ),
+              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 8),
             ),
             child: RangeSlider(
               values: values,

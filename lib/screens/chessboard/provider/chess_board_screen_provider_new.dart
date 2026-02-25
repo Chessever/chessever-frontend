@@ -4389,8 +4389,28 @@ class ChessBoardScreenNotifierNew
 
       final previewActive = initialState.isPvPreviewActive;
       final effectiveSkipPv = skipPvUpdates || previewActive;
-      final keepPvs = preserveCurrentPvs || effectiveSkipPv;
-      final keepDepth = preserveDepthProgress || previewActive;
+      final currentFenForState =
+          initialState.isAnalysisMode
+              ? initialState.analysisState.position.fen
+              : initialState.position?.fen;
+      final sameFenAsActiveEval =
+          currentFenForState != null &&
+          _activeEvalKey != null &&
+          _fenCacheKey(
+                initialState.isThreatsMode
+                    ? _getThreatFen(currentFenForState)
+                    : currentFenForState,
+                multiPV: _currentMultiPvSetting(),
+              ) ==
+              _activeEvalKey;
+      final keepPvs =
+          preserveCurrentPvs ||
+          effectiveSkipPv ||
+          (sameFenAsActiveEval && initialState.principalVariations.isNotEmpty);
+      final keepDepth =
+          preserveDepthProgress ||
+          previewActive ||
+          (sameFenAsActiveEval && initialState.isEvaluating);
 
       // CRITICAL: Skip evaluation entirely if this is not the currently visible game
       // This prevents resource-intensive Stockfish analysis from running for off-screen games
@@ -4958,9 +4978,15 @@ class ChessBoardScreenNotifierNew
           }
 
           // Only retry if NOT caused by watchdog — watchdog has its own retry path.
-          if (mounted && !_cancelEvaluation && _consecutiveWatchdogTimeouts == 0) {
+          if (mounted &&
+              !_cancelEvaluation &&
+              _consecutiveWatchdogTimeouts == 0) {
             Future.microtask(() {
-              if (!mounted || _cancelEvaluation || _consecutiveWatchdogTimeouts > 0) return;
+              if (!mounted ||
+                  _cancelEvaluation ||
+                  _consecutiveWatchdogTimeouts > 0) {
+                return;
+              }
               final latestState = state.value;
               if (latestState == null) return;
               final latestPosition =
@@ -5064,9 +5090,16 @@ class ChessBoardScreenNotifierNew
         _releaseLog('Stack: $stack');
       }
 
-      if (stockfishFailed && mounted && !_cancelEvaluation && _consecutiveWatchdogTimeouts == 0) {
+      if (stockfishFailed &&
+          mounted &&
+          !_cancelEvaluation &&
+          _consecutiveWatchdogTimeouts == 0) {
         Future.microtask(() {
-          if (!mounted || _cancelEvaluation || _consecutiveWatchdogTimeouts > 0) return;
+          if (!mounted ||
+              _cancelEvaluation ||
+              _consecutiveWatchdogTimeouts > 0) {
+            return;
+          }
           final latestState = state.value;
           if (latestState == null) return;
           final latestPosition =
@@ -5490,6 +5523,9 @@ class ChessBoardScreenNotifierNew
         Rule.chess,
         Setup.parseFen(navigatorState.currentFen),
       );
+      final sameFenAsCurrent =
+          _normalizeFen(current.analysisState.position.fen) ==
+          _normalizeFen(position.fen);
 
       Move? lastMove;
       final currentMove = navigatorState.currentMove;
@@ -5538,10 +5574,12 @@ class ChessBoardScreenNotifierNew
           movePointer: navigatorState.movePointer,
           currentMoveIndex: currentMoveIndex,
           suggestionLines:
-              const [], // Clear stale PV arrows until new evaluation completes
+              sameFenAsCurrent
+                  ? current.analysisState.suggestionLines
+                  : const [], // Keep lines when navigator syncs same position.
         ),
-        evaluation: null,
-        isEvaluating: true,
+        evaluation: sameFenAsCurrent ? current.evaluation : null,
+        isEvaluating: sameFenAsCurrent ? current.isEvaluating : true,
       );
 
       var progressedState = _setVariantProgress(
@@ -5819,13 +5857,37 @@ class ChessBoardScreenNotifierNew
     }
 
     final currentState = state.value;
-    final previewActive = currentState?.isPvPreviewActive == true;
+    if (currentState == null) return;
+
+    final currentPosition =
+        currentState.isAnalysisMode
+            ? currentState.analysisState.position
+            : currentState.position;
+    final currentFen = currentPosition?.fen;
+    if (currentFen == null || currentFen.trim().isEmpty) return;
+
+    // If an eval for the same position is already active, do not schedule a
+    // new one. This avoids depth resets/flicker when unrelated UI updates
+    // trigger _updateEvaluation repeatedly while browsing opening explorer.
+    final fenToAnalyze =
+        currentState.isThreatsMode ? _getThreatFen(currentFen) : currentFen;
+    final activeCacheKey = _fenCacheKey(
+      fenToAnalyze,
+      multiPV: _currentMultiPvSetting(),
+    );
+    if (!force &&
+        _activeEvalRequestId != null &&
+        _activeEvalKey == activeCacheKey) {
+      return;
+    }
+
+    final previewActive = currentState.isPvPreviewActive;
     final effectivePreservePvs = previewActive ? true : preserveCurrentPvs;
     final effectivePreserveDepth = previewActive ? true : preserveDepthProgress;
     final skipPvUpdates = previewActive;
 
     // CRITICAL: Clear stale PVs immediately when position changes
-    if (currentState != null && currentState.principalVariations.isNotEmpty) {
+    if (currentState.principalVariations.isNotEmpty) {
       final fenToEval =
           currentState.isAnalysisMode
               ? currentState.analysisState.position.fen

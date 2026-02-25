@@ -32,33 +32,33 @@ class TwicGameCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return TappableScale(
-      onTap: () => _handleTap(context, ref),
-      child: Container(
-        margin: EdgeInsets.only(bottom: 10.sp),
-        padding: EdgeInsets.symmetric(horizontal: 14.sp, vertical: 12.sp),
-        decoration: BoxDecoration(
-          color: const Color(0xFFF5F5F5),
-          borderRadius: BorderRadius.circular(12.br),
-          boxShadow: [
-            BoxShadow(
-              color: kBlackColor.withValues(alpha: 0.15),
-              blurRadius: 8,
-              offset: const Offset(0, 2),
+          onTap: () => _handleTap(context, ref),
+          child: Container(
+            margin: EdgeInsets.only(bottom: 10.sp),
+            padding: EdgeInsets.symmetric(horizontal: 14.sp, vertical: 12.sp),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF5F5F5),
+              borderRadius: BorderRadius.circular(12.br),
+              boxShadow: [
+                BoxShadow(
+                  color: kBlackColor.withValues(alpha: 0.15),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
             ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Players row
-            _PlayersRow(game: game),
-            SizedBox(height: 10.sp),
-            // Meta row: Tournament | Date
-            _MetaRow(game: game),
-          ],
-        ),
-      ),
-    )
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Players row
+                _PlayersRow(game: game),
+                SizedBox(height: 10.sp),
+                // Meta row: Tournament | Date
+                _MetaRow(game: game),
+              ],
+            ),
+          ),
+        )
         .animate()
         .fadeIn(
           duration: 200.ms,
@@ -80,12 +80,13 @@ class TwicGameCard extends ConsumerWidget {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => ChessBoardScreenNew(
-          games: allGames,
-          currentIndex: gameIndex,
-          showGamebaseButton: true,
-          disableGamebaseOverlayByDefault: true,
-        ),
+        builder:
+            (_) => ChessBoardScreenNew(
+              games: allGames,
+              currentIndex: gameIndex,
+              showGamebaseButton: true,
+              disableGamebaseOverlayByDefault: true,
+            ),
       ),
     );
   }
@@ -308,9 +309,12 @@ class _MetaRow extends StatelessWidget {
         .replaceAll('_', ' ')
         .split(' ')
         .where((word) => word.isNotEmpty)
-        .map((word) => word.length > 1
-            ? '${word[0].toUpperCase()}${word.substring(1).toLowerCase()}'
-            : word.toUpperCase())
+        .map(
+          (word) =>
+              word.length > 1
+                  ? '${word[0].toUpperCase()}${word.substring(1).toLowerCase()}'
+                  : word.toUpperCase(),
+        )
         .join(' ')
         .trim();
   }

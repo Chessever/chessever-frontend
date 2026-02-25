@@ -46,10 +46,7 @@ class _RoundedSearchBarState extends ConsumerState<RoundedSearchBar> {
     return Row(
       children: [
         if (widget.showProfile)
-          UserAvatar(
-            size: 32,
-            onTap: widget.onProfileTap,
-          ),
+          UserAvatar(size: 32, onTap: widget.onProfileTap),
 
         if (widget.showProfile) SizedBox(width: 20.w),
 

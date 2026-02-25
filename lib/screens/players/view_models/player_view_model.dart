@@ -17,12 +17,16 @@ class PlayerViewModel {
 
   /// Generation counter to prevent stale API responses from corrupting state
   int _searchGeneration = 0;
+
   /// Track the current search query to validate API responses
   String _currentSearchQuery = '';
 
   Set<String> _favoritePlayerIds = {};
 
-  Future<void> initialize({bool clear = false, bool isOnboarding = false}) async {
+  Future<void> initialize({
+    bool clear = false,
+    bool isOnboarding = false,
+  }) async {
     if (clear) {
       _players.clear();
       _offset = 0;
@@ -67,7 +71,9 @@ class PlayerViewModel {
     return _fetchPaginatedPlayers(countryCode);
   }
 
-  Future<List<Map<String, dynamic>>> _fetchOnboardingPlayers(String countryCode) async {
+  Future<List<Map<String, dynamic>>> _fetchOnboardingPlayers(
+    String countryCode,
+  ) async {
     final players = await _repo.fetchOnboardingPlayers(
       countryCode: countryCode,
       countryLimit: 8,
@@ -99,7 +105,8 @@ class PlayerViewModel {
     );
 
     // Check if this search is still current (no newer search started)
-    if (_searchGeneration != generationAtStart || _currentSearchQuery != query) {
+    if (_searchGeneration != generationAtStart ||
+        _currentSearchQuery != query) {
       // A newer search was initiated while this one was in flight - discard results
       return [];
     }
@@ -121,7 +128,9 @@ class PlayerViewModel {
     return newPlayers;
   }
 
-  Future<List<Map<String, dynamic>>> _fetchPaginatedPlayers(String? countryCode) async {
+  Future<List<Map<String, dynamic>>> _fetchPaginatedPlayers(
+    String? countryCode,
+  ) async {
     final players = await _repo.fetchPlayersPage(
       offset: _offset,
       pageSize: _pageSize,
@@ -145,13 +154,12 @@ class PlayerViewModel {
     return newPlayers;
   }
 
-  List<Map<String, dynamic>> _enrichWithFavorites(List<Map<String, dynamic>> players) {
+  List<Map<String, dynamic>> _enrichWithFavorites(
+    List<Map<String, dynamic>> players,
+  ) {
     return players.map((player) {
       final fideId = player['fideId']?.toString() ?? '';
-      return {
-        ...player,
-        'isFavorite': _favoritePlayerIds.contains(fideId),
-      };
+      return {...player, 'isFavorite': _favoritePlayerIds.contains(fideId)};
     }).toList();
   }
 

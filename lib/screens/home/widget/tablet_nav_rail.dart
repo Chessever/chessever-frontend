@@ -46,31 +46,34 @@ class TabletNavRail extends ConsumerWidget {
             Expanded(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.start,
-                children: BottomNavBarItem.values.map((item) {
-                  return _NavRailItem(
-                    item: item,
-                    isSelected: selectedItem == item,
-                    onTap: () {
-                      final previous =
-                          ref.read(selectedBottomNavBarItemProvider);
-                      if (previous == item) return;
+                children:
+                    BottomNavBarItem.values.map((item) {
+                      return _NavRailItem(
+                        item: item,
+                        isSelected: selectedItem == item,
+                        onTap: () {
+                          final previous = ref.read(
+                            selectedBottomNavBarItemProvider,
+                          );
+                          if (previous == item) return;
 
-                      ref.read(selectedBottomNavBarItemProvider.notifier).state =
-                          item;
+                          ref
+                              .read(selectedBottomNavBarItemProvider.notifier)
+                              .state = item;
 
-                      unawaited(
-                        AnalyticsService.instance.trackEvent(
-                          'Tab Changed',
-                          properties: {
-                            'previous_tab': previous.name,
-                            'tab': item.name,
-                            'navigation_type': 'rail',
-                          },
-                        ),
+                          unawaited(
+                            AnalyticsService.instance.trackEvent(
+                              'Tab Changed',
+                              properties: {
+                                'previous_tab': previous.name,
+                                'tab': item.name,
+                                'navigation_type': 'rail',
+                              },
+                            ),
+                          );
+                        },
                       );
-                    },
-                  );
-                }).toList(),
+                    }).toList(),
               ),
             ),
           ],
@@ -96,11 +99,7 @@ class _MenuButton extends StatelessWidget {
           color: kDarkGreyColor.withOpacity(0.3),
           borderRadius: BorderRadius.circular(12.0),
         ),
-        child: const Icon(
-          Icons.menu_rounded,
-          color: Colors.white,
-          size: 24.0,
-        ),
+        child: const Icon(Icons.menu_rounded, color: Colors.white, size: 24.0),
       ),
     );
   }
@@ -151,19 +150,17 @@ class _NavRailItem extends StatelessWidget {
                 vertical: 8.0,
               ),
               decoration: BoxDecoration(
-                color: isSelected
-                    ? kPrimaryColor.withOpacity(0.15)
-                    : Colors.transparent,
+                color:
+                    isSelected
+                        ? kPrimaryColor.withOpacity(0.15)
+                        : Colors.transparent,
                 borderRadius: BorderRadius.circular(16.0),
               ),
               child: SvgWidget(
                 iconPath,
                 width: iconSize,
                 height: iconSize,
-                colorFilter: ColorFilter.mode(
-                  iconColor,
-                  BlendMode.srcIn,
-                ),
+                colorFilter: ColorFilter.mode(iconColor, BlendMode.srcIn),
               ),
             ),
             const SizedBox(height: 4.0),

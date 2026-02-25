@@ -14,12 +14,14 @@ class PushNotificationsService {
   bool _initialized = false;
   String? _pendingUserId;
   final List<void Function(OSPushSubscriptionChangedState)>
-      _pendingPushObservers = [];
+  _pendingPushObservers = [];
 
   Future<void> initialize({required String appId}) async {
     if (_initialized) return;
     if (appId.isEmpty) {
-      debugPrint('[PushNotifications] Missing OneSignal app ID; skipping init.');
+      debugPrint(
+        '[PushNotifications] Missing OneSignal app ID; skipping init.',
+      );
       return;
     }
 
@@ -127,13 +129,10 @@ class PushNotificationsService {
 
       await Supabase.instance.client
           .from('user_notification_preferences')
-          .upsert(
-            {
-              'user_id': userId,
-              'push_enabled': enabled,
-            },
-            onConflict: 'user_id',
-          );
+          .upsert({
+            'user_id': userId,
+            'push_enabled': enabled,
+          }, onConflict: 'user_id');
     } catch (_) {
       // Supabase sync failures shouldn't block local UX.
     }

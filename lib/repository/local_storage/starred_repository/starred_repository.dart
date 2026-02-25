@@ -36,11 +36,7 @@ class _FavoriteRepository {
           userId: userId,
         );
       } else {
-        await db.addToList(
-          key: 'starred_$key',
-          item: value,
-          userId: userId,
-        );
+        await db.addToList(key: 'starred_$key', item: value, userId: userId);
       }
     } catch (error, _) {
       // Local storage failure is not critical

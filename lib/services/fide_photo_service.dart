@@ -57,10 +57,7 @@ class FidePhotoService {
     try {
       final response = await http.get(
         uri,
-        headers: {
-          'Authorization': 'Bearer $_anonKey',
-          'apikey': _anonKey,
-        },
+        headers: {'Authorization': 'Bearer $_anonKey', 'apikey': _anonKey},
       );
 
       _attemptedFetches.add(fideId);
@@ -76,7 +73,9 @@ class FidePhotoService {
             _urlCache[fideId] = url;
             return url;
           } else {
-            debugPrint('FIDE photo for $fideId rejected: too small (likely placeholder)');
+            debugPrint(
+              'FIDE photo for $fideId rejected: too small (likely placeholder)',
+            );
             _urlCache[fideId] = null;
             return null;
           }
@@ -85,9 +84,13 @@ class FidePhotoService {
         // Log error for debugging
         try {
           final error = jsonDecode(response.body);
-          debugPrint('FIDE photo error (${response.statusCode}): ${error['error']}');
+          debugPrint(
+            'FIDE photo error (${response.statusCode}): ${error['error']}',
+          );
         } catch (_) {
-          debugPrint('FIDE photo error (${response.statusCode}): ${response.body}');
+          debugPrint(
+            'FIDE photo error (${response.statusCode}): ${response.body}',
+          );
         }
       }
     } catch (e) {

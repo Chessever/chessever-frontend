@@ -95,7 +95,10 @@ Future<T?> _showTabletOverlayMenu<T>({
   if (menuRightEdge > screenWidth - horizontalPadding) {
     // position.right in RelativeRect.fromLTRB is the x-coordinate of the button's right edge
     // So menu's left = button's right edge - menu width
-    left = (position.right - menuWidth).clamp(horizontalPadding, screenWidth - menuWidth - horizontalPadding);
+    left = (position.right - menuWidth).clamp(
+      horizontalPadding,
+      screenWidth - menuWidth - horizontalPadding,
+    );
     isRightAligned = true;
   } else {
     left = position.left;
@@ -186,47 +189,50 @@ Future<T?> _showTabletOverlayMenu<T>({
                 return Transform.scale(
                   scale: 0.92 + (progress * 0.08),
                   // Align animation to the side the menu is anchored to
-                  alignment: isRightAligned ? Alignment.topRight : Alignment.topLeft,
+                  alignment:
+                      isRightAligned ? Alignment.topRight : Alignment.topLeft,
                   child: Opacity(opacity: progress, child: child),
                 );
               },
               child: Material(
                 elevation: elevation ?? 8,
-                borderRadius: shape is RoundedRectangleBorder
-                    ? shape.borderRadius as BorderRadius?
-                    : BorderRadius.circular(12),
+                borderRadius:
+                    shape is RoundedRectangleBorder
+                        ? shape.borderRadius as BorderRadius?
+                        : BorderRadius.circular(12),
                 color: color ?? const Color(0xFF2A2A2A),
                 clipBehavior: Clip.antiAlias,
                 child: IntrinsicWidth(
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: items.map((item) {
-                      if (item is PopupMenuItem<T>) {
-                        return InkWell(
-                          onTap: () {
-                            if (item.onTap != null) {
-                              item.onTap!();
-                            }
-                            closeMenu(item.value);
-                          },
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 12,
-                            ),
-                            child: item.child,
-                          ),
-                        );
-                      } else if (item is PopupMenuDivider) {
-                        return Divider(
-                          height: item.height,
-                          thickness: 0.5,
-                          color: Colors.white.withValues(alpha: 0.1),
-                        );
-                      }
-                      return const SizedBox.shrink();
-                    }).toList(),
+                    children:
+                        items.map((item) {
+                          if (item is PopupMenuItem<T>) {
+                            return InkWell(
+                              onTap: () {
+                                if (item.onTap != null) {
+                                  item.onTap!();
+                                }
+                                closeMenu(item.value);
+                              },
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                  vertical: 12,
+                                ),
+                                child: item.child,
+                              ),
+                            );
+                          } else if (item is PopupMenuDivider) {
+                            return Divider(
+                              height: item.height,
+                              thickness: 0.5,
+                              color: Colors.white.withValues(alpha: 0.1),
+                            );
+                          }
+                          return const SizedBox.shrink();
+                        }).toList(),
                   ),
                 ),
               ),

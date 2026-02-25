@@ -56,10 +56,7 @@ class _PlayerScreenState extends ConsumerState<PlayerListScreen> {
     _searchAnalyticsTimer = Timer(const Duration(milliseconds: 350), () {
       AnalyticsService.instance.trackEventDetached(
         'Player Search',
-        properties: {
-          'query': normalized,
-          'query_length': normalized.length,
-        },
+        properties: {'query': normalized, 'query_length': normalized.length},
       );
     });
   }
@@ -323,7 +320,9 @@ class _PlayerList extends ConsumerWidget {
         // Increment favorites version to trigger auto-pin recomputation
         // This will cause the games list to re-sort immediately
         ref.read(favoritesVersionProvider.notifier).state++;
-        debugPrint('[PlayerScreen] Incremented favorites version to trigger games resort');
+        debugPrint(
+          '[PlayerScreen] Incremented favorites version to trigger games resort',
+        );
 
         AnalyticsService.instance.trackEventDetached(
           'Player Favorite Toggled',

@@ -12,9 +12,7 @@ class BackDropFilterWidget extends StatelessWidget {
       blendMode: BlendMode.luminosity,
       filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
       child: Container(
-        decoration: BoxDecoration(
-          gradient: radialOverlayGradient,
-        ),
+        decoration: BoxDecoration(gradient: radialOverlayGradient),
       ),
     );
   }

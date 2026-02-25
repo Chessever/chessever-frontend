@@ -9,10 +9,12 @@ class EngineSettingsModel with EngineSettingsModelMappable {
   final bool showEngineGauge;
   final bool showDepthOverlay;
   final bool showPvArrows;
-  final bool showEngineAnalysis; // Controls visibility of PV cards & arrows (computer icon)
+  final bool
+  showEngineAnalysis; // Controls visibility of PV cards & arrows (computer icon)
   final int searchTimeIndex;
   final int principalVariationIndex;
-  final int maxArrowsOnBoard; // Max arrows to show on board (index 0-4 = 1-5 arrows)
+  final int
+  maxArrowsOnBoard; // Max arrows to show on board (index 0-4 = 1-5 arrows)
   final DateTime createdAt;
   final DateTime updatedAt;
 

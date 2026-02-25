@@ -70,10 +70,7 @@ class FigmaPlayerCard extends ConsumerWidget {
         padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 12.h),
         decoration: const BoxDecoration(
           border: Border(
-            bottom: BorderSide(
-              color: Color(0xFF1F1F1F),
-              width: 1,
-            ),
+            bottom: BorderSide(color: Color(0xFF1F1F1F), width: 1),
           ),
         ),
         child: Row(
@@ -92,34 +89,37 @@ class FigmaPlayerCard extends ConsumerWidget {
             SizedBox(width: 12.w),
             // Player photo with title badge overlay
             photoAsync.when(
-              data: (photoUrl) => PlayerInitialsAvatar(
-                photoUrl: photoUrl,
-                initials: initials,
-                size: avatarSize,
-                borderRadius: 8.br,
-                title: player.title,
-              ),
-              loading: () => skel.Skeletonizer(
-                enabled: true,
-                effect: const skel.ShimmerEffect(
-                  baseColor: Color(0xFF2A2A2A),
-                  highlightColor: Color(0xFF3A3A3A),
-                ),
-                child: Container(
-                  width: avatarSize,
-                  height: avatarSize,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF2A2A2A),
-                    borderRadius: BorderRadius.circular(8.br),
+              data:
+                  (photoUrl) => PlayerInitialsAvatar(
+                    photoUrl: photoUrl,
+                    initials: initials,
+                    size: avatarSize,
+                    borderRadius: 8.br,
+                    title: player.title,
                   ),
-                ),
-              ),
-              error: (_, __) => PlayerInitialsAvatar(
-                initials: initials,
-                size: avatarSize,
-                borderRadius: 8.br,
-                title: player.title,
-              ),
+              loading:
+                  () => skel.Skeletonizer(
+                    enabled: true,
+                    effect: const skel.ShimmerEffect(
+                      baseColor: Color(0xFF2A2A2A),
+                      highlightColor: Color(0xFF3A3A3A),
+                    ),
+                    child: Container(
+                      width: avatarSize,
+                      height: avatarSize,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF2A2A2A),
+                        borderRadius: BorderRadius.circular(8.br),
+                      ),
+                    ),
+                  ),
+              error:
+                  (_, __) => PlayerInitialsAvatar(
+                    initials: initials,
+                    size: avatarSize,
+                    borderRadius: 8.br,
+                    title: player.title,
+                  ),
             ),
             SizedBox(width: 12.w),
             // Player info (name + flag/rating)
@@ -148,22 +148,23 @@ class FigmaPlayerCard extends ConsumerWidget {
                           child: SizedBox(
                             width: 18.w,
                             height: 12.h,
-                            child: player.countryCode.toUpperCase() == 'FID'
-                                ? Image.asset(
-                                    PngAsset.fideLogo,
-                                    height: 12.h,
-                                    width: 18.w,
-                                    fit: BoxFit.contain,
-                                    cacheWidth: 48,
-                                    cacheHeight: 36,
-                                  )
-                                : validCountryCode.isNotEmpty
+                            child:
+                                player.countryCode.toUpperCase() == 'FID'
+                                    ? Image.asset(
+                                      PngAsset.fideLogo,
+                                      height: 12.h,
+                                      width: 18.w,
+                                      fit: BoxFit.contain,
+                                      cacheWidth: 48,
+                                      cacheHeight: 36,
+                                    )
+                                    : validCountryCode.isNotEmpty
                                     ? CountryFlag.fromCountryCode(
-                                        validCountryCode,
-                                        height: 12.h,
-                                        width: 18.w,
-                                        shape: RoundedRectangle(2.br),
-                                      )
+                                      validCountryCode,
+                                      height: 12.h,
+                                      width: 18.w,
+                                      shape: RoundedRectangle(2.br),
+                                    )
                                     : null,
                           ),
                         ),
@@ -181,9 +182,10 @@ class FigmaPlayerCard extends ConsumerWidget {
                               ? '+${player.scoreChange}'
                               : '${player.scoreChange}',
                           style: AppTypography.textSmMedium.copyWith(
-                            color: player.scoreChange > 0
-                                ? kGreenColor
-                                : kRedColor,
+                            color:
+                                player.scoreChange > 0
+                                    ? kGreenColor
+                                    : kRedColor,
                           ),
                         ),
                     ],
@@ -200,9 +202,10 @@ class FigmaPlayerCard extends ConsumerWidget {
                   padding: EdgeInsets.all(8.sp),
                   child: Icon(
                     isFavorite ? Icons.favorite : Icons.favorite_border,
-                    color: isFavorite
-                        ? const Color(0xFFEF4444)
-                        : const Color(0xFF71717A),
+                    color:
+                        isFavorite
+                            ? const Color(0xFFEF4444)
+                            : const Color(0xFF71717A),
                     size: 24.ic,
                   ),
                 ),
@@ -228,10 +231,7 @@ class FigmaPlayerCard extends ConsumerWidget {
 class FigmaStandingsHeader extends StatelessWidget {
   final bool showScore;
 
-  const FigmaStandingsHeader({
-    super.key,
-    this.showScore = true,
-  });
+  const FigmaStandingsHeader({super.key, this.showScore = true});
 
   @override
   Widget build(BuildContext context) {

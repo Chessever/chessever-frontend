@@ -73,9 +73,12 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
     // Button sizing with tablet refinements
     final rawButtonWidth = contentWidth / buttonCount;
     // On tablets, limit individual button width for better touch targets
-    final buttonWidth = isTablet ? math.min(rawButtonWidth, 140.0) : rawButtonWidth;
+    final buttonWidth =
+        isTablet ? math.min(rawButtonWidth, 140.0) : rawButtonWidth;
     final barHeight =
-        isTablet ? kBottomNavigationBarHeight + 14.0 : kBottomNavigationBarHeight;
+        isTablet
+            ? kBottomNavigationBarHeight + 14.0
+            : kBottomNavigationBarHeight;
 
     // Watch the centralized engine depth status provider
     final depthSnapshot = ref.watch(engineDepthStatusProvider);
@@ -148,8 +151,7 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
           svgPath: SvgAsset.left_arrow,
           width: buttonWidth,
           onPressed: canMoveBackward ? onLeftMove : null,
-          onLongPressStart:
-              canMoveBackward ? onLongPressBackwardStart : null,
+          onLongPressStart: canMoveBackward ? onLongPressBackwardStart : null,
           onLongPressEnd: onLongPressBackwardEnd,
         ),
 
@@ -157,8 +159,7 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
           svgPath: SvgAsset.right_arrow,
           width: buttonWidth,
           onPressed: canMoveForward ? onRightMove : null,
-          onLongPressStart:
-              canMoveForward ? onLongPressForwardStart : null,
+          onLongPressStart: canMoveForward ? onLongPressForwardStart : null,
           onLongPressEnd: onLongPressForwardEnd,
           showBadge: showUnseenMoveBadge,
         ),
@@ -171,37 +172,39 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
       decoration: BoxDecoration(
         color: kBlackColor,
         // Add subtle top border for visual separation on tablets
-        border: isTablet
-            ? Border(
-                top: BorderSide(
-                  color: Colors.white.withValues(alpha: 0.06),
-                  width: 1,
-                ),
-              )
-            : null,
+        border:
+            isTablet
+                ? Border(
+                  top: BorderSide(
+                    color: Colors.white.withValues(alpha: 0.06),
+                    width: 1,
+                  ),
+                )
+                : null,
       ),
       child: SafeArea(
         top: false,
         child: SizedBox(
           height: barHeight,
           child: Center(
-            child: isTablet
-                // Tablet: Container with refined styling
-                ? Container(
-                    height: barHeight - 12,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF0D0D0D),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    margin: EdgeInsets.symmetric(vertical: 4),
-                    padding: EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                    child: buttonsRow,
-                  )
-                // Phone: Full width row
-                : SizedBox(
-                    width: contentWidth,
-                    child: buttonsRow,
-                  ),
+            child:
+                isTablet
+                    // Tablet: Container with refined styling
+                    ? Container(
+                      height: barHeight - 12,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF0D0D0D),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      margin: EdgeInsets.symmetric(vertical: 4),
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
+                      child: buttonsRow,
+                    )
+                    // Phone: Full width row
+                    : SizedBox(width: contentWidth, child: buttonsRow),
           ),
         ),
       ),

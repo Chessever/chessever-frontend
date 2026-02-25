@@ -44,9 +44,9 @@ class SelectedCountryNotifier extends StateNotifier<AsyncValue<Country>> {
         if (savedValue.startsWith('LEGACY:')) {
           final legacyName = savedValue.substring(7); // Remove 'LEGACY:' prefix
           matchedCountry = CountryService().getAll().firstWhere(
-                (c) => c.name.toLowerCase() == legacyName.toLowerCase(),
-                orElse: () => CountryService().getAll().first,
-              );
+            (c) => c.name.toLowerCase() == legacyName.toLowerCase(),
+            orElse: () => CountryService().getAll().first,
+          );
 
           // Migrate to new format by saving country code
           await ref
@@ -103,18 +103,14 @@ class SelectedCountryNotifier extends StateNotifier<AsyncValue<Country>> {
     // Update state immediately for instant UI response
     state = AsyncValue.data(CountryService().getAll().first);
     // Remove in background (fire-and-forget)
-    unawaited(
-      ref.read(countryManRepository).removeCountrySelection(),
-    );
+    unawaited(ref.read(countryManRepository).removeCountrySelection());
   }
 
   /// Clear local state only (for logout) without touching Supabase.
   /// User's preference persists in Supabase for next login.
   void clearLocalOnly() {
     state = AsyncValue.data(CountryService().getAll().first);
-    unawaited(
-      ref.read(countryManRepository).clearLocalCacheOnly(),
-    );
+    unawaited(ref.read(countryManRepository).clearLocalCacheOnly());
   }
 
   /// Reload country selection from Supabase (source of truth)
@@ -131,9 +127,9 @@ class SelectedCountryNotifier extends StateNotifier<AsyncValue<Country>> {
         if (savedValue.startsWith('LEGACY:')) {
           final legacyName = savedValue.substring(7);
           matchedCountry = CountryService().getAll().firstWhere(
-                (c) => c.name.toLowerCase() == legacyName.toLowerCase(),
-                orElse: () => CountryService().getAll().first,
-              );
+            (c) => c.name.toLowerCase() == legacyName.toLowerCase(),
+            orElse: () => CountryService().getAll().first,
+          );
           // Migrate to new format
           await ref
               .read(countryManRepository)

@@ -24,7 +24,8 @@ class ForYouTournamentCard extends ConsumerWidget {
   });
 
   final String tourId;
-  final String groupKey; // The group_broadcast_id (mapped from tourId) - used for favorite detection
+  final String
+  groupKey; // The group_broadcast_id (mapped from tourId) - used for favorite detection
   final String tourName; // Fallback name from games
   final bool hasLiveGames;
   final int gameCount;
@@ -43,15 +44,17 @@ class ForYouTournamentCard extends ConsumerWidget {
     );
   }
 
-  Widget _buildCard(BuildContext context, WidgetRef ref, GroupBroadcast tournament) {
-    final liveIds = ref.watch(liveGroupBroadcastIdsProvider).valueOrNull ?? const [];
+  Widget _buildCard(
+    BuildContext context,
+    WidgetRef ref,
+    GroupBroadcast tournament,
+  ) {
+    final liveIds =
+        ref.watch(liveGroupBroadcastIdsProvider).valueOrNull ?? const [];
     final model = GroupEventCardModel.fromGroupBroadcast(tournament, liveIds);
 
     return Padding(
-      padding: EdgeInsets.only(
-        top: isFirst ? 0 : 16.sp,
-        bottom: 12.sp,
-      ),
+      padding: EdgeInsets.only(top: isFirst ? 0 : 16.sp, bottom: 12.sp),
       child: EventCard(
         tourEventCardModel: model,
         heroTagSuffix: 'for-you-${model.id}',
@@ -62,10 +65,7 @@ class ForYouTournamentCard extends ConsumerWidget {
 
   Widget _buildLoadingCard() {
     return Container(
-      margin: EdgeInsets.only(
-        top: isFirst ? 0 : 16.sp,
-        bottom: 12.sp,
-      ),
+      margin: EdgeInsets.only(top: isFirst ? 0 : 16.sp, bottom: 12.sp),
       height: 60.sp,
       decoration: BoxDecoration(
         color: kBlack2Color.withValues(alpha: 0.5),
@@ -96,10 +96,7 @@ class ForYouTournamentCard extends ConsumerWidget {
     );
 
     return Padding(
-      padding: EdgeInsets.only(
-        top: isFirst ? 0 : 16.sp,
-        bottom: 12.sp,
-      ),
+      padding: EdgeInsets.only(top: isFirst ? 0 : 16.sp, bottom: 12.sp),
       child: EventCard(
         tourEventCardModel: model,
         heroTagSuffix: 'for-you-${model.id}',
@@ -114,9 +111,12 @@ class ForYouTournamentCard extends ConsumerWidget {
         .replaceAll('-', ' ')
         .replaceAll('_', ' ')
         .split(' ')
-        .map((word) => word.isNotEmpty
-            ? '${word[0].toUpperCase()}${word.substring(1).toLowerCase()}'
-            : '')
+        .map(
+          (word) =>
+              word.isNotEmpty
+                  ? '${word[0].toUpperCase()}${word.substring(1).toLowerCase()}'
+                  : '',
+        )
         .join(' ')
         .trim();
   }
@@ -138,7 +138,9 @@ class ForYouTournamentCard extends ConsumerWidget {
         Navigator.pushNamed(context, '/tournament_detail_screen');
       }
     } catch (e) {
-      debugPrint('[ForYouTournamentCard] Error navigating to tournament $groupKey: $e');
+      debugPrint(
+        '[ForYouTournamentCard] Error navigating to tournament $groupKey: $e',
+      );
 
       // Tournament couldn't be resolved; fall back to a minimal tournament so
       // the detail screen still opens with available games.
@@ -149,7 +151,11 @@ class ForYouTournamentCard extends ConsumerWidget {
             id: groupKey,
             name: _formatTournamentName(tourName),
             createdAt: DateTime.now(),
-            search: [groupKey, tourId, tourName], // Search terms for the tournament
+            search: [
+              groupKey,
+              tourId,
+              tourName,
+            ], // Search terms for the tournament
             dateStart: hasLiveGames ? DateTime.now() : null,
             maxAvgElo: null,
             dateEnd: null,
@@ -157,7 +163,8 @@ class ForYouTournamentCard extends ConsumerWidget {
           );
 
           // Set the fallback tournament
-          ref.read(selectedBroadcastModelProvider.notifier).state = fallbackTournament;
+          ref.read(selectedBroadcastModelProvider.notifier).state =
+              fallbackTournament;
 
           // Navigate to tournament detail screen (games tab)
           if (context.mounted) {
@@ -166,7 +173,9 @@ class ForYouTournamentCard extends ConsumerWidget {
             Navigator.pushNamed(context, '/tournament_detail_screen');
           }
         } catch (fallbackError) {
-          debugPrint('[ForYouTournamentCard] Failed to navigate with fallback: $fallbackError');
+          debugPrint(
+            '[ForYouTournamentCard] Failed to navigate with fallback: $fallbackError',
+          );
 
           // As a last resort, show a snackbar to the user
           if (context.mounted) {
@@ -185,11 +194,16 @@ class ForYouTournamentCard extends ConsumerWidget {
 }
 
 // Provider to fetch tournament data by ID
-final _tournamentProvider = FutureProvider.autoDispose.family<GroupBroadcast, String>((ref, tourId) async {
-  try {
-    return await ref.read(groupBroadcastRepositoryProvider).getGroupBroadcastById(tourId);
-  } catch (e) {
-    debugPrint('[ForYouTournamentCard] Error fetching tournament $tourId: $e');
-    rethrow;
-  }
-});
+final _tournamentProvider = FutureProvider.autoDispose
+    .family<GroupBroadcast, String>((ref, tourId) async {
+      try {
+        return await ref
+            .read(groupBroadcastRepositoryProvider)
+            .getGroupBroadcastById(tourId);
+      } catch (e) {
+        debugPrint(
+          '[ForYouTournamentCard] Error fetching tournament $tourId: $e',
+        );
+        rethrow;
+      }
+    });

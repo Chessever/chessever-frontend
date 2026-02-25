@@ -98,9 +98,10 @@ class _GamebaseDatabaseSearchScreenState
                   _MetaRow(
                     state: state,
                     onRequestExactCount:
-                        () => ref
-                            .read(gamebaseDatabaseSearchProvider.notifier)
-                            .requestExactCount(),
+                        () =>
+                            ref
+                                .read(gamebaseDatabaseSearchProvider.notifier)
+                                .requestExactCount(),
                   ),
                   Expanded(
                     child: _GamesList(
@@ -338,128 +339,135 @@ class _GamesList extends ConsumerWidget {
               ref.read(gamebaseDatabaseSearchProvider.notifier).refresh(),
       color: kPrimaryColor,
       backgroundColor: kBlack2Color,
-      child: games.isEmpty
-          ? ListView(
-              physics: const AlwaysScrollableScrollPhysics(
-                parent: BouncingScrollPhysics(),
+      child:
+          games.isEmpty
+              ? ListView(
+                physics: const AlwaysScrollableScrollPhysics(
+                  parent: BouncingScrollPhysics(),
+                ),
+                padding: EdgeInsets.fromLTRB(16.w, 48.h, 16.w, 24.h),
+                children: const [_EmptyState()],
+              )
+              : ListView.separated(
+                physics: const AlwaysScrollableScrollPhysics(
+                  parent: BouncingScrollPhysics(),
+                ),
+                padding: EdgeInsets.fromLTRB(16.w, 0, 16.w, 16.h),
+                itemCount: games.length,
+                separatorBuilder: (_, __) => SizedBox(height: 12.h),
+                itemBuilder: (context, index) {
+                  final game = games[index];
+                  return GamebaseSearchGameCard(
+                    game: game,
+                    allGames: games,
+                    gameIndex: index,
+                    animationIndex: index,
+                    onAdd: () => onAdd(game),
+                    hideEventInfo: true,
+                  );
+                },
               ),
-              padding: EdgeInsets.fromLTRB(16.w, 48.h, 16.w, 24.h),
-              children: const [_EmptyState()],
-            )
-          : ListView.separated(
-              physics: const AlwaysScrollableScrollPhysics(
-                parent: BouncingScrollPhysics(),
-              ),
-              padding: EdgeInsets.fromLTRB(16.w, 0, 16.w, 16.h),
-              itemCount: games.length,
-              separatorBuilder: (_, __) => SizedBox(height: 12.h),
-              itemBuilder: (context, index) {
-                final game = games[index];
-                return GamebaseSearchGameCard(
-                  game: game,
-                  allGames: games,
-                  gameIndex: index,
-                  animationIndex: index,
-                  onAdd: () => onAdd(game),
-                  hideEventInfo: true,
-                );
-              },
-            ),
     );
   }
 
   static List<GamesTourModel> _rowsToGames(List<Map<String, dynamic>> rows) {
-    return rows.map((row) {
-      final id = (row['id']?.toString().trim());
-      final safeId = (id != null && id.isNotEmpty) ? id : 'unknown';
-      final result = row['result']?.toString() ?? '*';
-      final timeControl = row['timeControl']?.toString();
-      final date = _parseDate(row['date']);
-      final eco = row['eco']?.toString() ?? '';
-      final opening = row['opening']?.toString() ?? '';
-      final variation = row['variation']?.toString() ?? '';
-      final event = row['event']?.toString() ?? 'Gamebase';
-      final site = row['site']?.toString();
+    return rows
+        .map((row) {
+          final id = (row['id']?.toString().trim());
+          final safeId = (id != null && id.isNotEmpty) ? id : 'unknown';
+          final result = row['result']?.toString() ?? '*';
+          final timeControl = row['timeControl']?.toString();
+          final date = _parseDate(row['date']);
+          final eco = row['eco']?.toString() ?? '';
+          final opening = row['opening']?.toString() ?? '';
+          final variation = row['variation']?.toString() ?? '';
+          final event = row['event']?.toString() ?? 'Gamebase';
+          final site = row['site']?.toString();
 
-      final whiteName =
-          (row['white']?.toString() ?? row['whiteName']?.toString() ?? '')
-              .trim();
-      final blackName =
-          (row['black']?.toString() ?? row['blackName']?.toString() ?? '')
-              .trim();
+          final whiteName =
+              (row['white']?.toString() ?? row['whiteName']?.toString() ?? '')
+                  .trim();
+          final blackName =
+              (row['black']?.toString() ?? row['blackName']?.toString() ?? '')
+                  .trim();
 
-      final pgn = buildHeaderOnlyPgn(
-        whiteName: whiteName.isNotEmpty ? whiteName : 'White',
-        blackName: blackName.isNotEmpty ? blackName : 'Black',
-        result: result,
-        event: event,
-        site: site,
-        date: date,
-        eco: eco,
-        opening: opening,
-        variation: variation,
-      );
+          final pgn = buildHeaderOnlyPgn(
+            whiteName: whiteName.isNotEmpty ? whiteName : 'White',
+            blackName: blackName.isNotEmpty ? blackName : 'Black',
+            result: result,
+            event: event,
+            site: site,
+            date: date,
+            eco: eco,
+            opening: opening,
+            variation: variation,
+          );
 
-      final whiteElo = (row['whiteElo'] as num?)?.toInt() ?? 0;
-      final blackElo = (row['blackElo'] as num?)?.toInt() ?? 0;
-      final whiteFed = row['whiteFed']?.toString() ?? '';
-      final blackFed = row['blackFed']?.toString() ?? '';
-      final whiteTitle = ChessTitleUtils.normalize(
-        row['whiteTitle']?.toString(),
-      );
-      final blackTitle = ChessTitleUtils.normalize(
-        row['blackTitle']?.toString(),
-      );
-      final whitePlayerId = row['whitePlayerId']?.toString().trim();
-      final blackPlayerId = row['blackPlayerId']?.toString().trim();
-      final whiteFideId = int.tryParse(row['whiteFideId']?.toString() ?? '');
-      final blackFideId = int.tryParse(row['blackFideId']?.toString() ?? '');
+          final whiteElo = (row['whiteElo'] as num?)?.toInt() ?? 0;
+          final blackElo = (row['blackElo'] as num?)?.toInt() ?? 0;
+          final whiteFed = row['whiteFed']?.toString() ?? '';
+          final blackFed = row['blackFed']?.toString() ?? '';
+          final whiteTitle = ChessTitleUtils.normalize(
+            row['whiteTitle']?.toString(),
+          );
+          final blackTitle = ChessTitleUtils.normalize(
+            row['blackTitle']?.toString(),
+          );
+          final whitePlayerId = row['whitePlayerId']?.toString().trim();
+          final blackPlayerId = row['blackPlayerId']?.toString().trim();
+          final whiteFideId = int.tryParse(
+            row['whiteFideId']?.toString() ?? '',
+          );
+          final blackFideId = int.tryParse(
+            row['blackFideId']?.toString() ?? '',
+          );
 
-      final whiteCard = PlayerCard(
-        name: whiteName.isNotEmpty ? whiteName : 'White',
-        federation: '',
-        title: whiteTitle,
-        rating: whiteElo,
-        countryCode: whiteFed,
-        team: null,
-        fideId: whiteFideId,
-        gamebasePlayerId:
-            (whitePlayerId != null && whitePlayerId.isNotEmpty)
-                ? whitePlayerId
-                : null,
-      );
+          final whiteCard = PlayerCard(
+            name: whiteName.isNotEmpty ? whiteName : 'White',
+            federation: '',
+            title: whiteTitle,
+            rating: whiteElo,
+            countryCode: whiteFed,
+            team: null,
+            fideId: whiteFideId,
+            gamebasePlayerId:
+                (whitePlayerId != null && whitePlayerId.isNotEmpty)
+                    ? whitePlayerId
+                    : null,
+          );
 
-      final blackCard = PlayerCard(
-        name: blackName.isNotEmpty ? blackName : 'Black',
-        federation: '',
-        title: blackTitle,
-        rating: blackElo,
-        countryCode: blackFed,
-        team: null,
-        fideId: blackFideId,
-        gamebasePlayerId:
-            (blackPlayerId != null && blackPlayerId.isNotEmpty)
-                ? blackPlayerId
-                : null,
-      );
+          final blackCard = PlayerCard(
+            name: blackName.isNotEmpty ? blackName : 'Black',
+            federation: '',
+            title: blackTitle,
+            rating: blackElo,
+            countryCode: blackFed,
+            team: null,
+            fideId: blackFideId,
+            gamebasePlayerId:
+                (blackPlayerId != null && blackPlayerId.isNotEmpty)
+                    ? blackPlayerId
+                    : null,
+          );
 
-      return GamesTourModel(
-        gameId: safeId,
-        whitePlayer: whiteCard,
-        blackPlayer: blackCard,
-        whiteTimeDisplay: '--:--',
-        blackTimeDisplay: '--:--',
-        whiteClockCentiseconds: 0,
-        blackClockCentiseconds: 0,
-        gameStatus: GameStatus.fromString(result),
-        roundId: 'gamebase_search',
-        roundSlug: eco.trim().isNotEmpty ? eco.trim() : timeControl,
-        tourId: event.trim().isNotEmpty ? event.trim() : 'Gamebase',
-        timeControl: timeControl,
-        pgn: pgn,
-        lastMoveTime: date,
-      );
-    }).toList(growable: false);
+          return GamesTourModel(
+            gameId: safeId,
+            whitePlayer: whiteCard,
+            blackPlayer: blackCard,
+            whiteTimeDisplay: '--:--',
+            blackTimeDisplay: '--:--',
+            whiteClockCentiseconds: 0,
+            blackClockCentiseconds: 0,
+            gameStatus: GameStatus.fromString(result),
+            roundId: 'gamebase_search',
+            roundSlug: eco.trim().isNotEmpty ? eco.trim() : timeControl,
+            tourId: event.trim().isNotEmpty ? event.trim() : 'Gamebase',
+            timeControl: timeControl,
+            pgn: pgn,
+            lastMoveTime: date,
+          );
+        })
+        .toList(growable: false);
   }
 
   static DateTime? _parseDate(Object? raw) {

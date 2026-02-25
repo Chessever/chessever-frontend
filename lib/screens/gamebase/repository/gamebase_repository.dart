@@ -6,22 +6,19 @@ import '../models/models.dart';
 /// Repository for Gamebase API calls.
 /// Handles communication with the Chess Database API.
 class GamebaseRepository {
-  GamebaseRepository({
-    http.Client? client,
-    String? baseUrl,
-    String? apiKey,
-  })  : _client = client ?? http.Client(),
-        _baseUrl = baseUrl ?? 'https://service.chessever.com',
-        _apiKey = apiKey ?? const String.fromEnvironment('GAMEBASE_API_KEY');
+  GamebaseRepository({http.Client? client, String? baseUrl, String? apiKey})
+    : _client = client ?? http.Client(),
+      _baseUrl = baseUrl ?? 'https://service.chessever.com',
+      _apiKey = apiKey ?? const String.fromEnvironment('GAMEBASE_API_KEY');
 
   final http.Client _client;
   final String _baseUrl;
   final String _apiKey;
 
   Map<String, String> get _headers => {
-        'Content-Type': 'application/json',
-        'X-API-Key': _apiKey,
-      };
+    'Content-Type': 'application/json',
+    'X-API-Key': _apiKey,
+  };
 
   /// Get move aggregates for a given FEN position.
   ///
@@ -38,9 +35,7 @@ class GamebaseRepository {
     String? playerId,
   }) async {
     try {
-      final queryParams = <String, String>{
-        'fen': fen,
-      };
+      final queryParams = <String, String>{'fen': fen};
 
       if (timeControl != null) {
         queryParams['timeControl'] = timeControl.name.toUpperCase();
@@ -58,8 +53,9 @@ class GamebaseRepository {
         queryParams['playerId'] = playerId;
       }
 
-      final uri = Uri.parse('$_baseUrl/api/game-position/aggregates')
-          .replace(queryParameters: queryParams);
+      final uri = Uri.parse(
+        '$_baseUrl/api/game-position/aggregates',
+      ).replace(queryParameters: queryParams);
 
       final response = await _client.get(uri, headers: _headers);
 
@@ -103,8 +99,9 @@ class GamebaseRepository {
         queryParams['name'] = name;
       }
 
-      final uri = Uri.parse('$_baseUrl/api/player')
-          .replace(queryParameters: queryParams);
+      final uri = Uri.parse(
+        '$_baseUrl/api/player',
+      ).replace(queryParameters: queryParams);
 
       final response = await _client.get(uri, headers: _headers);
 
@@ -185,11 +182,7 @@ class GamebaseRepository {
 
 /// Exception thrown when Gamebase API calls fail.
 class GamebaseApiException implements Exception {
-  GamebaseApiException(
-    this.message, {
-    this.statusCode,
-    this.body,
-  });
+  GamebaseApiException(this.message, {this.statusCode, this.body});
 
   final String message;
   final int? statusCode;

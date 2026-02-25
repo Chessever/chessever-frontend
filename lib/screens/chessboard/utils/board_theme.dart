@@ -7,10 +7,7 @@ class BoardThemePair {
   final Color darkSquare;
   final Color lightSquare;
 
-  const BoardThemePair({
-    required this.darkSquare,
-    required this.lightSquare,
-  });
+  const BoardThemePair({required this.darkSquare, required this.lightSquare});
 }
 
 const Map<BoardColor, BoardThemePair> boardThemes = {

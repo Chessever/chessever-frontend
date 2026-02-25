@@ -75,7 +75,9 @@ class _PlayerCardContent extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: const Color(0xFF1C1C1C),
                   borderRadius: BorderRadius.circular(12.br),
-                  border: Border.all(color: kWhiteColor.withValues(alpha: 0.08)),
+                  border: Border.all(
+                    color: kWhiteColor.withValues(alpha: 0.08),
+                  ),
                 ),
                 alignment: Alignment.center,
                 child: FederationFlag(

@@ -34,8 +34,7 @@ class CountrymanGamesTourScreenProvider
         .read(gamesLocalStorage)
         .getCountrymanGames('USA'); // or currentCountry ?? 'USA'
 
-    final pinnedIds =
-        await ref.read(pinGameLocalStorage).getPinnedGameIds('');
+    final pinnedIds = await ref.read(pinGameLocalStorage).getPinnedGameIds('');
 
     // Sort initial games: pinned on top
     initialGames.sort((a, b) {
@@ -59,8 +58,9 @@ class CountrymanGamesTourScreenProvider
     /// ✅ Listen for full isolate-parsed games
     ref.listen<List<Games>>(fullGamesProvider, (previous, next) async {
       if (next.length > initialGames.length) {
-        final pinnedIds =
-            await ref.read(pinGameLocalStorage).getPinnedGameIds('');
+        final pinnedIds = await ref
+            .read(pinGameLocalStorage)
+            .getPinnedGameIds('');
 
         final sortedGames = [...next]..sort((a, b) {
           final aPinned = pinnedIds.contains(a.id);
@@ -86,8 +86,7 @@ class CountrymanGamesTourScreenProvider
   Future<void> togglePinGame(String gameId) async {
     print('Toggle pin called for gameId: $gameId');
 
-    final pinnedIds =
-        await ref.read(pinGameLocalStorage).getPinnedGameIds('');
+    final pinnedIds = await ref.read(pinGameLocalStorage).getPinnedGameIds('');
     print('Currently pinned IDs before toggle: $pinnedIds');
 
     if (pinnedIds.contains(gameId)) {
@@ -98,8 +97,9 @@ class CountrymanGamesTourScreenProvider
       await ref.read(pinGameLocalStorage).addPinnedGameId(gameId, '');
     }
 
-    final updatedPinnedIds =
-        await ref.read(pinGameLocalStorage).getPinnedGameIds('');
+    final updatedPinnedIds = await ref
+        .read(pinGameLocalStorage)
+        .getPinnedGameIds('');
     print('Pinned IDs after toggle: $updatedPinnedIds');
 
     print('Refreshing games list...');

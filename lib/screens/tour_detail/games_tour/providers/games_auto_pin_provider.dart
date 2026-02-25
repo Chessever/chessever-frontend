@@ -52,7 +52,9 @@ class _AutoPinLogController {
               .toList();
 
       if (countryCode == null || countryCode.isEmpty) {
-        print('⚠️ Auto-pin: Country unavailable, falling back to favorites only');
+        print(
+          '⚠️ Auto-pin: Country unavailable, falling back to favorites only',
+        );
         return (false, [...favPlayers]);
       }
 
@@ -125,16 +127,17 @@ class _AutoPinLogController {
     // Get games from the main/selected tour using the raw games provider
     final mainGamesRaw =
         ref.read(gamesTourProvider(tourId)).valueOrNull ?? const <Games>[];
-    final mainGames = mainGamesRaw
-        .map((game) {
-          try {
-            return GamesTourModel.fromGame(game);
-          } catch (_) {
-            return null;
-          }
-        })
-        .whereType<GamesTourModel>()
-        .toList();
+    final mainGames =
+        mainGamesRaw
+            .map((game) {
+              try {
+                return GamesTourModel.fromGame(game);
+              } catch (_) {
+                return null;
+              }
+            })
+            .whereType<GamesTourModel>()
+            .toList();
     allGames.addAll(mainGames);
 
     // Check if this is a multi-stage knockout tournament
@@ -142,12 +145,13 @@ class _AutoPinLogController {
     if (tourDetail == null || tourDetail.tours.isEmpty) return allGames;
 
     // Find the current tour to get its groupBroadcastId
-    final currentTour = tourDetail.tours
-        .firstWhere(
-          (t) => t.tour.id == tourId,
-          orElse: () => tourDetail.tours.first,
-        )
-        .tour;
+    final currentTour =
+        tourDetail.tours
+            .firstWhere(
+              (t) => t.tour.id == tourId,
+              orElse: () => tourDetail.tours.first,
+            )
+            .tour;
 
     final groupBroadcastId = currentTour.groupBroadcastId;
     if (groupBroadcastId == null || groupBroadcastId.isEmpty) {
@@ -155,15 +159,18 @@ class _AutoPinLogController {
     }
 
     // Get all tours in the group broadcast
-    final allToursInGroup = tourDetail.tours
-        .where((t) => t.tour.groupBroadcastId == groupBroadcastId)
-        .toList();
+    final allToursInGroup =
+        tourDetail.tours
+            .where((t) => t.tour.groupBroadcastId == groupBroadcastId)
+            .toList();
 
     if (allToursInGroup.length <= 1) {
       return allGames; // Not multi-stage
     }
 
-    print('🎯 Auto-pin: Detected ${allToursInGroup.length} stages in multi-stage knockout');
+    print(
+      '🎯 Auto-pin: Detected ${allToursInGroup.length} stages in multi-stage knockout',
+    );
 
     // Collect games from ALL stages
     final stageGamesSet = <String>{}; // Track game IDs to avoid duplicates
@@ -184,7 +191,9 @@ class _AutoPinLogController {
       }
     }
 
-    print('🎯 Auto-pin: Collected ${allGames.length} total games from all stages');
+    print(
+      '🎯 Auto-pin: Collected ${allGames.length} total games from all stages',
+    );
     return allGames;
   }
 

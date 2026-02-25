@@ -8,7 +8,8 @@ class SearchResultTile extends StatefulWidget {
   final bool isPlayerResult;
   final bool isFullWidth;
 
-  const SearchResultTile({super.key,
+  const SearchResultTile({
+    super.key,
     required this.result,
     required this.onTap,
     this.isPlayerResult = false,
@@ -35,10 +36,7 @@ class _SearchResultTileState extends State<SearchResultTile>
     _scaleAnimation = Tween<double>(
       begin: 1.0,
       end: 1.02,
-    ).animate(CurvedAnimation(
-      parent: _controller,
-      curve: Curves.easeInOut,
-    ));
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
   }
 
   @override
@@ -69,19 +67,27 @@ class _SearchResultTileState extends State<SearchResultTile>
                   onTap: widget.onTap,
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 200),
-                    margin: EdgeInsets.symmetric(horizontal: 4.w, vertical: 4.h),
+                    margin: EdgeInsets.symmetric(
+                      horizontal: 4.w,
+                      vertical: 4.h,
+                    ),
                     decoration: BoxDecoration(
-                      color: _isHovered
-                          ? Colors.white.withValues(alpha: 0.05)
-                          : Colors.transparent,
+                      color:
+                          _isHovered
+                              ? Colors.white.withValues(alpha: 0.05)
+                              : Colors.transparent,
                       borderRadius: BorderRadius.circular(12.br),
                       border: Border.all(
-                        color: _isHovered
-                            ? Colors.blue.withOpacity(0.3)
-                            : Colors.transparent,
+                        color:
+                            _isHovered
+                                ? Colors.blue.withOpacity(0.3)
+                                : Colors.transparent,
                       ),
                     ),
-                    child: widget.isPlayerResult ? _buildPlayerContent() : _buildTournamentContent(),
+                    child:
+                        widget.isPlayerResult
+                            ? _buildPlayerContent()
+                            : _buildTournamentContent(),
                   ),
                 ),
               );
@@ -109,9 +115,10 @@ class _SearchResultTileState extends State<SearchResultTile>
     final hasFed = fed != null && fed.isNotEmpty;
 
     // Build display name with title prefix
-    final displayName = hasTitle
-        ? '$title ${player?.name ?? widget.result.matchedText}'
-        : (player?.name ?? widget.result.matchedText);
+    final displayName =
+        hasTitle
+            ? '$title ${player?.name ?? widget.result.matchedText}'
+            : (player?.name ?? widget.result.matchedText);
 
     // Build subtitle: rating and federation
     final subtitleParts = <String>[];
@@ -121,7 +128,8 @@ class _SearchResultTileState extends State<SearchResultTile>
     if (hasFed) {
       subtitleParts.add(fed);
     }
-    final subtitle = subtitleParts.isNotEmpty ? subtitleParts.join(' • ') : null;
+    final subtitle =
+        subtitleParts.isNotEmpty ? subtitleParts.join(' • ') : null;
 
     return Row(
       children: [
@@ -143,10 +151,7 @@ class _SearchResultTileState extends State<SearchResultTile>
                 SizedBox(height: 4.h),
                 Text(
                   subtitle,
-                  style: TextStyle(
-                    color: Colors.grey[400],
-                    fontSize: 12,
-                  ),
+                  style: TextStyle(color: Colors.grey[400], fontSize: 12),
                   overflow: TextOverflow.ellipsis,
                 ),
               ],

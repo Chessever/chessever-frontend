@@ -30,10 +30,7 @@ void showPlayerAvatarFullscreen({
         );
       },
       transitionsBuilder: (context, animation, secondaryAnimation, child) {
-        return FadeTransition(
-          opacity: animation,
-          child: child,
-        );
+        return FadeTransition(opacity: animation, child: child);
       },
     ),
   );
@@ -85,28 +82,31 @@ class _FullscreenPlayerAvatar extends StatelessWidget {
                 ),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(24.br),
-                  child: hasPhoto
-                      ? CachedNetworkImage(
-                          imageUrl: photoUrl!,
-                          width: imageSize,
-                          height: imageSize,
-                          fit: BoxFit.cover,
-                          placeholder: (context, url) => _InitialsDisplay(
+                  child:
+                      hasPhoto
+                          ? CachedNetworkImage(
+                            imageUrl: photoUrl!,
+                            width: imageSize,
+                            height: imageSize,
+                            fit: BoxFit.cover,
+                            placeholder:
+                                (context, url) => _InitialsDisplay(
+                                  initials: initials,
+                                  size: imageSize,
+                                  title: title,
+                                ),
+                            errorWidget:
+                                (context, url, error) => _InitialsDisplay(
+                                  initials: initials,
+                                  size: imageSize,
+                                  title: title,
+                                ),
+                          )
+                          : _InitialsDisplay(
                             initials: initials,
                             size: imageSize,
                             title: title,
                           ),
-                          errorWidget: (context, url, error) => _InitialsDisplay(
-                            initials: initials,
-                            size: imageSize,
-                            title: title,
-                          ),
-                        )
-                      : _InitialsDisplay(
-                          initials: initials,
-                          size: imageSize,
-                          title: title,
-                        ),
                 ),
               ),
             ),
@@ -131,16 +131,15 @@ class _InitialsDisplay extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final fontSize = size * 0.3;
-    final effectiveInitials = initials.isNotEmpty ? initials.toUpperCase() : '?';
+    final effectiveInitials =
+        initials.isNotEmpty ? initials.toUpperCase() : '?';
 
     return Stack(
       children: [
         Container(
           width: size,
           height: size,
-          decoration: const BoxDecoration(
-            gradient: kProfileInitialsGradient,
-          ),
+          decoration: const BoxDecoration(gradient: kProfileInitialsGradient),
           child: Center(
             child: Text(
               effectiveInitials,

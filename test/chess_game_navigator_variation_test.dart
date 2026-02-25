@@ -20,7 +20,9 @@ void main() {
       gameId: 'g1',
       startingFen: 'fen',
       metadata: const {},
-      mainline: [move('e4', variations: [variation])],
+      mainline: [
+        move('e4', variations: [variation]),
+      ],
     );
     final navigator = ChessGameNavigator(game);
 
@@ -33,9 +35,12 @@ void main() {
 
   test('promoteVariationToMainline replaces parent continuation', () {
     final promotedLine = [
-      move('c5', variations: [
-        [move('d4')],
-      ]),
+      move(
+        'c5',
+        variations: [
+          [move('d4')],
+        ],
+      ),
       move('Nc3'),
     ];
     final game = ChessGame(
@@ -70,7 +75,9 @@ void main() {
       gameId: 'g1',
       startingFen: 'fen',
       metadata: const {},
-      mainline: [move('e4', variations: [firstVariation])],
+      mainline: [
+        move('e4', variations: [firstVariation]),
+      ],
     );
     final navigator = ChessGameNavigator(game);
 

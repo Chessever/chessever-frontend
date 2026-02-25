@@ -8,10 +8,7 @@ import 'package:flutter/material.dart';
 
 /// List displaying recent opponents with game results.
 class RecentOpponentsList extends StatelessWidget {
-  const RecentOpponentsList({
-    super.key,
-    required this.opponents,
-  });
+  const RecentOpponentsList({super.key, required this.opponents});
 
   final List<RecentOpponent> opponents;
 
@@ -26,12 +23,13 @@ class RecentOpponentsList extends StatelessWidget {
         shrinkWrap: true,
         physics: const NeverScrollableScrollPhysics(),
         itemCount: opponents.length,
-        separatorBuilder: (context, index) => Divider(
-          color: kDividerColor,
-          height: 1,
-          indent: 16.sp,
-          endIndent: 16.sp,
-        ),
+        separatorBuilder:
+            (context, index) => Divider(
+              color: kDividerColor,
+              height: 1,
+              indent: 16.sp,
+              endIndent: 16.sp,
+            ),
         itemBuilder: (context, index) {
           final opponent = opponents[index];
           return _buildOpponentRow(
@@ -66,9 +64,7 @@ class RecentOpponentsList extends StatelessWidget {
             width: 24.w,
             child: Text(
               '$index',
-              style: AppTypography.textSmMedium.copyWith(
-                color: kWhiteColor70,
-              ),
+              style: AppTypography.textSmMedium.copyWith(color: kWhiteColor70),
             ),
           ),
 
@@ -80,16 +76,16 @@ class RecentOpponentsList extends StatelessWidget {
           // Country flag
           opponent.countryCode.toUpperCase() == 'FID'
               ? Image.asset(
-                  PngAsset.fideLogo,
-                  height: 14.h,
-                  width: 20.w,
-                  fit: BoxFit.cover,
-                )
+                PngAsset.fideLogo,
+                height: 14.h,
+                width: 20.w,
+                fit: BoxFit.cover,
+              )
               : CountryFlag.fromCountryCode(
-                  opponent.countryCode,
-                  height: 14.h,
-                  width: 20.w,
-                ),
+                opponent.countryCode,
+                height: 14.h,
+                width: 20.w,
+              ),
 
           SizedBox(width: 8.w),
 
@@ -97,9 +93,7 @@ class RecentOpponentsList extends StatelessWidget {
           Expanded(
             child: Text(
               '${opponent.title != null ? '${opponent.title} ' : ''}${opponent.name}',
-              style: AppTypography.textSmMedium.copyWith(
-                color: kWhiteColor,
-              ),
+              style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
               overflow: TextOverflow.ellipsis,
             ),
           ),
@@ -109,9 +103,7 @@ class RecentOpponentsList extends StatelessWidget {
           // Rating
           Text(
             opponent.rating.toString(),
-            style: AppTypography.textSmMedium.copyWith(
-              color: kWhiteColor70,
-            ),
+            style: AppTypography.textSmMedium.copyWith(color: kWhiteColor70),
           ),
         ],
       ),
@@ -136,17 +128,9 @@ class RecentOpponentsList extends StatelessWidget {
       child: Column(
         children: [
           // Top half - player's piece color
-          Expanded(
-            child: Container(
-              color: playerColor,
-            ),
-          ),
+          Expanded(child: Container(color: playerColor)),
           // Bottom half - result color
-          Expanded(
-            child: Container(
-              color: resultColor,
-            ),
-          ),
+          Expanded(child: Container(color: resultColor)),
         ],
       ),
     );

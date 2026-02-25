@@ -47,7 +47,8 @@ class SearchOverlay extends ConsumerWidget {
 
     // Show loading state while waiting for debounce if user is actively typing
     final currentQuery = ref.watch(searchQueryProvider);
-    final isWaitingForDebounce = currentQuery != debouncedQuery && currentQuery.isNotEmpty;
+    final isWaitingForDebounce =
+        currentQuery != debouncedQuery && currentQuery.isNotEmpty;
 
     return Container(
       decoration: BoxDecoration(
@@ -59,19 +60,22 @@ class SearchOverlay extends ConsumerWidget {
         borderRadius: BorderRadius.circular(16),
         child: ConstrainedBox(
           constraints: BoxConstraints(maxHeight: maxH),
-          child: debouncedQuery.isEmpty
-              ? _buildLoadingState(maxH)
-              : ref
-                  .watch(supabaseCombinedSearchProvider(debouncedQuery))
-                  .when(
-                    loading: () => _buildLoadingState(maxH),
-                    error: (e, _) => _buildErrorState(e.toString(), maxH),
-                    data: (searchResult) {
-                      if (isWaitingForDebounce) return _buildLoadingState(maxH);
-                      if (searchResult.isEmpty) return _buildEmptyState(maxH);
-                      return _buildSearchResults(searchResult);
-                    },
-                  ),
+          child:
+              debouncedQuery.isEmpty
+                  ? _buildLoadingState(maxH)
+                  : ref
+                      .watch(supabaseCombinedSearchProvider(debouncedQuery))
+                      .when(
+                        loading: () => _buildLoadingState(maxH),
+                        error: (e, _) => _buildErrorState(e.toString(), maxH),
+                        data: (searchResult) {
+                          if (isWaitingForDebounce)
+                            return _buildLoadingState(maxH);
+                          if (searchResult.isEmpty)
+                            return _buildEmptyState(maxH);
+                          return _buildSearchResults(searchResult);
+                        },
+                      ),
         ),
       ),
     );

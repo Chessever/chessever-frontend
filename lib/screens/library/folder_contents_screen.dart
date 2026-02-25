@@ -181,23 +181,25 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
 
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => ChessBoardScreenNew(
-          currentIndex: 0,
-          games: [game],
-          savedAnalysisData: savedData,
-          showGamebaseButton: false,
-          disableGamebaseOverlayByDefault: true,
-          showClock: false,
-        ),
+        builder:
+            (_) => ChessBoardScreenNew(
+              currentIndex: 0,
+              games: [game],
+              savedAnalysisData: savedData,
+              showGamebaseButton: false,
+              disableGamebaseOverlayByDefault: true,
+              showClock: false,
+            ),
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final analysesAsync = _isSubscribed
-        ? ref.watch(subscribedFolderAnalysesProvider(widget.folder.id))
-        : ref.watch(_folderAnalysesProvider(widget.folder.id));
+    final analysesAsync =
+        _isSubscribed
+            ? ref.watch(subscribedFolderAnalysesProvider(widget.folder.id))
+            : ref.watch(_folderAnalysesProvider(widget.folder.id));
     final query = _searchController.text.trim().toLowerCase();
 
     return Scaffold(
@@ -377,9 +379,10 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
     AsyncValue<List<SavedAnalysis>> analysesAsync,
     String query,
   ) {
-    final providerToInvalidate = _isSubscribed
-        ? subscribedFolderAnalysesProvider(widget.folder.id)
-        : _folderAnalysesProvider(widget.folder.id);
+    final providerToInvalidate =
+        _isSubscribed
+            ? subscribedFolderAnalysesProvider(widget.folder.id)
+            : _folderAnalysesProvider(widget.folder.id);
 
     return RefreshIndicator(
       onRefresh: () async {
@@ -418,14 +421,17 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
                 return Padding(
                   padding: EdgeInsets.only(bottom: 12.h),
                   child: BookSavedGameCard(
-                    analysis: analysis,
-                    onTap: () async {
-                      final allowed =
-                          await requirePremiumGuard(context, ref);
-                      if (!allowed || !mounted) return;
-                      _openSharedGame(analysis);
-                    },
-                  ).animate()
+                        analysis: analysis,
+                        onTap: () async {
+                          final allowed = await requirePremiumGuard(
+                            context,
+                            ref,
+                          );
+                          if (!allowed || !mounted) return;
+                          _openSharedGame(analysis);
+                        },
+                      )
+                      .animate()
                       .fadeIn(
                         duration: 200.ms,
                         delay: Duration(milliseconds: (index % 10) * 30),
@@ -455,14 +461,17 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
                   showSwipeHint: index == 0,
                   swipeHintKey: 'book_remove',
                   child: BookSavedGameCard(
-                    analysis: analysis,
-                    onTap: () async {
-                      final allowed =
-                          await requirePremiumGuard(context, ref);
-                      if (!allowed || !mounted) return;
-                      loadSavedAnalysis(context, analysis);
-                    },
-                  ).animate()
+                        analysis: analysis,
+                        onTap: () async {
+                          final allowed = await requirePremiumGuard(
+                            context,
+                            ref,
+                          );
+                          if (!allowed || !mounted) return;
+                          loadSavedAnalysis(context, analysis);
+                        },
+                      )
+                      .animate()
                       .fadeIn(
                         duration: 200.ms,
                         delay: Duration(milliseconds: (index % 10) * 30),

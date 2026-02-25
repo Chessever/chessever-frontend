@@ -88,10 +88,7 @@ class _AllEventsTabWidgetState extends ConsumerState<AllEventsTabWidget>
       builder: (context, child) {
         return SlideTransition(
           position: itemAnimation,
-          child: FadeTransition(
-            opacity: fadeAnimation,
-            child: eventCard,
-          ),
+          child: FadeTransition(opacity: fadeAnimation, child: eventCard),
         );
       },
     );
@@ -110,7 +107,9 @@ class _AllEventsTabWidgetState extends ConsumerState<AllEventsTabWidget>
 
     final bottomPadding = MediaQuery.of(context).viewPadding.bottom;
     final isTablet = ResponsiveHelper.isTablet;
-    final crossAxisCount = ResponsiveHelper.getGridCrossAxisCount(phoneCount: 1);
+    final crossAxisCount = ResponsiveHelper.getGridCrossAxisCount(
+      phoneCount: 1,
+    );
 
     // Use grid layout for tablets, list layout for phones
     if (isTablet && crossAxisCount > 1) {
@@ -143,13 +142,10 @@ class _AllEventsTabWidgetState extends ConsumerState<AllEventsTabWidget>
               // Tablet cards use image-as-background, needs taller aspect ratio
               childAspectRatio: ResponsiveHelper.isLandscape ? 1.4 : 1.2,
             ),
-            delegate: SliverChildBuilderDelegate(
-              (context, index) {
-                final tourEventCardModel = widget.filteredEvents[index];
-                return _buildEventCard(tourEventCardModel, index);
-              },
-              childCount: widget.filteredEvents.length,
-            ),
+            delegate: SliverChildBuilderDelegate((context, index) {
+              final tourEventCardModel = widget.filteredEvents[index];
+              return _buildEventCard(tourEventCardModel, index);
+            }, childCount: widget.filteredEvents.length),
           ),
         ),
         if (widget.isLoadingMore)

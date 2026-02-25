@@ -93,138 +93,130 @@ class _FolderNameDialogState extends State<_FolderNameDialog> {
   Widget build(BuildContext context) {
     return Dialog(
       backgroundColor: kBlack2Color,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16.br),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16.br)),
       child: ConstrainedBox(
         constraints: BoxConstraints(
           maxWidth: ResponsiveHelper.isTablet ? 400 : double.infinity,
         ),
         child: Padding(
-        padding: EdgeInsets.all(24.sp),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Title
-            Text(
-              widget.title,
-              style: AppTypography.textLgBold.copyWith(
-                color: kWhiteColor,
+          padding: EdgeInsets.all(24.sp),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Title
+              Text(
+                widget.title,
+                style: AppTypography.textLgBold.copyWith(color: kWhiteColor),
               ),
-            ),
-            SizedBox(height: 8.h),
-            Text(
-              widget.description,
-              style: AppTypography.textSmRegular.copyWith(
-                color: kWhiteColor.withValues(alpha: 0.6),
+              SizedBox(height: 8.h),
+              Text(
+                widget.description,
+                style: AppTypography.textSmRegular.copyWith(
+                  color: kWhiteColor.withValues(alpha: 0.6),
+                ),
               ),
-            ),
-            SizedBox(height: 20.h),
+              SizedBox(height: 20.h),
 
-            // Text field
-            TextField(
-              controller: _controller,
-              focusNode: _focusNode,
-              maxLength: 50,
-              autofocus: true,
-              style: AppTypography.textMdRegular.copyWith(
-                color: kWhiteColor,
-              ),
-              decoration: InputDecoration(
-                hintText: 'Book name',
-                hintStyle: AppTypography.textMdRegular.copyWith(
-                  color: kWhiteColor.withValues(alpha: 0.4),
-                ),
-                filled: true,
-                fillColor: kWhiteColor.withValues(alpha: 0.06),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8.br),
-                  borderSide: BorderSide.none,
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8.br),
-                  borderSide: BorderSide(
-                    color: const Color(0xFF52525B), // Zinc 600
-                    width: 1.5,
+              // Text field
+              TextField(
+                controller: _controller,
+                focusNode: _focusNode,
+                maxLength: 50,
+                autofocus: true,
+                style: AppTypography.textMdRegular.copyWith(color: kWhiteColor),
+                decoration: InputDecoration(
+                  hintText: 'Book name',
+                  hintStyle: AppTypography.textMdRegular.copyWith(
+                    color: kWhiteColor.withValues(alpha: 0.4),
                   ),
-                ),
-                contentPadding: EdgeInsets.symmetric(
-                  horizontal: 16.w,
-                  vertical: 12.h,
-                ),
-                counterStyle: AppTypography.textXsRegular.copyWith(
-                  color: kWhiteColor.withValues(alpha: 0.5),
-                ),
-                suffixIcon: _controller.text.isNotEmpty
-                    ? IconButton(
-                        icon: Icon(
-                          Icons.clear,
-                          color: kWhiteColor.withValues(alpha: 0.6),
-                          size: 20.sp,
-                        ),
-                        onPressed: () {
-                          setState(() {
-                            _controller.clear();
-                          });
-                          HapticFeedback.lightImpact();
-                        },
-                      )
-                    : null,
-              ),
-              onChanged: (value) {
-                setState(() {}); // Rebuild to show/hide clear button
-              },
-              onSubmitted: (_) => _handleCreate(),
-            ),
-
-            SizedBox(height: 24.h),
-
-            // Buttons
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                TextButton(
-                  onPressed: () {
-                    HapticFeedback.lightImpact();
-                    Navigator.of(context).pop();
-                  },
-                  style: TextButton.styleFrom(
-                    foregroundColor: kWhiteColor.withValues(alpha: 0.7),
-                    padding: EdgeInsets.symmetric(
-                      horizontal: 20.w,
-                      vertical: 10.h,
+                  filled: true,
+                  fillColor: kWhiteColor.withValues(alpha: 0.06),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8.br),
+                    borderSide: BorderSide.none,
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8.br),
+                    borderSide: BorderSide(
+                      color: const Color(0xFF52525B), // Zinc 600
+                      width: 1.5,
                     ),
                   ),
-                  child: Text(
-                    'Cancel',
-                    style: AppTypography.textSmMedium,
+                  contentPadding: EdgeInsets.symmetric(
+                    horizontal: 16.w,
+                    vertical: 12.h,
                   ),
+                  counterStyle: AppTypography.textXsRegular.copyWith(
+                    color: kWhiteColor.withValues(alpha: 0.5),
+                  ),
+                  suffixIcon:
+                      _controller.text.isNotEmpty
+                          ? IconButton(
+                            icon: Icon(
+                              Icons.clear,
+                              color: kWhiteColor.withValues(alpha: 0.6),
+                              size: 20.sp,
+                            ),
+                            onPressed: () {
+                              setState(() {
+                                _controller.clear();
+                              });
+                              HapticFeedback.lightImpact();
+                            },
+                          )
+                          : null,
                 ),
-                SizedBox(width: 12.w),
-                ElevatedButton(
-                  onPressed: _handleCreate,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: kWhiteColor,
-                    foregroundColor: kBlackColor,
-                    padding: EdgeInsets.symmetric(
-                      horizontal: 24.w,
-                      vertical: 10.h,
+                onChanged: (value) {
+                  setState(() {}); // Rebuild to show/hide clear button
+                },
+                onSubmitted: (_) => _handleCreate(),
+              ),
+
+              SizedBox(height: 24.h),
+
+              // Buttons
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  TextButton(
+                    onPressed: () {
+                      HapticFeedback.lightImpact();
+                      Navigator.of(context).pop();
+                    },
+                    style: TextButton.styleFrom(
+                      foregroundColor: kWhiteColor.withValues(alpha: 0.7),
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 20.w,
+                        vertical: 10.h,
+                      ),
                     ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8.br),
+                    child: Text('Cancel', style: AppTypography.textSmMedium),
+                  ),
+                  SizedBox(width: 12.w),
+                  ElevatedButton(
+                    onPressed: _handleCreate,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: kWhiteColor,
+                      foregroundColor: kBlackColor,
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 24.w,
+                        vertical: 10.h,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8.br),
+                      ),
+                      elevation: 0,
                     ),
-                    elevation: 0,
+                    child: Text(
+                      widget.confirmLabel,
+                      style: AppTypography.textSmBold,
+                    ),
                   ),
-                  child: Text(
-                    widget.confirmLabel,
-                    style: AppTypography.textSmBold,
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );

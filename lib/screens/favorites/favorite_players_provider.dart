@@ -114,13 +114,17 @@ class FavoritePlayersNotifier
         await removeFavorite(player);
         // Increment favorites version to trigger immediate games re-sort
         ref.read(favoritesVersionProvider.notifier).state++;
-        debugPrint('[FavoritePlayers] Incremented favorites version after removing favorite');
+        debugPrint(
+          '[FavoritePlayers] Incremented favorites version after removing favorite',
+        );
         return false;
       } else {
         await addFavorite(player);
         // Increment favorites version to trigger immediate games re-sort
         ref.read(favoritesVersionProvider.notifier).state++;
-        debugPrint('[FavoritePlayers] Incremented favorites version after adding favorite');
+        debugPrint(
+          '[FavoritePlayers] Incremented favorites version after adding favorite',
+        );
         return true;
       }
     }
@@ -132,9 +136,8 @@ class FavoritePlayersNotifier
     if (currentState == null) return;
 
     // STEP 1: Optimistic update - update UI immediately
-    final updatedPlayers = List<PlayerStandingModel>.from(
-      currentState.players,
-    )..add(player);
+    final updatedPlayers = List<PlayerStandingModel>.from(currentState.players)
+      ..add(player);
     state = AsyncValue.data(currentState.copyWith(players: updatedPlayers));
 
     try {

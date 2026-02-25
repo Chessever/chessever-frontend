@@ -102,9 +102,10 @@ class BoardEditorState {
           selectedPiece != null ? selectedPiece() : this.selectedPiece,
       pointerMode: pointerMode ?? this.pointerMode,
       isDeleteMode: isDeleteMode ?? this.isDeleteMode,
-      selectedDragSquare: selectedDragSquare != null
-          ? selectedDragSquare()
-          : this.selectedDragSquare,
+      selectedDragSquare:
+          selectedDragSquare != null
+              ? selectedDragSquare()
+              : this.selectedDragSquare,
     );
   }
 }

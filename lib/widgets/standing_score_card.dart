@@ -97,21 +97,22 @@ class StandingScoreCard extends ConsumerWidget {
             SizedBox(
               width: 16.w,
               height: 12.h,
-              child: countryCode.toUpperCase() == 'FID'
-                  ? Image.asset(
-                      PngAsset.fideLogo,
-                      height: 12.h,
-                      width: 16.w,
-                      fit: BoxFit.contain,
-                      cacheWidth: 48,
-                      cacheHeight: 36,
-                    )
-                  : validCountryCode.isNotEmpty
+              child:
+                  countryCode.toUpperCase() == 'FID'
+                      ? Image.asset(
+                        PngAsset.fideLogo,
+                        height: 12.h,
+                        width: 16.w,
+                        fit: BoxFit.contain,
+                        cacheWidth: 48,
+                        cacheHeight: 36,
+                      )
+                      : validCountryCode.isNotEmpty
                       ? CountryFlag.fromCountryCode(
-                          validCountryCode,
-                          height: 12.h,
-                          width: 16.w,
-                        )
+                        validCountryCode,
+                        height: 12.h,
+                        width: 16.w,
+                      )
                       : null,
             ),
             SizedBox(width: 8.w), // Gap between flag and name

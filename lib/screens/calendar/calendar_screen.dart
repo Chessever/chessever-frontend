@@ -465,14 +465,15 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
       });
       sortedEvents = flattenedEvents;
     } else {
-      sortedEvents = ref.read(tournamentSortingServiceProvider).sortCalendarEvents(
-        flattenedEvents,
-        prioritizeFavorites: false,
-      );
+      sortedEvents = ref
+          .read(tournamentSortingServiceProvider)
+          .sortCalendarEvents(flattenedEvents, prioritizeFavorites: false);
     }
 
     final isTablet = ResponsiveHelper.isTablet;
-    final crossAxisCount = ResponsiveHelper.getGridCrossAxisCount(phoneCount: 1);
+    final crossAxisCount = ResponsiveHelper.getGridCrossAxisCount(
+      phoneCount: 1,
+    );
     final horizontalPadding = ResponsiveHelper.adaptive(
       phone: 16.sp,
       tablet: 24.sp,
@@ -510,51 +511,51 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
               )
               // Use grid layout for tablets, list for phones
               : isTablet && crossAxisCount > 1
-                  ? GridView.builder(
-                      physics: const AlwaysScrollableScrollPhysics(
-                        parent: BouncingScrollPhysics(),
-                      ),
-                      padding: EdgeInsets.symmetric(
-                        horizontal: horizontalPadding,
-                        vertical: 12.h,
-                      ),
-                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: crossAxisCount,
-                        crossAxisSpacing: 16.sp,
-                        mainAxisSpacing: 16.sp,
-                        childAspectRatio: ResponsiveHelper.isLandscape ? 2.2 : 1.8,
-                      ),
-                      itemCount: sortedEvents.length,
-                      itemBuilder: (context, index) {
-                        final event = sortedEvents[index];
-                        return EventCard(
-                          tourEventCardModel: event,
-                          heroTagSuffix: 'calendar-list-$index',
-                          onTap: () => _onEventTap(event),
-                        );
-                      },
-                    )
-                  : ListView.builder(
-                      physics: const AlwaysScrollableScrollPhysics(
-                        parent: BouncingScrollPhysics(),
-                      ),
-                      padding: EdgeInsets.symmetric(
-                        horizontal: horizontalPadding,
-                        vertical: 12.h,
-                      ),
-                      itemCount: sortedEvents.length,
-                      itemBuilder: (context, index) {
-                        final event = sortedEvents[index];
-                        return Padding(
-                          padding: EdgeInsets.only(bottom: 12.h),
-                          child: EventCard(
-                            tourEventCardModel: event,
-                            heroTagSuffix: 'calendar-list-$index',
-                            onTap: () => _onEventTap(event),
-                          ),
-                        );
-                      },
+              ? GridView.builder(
+                physics: const AlwaysScrollableScrollPhysics(
+                  parent: BouncingScrollPhysics(),
+                ),
+                padding: EdgeInsets.symmetric(
+                  horizontal: horizontalPadding,
+                  vertical: 12.h,
+                ),
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: crossAxisCount,
+                  crossAxisSpacing: 16.sp,
+                  mainAxisSpacing: 16.sp,
+                  childAspectRatio: ResponsiveHelper.isLandscape ? 2.2 : 1.8,
+                ),
+                itemCount: sortedEvents.length,
+                itemBuilder: (context, index) {
+                  final event = sortedEvents[index];
+                  return EventCard(
+                    tourEventCardModel: event,
+                    heroTagSuffix: 'calendar-list-$index',
+                    onTap: () => _onEventTap(event),
+                  );
+                },
+              )
+              : ListView.builder(
+                physics: const AlwaysScrollableScrollPhysics(
+                  parent: BouncingScrollPhysics(),
+                ),
+                padding: EdgeInsets.symmetric(
+                  horizontal: horizontalPadding,
+                  vertical: 12.h,
+                ),
+                itemCount: sortedEvents.length,
+                itemBuilder: (context, index) {
+                  final event = sortedEvents[index];
+                  return Padding(
+                    padding: EdgeInsets.only(bottom: 12.h),
+                    child: EventCard(
+                      tourEventCardModel: event,
+                      heroTagSuffix: 'calendar-list-$index',
+                      onTap: () => _onEventTap(event),
                     ),
+                  );
+                },
+              ),
     );
   }
 
@@ -808,7 +809,8 @@ class _QuickFilterButtons extends ConsumerWidget {
         }
 
         // Otherwise, calculate potential favorite events from current year data
-        final favoriteEventIds = favoriteEventIdsAsync.valueOrNull ?? <String>{};
+        final favoriteEventIds =
+            favoriteEventIdsAsync.valueOrNull ?? <String>{};
 
         // Count unique events in the current data that are in our favorites set
         final matchingEventIds = <String>{};

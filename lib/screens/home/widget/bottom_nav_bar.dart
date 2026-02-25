@@ -63,10 +63,7 @@ class BottomNavBar extends ConsumerWidget {
               unawaited(
                 AnalyticsService.instance.trackEvent(
                   'Bottom Nav Changed',
-                  properties: {
-                    'previous_tab': previous.name,
-                    'tab': next.name,
-                  },
+                  properties: {'previous_tab': previous.name, 'tab': next.name},
                 ),
               );
             },

@@ -134,7 +134,8 @@ String _resolveOneSignalAppId() {
 Future<void> main() async {
   await runZonedGuarded(
     () async {
-      WidgetsBinding widgetsBinding = SentryWidgetsFlutterBinding.ensureInitialized();
+      WidgetsBinding widgetsBinding =
+          SentryWidgetsFlutterBinding.ensureInitialized();
       FlutterNativeSplash.preserve(widgetsBinding: widgetsBinding);
 
       // Load environment variables (only in debug mode)
@@ -191,10 +192,15 @@ Future<void> main() async {
           // Don't use SentryWidget - it adds performance monitoring overhead
           // Just run the app directly
           appRunner: () => runApp(ProviderScope(child: StartupGate())),
-        ).timeout(const Duration(seconds: 5), onTimeout: () {
-          debugPrint('⚠️ SentryFlutter.init() timed out - starting app anyway');
-          runApp(ProviderScope(child: StartupGate()));
-        });
+        ).timeout(
+          const Duration(seconds: 5),
+          onTimeout: () {
+            debugPrint(
+              '⚠️ SentryFlutter.init() timed out - starting app anyway',
+            );
+            runApp(ProviderScope(child: StartupGate()));
+          },
+        );
       } catch (e) {
         debugPrint('⚠️ Sentry init failed: $e - starting app anyway');
         runApp(ProviderScope(child: StartupGate()));
@@ -205,7 +211,10 @@ Future<void> main() async {
       try {
         // Use unawaited to make error capture non-blocking
         unawaited(
-          Sentry.captureException(error, stackTrace: stackTrace).catchError((_) => SentryId.empty()),
+          Sentry.captureException(
+            error,
+            stackTrace: stackTrace,
+          ).catchError((_) => SentryId.empty()),
         );
       } catch (_) {
         // Silently ignore Sentry errors - don't let monitoring break the app
@@ -238,7 +247,9 @@ Future<void> _migrateToSqliteStorage(String supabaseAuthKey) async {
         },
       );
     } catch (e) {
-      debugPrint('⚠️ SQLite Migration: SharedPreferences timed out, skipping cleanup');
+      debugPrint(
+        '⚠️ SQLite Migration: SharedPreferences timed out, skipping cleanup',
+      );
       // Mark as migrated anyway - SQLite will be used going forward
       // Old corrupted prefs will just be ignored
       await db.setBool(migrationKey, true);
@@ -276,7 +287,9 @@ Future<void> _migrateToSqliteStorage(String supabaseAuthKey) async {
     // Mark migration as complete in SQLite
     await db.setBool(migrationKey, true);
 
-    debugPrint('✅ SQLite Migration complete: Removed $removedCount old SharedPreferences keys');
+    debugPrint(
+      '✅ SQLite Migration complete: Removed $removedCount old SharedPreferences keys',
+    );
   } catch (e, st) {
     debugPrint('❌ SQLite Migration error: $e');
     if (kDebugMode) {
@@ -290,14 +303,15 @@ Future<void> _migrateToSqliteStorage(String supabaseAuthKey) async {
 Future<void> _initializeRevenueCat() async {
   try {
     // Platform-specific API keys
-    final apiKey = Platform.isIOS
-        ? 'appl_hggBdZrNsqmMHEorxxxLYjyHTzz'
-        : 'goog_ZmINjxirbMFvSsVMUfviZwrpfBY';
+    final apiKey =
+        Platform.isIOS
+            ? 'appl_hggBdZrNsqmMHEorxxxLYjyHTzz'
+            : 'goog_ZmINjxirbMFvSsVMUfviZwrpfBY';
 
-    await Purchases.configure(
-      PurchasesConfiguration(apiKey)..appUserID = null,
+    await Purchases.configure(PurchasesConfiguration(apiKey)..appUserID = null);
+    debugPrint(
+      '✅ RevenueCat initialized successfully for ${Platform.isIOS ? 'iOS' : 'Android'}',
     );
-    debugPrint('✅ RevenueCat initialized successfully for ${Platform.isIOS ? 'iOS' : 'Android'}');
 
     // Sync purchases at app startup (non-blocking)
     unawaited(RevenueCatService().syncPurchases());
@@ -328,10 +342,7 @@ Future<void> _sanitizeSupabasePersistedSession(String persistSessionKey) async {
   final prefs = await SharedPreferencesService.instance.ensureInitialized();
   if (prefs == null) return;
 
-  final keys = <String>[
-    persistSessionKey,
-    'flutter.$persistSessionKey',
-  ];
+  final keys = <String>[persistSessionKey, 'flutter.$persistSessionKey'];
 
   for (final key in keys) {
     final raw = prefs.getString(key);
@@ -455,9 +466,9 @@ void _initializePostStartupServices() {
                 final expiresAt = session.expiresAt;
                 if (expiresAt != null) {
                   final expiresInSeconds =
-                      DateTime.fromMillisecondsSinceEpoch(expiresAt * 1000)
-                          .difference(DateTime.now())
-                          .inSeconds;
+                      DateTime.fromMillisecondsSinceEpoch(
+                        expiresAt * 1000,
+                      ).difference(DateTime.now()).inSeconds;
                   // Refresh if token expires within 60 seconds or already expired
                   if (expiresInSeconds < 60) {
                     await auth.refreshSession();
@@ -489,20 +500,22 @@ void _initializePostStartupServices() {
   );
 
   // Non-critical initializers - run in parallel, don't block app startup
-  unawaited(Future.wait([
-    // Initialize Amplitude (with error handling)
-    () async {
-      try {
-        await AnalyticsService.instance.initialize(
-          apiKey: _resolveAmplitudeApiKey(),
-        ).timeout(const Duration(seconds: 5));
-      } catch (e) {
-        debugPrint('⚠️ Analytics init failed: $e');
-      }
-    }(),
-    // Initialize RevenueCat for subscriptions
-    _initializeRevenueCat(),
-  ]));
+  unawaited(
+    Future.wait([
+      // Initialize Amplitude (with error handling)
+      () async {
+        try {
+          await AnalyticsService.instance
+              .initialize(apiKey: _resolveAmplitudeApiKey())
+              .timeout(const Duration(seconds: 5));
+        } catch (e) {
+          debugPrint('⚠️ Analytics init failed: $e');
+        }
+      }(),
+      // Initialize RevenueCat for subscriptions
+      _initializeRevenueCat(),
+    ]),
+  );
 
   // Initialize TerminateRestart (for user-triggered Shorebird updates only)
   TerminateRestart.instance.initialize();
@@ -616,10 +629,7 @@ class _StartupLoadingApp extends StatelessWidget {
         body: Stack(
           fit: StackFit.expand,
           children: [
-            Image.asset(
-              'assets/launch.jpg',
-              fit: BoxFit.cover,
-            ),
+            Image.asset('assets/launch.jpg', fit: BoxFit.cover),
             const Align(
               alignment: Alignment.bottomCenter,
               child: Padding(
@@ -653,23 +663,30 @@ class _StartupFailureApp extends StatelessWidget {
         body: Stack(
           fit: StackFit.expand,
           children: [
-            Image.asset(
-              'assets/launch.jpg',
-              fit: BoxFit.cover,
-            ),
+            Image.asset('assets/launch.jpg', fit: BoxFit.cover),
             Align(
               alignment: Alignment.bottomCenter,
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 64),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 64,
+                ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.error_outline, color: Colors.white70, size: 32),
+                    const Icon(
+                      Icons.error_outline,
+                      color: Colors.white70,
+                      size: 32,
+                    ),
                     const SizedBox(height: 12),
                     Text(
                       message,
                       textAlign: TextAlign.center,
-                      style: const TextStyle(color: Colors.white70, fontSize: 14),
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 14,
+                      ),
                     ),
                     const SizedBox(height: 16),
                     SizedBox(
@@ -842,7 +859,8 @@ class MyApp extends HookConsumerWidget {
           '/calendar_detail_screen': (context) => CalendarDetailsScreen(),
           '/Board_sheet': (context) => BoardColorDialog(),
           '/onboarding': (context) => const OnboardingFlowScreen(),
-          '/player_selection_screen': (context) => const PlayerSelectionScreen(),
+          '/player_selection_screen':
+              (context) => const PlayerSelectionScreen(),
         },
       ),
     );

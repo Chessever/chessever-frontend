@@ -38,10 +38,8 @@ class _LibraryPlayerEventsTabState extends ConsumerState<LibraryPlayerEventsTab>
   int? get _fideIdInt => int.tryParse(widget.player.fideId);
 
   /// Get the player profile key for existing providers
-  PlayerProfileKey get _playerProfileKey => PlayerProfileKey(
-        fideId: _fideIdInt,
-        playerName: widget.player.name,
-      );
+  PlayerProfileKey get _playerProfileKey =>
+      PlayerProfileKey(fideId: _fideIdInt, playerName: widget.player.name);
 
   @override
   Widget build(BuildContext context) {
@@ -66,17 +64,13 @@ class _LibraryPlayerEventsTabState extends ConsumerState<LibraryPlayerEventsTab>
           }
 
           // Sort events by start date (most recent first)
-          final sortedEvents = List<PlayerEventData>.from(events)
-            ..sort((a, b) {
-              final aDate = a.startDate ?? DateTime(1900);
-              final bDate = b.startDate ?? DateTime(1900);
-              return bDate.compareTo(aDate);
-            });
+          final sortedEvents = List<PlayerEventData>.from(events)..sort((a, b) {
+            final aDate = a.startDate ?? DateTime(1900);
+            final bDate = b.startDate ?? DateTime(1900);
+            return bDate.compareTo(aDate);
+          });
 
-          return _EventsListContent(
-            events: sortedEvents,
-            fideId: _fideIdInt,
-          );
+          return _EventsListContent(events: sortedEvents, fideId: _fideIdInt);
         },
         loading: () => _buildLoadingState(),
         error: (error, _) => _buildErrorState(error.toString()),
@@ -210,16 +204,19 @@ class _LibraryPlayerEventsTabState extends ConsumerState<LibraryPlayerEventsTab>
                   ref.invalidate(playerEventsKeyProvider(_playerProfileKey));
                 },
                 child: Container(
-                  padding:
-                      EdgeInsets.symmetric(horizontal: 24.w, vertical: 12.h),
+                  padding: EdgeInsets.symmetric(
+                    horizontal: 24.w,
+                    vertical: 12.h,
+                  ),
                   decoration: BoxDecoration(
                     color: kWhiteColor.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(8.br),
                   ),
                   child: Text(
                     'Retry',
-                    style:
-                        AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+                    style: AppTypography.textSmMedium.copyWith(
+                      color: kWhiteColor,
+                    ),
                   ),
                 ),
               ),
@@ -233,10 +230,7 @@ class _LibraryPlayerEventsTabState extends ConsumerState<LibraryPlayerEventsTab>
 
 /// Content widget that shows statistics and event list
 class _EventsListContent extends ConsumerWidget {
-  const _EventsListContent({
-    required this.events,
-    this.fideId,
-  });
+  const _EventsListContent({required this.events, this.fideId});
 
   final List<PlayerEventData> events;
   final int? fideId;
@@ -249,9 +243,10 @@ class _EventsListContent extends ConsumerWidget {
     final avgScore = totalGames > 0 ? totalScore / totalGames : 0.0;
 
     // Watch the event cards provider (only if fideId is available)
-    final eventCardsAsync = fideId != null
-        ? ref.watch(playerEventCardsProvider(fideId!))
-        : const AsyncValue<Map<String, GroupEventCardModel>>.data({});
+    final eventCardsAsync =
+        fideId != null
+            ? ref.watch(playerEventCardsProvider(fideId!))
+            : const AsyncValue<Map<String, GroupEventCardModel>>.data({});
 
     return ListView.builder(
       physics: const AlwaysScrollableScrollPhysics(
@@ -292,22 +287,24 @@ class _EventsListContent extends ConsumerWidget {
               ),
             );
           },
-          loading: () => Padding(
-            padding: EdgeInsets.only(bottom: 12.h),
-            child: _FallbackEventCard(
-              event: event,
-              index: index - 1,
-              onTap: () => _navigateToTournament(context, ref, event),
-            ),
-          ),
-          error: (_, __) => Padding(
-            padding: EdgeInsets.only(bottom: 12.h),
-            child: _FallbackEventCard(
-              event: event,
-              index: index - 1,
-              onTap: () => _navigateToTournament(context, ref, event),
-            ),
-          ),
+          loading:
+              () => Padding(
+                padding: EdgeInsets.only(bottom: 12.h),
+                child: _FallbackEventCard(
+                  event: event,
+                  index: index - 1,
+                  onTap: () => _navigateToTournament(context, ref, event),
+                ),
+              ),
+          error:
+              (_, __) => Padding(
+                padding: EdgeInsets.only(bottom: 12.h),
+                child: _FallbackEventCard(
+                  event: event,
+                  index: index - 1,
+                  onTap: () => _navigateToTournament(context, ref, event),
+                ),
+              ),
         );
       },
     );
@@ -333,9 +330,9 @@ class _EventsListContent extends ConsumerWidget {
       debugPrint('[LibraryPlayerEvents] Navigate to tournament error: $e');
       debugPrintStack(stackTrace: st, label: '[LibraryPlayerEvents] Navigate');
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Unable to open event')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Unable to open event')));
     }
   }
 }
@@ -430,10 +427,7 @@ class _StatBox extends StatelessWidget {
         ),
         child: Column(
           children: [
-            Text(
-              value,
-              style: AppTypography.textMdBold.copyWith(color: color),
-            ),
+            Text(value, style: AppTypography.textMdBold.copyWith(color: color)),
             SizedBox(height: 2.h),
             Text(
               label,
@@ -463,71 +457,71 @@ class _PlayerEventCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return GestureDetector(
-      onTap: () => _navigateToTournament(context, ref),
-      child: Column(
-        children: [
-          EventCard(
-            tourEventCardModel: eventCard,
-            heroTagSuffix: 'library-player-profile-$index',
-          ),
-          Container(
-            margin: EdgeInsets.only(top: 1.h),
-            padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
-            decoration: BoxDecoration(
-              color: kBlack2Color,
-              borderRadius: BorderRadius.only(
-                bottomLeft: Radius.circular(8.br),
-                bottomRight: Radius.circular(8.br),
+          onTap: () => _navigateToTournament(context, ref),
+          child: Column(
+            children: [
+              EventCard(
+                tourEventCardModel: eventCard,
+                heroTagSuffix: 'library-player-profile-$index',
               ),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Row(
-                  children: [
-                    Icon(
-                      Icons.sports_esports_outlined,
-                      size: 14.sp,
-                      color: kWhiteColor.withValues(alpha: 0.5),
-                    ),
-                    SizedBox(width: 4.w),
-                    Text(
-                      '${playerEventData.gamesPlayed} ${playerEventData.gamesPlayed == 1 ? 'game' : 'games'}',
-                      style: AppTypography.textXsRegular.copyWith(
-                        color: kWhiteColor.withValues(alpha: 0.5),
-                      ),
-                    ),
-                  ],
+              Container(
+                margin: EdgeInsets.only(top: 1.h),
+                padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
+                decoration: BoxDecoration(
+                  color: kBlack2Color,
+                  borderRadius: BorderRadius.only(
+                    bottomLeft: Radius.circular(8.br),
+                    bottomRight: Radius.circular(8.br),
+                  ),
                 ),
-                if (playerEventData.score != null)
-                  Container(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: 8.w,
-                      vertical: 3.h,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.sports_esports_outlined,
+                          size: 14.sp,
+                          color: kWhiteColor.withValues(alpha: 0.5),
+                        ),
+                        SizedBox(width: 4.w),
+                        Text(
+                          '${playerEventData.gamesPlayed} ${playerEventData.gamesPlayed == 1 ? 'game' : 'games'}',
+                          style: AppTypography.textXsRegular.copyWith(
+                            color: kWhiteColor.withValues(alpha: 0.5),
+                          ),
+                        ),
+                      ],
                     ),
-                    decoration: BoxDecoration(
-                      color: _getScoreColor(
-                        playerEventData.score!,
-                        playerEventData.gamesPlayed,
-                      ).withValues(alpha: 0.2),
-                      borderRadius: BorderRadius.circular(4.br),
-                    ),
-                    child: Text(
-                      '${playerEventData.score!.toStringAsFixed(1)}/${playerEventData.gamesPlayed}',
-                      style: AppTypography.textXsBold.copyWith(
-                        color: _getScoreColor(
-                          playerEventData.score!,
-                          playerEventData.gamesPlayed,
+                    if (playerEventData.score != null)
+                      Container(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 8.w,
+                          vertical: 3.h,
+                        ),
+                        decoration: BoxDecoration(
+                          color: _getScoreColor(
+                            playerEventData.score!,
+                            playerEventData.gamesPlayed,
+                          ).withValues(alpha: 0.2),
+                          borderRadius: BorderRadius.circular(4.br),
+                        ),
+                        child: Text(
+                          '${playerEventData.score!.toStringAsFixed(1)}/${playerEventData.gamesPlayed}',
+                          style: AppTypography.textXsBold.copyWith(
+                            color: _getScoreColor(
+                              playerEventData.score!,
+                              playerEventData.gamesPlayed,
+                            ),
+                          ),
                         ),
                       ),
-                    ),
-                  ),
-              ],
-            ),
+                  ],
+                ),
+              ),
+            ],
           ),
-        ],
-      ),
-    )
+        )
         .animate()
         .fadeIn(
           duration: 200.ms,
@@ -553,11 +547,14 @@ class _PlayerEventCard extends ConsumerWidget {
       }
     } catch (e, st) {
       debugPrint('[LibraryPlayerEvents] Navigate to event card error: $e');
-      debugPrintStack(stackTrace: st, label: '[LibraryPlayerEvents] Event card navigate');
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Unable to open event')),
+      debugPrintStack(
+        stackTrace: st,
+        label: '[LibraryPlayerEvents] Event card navigate',
       );
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Unable to open event')));
     }
   }
 
@@ -585,94 +582,95 @@ class _FallbackEventCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: EdgeInsets.all(12.sp),
-        decoration: BoxDecoration(
-          color: kBlack2Color,
-          borderRadius: BorderRadius.circular(8.br),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 60.w,
-              height: 40.h,
-              decoration: BoxDecoration(
-                color: kLightBlack,
-                borderRadius: BorderRadius.circular(6.br),
-              ),
-              child: Icon(
-                Icons.emoji_events_outlined,
-                color: kWhiteColor.withValues(alpha: 0.5),
-                size: 24.sp,
-              ),
+          onTap: onTap,
+          child: Container(
+            padding: EdgeInsets.all(12.sp),
+            decoration: BoxDecoration(
+              color: kBlack2Color,
+              borderRadius: BorderRadius.circular(8.br),
             ),
-            SizedBox(width: 12.w),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    event.tourName,
-                    style: AppTypography.textSmMedium.copyWith(
-                      color: kWhiteColor,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+            child: Row(
+              children: [
+                Container(
+                  width: 60.w,
+                  height: 40.h,
+                  decoration: BoxDecoration(
+                    color: kLightBlack,
+                    borderRadius: BorderRadius.circular(6.br),
                   ),
-                  SizedBox(height: 4.h),
-                  Row(
+                  child: Icon(
+                    Icons.emoji_events_outlined,
+                    color: kWhiteColor.withValues(alpha: 0.5),
+                    size: 24.sp,
+                  ),
+                ),
+                SizedBox(width: 12.w),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Icon(
-                        Icons.sports_esports_outlined,
-                        size: 12.sp,
-                        color: kWhiteColor.withValues(alpha: 0.5),
-                      ),
-                      SizedBox(width: 4.w),
                       Text(
-                        '${event.gamesPlayed} ${event.gamesPlayed == 1 ? 'game' : 'games'}',
-                        style: AppTypography.textXsRegular.copyWith(
-                          color: kWhiteColor.withValues(alpha: 0.5),
+                        event.tourName,
+                        style: AppTypography.textSmMedium.copyWith(
+                          color: kWhiteColor,
                         ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
-                      if (event.score != null) ...[
-                        SizedBox(width: 8.w),
-                        Container(
-                          padding: EdgeInsets.symmetric(
-                            horizontal: 6.w,
-                            vertical: 2.h,
+                      SizedBox(height: 4.h),
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.sports_esports_outlined,
+                            size: 12.sp,
+                            color: kWhiteColor.withValues(alpha: 0.5),
                           ),
-                          decoration: BoxDecoration(
-                            color:
-                                _getScoreColor(event.score!, event.gamesPlayed)
-                                    .withValues(alpha: 0.2),
-                            borderRadius: BorderRadius.circular(4.br),
-                          ),
-                          child: Text(
-                            '${event.score!.toStringAsFixed(1)}/${event.gamesPlayed}',
-                            style: AppTypography.textXsBold.copyWith(
-                              color: _getScoreColor(
-                                event.score!,
-                                event.gamesPlayed,
-                              ),
+                          SizedBox(width: 4.w),
+                          Text(
+                            '${event.gamesPlayed} ${event.gamesPlayed == 1 ? 'game' : 'games'}',
+                            style: AppTypography.textXsRegular.copyWith(
+                              color: kWhiteColor.withValues(alpha: 0.5),
                             ),
                           ),
-                        ),
-                      ],
+                          if (event.score != null) ...[
+                            SizedBox(width: 8.w),
+                            Container(
+                              padding: EdgeInsets.symmetric(
+                                horizontal: 6.w,
+                                vertical: 2.h,
+                              ),
+                              decoration: BoxDecoration(
+                                color: _getScoreColor(
+                                  event.score!,
+                                  event.gamesPlayed,
+                                ).withValues(alpha: 0.2),
+                                borderRadius: BorderRadius.circular(4.br),
+                              ),
+                              child: Text(
+                                '${event.score!.toStringAsFixed(1)}/${event.gamesPlayed}',
+                                style: AppTypography.textXsBold.copyWith(
+                                  color: _getScoreColor(
+                                    event.score!,
+                                    event.gamesPlayed,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
                     ],
                   ),
-                ],
-              ),
+                ),
+                Icon(
+                  Icons.chevron_right_rounded,
+                  color: kWhiteColor.withValues(alpha: 0.3),
+                  size: 24.ic,
+                ),
+              ],
             ),
-            Icon(
-              Icons.chevron_right_rounded,
-              color: kWhiteColor.withValues(alpha: 0.3),
-              size: 24.ic,
-            ),
-          ],
-        ),
-      ),
-    )
+          ),
+        )
         .animate()
         .fadeIn(
           duration: 200.ms,
@@ -691,8 +689,10 @@ class _FallbackEventCard extends StatelessWidget {
 }
 
 /// Provider to fetch GroupEventCardModel for player events
-final playerEventCardsProvider = FutureProvider.family
-    .autoDispose<Map<String, GroupEventCardModel>, int>((ref, fideId) async {
+final playerEventCardsProvider = FutureProvider.family.autoDispose<
+  Map<String, GroupEventCardModel>,
+  int
+>((ref, fideId) async {
   try {
     final events = await ref.watch(playerEventsProvider(fideId).future);
     if (events.isEmpty) return {};
@@ -702,8 +702,9 @@ final playerEventCardsProvider = FutureProvider.family
 
     for (final event in events) {
       try {
-        final broadcast =
-            await groupBroadcastRepo.getGroupBroadcastById(event.tourId);
+        final broadcast = await groupBroadcastRepo.getGroupBroadcastById(
+          event.tourId,
+        );
         final groupBroadcast = GroupBroadcast.fromJson({
           'id': broadcast.id,
           'created_at': DateTime.now().toIso8601String(),
@@ -720,7 +721,9 @@ final playerEventCardsProvider = FutureProvider.family
           [],
         );
       } catch (e) {
-        debugPrint('[playerEventCardsProvider] Failed to load event ${event.tourId}: $e');
+        debugPrint(
+          '[playerEventCardsProvider] Failed to load event ${event.tourId}: $e',
+        );
       }
     }
 

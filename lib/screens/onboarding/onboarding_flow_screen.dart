@@ -287,7 +287,7 @@ class _AuthStep extends HookWidget {
                           'Create an account to access all features',
                           textAlign: TextAlign.center,
                           style: AppTypography.textSmRegular.copyWith(
-                            color: kWhiteColor.withOpacity( 0.6),
+                            color: kWhiteColor.withOpacity(0.6),
                           ),
                         )
                         .animate(delay: 300.ms)
@@ -340,15 +340,13 @@ class _AuthStep extends HookWidget {
                           Icon(
                             Icons.warning_amber_rounded,
                             size: 14.ic,
-                            color: const Color(
-                              0xFFFFAA00,
-                            ).withOpacity(0.7),
+                            color: const Color(0xFFFFAA00).withOpacity(0.7),
                           ),
                           SizedBox(width: 6.w),
                           Text(
                             'Guest data can\'t be recovered if lost',
                             style: AppTypography.textXsRegular.copyWith(
-                              color: kWhiteColor.withOpacity( 0.5),
+                              color: kWhiteColor.withOpacity(0.5),
                             ),
                           ),
                         ],
@@ -407,8 +405,8 @@ class _UnlockVisual extends HookWidget {
                 shape: BoxShape.circle,
                 gradient: RadialGradient(
                   colors: [
-                    kPrimaryColor.withOpacity( 0.2),
-                    kPrimaryColor.withOpacity( 0.0),
+                    kPrimaryColor.withOpacity(0.2),
+                    kPrimaryColor.withOpacity(0.0),
                   ],
                 ),
               ),
@@ -421,14 +419,14 @@ class _UnlockVisual extends HookWidget {
             height: 72.h,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: kBlack2Color.withOpacity( 0.9),
+              color: kBlack2Color.withOpacity(0.9),
               border: Border.all(
-                color: kPrimaryColor.withOpacity( 0.3),
+                color: kPrimaryColor.withOpacity(0.3),
                 width: 2,
               ),
               boxShadow: [
                 BoxShadow(
-                  color: kPrimaryColor.withOpacity( 0.2),
+                  color: kPrimaryColor.withOpacity(0.2),
                   blurRadius: 20,
                   spreadRadius: 3,
                 ),
@@ -482,8 +480,8 @@ class _FeaturesList extends StatelessWidget {
       padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 12.h),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(16.br),
-        color: kBlack2Color.withOpacity( 0.5),
-        border: Border.all(color: kWhiteColor.withOpacity( 0.06)),
+        color: kBlack2Color.withOpacity(0.5),
+        border: Border.all(color: kWhiteColor.withOpacity(0.06)),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -491,7 +489,7 @@ class _FeaturesList extends StatelessWidget {
           Text(
             'What you\'ll miss as a guest:',
             style: AppTypography.textXsMedium.copyWith(
-              color: kWhiteColor.withOpacity( 0.5),
+              color: kWhiteColor.withOpacity(0.5),
               letterSpacing: 0.5,
             ),
           ),
@@ -535,7 +533,7 @@ class _FeatureItem extends StatelessWidget {
           height: 34.h,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(8.br),
-            color: color.withOpacity( 0.15),
+            color: color.withOpacity(0.15),
           ),
           child: Center(child: Icon(icon, size: 18.ic, color: color)),
         ),
@@ -553,7 +551,7 @@ class _FeatureItem extends StatelessWidget {
               Text(
                 subtitle,
                 style: AppTypography.textXsRegular.copyWith(
-                  color: kWhiteColor.withOpacity( 0.5),
+                  color: kWhiteColor.withOpacity(0.5),
                 ),
               ),
             ],
@@ -563,7 +561,7 @@ class _FeatureItem extends StatelessWidget {
         Icon(
           Icons.lock_outline_rounded,
           size: 14.ic,
-          color: kWhiteColor.withOpacity( 0.25),
+          color: kWhiteColor.withOpacity(0.25),
         ),
       ],
     );
@@ -597,13 +595,13 @@ class _SecondaryButton extends HookWidget {
           height: 48.h,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(14.br),
-            border: Border.all(color: kWhiteColor.withOpacity( 0.15)),
+            border: Border.all(color: kWhiteColor.withOpacity(0.15)),
           ),
           child: Center(
             child: Text(
               label,
               style: AppTypography.textMdMedium.copyWith(
-                color: kWhiteColor.withOpacity( 0.7),
+                color: kWhiteColor.withOpacity(0.7),
               ),
             ),
           ),
@@ -718,7 +716,7 @@ class _AuthenticatedUserStep extends HookWidget {
                                 'Welcome back,',
                                 textAlign: TextAlign.center,
                                 style: AppTypography.textMdRegular.copyWith(
-                                  color: kWhiteColor.withOpacity( 0.6),
+                                  color: kWhiteColor.withOpacity(0.6),
                                 ),
                               )
                               .animate(delay: 200.ms)
@@ -751,9 +749,9 @@ class _AuthenticatedUserStep extends HookWidget {
                                 ),
                                 decoration: BoxDecoration(
                                   borderRadius: BorderRadius.circular(16.br),
-                                  color: kGreenColor.withOpacity( 0.08),
+                                  color: kGreenColor.withOpacity(0.08),
                                   border: Border.all(
-                                    color: kGreenColor.withOpacity( 0.2),
+                                    color: kGreenColor.withOpacity(0.2),
                                   ),
                                 ),
                                 child: Row(
@@ -787,7 +785,8 @@ class _AuthenticatedUserStep extends HookWidget {
                                             'Synced across all your devices',
                                             style: AppTypography.textXsRegular
                                                 .copyWith(
-                                                  color: kWhiteColor.withOpacity(0.5),
+                                                  color: kWhiteColor
+                                                      .withOpacity(0.5),
                                                 ),
                                           ),
                                         ],
@@ -837,7 +836,7 @@ class _AuthenticatedUserStep extends HookWidget {
                                   Text(
                                     'Your chess journey continues',
                                     style: AppTypography.textXsRegular.copyWith(
-                                      color: kWhiteColor.withOpacity( 0.4),
+                                      color: kWhiteColor.withOpacity(0.4),
                                     ),
                                   ),
                                 ],
@@ -890,8 +889,8 @@ class _UserAvatarVisual extends HookWidget {
                 shape: BoxShape.circle,
                 gradient: RadialGradient(
                   colors: [
-                    kGreenColor.withOpacity( 0.18),
-                    kGreenColor.withOpacity( 0.0),
+                    kGreenColor.withOpacity(0.18),
+                    kGreenColor.withOpacity(0.0),
                   ],
                 ),
               ),
@@ -905,7 +904,7 @@ class _UserAvatarVisual extends HookWidget {
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               border: Border.all(
-                color: kGreenColor.withOpacity( 0.15),
+                color: kGreenColor.withOpacity(0.15),
                 width: 1,
               ),
             ),
@@ -917,14 +916,14 @@ class _UserAvatarVisual extends HookWidget {
             height: 110.h,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: kBlack2Color.withOpacity( 0.9),
+              color: kBlack2Color.withOpacity(0.9),
               border: Border.all(
-                color: kGreenColor.withOpacity( 0.4),
+                color: kGreenColor.withOpacity(0.4),
                 width: 2.5,
               ),
               boxShadow: [
                 BoxShadow(
-                  color: kGreenColor.withOpacity( 0.2),
+                  color: kGreenColor.withOpacity(0.2),
                   blurRadius: 30,
                   spreadRadius: 5,
                 ),
@@ -954,10 +953,7 @@ class _UserAvatarVisual extends HookWidget {
                 color: kGreenColor,
                 border: Border.all(color: kBackgroundColor, width: 3),
                 boxShadow: [
-                  BoxShadow(
-                    color: kGreenColor.withOpacity( 0.4),
-                    blurRadius: 8,
-                  ),
+                  BoxShadow(color: kGreenColor.withOpacity(0.4), blurRadius: 8),
                 ],
               ),
               child: Icon(Icons.check_rounded, size: 18.ic, color: kWhiteColor),
@@ -1014,7 +1010,7 @@ class _AmbientGlowPainter extends CustomPainter {
     // Primary glow - subtle movement
     final paint1 =
         Paint()
-          ..color = kPrimaryColor.withOpacity( 0.08 + (animation * 0.04))
+          ..color = kPrimaryColor.withOpacity(0.08 + (animation * 0.04))
           ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 120);
 
     canvas.drawCircle(
@@ -1148,10 +1144,7 @@ class _PageIndicator extends StatelessWidget {
             height: 4.h,
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(2.br),
-              color:
-                  isActive
-                      ? kPrimaryColor
-                      : kWhiteColor.withOpacity( 0.12),
+              color: isActive ? kPrimaryColor : kWhiteColor.withOpacity(0.12),
             ),
           ),
         );
@@ -1247,7 +1240,7 @@ class _WelcomeStep extends HookWidget {
                     'Follow players, Track Events, Analyze games',
                     textAlign: TextAlign.center,
                     style: AppTypography.textSmRegular.copyWith(
-                      color: kWhiteColor.withOpacity( 0.6),
+                      color: kWhiteColor.withOpacity(0.6),
                       letterSpacing: 0.3,
                     ),
                   )
@@ -1359,7 +1352,7 @@ class _CountryStep extends HookConsumerWidget {
                     'We\'ll show you players from your region',
                     textAlign: TextAlign.center,
                     style: AppTypography.textSmRegular.copyWith(
-                      color: kWhiteColor.withOpacity( 0.6),
+                      color: kWhiteColor.withOpacity(0.6),
                     ),
                   )
                   .animate(delay: 300.ms)
@@ -1408,10 +1401,7 @@ class _GlobeVisual extends StatelessWidget {
     return Container(
       width: 100.w,
       height: 100.h,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: kBlack2Color,
-      ),
+      decoration: BoxDecoration(shape: BoxShape.circle, color: kBlack2Color),
       child: countryState.when(
         loading:
             () => Center(
@@ -1420,7 +1410,7 @@ class _GlobeVisual extends StatelessWidget {
                 height: 24.h,
                 child: CircularProgressIndicator(
                   strokeWidth: 2,
-                  color: kWhiteColor.withOpacity( 0.6),
+                  color: kWhiteColor.withOpacity(0.6),
                 ),
               ),
             ),
@@ -1428,14 +1418,11 @@ class _GlobeVisual extends StatelessWidget {
             (_, __) => Icon(
               Icons.public,
               size: 48.ic,
-              color: kWhiteColor.withOpacity( 0.5),
+              color: kWhiteColor.withOpacity(0.5),
             ),
         data:
             (country) => Center(
-              child: Text(
-                country.flagEmoji,
-                style: TextStyle(fontSize: 48.f),
-              ),
+              child: Text(country.flagEmoji, style: TextStyle(fontSize: 48.f)),
             ),
       ),
     );
@@ -1471,14 +1458,14 @@ class _CountryCard extends StatelessWidget {
                   height: 18.h,
                   child: CircularProgressIndicator(
                     strokeWidth: 2,
-                    color: kWhiteColor.withOpacity( 0.5),
+                    color: kWhiteColor.withOpacity(0.5),
                   ),
                 ),
                 SizedBox(width: 12.w),
                 Text(
                   'Finding your location...',
                   style: AppTypography.textSmMedium.copyWith(
-                    color: kWhiteColor.withOpacity( 0.6),
+                    color: kWhiteColor.withOpacity(0.6),
                   ),
                 ),
               ],
@@ -1490,7 +1477,7 @@ class _CountryCard extends StatelessWidget {
                 Text(
                   'Couldn\'t detect location',
                   style: AppTypography.textSmMedium.copyWith(
-                    color: kWhiteColor.withOpacity( 0.6),
+                    color: kWhiteColor.withOpacity(0.6),
                   ),
                 ),
                 SizedBox(width: 12.w),
@@ -1558,10 +1545,7 @@ class _PrimaryButton extends HookWidget {
           height: 52.h,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(14.br),
-            color:
-                onTap != null
-                    ? kWhiteColor
-                    : kWhiteColor.withOpacity( 0.2),
+            color: onTap != null ? kWhiteColor : kWhiteColor.withOpacity(0.2),
           ),
           child: Center(
             child:
@@ -1580,7 +1564,7 @@ class _PrimaryButton extends HookWidget {
                         color:
                             onTap != null
                                 ? kBlackColor
-                                : kWhiteColor.withOpacity( 0.5),
+                                : kWhiteColor.withOpacity(0.5),
                       ),
                     ),
           ),

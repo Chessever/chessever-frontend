@@ -41,7 +41,8 @@ class PlayerStandingModel {
     }
 
     // Format score with 1 decimal place if needed, otherwise as integer
-    final scoreStr = score % 1 == 0 ? score.toInt().toString() : score.toStringAsFixed(1);
+    final scoreStr =
+        score % 1 == 0 ? score.toInt().toString() : score.toStringAsFixed(1);
     return '$scoreStr / $played';
   }
 

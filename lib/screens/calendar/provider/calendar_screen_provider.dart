@@ -40,12 +40,13 @@ final calendarScreenProvider = AutoDisposeStateNotifierProvider<
 
 /// Provider that tracks the IDs of favorite events (starred + favorite players)
 /// This queries Supabase directly instead of relying on cache
-final calendarFavoriteEventIdsProvider =
-    AutoDisposeAsyncNotifierProvider<_CalendarFavoriteEventIdsNotifier, Set<String>>(
-  _CalendarFavoriteEventIdsNotifier.new,
-);
+final calendarFavoriteEventIdsProvider = AutoDisposeAsyncNotifierProvider<
+  _CalendarFavoriteEventIdsNotifier,
+  Set<String>
+>(_CalendarFavoriteEventIdsNotifier.new);
 
-class _CalendarFavoriteEventIdsNotifier extends AutoDisposeAsyncNotifier<Set<String>> {
+class _CalendarFavoriteEventIdsNotifier
+    extends AutoDisposeAsyncNotifier<Set<String>> {
   @override
   Future<Set<String>> build() async {
     // Watch dependencies to rebuild when they change
@@ -70,11 +71,14 @@ class _CalendarFavoriteEventIdsNotifier extends AutoDisposeAsyncNotifier<Set<Str
 
     // 2. Get events with favorite players directly from Supabase
     try {
-      final favoritePlayersState = await ref.read(favoritePlayersNotifierProvider.future);
-      final fideIds = favoritePlayersState.players
-          .where((p) => p.fideId != null)
-          .map((p) => p.fideId!)
-          .toList();
+      final favoritePlayersState = await ref.read(
+        favoritePlayersNotifierProvider.future,
+      );
+      final fideIds =
+          favoritePlayersState.players
+              .where((p) => p.fideId != null)
+              .map((p) => p.fideId!)
+              .toList();
 
       if (fideIds.isNotEmpty) {
         final eventIdsWithFavoritePlayers = await ref
@@ -99,7 +103,8 @@ class _CalendarScreenNotifier
   final Ref ref;
   Timer? _debounceTimer;
   int _filterVersion = 0; // For cancellation of stale queries
-  bool _isInitialized = false; // Guard against filter runs before data is fetched
+  bool _isInitialized =
+      false; // Guard against filter runs before data is fetched
 
   List<GroupEventCardModel> _yearEvents = [];
   List<CalendarEventData> _yearEventsData = []; // Cached isolate-safe data
@@ -195,9 +200,12 @@ class _CalendarScreenNotifier
 
     // Increase debounce time for search queries to avoid hanging
     final searchQuery = ref.read(calendarSearchQueryProvider);
-    final debounceTime = searchQuery.isNotEmpty
-        ? const Duration(milliseconds: 500) // Longer debounce for search
-        : const Duration(milliseconds: 200); // Normal debounce for other filters
+    final debounceTime =
+        searchQuery.isNotEmpty
+            ? const Duration(milliseconds: 500) // Longer debounce for search
+            : const Duration(
+              milliseconds: 200,
+            ); // Normal debounce for other filters
 
     _debounceTimer = Timer(debounceTime, _runFilters);
   }
@@ -230,7 +238,9 @@ class _CalendarScreenNotifier
         // If still loading, wait for it
         if (favoriteIdsAsync.isLoading) {
           try {
-            favoriteEventIds = await ref.read(calendarFavoriteEventIdsProvider.future);
+            favoriteEventIds = await ref.read(
+              calendarFavoriteEventIdsProvider.future,
+            );
           } catch (_) {
             // Continue with empty set if loading fails
           }
@@ -266,20 +276,22 @@ class _CalendarScreenNotifier
       if (!mounted || _filterVersion != currentVersion) return;
 
       // Convert back to GroupEventCardModel for UI
-      final summaries = result.summaries.map((monthData) {
-        final events = monthData.events.map((data) {
-          return _yearEvents.firstWhere(
-            (e) => e.id == data.id,
-            orElse: () => _fromEventData(data),
-          );
-        }).toList();
+      final summaries =
+          result.summaries.map((monthData) {
+            final events =
+                monthData.events.map((data) {
+                  return _yearEvents.firstWhere(
+                    (e) => e.id == data.id,
+                    orElse: () => _fromEventData(data),
+                  );
+                }).toList();
 
-        return MonthEventsSummary(
-          monthName: monthData.monthName,
-          monthNumber: monthData.monthNumber,
-          events: events,
-        );
-      }).toList();
+            return MonthEventsSummary(
+              monthName: monthData.monthName,
+              monthNumber: monthData.monthNumber,
+              events: events,
+            );
+          }).toList();
 
       if (!mounted) return;
       state = AsyncValue.data(summaries);
@@ -416,7 +428,7 @@ class CalendarSearchHelper {
         final titleLower = title.toLowerCase();
         final locationLower = location?.toLowerCase() ?? '';
         return titleLower.contains(normalizedQuery) ||
-               locationLower.contains(normalizedQuery);
+            locationLower.contains(normalizedQuery);
       }
 
       final tokens =

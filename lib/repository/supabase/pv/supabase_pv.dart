@@ -6,7 +6,14 @@ class SupabasePv {
   final int? mate;
   final String line;
 
-  SupabasePv({required this.id, required this.evalId, required this.idx, this.cp, this.mate, required this.line});
+  SupabasePv({
+    required this.id,
+    required this.evalId,
+    required this.idx,
+    this.cp,
+    this.mate,
+    required this.line,
+  });
 
   factory SupabasePv.fromJson(Map<String, dynamic> json) => SupabasePv(
     id: json['id'],

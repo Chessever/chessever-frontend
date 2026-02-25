@@ -33,13 +33,17 @@ class FavoritesMigration {
     try {
       final userId = Supabase.instance.client.auth.currentUser?.id;
       if (userId == null) {
-        debugPrint('[FavoritesMigration] No user logged in, skipping migration');
+        debugPrint(
+          '[FavoritesMigration] No user logged in, skipping migration',
+        );
         return;
       }
 
       final prefs = await _getPrefs();
       if (prefs == null) {
-        debugPrint('[FavoritesMigration] SharedPreferences unavailable, skipping');
+        debugPrint(
+          '[FavoritesMigration] SharedPreferences unavailable, skipping',
+        );
         return;
       }
 
@@ -47,7 +51,9 @@ class FavoritesMigration {
       final userMigrationKey = _migrationKeyForUser(userId);
       final migrationComplete = prefs.getBool(userMigrationKey) ?? false;
       if (migrationComplete) {
-        debugPrint('[FavoritesMigration] Already migrated for user $userId, skipping');
+        debugPrint(
+          '[FavoritesMigration] Already migrated for user $userId, skipping',
+        );
         return;
       }
 
@@ -56,16 +62,21 @@ class FavoritesMigration {
       await _clearLegacyKeys(prefs);
 
       // Check if there's player data to migrate
-      final hasPlayerData = prefs.containsKey(_oldPlayersKey) &&
+      final hasPlayerData =
+          prefs.containsKey(_oldPlayersKey) &&
           (prefs.getString(_oldPlayersKey)?.isNotEmpty ?? false);
 
       if (!hasPlayerData) {
-        debugPrint('[FavoritesMigration] No player data to migrate, marking complete');
+        debugPrint(
+          '[FavoritesMigration] No player data to migrate, marking complete',
+        );
         await prefs.setBool(userMigrationKey, true);
         return;
       }
 
-      debugPrint('[FavoritesMigration] Starting player migration for user: $userId');
+      debugPrint(
+        '[FavoritesMigration] Starting player migration for user: $userId',
+      );
 
       // Only migrate players - NOT events
       // The old event keys (current, upcoming, past) stored ALL fetched events, not favorites
@@ -103,7 +114,9 @@ class FavoritesMigration {
       final List<dynamic> decoded = jsonDecode(favoritesJson);
       final playersToMigrate = <Map<String, dynamic>>[];
 
-      debugPrint('[FavoritesMigration] Found ${decoded.length} players in old system');
+      debugPrint(
+        '[FavoritesMigration] Found ${decoded.length} players in old system',
+      );
 
       for (var item in decoded) {
         try {
@@ -119,7 +132,9 @@ class FavoritesMigration {
             'metadata': player.toJson(), // Store complete model
           });
         } catch (e) {
-          debugPrint('[FavoritesMigration] Error parsing player: $e, item: $item');
+          debugPrint(
+            '[FavoritesMigration] Error parsing player: $e, item: $item',
+          );
           // Skip this player and continue
         }
       }
@@ -134,11 +149,13 @@ class FavoritesMigration {
       );
 
       // Insert to Supabase (use upsert with onConflict to handle duplicates)
-      await supabase.from('user_favorite_players').upsert(
-        playersToMigrate,
-        onConflict: 'user_id,player_name',
-        ignoreDuplicates: true,
-      );
+      await supabase
+          .from('user_favorite_players')
+          .upsert(
+            playersToMigrate,
+            onConflict: 'user_id,player_name',
+            ignoreDuplicates: true,
+          );
 
       debugPrint(
         '[FavoritesMigration] ✅ Successfully migrated ${playersToMigrate.length} players',
@@ -202,18 +219,24 @@ class FavoritesMigration {
 
       final prefs = await _getPrefs();
       if (prefs == null) {
-        debugPrint('[FavoritesMigration] SharedPreferences unavailable, skipping cleanup');
+        debugPrint(
+          '[FavoritesMigration] SharedPreferences unavailable, skipping cleanup',
+        );
         return;
       }
       final cleanupKey = 'favorites_cleanup_v1_$userId';
       final cleanupDone = prefs.getBool(cleanupKey) ?? false;
 
       if (cleanupDone) {
-        debugPrint('[FavoritesMigration] Cleanup already done for user $userId');
+        debugPrint(
+          '[FavoritesMigration] Cleanup already done for user $userId',
+        );
         return;
       }
 
-      debugPrint('[FavoritesMigration] 🧹 Starting bad migration cleanup for user: $userId');
+      debugPrint(
+        '[FavoritesMigration] 🧹 Starting bad migration cleanup for user: $userId',
+      );
 
       // Delete all favorite events from Supabase for this user
       // These were incorrectly migrated from non-user-specific SharedPreferences
@@ -231,7 +254,9 @@ class FavoritesMigration {
             .from('user_favorite_events')
             .delete()
             .eq('user_id', userId);
-        debugPrint('[FavoritesMigration] ✅ Deleted $eventCount incorrectly migrated events');
+        debugPrint(
+          '[FavoritesMigration] ✅ Deleted $eventCount incorrectly migrated events',
+        );
       } else {
         debugPrint('[FavoritesMigration] No events to clean up');
       }
@@ -253,13 +278,17 @@ class FavoritesMigration {
     try {
       final userId = Supabase.instance.client.auth.currentUser?.id;
       if (userId == null) {
-        debugPrint('[FavoritesMigration] No user logged in, skipping cache cleanup');
+        debugPrint(
+          '[FavoritesMigration] No user logged in, skipping cache cleanup',
+        );
         return;
       }
 
       final prefs = await _getPrefs();
       if (prefs == null) {
-        debugPrint('[FavoritesMigration] SharedPreferences unavailable, skipping cache cleanup');
+        debugPrint(
+          '[FavoritesMigration] SharedPreferences unavailable, skipping cache cleanup',
+        );
         return;
       }
       // v1: Initial cleanup for double-sync duplicate issue
@@ -267,11 +296,15 @@ class FavoritesMigration {
       final cleanupDone = prefs.getBool(cleanupKey) ?? false;
 
       if (cleanupDone) {
-        debugPrint('[FavoritesMigration] Cache cleanup already done for user $userId');
+        debugPrint(
+          '[FavoritesMigration] Cache cleanup already done for user $userId',
+        );
         return;
       }
 
-      debugPrint('[FavoritesMigration] 🧹 Clearing stale favorite caches for user: $userId');
+      debugPrint(
+        '[FavoritesMigration] 🧹 Clearing stale favorite caches for user: $userId',
+      );
 
       // Clear all user-specific favorite player caches
       // These use different key patterns across providers
@@ -293,12 +326,13 @@ class FavoritesMigration {
 
       // Mark cleanup as done
       await prefs.setBool(cleanupKey, true);
-      debugPrint('[FavoritesMigration] ✅ Cache cleanup complete for user $userId');
+      debugPrint(
+        '[FavoritesMigration] ✅ Cache cleanup complete for user $userId',
+      );
     } catch (e, st) {
       debugPrint('[FavoritesMigration] ❌ Error during cache cleanup: $e');
       debugPrint('[FavoritesMigration] Stack: $st');
       // Don't rethrow - cleanup errors shouldn't block app
     }
   }
-
 }

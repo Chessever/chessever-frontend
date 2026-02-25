@@ -69,17 +69,19 @@ class LibraryPlayerGamesState {
 /// Provider for library player profile games
 /// Fetches from gamebase (historical chess database) only
 final libraryPlayerGamesProvider = StateNotifierProvider.autoDispose.family<
-    LibraryPlayerGamesNotifier, LibraryPlayerGamesState, LibraryPlayerProfileKey>(
-  (ref, key) => LibraryPlayerGamesNotifier(ref, key),
-);
+  LibraryPlayerGamesNotifier,
+  LibraryPlayerGamesState,
+  LibraryPlayerProfileKey
+>((ref, key) => LibraryPlayerGamesNotifier(ref, key));
 
-class LibraryPlayerGamesNotifier extends StateNotifier<LibraryPlayerGamesState> {
+class LibraryPlayerGamesNotifier
+    extends StateNotifier<LibraryPlayerGamesState> {
   final Ref _ref;
   final LibraryPlayerProfileKey _playerKey;
   static const int _pageSize = 30;
 
   LibraryPlayerGamesNotifier(this._ref, this._playerKey)
-      : super(const LibraryPlayerGamesState(isLoading: true)) {
+    : super(const LibraryPlayerGamesState(isLoading: true)) {
     _loadInitialGames();
   }
 
@@ -105,7 +107,10 @@ class LibraryPlayerGamesNotifier extends StateNotifier<LibraryPlayerGamesState> 
       );
     } catch (e, st) {
       debugPrint('[LibraryPlayerGames] Initial load error: $e');
-      debugPrintStack(stackTrace: st, label: '[LibraryPlayerGames] Initial load');
+      debugPrintStack(
+        stackTrace: st,
+        label: '[LibraryPlayerGames] Initial load',
+      );
       if (!mounted) return;
       state = state.copyWith(isLoading: false, error: e.toString());
     }
@@ -153,9 +158,11 @@ class LibraryPlayerGamesNotifier extends StateNotifier<LibraryPlayerGamesState> 
 
       // Always search by player name - gamebase text search is optimized for names
       // Searching by numeric FIDE ID often yields poor results
-      debugPrint('[LibraryPlayerGames] Fetching gamebase games for: "$playerName", '
-          'page=$page, gamebasePlayerId=${_playerKey.gamebasePlayerId}, '
-          'fideId=${_playerKey.fideId}');
+      debugPrint(
+        '[LibraryPlayerGames] Fetching gamebase games for: "$playerName", '
+        'page=$page, gamebasePlayerId=${_playerKey.gamebasePlayerId}, '
+        'fideId=${_playerKey.fideId}',
+      );
 
       // Fetch more results to compensate for filtering
       final fetchSize = (_pageSize * 4).clamp(40, 150);
@@ -168,7 +175,8 @@ class LibraryPlayerGamesNotifier extends StateNotifier<LibraryPlayerGamesState> 
       );
 
       final playerId = _playerKey.gamebasePlayerId;
-      final fideIdStr = _playerKey.hasFideId ? _playerKey.fideId.toString() : null;
+      final fideIdStr =
+          _playerKey.hasFideId ? _playerKey.fideId.toString() : null;
 
       // Filter and extract game rows
       final rows = response.results
@@ -220,7 +228,9 @@ class LibraryPlayerGamesNotifier extends StateNotifier<LibraryPlayerGamesState> 
 
       final byId = <String, GamebasePlayer>{};
       if (playerIds.isNotEmpty) {
-        debugPrint('[LibraryPlayerGames] Enriching ${playerIds.length} player IDs');
+        debugPrint(
+          '[LibraryPlayerGames] Enriching ${playerIds.length} player IDs',
+        );
         final fetched = await Future.wait(
           playerIds.map((id) async {
             try {
@@ -252,7 +262,10 @@ class LibraryPlayerGamesNotifier extends StateNotifier<LibraryPlayerGamesState> 
       return games;
     } catch (e, st) {
       debugPrint('[LibraryPlayerGames] Gamebase fetch error: $e');
-      debugPrintStack(stackTrace: st, label: '[LibraryPlayerGames] Gamebase fetch');
+      debugPrintStack(
+        stackTrace: st,
+        label: '[LibraryPlayerGames] Gamebase fetch',
+      );
       return [];
     }
   }
@@ -281,78 +294,85 @@ class LibraryPlayerGamesNotifier extends StateNotifier<LibraryPlayerGamesState> 
       return DateTime.tryParse(raw.toString());
     }
 
-    return rows.map((row) {
-      final id = row['id']?.toString() ?? 'unknown';
-      final result = row['result']?.toString() ?? '*';
-      final timeControl = row['timeControl']?.toString();
-      final date = parseDate(row['date']);
+    return rows
+        .map((row) {
+          final id = row['id']?.toString() ?? 'unknown';
+          final result = row['result']?.toString() ?? '*';
+          final timeControl = row['timeControl']?.toString();
+          final date = parseDate(row['date']);
 
-      final whiteName =
-          (row['white']?.toString() ?? row['whiteName']?.toString() ?? 'White')
-              .trim();
-      final blackName =
-          (row['black']?.toString() ?? row['blackName']?.toString() ?? 'Black')
-              .trim();
-      final event = (row['event']?.toString() ?? 'Gamebase').trim();
-      final site = row['site']?.toString();
-      final eco = row['eco']?.toString();
-      final opening = row['opening']?.toString();
-      final variation = row['variation']?.toString();
+          final whiteName =
+              (row['white']?.toString() ??
+                      row['whiteName']?.toString() ??
+                      'White')
+                  .trim();
+          final blackName =
+              (row['black']?.toString() ??
+                      row['blackName']?.toString() ??
+                      'Black')
+                  .trim();
+          final event = (row['event']?.toString() ?? 'Gamebase').trim();
+          final site = row['site']?.toString();
+          final eco = row['eco']?.toString();
+          final opening = row['opening']?.toString();
+          final variation = row['variation']?.toString();
 
-      final w = byId[row['whitePlayerId']?.toString() ?? ''];
-      final b = byId[row['blackPlayerId']?.toString() ?? ''];
+          final w = byId[row['whitePlayerId']?.toString() ?? ''];
+          final b = byId[row['blackPlayerId']?.toString() ?? ''];
 
-      final pgn = buildHeaderOnlyPgn(
-        whiteName: whiteName,
-        blackName: blackName,
-        result: result,
-        event: event,
-        site: site,
-        date: date,
-        eco: eco,
-        opening: opening,
-        variation: variation,
-      );
+          final pgn = buildHeaderOnlyPgn(
+            whiteName: whiteName,
+            blackName: blackName,
+            result: result,
+            event: event,
+            site: site,
+            date: date,
+            eco: eco,
+            opening: opening,
+            variation: variation,
+          );
 
-      final whiteCard = PlayerCard(
-        name: whiteName,
-        federation: '',
-        title: ChessTitleUtils.normalize(w?.title),
-        rating: ratingFor(w, timeControl),
-        countryCode: w?.fed ?? '',
-        team: null,
-        fideId: int.tryParse(w?.fideId ?? ''),
-      );
-      final blackCard = PlayerCard(
-        name: blackName,
-        federation: '',
-        title: ChessTitleUtils.normalize(b?.title),
-        rating: ratingFor(b, timeControl),
-        countryCode: b?.fed ?? '',
-        team: null,
-        fideId: int.tryParse(b?.fideId ?? ''),
-      );
+          final whiteCard = PlayerCard(
+            name: whiteName,
+            federation: '',
+            title: ChessTitleUtils.normalize(w?.title),
+            rating: ratingFor(w, timeControl),
+            countryCode: w?.fed ?? '',
+            team: null,
+            fideId: int.tryParse(w?.fideId ?? ''),
+          );
+          final blackCard = PlayerCard(
+            name: blackName,
+            federation: '',
+            title: ChessTitleUtils.normalize(b?.title),
+            rating: ratingFor(b, timeControl),
+            countryCode: b?.fed ?? '',
+            team: null,
+            fideId: int.tryParse(b?.fideId ?? ''),
+          );
 
-      final formatCode = (eco != null && eco.trim().isNotEmpty)
-          ? eco.trim()
-          : (timeControl ?? '');
+          final formatCode =
+              (eco != null && eco.trim().isNotEmpty)
+                  ? eco.trim()
+                  : (timeControl ?? '');
 
-      return GamesTourModel(
-        gameId: id,
-        whitePlayer: whiteCard,
-        blackPlayer: blackCard,
-        whiteTimeDisplay: '--:--',
-        blackTimeDisplay: '--:--',
-        whiteClockCentiseconds: 0,
-        blackClockCentiseconds: 0,
-        gameStatus: GameStatus.fromString(result),
-        roundId: 'gamebase_library',
-        roundSlug: formatCode.isNotEmpty ? formatCode : null,
-        tourId: event.isNotEmpty ? event : 'Gamebase',
-        pgn: pgn,
-        lastMoveTime: date,
-      );
-    }).toList(growable: false);
+          return GamesTourModel(
+            gameId: id,
+            whitePlayer: whiteCard,
+            blackPlayer: blackCard,
+            whiteTimeDisplay: '--:--',
+            blackTimeDisplay: '--:--',
+            whiteClockCentiseconds: 0,
+            blackClockCentiseconds: 0,
+            gameStatus: GameStatus.fromString(result),
+            roundId: 'gamebase_library',
+            roundSlug: formatCode.isNotEmpty ? formatCode : null,
+            tourId: event.isNotEmpty ? event : 'Gamebase',
+            pgn: pgn,
+            lastMoveTime: date,
+          );
+        })
+        .toList(growable: false);
   }
 
   /// Normalize player name for search matching

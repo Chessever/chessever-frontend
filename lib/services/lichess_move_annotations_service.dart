@@ -36,11 +36,15 @@ class LichessMoveAnnotationsService {
     if (!forceRefresh) {
       if (_cache.containsKey(cacheKey)) {
         final cached = _cache[cacheKey];
-        debugPrint('🔍 [AnnotationsService] Cache HIT for $lichessGameId: ${cached?.length ?? 0} annotations');
+        debugPrint(
+          '🔍 [AnnotationsService] Cache HIT for $lichessGameId: ${cached?.length ?? 0} annotations',
+        );
         return cached;
       }
       if (_attemptedFetches.contains(cacheKey)) {
-        debugPrint('🔍 [AnnotationsService] Already attempted fetch for $lichessGameId, skipping');
+        debugPrint(
+          '🔍 [AnnotationsService] Already attempted fetch for $lichessGameId, skipping',
+        );
         return null;
       }
     }
@@ -105,7 +109,9 @@ class LichessMoveAnnotationsService {
         );
       }
 
-      debugPrint('🔍 [AnnotationsService] Parsed ${annotations.length} annotations: ${annotations.keys.toList()}');
+      debugPrint(
+        '🔍 [AnnotationsService] Parsed ${annotations.length} annotations: ${annotations.keys.toList()}',
+      );
       _cache[cacheKey] = annotations;
       return annotations;
     } catch (e) {

@@ -17,7 +17,9 @@ class Settings {
   factory Settings.fromJson(Map<String, dynamic> json) => Settings(
     id: json['id'],
     createdAt: DateTime.parse(json['created_at']),
-    liveGroupBroadcastIds: List<String>.from(json['live_group_broadcast_ids'] ?? []),
+    liveGroupBroadcastIds: List<String>.from(
+      json['live_group_broadcast_ids'] ?? [],
+    ),
     liveTourIds: List<String>.from(json['live_tour_ids'] ?? []),
     liveRoundIds: List<String>.from(json['live_round_ids'] ?? []),
   );

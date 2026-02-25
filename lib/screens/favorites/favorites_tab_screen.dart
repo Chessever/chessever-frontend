@@ -72,7 +72,9 @@ class _FavoritesTabScreenState extends ConsumerState<FavoritesTabScreen> {
       backgroundColor: kBackgroundColor,
       body: Center(
         child: ConstrainedBox(
-          constraints: BoxConstraints(maxWidth: ResponsiveHelper.contentMaxWidth),
+          constraints: BoxConstraints(
+            maxWidth: ResponsiveHelper.contentMaxWidth,
+          ),
           child: Column(
             children: [
               SizedBox(height: MediaQuery.of(context).viewPadding.top + 4.h),
@@ -153,7 +155,10 @@ class _FavoritesTabScreenState extends ConsumerState<FavoritesTabScreen> {
   }
 
   Widget _buildSegmentedSwitcher(FavoritesScreenMode selectedMode) {
-    final horizontalPadding = ResponsiveHelper.adaptive(phone: 20.sp, tablet: 32.sp);
+    final horizontalPadding = ResponsiveHelper.adaptive(
+      phone: 20.sp,
+      tablet: 32.sp,
+    );
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
       child: SegmentedSwitcher(

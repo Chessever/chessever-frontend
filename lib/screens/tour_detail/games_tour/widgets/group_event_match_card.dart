@@ -46,12 +46,14 @@ class GroupEventMatchCard extends ConsumerWidget {
     final matchScore = ref
         .read(groupEventMatchCardProvider)
         .getMatchScore(matchList: games, team: team1Name);
-    final team1ScoreStr = matchScore.first % 1 == 0
-        ? matchScore.first.toStringAsFixed(0)
-        : matchScore.first.toStringAsFixed(1);
-    final team2ScoreStr = matchScore.last % 1 == 0
-        ? matchScore.last.toStringAsFixed(0)
-        : matchScore.last.toStringAsFixed(1);
+    final team1ScoreStr =
+        matchScore.first % 1 == 0
+            ? matchScore.first.toStringAsFixed(0)
+            : matchScore.first.toStringAsFixed(1);
+    final team2ScoreStr =
+        matchScore.last % 1 == 0
+            ? matchScore.last.toStringAsFixed(0)
+            : matchScore.last.toStringAsFixed(1);
 
     // Use match key from roundTitle (Team1 vs Team2)
     final matchKey = roundTitle;
@@ -242,7 +244,9 @@ class GroupEventMatchCard extends ConsumerWidget {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Expanded(child: _buildGridChessBoard(context, ref, matchWithComparison)),
+              Expanded(
+                child: _buildGridChessBoard(context, ref, matchWithComparison),
+              ),
               if (game2 != null) ...[
                 Expanded(child: _buildGridChessBoard(context, ref, game2)),
               ],
@@ -285,7 +289,11 @@ class GroupEventMatchCard extends ConsumerWidget {
     );
   }
 
-  Widget _buildGridChessBoard(BuildContext context, WidgetRef ref, MatchWithComparison matchWithComparison) {
+  Widget _buildGridChessBoard(
+    BuildContext context,
+    WidgetRef ref,
+    MatchWithComparison matchWithComparison,
+  ) {
     // Use the games list from widget data to maintain correct order for group events
     final fullGamesList = gamesData.gamesTourModels;
 

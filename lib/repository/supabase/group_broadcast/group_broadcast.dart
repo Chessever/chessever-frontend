@@ -19,7 +19,6 @@ class GroupBroadcast {
     this.timeControl,
   });
 
-
   factory GroupBroadcast.fromJson(Map<String, dynamic> json) => GroupBroadcast(
     id: json['id'] as String,
     createdAt: DateTime.parse(json['created_at'] as String),
@@ -36,7 +35,6 @@ class GroupBroadcast {
             : DateTime.parse(json['date_end'] as String),
     timeControl: json['time_control'] as String?,
   );
-
 
   Map<String, dynamic> toJson() => {
     'id': id,

@@ -40,8 +40,9 @@ class PendingFavoritePlayer {
 }
 
 final pendingFavoriteSelectionsProvider = StateNotifierProvider<
-    PendingFavoriteSelectionsNotifier,
-    Map<String, PendingFavoritePlayer>>((ref) {
+  PendingFavoriteSelectionsNotifier,
+  Map<String, PendingFavoritePlayer>
+>((ref) {
   return PendingFavoriteSelectionsNotifier(ref);
 });
 
@@ -54,10 +55,7 @@ class PendingFavoriteSelectionsNotifier
   SupabaseClient get _supabase => Supabase.instance.client;
 
   void setSelection(PendingFavoritePlayer pending) {
-    state = {
-      ...state,
-      pending.fideId: pending,
-    };
+    state = {...state, pending.fideId: pending};
   }
 
   /// Flush pending favorites to Supabase.
@@ -71,19 +69,22 @@ class PendingFavoriteSelectionsNotifier
     if (toSync.isEmpty) return;
 
     try {
-      final payload = toSync
-          .map((pending) => {
-                'user_id': user.id,
-                'fide_id': pending.fideId,
-                'player_name': pending.playerName,
-                'metadata': <String, dynamic>{
-                  if (pending.countryCode != null)
-                    'countryCode': pending.countryCode,
-                  if (pending.rating != null) 'rating': pending.rating,
-                  if (pending.title != null) 'title': pending.title,
+      final payload =
+          toSync
+              .map(
+                (pending) => {
+                  'user_id': user.id,
+                  'fide_id': pending.fideId,
+                  'player_name': pending.playerName,
+                  'metadata': <String, dynamic>{
+                    if (pending.countryCode != null)
+                      'countryCode': pending.countryCode,
+                    if (pending.rating != null) 'rating': pending.rating,
+                    if (pending.title != null) 'title': pending.title,
+                  },
                 },
-              })
-          .toList();
+              )
+              .toList();
 
       // Use fide_id for conflict resolution since it's the unique player identifier
       // This prevents duplicates when re-onboarding with the same account
@@ -91,12 +92,13 @@ class PendingFavoriteSelectionsNotifier
         final fideId = item['fide_id'];
         if (fideId != null && fideId.toString().isNotEmpty) {
           // Check if already exists by fide_id
-          final existing = await _supabase
-              .from('user_favorite_players')
-              .select('id')
-              .eq('user_id', user.id)
-              .eq('fide_id', fideId)
-              .maybeSingle();
+          final existing =
+              await _supabase
+                  .from('user_favorite_players')
+                  .select('id')
+                  .eq('user_id', user.id)
+                  .eq('fide_id', fideId)
+                  .maybeSingle();
 
           if (existing != null) {
             // Already exists, skip
@@ -105,11 +107,13 @@ class PendingFavoriteSelectionsNotifier
         }
 
         // Insert new favorite
-        await _supabase.from('user_favorite_players').upsert(
-          item,
-          onConflict: 'user_id,player_name',
-          ignoreDuplicates: true,
-        );
+        await _supabase
+            .from('user_favorite_players')
+            .upsert(
+              item,
+              onConflict: 'user_id,player_name',
+              ignoreDuplicates: true,
+            );
       }
 
       state = {};

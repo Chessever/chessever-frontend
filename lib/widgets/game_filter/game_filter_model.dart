@@ -1,12 +1,7 @@
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 
 /// Result filter options for chess games
-enum GameResultFilter {
-  all,
-  whiteWins,
-  blackWins,
-  draw,
-}
+enum GameResultFilter { all, whiteWins, blackWins, draw }
 
 extension GameResultFilterX on GameResultFilter {
   String get displayText {
@@ -128,7 +123,8 @@ class GameEcoFilter {
   static const GameEcoFilter all = GameEcoFilter();
 
   /// Create a filter for a specific ECO code
-  factory GameEcoFilter.forCode(String code) => GameEcoFilter(code: code.toUpperCase());
+  factory GameEcoFilter.forCode(String code) =>
+      GameEcoFilter(code: code.toUpperCase());
 
   /// Whether this filter shows all openings
   bool get isAll => code == null;
@@ -167,8 +163,8 @@ class GameFilter {
     int? maxYear,
     this.minRating = 1000,
     this.maxRating = 3500,
-  })  : eco = eco ?? GameEcoFilter.all,
-        maxYear = maxYear ?? DateTime.now().year;
+  }) : eco = eco ?? GameEcoFilter.all,
+       maxYear = maxYear ?? DateTime.now().year;
 
   final GameResultFilter result;
   final GameColorFilter color;
@@ -242,15 +238,15 @@ class GameFilter {
 
   @override
   int get hashCode => Object.hash(
-        result,
-        color,
-        timeControl,
-        eco,
-        minYear,
-        maxYear,
-        minRating,
-        maxRating,
-      );
+    result,
+    color,
+    timeControl,
+    eco,
+    minYear,
+    maxYear,
+    minRating,
+    maxRating,
+  );
 }
 
 /// Helper to filter games locally based on GameFilter
@@ -277,7 +273,8 @@ class GameFilterHelper {
         final inferred = _inferTimeControl(game);
         // If we can't determine the time control (returns 'all'), don't filter out the game
         // This prevents games with missing time_control data from being excluded
-        if (inferred != GameTimeControlFilter.all && inferred != filter.timeControl) {
+        if (inferred != GameTimeControlFilter.all &&
+            inferred != filter.timeControl) {
           return false;
         }
       }

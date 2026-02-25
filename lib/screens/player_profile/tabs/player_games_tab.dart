@@ -339,7 +339,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
     final headerHeight =
         88.h +
         (state.hasActiveFilters ? 36.h : 0) +
-        (_isSelectionMode ? 52.h : 0);
+        (_isSelectionMode ? 72.h : 0);
 
     // Watch event data for event-grouped display
     final eventCardsAsync =
@@ -578,8 +578,8 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
           GestureDetector(
             onTap: _toggleSelectionMode,
             child: Container(
-              width: searchBarHeight,
               height: searchBarHeight,
+              padding: EdgeInsets.symmetric(horizontal: 12.w),
               decoration: BoxDecoration(
                 color:
                     _isSelectionMode
@@ -593,13 +593,29 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
                           : const Color(0xFF27272A),
                 ),
               ),
-              child: Icon(
-                _isSelectionMode
-                    ? Icons.checklist_rounded
-                    : Icons.library_add_outlined,
-                size: 20.sp,
-                color:
-                    _isSelectionMode ? kPrimaryColor : const Color(0xFFA1A1AA),
+              child: Row(
+                children: [
+                  Icon(
+                    _isSelectionMode
+                        ? Icons.checklist_rounded
+                        : Icons.library_add_outlined,
+                    size: 18.sp,
+                    color:
+                        _isSelectionMode
+                            ? kPrimaryColor
+                            : const Color(0xFFA1A1AA),
+                  ),
+                  SizedBox(width: 6.w),
+                  Text(
+                    _isSelectionMode ? 'Cancel' : 'Select',
+                    style: AppTypography.textSmMedium.copyWith(
+                      color:
+                          _isSelectionMode
+                              ? kPrimaryColor
+                              : const Color(0xFFA1A1AA),
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
@@ -638,53 +654,121 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
     PlayerProfileGamesState state,
     int selectedVisibleCount,
   ) {
-    return Container(
-      padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 8.h),
-      decoration: BoxDecoration(
-        color: const Color(0xFF09090B),
-        borderRadius: BorderRadius.circular(12.br),
-        border: Border.all(color: const Color(0xFF27272A)),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              selectedVisibleCount == 0
-                  ? 'No games selected'
-                  : '$selectedVisibleCount selected',
-              style: AppTypography.textSmMedium.copyWith(
-                color:
-                    selectedVisibleCount == 0
-                        ? const Color(0xFFA1A1AA)
-                        : kWhiteColor,
+    return SingleMotionBuilder(
+      motion: const CupertinoMotion.spring(),
+      value: 1.0,
+      builder: (context, progress, child) {
+        return Opacity(
+          opacity: progress.clamp(0.0, 1.0),
+          child: Transform.translate(
+            offset: Offset(0, (1.0 - progress) * -10),
+            child: Container(
+              padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 12.h),
+              decoration: BoxDecoration(
+                color: kBlack2Color,
+                borderRadius: BorderRadius.circular(16.br),
+                border: Border.all(color: kPrimaryColor.withValues(alpha: 0.3)),
+                boxShadow: [
+                  BoxShadow(
+                    color: kPrimaryColor.withValues(alpha: 0.1),
+                    blurRadius: 12,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
               ),
-              overflow: TextOverflow.ellipsis,
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          selectedVisibleCount == 0
+                              ? 'Select games'
+                              : '$selectedVisibleCount selected',
+                          style: AppTypography.textSmMedium.copyWith(
+                            color:
+                                selectedVisibleCount == 0
+                                    ? kWhiteColor.withValues(alpha: 0.5)
+                                    : kPrimaryColor,
+                            fontWeight: FontWeight.bold,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        if (selectedVisibleCount > 0) ...[
+                          SizedBox(height: 2.h),
+                          Text(
+                            'Ready to save to library',
+                            style: AppTypography.textXsRegular.copyWith(
+                              color: kWhiteColor.withValues(alpha: 0.5),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  SizedBox(width: 12.w),
+                  _SelectionChipButton(
+                    label:
+                        _isLoadingAllPagesForSelection
+                            ? 'Loading...'
+                            : 'Select All',
+                    onTap:
+                        _isLoadingAllPagesForSelection
+                            ? null
+                            : () => _selectAllFilteredGames(state),
+                  ),
+                  SizedBox(width: 8.w),
+                  GestureDetector(
+                    onTap:
+                        selectedVisibleCount > 0
+                            ? () => _addSelectedToLibrary(state)
+                            : null,
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 16.w,
+                        vertical: 8.h,
+                      ),
+                      decoration: BoxDecoration(
+                        color:
+                            selectedVisibleCount > 0
+                                ? kPrimaryColor
+                                : kWhiteColor.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(10.br),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.library_add_rounded,
+                            size: 16.sp,
+                            color:
+                                selectedVisibleCount > 0
+                                    ? kWhiteColor
+                                    : kWhiteColor.withValues(alpha: 0.5),
+                          ),
+                          SizedBox(width: 6.w),
+                          Text(
+                            'Save to Library',
+                            style: AppTypography.textSmBold.copyWith(
+                              color:
+                                  selectedVisibleCount > 0
+                                      ? kWhiteColor
+                                      : kWhiteColor.withValues(alpha: 0.5),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
-          SizedBox(width: 8.w),
-          _SelectionChipButton(
-            label: 'Loaded',
-            onTap: () => _selectLoadedGames(state.filteredGames),
-          ),
-          SizedBox(width: 6.w),
-          _SelectionChipButton(
-            label: _isLoadingAllPagesForSelection ? 'Loading...' : 'All',
-            onTap:
-                _isLoadingAllPagesForSelection
-                    ? null
-                    : () => _selectAllFilteredGames(state),
-          ),
-          SizedBox(width: 6.w),
-          _SelectionChipButton(
-            label: 'Add',
-            icon: Icons.library_add_rounded,
-            highlighted: true,
-            onTap: () => _addSelectedToLibrary(state),
-          ),
-          SizedBox(width: 6.w),
-          _SelectionChipButton(label: 'Clear', onTap: _clearSelection),
-        ],
-      ),
+        );
+      },
     );
   }
 

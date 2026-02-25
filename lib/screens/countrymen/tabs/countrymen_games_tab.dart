@@ -86,7 +86,9 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
     HapticFeedback.mediumImpact();
     final state = ref.read(countrymenCombinedGamesProvider);
     if (state.isSearching) {
-      ref.read(countrymenCombinedGamesProvider.notifier).loadMoreSearchResults();
+      ref
+          .read(countrymenCombinedGamesProvider.notifier)
+          .loadMoreSearchResults();
     } else {
       ref.read(countrymenCombinedGamesProvider.notifier).loadMoreGames();
     }
@@ -108,7 +110,9 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
   }
 
   /// Group games by date
-  Map<String, List<GamesTourModel>> _groupGamesByDate(List<GamesTourModel> games) {
+  Map<String, List<GamesTourModel>> _groupGamesByDate(
+    List<GamesTourModel> games,
+  ) {
     final grouped = <String, List<GamesTourModel>>{};
 
     for (final game in games) {
@@ -118,8 +122,7 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
     }
 
     // Sort keys by date descending (most recent first)
-    final sortedKeys = grouped.keys.toList()
-      ..sort((a, b) => b.compareTo(a));
+    final sortedKeys = grouped.keys.toList()..sort((a, b) => b.compareTo(a));
 
     return Map.fromEntries(
       sortedKeys.map((key) => MapEntry(key, grouped[key]!)),
@@ -170,8 +173,10 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
 
       // If content is shorter than viewport, or we're near the end, load more
       // We use a larger threshold here since collapsing can dramatically reduce height
-      final needsMore = maxScroll <= 0 || // Content fits in viewport
-          maxScroll - currentScroll <= viewportHeight; // Within one screen of end
+      final needsMore =
+          maxScroll <= 0 || // Content fits in viewport
+          maxScroll - currentScroll <=
+              viewportHeight; // Within one screen of end
 
       if (needsMore) {
         final state = ref.read(countrymenCombinedGamesProvider);
@@ -188,7 +193,10 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
 
     final state = ref.watch(countrymenCombinedGamesProvider);
     final viewMode = ref.watch(gamesListViewModeProvider);
-    final horizontalPadding = ResponsiveHelper.adaptive(phone: 16.w, tablet: 24.w);
+    final horizontalPadding = ResponsiveHelper.adaptive(
+      phone: 16.w,
+      tablet: 24.w,
+    );
 
     Widget content = RefreshIndicator(
       onRefresh: () async {
@@ -207,7 +215,12 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
           // Search bar
           SliverToBoxAdapter(
             child: Padding(
-              padding: EdgeInsets.fromLTRB(horizontalPadding, 12.h, horizontalPadding, 8.h),
+              padding: EdgeInsets.fromLTRB(
+                horizontalPadding,
+                12.h,
+                horizontalPadding,
+                8.h,
+              ),
               child: _buildSearchBar(state),
             ),
           ),
@@ -291,7 +304,8 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
                       ),
                     ),
                   ),
-                  if (_searchController.text.isNotEmpty || state.isSearching) ...[
+                  if (_searchController.text.isNotEmpty ||
+                      state.isSearching) ...[
                     GestureDetector(
                       onTap: _clearSearch,
                       child: Icon(
@@ -315,14 +329,16 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
               width: searchBarHeight,
               height: searchBarHeight,
               decoration: BoxDecoration(
-                color: hasActiveFilters
-                    ? const Color(0xFFEF4444).withValues(alpha: 0.15)
-                    : const Color(0xFF09090B),
+                color:
+                    hasActiveFilters
+                        ? const Color(0xFFEF4444).withValues(alpha: 0.15)
+                        : const Color(0xFF09090B),
                 borderRadius: BorderRadius.circular(12.br),
                 border: Border.all(
-                  color: hasActiveFilters
-                      ? const Color(0xFFEF4444).withValues(alpha: 0.5)
-                      : const Color(0xFF27272A),
+                  color:
+                      hasActiveFilters
+                          ? const Color(0xFFEF4444).withValues(alpha: 0.5)
+                          : const Color(0xFF27272A),
                 ),
               ),
               child: Stack(
@@ -331,7 +347,10 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
                   Icon(
                     Icons.tune_rounded,
                     size: 20.sp,
-                    color: hasActiveFilters ? const Color(0xFFEF4444) : const Color(0xFFA1A1AA),
+                    color:
+                        hasActiveFilters
+                            ? const Color(0xFFEF4444)
+                            : const Color(0xFFA1A1AA),
                   ),
                   // Badge showing active filter count
                   if (hasActiveFilters)
@@ -488,7 +507,8 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
         if (isGrid) {
           // Grid mode: dynamic columns based on device/orientation
           // Tablet landscape: 4 columns, Tablet portrait: 2 columns, Phone: 2 columns
-          final int gridColumns = ResponsiveHelper.isTablet && ResponsiveHelper.isLandscape ? 4 : 2;
+          final int gridColumns =
+              ResponsiveHelper.isTablet && ResponsiveHelper.isLandscape ? 4 : 2;
 
           for (int i = 0; i < dateGames.length; i += gridColumns) {
             final isLast = i + gridColumns >= dateGames.length;
@@ -507,14 +527,15 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
                     for (int j = 0; j < gridColumns; j++) ...[
                       if (j > 0) SizedBox(width: 12.sp),
                       Expanded(
-                        child: j < rowGames.length
-                            ? _buildGridGame(
-                                rowGames[j],
-                                gameIdToIndex[rowGames[j].gameId] ?? 0,
-                                games,
-                                items.length,
-                              )
-                            : const SizedBox.shrink(),
+                        child:
+                            j < rowGames.length
+                                ? _buildGridGame(
+                                  rowGames[j],
+                                  gameIdToIndex[rowGames[j].gameId] ?? 0,
+                                  games,
+                                  items.length,
+                                )
+                                : const SizedBox.shrink(),
                       ),
                     ],
                   ],
@@ -529,7 +550,8 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
             // Use reliable index lookup by game ID
             final gameIndex = gameIdToIndex[game.gameId] ?? 0;
             final isLast = i == dateGames.length - 1;
-            final showHint = isFirstGameCard && viewMode == GamesListViewMode.gamesCard;
+            final showHint =
+                isFirstGameCard && viewMode == GamesListViewMode.gamesCard;
             if (isFirstGameCard) isFirstGameCard = false;
 
             if (isChessBoardVisible) {
@@ -561,7 +583,10 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
                     showGamebaseButton: false,
                     onAdd: () => _showAddToFolderSheet(context, game),
                     onTap: () async {
-                      final hasPremium = await requirePremiumGuard(context, ref);
+                      final hasPremium = await requirePremiumGuard(
+                        context,
+                        ref,
+                      );
                       if (!hasPremium) return;
                       _navigateToChessBoard(game, games, gameIndex);
                     },
@@ -610,9 +635,15 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
       );
     }
 
-    final horizontalPadding = ResponsiveHelper.adaptive(phone: 16.w, tablet: 24.w);
+    final horizontalPadding = ResponsiveHelper.adaptive(
+      phone: 16.w,
+      tablet: 24.w,
+    );
     return SliverPadding(
-      padding: EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: 8.h),
+      padding: EdgeInsets.symmetric(
+        horizontal: horizontalPadding,
+        vertical: 8.h,
+      ),
       sliver: SliverList(
         delegate: SliverChildBuilderDelegate(
           (context, index) => items[index],
@@ -640,7 +671,9 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
         if (!hasPremium) return;
         if (!mounted) return;
 
-        ref.read(gameCardWrapperProvider).navigateToChessBoard(
+        ref
+            .read(gameCardWrapperProvider)
+            .navigateToChessBoard(
               context: context,
               orderedGames: updatedGames,
               gameIndex: gameIndex,
@@ -714,8 +747,11 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
           ),
           SizedBox(height: 24.h),
           TextButton(
-            onPressed: () =>
-                ref.read(countrymenCombinedGamesProvider.notifier).refreshGames(),
+            onPressed:
+                () =>
+                    ref
+                        .read(countrymenCombinedGamesProvider.notifier)
+                        .refreshGames(),
             style: TextButton.styleFrom(
               backgroundColor: kWhiteColor.withValues(alpha: 0.1),
               padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 12.h),
@@ -851,9 +887,7 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
               ),
               child: Text(
                 'Clear Filters',
-                style: AppTypography.textSmMedium.copyWith(
-                  color: kWhiteColor,
-                ),
+                style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
               ),
             ),
           ),
@@ -866,17 +900,21 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
     showAddToFolderSheet(context: context, game: game);
   }
 
-  void _navigateToChessBoard(GamesTourModel game, List<GamesTourModel> allGames, int gameIndex) {
-    ref.read(chessboardViewFromProviderNew.notifier).state = ChessboardView.countryman;
+  void _navigateToChessBoard(
+    GamesTourModel game,
+    List<GamesTourModel> allGames,
+    int gameIndex,
+  ) {
+    ref.read(chessboardViewFromProviderNew.notifier).state =
+        ChessboardView.countryman;
     ref.read(shouldStreamProvider.notifier).state = false;
 
     Navigator.push<int>(
       context,
       MaterialPageRoute(
-        builder: (_) => ChessBoardScreenNew(
-          games: allGames,
-          currentIndex: gameIndex,
-        ),
+        builder:
+            (_) =>
+                ChessBoardScreenNew(games: allGames, currentIndex: gameIndex),
       ),
     ).then((_) {
       if (mounted) {
@@ -999,7 +1037,9 @@ class _CountrymenKeepAliveGameCardState
     if (!hasPremium) return;
     if (!mounted) return;
 
-    ref.read(gameCardWrapperProvider).navigateToChessBoard(
+    ref
+        .read(gameCardWrapperProvider)
+        .navigateToChessBoard(
           context: context,
           orderedGames: widget.gamesData.gamesTourModels,
           gameIndex: widget.gameIndex,

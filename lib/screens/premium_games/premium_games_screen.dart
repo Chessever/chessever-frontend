@@ -13,10 +13,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 /// Screen displaying premium games (favorites or countrymen).
 /// Features TWIC-style game cards with filtering and pagination.
 class PremiumGamesScreen extends ConsumerStatefulWidget {
-  const PremiumGamesScreen({
-    required this.type,
-    super.key,
-  });
+  const PremiumGamesScreen({required this.type, super.key});
 
   final PremiumGamesType type;
 
@@ -56,71 +53,87 @@ class _PremiumGamesScreenState extends ConsumerState<PremiumGamesScreen> {
       appBar: _buildAppBar(),
       body: gamesAsync.when(
         loading: () => const _LoadingState(),
-        error: (error, _) => _ErrorState(
-          error: error.toString(),
-          onRetry: () =>
-              ref.read(premiumGamesProvider(widget.type).notifier).loadGames(),
-        ),
+        error:
+            (error, _) => _ErrorState(
+              error: error.toString(),
+              onRetry:
+                  () =>
+                      ref
+                          .read(premiumGamesProvider(widget.type).notifier)
+                          .loadGames(),
+            ),
         data: (state) {
           if (state.games.isEmpty) {
             return _EmptyState(type: widget.type);
           }
 
           final isTablet = ResponsiveHelper.isTablet;
-          final horizontalPadding = ResponsiveHelper.adaptive(phone: 16.sp, tablet: 24.sp);
+          final horizontalPadding = ResponsiveHelper.adaptive(
+            phone: 16.sp,
+            tablet: 24.sp,
+          );
           final itemCount = state.games.length + (state.isLoadingMore ? 1 : 0);
 
           return RefreshIndicator(
             color: kPrimaryColor,
             backgroundColor: kBlackColor,
-            onRefresh: () =>
-                ref.read(premiumGamesProvider(widget.type).notifier).refresh(),
+            onRefresh:
+                () =>
+                    ref
+                        .read(premiumGamesProvider(widget.type).notifier)
+                        .refresh(),
             child: Center(
               child: ConstrainedBox(
-                constraints: BoxConstraints(maxWidth: ResponsiveHelper.contentMaxWidth),
-                child: isTablet
-                    ? GridView.builder(
-                        controller: _scrollController,
-                        padding: EdgeInsets.all(horizontalPadding),
-                        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: ResponsiveHelper.tabletGridColumns,
-                          crossAxisSpacing: 16.sp,
-                          mainAxisSpacing: 16.sp,
-                          childAspectRatio: ResponsiveHelper.isLandscape ? 2.2 : 1.8,
+                constraints: BoxConstraints(
+                  maxWidth: ResponsiveHelper.contentMaxWidth,
+                ),
+                child:
+                    isTablet
+                        ? GridView.builder(
+                          controller: _scrollController,
+                          padding: EdgeInsets.all(horizontalPadding),
+                          gridDelegate:
+                              SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount:
+                                    ResponsiveHelper.tabletGridColumns,
+                                crossAxisSpacing: 16.sp,
+                                mainAxisSpacing: 16.sp,
+                                childAspectRatio:
+                                    ResponsiveHelper.isLandscape ? 2.2 : 1.8,
+                              ),
+                          itemCount: itemCount,
+                          itemBuilder: (context, index) {
+                            if (index == state.games.length) {
+                              return _LoadingMoreIndicator();
+                            }
+
+                            final game = state.games[index];
+                            return TwicGameCard(
+                              game: game,
+                              allGames: state.games,
+                              gameIndex: index,
+                              animationIndex: index,
+                            );
+                          },
+                        )
+                        : ListView.builder(
+                          controller: _scrollController,
+                          padding: EdgeInsets.all(horizontalPadding),
+                          itemCount: itemCount,
+                          itemBuilder: (context, index) {
+                            if (index == state.games.length) {
+                              return _LoadingMoreIndicator();
+                            }
+
+                            final game = state.games[index];
+                            return TwicGameCard(
+                              game: game,
+                              allGames: state.games,
+                              gameIndex: index,
+                              animationIndex: index,
+                            );
+                          },
                         ),
-                        itemCount: itemCount,
-                        itemBuilder: (context, index) {
-                          if (index == state.games.length) {
-                            return _LoadingMoreIndicator();
-                          }
-
-                          final game = state.games[index];
-                          return TwicGameCard(
-                            game: game,
-                            allGames: state.games,
-                            gameIndex: index,
-                            animationIndex: index,
-                          );
-                        },
-                      )
-                    : ListView.builder(
-                        controller: _scrollController,
-                        padding: EdgeInsets.all(horizontalPadding),
-                        itemCount: itemCount,
-                        itemBuilder: (context, index) {
-                          if (index == state.games.length) {
-                            return _LoadingMoreIndicator();
-                          }
-
-                          final game = state.games[index];
-                          return TwicGameCard(
-                            game: game,
-                            allGames: state.games,
-                            gameIndex: index,
-                            animationIndex: index,
-                          );
-                        },
-                      ),
               ),
             ),
           );
@@ -203,7 +216,9 @@ class _PremiumGamesScreenState extends ConsumerState<PremiumGamesScreen> {
     );
 
     if (newFilter != null && mounted) {
-      ref.read(premiumGamesProvider(widget.type).notifier).applyFilter(newFilter);
+      ref
+          .read(premiumGamesProvider(widget.type).notifier)
+          .applyFilter(newFilter);
     }
   }
 }
@@ -258,10 +273,7 @@ class _LoadingMoreIndicator extends StatelessWidget {
 }
 
 class _ErrorState extends StatelessWidget {
-  const _ErrorState({
-    required this.error,
-    required this.onRetry,
-  });
+  const _ErrorState({required this.error, required this.onRetry});
 
   final String error;
   final VoidCallback onRetry;
@@ -282,9 +294,7 @@ class _ErrorState extends StatelessWidget {
             SizedBox(height: 16.sp),
             Text(
               'Something went wrong',
-              style: AppTypography.textMdMedium.copyWith(
-                color: kWhiteColor,
-              ),
+              style: AppTypography.textMdMedium.copyWith(color: kWhiteColor),
             ),
             SizedBox(height: 8.sp),
             Text(
@@ -327,15 +337,15 @@ class _EmptyState extends StatelessWidget {
   Widget build(BuildContext context) {
     final (icon, title, subtitle) = switch (type) {
       PremiumGamesType.favorites => (
-          Icons.star_outline_rounded,
-          'No favorite games yet',
-          'Games from your favorite players will appear here',
-        ),
+        Icons.star_outline_rounded,
+        'No favorite games yet',
+        'Games from your favorite players will appear here',
+      ),
       PremiumGamesType.countrymen => (
-          Icons.flag_outlined,
-          'No countrymen games yet',
-          'Games from players in your country will appear here',
-        ),
+        Icons.flag_outlined,
+        'No countrymen games yet',
+        'Games from players in your country will appear here',
+      ),
     };
 
     return Center(
@@ -366,9 +376,7 @@ class _EmptyState extends StatelessWidget {
             SizedBox(height: 24.sp),
             Text(
               title,
-              style: AppTypography.textMdMedium.copyWith(
-                color: kWhiteColor,
-              ),
+              style: AppTypography.textMdMedium.copyWith(color: kWhiteColor),
             ),
             SizedBox(height: 8.sp),
             Text(

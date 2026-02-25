@@ -3,7 +3,8 @@ import 'dart:async';
 import 'package:chessever2/revenue_cat_service/revenue_cat_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:purchases_flutter/purchases_flutter.dart' show CustomerInfo, Package;
+import 'package:purchases_flutter/purchases_flutter.dart'
+    show CustomerInfo, Package;
 
 final subscriptionProvider =
     StateNotifierProvider<SubscriptionNotifier, SubscriptionState>((ref) {
@@ -76,7 +77,9 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
 
     // Only schedule if within reasonable timeframe (< 7 days)
     if (syncDelay.inDays < 7) {
-      debugPrint('📅 Scheduling expiration check in ${syncDelay.inHours}h ${syncDelay.inMinutes % 60}m');
+      debugPrint(
+        '📅 Scheduling expiration check in ${syncDelay.inHours}h ${syncDelay.inMinutes % 60}m',
+      );
       _expirationTimer = Timer(syncDelay, () {
         debugPrint('⏰ Expiration timer triggered, syncing subscription status');
         syncAndRefresh();
@@ -105,8 +108,10 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
       if (customerInfo != null) {
         // Check entitlements from the already-fetched customerInfo
         final activeEntitlements = customerInfo.entitlements.active;
-        isSubscribed = activeEntitlements
-                .containsKey(RevenueCatService.premiumEntitlement) ||
+        isSubscribed =
+            activeEntitlements.containsKey(
+              RevenueCatService.premiumEntitlement,
+            ) ||
             activeEntitlements.isNotEmpty;
 
         if (activeEntitlements.isNotEmpty) {
@@ -160,8 +165,10 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
 
       if (customerInfo != null) {
         final activeEntitlements = customerInfo.entitlements.active;
-        isSubscribed = activeEntitlements
-                .containsKey(RevenueCatService.premiumEntitlement) ||
+        isSubscribed =
+            activeEntitlements.containsKey(
+              RevenueCatService.premiumEntitlement,
+            ) ||
             activeEntitlements.isNotEmpty;
 
         if (activeEntitlements.isNotEmpty) {
@@ -209,8 +216,9 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
 
   /// Update state from CustomerInfo (used by listener and sync)
   void _updateStateFromCustomerInfo(CustomerInfo customerInfo) {
-    final hasPremiumEntitlement = customerInfo.entitlements.active
-        .containsKey(RevenueCatService.premiumEntitlement);
+    final hasPremiumEntitlement = customerInfo.entitlements.active.containsKey(
+      RevenueCatService.premiumEntitlement,
+    );
     final hasAnyEntitlement = customerInfo.entitlements.active.isNotEmpty;
     final isSubscribed = hasPremiumEntitlement || hasAnyEntitlement;
 
@@ -234,7 +242,9 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
 
     // Log subscription status changes for debugging
     if (previouslySubscribed != isSubscribed) {
-      debugPrint('🔄 Subscription status changed: $previouslySubscribed → $isSubscribed');
+      debugPrint(
+        '🔄 Subscription status changed: $previouslySubscribed → $isSubscribed',
+      );
     }
 
     // Schedule a check for when subscription expires (if subscribed)
@@ -299,6 +309,7 @@ class SubscriptionState {
   final String? error;
   final DateTime? expirationDate;
   final String? managementUrl;
+
   /// True if the subscription will auto-renew at the end of the billing period.
   /// False if user has cancelled (but may still have access until expirationDate).
   final bool willRenew;

@@ -10,11 +10,10 @@ typedef LiveGameCardParams = ({String gameId, GamesTourModel baseGame});
 ///
 /// Auto-disposes when the widget is scrolled out of view, which automatically
 /// cleans up the Supabase Realtime subscription for this game.
-final liveGameCardProvider =
-    AutoDisposeProvider.family<GamesTourModel, LiveGameCardParams>((
-  ref,
-  params,
-) {
+final liveGameCardProvider = AutoDisposeProvider.family<
+  GamesTourModel,
+  LiveGameCardParams
+>((ref, params) {
   final (:gameId, :baseGame) = params;
 
   // For finished games, return the base game directly (no stream needed)
@@ -67,9 +66,10 @@ final liveGameCardProvider =
         pgn: gameData['pgn'] as String? ?? baseGame.pgn,
         fen: gameData['fen'] as String? ?? baseGame.fen,
         lastMove: gameData['last_move'] as String? ?? baseGame.lastMove,
-        lastMoveTime: gameData['last_move_time'] != null
-            ? DateTime.tryParse(gameData['last_move_time'] as String)
-            : baseGame.lastMoveTime,
+        lastMoveTime:
+            gameData['last_move_time'] != null
+                ? DateTime.tryParse(gameData['last_move_time'] as String)
+                : baseGame.lastMoveTime,
         whiteClockSeconds: normalizedWhiteClock ?? baseGame.whiteClockSeconds,
         blackClockSeconds: normalizedBlackClock ?? baseGame.blackClockSeconds,
         gameStatus: parseGameStatus(gameData['status'] as String?),

@@ -8,6 +8,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 /// Similar to GameCardWrapperWidget but for the grid view.
 class GridGameCardWrapperWidget extends ConsumerWidget {
   final GamesTourModel game;
+
   /// Callback that receives the live-updated games list for navigation.
   /// The list will have the current game replaced with the live-updated version.
   final void Function(List<GamesTourModel> updatedGames) onChangedWithLiveGames;

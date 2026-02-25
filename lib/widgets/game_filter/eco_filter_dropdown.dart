@@ -53,10 +53,7 @@ class _EcoFilterDropdownState extends State<EcoFilterDropdown>
       curve: Curves.easeOutCubic,
     );
     _rotationAnimation = Tween<double>(begin: 0, end: 0.5).animate(
-      CurvedAnimation(
-        parent: _animationController,
-        curve: Curves.easeInOut,
-      ),
+      CurvedAnimation(parent: _animationController, curve: Curves.easeInOut),
     );
   }
 
@@ -135,13 +132,15 @@ class _EcoFilterDropdownState extends State<EcoFilterDropdown>
             padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 14.h),
             decoration: BoxDecoration(
               color: _isExpanded ? kWhiteColor : kBlack2Color,
-              borderRadius: _isExpanded
-                  ? BorderRadius.vertical(top: Radius.circular(12.br))
-                  : BorderRadius.circular(12.br),
+              borderRadius:
+                  _isExpanded
+                      ? BorderRadius.vertical(top: Radius.circular(12.br))
+                      : BorderRadius.circular(12.br),
               border: Border.all(
-                color: _isExpanded
-                    ? kWhiteColor.withValues(alpha: 0.2)
-                    : kDividerColor,
+                color:
+                    _isExpanded
+                        ? kWhiteColor.withValues(alpha: 0.2)
+                        : kDividerColor,
               ),
             ),
             child: Row(
@@ -173,9 +172,10 @@ class _EcoFilterDropdownState extends State<EcoFilterDropdown>
                         Text(
                           EcoOpenings.getOpeningName(widget.value.code) ?? '',
                           style: AppTypography.textXsRegular.copyWith(
-                            color: _isExpanded
-                                ? kBlackColor.withValues(alpha: 0.6)
-                                : kSecondaryTextColor,
+                            color:
+                                _isExpanded
+                                    ? kBlackColor.withValues(alpha: 0.6)
+                                    : kSecondaryTextColor,
                           ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
@@ -190,9 +190,10 @@ class _EcoFilterDropdownState extends State<EcoFilterDropdown>
                   child: Icon(
                     Icons.keyboard_arrow_down_rounded,
                     size: 20.ic,
-                    color: _isExpanded
-                        ? kBlackColor.withValues(alpha: 0.7)
-                        : kSecondaryTextColor,
+                    color:
+                        _isExpanded
+                            ? kBlackColor.withValues(alpha: 0.7)
+                            : kSecondaryTextColor,
                   ),
                 ),
               ],
@@ -223,9 +224,7 @@ class _EcoFilterDropdownState extends State<EcoFilterDropdown>
                 // Search field
                 _buildSearchField(),
                 // Options list
-                Flexible(
-                  child: _buildOptionsList(),
-                ),
+                Flexible(child: _buildOptionsList()),
               ],
             ),
           ),
@@ -258,19 +257,20 @@ class _EcoFilterDropdownState extends State<EcoFilterDropdown>
             color: kSecondaryTextColor,
           ),
           prefixIconConstraints: BoxConstraints(minWidth: 36.w),
-          suffixIcon: _searchQuery.isNotEmpty
-              ? GestureDetector(
-                  onTap: () {
-                    _searchController.clear();
-                    setState(() => _searchQuery = '');
-                  },
-                  child: Icon(
-                    Icons.close_rounded,
-                    size: 16.ic,
-                    color: kSecondaryTextColor,
-                  ),
-                )
-              : null,
+          suffixIcon:
+              _searchQuery.isNotEmpty
+                  ? GestureDetector(
+                    onTap: () {
+                      _searchController.clear();
+                      setState(() => _searchQuery = '');
+                    },
+                    child: Icon(
+                      Icons.close_rounded,
+                      size: 16.ic,
+                      color: kSecondaryTextColor,
+                    ),
+                  )
+                  : null,
           border: InputBorder.none,
           isDense: true,
           contentPadding: EdgeInsets.symmetric(vertical: 8.h),
@@ -359,11 +359,7 @@ class _EcoFilterDropdownState extends State<EcoFilterDropdown>
               ),
             ),
             if (isSelected)
-              Icon(
-                Icons.check_rounded,
-                size: 18.ic,
-                color: kWhiteColor,
-              ),
+              Icon(Icons.check_rounded, size: 18.ic, color: kWhiteColor),
           ],
         ),
       ),
@@ -449,9 +445,10 @@ class _EcoFilterDropdownState extends State<EcoFilterDropdown>
               width: 40.w,
               height: 26.h,
               decoration: BoxDecoration(
-                color: isSelected
-                    ? color.withValues(alpha: 0.2)
-                    : color.withValues(alpha: 0.1),
+                color:
+                    isSelected
+                        ? color.withValues(alpha: 0.2)
+                        : color.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(4.br),
                 border: Border.all(
                   color: color.withValues(alpha: isSelected ? 0.4 : 0.2),
@@ -485,11 +482,7 @@ class _EcoFilterDropdownState extends State<EcoFilterDropdown>
             // Check mark if selected
             if (isSelected) ...[
               SizedBox(width: 8.w),
-              Icon(
-                Icons.check_rounded,
-                size: 16.ic,
-                color: color,
-              ),
+              Icon(Icons.check_rounded, size: 16.ic, color: color),
             ],
           ],
         ),

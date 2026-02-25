@@ -104,9 +104,7 @@ class ChessSheetConfigs {
 
   /// Snap grid for action sheets - two comfortable positions
   /// 35% for quick peek, 75% for full interaction
-  static SheetSnapGrid actionMenuSnaps({
-    double minFlingSpeed = 800.0,
-  }) {
+  static SheetSnapGrid actionMenuSnaps({double minFlingSpeed = 800.0}) {
     return SheetSnapGrid(
       snaps: const [
         SheetOffset.proportionalToViewport(0.35),
@@ -118,9 +116,7 @@ class ChessSheetConfigs {
 
   /// Snap grid for comment editors - high position for keyboard visibility
   /// 80% default, 95% when user wants more space
-  static SheetSnapGrid commentEditorSnaps({
-    double minFlingSpeed = 600.0,
-  }) {
+  static SheetSnapGrid commentEditorSnaps({double minFlingSpeed = 600.0}) {
     return SheetSnapGrid(
       snaps: const [
         SheetOffset.proportionalToViewport(0.80),
@@ -132,13 +128,9 @@ class ChessSheetConfigs {
 
   /// Snap grid for full-height previews
   /// Single snap point at near-full height
-  static SheetSnapGrid previewSnaps({
-    double minFlingSpeed = 700.0,
-  }) {
+  static SheetSnapGrid previewSnaps({double minFlingSpeed = 700.0}) {
     return SheetSnapGrid(
-      snaps: const [
-        SheetOffset.proportionalToViewport(0.92),
-      ],
+      snaps: const [SheetOffset.proportionalToViewport(0.92)],
       minFlingSpeed: minFlingSpeed,
     );
   }
@@ -157,9 +149,7 @@ class ChessSheetDecoration {
     return MaterialSheetDecoration(
       size: SheetSize.stretch,
       color: const Color(0xFF1A1A1C).withValues(alpha: alpha),
-      borderRadius: BorderRadius.vertical(
-        top: Radius.circular(borderRadius),
-      ),
+      borderRadius: BorderRadius.vertical(top: Radius.circular(borderRadius)),
       clipBehavior: Clip.antiAlias,
     );
   }
@@ -173,9 +163,7 @@ class ChessSheetDecoration {
     return MaterialSheetDecoration(
       size: SheetSize.stretch,
       color: const Color(0xFF1A1A1C).withValues(alpha: alpha),
-      borderRadius: BorderRadius.vertical(
-        top: Radius.circular(borderRadius),
-      ),
+      borderRadius: BorderRadius.vertical(top: Radius.circular(borderRadius)),
       clipBehavior: Clip.antiAlias,
     );
   }
@@ -194,10 +182,11 @@ class SpringModalSheetRoute<T> extends ModalSheetRoute<T> {
     Duration? transitionDuration,
     Duration? reverseTransitionDuration,
   }) : super(
-    barrierColor: barrierColor ?? Colors.black.withValues(alpha: 0.65),
-    transitionCurve: springCurve,
-    transitionDuration: transitionDuration ?? const Duration(milliseconds: 450),
-  );
+         barrierColor: barrierColor ?? Colors.black.withValues(alpha: 0.65),
+         transitionCurve: springCurve,
+         transitionDuration:
+             transitionDuration ?? const Duration(milliseconds: 450),
+       );
 }
 
 /// Page route for nested sheet navigation
@@ -221,7 +210,8 @@ class ChessSheetRoutes {
     required WidgetBuilder builder,
     BuildContext? context,
   }) {
-    final padding = context != null ? MediaQuery.viewPaddingOf(context) : EdgeInsets.zero;
+    final padding =
+        context != null ? MediaQuery.viewPaddingOf(context) : EdgeInsets.zero;
     return SpringModalSheetRoute<void>(
       builder: builder,
       springCurve: ChessSheetCurves.snappy,
@@ -237,7 +227,8 @@ class ChessSheetRoutes {
     required WidgetBuilder builder,
     BuildContext? context,
   }) {
-    final padding = context != null ? MediaQuery.viewPaddingOf(context) : EdgeInsets.zero;
+    final padding =
+        context != null ? MediaQuery.viewPaddingOf(context) : EdgeInsets.zero;
     return SpringModalSheetRoute<void>(
       builder: builder,
       springCurve: ChessSheetCurves.smooth,
@@ -253,7 +244,8 @@ class ChessSheetRoutes {
     required WidgetBuilder builder,
     BuildContext? context,
   }) {
-    final padding = context != null ? MediaQuery.viewPaddingOf(context) : EdgeInsets.zero;
+    final padding =
+        context != null ? MediaQuery.viewPaddingOf(context) : EdgeInsets.zero;
     return SpringModalSheetRoute<void>(
       builder: builder,
       springCurve: ChessSheetCurves.bouncy,

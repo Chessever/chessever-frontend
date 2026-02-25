@@ -73,5 +73,4 @@ class LibraryFolder with LibraryFolderMappable {
       'order_index': orderIndex,
     };
   }
-
 }

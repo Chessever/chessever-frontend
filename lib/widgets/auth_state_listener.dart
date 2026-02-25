@@ -107,7 +107,9 @@ class AuthStateListener extends ConsumerWidget {
                   // Sync purchases and refresh subscription state after login
                   // Using syncAndRefresh() instead of separate syncPurchases() + refresh()
                   // to avoid redundant API calls
-                  await ref.read(subscriptionProvider.notifier).syncAndRefresh();
+                  await ref
+                      .read(subscriptionProvider.notifier)
+                      .syncAndRefresh();
                 } catch (e) {
                   if (kDebugMode) {
                     print('⚠️ [Auth] RevenueCat login failed: $e');

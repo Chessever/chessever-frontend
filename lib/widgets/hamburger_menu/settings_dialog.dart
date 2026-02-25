@@ -40,9 +40,7 @@ class SettingsDialog extends ConsumerWidget {
           if (!context.mounted) return;
 
           // Navigate to the full ChessBoardSettingsPage
-          Navigator.of(context).push(
-            ChessBoardSettingsPage.route(),
-          );
+          Navigator.of(context).push(ChessBoardSettingsPage.route());
         },
         onNotificationSettingsPressed: () async {
           final allowed = await requireFullAuthGuard(context);
@@ -52,50 +50,60 @@ class SettingsDialog extends ConsumerWidget {
           Navigator.of(context).pop();
           if (!context.mounted) return;
 
-          Navigator.of(context).push(
-            ChessBoardNotificationSettingsPage.route(),
-          );
+          Navigator.of(
+            context,
+          ).push(ChessBoardNotificationSettingsPage.route());
         },
         onDeleteAccountPressed: () {
           showDialog(
             context: context,
-            builder: (context) => Center(
-              child: ConstrainedBox(
-                constraints: BoxConstraints(
-                  maxWidth: ResponsiveHelper.isTablet ? 400 : double.infinity,
-                ),
-                child: AlertDialog(
-                  title: const Text('Delete Account'),
-                  content: const Text(
-                    'Are you sure you want to delete your account? This action cannot be undone.',
-                  ),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.of(context).pop(),
-                      child: const Text('Cancel'),
+            builder:
+                (context) => Center(
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(
+                      maxWidth:
+                          ResponsiveHelper.isTablet ? 400 : double.infinity,
                     ),
-                    TextButton(
-                      onPressed: () async {
-                        Navigator.of(context).pop(); // Close dialog
-                        Navigator.of(context).pop(); // Close settings
+                    child: AlertDialog(
+                      title: const Text('Delete Account'),
+                      content: const Text(
+                        'Are you sure you want to delete your account? This action cannot be undone.',
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.of(context).pop(),
+                          child: const Text('Cancel'),
+                        ),
+                        TextButton(
+                          onPressed: () async {
+                            Navigator.of(context).pop(); // Close dialog
+                            Navigator.of(context).pop(); // Close settings
 
-                        try {
-                          await ref.read(authStateProvider.notifier).deleteAccount();
-                        } catch (e) {
-                          if (context.mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text('Failed to delete account: $e')),
-                            );
-                          }
-                        }
-                      },
-                      style: TextButton.styleFrom(foregroundColor: kRedColor),
-                      child: const Text('Delete'),
+                            try {
+                              await ref
+                                  .read(authStateProvider.notifier)
+                                  .deleteAccount();
+                            } catch (e) {
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                      'Failed to delete account: $e',
+                                    ),
+                                  ),
+                                );
+                              }
+                            }
+                          },
+                          style: TextButton.styleFrom(
+                            foregroundColor: kRedColor,
+                          ),
+                          child: const Text('Delete'),
+                        ),
+                      ],
                     ),
-                  ],
+                  ),
                 ),
-              ),
-            ),
           );
         },
       ),

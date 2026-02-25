@@ -4,11 +4,11 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 /// Repository provider for game streaming.
 /// Each subscription creates its own Realtime channel that auto-disposes when the widget
 /// is scrolled out of view (via Riverpod's autoDispose).
-final gameStreamRepositoryProvider = AutoDisposeProvider<GameStreamRepository>(
-  (ref) {
-    return GameStreamRepository();
-  },
-);
+final gameStreamRepositoryProvider = AutoDisposeProvider<GameStreamRepository>((
+  ref,
+) {
+  return GameStreamRepository();
+});
 
 /// Repository for streaming individual game updates from Supabase Realtime.
 /// Uses Supabase's .stream() which creates individual channels per game.

@@ -20,6 +20,7 @@ class UserAvatar extends HookConsumerWidget {
   final double size;
   final VoidCallback? onTap;
   final TextStyle? initialsStyle;
+
   /// If true, shows premium border when user is subscribed.
   /// Set to false to hide the border in certain contexts.
   final bool showPremiumBorder;
@@ -73,9 +74,7 @@ class UserAvatar extends HookConsumerWidget {
           ),
         ],
       ),
-      child: ClipOval(
-        child: _buildAvatarContent(avatarUrl, initials),
-      ),
+      child: ClipOval(child: _buildAvatarContent(avatarUrl, initials)),
     );
 
     // Wrap with premium border if subscribed
@@ -90,10 +89,7 @@ class UserAvatar extends HookConsumerWidget {
                 progress: animationController.value,
                 borderWidth: 2.5,
               ),
-              child: Padding(
-                padding: EdgeInsets.all(7.sp),
-                child: child,
-              ),
+              child: Padding(padding: EdgeInsets.all(7.sp), child: child),
             );
           },
           child: avatarWidget,
@@ -101,10 +97,7 @@ class UserAvatar extends HookConsumerWidget {
       );
     }
 
-    return GestureDetector(
-      onTap: onTap,
-      child: avatarWidget,
-    );
+    return GestureDetector(onTap: onTap, child: avatarWidget);
   }
 
   Widget _buildAvatarContent(String? avatarUrl, String initials) {
@@ -135,15 +128,11 @@ class UserAvatar extends HookConsumerWidget {
             ));
 
     return Container(
-      decoration: BoxDecoration(
-        gradient: kProfileInitialsGradient,
-      ),
+      decoration: BoxDecoration(gradient: kProfileInitialsGradient),
       child: Center(
         child: Text(
           content,
-          style: effectiveStyle.copyWith(
-            color: kBlack2Color,
-          ),
+          style: effectiveStyle.copyWith(color: kBlack2Color),
         ),
       ),
     );
@@ -170,10 +159,7 @@ class _PremiumBorderPainter extends CustomPainter {
   final double progress;
   final double borderWidth;
 
-  _PremiumBorderPainter({
-    required this.progress,
-    this.borderWidth = 3.0,
-  });
+  _PremiumBorderPainter({required this.progress, this.borderWidth = 3.0});
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -206,25 +192,27 @@ class _PremiumBorderPainter extends CustomPainter {
       stops: [0.0, 0.2, 0.4, 0.6, 0.8, 1.0],
     );
 
-    final paint = Paint()
-      ..shader = sweepGradient.createShader(
-        Rect.fromCircle(center: center, radius: radius),
-      )
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = borderWidth
-      ..strokeCap = StrokeCap.round;
+    final paint =
+        Paint()
+          ..shader = sweepGradient.createShader(
+            Rect.fromCircle(center: center, radius: radius),
+          )
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = borderWidth
+          ..strokeCap = StrokeCap.round;
 
     // Draw the border
     canvas.drawCircle(center, radius, paint);
 
     // Add a subtle glow effect
-    final glowPaint = Paint()
-      ..shader = sweepGradient.createShader(
-        Rect.fromCircle(center: center, radius: radius),
-      )
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = borderWidth + glowExtraStroke
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, blurSigma);
+    final glowPaint =
+        Paint()
+          ..shader = sweepGradient.createShader(
+            Rect.fromCircle(center: center, radius: radius),
+          )
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = borderWidth + glowExtraStroke
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, blurSigma);
 
     canvas.drawCircle(center, radius, glowPaint);
 

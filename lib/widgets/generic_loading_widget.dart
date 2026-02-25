@@ -26,9 +26,7 @@ class GenericLoadingWidget extends StatelessWidget {
       height: size ?? 28.w,
       child: CircularProgressIndicator(
         strokeWidth: strokeWidth ?? 2.5,
-        valueColor: AlwaysStoppedAnimation<Color>(
-          color ?? kPrimaryColor,
-        ),
+        valueColor: AlwaysStoppedAnimation<Color>(color ?? kPrimaryColor),
       ),
     );
 
@@ -42,10 +40,7 @@ class GenericLoadingWidget extends StatelessWidget {
 /// Full-page loading state with optional message.
 /// Use this for screen-level loading states.
 class FullPageLoading extends StatelessWidget {
-  const FullPageLoading({
-    super.key,
-    this.message,
-  });
+  const FullPageLoading({super.key, this.message});
 
   final String? message;
 

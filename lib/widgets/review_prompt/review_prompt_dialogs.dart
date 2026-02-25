@@ -9,11 +9,7 @@ class ReviewResult {
   final String? feedback;
   final String? featureRequest;
 
-  ReviewResult({
-    required this.rating,
-    this.feedback,
-    this.featureRequest,
-  });
+  ReviewResult({required this.rating, this.feedback, this.featureRequest});
 }
 
 Future<ReviewResult?> showReviewFlowDialog(
@@ -24,9 +20,8 @@ Future<ReviewResult?> showReviewFlowDialog(
     context: context,
     barrierDismissible: true,
     builder:
-        (context) => ReviewFlowDialog(
-          skipSurveyForHighRating: skipSurveyForHighRating,
-        ),
+        (context) =>
+            ReviewFlowDialog(skipSurveyForHighRating: skipSurveyForHighRating),
   );
 }
 
@@ -75,7 +70,7 @@ class _ReviewFlowDialogState extends State<ReviewFlowDialog> {
   // Step 1 -> Step 2
   void _onRatingContinue() {
     if (_rating == 0) return;
-    
+
     // If high rating and skipping survey, we might want to skip Step 2 AND 3?
     // The previous logic was: High Rating -> Survey (if not skipped) -> Native.
     // Low Rating -> Feedback -> Done.
@@ -111,25 +106,32 @@ class _ReviewFlowDialogState extends State<ReviewFlowDialog> {
   void _onFeatureSkip() {
     _featureController.clear();
     // Just submit whatever we have (rating + potentially feedback)
-    Navigator.of(context).pop(ReviewResult(
-      rating: _rating,
-      feedback: _feedbackController.text.trim().isNotEmpty 
-          ? _feedbackController.text.trim() 
-          : null,
-      featureRequest: null,
-    ));
+    Navigator.of(context).pop(
+      ReviewResult(
+        rating: _rating,
+        feedback:
+            _feedbackController.text.trim().isNotEmpty
+                ? _feedbackController.text.trim()
+                : null,
+        featureRequest: null,
+      ),
+    );
   }
 
   void _submit() {
-    Navigator.of(context).pop(ReviewResult(
-      rating: _rating,
-      feedback: _feedbackController.text.trim().isNotEmpty 
-          ? _feedbackController.text.trim() 
-          : null,
-      featureRequest: _featureController.text.trim().isNotEmpty 
-          ? _featureController.text.trim() 
-          : null,
-    ));
+    Navigator.of(context).pop(
+      ReviewResult(
+        rating: _rating,
+        feedback:
+            _feedbackController.text.trim().isNotEmpty
+                ? _feedbackController.text.trim()
+                : null,
+        featureRequest:
+            _featureController.text.trim().isNotEmpty
+                ? _featureController.text.trim()
+                : null,
+      ),
+    );
   }
 
   @override
@@ -201,17 +203,11 @@ class _ReviewFlowDialogState extends State<ReviewFlowDialog> {
         mainAxisSize: MainAxisSize.min,
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(
-            Icons.star_rounded,
-            color: kPrimaryColor,
-            size: 42.ic,
-          ),
+          Icon(Icons.star_rounded, color: kPrimaryColor, size: 42.ic),
           SizedBox(height: 12.sp),
           Text(
             'Enjoying ChessEver?',
-            style: AppTypography.textLgBold.copyWith(
-              color: kWhiteColor,
-            ),
+            style: AppTypography.textLgBold.copyWith(color: kWhiteColor),
             textAlign: TextAlign.center,
           ),
           SizedBox(height: 6.sp),
@@ -231,9 +227,10 @@ class _ReviewFlowDialogState extends State<ReviewFlowDialog> {
                 onPressed: () => _onRatingSelected(index + 1),
                 icon: Icon(
                   isActive ? Icons.star_rounded : Icons.star_border_rounded,
-                  color: isActive
-                      ? kPrimaryColor
-                      : kWhiteColor.withValues(alpha: 0.35),
+                  color:
+                      isActive
+                          ? kPrimaryColor
+                          : kWhiteColor.withValues(alpha: 0.35),
                   size: 30.ic,
                 ),
               );
@@ -304,9 +301,7 @@ class _ReviewFlowDialogState extends State<ReviewFlowDialog> {
               children: [
                 Text(
                   'Your Feedback',
-                  style: AppTypography.textLgBold.copyWith(
-                    color: kWhiteColor,
-                  ),
+                  style: AppTypography.textLgBold.copyWith(color: kWhiteColor),
                 ),
                 SizedBox(height: 4.sp),
                 Text(
@@ -316,16 +311,17 @@ class _ReviewFlowDialogState extends State<ReviewFlowDialog> {
                   ),
                 ),
                 SizedBox(height: 12.sp),
-                
+
                 // Small star display
                 Row(
                   children: List.generate(5, (index) {
                     final isActive = index < _rating;
                     return Icon(
                       isActive ? Icons.star_rounded : Icons.star_border_rounded,
-                      color: isActive
-                          ? kPrimaryColor
-                          : kWhiteColor.withValues(alpha: 0.25),
+                      color:
+                          isActive
+                              ? kPrimaryColor
+                              : kWhiteColor.withValues(alpha: 0.25),
                       size: 18.ic,
                     );
                   }),
@@ -404,7 +400,9 @@ class _ReviewFlowDialogState extends State<ReviewFlowDialog> {
                         style: TextButton.styleFrom(
                           padding: EdgeInsets.symmetric(vertical: 12.sp),
                           backgroundColor:
-                              _canSubmitFeedback ? kPrimaryColor : kDarkGreyColor,
+                              _canSubmitFeedback
+                                  ? kPrimaryColor
+                                  : kDarkGreyColor,
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12.br),
                           ),
@@ -442,9 +440,7 @@ class _ReviewFlowDialogState extends State<ReviewFlowDialog> {
               children: [
                 Text(
                   'Feature Request',
-                  style: AppTypography.textLgBold.copyWith(
-                    color: kWhiteColor,
-                  ),
+                  style: AppTypography.textLgBold.copyWith(color: kWhiteColor),
                 ),
                 SizedBox(height: 4.sp),
                 Text(
@@ -529,7 +525,9 @@ class _ReviewFlowDialogState extends State<ReviewFlowDialog> {
                         style: TextButton.styleFrom(
                           padding: EdgeInsets.symmetric(vertical: 12.sp),
                           backgroundColor:
-                              _canSubmitFeature ? kPrimaryColor : kDarkGreyColor,
+                              _canSubmitFeature
+                                  ? kPrimaryColor
+                                  : kDarkGreyColor,
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12.br),
                           ),

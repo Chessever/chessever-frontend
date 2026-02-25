@@ -56,7 +56,10 @@ class Pv {
     String moves;
     if (movesField is List) {
       // Convert array of UCI moves to a single space-separated string
-      moves = movesField.map((e) => e.toString()).where((e) => e.isNotEmpty).join(' ');
+      moves = movesField
+          .map((e) => e.toString())
+          .where((e) => e.isNotEmpty)
+          .join(' ');
     } else if (movesField is String) {
       moves = movesField;
     } else {
@@ -108,9 +111,10 @@ class Pv {
 
 int _countHalfMoves(String moves) {
   if (moves.isEmpty) return 0;
-  final tokens = moves.trim().isEmpty
-      ? const <String>[]
-      : moves.trim().split(RegExp(r'\s+'));
+  final tokens =
+      moves.trim().isEmpty
+          ? const <String>[]
+          : moves.trim().split(RegExp(r'\s+'));
   return tokens.length;
 }
 

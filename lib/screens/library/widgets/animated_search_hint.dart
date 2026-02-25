@@ -19,10 +19,7 @@ class AnimatedSearchHint extends StatefulWidget {
     super.key,
     this.textColor = const Color(0xFFA1A1AA),
     this.textStyle,
-    this.phrases = const [
-      'Search',
-      'Search',
-    ],
+    this.phrases = const ['Search', 'Search'],
   });
 
   @override
@@ -68,8 +65,10 @@ class _AnimatedSearchHintState extends State<AnimatedSearchHint>
       ),
     );
 
-    _slideOutAnimation =
-        Tween<Offset>(begin: Offset.zero, end: const Offset(0, -0.5)).animate(
+    _slideOutAnimation = Tween<Offset>(
+      begin: Offset.zero,
+      end: const Offset(0, -0.5),
+    ).animate(
       CurvedAnimation(
         parent: _controller,
         curve: const Interval(0.0, 0.5, curve: Curves.easeOut),
@@ -84,8 +83,10 @@ class _AnimatedSearchHintState extends State<AnimatedSearchHint>
       ),
     );
 
-    _slideInAnimation =
-        Tween<Offset>(begin: const Offset(0, 0.5), end: Offset.zero).animate(
+    _slideInAnimation = Tween<Offset>(
+      begin: const Offset(0, 0.5),
+      end: Offset.zero,
+    ).animate(
       CurvedAnimation(
         parent: _controller,
         curve: const Interval(0.5, 1.0, curve: Curves.easeOut),

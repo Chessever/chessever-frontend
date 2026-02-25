@@ -208,11 +208,7 @@ class FilterCondition with FilterConditionMappable {
 /// Filter group with boolean logic (and/or/not)
 @MappableClass()
 class FilterGroup with FilterGroupMappable {
-  const FilterGroup({
-    this.and,
-    @MappableField(key: 'or') this.or_,
-    this.not,
-  });
+  const FilterGroup({this.and, @MappableField(key: 'or') this.or_, this.not});
 
   final List<FilterExpression>? and;
   @MappableField(key: 'or')
@@ -234,13 +230,12 @@ class FilterGroup with FilterGroupMappable {
 /// Union type for filter expression (condition or group)
 @MappableClass()
 class FilterExpression with FilterExpressionMappable {
-  const FilterExpression({
-    this.condition,
-    this.group,
-  }) : assert(
-            (condition != null && group == null) ||
-                (condition == null && group != null),
-            'Either condition or group must be set, but not both');
+  const FilterExpression({this.condition, this.group})
+    : assert(
+        (condition != null && group == null) ||
+            (condition == null && group != null),
+        'Either condition or group must be set, but not both',
+      );
 
   final FilterCondition? condition;
   final FilterGroup? group;
@@ -268,10 +263,7 @@ class FilterExpression with FilterExpressionMappable {
 /// Order by specification
 @MappableClass()
 class OrderBy with OrderByMappable {
-  const OrderBy({
-    required this.field,
-    required this.direction,
-  });
+  const OrderBy({required this.field, required this.direction});
 
   final String field;
   final OrderDirection direction;
@@ -371,44 +363,47 @@ class SearchColumnMetadata with SearchColumnMetadataMappable {
   }
 
   List<FilterOperator> get availableOperators {
-    return operators.map((op) {
-      switch (op) {
-        case 'eq':
-          return FilterOperator.eq;
-        case 'ne':
-          return FilterOperator.ne;
-        case 'lt':
-          return FilterOperator.lt;
-        case 'lte':
-          return FilterOperator.lte;
-        case 'gt':
-          return FilterOperator.gt;
-        case 'gte':
-          return FilterOperator.gte;
-        case 'in':
-          return FilterOperator.inList;
-        case 'nin':
-          return FilterOperator.notInList;
-        case 'like':
-          return FilterOperator.like;
-        case 'ilike':
-          return FilterOperator.ilike;
-        case 'startsWith':
-          return FilterOperator.startsWith;
-        case 'endsWith':
-          return FilterOperator.endsWith;
-        case 'contains':
-          return FilterOperator.contains;
-        case 'between':
-          return FilterOperator.between;
-        case 'isNull':
-          return FilterOperator.isNull;
-        case 'isNotNull':
-          return FilterOperator.isNotNull;
-        default:
-          return null;
-      }
-    }).whereType<FilterOperator>().toList();
+    return operators
+        .map((op) {
+          switch (op) {
+            case 'eq':
+              return FilterOperator.eq;
+            case 'ne':
+              return FilterOperator.ne;
+            case 'lt':
+              return FilterOperator.lt;
+            case 'lte':
+              return FilterOperator.lte;
+            case 'gt':
+              return FilterOperator.gt;
+            case 'gte':
+              return FilterOperator.gte;
+            case 'in':
+              return FilterOperator.inList;
+            case 'nin':
+              return FilterOperator.notInList;
+            case 'like':
+              return FilterOperator.like;
+            case 'ilike':
+              return FilterOperator.ilike;
+            case 'startsWith':
+              return FilterOperator.startsWith;
+            case 'endsWith':
+              return FilterOperator.endsWith;
+            case 'contains':
+              return FilterOperator.contains;
+            case 'between':
+              return FilterOperator.between;
+            case 'isNull':
+              return FilterOperator.isNull;
+            case 'isNotNull':
+              return FilterOperator.isNotNull;
+            default:
+              return null;
+          }
+        })
+        .whereType<FilterOperator>()
+        .toList();
   }
 }
 
@@ -453,10 +448,7 @@ class SearchResourceMetadata with SearchResourceMetadataMappable {
 /// Response from GET /api/search/metadata
 @MappableClass()
 class SearchMetadataResponse with SearchMetadataResponseMappable {
-  const SearchMetadataResponse({
-    required this.status,
-    required this.data,
-  });
+  const SearchMetadataResponse({required this.status, required this.data});
 
   final String status;
   final SearchMetadataData data;
@@ -529,10 +521,7 @@ class SearchResultItem with SearchResultItemMappable {
 /// Response from POST /api/search/query
 @MappableClass()
 class SearchQueryResponse with SearchQueryResponseMappable {
-  const SearchQueryResponse({
-    required this.status,
-    required this.data,
-  });
+  const SearchQueryResponse({required this.status, required this.data});
 
   final String status;
   final SearchQueryData data;
@@ -572,10 +561,7 @@ class SearchQueryData with SearchQueryDataMappable {
 /// Response from GET /api/search (global search)
 @MappableClass()
 class GlobalSearchResponse with GlobalSearchResponseMappable {
-  const GlobalSearchResponse({
-    required this.status,
-    required this.data,
-  });
+  const GlobalSearchResponse({required this.status, required this.data});
 
   final String status;
   final GlobalSearchData data;

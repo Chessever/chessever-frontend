@@ -114,7 +114,9 @@ class _AuthButtonState extends State<AuthButton>
               Flexible(
                 child: Text(
                   widget.signInTitle,
-                  style: AppTypography.textLgMedium.copyWith(color: kBlackColor),
+                  style: AppTypography.textLgMedium.copyWith(
+                    color: kBlackColor,
+                  ),
                   overflow: TextOverflow.ellipsis,
                 ),
               ),

@@ -10,8 +10,10 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 /// Provider to track and manage scroll position for knockout tournament matches
 /// This enables the dropdown to show which match is currently visible
 /// and allows scrolling to specific matches
-final knockoutMatchScrollProvider =
-    StateNotifierProvider<KnockoutMatchScrollNotifier, KnockoutMatchScrollState>((ref) {
+final knockoutMatchScrollProvider = StateNotifierProvider<
+  KnockoutMatchScrollNotifier,
+  KnockoutMatchScrollState
+>((ref) {
   return KnockoutMatchScrollNotifier(ref);
 });
 
@@ -39,8 +41,10 @@ class KnockoutMatchScrollState {
   }
 }
 
-class KnockoutMatchScrollNotifier extends StateNotifier<KnockoutMatchScrollState> {
-  KnockoutMatchScrollNotifier(this.ref) : super(const KnockoutMatchScrollState());
+class KnockoutMatchScrollNotifier
+    extends StateNotifier<KnockoutMatchScrollState> {
+  KnockoutMatchScrollNotifier(this.ref)
+    : super(const KnockoutMatchScrollState());
 
   final Ref ref;
 
@@ -50,17 +54,15 @@ class KnockoutMatchScrollNotifier extends StateNotifier<KnockoutMatchScrollState
       state = state.copyWith(
         visibleMatchKey: matchKey,
         // Auto-select visible match if user hasn't manually selected one
-        selectedMatchKey: state.userSelected ? state.selectedMatchKey : matchKey,
+        selectedMatchKey:
+            state.userSelected ? state.selectedMatchKey : matchKey,
       );
     }
   }
 
   /// User manually selected a match from dropdown
   void selectMatch(String matchKey) {
-    state = state.copyWith(
-      selectedMatchKey: matchKey,
-      userSelected: true,
-    );
+    state = state.copyWith(selectedMatchKey: matchKey, userSelected: true);
   }
 
   /// Reset user selection (will auto-follow scroll position)
@@ -81,9 +83,12 @@ class KnockoutMatchScrollNotifier extends StateNotifier<KnockoutMatchScrollState
     final referenceGames = _getReferenceGames();
     if (referenceGames.isEmpty) return 0;
 
-    final matches = KnockoutMatchDetector.groupByMatchesAcrossAllRounds(referenceGames);
+    final matches = KnockoutMatchDetector.groupByMatchesAcrossAllRounds(
+      referenceGames,
+    );
     final expansionState = ref.read(matchExpansionProvider);
-    final isGrid = ref.read(gamesListViewModeProvider) == GamesListViewMode.chessBoardGrid;
+    final isGrid =
+        ref.read(gamesListViewModeProvider) == GamesListViewMode.chessBoardGrid;
 
     int currentIndex = 1; // Start after tournament header
 
@@ -122,9 +127,12 @@ class KnockoutMatchScrollNotifier extends StateNotifier<KnockoutMatchScrollState
     final referenceGames = _getReferenceGames();
     if (referenceGames.isEmpty) return null;
 
-    final matches = KnockoutMatchDetector.groupByMatchesAcrossAllRounds(referenceGames);
+    final matches = KnockoutMatchDetector.groupByMatchesAcrossAllRounds(
+      referenceGames,
+    );
     final expansionState = ref.read(matchExpansionProvider);
-    final isGrid = ref.read(gamesListViewModeProvider) == GamesListViewMode.chessBoardGrid;
+    final isGrid =
+        ref.read(gamesListViewModeProvider) == GamesListViewMode.chessBoardGrid;
 
     // Tournament header is at index 0
     if (itemIndex == 0) return null;
@@ -145,7 +153,8 @@ class KnockoutMatchScrollNotifier extends StateNotifier<KnockoutMatchScrollState
       // Check if index is within match games
       final isExpanded = resolveMatchExpansionState(expansionState, matchKey);
       if (isExpanded) {
-        final gamesCount = isGrid ? (matchGames.length / 2).ceil() : matchGames.length;
+        final gamesCount =
+            isGrid ? (matchGames.length / 2).ceil() : matchGames.length;
 
         if (itemIndex < currentIndex + gamesCount) {
           return matchKey; // Index is within this match's games
@@ -163,11 +172,17 @@ class KnockoutMatchScrollNotifier extends StateNotifier<KnockoutMatchScrollState
     final referenceGames = _getReferenceGames();
     if (referenceGames.isEmpty) return [];
 
-    final matches = KnockoutMatchDetector.groupByMatchesAcrossAllRounds(referenceGames);
+    final matches = KnockoutMatchDetector.groupByMatchesAcrossAllRounds(
+      referenceGames,
+    );
 
-    final headers = matches.entries.map((entry) {
-      return KnockoutMatchDetector.createMatchHeader(entry.key, entry.value);
-    }).toList();
+    final headers =
+        matches.entries.map((entry) {
+          return KnockoutMatchDetector.createMatchHeader(
+            entry.key,
+            entry.value,
+          );
+        }).toList();
 
     // Sort: incomplete first, then alphabetically
     headers.sort((a, b) {
@@ -181,20 +196,15 @@ class KnockoutMatchScrollNotifier extends StateNotifier<KnockoutMatchScrollState
   }
 
   List<GamesTourModel> _getReferenceGames() {
-    final tourId =
-        ref.read(tourDetailScreenProvider).value?.aboutTourModel.id;
+    final tourId = ref.read(tourDetailScreenProvider).value?.aboutTourModel.id;
     if (tourId != null) {
-      final knockoutState =
-          ref.read(knockoutTournamentStateProvider(tourId));
+      final knockoutState = ref.read(knockoutTournamentStateProvider(tourId));
       if (knockoutState.isKnockout && knockoutState.allGames.isNotEmpty) {
         return knockoutState.allGames;
       }
     }
 
-    return ref
-            .read(gamesTourScreenProvider)
-            .valueOrNull
-            ?.gamesTourModels ??
+    return ref.read(gamesTourScreenProvider).valueOrNull?.gamesTourModels ??
         const <GamesTourModel>[];
   }
 }

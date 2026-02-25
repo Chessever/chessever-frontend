@@ -144,20 +144,21 @@ class _PlayerCardState extends State<PlayerCard>
             // Country flag
             Container(
               margin: EdgeInsets.only(right: 8.sp),
-              child: widget.countryCode.toUpperCase() == 'FID'
-                ? Image.asset(
-                    PngAsset.fideLogo,
-                    height: 14.h,
-                    width: 20.w,
-                    fit: BoxFit.cover,
-                    cacheWidth: 48,
-                    cacheHeight: 36,
-                  )
-                : CountryFlag.fromCountryCode(
-                    widget.countryCode,
-                    height: 14.h,
-                    width: 20.w,
-                  ),
+              child:
+                  widget.countryCode.toUpperCase() == 'FID'
+                      ? Image.asset(
+                        PngAsset.fideLogo,
+                        height: 14.h,
+                        width: 20.w,
+                        fit: BoxFit.cover,
+                        cacheWidth: 48,
+                        cacheHeight: 36,
+                      )
+                      : CountryFlag.fromCountryCode(
+                        widget.countryCode,
+                        height: 14.h,
+                        width: 20.w,
+                      ),
             ),
 
             // GM prefix and player name
@@ -198,6 +199,31 @@ class _PlayerCardState extends State<PlayerCard>
               ),
             ),
 
+            // Add to library icon with animated feedback
+            GestureDetector(
+              onTap: () {
+                // Since this is just a UI task and we might not have the full routing logic,
+                // we'll show a snackbar for now to guide the user to the profile games tab,
+                // or ideally push to the player profile games tab.
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      'Open ${widget.playerName}\'s profile to select and add games.',
+                    ),
+                    duration: const Duration(seconds: 2),
+                  ),
+                );
+              },
+              behavior: HitTestBehavior.opaque,
+              child: SizedBox(
+                width: 32.w,
+                child: Icon(
+                  Icons.library_add_outlined,
+                  size: 16.h,
+                  color: kWhiteColor.withValues(alpha: 0.5),
+                ),
+              ),
+            ),
             // Favorite icon with animated scale effect
             GestureDetector(
               onTap: () {

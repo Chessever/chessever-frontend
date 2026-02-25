@@ -36,10 +36,8 @@ class GamesTourContentBody extends ConsumerWidget {
     final selectedRoundId = gamesAppBar.value?.selectedId;
     final userSelected = gamesAppBar.value?.userSelectedId ?? false;
 
-    final tourId =
-        ref.read(tourDetailScreenProvider).value?.aboutTourModel.id;
-    final knockoutState =
-        ref.watch(knockoutTournamentStateProvider(tourId));
+    final tourId = ref.read(tourDetailScreenProvider).value?.aboutTourModel.id;
+    final knockoutState = ref.watch(knockoutTournamentStateProvider(tourId));
     final isKnockoutTournament = knockoutState.isKnockout;
 
     // Detect 1v1 match format (e.g., "12-game Match") for score card
@@ -127,29 +125,34 @@ class GamesTourContentBody extends ConsumerWidget {
 
     // Check if this is a multi-stage knockout and ensure ALL stages have loaded before proceeding
     // IMPORTANT: Skip multi-stage loading when in search mode - use filtered games instead
-    final isMultiStageKnockout = isKnockoutTournament &&
+    final isMultiStageKnockout =
+        isKnockoutTournament &&
         rounds.any((r) => r.id.startsWith('$kKnockoutStagePrefix-'));
 
     // Distinguish between multi-tour knockouts (where stages are separate tours) and
     // round-slug-derived stages (where stages are extracted from round_slug within one tour).
     // Multi-tour stage IDs: "knockout-stage-{tourId}" (suffix is a valid tour ID)
     // Round-slug stage IDs: "knockout-stage-{tourId}-{stageName}" (suffix includes stage name)
-    final isRoundSlugDerivedStages = isMultiStageKnockout && tourId != null &&
+    final isRoundSlugDerivedStages =
+        isMultiStageKnockout &&
+        tourId != null &&
         rounds.any((r) {
           if (!r.id.startsWith('$kKnockoutStagePrefix-')) return false;
           final suffix = r.id.replaceFirst('$kKnockoutStagePrefix-', '');
           // If suffix contains the tourId plus more (e.g., "m2z9tePv-round-1"),
           // it's a round-slug-derived stage, not a multi-tour stage
-          return suffix.startsWith('$tourId-') && suffix.length > tourId!.length + 1;
+          return suffix.startsWith('$tourId-') &&
+              suffix.length > tourId!.length + 1;
         });
 
     if (isMultiStageKnockout && !isRoundSlugDerivedStages) {
       // Multi-tour knockout: each stage is a separate tour
       // Extract all stage tour IDs
-      final stageTourIds = rounds
-          .where((r) => r.id.startsWith('$kKnockoutStagePrefix-'))
-          .map((r) => r.id.replaceFirst('$kKnockoutStagePrefix-', ''))
-          .toList();
+      final stageTourIds =
+          rounds
+              .where((r) => r.id.startsWith('$kKnockoutStagePrefix-'))
+              .map((r) => r.id.replaceFirst('$kKnockoutStagePrefix-', ''))
+              .toList();
 
       // Check if ANY stage provider is still loading (watch to detect loading completion)
       var isAnyStageLoading = false;
@@ -171,17 +174,24 @@ class GamesTourContentBody extends ConsumerWidget {
       for (final round in rounds) {
         if (round.id.startsWith('$kKnockoutStagePrefix-')) {
           // Extract the tour ID from the stage ID: "knockout-stage-{tourId}"
-          final stageTourId = round.id.replaceFirst('$kKnockoutStagePrefix-', '');
+          final stageTourId = round.id.replaceFirst(
+            '$kKnockoutStagePrefix-',
+            '',
+          );
 
           // Watch the state to rebuild when games update
-          final stageKnockoutState =
-              ref.watch(knockoutTournamentStateProvider(stageTourId));
-          final stageGames = stageKnockoutState.allGames.where((game) {
-            final matchesSearch =
-                searchGameIds == null || searchGameIds.contains(game.gameId);
-            // Only apply search filter, NOT displayMode filter for knockout
-            return matchesSearch;
-          }).toList(growable: false);
+          final stageKnockoutState = ref.watch(
+            knockoutTournamentStateProvider(stageTourId),
+          );
+          final stageGames = stageKnockoutState.allGames
+              .where((game) {
+                final matchesSearch =
+                    searchGameIds == null ||
+                    searchGameIds.contains(game.gameId);
+                // Only apply search filter, NOT displayMode filter for knockout
+                return matchesSearch;
+              })
+              .toList(growable: false);
           gamesByRound[round.id] = stageGames;
         }
       }
@@ -207,15 +217,19 @@ class GamesTourContentBody extends ConsumerWidget {
       for (final game in allGames) {
         final gameSlug = game.roundSlug ?? '';
         // Extract stage name from game's round_slug (e.g., "round-1--game-1" -> "round-1")
-        final stagePart = gameSlug.contains('--')
-            ? gameSlug.split('--').first.toLowerCase().replaceAll(' ', '-')
-            : gameSlug.toLowerCase().replaceAll(' ', '-');
+        final stagePart =
+            gameSlug.contains('--')
+                ? gameSlug.split('--').first.toLowerCase().replaceAll(' ', '-')
+                : gameSlug.toLowerCase().replaceAll(' ', '-');
 
         // Find the matching stage round
         for (final round in rounds) {
           if (!round.id.startsWith('$kKnockoutStagePrefix-')) continue;
           // Extract stage name from round ID (e.g., "knockout-stage-m2z9tePv-round-1" -> "round-1")
-          final roundStagePart = round.id.split('-').skip(3).join('-'); // Skip "knockout-stage-{tourId}"
+          final roundStagePart = round.id
+              .split('-')
+              .skip(3)
+              .join('-'); // Skip "knockout-stage-{tourId}"
           if (roundStagePart == stagePart) {
             final matchesSearch =
                 searchGameIds == null || searchGameIds.contains(game.gameId);
@@ -248,7 +262,8 @@ class GamesTourContentBody extends ConsumerWidget {
       // For regular tournaments: Apply displayMode filter here
       for (final game in allGames) {
         // Only apply displayMode filter for non-knockout tournaments
-        if (!isKnockoutTournament && !_shouldIncludeGame(displayMode, game)) continue;
+        if (!isKnockoutTournament && !_shouldIncludeGame(displayMode, game))
+          continue;
         addGameToRound(game.roundId, game);
 
         if (isSearchMode && !roundLookup.containsKey(game.roundId)) {
@@ -267,16 +282,19 @@ class GamesTourContentBody extends ConsumerWidget {
       }
 
       if (isSearchMode) {
-        debugPrint('🔍 Search mode active: Using ${allGames.length} filtered games');
+        debugPrint(
+          '🔍 Search mode active: Using ${allGames.length} filtered games',
+        );
       }
     }
 
     // Determine effective round list (original or search-specific)
     final List<GamesAppBarModel> effectiveRounds;
     if (isSearchMode) {
-      effectiveRounds = roundLookup.values
-          .where((round) => (gamesByRound[round.id]?.isNotEmpty ?? false))
-          .toList();
+      effectiveRounds =
+          roundLookup.values
+              .where((round) => (gamesByRound[round.id]?.isNotEmpty ?? false))
+              .toList();
 
       // Preserve original ordering when possible
       final originalOrder = {
@@ -288,8 +306,12 @@ class GamesTourContentBody extends ConsumerWidget {
         if (ia != null && ib != null) return ia.compareTo(ib);
         if (ia != null) return -1;
         if (ib != null) return 1;
-        final aTime = gamesByRound[a.id]?.first.lastMoveTime ?? DateTime.fromMillisecondsSinceEpoch(0);
-        final bTime = gamesByRound[b.id]?.first.lastMoveTime ?? DateTime.fromMillisecondsSinceEpoch(0);
+        final aTime =
+            gamesByRound[a.id]?.first.lastMoveTime ??
+            DateTime.fromMillisecondsSinceEpoch(0);
+        final bTime =
+            gamesByRound[b.id]?.first.lastMoveTime ??
+            DateTime.fromMillisecondsSinceEpoch(0);
         return bTime.compareTo(aTime);
       });
     } else {
@@ -319,65 +341,73 @@ class GamesTourContentBody extends ConsumerWidget {
       }
     }
 
-    final visibleRounds = sourceRounds.where((round) {
-      final roundGames = gamesByRound[round.id] ?? [];
-      if (roundGames.isEmpty) {
-        return false;
-      }
+    final visibleRounds =
+        sourceRounds.where((round) {
+          final roundGames = gamesByRound[round.id] ?? [];
+          if (roundGames.isEmpty) {
+            return false;
+          }
 
-      // In search mode, show ALL rounds that have matching games
-      if (isSearchMode) {
-        return true;
-      }
+          // In search mode, show ALL rounds that have matching games
+          if (isSearchMode) {
+            return true;
+          }
 
-      // For multi-stage knockouts, show ALL stages with games (no status filtering)
-      if (isMultiStageKnockout) {
-        return true;
-      }
+          // For multi-stage knockouts, show ALL stages with games (no status filtering)
+          if (isMultiStageKnockout) {
+            return true;
+          }
 
-      // Regular tournament filtering logic below
-      final hasLiveOrOngoing = sourceRounds.any((r) =>
-        r.roundStatus == RoundStatus.live || r.roundStatus == RoundStatus.ongoing
-      );
+          // Regular tournament filtering logic below
+          final hasLiveOrOngoing = sourceRounds.any(
+            (r) =>
+                r.roundStatus == RoundStatus.live ||
+                r.roundStatus == RoundStatus.ongoing,
+          );
 
-      final hasCompleted = sourceRounds.any((r) => r.roundStatus == RoundStatus.completed);
+          final hasCompleted = sourceRounds.any(
+            (r) => r.roundStatus == RoundStatus.completed,
+          );
 
-      final allAreUpcoming = sourceRounds.every((r) =>
-        r.roundStatus == RoundStatus.upcoming || gamesByRound[r.id]?.isEmpty == true
-      );
+          final allAreUpcoming = sourceRounds.every(
+            (r) =>
+                r.roundStatus == RoundStatus.upcoming ||
+                gamesByRound[r.id]?.isEmpty == true,
+          );
 
-      // Always include explicitly user-selected round
-      if (userSelected && round.id == selectedRoundId) {
-        return true;
-      }
+          // Always include explicitly user-selected round
+          if (userSelected && round.id == selectedRoundId) {
+            return true;
+          }
 
-      // If all rounds are upcoming, show them all
-      if (allAreUpcoming) {
-        return true;
-      }
+          // If all rounds are upcoming, show them all
+          if (allAreUpcoming) {
+            return true;
+          }
 
-      // If there are live/ongoing rounds, hide upcoming
-      if (hasLiveOrOngoing) {
-        return round.roundStatus != RoundStatus.upcoming;
-      }
+          // If there are live/ongoing rounds, hide upcoming
+          if (hasLiveOrOngoing) {
+            return round.roundStatus != RoundStatus.upcoming;
+          }
 
-      // If only completed rounds exist, show completed + first upcoming
-      if (hasCompleted && round.roundStatus == RoundStatus.upcoming) {
-        final upcomingRounds = _sortRoundsByStartAsc(
-          sourceRounds
-              .where(
-                (r) =>
-                    r.roundStatus == RoundStatus.upcoming &&
-                    (gamesByRound[r.id]?.isNotEmpty ?? false),
-              )
-              .toList(),
-        );
-        return upcomingRounds.isNotEmpty && upcomingRounds.first.id == round.id;
-      }
+          // If only completed rounds exist, show completed + first upcoming
+          if (hasCompleted && round.roundStatus == RoundStatus.upcoming) {
+            final upcomingRounds = _sortRoundsByStartAsc(
+              sourceRounds
+                  .where(
+                    (r) =>
+                        r.roundStatus == RoundStatus.upcoming &&
+                        (gamesByRound[r.id]?.isNotEmpty ?? false),
+                  )
+                  .toList(),
+            );
+            return upcomingRounds.isNotEmpty &&
+                upcomingRounds.first.id == round.id;
+          }
 
-      // Show completed/ongoing/live rounds
-      return round.roundStatus != RoundStatus.upcoming;
-    }).toList();
+          // Show completed/ongoing/live rounds
+          return round.roundStatus != RoundStatus.upcoming;
+        }).toList();
 
     final scopeId = ref.watch(gamesTourScrollScopeProvider);
     final autoScrollDone = ref.watch(gamesTourAutoScrollProvider(scopeId));
@@ -399,11 +429,15 @@ class GamesTourContentBody extends ConsumerWidget {
             if (ref.read(gamesTourAutoScrollProvider(scopeId))) {
               return;
             }
-            ref.read(gamesTourAutoScrollProvider(scopeId).notifier).state = true;
-            final scrollNotifier =
-                ref.read(gamesTourScrollProvider(scopeId).notifier);
+            ref.read(gamesTourAutoScrollProvider(scopeId).notifier).state =
+                true;
+            final scrollNotifier = ref.read(
+              gamesTourScrollProvider(scopeId).notifier,
+            );
             final controller = scrollNotifier.scrollController;
-            scrollNotifier.startProgrammaticScroll(targetRoundId: targetRoundId);
+            scrollNotifier.startProgrammaticScroll(
+              targetRoundId: targetRoundId,
+            );
             _attemptScrollToRound(
               controller,
               scrollNotifier,
@@ -429,12 +463,18 @@ class GamesTourContentBody extends ConsumerWidget {
 
     print('📜 GamesTourContentBody - scopeId: $scopeId');
     final itemScrollController = ref.watch(gamesTourScrollProvider(scopeId));
-    print('📜 GamesTourContentBody - controller attached: ${itemScrollController.isAttached}');
+    print(
+      '📜 GamesTourContentBody - controller attached: ${itemScrollController.isAttached}',
+    );
     final itemPositionsListener =
-        ref.read(gamesTourScrollProvider(scopeId).notifier).itemPositionsListener;
+        ref
+            .read(gamesTourScrollProvider(scopeId).notifier)
+            .itemPositionsListener;
 
     return GamesListView(
-      key: ValueKey('games_list_${gamesListViewMode.name}_search_$isSearchMode'),
+      key: ValueKey(
+        'games_list_${gamesListViewMode.name}_search_$isSearchMode',
+      ),
       rounds: visibleRounds,
       gamesByRound: gamesByRound,
       gamesData: orderedGamesData,
@@ -468,7 +508,9 @@ String? _pickUpcomingRoundId(
   }
 
   final upcomingRounds =
-      rounds.where((round) => round.roundStatus == RoundStatus.upcoming).toList();
+      rounds
+          .where((round) => round.roundStatus == RoundStatus.upcoming)
+          .toList();
   if (upcomingRounds.isEmpty) {
     return null;
   }
@@ -516,15 +558,14 @@ void _attemptScrollToRound(
       );
     });
   } else {
-    debugPrint('❌ Auto-scroll gave up for $roundId after $maxAttempts attempts');
+    debugPrint(
+      '❌ Auto-scroll gave up for $roundId after $maxAttempts attempts',
+    );
     scrollNotifier.endProgrammaticScroll();
   }
 }
 
-bool _shouldIncludeGame(
-  GameDisplayMode mode,
-  GamesTourModel game,
-) {
+bool _shouldIncludeGame(GameDisplayMode mode, GamesTourModel game) {
   switch (mode) {
     case GameDisplayMode.hideFinishedGames:
       return !game.gameStatus.isFinished;

@@ -92,8 +92,9 @@ class GameCard extends ConsumerWidget {
             showAbove
                 ? cardPosition.dy - popupHeight - 8.sp
                 : cardPosition.dy + cardSize.height + 8.sp;
-        final liveState =
-            ref.read(liveGameSubscriptionProvider(matchComparison.game.gameId));
+        final liveState = ref.read(
+          liveGameSubscriptionProvider(matchComparison.game.gameId),
+        );
         final liveEnabled = liveState.maybeWhen(
           data: (value) => value,
           orElse: () => false,
@@ -117,13 +118,11 @@ class GameCard extends ConsumerWidget {
           onLiveToggle: () {
             ref
                 .read(
-                  liveGameSubscriptionProvider(matchComparison.game.gameId)
-                      .notifier,
+                  liveGameSubscriptionProvider(
+                    matchComparison.game.gameId,
+                  ).notifier,
                 )
-                .setEnabled(
-                  enabled: !liveEnabled,
-                  game: matchComparison.game,
-                );
+                .setEnabled(enabled: !liveEnabled, game: matchComparison.game);
             Future.microtask(() {
               Navigator.pop(buildContext);
             });
@@ -244,13 +243,9 @@ class _TopSection extends ConsumerWidget {
       ),
       child: Row(
         children: [
-          Expanded(
-            child: _GamesRound(player: player1),
-          ),
+          Expanded(child: _GamesRound(player: player1)),
           Expanded(child: _CenterContent(matchWithComparison: matchComparison)),
-          Expanded(
-            child: _GamesRound(player: player2),
-          ),
+          Expanded(child: _GamesRound(player: player2)),
         ],
       ),
     );
@@ -288,27 +283,23 @@ class _CenterContent extends ConsumerWidget {
 
     // If engine gauge is disabled, show "LIVE" indicator instead of progress bar
     if (!showEngineGauge) {
-      return Center(
-        child: StatusText(status: 'LIVE', color: kPrimaryColor),
-      );
+      return Center(child: StatusText(status: 'LIVE', color: kPrimaryColor));
     }
 
     // Show the eval progress bar
     return Center(
-      child: matchWithComparison.comparison == MatchComparison.sameOrder
-          ? ChessProgressBar(gamesTourModel: matchWithComparison.game)
-          : ChessProgressBar.reversedMode(
-              gamesTourModel: matchWithComparison.game,
-            ),
+      child:
+          matchWithComparison.comparison == MatchComparison.sameOrder
+              ? ChessProgressBar(gamesTourModel: matchWithComparison.game)
+              : ChessProgressBar.reversedMode(
+                gamesTourModel: matchWithComparison.game,
+              ),
     );
   }
 }
 
 class _BottomSection extends ConsumerWidget {
-  const _BottomSection({
-    required this.matchComparison,
-    this.showClock = true,
-  });
+  const _BottomSection({required this.matchComparison, this.showClock = true});
 
   final MatchWithComparison matchComparison;
   final bool showClock;
@@ -399,10 +390,7 @@ class _BottomSection extends ConsumerWidget {
 }
 
 class _GamesRound extends ConsumerWidget {
-  const _GamesRound({
-    required this.player,
-    super.key,
-  });
+  const _GamesRound({required this.player, super.key});
 
   final PlayerCard player;
 
@@ -517,7 +505,8 @@ class _TimerWidget extends StatelessWidget {
         clockCentiseconds:
             clockCentiseconds, // Fallback source: raw database clock
         lastMoveTime: gamesTourModel.lastMoveTime,
-        isActive: isClockRunning, // Clock frozen if game is effectively finished
+        isActive:
+            isClockRunning, // Clock frozen if game is effectively finished
         style: AppTypography.textXsMedium.copyWith(
           color:
               isGameFinished
@@ -702,9 +691,7 @@ class _LastMoveNotation extends StatelessWidget {
     return Center(
       child: Text(
         displayText,
-        style: AppTypography.textXsMedium.copyWith(
-          color: kWhiteColor,
-        ),
+        style: AppTypography.textXsMedium.copyWith(color: kWhiteColor),
         textAlign: TextAlign.center,
         overflow: TextOverflow.ellipsis,
         maxLines: 1,

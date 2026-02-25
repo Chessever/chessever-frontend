@@ -86,101 +86,97 @@ class _GamesPinController extends StateNotifier<GamesPinState> {
   }
 
   void _listenToKnockoutStages() {
-    ref.listen(
-      tourDetailScreenProvider,
-      (previous, next) {
-        final detail = next.valueOrNull;
-        if (detail == null) {
-          return;
+    ref.listen(tourDetailScreenProvider, (previous, next) {
+      final detail = next.valueOrNull;
+      if (detail == null) {
+        return;
+      }
+
+      if (detail.tours.isEmpty) {
+        return;
+      }
+
+      // Find the current tour to determine its group broadcast
+      var matchingTour = detail.tours.first;
+      for (final tourModel in detail.tours) {
+        if (tourModel.tour.id == tourId) {
+          matchingTour = tourModel;
+          break;
         }
+      }
 
-        if (detail.tours.isEmpty) {
-          return;
-        }
+      final groupBroadcastId = matchingTour.tour.groupBroadcastId;
+      if (groupBroadcastId == null || groupBroadcastId.isEmpty) {
+        return;
+      }
 
-        // Find the current tour to determine its group broadcast
-        var matchingTour = detail.tours.first;
-        for (final tourModel in detail.tours) {
-          if (tourModel.tour.id == tourId) {
-            matchingTour = tourModel;
-            break;
-          }
-        }
+      final relatedStageIds = detail.tours
+          .where(
+            (tourModel) => tourModel.tour.groupBroadcastId == groupBroadcastId,
+          )
+          .map((tourModel) => tourModel.tour.id);
 
-        final groupBroadcastId = matchingTour.tour.groupBroadcastId;
-        if (groupBroadcastId == null || groupBroadcastId.isEmpty) {
-          return;
-        }
+      for (final stageId in relatedStageIds) {
+        // Avoid wiring duplicate listeners
+        if (_stageListeners.contains(stageId)) continue;
+        _stageListeners.add(stageId);
 
-        final relatedStageIds = detail.tours
-            .where((tourModel) => tourModel.tour.groupBroadcastId == groupBroadcastId)
-            .map((tourModel) => tourModel.tour.id);
+        ref.listen<KnockoutTournamentState>(
+          knockoutTournamentStateProvider(stageId),
+          (prevState, nextState) {
+            final previousGames =
+                prevState?.allGames ?? const <GamesTourModel>[];
+            final nextGames = nextState.allGames;
 
-        for (final stageId in relatedStageIds) {
-          // Avoid wiring duplicate listeners
-          if (_stageListeners.contains(stageId)) continue;
-          _stageListeners.add(stageId);
-
-          ref.listen<KnockoutTournamentState>(
-            knockoutTournamentStateProvider(stageId),
-            (prevState, nextState) {
-              final previousGames = prevState?.allGames ?? const <GamesTourModel>[];
-              final nextGames = nextState.allGames;
-
-              if (_didGameListChange(previousGames, nextGames)) {
-                computeAutoPins();
-              }
-            },
-            fireImmediately: true,
-          );
-        }
-      },
-      fireImmediately: true,
-    );
+            if (_didGameListChange(previousGames, nextGames)) {
+              computeAutoPins();
+            }
+          },
+          fireImmediately: true,
+        );
+      }
+    }, fireImmediately: true);
   }
 
   void _listenToPrimaryGames() {
-    ref.listen<AsyncValue<List<Games>>>(
-      gamesTourProvider(tourId),
-      (previous, next) {
-        if (!next.hasValue) {
-          return;
-        }
+    ref.listen<AsyncValue<List<Games>>>(gamesTourProvider(tourId), (
+      previous,
+      next,
+    ) {
+      if (!next.hasValue) {
+        return;
+      }
 
-        final nextGames = next.value ?? const <Games>[];
-        if (nextGames.isEmpty) {
-          return;
-        }
+      final nextGames = next.value ?? const <Games>[];
+      if (nextGames.isEmpty) {
+        return;
+      }
 
-        final previousGames = previous?.valueOrNull;
-        if (previousGames != null && !_didRawGamesChange(previousGames, nextGames)) {
-          return;
-        }
+      final previousGames = previous?.valueOrNull;
+      if (previousGames != null &&
+          !_didRawGamesChange(previousGames, nextGames)) {
+        return;
+      }
 
-        computeAutoPins();
-      },
-      fireImmediately: true,
-    );
+      computeAutoPins();
+    }, fireImmediately: true);
   }
 
   void _listenToCountrySelection() {
-    ref.listen(
-      countryDropdownProvider,
-      (previous, next) {
-        final previousCode = previous?.valueOrNull?.countryCode;
-        final nextCode = next.valueOrNull?.countryCode;
+    ref.listen(countryDropdownProvider, (previous, next) {
+      final previousCode = previous?.valueOrNull?.countryCode;
+      final nextCode = next.valueOrNull?.countryCode;
 
-        if (nextCode == null) {
-          return;
-        }
+      if (nextCode == null) {
+        return;
+      }
 
-        if (previousCode == nextCode) {
-          return;
-        }
+      if (previousCode == nextCode) {
+        return;
+      }
 
-        computeAutoPins();
-      },
-    );
+      computeAutoPins();
+    });
   }
 
   bool _didGameListChange(

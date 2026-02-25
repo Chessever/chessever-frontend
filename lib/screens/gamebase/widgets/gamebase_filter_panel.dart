@@ -33,16 +33,18 @@ class GamebaseFilterPanel extends HookConsumerWidget {
             isExpanded: isExpanded.value,
             hasActiveFilters: state.hasActiveFilters,
             onToggle: () => isExpanded.value = !isExpanded.value,
-            onClear: () =>
-                ref.read(gamebaseExplorerProvider.notifier).clearFilters(),
+            onClear:
+                () =>
+                    ref.read(gamebaseExplorerProvider.notifier).clearFilters(),
           ),
 
           // Expandable filter content
           AnimatedCrossFade(
             duration: const Duration(milliseconds: 200),
-            crossFadeState: isExpanded.value
-                ? CrossFadeState.showSecond
-                : CrossFadeState.showFirst,
+            crossFadeState:
+                isExpanded.value
+                    ? CrossFadeState.showSecond
+                    : CrossFadeState.showFirst,
             firstChild: const SizedBox.shrink(),
             secondChild: _FilterContent(filters: state.filters),
           ),
@@ -82,9 +84,7 @@ class _FilterHeader extends StatelessWidget {
             SizedBox(width: 8.w),
             Text(
               'Filters',
-              style: AppTypography.textSmMedium.copyWith(
-                color: kWhiteColor,
-              ),
+              style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
             ),
             if (hasActiveFilters) ...[
               SizedBox(width: 8.w),
@@ -208,17 +208,20 @@ class _TimeControlChips extends ConsumerWidget {
     return Wrap(
       spacing: 8.w,
       runSpacing: 8.h,
-      children: TimeControl.values.map((tc) {
-        final isSelected = selectedTimeControls.contains(tc);
-        return _FilterChip(
-          label: _getTimeControlLabel(tc),
-          icon: _getTimeControlIcon(tc),
-          isSelected: isSelected,
-          onTap: () {
-            ref.read(gamebaseExplorerProvider.notifier).toggleTimeControl(tc);
-          },
-        );
-      }).toList(),
+      children:
+          TimeControl.values.map((tc) {
+            final isSelected = selectedTimeControls.contains(tc);
+            return _FilterChip(
+              label: _getTimeControlLabel(tc),
+              icon: _getTimeControlIcon(tc),
+              isSelected: isSelected,
+              onTap: () {
+                ref
+                    .read(gamebaseExplorerProvider.notifier)
+                    .toggleTimeControl(tc);
+              },
+            );
+          }).toList(),
     );
   }
 
@@ -270,7 +273,8 @@ class _FilterChip extends StatelessWidget {
           color: isSelected ? kWhiteColor.withOpacity(0.12) : kBlack3Color,
           borderRadius: BorderRadius.circular(8.br),
           border: Border.all(
-            color: isSelected ? kWhiteColor.withOpacity(0.25) : Colors.transparent,
+            color:
+                isSelected ? kWhiteColor.withOpacity(0.25) : Colors.transparent,
             width: 1,
           ),
         ),
@@ -285,9 +289,7 @@ class _FilterChip extends StatelessWidget {
             SizedBox(width: 6.w),
             Text(
               label,
-              style: AppTypography.textSmMedium.copyWith(
-                color: kWhiteColor,
-              ),
+              style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
             ),
           ],
         ),
@@ -298,10 +300,7 @@ class _FilterChip extends StatelessWidget {
 
 /// Rating range slider.
 class _RatingRangeInputs extends HookConsumerWidget {
-  const _RatingRangeInputs({
-    required this.minRating,
-    required this.maxRating,
-  });
+  const _RatingRangeInputs({required this.minRating, required this.maxRating});
 
   static const double _absMin = 1000;
   static const double _absMax = 2800;
@@ -321,10 +320,11 @@ class _RatingRangeInputs extends HookConsumerWidget {
 
     // Sync when external state changes (e.g. "Clear all")
     useEffect(() {
-      final newStart =
-          (minRating?.toDouble() ?? _absMin).clamp(_absMin, _absMax);
-      final newEnd =
-          (maxRating?.toDouble() ?? _absMax).clamp(_absMin, _absMax);
+      final newStart = (minRating?.toDouble() ?? _absMin).clamp(
+        _absMin,
+        _absMax,
+      );
+      final newEnd = (maxRating?.toDouble() ?? _absMax).clamp(_absMin, _absMax);
       if (range.value.start != newStart || range.value.end != newEnd) {
         range.value = RangeValues(newStart, newEnd);
       }
@@ -379,8 +379,9 @@ class _RatingRangeInputs extends HookConsumerWidget {
             overlayColor: kWhiteColor.withOpacity(0.08),
             thumbShape: RoundSliderThumbShape(enabledThumbRadius: 7.sp),
             trackHeight: 3.h,
-            rangeThumbShape:
-                RoundRangeSliderThumbShape(enabledThumbRadius: 7.sp),
+            rangeThumbShape: RoundRangeSliderThumbShape(
+              enabledThumbRadius: 7.sp,
+            ),
             rangeTrackShape: const RoundedRectRangeSliderTrackShape(),
           ),
           child: RangeSlider(
@@ -392,8 +393,7 @@ class _RatingRangeInputs extends HookConsumerWidget {
               range.value = values;
             },
             onChangeEnd: (values) {
-              final min =
-                  values.start == _absMin ? null : values.start.round();
+              final min = values.start == _absMin ? null : values.start.round();
               final max = values.end == _absMax ? null : values.end.round();
               ref
                   .read(gamebaseExplorerProvider.notifier)
@@ -429,9 +429,10 @@ class _PlayerSearchField extends HookConsumerWidget {
       return null;
     }, [searchQuery.value]);
 
-    final searchResults = searchQuery.value.length >= 2
-        ? ref.watch(playerSearchProvider(searchQuery.value))
-        : const AsyncValue<List<GamebasePlayer>>.data([]);
+    final searchResults =
+        searchQuery.value.length >= 2
+            ? ref.watch(playerSearchProvider(searchQuery.value))
+            : const AsyncValue<List<GamebasePlayer>>.data([]);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -454,8 +455,10 @@ class _PlayerSearchField extends HookConsumerWidget {
               ),
               filled: true,
               fillColor: kBlack3Color,
-              contentPadding:
-                  EdgeInsets.symmetric(horizontal: 12.w, vertical: 10.h),
+              contentPadding: EdgeInsets.symmetric(
+                horizontal: 12.w,
+                vertical: 10.h,
+              ),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8.br),
                 borderSide: BorderSide.none,
@@ -466,7 +469,10 @@ class _PlayerSearchField extends HookConsumerWidget {
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8.br),
-                borderSide: BorderSide(color: kWhiteColor.withOpacity(0.25), width: 1),
+                borderSide: BorderSide(
+                  color: kWhiteColor.withOpacity(0.25),
+                  width: 1,
+                ),
               ),
             ),
             onChanged: (value) => searchQuery.value = value,
@@ -500,8 +506,8 @@ class _PlayerSearchField extends HookConsumerWidget {
                   shrinkWrap: true,
                   padding: EdgeInsets.symmetric(vertical: 4.h),
                   itemCount: players.length,
-                  separatorBuilder: (_, __) =>
-                      Divider(color: kDividerColor, height: 1),
+                  separatorBuilder:
+                      (_, __) => Divider(color: kDividerColor, height: 1),
                   itemBuilder: (context, index) {
                     final player = players[index];
                     return _PlayerSearchResult(
@@ -518,28 +524,30 @@ class _PlayerSearchField extends HookConsumerWidget {
                   },
                 );
               },
-              loading: () => Padding(
-                padding: EdgeInsets.all(16.sp),
-                child: Center(
-                  child: SizedBox(
-                    width: 20.sp,
-                    height: 20.sp,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: kWhiteColor,
+              loading:
+                  () => Padding(
+                    padding: EdgeInsets.all(16.sp),
+                    child: Center(
+                      child: SizedBox(
+                        width: 20.sp,
+                        height: 20.sp,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: kWhiteColor,
+                        ),
+                      ),
                     ),
                   ),
-                ),
-              ),
-              error: (_, __) => Padding(
-                padding: EdgeInsets.all(16.sp),
-                child: Text(
-                  'Search failed',
-                  style: AppTypography.textSmRegular.copyWith(
-                    color: kRedColor,
+              error:
+                  (_, __) => Padding(
+                    padding: EdgeInsets.all(16.sp),
+                    child: Text(
+                      'Search failed',
+                      style: AppTypography.textSmRegular.copyWith(
+                        color: kRedColor,
+                      ),
+                    ),
                   ),
-                ),
-              ),
             ),
           ),
       ],
@@ -549,10 +557,7 @@ class _PlayerSearchField extends HookConsumerWidget {
 
 /// Individual player search result item.
 class _PlayerSearchResult extends StatelessWidget {
-  const _PlayerSearchResult({
-    required this.player,
-    required this.onTap,
-  });
+  const _PlayerSearchResult({required this.player, required this.onTap});
 
   final GamebasePlayer player;
   final VoidCallback onTap;
@@ -607,11 +612,7 @@ class _PlayerSearchResult extends StatelessWidget {
               ),
             ),
             // Add icon
-            Icon(
-              Icons.add_rounded,
-              size: 20.sp,
-              color: kWhiteColor,
-            ),
+            Icon(Icons.add_rounded, size: 20.sp, color: kWhiteColor),
           ],
         ),
       ),
@@ -630,43 +631,49 @@ class _SelectedPlayerChips extends ConsumerWidget {
     return Wrap(
       spacing: 8.w,
       runSpacing: 8.h,
-      children: players.map((player) {
-        return Container(
-          padding: EdgeInsets.only(left: 12.w, right: 4.w, top: 6.h, bottom: 6.h),
-          decoration: BoxDecoration(
-            color: kWhiteColor.withOpacity(0.12),
-            borderRadius: BorderRadius.circular(20.br),
-            border: Border.all(color: kWhiteColor.withOpacity(0.2)),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                player.titleAndName,
-                style: AppTypography.textSmMedium.copyWith(
-                  color: kWhiteColor,
-                ),
+      children:
+          players.map((player) {
+            return Container(
+              padding: EdgeInsets.only(
+                left: 12.w,
+                right: 4.w,
+                top: 6.h,
+                bottom: 6.h,
               ),
-              SizedBox(width: 4.w),
-              GestureDetector(
-                onTap: () {
-                  ref
-                      .read(gamebaseExplorerProvider.notifier)
-                      .removePlayerFilter(player.id);
-                },
-                child: Container(
-                  padding: EdgeInsets.all(4.sp),
-                  child: Icon(
-                    Icons.close_rounded,
-                    size: 16.sp,
-                    color: kWhiteColor.withOpacity(0.85),
+              decoration: BoxDecoration(
+                color: kWhiteColor.withOpacity(0.12),
+                borderRadius: BorderRadius.circular(20.br),
+                border: Border.all(color: kWhiteColor.withOpacity(0.2)),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    player.titleAndName,
+                    style: AppTypography.textSmMedium.copyWith(
+                      color: kWhiteColor,
+                    ),
                   ),
-                ),
+                  SizedBox(width: 4.w),
+                  GestureDetector(
+                    onTap: () {
+                      ref
+                          .read(gamebaseExplorerProvider.notifier)
+                          .removePlayerFilter(player.id);
+                    },
+                    child: Container(
+                      padding: EdgeInsets.all(4.sp),
+                      child: Icon(
+                        Icons.close_rounded,
+                        size: 16.sp,
+                        color: kWhiteColor.withOpacity(0.85),
+                      ),
+                    ),
+                  ),
+                ],
               ),
-            ],
-          ),
-        );
-      }).toList(),
+            );
+          }).toList(),
     );
   }
 }

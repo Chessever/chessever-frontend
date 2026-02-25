@@ -6,8 +6,6 @@ import 'package:chessever2/screens/players/view_models/player_view_model.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-
-
 final favoritePlayersProvider = Provider<List<Map<String, dynamic>>>((ref) {
   final playersState = ref.watch(playerPaginationProvider);
   return playersState.maybeWhen(
@@ -61,9 +59,12 @@ class PlayerPaginationNotifier
   /// Expose fetching state for UI loading indicators
   bool get isFetching => _isFetching;
 
-  PlayerPaginationNotifier(this._viewModel, this._ref, {bool isOnboarding = false})
-      : _isOnboarding = isOnboarding,
-        super(const AsyncValue.loading());
+  PlayerPaginationNotifier(
+    this._viewModel,
+    this._ref, {
+    bool isOnboarding = false,
+  }) : _isOnboarding = isOnboarding,
+       super(const AsyncValue.loading());
 
   Future<void> initFirstPage() async {
     final currentVersion = ++_searchVersion;
@@ -108,7 +109,8 @@ class PlayerPaginationNotifier
         search: _search,
         // For onboarding: fetch global players (more heterogeneous mix)
         // For regular: filter by country if set
-        countryCode: _isOnboarding ? null : (_search.isEmpty ? _countryCode : null),
+        countryCode:
+            _isOnboarding ? null : (_search.isEmpty ? _countryCode : null),
       );
       final filtered = _filterRealPlayers(newBatch);
       final enriched = _mergeWithFavorites(filtered);
@@ -126,8 +128,9 @@ class PlayerPaginationNotifier
 
   Future<void> toggleFavorite(String fideId) async {
     final currentPlayers = state.valueOrNull ?? [];
-    final idx =
-        currentPlayers.indexWhere((p) => p['fideId'].toString() == fideId);
+    final idx = currentPlayers.indexWhere(
+      (p) => p['fideId'].toString() == fideId,
+    );
     if (idx == -1) return;
 
     final player = currentPlayers[idx];
@@ -148,7 +151,9 @@ class PlayerPaginationNotifier
         supabaseUser != null && supabaseUser.isAnonymous != true;
 
     if (!isAuthenticated) {
-      _ref.read(pendingFavoriteSelectionsProvider.notifier).setSelection(
+      _ref
+          .read(pendingFavoriteSelectionsProvider.notifier)
+          .setSelection(
             PendingFavoritePlayer(
               fideId: fideId,
               playerName: player['name']?.toString() ?? '',
@@ -163,7 +168,9 @@ class PlayerPaginationNotifier
 
     // Fire Supabase toggle in background
     unawaited(
-      _ref.read(favoritePlayersProviderNew.notifier).toggleFavorite(
+      _ref
+          .read(favoritePlayersProviderNew.notifier)
+          .toggleFavorite(
             fideId: fideId,
             playerName: player['name']?.toString() ?? '',
             countryCode: player['fed']?.toString(),
@@ -213,22 +220,21 @@ class PlayerPaginationNotifier
         favorites.map((f) => f.playerName.toLowerCase()).toSet();
     final favoriteFideIds =
         favorites.map((f) => f.fideId?.toLowerCase() ?? '').toSet();
-    final pendingFideIds = pendingFavorites.values
-        .where((p) => p.isSelected)
-        .map((p) => p.fideId.toLowerCase())
-        .toSet();
+    final pendingFideIds =
+        pendingFavorites.values
+            .where((p) => p.isSelected)
+            .map((p) => p.fideId.toLowerCase())
+            .toSet();
 
     return players.map((player) {
       final name = (player['name'] ?? '').toString().toLowerCase();
       final fideId = player['fideId']?.toString().toLowerCase() ?? '';
-      final isFav = favoriteNames.contains(name) ||
+      final isFav =
+          favoriteNames.contains(name) ||
           (fideId.isNotEmpty &&
               (favoriteFideIds.contains(fideId) ||
                   pendingFideIds.contains(fideId)));
-      return {
-        ...player,
-        'isFavorite': isFav,
-      };
+      return {...player, 'isFavorite': isFav};
     }).toList();
   }
 }

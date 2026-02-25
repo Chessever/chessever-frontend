@@ -6,8 +6,8 @@ class EngineSearchProgress {
     required this.kiloNodes,
     this.fenFragment = '',
     DateTime? timestamp,
-  })  : depth = depth < minReportDepth ? minReportDepth : depth,
-        timestamp = timestamp ?? DateTime.now();
+  }) : depth = depth < minReportDepth ? minReportDepth : depth,
+       timestamp = timestamp ?? DateTime.now();
 
   final int depth;
   final int kiloNodes;

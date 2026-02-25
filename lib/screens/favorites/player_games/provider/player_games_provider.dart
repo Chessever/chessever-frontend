@@ -10,7 +10,8 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 const int _pageSize = 20; // Number of games per page
 
 /// AsyncNotifier for paginated player games
-class PlayerGamesNotifier extends AutoDisposeFamilyAsyncNotifier<PlayerGamesState, PlayerIdentifier> {
+class PlayerGamesNotifier
+    extends AutoDisposeFamilyAsyncNotifier<PlayerGamesState, PlayerIdentifier> {
   PlayerIdentifier get playerIdentifier => arg;
 
   GameRepository get _gameRepository => ref.read(gameRepositoryProvider);
@@ -25,8 +26,12 @@ class PlayerGamesNotifier extends AutoDisposeFamilyAsyncNotifier<PlayerGamesStat
   /// Load initial games (first page)
   Future<PlayerGamesState> _loadInitialGames() async {
     try {
-      debugPrint('===== PlayerGamesNotifier: Loading games for player: ${playerIdentifier.playerName} =====');
-      debugPrint('===== Has fideId: ${playerIdentifier.hasFideId}, fideId: ${playerIdentifier.fideId} =====');
+      debugPrint(
+        '===== PlayerGamesNotifier: Loading games for player: ${playerIdentifier.playerName} =====',
+      );
+      debugPrint(
+        '===== Has fideId: ${playerIdentifier.hasFideId}, fideId: ${playerIdentifier.fideId} =====',
+      );
 
       // Fetch games by fideId if available, otherwise by name
       final List<Games> games;
@@ -45,7 +50,9 @@ class PlayerGamesNotifier extends AutoDisposeFamilyAsyncNotifier<PlayerGamesStat
       debugPrint('===== Fetched ${games.length} games from repository =====');
 
       if (games.isEmpty) {
-        debugPrint('===== No games found for player: ${playerIdentifier.playerName} =====');
+        debugPrint(
+          '===== No games found for player: ${playerIdentifier.playerName} =====',
+        );
         return const PlayerGamesState(
           tournamentGroups: [],
           isLoading: false,
@@ -54,17 +61,20 @@ class PlayerGamesNotifier extends AutoDisposeFamilyAsyncNotifier<PlayerGamesStat
         );
       }
 
-      debugPrint('===== Converting ${games.length} games to GamesTourModel =====');
+      debugPrint(
+        '===== Converting ${games.length} games to GamesTourModel =====',
+      );
       // Convert to GamesTourModel
-      final gamesTourModels = games
-          .map((game) => GamesTourModel.fromGame(game))
-          .toList();
+      final gamesTourModels =
+          games.map((game) => GamesTourModel.fromGame(game)).toList();
 
       debugPrint('===== Grouping games by tournament =====');
       // Group by tournament
       final tournamentGroups = await _groupGamesByTournament(gamesTourModels);
 
-      debugPrint('===== Created ${tournamentGroups.length} tournament groups =====');
+      debugPrint(
+        '===== Created ${tournamentGroups.length} tournament groups =====',
+      );
 
       return PlayerGamesState(
         tournamentGroups: tournamentGroups,
@@ -85,7 +95,9 @@ class PlayerGamesNotifier extends AutoDisposeFamilyAsyncNotifier<PlayerGamesStat
   /// Load more games (pagination)
   Future<void> loadMoreGames() async {
     final currentState = state.valueOrNull;
-    if (currentState == null || currentState.isLoading || !currentState.hasMore) {
+    if (currentState == null ||
+        currentState.isLoading ||
+        !currentState.hasMore) {
       return;
     }
 
@@ -113,17 +125,15 @@ class PlayerGamesNotifier extends AutoDisposeFamilyAsyncNotifier<PlayerGamesStat
       }
 
       if (games.isEmpty) {
-        state = AsyncValue.data(currentState.copyWith(
-          isLoading: false,
-          hasMore: false,
-        ));
+        state = AsyncValue.data(
+          currentState.copyWith(isLoading: false, hasMore: false),
+        );
         return;
       }
 
       // Convert to GamesTourModel
-      final newGamesTourModels = games
-          .map((game) => GamesTourModel.fromGame(game))
-          .toList();
+      final newGamesTourModels =
+          games.map((game) => GamesTourModel.fromGame(game)).toList();
 
       // Merge new games with existing tournament groups
       final updatedGroups = await _mergeGamesIntoGroups(
@@ -131,19 +141,23 @@ class PlayerGamesNotifier extends AutoDisposeFamilyAsyncNotifier<PlayerGamesStat
         currentState.tournamentGroups,
       );
 
-      state = AsyncValue.data(currentState.copyWith(
-        tournamentGroups: updatedGroups,
-        isLoading: false,
-        hasMore: games.length >= _pageSize,
-        currentPage: currentState.currentPage + 1,
-      ));
+      state = AsyncValue.data(
+        currentState.copyWith(
+          tournamentGroups: updatedGroups,
+          isLoading: false,
+          hasMore: games.length >= _pageSize,
+          currentPage: currentState.currentPage + 1,
+        ),
+      );
     } catch (e, stack) {
       debugPrint('Error loading more games: $e');
       debugPrint('Stack trace: $stack');
-      state = AsyncValue.data(currentState.copyWith(
-        isLoading: false,
-        error: 'Failed to load more games: $e',
-      ));
+      state = AsyncValue.data(
+        currentState.copyWith(
+          isLoading: false,
+          error: 'Failed to load more games: $e',
+        ),
+      );
     }
   }
 
@@ -180,10 +194,14 @@ class PlayerGamesNotifier extends AutoDisposeFamilyAsyncNotifier<PlayerGamesStat
 
       // Fetch tournament info
       final uniqueTourIds = groupedGames.keys.toList();
-      debugPrint('===== Fetching tournament info for ${uniqueTourIds.length} tours =====');
+      debugPrint(
+        '===== Fetching tournament info for ${uniqueTourIds.length} tours =====',
+      );
 
       final tournaments = await _tourRepository.getToursByIds(uniqueTourIds);
-      debugPrint('===== Fetched ${tournaments.length} tournament records =====');
+      debugPrint(
+        '===== Fetched ${tournaments.length} tournament records =====',
+      );
 
       final tourMap = {for (var tour in tournaments) tour.id: tour};
 
@@ -202,23 +220,29 @@ class PlayerGamesNotifier extends AutoDisposeFamilyAsyncNotifier<PlayerGamesStat
             }
           }
 
-          debugPrint('===== Creating group for tour: ${tour.name} with ${groupedGames[tourId]!.length} games =====');
+          debugPrint(
+            '===== Creating group for tour: ${tour.name} with ${groupedGames[tourId]!.length} games =====',
+          );
 
-          tournamentGroups.add(TournamentGamesGroup(
-            tourId: tour.id,
-            tourName: tour.name,
-            tourSlug: tour.slug,
-            tourImage: tour.image,
-            startDate: startDate,
-            endDate: endDate,
-            games: groupedGames[tourId]!,
-          ));
+          tournamentGroups.add(
+            TournamentGamesGroup(
+              tourId: tour.id,
+              tourName: tour.name,
+              tourSlug: tour.slug,
+              tourImage: tour.image,
+              startDate: startDate,
+              endDate: endDate,
+              games: groupedGames[tourId]!,
+            ),
+          );
         } else {
           debugPrint('===== WARNING: No tour found for tourId: $tourId =====');
         }
       }
 
-      debugPrint('===== Successfully created ${tournamentGroups.length} tournament groups =====');
+      debugPrint(
+        '===== Successfully created ${tournamentGroups.length} tournament groups =====',
+      );
       return tournamentGroups;
     } catch (e, stack) {
       debugPrint('===== ERROR in _groupGamesByTournament =====');
@@ -286,15 +310,17 @@ class PlayerGamesNotifier extends AutoDisposeFamilyAsyncNotifier<PlayerGamesStat
             }
           }
 
-          updatedGroups.add(TournamentGamesGroup(
-            tourId: tour.id,
-            tourName: tour.name,
-            tourSlug: tour.slug,
-            tourImage: tour.image,
-            startDate: startDate,
-            endDate: endDate,
-            games: newGroupedGames[tourId]!,
-          ));
+          updatedGroups.add(
+            TournamentGamesGroup(
+              tourId: tour.id,
+              tourName: tour.name,
+              tourSlug: tour.slug,
+              tourImage: tour.image,
+              startDate: startDate,
+              endDate: endDate,
+              games: newGroupedGames[tourId]!,
+            ),
+          );
         }
       }
     }
@@ -306,5 +332,5 @@ class PlayerGamesNotifier extends AutoDisposeFamilyAsyncNotifier<PlayerGamesStat
 /// Provider factory for player games using AsyncNotifier
 final playerGamesProvider = AsyncNotifierProvider.autoDispose
     .family<PlayerGamesNotifier, PlayerGamesState, PlayerIdentifier>(
-  () => PlayerGamesNotifier(),
-);
+      () => PlayerGamesNotifier(),
+    );

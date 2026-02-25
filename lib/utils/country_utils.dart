@@ -11,7 +11,8 @@ class CountryUtils {
       'Turkey': 'Türkiye', // Database uses 'Türkiye' with umlaut
       'United States': 'United States of America',
       'Russia': 'Russia',
-      'United Kingdom': 'England', // FIDE uses England, Scotland, Wales separately
+      'United Kingdom':
+          'England', // FIDE uses England, Scotland, Wales separately
       'South Korea': 'Korea',
       'North Korea': 'Korea',
       'Czech Republic': 'Czech Republic', // Database uses 'Czech Republic'
@@ -163,7 +164,6 @@ class CountryUtils {
       'KN': 'SKN', // Saint Kitts and Nevis
       'DM': 'DMA', // Dominica
       'BM': 'BER', // Bermuda
-
       // Asia
       'VN': 'VIE',
       'PH': 'PHI',
@@ -195,7 +195,6 @@ class CountryUtils {
       'MV': 'MDV', // Maldives
       'BN': 'BRU', // Brunei
       'TL': 'TLS', // Timor-Leste
-
       // Middle East
       'SA': 'KSA',
       'AE': 'UAE',
@@ -209,7 +208,6 @@ class CountryUtils {
       'KW': 'KUW', // Kuwait
       'BH': 'BRN', // Bahrain
       'PS': 'PLE', // Palestine
-
       // Europe
       'NO': 'NOR',
       'SE': 'SWE',
@@ -248,7 +246,6 @@ class CountryUtils {
       'JE': 'JCI', // Jersey
       'GG': 'GCI', // Guernsey
       'IM': 'IOM', // Isle of Man
-
       // Africa
       'ZA': 'RSA',
       'EG': 'EGY',
@@ -303,7 +300,6 @@ class CountryUtils {
       'DJ': 'DJI', // Djibouti
       'SO': 'SOM', // Somalia
       'ER': 'ERI', // Eritrea
-
       // Oceania
       'AU': 'AUS',
       'NZ': 'NZL',
@@ -492,7 +488,6 @@ class CountryUtils {
       'SKN': 'KN', // Saint Kitts and Nevis
       'DMA': 'DM', // Dominica
       'BER': 'BM', // Bermuda
-
       // Asia
       'VIE': 'VN',
       'PHI': 'PH',
@@ -524,7 +519,6 @@ class CountryUtils {
       'MDV': 'MV', // Maldives
       'BRU': 'BN', // Brunei
       'TLS': 'TL', // Timor-Leste
-
       // Middle East
       'KSA': 'SA',
       'UAE': 'AE',
@@ -538,7 +532,6 @@ class CountryUtils {
       'KUW': 'KW', // Kuwait
       'BRN': 'BH', // Bahrain
       'PLE': 'PS', // Palestine
-
       // Europe
       'NOR': 'NO',
       'SWE': 'SE',
@@ -578,7 +571,6 @@ class CountryUtils {
       'JCI': 'JE', // Jersey
       'GCI': 'GG', // Guernsey
       'IOM': 'IM', // Isle of Man
-
       // Africa
       'RSA': 'ZA',
       'EGY': 'EG',
@@ -633,7 +625,6 @@ class CountryUtils {
       'DJI': 'DJ', // Djibouti
       'SOM': 'SO', // Somalia
       'ERI': 'ER', // Eritrea
-
       // Oceania
       'AUS': 'AU',
       'NZL': 'NZ',
@@ -643,7 +634,6 @@ class CountryUtils {
       'PLW': 'PW', // Palau
       'NRU': 'NR', // Nauru
       'VAN': 'VU', // Vanuatu
-
       // Special
       'FID': 'XX', // FIDE (no country)
       'NON': 'XX', // No nation

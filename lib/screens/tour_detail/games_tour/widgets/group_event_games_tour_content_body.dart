@@ -75,7 +75,9 @@ class _GroupEventGamesTourContentBodyState
     final scopeId = ref.watch(gamesTourScrollScopeProvider);
     final scrollController = ref.watch(gamesTourScrollProvider(scopeId));
     final itemPositionsListener =
-        ref.watch(gamesTourScrollProvider(scopeId).notifier).itemPositionsListener;
+        ref
+            .watch(gamesTourScrollProvider(scopeId).notifier)
+            .itemPositionsListener;
     final roundExpansionState = ref.watch(roundExpansionProvider);
 
     return _buildAllRoundsView(

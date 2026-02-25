@@ -178,8 +178,8 @@ class _KeyboardAnimationBuilderState extends State<KeyboardAnimationBuilder>
                     smoothedProgress *
                         (widget.keyboardTotalHeight - startHeight)
                 : progress == 1
-                    ? widget.keyboardTotalHeight
-                    : newHeight;
+                ? widget.keyboardTotalHeight
+                : newHeight;
         updateKeyboardHeight(newHeight);
       }
     }

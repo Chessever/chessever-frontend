@@ -35,7 +35,10 @@ class _PremiumScreenState extends ConsumerState<PremiumScreen> {
         ),
       );
     }
-    final horizontalPadding = ResponsiveHelper.adaptive(phone: 24.0, tablet: 32.0);
+    final horizontalPadding = ResponsiveHelper.adaptive(
+      phone: 24.0,
+      tablet: 32.0,
+    );
 
     return Stack(
       alignment: Alignment.bottomCenter,
@@ -47,156 +50,165 @@ class _PremiumScreenState extends ConsumerState<PremiumScreen> {
               maxWidth: ResponsiveHelper.isTablet ? 500 : double.infinity,
             ),
             child: Container(
-          decoration: BoxDecoration(
-            color: Colors.black,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(24.br)),
-          ),
-          padding: EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: 16.h),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 40.w,
-                height: 4.h,
-                decoration: BoxDecoration(
-                  color: kWhiteColor70,
-                  borderRadius: BorderRadius.circular(2.br),
+              decoration: BoxDecoration(
+                color: Colors.black,
+                borderRadius: BorderRadius.vertical(
+                  top: Radius.circular(24.br),
                 ),
               ),
-              SizedBox(height: 16.h),
-
-              Text(
-                'Premium',
-                style: AppTypography.textLgMedium.copyWith(color: kWhiteColor),
+              padding: EdgeInsets.symmetric(
+                horizontal: horizontalPadding,
+                vertical: 16.h,
               ),
-              SizedBox(height: 12.h),
-
-              Align(
-                alignment: Alignment.topLeft,
-                child: Text(
-                  'You are currently on the free plan. upgrade to\npremium to access cool features',
-                  textAlign: TextAlign.start,
-                  style: AppTypography.textSmBold.copyWith(
-                    color: kBoardColorGrey,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 40.w,
+                    height: 4.h,
+                    decoration: BoxDecoration(
+                      color: kWhiteColor70,
+                      borderRadius: BorderRadius.circular(2.br),
+                    ),
                   ),
-                ),
-              ),
-              SizedBox(height: 24.h),
+                  SizedBox(height: 16.h),
 
-              // Feature list
-              FeatureRow(
-                icon: SvgAsset.libary_book,
-                text: 'Unlock Library & Database features',
-                iconColor: Colors.cyanAccent,
-              ),
-              SizedBox(height: 12.h),
-              FeatureRow(
-                icon: SvgAsset.tour_list,
-                text: 'Fully customizable tournament list',
-                iconColor: Colors.greenAccent,
-              ),
-              SizedBox(height: 12.h),
-              FeatureRow(
-                icon: SvgAsset.zero_ads,
-                text: 'Zero Ads',
-                iconColor: Colors.redAccent,
-              ),
-              SizedBox(height: 24.h),
-
-              // Pricing
-              Text(
-                '\$8.99/month',
-                style: AppTypography.textSmRegular.copyWith(
-                  color: kWhiteColor,
-                  decoration: TextDecoration.lineThrough,
-                ),
-
-                // style: TextStyle(
-                //   decoration: TextDecoration.lineThrough,
-                //   color: Colors.grey,
-                // ),
-              ),
-              Text(
-                '\$58.99/year',
-                style: AppTypography.textXlRegular.copyWith(color: kWhiteColor),
-              ),
-
-              SizedBox(height: 16.h),
-
-              ...subscriptionState.products.map(
-                (package) => Card(
-                  child: ListTile(
-                    title: Text(package.storeProduct.title),
-                    subtitle: Text(package.storeProduct.description),
-                    trailing: Text(package.storeProduct.priceString),
-                    onTap:
-                        () => ref
-                            .read(subscriptionProvider.notifier)
-                            .purchaseSubscription(package),
+                  Text(
+                    'Premium',
+                    style: AppTypography.textLgMedium.copyWith(
+                      color: kWhiteColor,
+                    ),
                   ),
-                ),
-              ),
-              // Row(
-              //   mainAxisAlignment: MainAxisAlignment.center,
-              //   children: [
-              //     PlanToggleButton(
-              //       isSelected: true,
-              //       text: 'Yearly',
-              //       onTap: () {},
-              //     ),
-              //     const SizedBox(width: 12),
-              //     PlanToggleButton(
-              //       isSelected: false,
-              //       text: 'Monthly',
-              //       onTap: () {},
-              //     ),
-              //   ],
-              // ),
-              SizedBox(height: 20.h),
+                  SizedBox(height: 12.h),
 
-              // Try for free button
-              // SizedBox(
-              //   width: double.infinity,
-              //   child: _PremiumButton(
-              //     onPressed: () {},
-              //     style: ElevatedButton.styleFrom(
-              //       backgroundColor: Colors.cyan,
-              //       foregroundColor: Colors.black,
-              //       padding: const EdgeInsets.symmetric(vertical: 14),
-              //       shape: RoundedRectangleBorder(
-              //         borderRadius: BorderRadius.circular(12),
-              //       ),
-              //     ),
-              //     child: Text(
-              //       'Try for free',
-              //       style: AppTypography.textLgMedium.copyWith(
-              //         color: kBlackColor,
-              //       ),
-              //     ),
-              //   ),
-              // ),
-              AppButton(
-                text: 'Try for free',
-                onPressed: () {
-                  // Handle the button press
-                },
-                height: 48.h,
-                width: double.infinity,
-                borderRadius: 12.br,
-              ),
-              SizedBox(height: 12.h),
+                  Align(
+                    alignment: Alignment.topLeft,
+                    child: Text(
+                      'You are currently on the free plan. upgrade to\npremium to access cool features',
+                      textAlign: TextAlign.start,
+                      style: AppTypography.textSmBold.copyWith(
+                        color: kBoardColorGrey,
+                      ),
+                    ),
+                  ),
+                  SizedBox(height: 24.h),
 
-              Text(
-                "You'll be billed at the end of your free trial. Feel free to cancel anytime through Google Play.",
-                textAlign: TextAlign.center,
-                style: AppTypography.textSmBold.copyWith(
-                  color: kBoardColorGrey,
-                ),
+                  // Feature list
+                  FeatureRow(
+                    icon: SvgAsset.libary_book,
+                    text: 'Unlock Library & Database features',
+                    iconColor: Colors.cyanAccent,
+                  ),
+                  SizedBox(height: 12.h),
+                  FeatureRow(
+                    icon: SvgAsset.tour_list,
+                    text: 'Fully customizable tournament list',
+                    iconColor: Colors.greenAccent,
+                  ),
+                  SizedBox(height: 12.h),
+                  FeatureRow(
+                    icon: SvgAsset.zero_ads,
+                    text: 'Zero Ads',
+                    iconColor: Colors.redAccent,
+                  ),
+                  SizedBox(height: 24.h),
+
+                  // Pricing
+                  Text(
+                    '\$8.99/month',
+                    style: AppTypography.textSmRegular.copyWith(
+                      color: kWhiteColor,
+                      decoration: TextDecoration.lineThrough,
+                    ),
+
+                    // style: TextStyle(
+                    //   decoration: TextDecoration.lineThrough,
+                    //   color: Colors.grey,
+                    // ),
+                  ),
+                  Text(
+                    '\$58.99/year',
+                    style: AppTypography.textXlRegular.copyWith(
+                      color: kWhiteColor,
+                    ),
+                  ),
+
+                  SizedBox(height: 16.h),
+
+                  ...subscriptionState.products.map(
+                    (package) => Card(
+                      child: ListTile(
+                        title: Text(package.storeProduct.title),
+                        subtitle: Text(package.storeProduct.description),
+                        trailing: Text(package.storeProduct.priceString),
+                        onTap:
+                            () => ref
+                                .read(subscriptionProvider.notifier)
+                                .purchaseSubscription(package),
+                      ),
+                    ),
+                  ),
+                  // Row(
+                  //   mainAxisAlignment: MainAxisAlignment.center,
+                  //   children: [
+                  //     PlanToggleButton(
+                  //       isSelected: true,
+                  //       text: 'Yearly',
+                  //       onTap: () {},
+                  //     ),
+                  //     const SizedBox(width: 12),
+                  //     PlanToggleButton(
+                  //       isSelected: false,
+                  //       text: 'Monthly',
+                  //       onTap: () {},
+                  //     ),
+                  //   ],
+                  // ),
+                  SizedBox(height: 20.h),
+
+                  // Try for free button
+                  // SizedBox(
+                  //   width: double.infinity,
+                  //   child: _PremiumButton(
+                  //     onPressed: () {},
+                  //     style: ElevatedButton.styleFrom(
+                  //       backgroundColor: Colors.cyan,
+                  //       foregroundColor: Colors.black,
+                  //       padding: const EdgeInsets.symmetric(vertical: 14),
+                  //       shape: RoundedRectangleBorder(
+                  //         borderRadius: BorderRadius.circular(12),
+                  //       ),
+                  //     ),
+                  //     child: Text(
+                  //       'Try for free',
+                  //       style: AppTypography.textLgMedium.copyWith(
+                  //         color: kBlackColor,
+                  //       ),
+                  //     ),
+                  //   ),
+                  // ),
+                  AppButton(
+                    text: 'Try for free',
+                    onPressed: () {
+                      // Handle the button press
+                    },
+                    height: 48.h,
+                    width: double.infinity,
+                    borderRadius: 12.br,
+                  ),
+                  SizedBox(height: 12.h),
+
+                  Text(
+                    "You'll be billed at the end of your free trial. Feel free to cancel anytime through Google Play.",
+                    textAlign: TextAlign.center,
+                    style: AppTypography.textSmBold.copyWith(
+                      color: kBoardColorGrey,
+                    ),
+                  ),
+                  SizedBox(height: 16.h),
+                ],
               ),
-              SizedBox(height: 16.h),
-            ],
-          ),
-        ),
+            ),
           ),
         ),
       ],

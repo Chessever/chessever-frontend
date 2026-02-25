@@ -7,7 +7,9 @@ import 'package:chessever2/screens/library/widgets/library_gamebase_filter_dialo
 import 'package:chessever2/utils/time_utils.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-final twicSelectedEventProvider = StateProvider.autoDispose<String?>((ref) => null);
+final twicSelectedEventProvider = StateProvider.autoDispose<String?>(
+  (ref) => null,
+);
 
 class TwicEventAggregate {
   const TwicEventAggregate({
@@ -106,7 +108,7 @@ class TwicEventAggregatesNotifier
   static const int _pageSize = 20;
 
   TwicEventAggregatesNotifier(this._ref, this._query, this._filter)
-      : super(const TwicEventAggregatesPaginationState()) {
+    : super(const TwicEventAggregatesPaginationState()) {
     _loadInitialPage();
   }
 
@@ -146,10 +148,7 @@ class TwicEventAggregatesNotifier
         hasMore: result.hasMore,
       );
     } catch (e) {
-      state = state.copyWith(
-        isLoading: false,
-        error: e.toString(),
-      );
+      state = state.copyWith(isLoading: false, error: e.toString());
     }
   }
 
@@ -174,10 +173,7 @@ class TwicEventAggregatesNotifier
         .map(TwicEventAggregate.fromApi)
         .toList(growable: false);
 
-    return _EventPageResult(
-      events: events,
-      hasMore: response.metadata.hasMore,
-    );
+    return _EventPageResult(events: events, hasMore: response.metadata.hasMore);
   }
 }
 
@@ -191,7 +187,9 @@ class _EventPageResult {
 /// Paginated event aggregates provider.
 /// Recreated when search query or filters change.
 final twicEventAggregatesPaginatedProvider = StateNotifierProvider.autoDispose<
-    TwicEventAggregatesNotifier, TwicEventAggregatesPaginationState>((ref) {
+  TwicEventAggregatesNotifier,
+  TwicEventAggregatesPaginationState
+>((ref) {
   final query = ref.watch(librarySearchQueryProvider).trim();
   final filter = ref.watch(gamebaseFilterProvider);
   return TwicEventAggregatesNotifier(ref, query, filter);
@@ -210,26 +208,28 @@ final twicEventCardModelsProvider =
       final eventState = ref.watch(twicEventAggregatesPaginatedProvider);
       final events = eventState.events;
 
-      return events.map((event) {
-        return GroupEventCardModel(
-          id: event.id,
-          title: event.event,
-          dates: TimeUtils.formatDateRange(event.startDate, event.endDate),
-          maxAvgElo: event.avgElo ?? event.maxElo ?? 0,
-          timeUntilStart: TimeUtils.timeUntilStart(event.startDate),
-          tourEventCategory: GroupEventCardModel.getCategory(
-            groupId: event.id,
-            groupName: event.event,
-            startDate: event.startDate,
-            endDate: event.endDate,
-            liveGroupIds: const [],
-          ),
-          timeControl: _formatTimeControl(event.dominantTimeControl),
-          endDate: event.endDate,
-          startDate: event.startDate,
-          location: event.site,
-          searchTerms: [event.event],
-          eventSource: EventSource.communityEvent,
-        );
-      }).toList(growable: false);
+      return events
+          .map((event) {
+            return GroupEventCardModel(
+              id: event.id,
+              title: event.event,
+              dates: TimeUtils.formatDateRange(event.startDate, event.endDate),
+              maxAvgElo: event.avgElo ?? event.maxElo ?? 0,
+              timeUntilStart: TimeUtils.timeUntilStart(event.startDate),
+              tourEventCategory: GroupEventCardModel.getCategory(
+                groupId: event.id,
+                groupName: event.event,
+                startDate: event.startDate,
+                endDate: event.endDate,
+                liveGroupIds: const [],
+              ),
+              timeControl: _formatTimeControl(event.dominantTimeControl),
+              endDate: event.endDate,
+              startDate: event.startDate,
+              location: event.site,
+              searchTerms: [event.event],
+              eventSource: EventSource.communityEvent,
+            );
+          })
+          .toList(growable: false);
     });

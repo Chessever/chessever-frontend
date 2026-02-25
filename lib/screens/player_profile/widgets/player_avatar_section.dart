@@ -93,7 +93,8 @@ class _PlayerAvatarSectionState extends State<PlayerAvatarSection> {
 
   Widget _buildPlayerAvatar() {
     final initials = getPlayerInitials(widget.playerName);
-    final heroTag = 'player_avatar_profile_${widget.fideId ?? widget.playerName}';
+    final heroTag =
+        'player_avatar_profile_${widget.fideId ?? widget.playerName}';
 
     return FutureBuilder<String?>(
       future: _photoFuture,
@@ -160,5 +161,4 @@ class _PlayerAvatarSectionState extends State<PlayerAvatarSection> {
       ),
     );
   }
-
 }

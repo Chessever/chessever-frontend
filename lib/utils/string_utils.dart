@@ -16,19 +16,32 @@ class StringUtils {
     List<String> words = result.split(' ');
 
     // Capitalize each word, with special handling for common acronyms
-    final acronyms = {'us', 'fide', 'usa', 'gm', 'im', 'fm', 'cm', 'wgm', 'wim', 'wfm', 'wcm'};
+    final acronyms = {
+      'us',
+      'fide',
+      'usa',
+      'gm',
+      'im',
+      'fm',
+      'cm',
+      'wgm',
+      'wim',
+      'wfm',
+      'wcm',
+    };
 
-    words = words.map((word) {
-      if (word.isEmpty) return word;
+    words =
+        words.map((word) {
+          if (word.isEmpty) return word;
 
-      // Check if it's a known acronym
-      if (acronyms.contains(word.toLowerCase())) {
-        return word.toUpperCase();
-      }
+          // Check if it's a known acronym
+          if (acronyms.contains(word.toLowerCase())) {
+            return word.toUpperCase();
+          }
 
-      // Capitalize first letter, keep rest as-is (preserves mixed case like "iPhone")
-      return word[0].toUpperCase() + word.substring(1).toLowerCase();
-    }).toList();
+          // Capitalize first letter, keep rest as-is (preserves mixed case like "iPhone")
+          return word[0].toUpperCase() + word.substring(1).toLowerCase();
+        }).toList();
 
     return words.join(' ');
   }
@@ -56,17 +69,18 @@ class StringUtils {
     List<String> words = cleaned.split(' ');
 
     // Capitalize each word
-    words = words.map((word) {
-      if (word.isEmpty) return word;
+    words =
+        words.map((word) {
+          if (word.isEmpty) return word;
 
-      // Keep numbers as-is
-      if (RegExp(r'^\d+$').hasMatch(word)) {
-        return word;
-      }
+          // Keep numbers as-is
+          if (RegExp(r'^\d+$').hasMatch(word)) {
+            return word;
+          }
 
-      // Capitalize first letter
-      return word[0].toUpperCase() + word.substring(1).toLowerCase();
-    }).toList();
+          // Capitalize first letter
+          return word[0].toUpperCase() + word.substring(1).toLowerCase();
+        }).toList();
 
     String result = words.join(' ');
 
@@ -91,11 +105,14 @@ class StringUtils {
   static String capitalizeWords(String text) {
     if (text.isEmpty) return text;
 
-    return text.split(' ').map((word) {
-      if (word.isEmpty) return word;
-      // Keep words that start with numbers as-is
-      if (RegExp(r'^\d').hasMatch(word)) return word;
-      return word[0].toUpperCase() + word.substring(1).toLowerCase();
-    }).join(' ');
+    return text
+        .split(' ')
+        .map((word) {
+          if (word.isEmpty) return word;
+          // Keep words that start with numbers as-is
+          if (RegExp(r'^\d').hasMatch(word)) return word;
+          return word[0].toUpperCase() + word.substring(1).toLowerCase();
+        })
+        .join(' ');
   }
 }

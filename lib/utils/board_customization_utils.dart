@@ -3,10 +3,7 @@ import 'package:chessever2/theme/app_theme.dart';
 
 /// Board theme option with display name and color scheme
 class BoardThemeOption {
-  const BoardThemeOption({
-    required this.name,
-    required this.colorScheme,
-  });
+  const BoardThemeOption({required this.name, required this.colorScheme});
 
   final String name;
   final ChessboardColorScheme colorScheme;
@@ -20,9 +17,15 @@ const List<BoardThemeOption> kBoardThemes = [
   BoardThemeOption(name: 'IC', colorScheme: ChessboardColorScheme.ic),
   BoardThemeOption(name: 'Blue 2', colorScheme: ChessboardColorScheme.blue2),
   BoardThemeOption(name: 'Blue 3', colorScheme: ChessboardColorScheme.blue3),
-  BoardThemeOption(name: 'Blue Marble', colorScheme: ChessboardColorScheme.blueMarble),
+  BoardThemeOption(
+    name: 'Blue Marble',
+    colorScheme: ChessboardColorScheme.blueMarble,
+  ),
   BoardThemeOption(name: 'Canvas', colorScheme: ChessboardColorScheme.canvas),
-  BoardThemeOption(name: 'Green Plastic', colorScheme: ChessboardColorScheme.greenPlastic),
+  BoardThemeOption(
+    name: 'Green Plastic',
+    colorScheme: ChessboardColorScheme.greenPlastic,
+  ),
   BoardThemeOption(name: 'Grey', colorScheme: ChessboardColorScheme.grey),
   BoardThemeOption(name: 'Horsey', colorScheme: ChessboardColorScheme.horsey),
   BoardThemeOption(name: 'Leather', colorScheme: ChessboardColorScheme.leather),
@@ -30,11 +33,20 @@ const List<BoardThemeOption> kBoardThemes = [
   BoardThemeOption(name: 'Maple 2', colorScheme: ChessboardColorScheme.maple2),
   BoardThemeOption(name: 'Marble', colorScheme: ChessboardColorScheme.marble),
   BoardThemeOption(name: 'Metal', colorScheme: ChessboardColorScheme.metal),
-  BoardThemeOption(name: 'Newspaper', colorScheme: ChessboardColorScheme.newspaper),
+  BoardThemeOption(
+    name: 'Newspaper',
+    colorScheme: ChessboardColorScheme.newspaper,
+  ),
   BoardThemeOption(name: 'Olive', colorScheme: ChessboardColorScheme.olive),
-  BoardThemeOption(name: 'Pink Pyramid', colorScheme: ChessboardColorScheme.pinkPyramid),
+  BoardThemeOption(
+    name: 'Pink Pyramid',
+    colorScheme: ChessboardColorScheme.pinkPyramid,
+  ),
   BoardThemeOption(name: 'Purple', colorScheme: ChessboardColorScheme.purple),
-  BoardThemeOption(name: 'Purple Diag', colorScheme: ChessboardColorScheme.purpleDiag),
+  BoardThemeOption(
+    name: 'Purple Diag',
+    colorScheme: ChessboardColorScheme.purpleDiag,
+  ),
   BoardThemeOption(name: 'Wood', colorScheme: ChessboardColorScheme.wood),
   BoardThemeOption(name: 'Wood 2', colorScheme: ChessboardColorScheme.wood2),
   BoardThemeOption(name: 'Wood 3', colorScheme: ChessboardColorScheme.wood3),
@@ -104,13 +116,13 @@ int migrateOldBoardColorToTheme(int oldBoardColorIndex) {
   // 6 = blue -> Blue (1)
   // 7 = pink -> Pink Pyramid (18)
   const migrationMap = {
-    0: 1,  // default -> Blue
-    1: 0,  // brown -> Brown
-    2: 9,  // grey -> Grey
-    3: 2,  // green -> Green
+    0: 1, // default -> Blue
+    1: 0, // brown -> Brown
+    2: 9, // grey -> Grey
+    3: 2, // green -> Green
     4: 12, // orange -> Maple
     5: 19, // purple -> Purple
-    6: 1,  // blue -> Blue
+    6: 1, // blue -> Blue
     7: 18, // pink -> Pink Pyramid
   };
   return migrationMap[oldBoardColorIndex] ?? 0;

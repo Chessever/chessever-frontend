@@ -5,25 +5,16 @@ class PlayerIdentifier extends Equatable {
   final String? fideId;
   final String playerName;
 
-  const PlayerIdentifier({
-    this.fideId,
-    required this.playerName,
-  });
+  const PlayerIdentifier({this.fideId, required this.playerName});
 
   /// Create identifier from fideId (preferred)
   factory PlayerIdentifier.fromFideId(String fideId, String playerName) {
-    return PlayerIdentifier(
-      fideId: fideId,
-      playerName: playerName,
-    );
+    return PlayerIdentifier(fideId: fideId, playerName: playerName);
   }
 
   /// Create identifier from name only (fallback)
   factory PlayerIdentifier.fromName(String playerName) {
-    return PlayerIdentifier(
-      fideId: null,
-      playerName: playerName,
-    );
+    return PlayerIdentifier(fideId: null, playerName: playerName);
   }
 
   /// Whether this identifier uses fideId
@@ -36,5 +27,6 @@ class PlayerIdentifier extends Equatable {
   List<Object?> get props => [fideId, playerName];
 
   @override
-  String toString() => 'PlayerIdentifier(fideId: $fideId, playerName: $playerName)';
+  String toString() =>
+      'PlayerIdentifier(fideId: $fideId, playerName: $playerName)';
 }

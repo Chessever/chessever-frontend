@@ -97,7 +97,9 @@ class _ShorebirdUpdateDialogState extends State<ShorebirdUpdateDialog> {
                 shape: BoxShape.circle,
               ),
               child: Icon(
-                _isReadyToRestart ? Icons.check_rounded : Icons.system_update_rounded,
+                _isReadyToRestart
+                    ? Icons.check_rounded
+                    : Icons.system_update_rounded,
                 color: _isReadyToRestart ? kGreenColor : kPrimaryColor,
                 size: 32.sp,
               ),
@@ -142,7 +144,9 @@ class _ShorebirdUpdateDialogState extends State<ShorebirdUpdateDialog> {
                 children: [
                   LinearProgressIndicator(
                     backgroundColor: kBlack3Color,
-                    valueColor: const AlwaysStoppedAnimation<Color>(kPrimaryColor),
+                    valueColor: const AlwaysStoppedAnimation<Color>(
+                      kPrimaryColor,
+                    ),
                     borderRadius: BorderRadius.circular(2.sp),
                   ),
                   SizedBox(height: 12.h),
@@ -155,7 +159,7 @@ class _ShorebirdUpdateDialogState extends State<ShorebirdUpdateDialog> {
                 ],
               )
             else
-            // Buttons
+              // Buttons
               Row(
                 children: [
                   // Later Button
@@ -183,7 +187,8 @@ class _ShorebirdUpdateDialogState extends State<ShorebirdUpdateDialog> {
                   // Action Button
                   Expanded(
                     child: ElevatedButton(
-                      onPressed: _isReadyToRestart ? _restartApp : _downloadUpdate,
+                      onPressed:
+                          _isReadyToRestart ? _restartApp : _downloadUpdate,
                       style: ElevatedButton.styleFrom(
                         backgroundColor:
                             _isReadyToRestart ? kGreenColor : kPrimaryColor,

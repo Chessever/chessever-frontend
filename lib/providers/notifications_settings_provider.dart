@@ -30,9 +30,7 @@ class NotificationsSettingsNotifier
           await ref.read(notificationsRepository).loadNotificationsSettings();
       state = savedSettings;
       unawaited(
-        PushNotificationsService.instance.setPushEnabled(
-          savedSettings.enabled,
-        ),
+        PushNotificationsService.instance.setPushEnabled(savedSettings.enabled),
       );
     } catch (error, _) {
       // Keep default settings on error

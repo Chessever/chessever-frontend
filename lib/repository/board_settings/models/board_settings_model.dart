@@ -6,13 +6,15 @@ part 'board_settings_model.mapper.dart';
 class BoardSettingsModel with BoardSettingsModelMappable {
   final String id;
   final String userId;
-  final int boardColorIndex; // DEPRECATED: 0=default, 1=brown, 2=grey, 3=green, 4=orange, 5=purple, 6=blue, 7=pink
+  final int
+  boardColorIndex; // DEPRECATED: 0=default, 1=brown, 2=grey, 3=green, 4=orange, 5=purple, 6=blue, 7=pink
   final int boardThemeIndex; // NEW: Index into chessground's board themes
   final bool showEvaluationBar;
   final bool soundEnabled;
   final bool chatEnabled;
   final int pieceStyleIndex; // Index into chessground's PieceSet
-  final int gamesListViewModeIndex; // 0=gamesCard, 1=chessBoardGrid, 2=chessBoard
+  final int
+  gamesListViewModeIndex; // 0=gamesCard, 1=chessBoardGrid, 2=chessBoard
   final bool useFigurine; // Use chess piece symbols (♔♕♖♗♘) instead of letters
   final DateTime createdAt;
   final DateTime updatedAt;
@@ -44,7 +46,9 @@ class BoardSettingsModel with BoardSettingsModelMappable {
       soundEnabled: json['sound_enabled'] as bool? ?? true,
       chatEnabled: json['chat_enabled'] as bool? ?? true,
       pieceStyleIndex: json['piece_style_index'] as int? ?? 0,
-      gamesListViewModeIndex: json['games_list_view_mode_index'] as int? ?? 1, // Default to chessBoardGrid
+      gamesListViewModeIndex:
+          json['games_list_view_mode_index'] as int? ??
+          1, // Default to chessBoardGrid
       useFigurine: json['use_figurine'] as bool? ?? false,
       createdAt: DateTime.parse(json['created_at'] as String),
       updatedAt: DateTime.parse(json['updated_at'] as String),

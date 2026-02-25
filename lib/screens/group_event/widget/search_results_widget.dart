@@ -58,9 +58,8 @@ class SearchResultsWidget extends HookConsumerWidget {
 
     return searchResultsAsync.when(
       data: (results) {
-        var tournaments = results.tournamentResults
-            .map((r) => r.tournament)
-            .toList();
+        var tournaments =
+            results.tournamentResults.map((r) => r.tournament).toList();
 
         // Apply client-side filter if active
         if (searchFilter != defaultFilterPopupState) {
@@ -87,31 +86,31 @@ class SearchResultsWidget extends HookConsumerWidget {
 
   Widget _buildEmptyState(BuildContext context, String query) {
     return Center(
-      child: Padding(
-        padding: EdgeInsets.all(32.sp),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.search_off, size: 64.sp, color: kSubtleIconColor),
-            SizedBox(height: 16.sp),
-            Text(
-              'No events found',
-              style: TextStyle(
-                fontSize: 18.sp,
-                fontWeight: FontWeight.w600,
-                color: kWhiteColor70,
-              ),
+          child: Padding(
+            padding: EdgeInsets.all(32.sp),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.search_off, size: 64.sp, color: kSubtleIconColor),
+                SizedBox(height: 16.sp),
+                Text(
+                  'No events found',
+                  style: TextStyle(
+                    fontSize: 18.sp,
+                    fontWeight: FontWeight.w600,
+                    color: kWhiteColor70,
+                  ),
+                ),
+                SizedBox(height: 8.sp),
+                Text(
+                  'No events match "$query"',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 14.sp, color: kSecondaryTextColor),
+                ),
+              ],
             ),
-            SizedBox(height: 8.sp),
-            Text(
-              'No events match "$query"',
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 14.sp, color: kSecondaryTextColor),
-            ),
-          ],
-        ),
-      ),
-    )
+          ),
+        )
         .animate()
         .fadeIn(duration: 300.ms)
         .scale(
@@ -166,10 +165,7 @@ class _SearchResultsSkeletonLoader extends StatelessWidget {
       physics: const NeverScrollableScrollPhysics(),
       children: [
         // Show 5 skeleton event cards
-        ...List.generate(
-          5,
-          (index) => _SkeletonEventCard(isFirst: index == 0),
-        ),
+        ...List.generate(5, (index) => _SkeletonEventCard(isFirst: index == 0)),
       ],
     );
   }
@@ -213,7 +209,9 @@ class _SearchResultsListView extends ConsumerWidget {
     // Check if we have players to show in the cards
     final hasPlayerCards = ref.watch(topSearchedPlayersProvider).isNotEmpty;
     final isTablet = ResponsiveHelper.isTablet;
-    final crossAxisCount = ResponsiveHelper.getGridCrossAxisCount(phoneCount: 1);
+    final crossAxisCount = ResponsiveHelper.getGridCrossAxisCount(
+      phoneCount: 1,
+    );
     final horizontalPadding = ResponsiveHelper.adaptive(
       phone: 16.sp,
       tablet: 24.sp,
@@ -228,13 +226,14 @@ class _SearchResultsListView extends ConsumerWidget {
       backgroundColor: kBlack2Color,
       displacement: 60.h,
       strokeWidth: 3.w,
-      child: isTablet && crossAxisCount > 1
-          ? _buildTabletGridLayout(
-              hasPlayerCards,
-              horizontalPadding,
-              crossAxisCount,
-            )
-          : _buildPhoneListLayout(hasPlayerCards, horizontalPadding),
+      child:
+          isTablet && crossAxisCount > 1
+              ? _buildTabletGridLayout(
+                hasPlayerCards,
+                horizontalPadding,
+                crossAxisCount,
+              )
+              : _buildPhoneListLayout(hasPlayerCards, horizontalPadding),
     );
   }
 
@@ -272,18 +271,15 @@ class _SearchResultsListView extends ConsumerWidget {
               mainAxisSpacing: 16.sp,
               childAspectRatio: ResponsiveHelper.isLandscape ? 2.2 : 1.8,
             ),
-            delegate: SliverChildBuilderDelegate(
-              (context, index) {
-                final tournament = tournaments[index];
-                return _SearchEventCard(
-                  key: ValueKey('search_event_${tournament.id}'),
-                  tournament: tournament,
-                  isFirst: index == 0,
-                  listIndex: index,
-                );
-              },
-              childCount: tournaments.length,
-            ),
+            delegate: SliverChildBuilderDelegate((context, index) {
+              final tournament = tournaments[index];
+              return _SearchEventCard(
+                key: ValueKey('search_event_${tournament.id}'),
+                tournament: tournament,
+                isFirst: index == 0,
+                listIndex: index,
+              );
+            }, childCount: tournaments.length),
           ),
         ),
       ],
@@ -359,16 +355,14 @@ class _SearchEventCardState extends ConsumerState<_SearchEventCard>
 
     final eventId = widget.tournament.id;
     final card = Padding(
-      padding: EdgeInsets.only(
-        top: widget.isFirst ? 0 : 12.sp,
-        bottom: 12.sp,
-      ),
+      padding: EdgeInsets.only(top: widget.isFirst ? 0 : 12.sp, bottom: 12.sp),
       child: EventCard(
         tourEventCardModel: widget.tournament,
         heroTagSuffix: 'search-${widget.tournament.id}',
-        onTap: () => ref
-            .read(groupEventScreenProvider.notifier)
-            .onSelectTournament(context: context, id: widget.tournament.id),
+        onTap:
+            () => ref
+                .read(groupEventScreenProvider.notifier)
+                .onSelectTournament(context: context, id: widget.tournament.id),
       ),
     );
 
@@ -398,8 +392,10 @@ List<GroupEventCardModel> _applySearchFilter(
           .map((f) => f.trim().toLowerCase())
           .where((f) => f.isNotEmpty)
           .toSet();
-  final requestedStatuses =
-      <String>{'live', 'completed'}.intersection(filterSet);
+  final requestedStatuses = <String>{
+    'live',
+    'completed',
+  }.intersection(filterSet);
   final requestedFormats = filterSet.difference(requestedStatuses);
 
   final hasEloFilter =

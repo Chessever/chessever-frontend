@@ -83,9 +83,9 @@ class CountrymenCombinedGamesState {
 // --- Provider ---
 
 final countrymenCombinedGamesProvider = StateNotifierProvider.autoDispose<
-    CountrymenCombinedGamesNotifier, CountrymenCombinedGamesState>(
-  (ref) => CountrymenCombinedGamesNotifier(ref),
-);
+  CountrymenCombinedGamesNotifier,
+  CountrymenCombinedGamesState
+>((ref) => CountrymenCombinedGamesNotifier(ref));
 
 class CountrymenCombinedGamesNotifier
     extends StateNotifier<CountrymenCombinedGamesState> {
@@ -97,11 +97,14 @@ class CountrymenCombinedGamesNotifier
   bool _hasMoreDates = true;
 
   CountrymenCombinedGamesNotifier(this._ref)
-      : super(CountrymenCombinedGamesState(isLoading: true)) {
+    : super(CountrymenCombinedGamesState(isLoading: true)) {
     _loadInitialGames();
 
     // Listen for country changes (temporary or persisted)
-    _ref.listen<AsyncValue<Country>>(effectiveCountryProvider, (previous, next) {
+    _ref.listen<AsyncValue<Country>>(effectiveCountryProvider, (
+      previous,
+      next,
+    ) {
       final prevCode = previous?.valueOrNull?.countryCode;
       final nextCode = next.valueOrNull?.countryCode;
       if (prevCode != null && nextCode != null && prevCode != nextCode) {
@@ -256,7 +259,9 @@ class CountrymenCombinedGamesNotifier
       final gameRepo = _ref.read(gameRepositoryProvider);
       final fideCode = CountryUtils.toFideCode(countryCode);
 
-      debugPrint('[CountrymenSearch] Searching for "$query" in country $fideCode');
+      debugPrint(
+        '[CountrymenSearch] Searching for "$query" in country $fideCode',
+      );
 
       final games = await gameRepo.searchCountrymenGames(
         countryCode: fideCode,
@@ -337,10 +342,8 @@ class CountrymenCombinedGamesNotifier
 
       // Step 2: Determine which dates to load
       final dateOffset = isInitial ? 0 : state.dateOffset;
-      final datesToLoad = _availableDates
-          .skip(dateOffset)
-          .take(_datesPerBatch)
-          .toList();
+      final datesToLoad =
+          _availableDates.skip(dateOffset).take(_datesPerBatch).toList();
 
       if (datesToLoad.isEmpty) {
         // Try to get more dates
@@ -354,10 +357,8 @@ class CountrymenCombinedGamesNotifier
           _hasMoreDates = moreDates.length >= 30;
 
           // Retry with new dates
-          final retryDates = _availableDates
-              .skip(dateOffset)
-              .take(_datesPerBatch)
-              .toList();
+          final retryDates =
+              _availableDates.skip(dateOffset).take(_datesPerBatch).toList();
           if (retryDates.isNotEmpty) {
             await _loadGamesForDates(
               dates: retryDates,
@@ -369,10 +370,7 @@ class CountrymenCombinedGamesNotifier
           }
         }
 
-        state = state.copyWith(
-          isLoading: false,
-          hasMore: false,
-        );
+        state = state.copyWith(isLoading: false, hasMore: false);
         return;
       }
 
@@ -402,7 +400,9 @@ class CountrymenCombinedGamesNotifier
     final loadedDates = List<DateTime>.from(isInitial ? [] : state.loadedDates);
 
     for (final date in dates) {
-      debugPrint('[CountrymenGames] Loading ALL games for ${date.toString().split(' ')[0]}');
+      debugPrint(
+        '[CountrymenGames] Loading ALL games for ${date.toString().split(' ')[0]}',
+      );
 
       final dayGames = await gameRepo.getGamesByCountryAndDate(
         countryCode: fideCode,
@@ -410,7 +410,9 @@ class CountrymenCombinedGamesNotifier
         eco: state.filter.eco.isAll ? null : state.filter.eco.code,
       );
 
-      debugPrint('[CountrymenGames] Got ${dayGames.length} games for ${date.toString().split(' ')[0]}');
+      debugPrint(
+        '[CountrymenGames] Got ${dayGames.length} games for ${date.toString().split(' ')[0]}',
+      );
 
       for (final game in dayGames) {
         final gameModel = GamesTourModel.fromGame(game);
@@ -431,7 +433,9 @@ class CountrymenCombinedGamesNotifier
     final newDateOffset = dateOffset + dates.length;
     final hasMore = newDateOffset < _availableDates.length || _hasMoreDates;
 
-    debugPrint('[CountrymenGames] Total games: ${allGames.length}, dates loaded: ${loadedDates.length}, hasMore: $hasMore');
+    debugPrint(
+      '[CountrymenGames] Total games: ${allGames.length}, dates loaded: ${loadedDates.length}, hasMore: $hasMore',
+    );
 
     if (!mounted) return;
 
@@ -457,9 +461,10 @@ class CountrymenCombinedGamesNotifier
     final players = [white, black]..sort();
 
     // Use date if available
-    final date = game.lastMoveTime != null
-        ? '${game.lastMoveTime!.year}-${game.lastMoveTime!.month.toString().padLeft(2, '0')}-${game.lastMoveTime!.day.toString().padLeft(2, '0')}'
-        : 'unknown';
+    final date =
+        game.lastMoveTime != null
+            ? '${game.lastMoveTime!.year}-${game.lastMoveTime!.month.toString().padLeft(2, '0')}-${game.lastMoveTime!.day.toString().padLeft(2, '0')}'
+            : 'unknown';
 
     final result = game.gameStatus.displayText;
 
@@ -522,7 +527,9 @@ class CountrymenCombinedGamesNotifier
 
   /// Apply a new filter to the games
   void applyFilter(GameFilter filter) {
-    debugPrint('[CountrymenGames] Applying filter: result=${filter.result}, color=${filter.color}, timeControl=${filter.timeControl}, eco=${filter.eco.code}');
+    debugPrint(
+      '[CountrymenGames] Applying filter: result=${filter.result}, color=${filter.color}, timeControl=${filter.timeControl}, eco=${filter.eco.code}',
+    );
     final ecoChanged = filter.eco != state.filter.eco;
     state = state.copyWith(filter: filter);
 

@@ -1,4 +1,3 @@
-
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
 import 'package:chessever2/theme/app_theme.dart';
@@ -11,10 +10,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 class GamesErrorWidget extends ConsumerWidget {
   final String errorMessage;
 
-  const GamesErrorWidget({
-    super.key,
-    required this.errorMessage,
-  });
+  const GamesErrorWidget({super.key, required this.errorMessage});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {

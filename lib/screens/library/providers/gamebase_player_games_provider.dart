@@ -128,9 +128,10 @@ class GamebasePlayerGamesNotifier
     // `/api/search/query` for games is currently unreliable in production.
     // Use global search and narrow down to games that reference this player's
     // UUID in the preview payload.
-    final query = (_player.fideId.trim().isNotEmpty)
-        ? _player.fideId.trim()
-        : _player.name.trim();
+    final query =
+        (_player.fideId.trim().isNotEmpty)
+            ? _player.fideId.trim()
+            : _player.name.trim();
 
     debugPrint(
       '[GamebasePlayerGames] Searching games for player ${_player.id} (${_player.name}), page $page',
@@ -169,7 +170,10 @@ class GamebasePlayerGamesNotifier
 
     final byId = <String, GamebasePlayer>{};
     if (playerIds.isNotEmpty) {
-      final fetched = await Future.wait(playerIds.map(repo.getPlayerById), eagerError: false);
+      final fetched = await Future.wait(
+        playerIds.map(repo.getPlayerById),
+        eagerError: false,
+      );
       for (final p in fetched.whereType<GamebasePlayer>()) {
         byId[p.id] = GamebasePlayer(
           id: p.id,
@@ -204,72 +208,85 @@ class GamebasePlayerGamesNotifier
       return DateTime.tryParse(raw.toString());
     }
 
-    return rows.map((row) {
-      final id = row['id']?.toString() ?? 'unknown';
-      final result = row['result']?.toString() ?? '*';
-      final timeControl = row['timeControl']?.toString();
-      final date = parseDate(row['date']);
+    return rows
+        .map((row) {
+          final id = row['id']?.toString() ?? 'unknown';
+          final result = row['result']?.toString() ?? '*';
+          final timeControl = row['timeControl']?.toString();
+          final date = parseDate(row['date']);
 
-      final whiteName = (row['white']?.toString() ?? row['whiteName']?.toString() ?? 'White').trim();
-      final blackName = (row['black']?.toString() ?? row['blackName']?.toString() ?? 'Black').trim();
-      final event = (row['event']?.toString() ?? 'Gamebase').trim();
-      final site = row['site']?.toString();
-      final eco = row['eco']?.toString();
-      final opening = row['opening']?.toString();
-      final variation = row['variation']?.toString();
+          final whiteName =
+              (row['white']?.toString() ??
+                      row['whiteName']?.toString() ??
+                      'White')
+                  .trim();
+          final blackName =
+              (row['black']?.toString() ??
+                      row['blackName']?.toString() ??
+                      'Black')
+                  .trim();
+          final event = (row['event']?.toString() ?? 'Gamebase').trim();
+          final site = row['site']?.toString();
+          final eco = row['eco']?.toString();
+          final opening = row['opening']?.toString();
+          final variation = row['variation']?.toString();
 
-      final w = byId[row['whitePlayerId']?.toString() ?? ''];
-      final b = byId[row['blackPlayerId']?.toString() ?? ''];
+          final w = byId[row['whitePlayerId']?.toString() ?? ''];
+          final b = byId[row['blackPlayerId']?.toString() ?? ''];
 
-      final pgn = buildHeaderOnlyPgn(
-        whiteName: whiteName,
-        blackName: blackName,
-        result: result,
-        event: event,
-        site: site,
-        date: date,
-        eco: eco,
-        opening: opening,
-        variation: variation,
-      );
+          final pgn = buildHeaderOnlyPgn(
+            whiteName: whiteName,
+            blackName: blackName,
+            result: result,
+            event: event,
+            site: site,
+            date: date,
+            eco: eco,
+            opening: opening,
+            variation: variation,
+          );
 
-      final whiteCard = PlayerCard(
-        name: whiteName,
-        federation: '',
-        title: ChessTitleUtils.normalize(w?.title),
-        rating: ratingFor(w, timeControl),
-        countryCode: w?.fed ?? '',
-        team: null,
-        fideId: int.tryParse(w?.fideId ?? ''),
-      );
-      final blackCard = PlayerCard(
-        name: blackName,
-        federation: '',
-        title: ChessTitleUtils.normalize(b?.title),
-        rating: ratingFor(b, timeControl),
-        countryCode: b?.fed ?? '',
-        team: null,
-        fideId: int.tryParse(b?.fideId ?? ''),
-      );
+          final whiteCard = PlayerCard(
+            name: whiteName,
+            federation: '',
+            title: ChessTitleUtils.normalize(w?.title),
+            rating: ratingFor(w, timeControl),
+            countryCode: w?.fed ?? '',
+            team: null,
+            fideId: int.tryParse(w?.fideId ?? ''),
+          );
+          final blackCard = PlayerCard(
+            name: blackName,
+            federation: '',
+            title: ChessTitleUtils.normalize(b?.title),
+            rating: ratingFor(b, timeControl),
+            countryCode: b?.fed ?? '',
+            team: null,
+            fideId: int.tryParse(b?.fideId ?? ''),
+          );
 
-      final formatCode = (eco != null && eco.trim().isNotEmpty) ? eco.trim() : (timeControl ?? '');
+          final formatCode =
+              (eco != null && eco.trim().isNotEmpty)
+                  ? eco.trim()
+                  : (timeControl ?? '');
 
-      return GamesTourModel(
-        gameId: id,
-        whitePlayer: whiteCard,
-        blackPlayer: blackCard,
-        whiteTimeDisplay: '--:--',
-        blackTimeDisplay: '--:--',
-        whiteClockCentiseconds: 0,
-        blackClockCentiseconds: 0,
-        gameStatus: GameStatus.fromString(result),
-        roundId: 'gamebase_player',
-        roundSlug: formatCode.isNotEmpty ? formatCode : null,
-        tourId: event.isNotEmpty ? event : 'Gamebase',
-        pgn: pgn,
-        lastMoveTime: date,
-      );
-    }).toList(growable: false);
+          return GamesTourModel(
+            gameId: id,
+            whitePlayer: whiteCard,
+            blackPlayer: blackCard,
+            whiteTimeDisplay: '--:--',
+            blackTimeDisplay: '--:--',
+            whiteClockCentiseconds: 0,
+            blackClockCentiseconds: 0,
+            gameStatus: GameStatus.fromString(result),
+            roundId: 'gamebase_player',
+            roundSlug: formatCode.isNotEmpty ? formatCode : null,
+            tourId: event.isNotEmpty ? event : 'Gamebase',
+            pgn: pgn,
+            lastMoveTime: date,
+          );
+        })
+        .toList(growable: false);
   }
 
   // NOTE: No longer uses `/api/search/query` + `/api/game/{id}`.

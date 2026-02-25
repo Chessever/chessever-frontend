@@ -16,10 +16,9 @@ Future<PremiumGamesFilter?> showPremiumGamesFilterDialog({
   return showDialog<PremiumGamesFilter>(
     context: context,
     barrierColor: Colors.transparent,
-    builder: (_) => PremiumGamesFilterDialog(
-      type: type,
-      initialFilter: currentFilter,
-    ),
+    builder:
+        (_) =>
+            PremiumGamesFilterDialog(type: type, initialFilter: currentFilter),
   );
 }
 
@@ -51,7 +50,8 @@ class _PremiumGamesFilterDialogState
     super.initState();
     _dateRange = widget.initialFilter.dateRange;
     _result = widget.initialFilter.result;
-    _eloFilterEnabled = widget.initialFilter.minElo != null ||
+    _eloFilterEnabled =
+        widget.initialFilter.minElo != null ||
         widget.initialFilter.maxElo != null;
     _eloRange = RangeValues(
       widget.initialFilter.minElo?.toDouble() ?? 1000,
@@ -162,11 +162,13 @@ class _PremiumGamesFilterDialogState
                                   setState(() => _eloFilterEnabled = value);
                                 },
                                 activeThumbColor: kPrimaryColor,
-                                activeTrackColor:
-                                    kPrimaryColor.withValues(alpha: 0.3),
+                                activeTrackColor: kPrimaryColor.withValues(
+                                  alpha: 0.3,
+                                ),
                                 inactiveThumbColor: kDarkGreyColor,
-                                inactiveTrackColor:
-                                    kDarkGreyColor.withValues(alpha: 0.3),
+                                inactiveTrackColor: kDarkGreyColor.withValues(
+                                  alpha: 0.3,
+                                ),
                               ),
                             ),
                             SizedBox(height: 8.h),
@@ -194,17 +196,17 @@ class _PremiumGamesFilterDialogState
                                             '${_eloRange.start.round()}',
                                             style: AppTypography.textSmMedium
                                                 .copyWith(
-                                              color: kPrimaryColor,
-                                              fontWeight: FontWeight.w600,
-                                            ),
+                                                  color: kPrimaryColor,
+                                                  fontWeight: FontWeight.w600,
+                                                ),
                                           ),
                                           Text(
                                             '${_eloRange.end.round()}',
                                             style: AppTypography.textSmMedium
                                                 .copyWith(
-                                              color: kPrimaryColor,
-                                              fontWeight: FontWeight.w600,
-                                            ),
+                                                  color: kPrimaryColor,
+                                                  fontWeight: FontWeight.w600,
+                                                ),
                                           ),
                                         ],
                                       ),
@@ -213,13 +215,13 @@ class _PremiumGamesFilterDialogState
                                           activeTrackColor: kPrimaryColor,
                                           inactiveTrackColor: kDividerColor,
                                           thumbColor: kPrimaryColor,
-                                          overlayColor:
-                                              kPrimaryColor.withValues(alpha: 0.2),
+                                          overlayColor: kPrimaryColor
+                                              .withValues(alpha: 0.2),
                                           trackHeight: 4,
                                           thumbShape:
                                               const RoundSliderThumbShape(
-                                            enabledThumbRadius: 8,
-                                          ),
+                                                enabledThumbRadius: 8,
+                                              ),
                                         ),
                                         child: RangeSlider(
                                           values: _eloRange,
@@ -328,10 +330,7 @@ class _PremiumGamesFilterDialogState
 }
 
 class _SectionTitle extends StatelessWidget {
-  const _SectionTitle({
-    required this.title,
-    this.trailing,
-  });
+  const _SectionTitle({required this.title, this.trailing});
 
   final String title;
   final Widget? trailing;
@@ -348,11 +347,7 @@ class _SectionTitle extends StatelessWidget {
             letterSpacing: 0.3,
           ),
         ),
-        if (trailing != null)
-          SizedBox(
-            height: 28.h,
-            child: trailing,
-          ),
+        if (trailing != null) SizedBox(height: 28.h, child: trailing),
       ],
     );
   }
@@ -397,9 +392,10 @@ class _ChipGrid<T> extends StatelessWidget {
               color: isSelected ? kPrimaryColor : kBlack2Color,
               borderRadius: BorderRadius.circular(8.br),
               border: Border.all(
-                color: isSelected
-                    ? kPrimaryColor
-                    : kDarkGreyColor.withValues(alpha: 0.3),
+                color:
+                    isSelected
+                        ? kPrimaryColor
+                        : kDarkGreyColor.withValues(alpha: 0.3),
                 width: 1,
               ),
             ),

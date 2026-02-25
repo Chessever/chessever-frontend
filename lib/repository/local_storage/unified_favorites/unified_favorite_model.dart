@@ -52,11 +52,7 @@ class UnifiedFavoriteModel {
       type: FavoriteType.player,
       name: playerName,
       subtitle: title != null && title.isNotEmpty ? title : null,
-      metadata: {
-        'countryCode': countryCode,
-        'rating': rating,
-        'title': title,
-      },
+      metadata: {'countryCode': countryCode, 'rating': rating, 'title': title},
       createdAt: DateTime.now(),
     );
   }

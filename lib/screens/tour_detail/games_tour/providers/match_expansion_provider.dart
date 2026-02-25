@@ -5,8 +5,8 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 /// Value: true if expanded, false if collapsed
 final matchExpansionProvider =
     StateNotifierProvider<MatchExpansionNotifier, Map<String, bool>>((ref) {
-  return MatchExpansionNotifier();
-});
+      return MatchExpansionNotifier();
+    });
 
 /// Special key used to store the collapse all mode flag in the state
 const String _kCollapseAllModeKey = '__COLLAPSE_ALL_MODE__';
@@ -23,7 +23,10 @@ bool resolveMatchExpansionState(
 
 /// Family provider to watch individual match expansion states
 /// This prevents unnecessary rebuilds when other matches are toggled
-final matchExpansionStateProvider = Provider.family<bool, String>((ref, matchKey) {
+final matchExpansionStateProvider = Provider.family<bool, String>((
+  ref,
+  matchKey,
+) {
   final expansionState = ref.watch(matchExpansionProvider);
   return resolveMatchExpansionState(expansionState, matchKey);
 });
@@ -38,10 +41,7 @@ class MatchExpansionNotifier extends StateNotifier<Map<String, bool>> {
   void toggleMatch(String matchKey) {
     // Respect collapse all mode when toggling unknown keys
     final currentValue = resolveMatchExpansionState(state, matchKey);
-    state = {
-      ...state,
-      matchKey: !currentValue,
-    };
+    state = {...state, matchKey: !currentValue};
   }
 
   /// Check if a match is expanded
@@ -73,9 +73,7 @@ class MatchExpansionNotifier extends StateNotifier<Map<String, bool>> {
   /// Collapse all matches
   void collapseAll(List<String> matchKeys) {
     // Set collapse all mode flag and collapse all known matches
-    final newState = <String, bool>{
-      _kCollapseAllModeKey: true,
-    };
+    final newState = <String, bool>{_kCollapseAllModeKey: true};
     for (final key in matchKeys) {
       newState[key] = false;
     }

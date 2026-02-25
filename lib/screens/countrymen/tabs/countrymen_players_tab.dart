@@ -22,9 +22,9 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 // --- Provider ---
 
 final countrymenPlayersProvider = StateNotifierProvider.autoDispose<
-    CountrymenPlayersNotifier, CountrymenPlayersState>(
-  (ref) => CountrymenPlayersNotifier(ref),
-);
+  CountrymenPlayersNotifier,
+  CountrymenPlayersState
+>((ref) => CountrymenPlayersNotifier(ref));
 
 class CountrymenPlayersState {
   final List<PlayerStandingModel> players;
@@ -69,7 +69,7 @@ class CountrymenPlayersNotifier extends StateNotifier<CountrymenPlayersState> {
   static const int _pageSize = 30;
 
   CountrymenPlayersNotifier(this._ref)
-      : super(const CountrymenPlayersState(isLoading: true)) {
+    : super(const CountrymenPlayersState(isLoading: true)) {
     _loadInitial();
 
     // Listen to effective country changes (includes temporary selections)
@@ -116,17 +116,20 @@ class CountrymenPlayersNotifier extends StateNotifier<CountrymenPlayersState> {
         offset: offset,
       );
 
-      final playerModels = players
-          .map((p) => PlayerStandingModel(
-                name: p.name,
-                countryCode: _fideFedToCountryCode(p.country),
-                score: p.rating ?? 0,
-                scoreChange: 0,
-                matchScore: null,
-                title: p.title,
-                fideId: p.fideid,
-              ))
-          .toList();
+      final playerModels =
+          players
+              .map(
+                (p) => PlayerStandingModel(
+                  name: p.name,
+                  countryCode: _fideFedToCountryCode(p.country),
+                  score: p.rating ?? 0,
+                  scoreChange: 0,
+                  matchScore: null,
+                  title: p.title,
+                  fideId: p.fideid,
+                ),
+              )
+              .toList();
 
       final allPlayers =
           isInitial ? playerModels : [...state.players, ...playerModels];
@@ -259,14 +262,18 @@ class _CountrymenPlayersTabState extends ConsumerState<CountrymenPlayersTab>
     final state = ref.watch(countrymenPlayersProvider);
     // Watch favoritePlayersNotifierProvider for optimistic updates
     final favoritesAsync = ref.watch(favoritePlayersNotifierProvider);
-    final favoriteIds = favoritesAsync.valueOrNull?.players
+    final favoriteIds =
+        favoritesAsync.valueOrNull?.players
             .map((p) => p.fideId)
             .where((id) => id != null)
             .cast<int>()
             .toSet() ??
         <int>{};
 
-    final horizontalPadding = ResponsiveHelper.adaptive(phone: 16.w, tablet: 24.w);
+    final horizontalPadding = ResponsiveHelper.adaptive(
+      phone: 16.w,
+      tablet: 24.w,
+    );
 
     Widget content = RefreshIndicator(
       onRefresh: () async {
@@ -284,7 +291,12 @@ class _CountrymenPlayersTabState extends ConsumerState<CountrymenPlayersTab>
           // Search bar (scrolls with content)
           SliverToBoxAdapter(
             child: Padding(
-              padding: EdgeInsets.fromLTRB(horizontalPadding, 12.h, horizontalPadding, 8.h),
+              padding: EdgeInsets.fromLTRB(
+                horizontalPadding,
+                12.h,
+                horizontalPadding,
+                8.h,
+              ),
               child: SearchBarWidget(
                 hintText: 'Search',
                 margin: 0.sp,
@@ -371,18 +383,24 @@ class _CountrymenPlayersTabState extends ConsumerState<CountrymenPlayersTab>
     final showLoadingIndicator =
         (state.hasMore || state.isLoading) && players.isNotEmpty;
 
-    final horizontalPadding = ResponsiveHelper.adaptive(phone: 16.w, tablet: 24.w);
+    final horizontalPadding = ResponsiveHelper.adaptive(
+      phone: 16.w,
+      tablet: 24.w,
+    );
     return SliverPadding(
-      padding: EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: 8.h),
+      padding: EdgeInsets.symmetric(
+        horizontal: horizontalPadding,
+        vertical: 8.h,
+      ),
       sliver: SliverList(
-        delegate: SliverChildBuilderDelegate(
-          (context, index) {
-            if (index >= players.length) {
-              return Padding(
-                padding: EdgeInsets.symmetric(vertical: 24.h),
-                child: Center(
-                  child: state.isLoading
-                      ? Column(
+        delegate: SliverChildBuilderDelegate((context, index) {
+          if (index >= players.length) {
+            return Padding(
+              padding: EdgeInsets.symmetric(vertical: 24.h),
+              child: Center(
+                child:
+                    state.isLoading
+                        ? Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             SizedBox(
@@ -402,32 +420,30 @@ class _CountrymenPlayersTabState extends ConsumerState<CountrymenPlayersTab>
                             ),
                           ],
                         )
-                      : state.hasMore
-                          ? const SizedBox.shrink()
-                          : Text(
-                              'No more players',
-                              style: AppTypography.textXsRegular.copyWith(
-                                color: const Color(0xFF52525B),
-                              ),
-                            ),
-                ),
-              );
-            }
-
-            final player = players[index];
-            final isFavorite = favoriteIds.contains(player.fideId);
-
-            return FigmaPlayerCard(
-              player: player,
-              isFavorite: isFavorite,
-              rank: index + 1,
-              showFavoriteButton: true,
-              onTap: () => _navigateToPlayerDetail(player),
-              onToggleFavorite: () => _toggleFavorite(player, isFavorite),
+                        : state.hasMore
+                        ? const SizedBox.shrink()
+                        : Text(
+                          'No more players',
+                          style: AppTypography.textXsRegular.copyWith(
+                            color: const Color(0xFF52525B),
+                          ),
+                        ),
+              ),
             );
-          },
-          childCount: players.length + (showLoadingIndicator ? 1 : 0),
-        ),
+          }
+
+          final player = players[index];
+          final isFavorite = favoriteIds.contains(player.fideId);
+
+          return FigmaPlayerCard(
+            player: player,
+            isFavorite: isFavorite,
+            rank: index + 1,
+            showFavoriteButton: true,
+            onTap: () => _navigateToPlayerDetail(player),
+            onToggleFavorite: () => _toggleFavorite(player, isFavorite),
+          );
+        }, childCount: players.length + (showLoadingIndicator ? 1 : 0)),
       ),
     );
   }
@@ -436,21 +452,19 @@ class _CountrymenPlayersTabState extends ConsumerState<CountrymenPlayersTab>
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => PlayerProfileScreen(
-          fideId: player.fideId,
-          playerName: player.name,
-          title: player.title,
-          federation: player.countryCode,
-          rating: player.score,
-        ),
+        builder:
+            (context) => PlayerProfileScreen(
+              fideId: player.fideId,
+              playerName: player.name,
+              title: player.title,
+              federation: player.countryCode,
+              rating: player.score,
+            ),
       ),
     );
   }
 
-  void _toggleFavorite(
-    PlayerStandingModel player,
-    bool currentlyFavorite,
-  ) {
+  void _toggleFavorite(PlayerStandingModel player, bool currentlyFavorite) {
     // Check auth first, then toggle without blocking
     requireFullAuthGuard(context).then((allowed) {
       if (!allowed) return;
@@ -535,8 +549,8 @@ class _CountrymenPlayersTabState extends ConsumerState<CountrymenPlayersTab>
           ),
           SizedBox(height: 24.h),
           TextButton(
-            onPressed: () =>
-                ref.read(countrymenPlayersProvider.notifier).refresh(),
+            onPressed:
+                () => ref.read(countrymenPlayersProvider.notifier).refresh(),
             style: TextButton.styleFrom(
               backgroundColor: kWhiteColor.withValues(alpha: 0.1),
               padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 12.h),
@@ -633,5 +647,3 @@ class _CountrymenPlayersTabState extends ConsumerState<CountrymenPlayersTab>
     ).animate().fadeIn(duration: 300.ms);
   }
 }
-
-

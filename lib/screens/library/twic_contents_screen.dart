@@ -507,11 +507,6 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen> {
     }
 
     final itemCount = games.length + (paginationState.hasMore ? 1 : 0);
-    // Show shimmer overlay on existing list when loading new page 1 results
-    // (i.e. filter/event changed and games are being replaced)
-    final isRefreshing =
-        paginationState.isLoading && paginationState.currentPage <= 1;
-
     Widget list = ListView.separated(
       controller: _scrollController,
       padding: EdgeInsets.fromLTRB(
@@ -553,14 +548,6 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen> {
         );
       },
     );
-
-    if (isRefreshing) {
-      list = AnimatedOpacity(
-        opacity: 0.4,
-        duration: const Duration(milliseconds: 200),
-        child: IgnorePointer(child: list),
-      );
-    }
 
     return list;
   }
@@ -852,6 +839,57 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen> {
                 SizedBox(height: 4.h),
                 Row(children: infoChildren),
               ],
+              SizedBox(height: 12.h),
+              GestureDetector(
+                onTap: () {
+                  HapticFeedbackService.light();
+                  final games =
+                      ref.read(gamebaseDatabaseGamesPaginatedProvider).games;
+                  if (games.isNotEmpty) {
+                    showBulkAddToFolderSheet(
+                      context: context,
+                      games: games,
+                      sourceLabel: item.event,
+                    );
+                  } else {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          'Load games first to add them to library.',
+                        ),
+                      ),
+                    );
+                  }
+                },
+                child: Container(
+                  width: double.infinity,
+                  padding: EdgeInsets.symmetric(vertical: 10.h),
+                  decoration: BoxDecoration(
+                    color: kPrimaryColor.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(8.br),
+                    border: Border.all(
+                      color: kPrimaryColor.withValues(alpha: 0.3),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.library_add_outlined,
+                        size: 16.ic,
+                        color: kPrimaryColor,
+                      ),
+                      SizedBox(width: 8.w),
+                      Text(
+                        'Save Games to Library',
+                        style: AppTypography.textSmMedium.copyWith(
+                          color: kPrimaryColor,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             ],
           ),
         ),

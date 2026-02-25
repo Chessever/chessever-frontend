@@ -102,10 +102,10 @@ class _GroupEventScreenController
 
   bool get _isFilterActive {
     if (appliedFilter.formatsAndStates.isNotEmpty) return true;
-    if (appliedFilter.eloRange.start >
-        defaultFilterPopupState.eloRange.start) return true;
-    if (appliedFilter.eloRange.end <
-        defaultFilterPopupState.eloRange.end) return true;
+    if (appliedFilter.eloRange.start > defaultFilterPopupState.eloRange.start)
+      return true;
+    if (appliedFilter.eloRange.end < defaultFilterPopupState.eloRange.end)
+      return true;
     return false;
   }
 
@@ -116,8 +116,10 @@ class _GroupEventScreenController
             .where((f) => f.isNotEmpty)
             .toSet();
 
-    final requestedStatuses =
-        <String>{'live', 'completed'}.intersection(filterSet);
+    final requestedStatuses = <String>{
+      'live',
+      'completed',
+    }.intersection(filterSet);
     final requestedFormats = filterSet.difference(requestedStatuses);
 
     final liveIds = ref.read(liveBroadcastIdsProvider);
@@ -181,25 +183,28 @@ class _GroupEventScreenController
         if (currentModels == null || currentModels.isEmpty) return;
 
         // Get cached favorite player data for proper sorting
-        final eventFavoritePlayersMap = ref.read(eventFavoritePlayersCacheProvider);
+        final eventFavoritePlayersMap = ref.read(
+          eventFavoritePlayersCacheProvider,
+        );
 
         // Re-sort with updated favorites and heart data
         final sortingService = ref.read(tournamentSortingServiceProvider);
-        final sortedTours = tourEventCategory == GroupEventCategory.forYou
-            ? sortingService.sortUpcomingTours(
-                currentModels,
-                eventFavoritePlayersMap: eventFavoritePlayersMap,
-              )
-            : tourEventCategory == GroupEventCategory.past
+        final sortedTours =
+            tourEventCategory == GroupEventCategory.forYou
+                ? sortingService.sortUpcomingTours(
+                  currentModels,
+                  eventFavoritePlayersMap: eventFavoritePlayersMap,
+                )
+                : tourEventCategory == GroupEventCategory.past
                 ? sortingService.sortPastTours(
-                    currentModels,
-                    eventFavoritePlayersMap: eventFavoritePlayersMap,
-                    prioritizeFavorites: false,
-                  )
+                  currentModels,
+                  eventFavoritePlayersMap: eventFavoritePlayersMap,
+                  prioritizeFavorites: false,
+                )
                 : sortingService.sortAllTours(
-                    currentModels,
-                    eventFavoritePlayersMap: eventFavoritePlayersMap,
-                  );
+                  currentModels,
+                  eventFavoritePlayersMap: eventFavoritePlayersMap,
+                );
 
         state = AsyncValue.data(sortedTours);
       });
@@ -290,12 +295,12 @@ class _GroupEventScreenController
       final sortedTours =
           tourEventCategory == GroupEventCategory.forYou
               ? sortingService.sortUpcomingTours(tourEventCardModel)
-          : tourEventCategory == GroupEventCategory.past
-          ? sortingService.sortPastTours(
-              tourEventCardModel,
-              prioritizeFavorites: false,
-            )
-          : sortingService.sortAllTours(tourEventCardModel);
+              : tourEventCategory == GroupEventCategory.past
+              ? sortingService.sortPastTours(
+                tourEventCardModel,
+                prioritizeFavorites: false,
+              )
+              : sortingService.sortAllTours(tourEventCardModel);
 
       state = AsyncValue.data(sortedTours);
     } catch (error, _) {}
@@ -389,12 +394,12 @@ class _GroupEventScreenController
       final sortedTours =
           tourEventCategory == GroupEventCategory.forYou
               ? sortingService.sortUpcomingTours(tourEventCardModel)
-          : tourEventCategory == GroupEventCategory.past
-          ? sortingService.sortPastTours(
-              tourEventCardModel,
-              prioritizeFavorites: false,
-            )
-          : sortingService.sortAllTours(tourEventCardModel);
+              : tourEventCategory == GroupEventCategory.past
+              ? sortingService.sortPastTours(
+                tourEventCardModel,
+                prioritizeFavorites: false,
+              )
+              : sortingService.sortAllTours(tourEventCardModel);
 
       state = AsyncValue.data(sortedTours);
     } catch (err, stk) {
@@ -437,8 +442,7 @@ class _GroupEventScreenController
               'tournament_id': id,
               'tournament_name': selectedBroadcast?.name,
               'category': tourEventCategory.name,
-              'is_live':
-                  ref.read(liveBroadcastIdsProvider).contains(id),
+              'is_live': ref.read(liveBroadcastIdsProvider).contains(id),
               'time_control': selectedBroadcast?.timeControl,
             },
           ),

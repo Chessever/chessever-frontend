@@ -154,7 +154,8 @@ class _EnhancedRoundedSearchBarState
     widget.controller.clear(); // Clear the search text
     ref.read(isSearchingProvider.notifier).state = false; // Clear search state
     ref.read(searchQueryProvider.notifier).state = ''; // Clear query state
-    ref.read(debouncedSearchQueryProvider.notifier).state = ''; // Clear debounced state
+    ref.read(debouncedSearchQueryProvider.notifier).state =
+        ''; // Clear debounced state
     cancelSearchDebounce(); // Cancel any pending debounce
     _hideOverlay();
     widget.onClearSearchField?.call();

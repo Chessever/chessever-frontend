@@ -11,9 +11,10 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 final liveGameSubscriptionProvider = AutoDisposeAsyncNotifierProviderFamily<
-    LiveGameSubscriptionNotifier, bool, String>(
-  LiveGameSubscriptionNotifier.new,
-);
+  LiveGameSubscriptionNotifier,
+  bool,
+  String
+>(LiveGameSubscriptionNotifier.new);
 
 class LiveGameSubscriptionNotifier
     extends AutoDisposeFamilyAsyncNotifier<bool, String> {
@@ -84,16 +85,13 @@ class LiveGameSubscriptionNotifier
     try {
       await Supabase.instance.client
           .from('user_live_game_subscriptions')
-          .upsert(
-            {
-              'user_id': user.id,
-              'game_id': game.gameId,
-              'platform': platform,
-              'enabled': enabled,
-              if (enabled) 'started_at': null,
-            },
-            onConflict: 'user_id,game_id,platform',
-          );
+          .upsert({
+            'user_id': user.id,
+            'game_id': game.gameId,
+            'platform': platform,
+            'enabled': enabled,
+            if (enabled) 'started_at': null,
+          }, onConflict: 'user_id,game_id,platform');
     } catch (_) {
       // Ignore server errors for now; Live Activity is still local.
     }

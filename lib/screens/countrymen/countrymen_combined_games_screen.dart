@@ -51,7 +51,9 @@ class _CountrymenCombinedGamesScreenState
         _scrollController.position.maxScrollExtent - 200) {
       final state = ref.read(countrymenCombinedGamesProvider);
       if (state.isSearching) {
-        ref.read(countrymenCombinedGamesProvider.notifier).loadMoreSearchResults();
+        ref
+            .read(countrymenCombinedGamesProvider.notifier)
+            .loadMoreSearchResults();
       } else {
         ref.read(countrymenCombinedGamesProvider.notifier).loadMoreGames();
       }
@@ -77,50 +79,60 @@ class _CountrymenCombinedGamesScreenState
   Widget build(BuildContext context) {
     final state = ref.watch(countrymenCombinedGamesProvider);
 
-    final horizontalPadding = ResponsiveHelper.adaptive(phone: 16.w, tablet: 32.w);
+    final horizontalPadding = ResponsiveHelper.adaptive(
+      phone: 16.w,
+      tablet: 32.w,
+    );
 
     return Scaffold(
       backgroundColor: kBackgroundColor,
       body: Center(
         child: ConstrainedBox(
-          constraints: BoxConstraints(maxWidth: ResponsiveHelper.contentMaxWidth),
-          child: RefreshIndicator(
-        onRefresh: () async {
-          HapticFeedbackService.medium();
-          await ref.read(countrymenCombinedGamesProvider.notifier).refreshGames();
-        },
-        color: kWhiteColor,
-        backgroundColor: kBlack2Color,
-        edgeOffset: 120,
-        child: CustomScrollView(
-          controller: _scrollController,
-          physics: const AlwaysScrollableScrollPhysics(
-            parent: BouncingScrollPhysics(),
+          constraints: BoxConstraints(
+            maxWidth: ResponsiveHelper.contentMaxWidth,
           ),
-          slivers: [
-            // Pinned app bar
-            _buildPinnedAppBar(context, state),
-
-            // Pinned search bar
-            SliverPersistentHeader(
-              pinned: true,
-              delegate: _SliverSearchBarDelegate(
-                child: _buildSearchBar(),
-                height: 68.h,
+          child: RefreshIndicator(
+            onRefresh: () async {
+              HapticFeedbackService.medium();
+              await ref
+                  .read(countrymenCombinedGamesProvider.notifier)
+                  .refreshGames();
+            },
+            color: kWhiteColor,
+            backgroundColor: kBlack2Color,
+            edgeOffset: 120,
+            child: CustomScrollView(
+              controller: _scrollController,
+              physics: const AlwaysScrollableScrollPhysics(
+                parent: BouncingScrollPhysics(),
               ),
-            ),
+              slivers: [
+                // Pinned app bar
+                _buildPinnedAppBar(context, state),
 
-            // Content
-            _buildContentSliver(state),
-          ],
-        ),
-      ),
+                // Pinned search bar
+                SliverPersistentHeader(
+                  pinned: true,
+                  delegate: _SliverSearchBarDelegate(
+                    child: _buildSearchBar(),
+                    height: 68.h,
+                  ),
+                ),
+
+                // Content
+                _buildContentSliver(state),
+              ],
+            ),
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildPinnedAppBar(BuildContext context, CountrymenCombinedGamesState state) {
+  Widget _buildPinnedAppBar(
+    BuildContext context,
+    CountrymenCombinedGamesState state,
+  ) {
     final countryCode = state.countryCode ?? '';
     final countryName = state.countryName ?? 'Your Country';
     final hasActiveFilters = state.filter.hasActiveFilters;
@@ -177,9 +189,7 @@ class _CountrymenCombinedGamesScreenState
               children: [
                 Text(
                   countryName,
-                  style: AppTypography.textLgBold.copyWith(
-                    color: kWhiteColor,
-                  ),
+                  style: AppTypography.textLgBold.copyWith(color: kWhiteColor),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -203,7 +213,10 @@ class _CountrymenCombinedGamesScreenState
                   Icon(
                     Icons.tune_rounded,
                     size: 22.ic,
-                    color: hasActiveFilters ? kWhiteColor : const Color(0xFFA1A1AA),
+                    color:
+                        hasActiveFilters
+                            ? kWhiteColor
+                            : const Color(0xFFA1A1AA),
                   ),
                   // Badge showing active filter count
                   if (hasActiveFilters)
@@ -253,9 +266,17 @@ class _CountrymenCombinedGamesScreenState
   }
 
   Widget _buildSearchBar() {
-    final horizontalPadding = ResponsiveHelper.adaptive(phone: 16.w, tablet: 32.w);
+    final horizontalPadding = ResponsiveHelper.adaptive(
+      phone: 16.w,
+      tablet: 32.w,
+    );
     return Padding(
-      padding: EdgeInsets.fromLTRB(horizontalPadding, 0, horizontalPadding, 12.h),
+      padding: EdgeInsets.fromLTRB(
+        horizontalPadding,
+        0,
+        horizontalPadding,
+        12.h,
+      ),
       child: Container(
         decoration: BoxDecoration(
           color: const Color(0xFF09090B),
@@ -265,11 +286,7 @@ class _CountrymenCombinedGamesScreenState
         child: Row(
           children: [
             SizedBox(width: 12.w),
-            Icon(
-              Icons.search,
-              size: 20.sp,
-              color: const Color(0xFFA1A1AA),
-            ),
+            Icon(Icons.search, size: 20.sp, color: const Color(0xFFA1A1AA)),
             SizedBox(width: 8.w),
             Expanded(
               child: TextField(
@@ -348,21 +365,27 @@ class _CountrymenCombinedGamesScreenState
     }
 
     // Show loading indicator when fetching more
-    final showLoadingIndicator = (state.hasMore || state.isLoading) &&
-        games.isNotEmpty;
+    final showLoadingIndicator =
+        (state.hasMore || state.isLoading) && games.isNotEmpty;
 
-    final horizontalPadding = ResponsiveHelper.adaptive(phone: 16.w, tablet: 32.w);
+    final horizontalPadding = ResponsiveHelper.adaptive(
+      phone: 16.w,
+      tablet: 32.w,
+    );
     return SliverPadding(
-      padding: EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: 4.h),
+      padding: EdgeInsets.symmetric(
+        horizontal: horizontalPadding,
+        vertical: 4.h,
+      ),
       sliver: SliverList(
-        delegate: SliverChildBuilderDelegate(
-          (context, index) {
-            if (index >= games.length) {
-              return Padding(
-                padding: EdgeInsets.symmetric(vertical: 24.h),
-                child: Center(
-                  child: state.isLoading
-                      ? Column(
+        delegate: SliverChildBuilderDelegate((context, index) {
+          if (index >= games.length) {
+            return Padding(
+              padding: EdgeInsets.symmetric(vertical: 24.h),
+              child: Center(
+                child:
+                    state.isLoading
+                        ? Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             SizedBox(
@@ -382,33 +405,31 @@ class _CountrymenCombinedGamesScreenState
                             ),
                           ],
                         )
-                      : state.hasMore
-                          ? const SizedBox.shrink()
-                          : Text(
-                              'No more games',
-                              style: AppTypography.textXsRegular.copyWith(
-                                color: const Color(0xFF52525B),
-                              ),
-                            ),
-                ),
-              );
-            }
-
-            final game = games[index];
-            return Padding(
-              padding: EdgeInsets.only(bottom: 12.h),
-              child: GamebaseSearchGameCard(
-                game: game,
-                allGames: games,
-                gameIndex: index,
-                animationIndex: index,
-                showRound: true,
-                onAdd: () => _showAddToFolderSheet(context, game),
+                        : state.hasMore
+                        ? const SizedBox.shrink()
+                        : Text(
+                          'No more games',
+                          style: AppTypography.textXsRegular.copyWith(
+                            color: const Color(0xFF52525B),
+                          ),
+                        ),
               ),
             );
-          },
-          childCount: games.length + (showLoadingIndicator ? 1 : 0),
-        ),
+          }
+
+          final game = games[index];
+          return Padding(
+            padding: EdgeInsets.only(bottom: 12.h),
+            child: GamebaseSearchGameCard(
+              game: game,
+              allGames: games,
+              gameIndex: index,
+              animationIndex: index,
+              showRound: true,
+              onAdd: () => _showAddToFolderSheet(context, game),
+            ),
+          );
+        }, childCount: games.length + (showLoadingIndicator ? 1 : 0)),
       ),
     );
   }
@@ -481,9 +502,11 @@ class _CountrymenCombinedGamesScreenState
           ),
           SizedBox(height: 24.h),
           TextButton(
-            onPressed: () => ref
-                .read(countrymenCombinedGamesProvider.notifier)
-                .refreshGames(),
+            onPressed:
+                () =>
+                    ref
+                        .read(countrymenCombinedGamesProvider.notifier)
+                        .refreshGames(),
             style: TextButton.styleFrom(
               backgroundColor: kWhiteColor.withValues(alpha: 0.1),
               padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 12.h),
@@ -544,9 +567,11 @@ class _CountrymenCombinedGamesScreenState
           ),
           SizedBox(height: 24.h),
           TextButton(
-            onPressed: () => ref
-                .read(countrymenCombinedGamesProvider.notifier)
-                .refreshGames(),
+            onPressed:
+                () =>
+                    ref
+                        .read(countrymenCombinedGamesProvider.notifier)
+                        .refreshGames(),
             style: TextButton.styleFrom(
               backgroundColor: kWhiteColor.withValues(alpha: 0.1),
               padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 12.h),
@@ -556,9 +581,7 @@ class _CountrymenCombinedGamesScreenState
             ),
             child: Text(
               'Refresh',
-              style: AppTypography.textSmMedium.copyWith(
-                color: kWhiteColor,
-              ),
+              style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
             ),
           ),
         ],
@@ -635,9 +658,7 @@ class _CountrymenCombinedGamesScreenState
               ),
               child: Text(
                 'Clear Filters',
-                style: AppTypography.textSmMedium.copyWith(
-                  color: kWhiteColor,
-                ),
+                style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
               ),
             ),
           ),
@@ -653,10 +674,7 @@ class _CountrymenCombinedGamesScreenState
 
 /// Delegate for pinned search bar in sliver list
 class _SliverSearchBarDelegate extends SliverPersistentHeaderDelegate {
-  _SliverSearchBarDelegate({
-    required this.child,
-    required this.height,
-  });
+  _SliverSearchBarDelegate({required this.child, required this.height});
 
   final Widget child;
   final double height;
@@ -677,10 +695,7 @@ class _SliverSearchBarDelegate extends SliverPersistentHeaderDelegate {
     // This prevents layoutExtent from exceeding paintExtent
     return SizedBox(
       height: maxExtent,
-      child: Container(
-        color: kBackgroundColor,
-        child: child,
-      ),
+      child: Container(color: kBackgroundColor, child: child),
     );
   }
 

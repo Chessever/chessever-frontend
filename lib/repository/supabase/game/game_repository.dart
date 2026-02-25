@@ -214,7 +214,9 @@ class GameRepository extends BaseRepository {
       var query = supabase
           .from('games')
           .select(_gameListSelectColumns)
-          .or('player_white.eq."$normalizedName",player_black.eq."$normalizedName"')
+          .or(
+            'player_white.eq."$normalizedName",player_black.eq."$normalizedName"',
+          )
           .order('date_start', ascending: false)
           .order('time_start', ascending: false);
 
@@ -337,7 +339,9 @@ class GameRepository extends BaseRepository {
         return <Games>[];
       }
 
-      debugPrint('===== GameRepository: Fetching games for ${fideIdInts.length} FIDE IDs =====');
+      debugPrint(
+        '===== GameRepository: Fetching games for ${fideIdInts.length} FIDE IDs =====',
+      );
 
       // Order by date_start first to group games by day, then by last_move_time
       final response = await supabase
@@ -353,7 +357,9 @@ class GameRepository extends BaseRepository {
 
       final games = await compute(_decodeGamesInIsolate, jsonList);
 
-      debugPrint('===== GameRepository: Fetched ${games.length} games for favorited players =====');
+      debugPrint(
+        '===== GameRepository: Fetched ${games.length} games for favorited players =====',
+      );
 
       return games;
     });
@@ -367,7 +373,9 @@ class GameRepository extends BaseRepository {
   }) async {
     return handleApiCall(() async {
       final normalizedCode = _normalizeCountryCode(countryCode);
-      debugPrint('===== GameRepository: Fetching games for country $normalizedCode =====');
+      debugPrint(
+        '===== GameRepository: Fetching games for country $normalizedCode =====',
+      );
 
       // Order by date_start first to group games by day, then by last_move_time
       final response = await supabase
@@ -383,7 +391,9 @@ class GameRepository extends BaseRepository {
 
       final games = await compute(_decodeGamesInIsolate, jsonList);
 
-      debugPrint('===== GameRepository: Fetched ${games.length} games for country =====');
+      debugPrint(
+        '===== GameRepository: Fetched ${games.length} games for country =====',
+      );
 
       return games;
     });
@@ -398,7 +408,9 @@ class GameRepository extends BaseRepository {
     bool onlyLive = false,
   }) async {
     return handleApiCall(() async {
-      debugPrint('===== GameRepository: Fetching high ELO games (>= $minElo) =====');
+      debugPrint(
+        '===== GameRepository: Fetching high ELO games (>= $minElo) =====',
+      );
 
       // Fetch more games than needed since we filter by ELO in Dart
       // (JSONB nested field filtering is complex in Supabase)
@@ -414,7 +426,9 @@ class GameRepository extends BaseRepository {
           .order('last_move_time', ascending: false, nullsFirst: false)
           .range(
             offset,
-            offset + limit * (onlyLive ? 2 : 3) - 1, // Fetch extra to compensate for ELO filter
+            offset +
+                limit * (onlyLive ? 2 : 3) -
+                1, // Fetch extra to compensate for ELO filter
           );
 
       final response = await query;
@@ -425,12 +439,18 @@ class GameRepository extends BaseRepository {
       var games = await compute(_decodeGamesInIsolate, jsonList);
 
       // Filter games where at least one player has ELO >= minElo
-      games = games.where((game) {
-        if (game.players == null || game.players!.isEmpty) return false;
-        return game.players!.any((player) => player.rating >= minElo);
-      }).take(limit).toList();
+      games =
+          games
+              .where((game) {
+                if (game.players == null || game.players!.isEmpty) return false;
+                return game.players!.any((player) => player.rating >= minElo);
+              })
+              .take(limit)
+              .toList();
 
-      debugPrint('===== GameRepository: Fetched ${games.length} high ELO games (>= $minElo) =====');
+      debugPrint(
+        '===== GameRepository: Fetched ${games.length} high ELO games (>= $minElo) =====',
+      );
 
       return games;
     });
@@ -438,10 +458,7 @@ class GameRepository extends BaseRepository {
 
   /// Get LIVE games (status = '*') - highest priority in For You
   /// These are ongoing games with recent activity
-  Future<List<Games>> getLiveGames({
-    int limit = 30,
-    int offset = 0,
-  }) async {
+  Future<List<Games>> getLiveGames({int limit = 30, int offset = 0}) async {
     return handleApiCall(() async {
       debugPrint('===== GameRepository: Fetching LIVE games =====');
 
@@ -459,7 +476,9 @@ class GameRepository extends BaseRepository {
 
       final games = await compute(_decodeGamesInIsolate, jsonList);
 
-      debugPrint('===== GameRepository: Fetched ${games.length} LIVE games =====');
+      debugPrint(
+        '===== GameRepository: Fetched ${games.length} LIVE games =====',
+      );
 
       return games;
     });
@@ -471,7 +490,8 @@ class GameRepository extends BaseRepository {
   /// The caller is responsible for pagination. This method fetches exactly
   /// `limit` games starting at `offset` with server-side ELO filtering.
   /// Returns: (filteredGames, rawGamesFetched).
-  Future<({List<Games> games, int rawFetched})> getCountrymanGamesWithMinEloAndRawCount({
+  Future<({List<Games> games, int rawFetched})>
+  getCountrymanGamesWithMinEloAndRawCount({
     required String countryCode,
     int minElo = 2300,
     int limit = 20,
@@ -479,7 +499,9 @@ class GameRepository extends BaseRepository {
   }) async {
     return handleApiCall(() async {
       final normalizedCode = _normalizeCountryCode(countryCode);
-      debugPrint('===== GameRepository: Fetching countryman games (ELO >= $minElo) for countryCode="$normalizedCode", limit=$limit, rawOffset=$rawOffset =====');
+      debugPrint(
+        '===== GameRepository: Fetching countryman games (ELO >= $minElo) for countryCode="$normalizedCode", limit=$limit, rawOffset=$rawOffset =====',
+      );
 
       // Order by date_start first to group games by day, then by last_move_time
       // This ensures all games from today appear together, even if some have NULL last_move_time
@@ -532,7 +554,9 @@ class GameRepository extends BaseRepository {
       final fideIdInts = _parseFideIds(fideIds);
       if (fideIdInts.isEmpty) return <Games>[];
 
-      debugPrint('===== GameRepository: Fetching LIVE games for ${fideIdInts.length} players =====');
+      debugPrint(
+        '===== GameRepository: Fetching LIVE games for ${fideIdInts.length} players =====',
+      );
 
       // Order by date_start first to group games by day, then by last_move_time
       final response = await supabase
@@ -549,7 +573,9 @@ class GameRepository extends BaseRepository {
 
       final games = await compute(_decodeGamesInIsolate, jsonList);
 
-      debugPrint('===== GameRepository: Fetched ${games.length} LIVE games for players =====');
+      debugPrint(
+        '===== GameRepository: Fetched ${games.length} LIVE games for players =====',
+      );
 
       return games;
     });
@@ -563,7 +589,9 @@ class GameRepository extends BaseRepository {
     return handleApiCall(() async {
       if (eventIds.isEmpty) return <Games>[];
 
-      debugPrint('===== GameRepository: Fetching LIVE games for ${eventIds.length} events =====');
+      debugPrint(
+        '===== GameRepository: Fetching LIVE games for ${eventIds.length} events =====',
+      );
 
       // Order by date_start first to group games by day, then by last_move_time
       final response = await supabase
@@ -580,7 +608,9 @@ class GameRepository extends BaseRepository {
 
       final games = await compute(_decodeGamesInIsolate, jsonList);
 
-      debugPrint('===== GameRepository: Fetched ${games.length} LIVE games for events =====');
+      debugPrint(
+        '===== GameRepository: Fetched ${games.length} LIVE games for events =====',
+      );
 
       return games;
     });
@@ -603,7 +633,10 @@ class GameRepository extends BaseRepository {
           .from('games')
           .select(_gameListSelectColumns)
           .eq('tour_id', tourId)
-          .order('board_nr', ascending: true) // Lower board number = higher boards
+          .order(
+            'board_nr',
+            ascending: true,
+          ) // Lower board number = higher boards
           .limit(limit * 3); // Fetch extra for filtering
 
       final jsonList =
@@ -618,8 +651,16 @@ class GameRepository extends BaseRepository {
 
       // Sort by max ELO (highest first) - top boards have highest rated players
       games.sort((a, b) {
-        final maxEloA = a.players?.map((p) => p.rating).fold<int>(0, (max, r) => r > max ? r : max) ?? 0;
-        final maxEloB = b.players?.map((p) => p.rating).fold<int>(0, (max, r) => r > max ? r : max) ?? 0;
+        final maxEloA =
+            a.players
+                ?.map((p) => p.rating)
+                .fold<int>(0, (max, r) => r > max ? r : max) ??
+            0;
+        final maxEloB =
+            b.players
+                ?.map((p) => p.rating)
+                .fold<int>(0, (max, r) => r > max ? r : max) ??
+            0;
         return maxEloB.compareTo(maxEloA);
       });
 
@@ -645,10 +686,11 @@ class GameRepository extends BaseRepository {
     String? status,
   }) async {
     return handleApiCall(() async {
-      final normalizedTerms = terms
-          .map((t) => t.trim().toLowerCase())
-          .where((t) => t.isNotEmpty)
-          .toList();
+      final normalizedTerms =
+          terms
+              .map((t) => t.trim().toLowerCase())
+              .where((t) => t.isNotEmpty)
+              .toList();
 
       if (normalizedTerms.isEmpty) return <Games>[];
 
@@ -692,7 +734,9 @@ class GameRepository extends BaseRepository {
       final trimmedQuery = query.trim();
       if (trimmedQuery.isEmpty && countryCode == null) return <Games>[];
 
-      debugPrint('[GameRepository] searchGamesFlexible: query="$trimmedQuery", countryCode=$countryCode, limit=$limit, offset=$offset');
+      debugPrint(
+        '[GameRepository] searchGamesFlexible: query="$trimmedQuery", countryCode=$countryCode, limit=$limit, offset=$offset',
+      );
 
       // Build the query with ILIKE on the name column
       var dbQuery = supabase.from('games').select(_gameListSelectColumns);
@@ -704,7 +748,9 @@ class GameRepository extends BaseRepository {
 
       // If we have a country filter, add it
       if (countryCode != null && countryCode.isNotEmpty) {
-        dbQuery = dbQuery.contains('player_feds', [_normalizeCountryCode(countryCode)]);
+        dbQuery = dbQuery.contains('player_feds', [
+          _normalizeCountryCode(countryCode),
+        ]);
       }
 
       // Order by date_start first to group games by day, then by last_move_time
@@ -733,7 +779,9 @@ class GameRepository extends BaseRepository {
   }) async {
     return handleApiCall(() async {
       final normalizedCode = _normalizeCountryCode(countryCode);
-      debugPrint('[GameRepository] searchCountrymenGames: country=$normalizedCode, query=$query');
+      debugPrint(
+        '[GameRepository] searchCountrymenGames: country=$normalizedCode, query=$query',
+      );
 
       var dbQuery = supabase
           .from('games')
@@ -742,7 +790,9 @@ class GameRepository extends BaseRepository {
 
       // Add text search if query provided (searches player names, ECO code, and opening name)
       if (query != null && query.trim().isNotEmpty) {
-        dbQuery = dbQuery.or('name.ilike.%${query.trim()}%,eco.ilike.%${query.trim()}%,opening_name.ilike.%${query.trim()}%');
+        dbQuery = dbQuery.or(
+          'name.ilike.%${query.trim()}%,eco.ilike.%${query.trim()}%,opening_name.ilike.%${query.trim()}%',
+        );
       }
 
       // Order by date_start first to group games by day, then by last_move_time
@@ -751,7 +801,9 @@ class GameRepository extends BaseRepository {
           .order('last_move_time', ascending: false, nullsFirst: false)
           .range(offset, offset + limit - 1);
 
-      debugPrint('[GameRepository] searchCountrymenGames: raw results = ${(response as List).length}');
+      debugPrint(
+        '[GameRepository] searchCountrymenGames: raw results = ${(response as List).length}',
+      );
 
       final jsonList = response.map((item) => json.encode(item)).toList();
       final games = await compute(_decodeGamesInIsolate, jsonList);
@@ -770,7 +822,9 @@ class GameRepository extends BaseRepository {
     int offset = 0,
   }) async {
     return handleApiCall(() async {
-      debugPrint('[GameRepository] searchFavoritesGames: fideIds=${fideIds.length}, query=$query, offset=$offset');
+      debugPrint(
+        '[GameRepository] searchFavoritesGames: fideIds=${fideIds.length}, query=$query, offset=$offset',
+      );
 
       final fideIdInts = _parseFideIds(fideIds);
       if (fideIdInts.isEmpty) return <Games>[];
@@ -782,7 +836,9 @@ class GameRepository extends BaseRepository {
 
       // Add text search if query provided (searches player names, ECO code, and opening name)
       if (query != null && query.trim().isNotEmpty) {
-        dbQuery = dbQuery.or('name.ilike.%${query.trim()}%,eco.ilike.%${query.trim()}%,opening_name.ilike.%${query.trim()}%');
+        dbQuery = dbQuery.or(
+          'name.ilike.%${query.trim()}%,eco.ilike.%${query.trim()}%,opening_name.ilike.%${query.trim()}%',
+        );
       }
 
       // Order and paginate
@@ -791,9 +847,12 @@ class GameRepository extends BaseRepository {
           .order('last_move_time', ascending: false, nullsFirst: false)
           .range(offset, offset + limit - 1);
 
-      debugPrint('[GameRepository] searchFavoritesGames: results = ${(response as List).length}');
+      debugPrint(
+        '[GameRepository] searchFavoritesGames: results = ${(response as List).length}',
+      );
 
-      final jsonList = (response as List).map((item) => json.encode(item)).toList();
+      final jsonList =
+          (response as List).map((item) => json.encode(item)).toList();
       final games = await compute(_decodeGamesInIsolate, jsonList);
 
       return games;
@@ -828,7 +887,9 @@ class GameRepository extends BaseRepository {
 
       // Handle null response gracefully
       if (response == null) {
-        debugPrint('[GameRepository] Warning: null response from getGamesFromTourIds query');
+        debugPrint(
+          '[GameRepository] Warning: null response from getGamesFromTourIds query',
+        );
         return <Games>[];
       }
 
@@ -837,12 +898,16 @@ class GameRepository extends BaseRepository {
       if (response is List) {
         responseList = response;
       } else {
-        debugPrint('[GameRepository] Warning: response is not a List, got ${response.runtimeType}');
+        debugPrint(
+          '[GameRepository] Warning: response is not a List, got ${response.runtimeType}',
+        );
         return <Games>[];
       }
 
       if (responseList.isEmpty) {
-        debugPrint('[GameRepository] Empty response from getGamesFromTourIds query');
+        debugPrint(
+          '[GameRepository] Empty response from getGamesFromTourIds query',
+        );
         return <Games>[];
       }
 
@@ -889,7 +954,9 @@ class GameRepository extends BaseRepository {
         final liveRoundId = liveResponse.first['round_id'];
         if (liveRoundId is String && liveRoundId.isNotEmpty) {
           currentRoundIds = {liveRoundId};
-          debugPrint('[GameRepository] ForYou: Found live round: $currentRoundIds');
+          debugPrint(
+            '[GameRepository] ForYou: Found live round: $currentRoundIds',
+          );
         }
       }
 
@@ -905,7 +972,9 @@ class GameRepository extends BaseRepository {
 
         if (recentResponse is List && recentResponse.isNotEmpty) {
           currentRoundIds.add(recentResponse.first['round_id'] as String);
-          debugPrint('[GameRepository] ForYou: Most recent round: $currentRoundIds');
+          debugPrint(
+            '[GameRepository] ForYou: Most recent round: $currentRoundIds',
+          );
         }
       }
 
@@ -923,14 +992,18 @@ class GameRepository extends BaseRepository {
               .order('starts_at', ascending: true)
               .limit(1);
         } catch (e) {
-          debugPrint('[GameRepository] ForYou: Failed to load upcoming rounds ($e)');
+          debugPrint(
+            '[GameRepository] ForYou: Failed to load upcoming rounds ($e)',
+          );
         }
 
         if (roundResponse is List && roundResponse.isNotEmpty) {
           final roundId = roundResponse.first['id'];
           if (roundId is String && roundId.isNotEmpty) {
             currentRoundIds.add(roundId);
-            debugPrint('[GameRepository] ForYou: Earliest upcoming round: $currentRoundIds');
+            debugPrint(
+              '[GameRepository] ForYou: Earliest upcoming round: $currentRoundIds',
+            );
           }
         }
       }
@@ -947,7 +1020,8 @@ class GameRepository extends BaseRepository {
 
       final games = <Games>[];
       if (gamesResponse is List && gamesResponse.isNotEmpty) {
-        final jsonList = gamesResponse.map((item) => json.encode(item)).toList();
+        final jsonList =
+            gamesResponse.map((item) => json.encode(item)).toList();
         games.addAll(await compute(_decodeGamesInIsolate, jsonList));
       }
 
@@ -960,8 +1034,9 @@ class GameRepository extends BaseRepository {
 
   static int _extractRoundNumberStatic(String? roundSlug) {
     if (roundSlug == null || roundSlug.isEmpty) return 0;
-    final match = RegExp(r'round-?(\d+)', caseSensitive: false).firstMatch(roundSlug) ??
-                  RegExp(r'(\d+)').firstMatch(roundSlug);
+    final match =
+        RegExp(r'round-?(\d+)', caseSensitive: false).firstMatch(roundSlug) ??
+        RegExp(r'(\d+)').firstMatch(roundSlug);
     return int.tryParse(match?.group(1) ?? '0') ?? 0;
   }
 
@@ -996,7 +1071,9 @@ class GameRepository extends BaseRepository {
       final fideIdInts = _parseFideIds(fideIds);
       if (fideIdInts.isEmpty) return <DateTime>[];
 
-      debugPrint('[GameRepository] getDistinctDatesForFavorites: fideIds=${fideIdInts.length}');
+      debugPrint(
+        '[GameRepository] getDistinctDatesForFavorites: fideIds=${fideIdInts.length}',
+      );
 
       final response = await supabase.rpc(
         'get_distinct_dates_for_favorites',
@@ -1020,7 +1097,9 @@ class GameRepository extends BaseRepository {
       }
 
       final filteredDates = _filterOutFutureDates(dates);
-      debugPrint('[GameRepository] getDistinctDatesForFavorites: found ${filteredDates.length} dates');
+      debugPrint(
+        '[GameRepository] getDistinctDatesForFavorites: found ${filteredDates.length} dates',
+      );
       return filteredDates;
     });
   }
@@ -1036,14 +1115,17 @@ class GameRepository extends BaseRepository {
       final fideIdInts = _parseFideIds(fideIds);
       if (fideIdInts.isEmpty) return <Games>[];
 
-      final dateStr = '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+      final dateStr =
+          '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
       final dayStartUtc = DateTime.utc(date.year, date.month, date.day);
       final nextDayUtc = dayStartUtc.add(const Duration(days: 1));
       final dayFilter =
           'game_day.eq.$dateStr,'
           'and(game_day.is.null,last_move_time.gte.${dayStartUtc.toIso8601String()},last_move_time.lt.${nextDayUtc.toIso8601String()}),'
           'and(game_day.is.null,last_move_time.is.null,date_start.eq.$dateStr)';
-      debugPrint('[GameRepository] getGamesByFideIdsAndDate: fideIds=${fideIdInts.length}, date=$dateStr, eco=$eco');
+      debugPrint(
+        '[GameRepository] getGamesByFideIdsAndDate: fideIds=${fideIdInts.length}, date=$dateStr, eco=$eco',
+      );
 
       // Fetch ALL games for this date (no limit)
       var dbQuery = supabase
@@ -1056,15 +1138,20 @@ class GameRepository extends BaseRepository {
         dbQuery = dbQuery.eq('eco', eco);
       }
 
-      final response = await dbQuery
-          .order('last_move_time', ascending: false, nullsFirst: false);
+      final response = await dbQuery.order(
+        'last_move_time',
+        ascending: false,
+        nullsFirst: false,
+      );
 
       final jsonList =
           (response as List).map((item) => json.encode(item)).toList();
 
       final games = await compute(_decodeGamesInIsolate, jsonList);
 
-      debugPrint('[GameRepository] getGamesByFideIdsAndDate: found ${games.length} games for $dateStr');
+      debugPrint(
+        '[GameRepository] getGamesByFideIdsAndDate: found ${games.length} games for $dateStr',
+      );
       return games;
     });
   }
@@ -1079,7 +1166,9 @@ class GameRepository extends BaseRepository {
   }) async {
     return handleApiCall(() async {
       final normalizedCode = _normalizeCountryCode(countryCode);
-      debugPrint('[GameRepository] getDistinctDatesForCountry: countryCode=$normalizedCode');
+      debugPrint(
+        '[GameRepository] getDistinctDatesForCountry: countryCode=$normalizedCode',
+      );
 
       final response = await supabase.rpc(
         'get_distinct_dates_for_country',
@@ -1104,7 +1193,9 @@ class GameRepository extends BaseRepository {
       }
 
       final filteredDates = _filterOutFutureDates(dates);
-      debugPrint('[GameRepository] getDistinctDatesForCountry: found ${filteredDates.length} dates');
+      debugPrint(
+        '[GameRepository] getDistinctDatesForCountry: found ${filteredDates.length} dates',
+      );
       return filteredDates;
     });
   }
@@ -1130,14 +1221,17 @@ class GameRepository extends BaseRepository {
   }) async {
     return handleApiCall(() async {
       final normalizedCode = _normalizeCountryCode(countryCode);
-      final dateStr = '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+      final dateStr =
+          '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
       final dayStartUtc = DateTime.utc(date.year, date.month, date.day);
       final nextDayUtc = dayStartUtc.add(const Duration(days: 1));
       final dayFilter =
           'game_day.eq.$dateStr,'
           'and(game_day.is.null,last_move_time.gte.${dayStartUtc.toIso8601String()},last_move_time.lt.${nextDayUtc.toIso8601String()}),'
           'and(game_day.is.null,last_move_time.is.null,date_start.eq.$dateStr)';
-      debugPrint('[GameRepository] getGamesByCountryAndDate: countryCode=$normalizedCode, date=$dateStr, eco=$eco');
+      debugPrint(
+        '[GameRepository] getGamesByCountryAndDate: countryCode=$normalizedCode, date=$dateStr, eco=$eco',
+      );
 
       // No limit - fetch ALL games for this date
       var dbQuery = supabase
@@ -1151,15 +1245,20 @@ class GameRepository extends BaseRepository {
         dbQuery = dbQuery.eq('eco', eco);
       }
 
-      final response = await dbQuery
-          .order('last_move_time', ascending: false, nullsFirst: false);
+      final response = await dbQuery.order(
+        'last_move_time',
+        ascending: false,
+        nullsFirst: false,
+      );
 
       final jsonList =
           (response as List).map((item) => json.encode(item)).toList();
 
       final games = await compute(_decodeGamesInIsolate, jsonList);
 
-      debugPrint('[GameRepository] getGamesByCountryAndDate: found ${games.length} games');
+      debugPrint(
+        '[GameRepository] getGamesByCountryAndDate: found ${games.length} games',
+      );
       return games;
     });
   }

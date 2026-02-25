@@ -19,7 +19,9 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 /// NOTE: Using keepAlive to prevent data loss when scrolling/interacting.
 /// This ensures consistent search results and scroll position preservation.
 final searchGamesProvider = StateNotifierProvider.autoDispose<
-    SearchGamesNotifier, AsyncValue<List<Games>>>((ref) {
+  SearchGamesNotifier,
+  AsyncValue<List<Games>>
+>((ref) {
   // CRITICAL: Keep provider alive during search session to prevent:
   // 1. Data discrepancy when scrolling/interacting
   // 2. Re-fetching games unnecessarily
@@ -31,8 +33,9 @@ final searchGamesProvider = StateNotifierProvider.autoDispose<
 
 /// Provider for grouped games (by event/group_broadcast) for UI display
 /// Uses tour_id to group_broadcast_id mapping to properly group multiple rounds of same event
-final groupedSearchGamesProvider =
-    FutureProvider.autoDispose<List<GroupedSearchGames>>((ref) async {
+final groupedSearchGamesProvider = FutureProvider.autoDispose<
+  List<GroupedSearchGames>
+>((ref) async {
   ref.keepAlive(); // Keep alive to match main provider
 
   final games = ref.watch(searchGamesProvider).valueOrNull ?? [];
@@ -63,11 +66,14 @@ final groupedSearchGamesProvider =
   final groupBroadcastNames = <String, String>{};
   for (final groupId in uniqueGroupBroadcastIds) {
     try {
-      final groupBroadcast = await groupBroadcastRepository.getGroupBroadcastById(groupId);
+      final groupBroadcast = await groupBroadcastRepository
+          .getGroupBroadcastById(groupId);
       groupBroadcastNames[groupId] = groupBroadcast.name;
     } catch (e) {
       // Fallback: find the shortest tour name for this group (likely the parent name)
-      final toursInGroup = tours.where((t) => (t.groupBroadcastId ?? t.id) == groupId);
+      final toursInGroup = tours.where(
+        (t) => (t.groupBroadcastId ?? t.id) == groupId,
+      );
       if (toursInGroup.isNotEmpty) {
         // Use shortest name as it's usually the base event name without qualifiers
         final shortestName = toursInGroup
@@ -105,7 +111,8 @@ final groupedSearchGamesProvider =
       }
 
       grouped[groupBroadcastId] = GroupedSearchGames(
-        tourId: groupBroadcastId, // Using group_broadcast_id as the ID for navigation
+        tourId:
+            groupBroadcastId, // Using group_broadcast_id as the ID for navigation
         tourName: groupName,
         games: [],
         hasLiveGames: false,
@@ -121,10 +128,11 @@ final groupedSearchGamesProvider =
   }
 
   // Build the result list and sort groups by relevance
-  final result = groupOrder
-      .where((id) => grouped[id]!.games.isNotEmpty)
-      .map((groupId) => grouped[groupId]!)
-      .toList();
+  final result =
+      groupOrder
+          .where((id) => grouped[id]!.games.isNotEmpty)
+          .map((groupId) => grouped[groupId]!)
+          .toList();
 
   // Sort groups: live events first, then by tournament date (most recent first)
   result.sort((a, b) {
@@ -176,13 +184,14 @@ final groupedSearchGamesProvider =
 });
 
 /// Provider for converted games (Games to GamesTourModel)
-final convertedSearchGamesProvider =
-    Provider.autoDispose<List<GamesTourModel>>((ref) {
-  ref.keepAlive(); // Keep alive to match main provider
+final convertedSearchGamesProvider = Provider.autoDispose<List<GamesTourModel>>(
+  (ref) {
+    ref.keepAlive(); // Keep alive to match main provider
 
-  final games = ref.watch(searchGamesProvider).valueOrNull ?? [];
-  return games.map((game) => GamesTourModel.fromGame(game)).toList();
-});
+    final games = ref.watch(searchGamesProvider).valueOrNull ?? [];
+    return games.map((game) => GamesTourModel.fromGame(game)).toList();
+  },
+);
 
 /// Global set to track which game IDs have been animated in search tab
 final searchAnimatedGameIds = <String>{};
@@ -220,7 +229,9 @@ class SearchGamesNotifier extends StateNotifier<AsyncValue<List<Games>>> {
     // CRITICAL: Skip if we already have valid results for this exact query
     // This prevents unnecessary re-fetches when scrolling/interacting
     if (trimmedQuery == _currentQuery && _allGames.isNotEmpty && !_isFetching) {
-      debugPrint('[SearchGames] Skipping duplicate search for "$trimmedQuery" - already have ${_allGames.length} games');
+      debugPrint(
+        '[SearchGames] Skipping duplicate search for "$trimmedQuery" - already have ${_allGames.length} games',
+      );
       return;
     }
 
@@ -264,7 +275,10 @@ class SearchGamesNotifier extends StateNotifier<AsyncValue<List<Games>>> {
         if (player == null) continue;
 
         final score = _playerMatchScore(player.name, query);
-        final candidate = _ScoredPlayerResult(result: result, matchScore: score);
+        final candidate = _ScoredPlayerResult(
+          result: result,
+          matchScore: score,
+        );
         final key = player.name.toLowerCase();
         final existing = playersByName[key];
 
@@ -274,30 +288,32 @@ class SearchGamesNotifier extends StateNotifier<AsyncValue<List<Games>>> {
       }
 
       // Sort deduplicated players by how well they match the query, then rating.
-      final uniquePlayerResults = playersByName.values.toList()
-        ..sort((a, b) {
-          if (a.matchScore != b.matchScore) {
-            return b.matchScore.compareTo(a.matchScore);
-          }
+      final uniquePlayerResults =
+          playersByName.values.toList()..sort((a, b) {
+            if (a.matchScore != b.matchScore) {
+              return b.matchScore.compareTo(a.matchScore);
+            }
 
-          final aRating = a.result.player?.rating ?? 0;
-          final bRating = b.result.player?.rating ?? 0;
-          if (aRating != bRating) {
-            return bRating.compareTo(aRating);
-          }
+            final aRating = a.result.player?.rating ?? 0;
+            final bRating = b.result.player?.rating ?? 0;
+            if (aRating != bRating) {
+              return bRating.compareTo(aRating);
+            }
 
-          final aHasFide = a.result.player?.fideId != null;
-          final bHasFide = b.result.player?.fideId != null;
-          if (aHasFide != bHasFide) {
-            return aHasFide ? -1 : 1;
-          }
+            final aHasFide = a.result.player?.fideId != null;
+            final bHasFide = b.result.player?.fideId != null;
+            if (aHasFide != bHasFide) {
+              return aHasFide ? -1 : 1;
+            }
 
-          return a.result.player!.name.compareTo(b.result.player!.name);
-        });
+            return a.result.player!.name.compareTo(b.result.player!.name);
+          });
 
       final topPlayers = uniquePlayerResults.take(_maxPlayers).toList();
 
-      debugPrint('[SearchGames] Found ${topPlayers.length} unique top players for "$query"');
+      debugPrint(
+        '[SearchGames] Found ${topPlayers.length} unique top players for "$query"',
+      );
       for (final candidate in topPlayers) {
         final player = candidate.result.player!;
         debugPrint(
@@ -310,8 +326,8 @@ class SearchGamesNotifier extends StateNotifier<AsyncValue<List<Games>>> {
         final fallbackFed = searchResults.countryFedCode;
         if (fallbackFed != null && fallbackFed.isNotEmpty) {
           try {
-            final countryGames =
-                await gameRepository.getGamesByCountryCodePaginated(
+            final countryGames = await gameRepository
+                .getGamesByCountryCodePaginated(
                   countryCode: fallbackFed,
                   limit: _countryFallbackLimit,
                 );
@@ -345,17 +361,21 @@ class SearchGamesNotifier extends StateNotifier<AsyncValue<List<Games>>> {
           games = await gameRepository.getGamesByFideId(
             topPlayer.fideId.toString(),
           );
-          debugPrint('[SearchGames] Fetched ${games.length} games for ${topPlayer.name} by FIDE ID ${topPlayer.fideId}');
+          debugPrint(
+            '[SearchGames] Fetched ${games.length} games for ${topPlayer.name} by FIDE ID ${topPlayer.fideId}',
+          );
         } else {
           // Fallback to player name - no limit
-          games = await gameRepository.getGamesByPlayerName(
-            topPlayer.name,
+          games = await gameRepository.getGamesByPlayerName(topPlayer.name);
+          debugPrint(
+            '[SearchGames] Fetched ${games.length} games for ${topPlayer.name} by name',
           );
-          debugPrint('[SearchGames] Fetched ${games.length} games for ${topPlayer.name} by name');
         }
         allGames.addAll(games);
       } catch (e) {
-        debugPrint('[SearchGames] Error fetching games for ${topPlayer.name}: $e');
+        debugPrint(
+          '[SearchGames] Error fetching games for ${topPlayer.name}: $e',
+        );
       }
 
       _allGames.addAll(allGames);
@@ -366,14 +386,16 @@ class SearchGamesNotifier extends StateNotifier<AsyncValue<List<Games>>> {
             topPlayer.fed?.toUpperCase() ?? searchResults.countryFedCode;
         if (fallbackFed != null && fallbackFed.isNotEmpty) {
           try {
-            final countryGames =
-                await gameRepository.getGamesByCountryCodePaginated(
+            final countryGames = await gameRepository
+                .getGamesByCountryCodePaginated(
                   countryCode: fallbackFed,
                   limit: _countryFallbackLimit,
                 );
             _allGames.addAll(countryGames);
           } catch (e) {
-            debugPrint('[SearchGames] Country fallback (player-fed) failed: $e');
+            debugPrint(
+              '[SearchGames] Country fallback (player-fed) failed: $e',
+            );
           }
         }
       }
@@ -472,10 +494,7 @@ class GroupedSearchGames {
 
 /// Internal wrapper to keep match score alongside the search result for ranking.
 class _ScoredPlayerResult {
-  const _ScoredPlayerResult({
-    required this.result,
-    required this.matchScore,
-  });
+  const _ScoredPlayerResult({required this.result, required this.matchScore});
 
   final SearchResult result;
   final int matchScore;
@@ -502,11 +521,12 @@ class _ScoredPlayerResult {
 }
 
 int _playerMatchScore(String playerName, String query) {
-  String normalize(String value) => value
-      .toLowerCase()
-      .replaceAll(',', ' ')
-      .replaceAll(RegExp(r'\s+'), ' ')
-      .trim();
+  String normalize(String value) =>
+      value
+          .toLowerCase()
+          .replaceAll(',', ' ')
+          .replaceAll(RegExp(r'\s+'), ' ')
+          .trim();
 
   final normalizedQuery = normalize(query);
   if (normalizedQuery.isEmpty) return 0;

@@ -20,10 +20,12 @@ class ChessBoardSettingsPage extends ConsumerStatefulWidget {
   }
 
   @override
-  ConsumerState<ChessBoardSettingsPage> createState() => _ChessBoardSettingsPageState();
+  ConsumerState<ChessBoardSettingsPage> createState() =>
+      _ChessBoardSettingsPageState();
 }
 
-class _ChessBoardSettingsPageState extends ConsumerState<ChessBoardSettingsPage> {
+class _ChessBoardSettingsPageState
+    extends ConsumerState<ChessBoardSettingsPage> {
   final Set<Future<void>> _pendingPersists = {};
 
   void _trackPersist(Future<void> future) {
@@ -34,7 +36,9 @@ class _ChessBoardSettingsPageState extends ConsumerState<ChessBoardSettingsPage>
   Future<bool> _onWillPop() async {
     // Wait for all pending persistence operations to complete before allowing navigation
     if (_pendingPersists.isNotEmpty) {
-      debugPrint('⏳ Waiting for ${_pendingPersists.length} pending settings to persist...');
+      debugPrint(
+        '⏳ Waiting for ${_pendingPersists.length} pending settings to persist...',
+      );
       await Future.wait(_pendingPersists);
       debugPrint('✅ All settings persisted, allowing navigation');
     }
@@ -56,42 +60,55 @@ class _ChessBoardSettingsPageState extends ConsumerState<ChessBoardSettingsPage>
         }
       },
       child: Scaffold(
-      backgroundColor: kBackgroundColor,
-      appBar: AppBar(
-        title: Text(
-          'Board Settings',
-          style: AppTypography.textLgMedium.copyWith(
-            color: kWhiteColor,
-            fontSize: 16.f,
-          ),
-        ),
         backgroundColor: kBackgroundColor,
-        centerTitle: false,
-      ),
+        appBar: AppBar(
+          title: Text(
+            'Board Settings',
+            style: AppTypography.textLgMedium.copyWith(
+              color: kWhiteColor,
+              fontSize: 16.f,
+            ),
+          ),
+          backgroundColor: kBackgroundColor,
+          centerTitle: false,
+        ),
         body: settingsAsync.when(
-          data: (engineSettings) => boardSettingsAsync.when(
-            data: (boardSettings) => _buildSettings(context, engineSettings, boardSettings),
-            loading: () => const Center(child: CircularProgressIndicator()),
-            error: (error, stack) => Center(
-              child: Text(
-                'Error loading board settings',
-                style: AppTypography.textMdRegular.copyWith(color: kWhiteColor),
+          data:
+              (engineSettings) => boardSettingsAsync.when(
+                data:
+                    (boardSettings) =>
+                        _buildSettings(context, engineSettings, boardSettings),
+                loading: () => const Center(child: CircularProgressIndicator()),
+                error:
+                    (error, stack) => Center(
+                      child: Text(
+                        'Error loading board settings',
+                        style: AppTypography.textMdRegular.copyWith(
+                          color: kWhiteColor,
+                        ),
+                      ),
+                    ),
               ),
-            ),
-          ),
           loading: () => const Center(child: CircularProgressIndicator()),
-          error: (error, stack) => Center(
-            child: Text(
-              'Error loading settings',
-              style: AppTypography.textMdRegular.copyWith(color: kWhiteColor),
-            ),
-          ),
+          error:
+              (error, stack) => Center(
+                child: Text(
+                  'Error loading settings',
+                  style: AppTypography.textMdRegular.copyWith(
+                    color: kWhiteColor,
+                  ),
+                ),
+              ),
         ),
       ),
     );
   }
 
-  Widget _buildSettings(BuildContext context, EngineSettings settings, BoardSettingsNew boardSettings) {
+  Widget _buildSettings(
+    BuildContext context,
+    EngineSettings settings,
+    BoardSettingsNew boardSettings,
+  ) {
     final notifier = ref.read(engineSettingsProviderNew.notifier);
     final boardNotifier = ref.read(boardSettingsProviderNew.notifier);
 
@@ -105,9 +122,7 @@ class _ChessBoardSettingsPageState extends ConsumerState<ChessBoardSettingsPage>
 
     return Center(
       child: ConstrainedBox(
-        constraints: BoxConstraints(
-          maxWidth: ResponsiveHelper.contentMaxWidth,
-        ),
+        constraints: BoxConstraints(maxWidth: ResponsiveHelper.contentMaxWidth),
         child: ListView(
           padding: EdgeInsets.only(
             left: horizontalPadding,
@@ -116,483 +131,510 @@ class _ChessBoardSettingsPageState extends ConsumerState<ChessBoardSettingsPage>
             bottom: 16.sp + bottomPadding,
           ),
           children: [
-        _SectionLabel(title: 'Engine Experience'),
-        SizedBox(height: 12.h),
-        _SettingCard(
-          child: Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Evaluation Bar',
-                      style: AppTypography.textMdMedium.copyWith(
-                        color: kWhiteColor,
-                        fontSize: 13.f,
-                      ),
-                    ),
-                    SizedBox(height: 4.h),
-                    Text(
-                      'Display a bar showing which side is winning.',
-                      style: AppTypography.textSmRegular.copyWith(
-                        color: kWhiteColor70,
-                        fontSize: 11.f,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Switch.adaptive(
-                value: settings.showEngineGauge,
-                thumbColor: WidgetStatePropertyAll(kPrimaryColor),
-                trackColor: WidgetStateProperty.resolveWith(
-                  (states) => states.contains(WidgetState.selected)
-                      ? kPrimaryColor.withValues(alpha: 0.35)
-                      : kDividerColor.withValues(alpha: 0.5),
-                ),
-                onChanged: (value) {
-                  _trackPersist(notifier.toggleEngineGauge(value));
-                },
-              ),
-            ],
-          ),
-        ),
-        SizedBox(height: 18.h),
-        _SettingCard(
-          child: Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Computer Analysis',
-                      style: AppTypography.textMdMedium.copyWith(
-                        color: kWhiteColor,
-                        fontSize: 13.f,
-                      ),
-                    ),
-                    SizedBox(height: 4.h),
-                    Text(
-                      'Enable Stockfish to analyze positions and suggest best moves.',
-                      style: AppTypography.textSmRegular.copyWith(
-                        color: kWhiteColor70,
-                        fontSize: 11.f,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Switch.adaptive(
-                value: settings.showEngineAnalysis,
-                thumbColor: WidgetStateProperty.resolveWith(
-                  (states) => states.contains(WidgetState.selected)
-                      ? kPrimaryColor
-                      : kWhiteColor.withValues(alpha: 0.6),
-                ),
-                trackColor: WidgetStateProperty.resolveWith(
-                  (states) => states.contains(WidgetState.selected)
-                      ? kPrimaryColor.withValues(alpha: 0.35)
-                      : kDividerColor.withValues(alpha: 0.5),
-                ),
-                onChanged: (value) {
-                  _trackPersist(notifier.toggleEngineAnalysis(value));
-                },
-              ),
-            ],
-          ),
-        ),
-        SizedBox(height: 18.h),
-        _SettingCard(
-          child: Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Analysis Depth Indicator',
-                      style: AppTypography.textMdMedium.copyWith(
-                        color: kWhiteColor,
-                        fontSize: 13.f,
-                      ),
-                    ),
-                    SizedBox(height: 4.h),
-                    Text(
-                      'Show how deep the engine is calculating (higher = more accurate).',
-                      style: AppTypography.textSmRegular.copyWith(
-                        color: kWhiteColor70,
-                        fontSize: 11.f,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Switch.adaptive(
-                value: settings.showDepthOverlay,
-                thumbColor: WidgetStateProperty.resolveWith(
-                  (states) => states.contains(WidgetState.selected)
-                      ? kPrimaryColor
-                      : kWhiteColor.withValues(alpha: 0.6),
-                ),
-                trackColor: WidgetStateProperty.resolveWith(
-                  (states) => states.contains(WidgetState.selected)
-                      ? kPrimaryColor.withValues(alpha: 0.35)
-                      : kDividerColor.withValues(alpha: 0.5),
-                ),
-                onChanged: (value) {
-                  _trackPersist(notifier.toggleDepthOverlay(value));
-                },
-              ),
-            ],
-          ),
-        ),
-        SizedBox(height: 18.h),
-        _SettingCard(
-          child: Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Show Arrows',
-                      style: AppTypography.textMdMedium.copyWith(
-                        color: kWhiteColor,
-                        fontSize: 13.f,
-                      ),
-                    ),
-                    SizedBox(height: 4.h),
-                    Text(
-                      'Draw arrows on the board showing recommended moves.',
-                      style: AppTypography.textSmRegular.copyWith(
-                        color: kWhiteColor70,
-                        fontSize: 11.f,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Switch.adaptive(
-                value: settings.showPvArrows,
-                thumbColor: WidgetStateProperty.resolveWith(
-                  (states) => states.contains(WidgetState.selected)
-                      ? kPrimaryColor
-                      : kWhiteColor.withValues(alpha: 0.6),
-                ),
-                trackColor: WidgetStateProperty.resolveWith(
-                  (states) => states.contains(WidgetState.selected)
-                      ? kPrimaryColor.withValues(alpha: 0.35)
-                      : kDividerColor.withValues(alpha: 0.5),
-                ),
-                onChanged: (value) {
-                  _trackPersist(notifier.togglePvArrows(value));
-                },
-              ),
-            ],
-          ),
-        ),
-        SizedBox(height: 18.h),
-        _SettingCard(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Thinking Time',
-                style: AppTypography.textMdMedium.copyWith(
-                  color: kWhiteColor,
-                  fontSize: 13.f,
-                ),
-              ),
-              SizedBox(height: 4.h),
-              Text(
-                'How long the engine thinks per move. Longer = stronger analysis.',
-                style: AppTypography.textSmRegular.copyWith(
-                  color: kWhiteColor70,
-                  fontSize: 11.f,
-                ),
-              ),
-              SizedBox(height: 14.h),
-              _DiscreteSlider(
-                value: settings.searchTimeIndex.toDouble(),
-                divisions: EngineSettings.searchTimeLabels.length - 1,
-                labels: EngineSettings.searchTimeLabels,
-                onChanged: (value) {
-                  final index = value.toInt();
-                  final label = EngineSettings.searchTimeLabels[index];
-                  debugPrint('🎛️  Settings UI: Search time changed to index=$index ($label)');
-                  _trackPersist(notifier.setSearchTimeIndex(index));
-                },
-              ),
-              SizedBox(height: 6.h),
-              Text(
-                'Current: ${settings.searchTimeLabel()}',
-                style: AppTypography.textSmMedium.copyWith(
-                  color: kWhiteColor70,
-                  fontSize: 11.f,
-                ),
-              ),
-            ],
-          ),
-        ),
-        SizedBox(height: 18.h),
-        _SettingCard(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Number of Lines',
-                style: AppTypography.textMdMedium.copyWith(
-                  color: kWhiteColor,
-                  fontSize: 13.f,
-                ),
-              ),
-              SizedBox(height: 4.h),
-              Text(
-                'How many alternative move sequences to show.',
-                style: AppTypography.textSmRegular.copyWith(
-                  color: kWhiteColor70,
-                  fontSize: 11.f,
-                ),
-              ),
-              SizedBox(height: 14.h),
-              _DiscreteSlider(
-                value: settings.principalVariationIndex.toDouble(),
-                divisions: EngineSettings.principalVariationLabels.length - 1,
-                labels: EngineSettings.principalVariationLabels,
-                onChanged: (value) {
-                  final index = value.toInt();
-                  final label = EngineSettings.principalVariationLabels[index];
-                  debugPrint('🎛️  Settings UI: PV setting changed to index=$index ($label)');
-                  _trackPersist(notifier.setPrincipalVariationIndex(index));
-                },
-              ),
-              SizedBox(height: 6.h),
-              Text(
-                'Current: ${settings.principalVariationLabel()}',
-                style: AppTypography.textSmMedium.copyWith(
-                  color: kWhiteColor70,
-                  fontSize: 11.f,
-                ),
-              ),
-            ],
-          ),
-        ),
-        SizedBox(height: 18.h),
-        _SettingCard(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Arrow Count',
-                style: AppTypography.textMdMedium.copyWith(
-                  color: kWhiteColor,
-                  fontSize: 13.f,
-                ),
-              ),
-              SizedBox(height: 4.h),
-              Text(
-                'Maximum arrows to display for suggested moves.',
-                style: AppTypography.textSmRegular.copyWith(
-                  color: kWhiteColor70,
-                  fontSize: 11.f,
-                ),
-              ),
-              SizedBox(height: 14.h),
-              _DiscreteSlider(
-                value: settings.maxArrowsOnBoard.toDouble(),
-                divisions: EngineSettings.maxArrowsLabels.length - 1,
-                labels: EngineSettings.maxArrowsLabels,
-                onChanged: (value) {
-                  final index = value.toInt();
-                  final label = EngineSettings.maxArrowsLabels[index];
-                  debugPrint('🎛️  Settings UI: Max arrows changed to index=$index ($label)');
-                  _trackPersist(notifier.setMaxArrowsOnBoard(index));
-                },
-              ),
-              SizedBox(height: 6.h),
-              Text(
-                'Current: ${settings.maxArrowsLabel()}',
-                style: AppTypography.textSmMedium.copyWith(
-                  color: kWhiteColor70,
-                  fontSize: 11.f,
-                ),
-              ),
-            ],
-          ),
-        ),
-
-        // Board Settings Section
-        SizedBox(height: 24.h),
-        _SectionLabel(title: 'Board Settings'),
-        SizedBox(height: 12.h),
-
-        _SettingCard(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Games View Mode',
-                style: AppTypography.textMdMedium.copyWith(
-                  color: kWhiteColor,
-                  fontSize: 13.f,
-                ),
-              ),
-              SizedBox(height: 4.h),
-              Text(
-                'Choose how games are displayed in tournament lists.',
-                style: AppTypography.textSmRegular.copyWith(
-                  color: kWhiteColor70,
-                  fontSize: 11.f,
-                ),
-              ),
-              SizedBox(height: 14.h),
-              _ViewModeSelector(
-                selectedIndex: boardSettings.gamesListViewModeIndex,
-                onModeSelected: (index) {
-                  debugPrint('🎛️  Settings UI: Games view mode changed to index=$index');
-                  _trackPersist(boardNotifier.setGamesListViewModeIndex(index));
-                },
-              ),
-            ],
-          ),
-        ),
-        SizedBox(height: 18.h),
-
-        // Board Theme Selector - Tap to open gallery
-        _BoardThemePickerCard(
-          currentIndex: boardSettings.boardThemeIndex,
-          onThemeSelected: (index) {
-            _trackPersist(boardNotifier.setBoardThemeIndex(index));
-          },
-        ),
-        SizedBox(height: 18.h),
-
-        // Piece Set Selector - Tap to open gallery
-        _PieceSetPickerCard(
-          currentIndex: boardSettings.pieceStyleIndex,
-          onPieceSetSelected: (index) {
-            _trackPersist(boardNotifier.setPieceSetIndex(index));
-          },
-        ),
-        SizedBox(height: 18.h),
-
-        // Sound Effects Toggle
-        _SettingCard(
-          child: Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Sound Effects',
-                      style: AppTypography.textMdMedium.copyWith(
-                        color: kWhiteColor,
-                        fontSize: 13.f,
-                      ),
-                    ),
-                    SizedBox(height: 4.h),
-                    Text(
-                      'Play sounds for moves, captures, and game events.',
-                      style: AppTypography.textSmRegular.copyWith(
-                        color: kWhiteColor70,
-                        fontSize: 11.f,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Switch.adaptive(
-                value: boardSettings.soundEnabled,
-                thumbColor: WidgetStateProperty.resolveWith(
-                  (states) => states.contains(WidgetState.selected)
-                      ? kPrimaryColor
-                      : kWhiteColor.withValues(alpha: 0.6),
-                ),
-                trackColor: WidgetStateProperty.resolveWith(
-                  (states) => states.contains(WidgetState.selected)
-                      ? kPrimaryColor.withValues(alpha: 0.35)
-                      : kDividerColor.withValues(alpha: 0.5),
-                ),
-                onChanged: (value) {
-                  _trackPersist(boardNotifier.toggleSound(value));
-                },
-              ),
-            ],
-          ),
-        ),
-        SizedBox(height: 18.h),
-
-        // Figurine Notation Toggle
-        _SettingCard(
-          child: Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
+            _SectionLabel(title: 'Engine Experience'),
+            SizedBox(height: 12.h),
+            _SettingCard(
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Figurine Notation',
+                          'Evaluation Bar',
                           style: AppTypography.textMdMedium.copyWith(
                             color: kWhiteColor,
                             fontSize: 13.f,
                           ),
                         ),
-                        SizedBox(width: 8.w),
-                        // Preview badge showing the difference
-                        Container(
-                          padding: EdgeInsets.symmetric(horizontal: 8.sp, vertical: 2.sp),
-                          decoration: BoxDecoration(
-                            color: kPrimaryColor.withValues(alpha: 0.15),
-                            borderRadius: BorderRadius.circular(6.br),
-                            border: Border.all(color: kPrimaryColor.withValues(alpha: 0.3)),
-                          ),
-                          child: Text(
-                            boardSettings.useFigurine ? '♞f3' : 'Nf3',
-                            style: AppTypography.textSmMedium.copyWith(
-                              color: kPrimaryColor,
-                              fontSize: 11.f,
-                            ),
+                        SizedBox(height: 4.h),
+                        Text(
+                          'Display a bar showing which side is winning.',
+                          style: AppTypography.textSmRegular.copyWith(
+                            color: kWhiteColor70,
+                            fontSize: 11.f,
                           ),
                         ),
                       ],
                     ),
-                    SizedBox(height: 4.h),
-                    Text(
-                      'Show chess piece symbols (♔♕♖♗♘) instead of letters (K, Q, R, B, N) in move notation.',
-                      style: AppTypography.textSmRegular.copyWith(
-                        color: kWhiteColor70,
-                        fontSize: 11.f,
-                      ),
+                  ),
+                  Switch.adaptive(
+                    value: settings.showEngineGauge,
+                    thumbColor: WidgetStatePropertyAll(kPrimaryColor),
+                    trackColor: WidgetStateProperty.resolveWith(
+                      (states) =>
+                          states.contains(WidgetState.selected)
+                              ? kPrimaryColor.withValues(alpha: 0.35)
+                              : kDividerColor.withValues(alpha: 0.5),
                     ),
-                  ],
-                ),
+                    onChanged: (value) {
+                      _trackPersist(notifier.toggleEngineGauge(value));
+                    },
+                  ),
+                ],
               ),
-              Switch.adaptive(
-                value: boardSettings.useFigurine,
-                thumbColor: WidgetStateProperty.resolveWith(
-                  (states) => states.contains(WidgetState.selected)
-                      ? kPrimaryColor
-                      : kWhiteColor.withValues(alpha: 0.6),
-                ),
-                trackColor: WidgetStateProperty.resolveWith(
-                  (states) => states.contains(WidgetState.selected)
-                      ? kPrimaryColor.withValues(alpha: 0.35)
-                      : kDividerColor.withValues(alpha: 0.5),
-                ),
-                onChanged: (value) {
-                  _trackPersist(boardNotifier.toggleFigurine(value));
-                },
+            ),
+            SizedBox(height: 18.h),
+            _SettingCard(
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Computer Analysis',
+                          style: AppTypography.textMdMedium.copyWith(
+                            color: kWhiteColor,
+                            fontSize: 13.f,
+                          ),
+                        ),
+                        SizedBox(height: 4.h),
+                        Text(
+                          'Enable Stockfish to analyze positions and suggest best moves.',
+                          style: AppTypography.textSmRegular.copyWith(
+                            color: kWhiteColor70,
+                            fontSize: 11.f,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Switch.adaptive(
+                    value: settings.showEngineAnalysis,
+                    thumbColor: WidgetStateProperty.resolveWith(
+                      (states) =>
+                          states.contains(WidgetState.selected)
+                              ? kPrimaryColor
+                              : kWhiteColor.withValues(alpha: 0.6),
+                    ),
+                    trackColor: WidgetStateProperty.resolveWith(
+                      (states) =>
+                          states.contains(WidgetState.selected)
+                              ? kPrimaryColor.withValues(alpha: 0.35)
+                              : kDividerColor.withValues(alpha: 0.5),
+                    ),
+                    onChanged: (value) {
+                      _trackPersist(notifier.toggleEngineAnalysis(value));
+                    },
+                  ),
+                ],
               ),
-            ],
-          ),
-        ),
+            ),
+            SizedBox(height: 18.h),
+            _SettingCard(
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Analysis Depth Indicator',
+                          style: AppTypography.textMdMedium.copyWith(
+                            color: kWhiteColor,
+                            fontSize: 13.f,
+                          ),
+                        ),
+                        SizedBox(height: 4.h),
+                        Text(
+                          'Show how deep the engine is calculating (higher = more accurate).',
+                          style: AppTypography.textSmRegular.copyWith(
+                            color: kWhiteColor70,
+                            fontSize: 11.f,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Switch.adaptive(
+                    value: settings.showDepthOverlay,
+                    thumbColor: WidgetStateProperty.resolveWith(
+                      (states) =>
+                          states.contains(WidgetState.selected)
+                              ? kPrimaryColor
+                              : kWhiteColor.withValues(alpha: 0.6),
+                    ),
+                    trackColor: WidgetStateProperty.resolveWith(
+                      (states) =>
+                          states.contains(WidgetState.selected)
+                              ? kPrimaryColor.withValues(alpha: 0.35)
+                              : kDividerColor.withValues(alpha: 0.5),
+                    ),
+                    onChanged: (value) {
+                      _trackPersist(notifier.toggleDepthOverlay(value));
+                    },
+                  ),
+                ],
+              ),
+            ),
+            SizedBox(height: 18.h),
+            _SettingCard(
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Show Arrows',
+                          style: AppTypography.textMdMedium.copyWith(
+                            color: kWhiteColor,
+                            fontSize: 13.f,
+                          ),
+                        ),
+                        SizedBox(height: 4.h),
+                        Text(
+                          'Draw arrows on the board showing recommended moves.',
+                          style: AppTypography.textSmRegular.copyWith(
+                            color: kWhiteColor70,
+                            fontSize: 11.f,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Switch.adaptive(
+                    value: settings.showPvArrows,
+                    thumbColor: WidgetStateProperty.resolveWith(
+                      (states) =>
+                          states.contains(WidgetState.selected)
+                              ? kPrimaryColor
+                              : kWhiteColor.withValues(alpha: 0.6),
+                    ),
+                    trackColor: WidgetStateProperty.resolveWith(
+                      (states) =>
+                          states.contains(WidgetState.selected)
+                              ? kPrimaryColor.withValues(alpha: 0.35)
+                              : kDividerColor.withValues(alpha: 0.5),
+                    ),
+                    onChanged: (value) {
+                      _trackPersist(notifier.togglePvArrows(value));
+                    },
+                  ),
+                ],
+              ),
+            ),
+            SizedBox(height: 18.h),
+            _SettingCard(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Thinking Time',
+                    style: AppTypography.textMdMedium.copyWith(
+                      color: kWhiteColor,
+                      fontSize: 13.f,
+                    ),
+                  ),
+                  SizedBox(height: 4.h),
+                  Text(
+                    'How long the engine thinks per move. Longer = stronger analysis.',
+                    style: AppTypography.textSmRegular.copyWith(
+                      color: kWhiteColor70,
+                      fontSize: 11.f,
+                    ),
+                  ),
+                  SizedBox(height: 14.h),
+                  _DiscreteSlider(
+                    value: settings.searchTimeIndex.toDouble(),
+                    divisions: EngineSettings.searchTimeLabels.length - 1,
+                    labels: EngineSettings.searchTimeLabels,
+                    onChanged: (value) {
+                      final index = value.toInt();
+                      final label = EngineSettings.searchTimeLabels[index];
+                      debugPrint(
+                        '🎛️  Settings UI: Search time changed to index=$index ($label)',
+                      );
+                      _trackPersist(notifier.setSearchTimeIndex(index));
+                    },
+                  ),
+                  SizedBox(height: 6.h),
+                  Text(
+                    'Current: ${settings.searchTimeLabel()}',
+                    style: AppTypography.textSmMedium.copyWith(
+                      color: kWhiteColor70,
+                      fontSize: 11.f,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            SizedBox(height: 18.h),
+            _SettingCard(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Number of Lines',
+                    style: AppTypography.textMdMedium.copyWith(
+                      color: kWhiteColor,
+                      fontSize: 13.f,
+                    ),
+                  ),
+                  SizedBox(height: 4.h),
+                  Text(
+                    'How many alternative move sequences to show.',
+                    style: AppTypography.textSmRegular.copyWith(
+                      color: kWhiteColor70,
+                      fontSize: 11.f,
+                    ),
+                  ),
+                  SizedBox(height: 14.h),
+                  _DiscreteSlider(
+                    value: settings.principalVariationIndex.toDouble(),
+                    divisions:
+                        EngineSettings.principalVariationLabels.length - 1,
+                    labels: EngineSettings.principalVariationLabels,
+                    onChanged: (value) {
+                      final index = value.toInt();
+                      final label =
+                          EngineSettings.principalVariationLabels[index];
+                      debugPrint(
+                        '🎛️  Settings UI: PV setting changed to index=$index ($label)',
+                      );
+                      _trackPersist(notifier.setPrincipalVariationIndex(index));
+                    },
+                  ),
+                  SizedBox(height: 6.h),
+                  Text(
+                    'Current: ${settings.principalVariationLabel()}',
+                    style: AppTypography.textSmMedium.copyWith(
+                      color: kWhiteColor70,
+                      fontSize: 11.f,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            SizedBox(height: 18.h),
+            _SettingCard(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Arrow Count',
+                    style: AppTypography.textMdMedium.copyWith(
+                      color: kWhiteColor,
+                      fontSize: 13.f,
+                    ),
+                  ),
+                  SizedBox(height: 4.h),
+                  Text(
+                    'Maximum arrows to display for suggested moves.',
+                    style: AppTypography.textSmRegular.copyWith(
+                      color: kWhiteColor70,
+                      fontSize: 11.f,
+                    ),
+                  ),
+                  SizedBox(height: 14.h),
+                  _DiscreteSlider(
+                    value: settings.maxArrowsOnBoard.toDouble(),
+                    divisions: EngineSettings.maxArrowsLabels.length - 1,
+                    labels: EngineSettings.maxArrowsLabels,
+                    onChanged: (value) {
+                      final index = value.toInt();
+                      final label = EngineSettings.maxArrowsLabels[index];
+                      debugPrint(
+                        '🎛️  Settings UI: Max arrows changed to index=$index ($label)',
+                      );
+                      _trackPersist(notifier.setMaxArrowsOnBoard(index));
+                    },
+                  ),
+                  SizedBox(height: 6.h),
+                  Text(
+                    'Current: ${settings.maxArrowsLabel()}',
+                    style: AppTypography.textSmMedium.copyWith(
+                      color: kWhiteColor70,
+                      fontSize: 11.f,
+                    ),
+                  ),
+                ],
+              ),
+            ),
 
-        ],
+            // Board Settings Section
+            SizedBox(height: 24.h),
+            _SectionLabel(title: 'Board Settings'),
+            SizedBox(height: 12.h),
+
+            _SettingCard(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Games View Mode',
+                    style: AppTypography.textMdMedium.copyWith(
+                      color: kWhiteColor,
+                      fontSize: 13.f,
+                    ),
+                  ),
+                  SizedBox(height: 4.h),
+                  Text(
+                    'Choose how games are displayed in tournament lists.',
+                    style: AppTypography.textSmRegular.copyWith(
+                      color: kWhiteColor70,
+                      fontSize: 11.f,
+                    ),
+                  ),
+                  SizedBox(height: 14.h),
+                  _ViewModeSelector(
+                    selectedIndex: boardSettings.gamesListViewModeIndex,
+                    onModeSelected: (index) {
+                      debugPrint(
+                        '🎛️  Settings UI: Games view mode changed to index=$index',
+                      );
+                      _trackPersist(
+                        boardNotifier.setGamesListViewModeIndex(index),
+                      );
+                    },
+                  ),
+                ],
+              ),
+            ),
+            SizedBox(height: 18.h),
+
+            // Board Theme Selector - Tap to open gallery
+            _BoardThemePickerCard(
+              currentIndex: boardSettings.boardThemeIndex,
+              onThemeSelected: (index) {
+                _trackPersist(boardNotifier.setBoardThemeIndex(index));
+              },
+            ),
+            SizedBox(height: 18.h),
+
+            // Piece Set Selector - Tap to open gallery
+            _PieceSetPickerCard(
+              currentIndex: boardSettings.pieceStyleIndex,
+              onPieceSetSelected: (index) {
+                _trackPersist(boardNotifier.setPieceSetIndex(index));
+              },
+            ),
+            SizedBox(height: 18.h),
+
+            // Sound Effects Toggle
+            _SettingCard(
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Sound Effects',
+                          style: AppTypography.textMdMedium.copyWith(
+                            color: kWhiteColor,
+                            fontSize: 13.f,
+                          ),
+                        ),
+                        SizedBox(height: 4.h),
+                        Text(
+                          'Play sounds for moves, captures, and game events.',
+                          style: AppTypography.textSmRegular.copyWith(
+                            color: kWhiteColor70,
+                            fontSize: 11.f,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Switch.adaptive(
+                    value: boardSettings.soundEnabled,
+                    thumbColor: WidgetStateProperty.resolveWith(
+                      (states) =>
+                          states.contains(WidgetState.selected)
+                              ? kPrimaryColor
+                              : kWhiteColor.withValues(alpha: 0.6),
+                    ),
+                    trackColor: WidgetStateProperty.resolveWith(
+                      (states) =>
+                          states.contains(WidgetState.selected)
+                              ? kPrimaryColor.withValues(alpha: 0.35)
+                              : kDividerColor.withValues(alpha: 0.5),
+                    ),
+                    onChanged: (value) {
+                      _trackPersist(boardNotifier.toggleSound(value));
+                    },
+                  ),
+                ],
+              ),
+            ),
+            SizedBox(height: 18.h),
+
+            // Figurine Notation Toggle
+            _SettingCard(
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Text(
+                              'Figurine Notation',
+                              style: AppTypography.textMdMedium.copyWith(
+                                color: kWhiteColor,
+                                fontSize: 13.f,
+                              ),
+                            ),
+                            SizedBox(width: 8.w),
+                            // Preview badge showing the difference
+                            Container(
+                              padding: EdgeInsets.symmetric(
+                                horizontal: 8.sp,
+                                vertical: 2.sp,
+                              ),
+                              decoration: BoxDecoration(
+                                color: kPrimaryColor.withValues(alpha: 0.15),
+                                borderRadius: BorderRadius.circular(6.br),
+                                border: Border.all(
+                                  color: kPrimaryColor.withValues(alpha: 0.3),
+                                ),
+                              ),
+                              child: Text(
+                                boardSettings.useFigurine ? '♞f3' : 'Nf3',
+                                style: AppTypography.textSmMedium.copyWith(
+                                  color: kPrimaryColor,
+                                  fontSize: 11.f,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        SizedBox(height: 4.h),
+                        Text(
+                          'Show chess piece symbols (♔♕♖♗♘) instead of letters (K, Q, R, B, N) in move notation.',
+                          style: AppTypography.textSmRegular.copyWith(
+                            color: kWhiteColor70,
+                            fontSize: 11.f,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Switch.adaptive(
+                    value: boardSettings.useFigurine,
+                    thumbColor: WidgetStateProperty.resolveWith(
+                      (states) =>
+                          states.contains(WidgetState.selected)
+                              ? kPrimaryColor
+                              : kWhiteColor.withValues(alpha: 0.6),
+                    ),
+                    trackColor: WidgetStateProperty.resolveWith(
+                      (states) =>
+                          states.contains(WidgetState.selected)
+                              ? kPrimaryColor.withValues(alpha: 0.35)
+                              : kDividerColor.withValues(alpha: 0.5),
+                    ),
+                    onChanged: (value) {
+                      _trackPersist(boardNotifier.toggleFigurine(value));
+                    },
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -646,11 +688,16 @@ class _BoardThemePickerCard extends StatelessWidget {
                 ),
                 // Count badge
                 Container(
-                  padding: EdgeInsets.symmetric(horizontal: 10.sp, vertical: 4.sp),
+                  padding: EdgeInsets.symmetric(
+                    horizontal: 10.sp,
+                    vertical: 4.sp,
+                  ),
                   decoration: BoxDecoration(
                     color: kPrimaryColor.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(12.br),
-                    border: Border.all(color: kPrimaryColor.withValues(alpha: 0.3)),
+                    border: Border.all(
+                      color: kPrimaryColor.withValues(alpha: 0.3),
+                    ),
                   ),
                   child: Text(
                     '${kBoardThemes.length}',
@@ -747,13 +794,14 @@ class _BoardThemePickerCard extends StatelessWidget {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       constraints: ResponsiveHelper.bottomSheetConstraints,
-      builder: (context) => _BoardThemeGallerySheet(
-        currentIndex: currentIndex,
-        onThemeSelected: (index) {
-          onThemeSelected(index);
-          Navigator.pop(context);
-        },
-      ),
+      builder:
+          (context) => _BoardThemeGallerySheet(
+            currentIndex: currentIndex,
+            onThemeSelected: (index) {
+              onThemeSelected(index);
+              Navigator.pop(context);
+            },
+          ),
     );
   }
 }
@@ -769,7 +817,8 @@ class _BoardThemeGallerySheet extends StatefulWidget {
   final ValueChanged<int> onThemeSelected;
 
   @override
-  State<_BoardThemeGallerySheet> createState() => _BoardThemeGallerySheetState();
+  State<_BoardThemeGallerySheet> createState() =>
+      _BoardThemeGallerySheetState();
 }
 
 class _BoardThemeGallerySheetState extends State<_BoardThemeGallerySheet> {
@@ -834,7 +883,11 @@ class _BoardThemeGallerySheetState extends State<_BoardThemeGallerySheet> {
                 // Close button
                 IconButton(
                   onPressed: () => Navigator.pop(context),
-                  icon: Icon(Icons.close_rounded, color: kSecondaryTextColor, size: 24.ic),
+                  icon: Icon(
+                    Icons.close_rounded,
+                    color: kSecondaryTextColor,
+                    size: 24.ic,
+                  ),
                   style: IconButton.styleFrom(
                     backgroundColor: kBlack3Color,
                     padding: EdgeInsets.all(8.sp),
@@ -908,15 +961,16 @@ class _BoardThemeGridItem extends StatelessWidget {
             color: isSelected ? kPrimaryColor : Colors.transparent,
             width: 2,
           ),
-          boxShadow: isSelected
-              ? [
-                  BoxShadow(
-                    color: kPrimaryColor.withValues(alpha: 0.3),
-                    blurRadius: 12,
-                    spreadRadius: 0,
-                  ),
-                ]
-              : null,
+          boxShadow:
+              isSelected
+                  ? [
+                    BoxShadow(
+                      color: kPrimaryColor.withValues(alpha: 0.3),
+                      blurRadius: 12,
+                      spreadRadius: 0,
+                    ),
+                  ]
+                  : null,
         ),
         child: Column(
           children: [
@@ -942,7 +996,10 @@ class _BoardThemeGridItem extends StatelessWidget {
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(8.br),
                         child: CustomPaint(
-                          size: Size(constraints.maxWidth, constraints.maxHeight),
+                          size: Size(
+                            constraints.maxWidth,
+                            constraints.maxHeight,
+                          ),
                           painter: _BoardThemePreviewPainter(
                             lightColor: theme.colorScheme.lightSquare,
                             darkColor: theme.colorScheme.darkSquare,
@@ -1002,7 +1059,12 @@ class _BoardThemePreviewPainter extends CustomPainter {
         final isLight = (row + col) % 2 == 0;
         final paint = isLight ? lightPaint : darkPaint;
         canvas.drawRect(
-          Rect.fromLTWH(col * cellWidth, row * cellHeight, cellWidth, cellHeight),
+          Rect.fromLTWH(
+            col * cellWidth,
+            row * cellHeight,
+            cellWidth,
+            cellHeight,
+          ),
           paint,
         );
       }
@@ -1012,8 +1074,8 @@ class _BoardThemePreviewPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant _BoardThemePreviewPainter oldDelegate) {
     return oldDelegate.lightColor != lightColor ||
-           oldDelegate.darkColor != darkColor ||
-           oldDelegate.gridSize != gridSize;
+        oldDelegate.darkColor != darkColor ||
+        oldDelegate.gridSize != gridSize;
   }
 }
 
@@ -1064,11 +1126,16 @@ class _PieceSetPickerCard extends StatelessWidget {
                 ),
                 // Count badge
                 Container(
-                  padding: EdgeInsets.symmetric(horizontal: 10.sp, vertical: 4.sp),
+                  padding: EdgeInsets.symmetric(
+                    horizontal: 10.sp,
+                    vertical: 4.sp,
+                  ),
                   decoration: BoxDecoration(
                     color: kPrimaryColor.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(12.br),
-                    border: Border.all(color: kPrimaryColor.withValues(alpha: 0.3)),
+                    border: Border.all(
+                      color: kPrimaryColor.withValues(alpha: 0.3),
+                    ),
                   ),
                   child: Text(
                     '${kPieceSets.length}',
@@ -1113,7 +1180,8 @@ class _PieceSetPickerCard extends StatelessWidget {
                           child: Padding(
                             padding: EdgeInsets.all(4.sp),
                             child: Image(
-                              image: currentPieceSet.assets[PieceKind.whiteKing]!,
+                              image:
+                                  currentPieceSet.assets[PieceKind.whiteKing]!,
                               fit: BoxFit.contain,
                             ),
                           ),
@@ -1122,7 +1190,8 @@ class _PieceSetPickerCard extends StatelessWidget {
                           child: Padding(
                             padding: EdgeInsets.all(4.sp),
                             child: Image(
-                              image: currentPieceSet.assets[PieceKind.blackQueen]!,
+                              image:
+                                  currentPieceSet.assets[PieceKind.blackQueen]!,
                               fit: BoxFit.contain,
                             ),
                           ),
@@ -1177,13 +1246,14 @@ class _PieceSetPickerCard extends StatelessWidget {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       constraints: ResponsiveHelper.bottomSheetConstraints,
-      builder: (context) => _PieceSetGallerySheet(
-        currentIndex: currentIndex,
-        onPieceSetSelected: (index) {
-          onPieceSetSelected(index);
-          Navigator.pop(context);
-        },
-      ),
+      builder:
+          (context) => _PieceSetGallerySheet(
+            currentIndex: currentIndex,
+            onPieceSetSelected: (index) {
+              onPieceSetSelected(index);
+              Navigator.pop(context);
+            },
+          ),
     );
   }
 }
@@ -1264,7 +1334,11 @@ class _PieceSetGallerySheetState extends State<_PieceSetGallerySheet> {
                 // Close button
                 IconButton(
                   onPressed: () => Navigator.pop(context),
-                  icon: Icon(Icons.close_rounded, color: kSecondaryTextColor, size: 24.ic),
+                  icon: Icon(
+                    Icons.close_rounded,
+                    color: kSecondaryTextColor,
+                    size: 24.ic,
+                  ),
                   style: IconButton.styleFrom(
                     backgroundColor: kBlack3Color,
                     padding: EdgeInsets.all(8.sp),
@@ -1339,15 +1413,16 @@ class _PieceSetGridItem extends StatelessWidget {
             color: isSelected ? kPrimaryColor : Colors.transparent,
             width: 2,
           ),
-          boxShadow: isSelected
-              ? [
-                  BoxShadow(
-                    color: kPrimaryColor.withValues(alpha: 0.3),
-                    blurRadius: 12,
-                    spreadRadius: 0,
-                  ),
-                ]
-              : null,
+          boxShadow:
+              isSelected
+                  ? [
+                    BoxShadow(
+                      color: kPrimaryColor.withValues(alpha: 0.3),
+                      blurRadius: 12,
+                      spreadRadius: 0,
+                    ),
+                  ]
+                  : null,
         ),
         child: Column(
           children: [
@@ -1395,8 +1470,13 @@ class _PieceSetGridItem extends StatelessWidget {
               width: double.infinity,
               padding: EdgeInsets.symmetric(horizontal: 4.sp, vertical: 6.sp),
               decoration: BoxDecoration(
-                color: isSelected ? kPrimaryColor.withValues(alpha: 0.1) : Colors.transparent,
-                borderRadius: BorderRadius.vertical(bottom: Radius.circular(10.br)),
+                color:
+                    isSelected
+                        ? kPrimaryColor.withValues(alpha: 0.1)
+                        : Colors.transparent,
+                borderRadius: BorderRadius.vertical(
+                  bottom: Radius.circular(10.br),
+                ),
               ),
               child: Text(
                 pieceSet.label,
@@ -1452,7 +1532,6 @@ class _SettingCard extends StatelessWidget {
     );
   }
 }
-
 
 class _DiscreteSlider extends StatelessWidget {
   const _DiscreteSlider({

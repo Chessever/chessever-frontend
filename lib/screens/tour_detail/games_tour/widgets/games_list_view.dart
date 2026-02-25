@@ -51,17 +51,20 @@ class GamesListView extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     // Expansion states for rounds and matches
     // In search mode, override expansion to show everything
-    final matchExpansionState = isSearchMode
-        ? <String, bool>{} // Empty map means all expanded by default
-        : ref.watch(matchExpansionProvider);
-    final roundExpansionState = isSearchMode
-        ? <String, bool>{} // Empty map means all expanded by default
-        : ref.watch(roundExpansionProvider);
+    final matchExpansionState =
+        isSearchMode
+            ? <String, bool>{} // Empty map means all expanded by default
+            : ref.watch(matchExpansionProvider);
+    final roundExpansionState =
+        isSearchMode
+            ? <String, bool>{} // Empty map means all expanded by default
+            : ref.watch(roundExpansionProvider);
 
     // Pre-calculate match groupings once for knockout tournaments to avoid repeated calculations
-    final matchGroupsByRound = isKnockoutTournament
-        ? _preCalculateMatchGroups(rounds, gamesByRound)
-        : <String, Map<String, List<GamesTourModel>>>{};
+    final matchGroupsByRound =
+        isKnockoutTournament
+            ? _preCalculateMatchGroups(rounds, gamesByRound)
+            : <String, Map<String, List<GamesTourModel>>>{};
 
     // For multi-stage knockouts, build ordered games list from gamesByRound
     final orderedGamesList = _buildOrderedGamesList(
@@ -110,9 +113,8 @@ class GamesListView extends ConsumerWidget {
           // and pass it to items to ensure they have bounded width.
           // ScrollablePositionedList can give unbounded width to items,
           // which breaks nested Expanded widgets.
-          final itemWidth = ResponsiveHelper.isTablet
-              ? outerConstraints.maxWidth
-              : null;
+          final itemWidth =
+              ResponsiveHelper.isTablet ? outerConstraints.maxWidth : null;
 
           return ScrollablePositionedList.builder(
             itemScrollController: itemScrollController,
@@ -120,106 +122,127 @@ class GamesListView extends ConsumerWidget {
             itemCount: itemCount,
             itemBuilder: (context, index) {
               final lookup = _lookupItem(
-            index: index,
-            rounds: rounds,
-            gamesByRound: gamesByRound,
-            mode: gamesListViewMode,
-            matchExpansionState: matchExpansionState,
-            roundExpansionState: roundExpansionState,
-            isKnockoutTournament: isKnockoutTournament,
-            displayMode: displayMode,
-            matchGroupsByRound: matchGroupsByRound,
-            isSearchMode: isSearchMode,
-            matchFormatHeader: matchFormatHeader,
-          );
+                index: index,
+                rounds: rounds,
+                gamesByRound: gamesByRound,
+                mode: gamesListViewMode,
+                matchExpansionState: matchExpansionState,
+                roundExpansionState: roundExpansionState,
+                isKnockoutTournament: isKnockoutTournament,
+                displayMode: displayMode,
+                matchGroupsByRound: matchGroupsByRound,
+                isSearchMode: isSearchMode,
+                matchFormatHeader: matchFormatHeader,
+              );
 
-          if (lookup == null) {
-            return const SizedBox.shrink();
-          }
+              if (lookup == null) {
+                return const SizedBox.shrink();
+              }
 
-          if (lookup is _MatchFormatHeaderData) {
-            return Padding(
-              padding: EdgeInsets.only(bottom: 16.sp),
-              child: MatchHeader(
-                match: lookup.matchHeader,
-                isExpanded: true,
-                onToggle: null,
-              ),
-            );
-          }
-
-          if (lookup is _HeaderData) {
-            final isRoundExpanded = isSearchMode
-                ? true
-                : ref.watch(roundExpansionStateProvider(lookup.round.id));
-            return Padding(
-              padding: EdgeInsets.only(bottom: 16.sp),
-              child: RoundHeader(
-                round: lookup.round,
-                roundGames: lookup.roundGames,
-                isExpanded: isRoundExpanded,
-                onToggle: isSearchMode
-                    ? null // Disable toggle in search mode
-                    : () {
-                        ref
-                            .read(roundExpansionProvider.notifier)
-                            .toggleRound(lookup.round.id);
-                      },
-              ),
-            );
-          }
-
-          if (lookup is _MatchHeaderData) {
-            final matchKey = lookup.matchHeader.matchKey;
-            final isExpanded = isSearchMode
-                ? true
-                : ref.watch(matchExpansionStateProvider(matchKey));
-
-            return Padding(
-              padding: EdgeInsets.only(bottom: 12.sp),
-              child: MatchHeader(
-                match: lookup.matchHeader,
-                isExpanded: isExpanded,
-                onToggle: isSearchMode
-                    ? null // Disable toggle in search mode
-                    : () {
-                        ref.read(matchExpansionProvider.notifier).toggleMatch(matchKey);
-                      },
-              ),
-            );
-          }
-
-          if (lookup is _GameRowData) {
-            Widget rowContent = Padding(
-              padding: EdgeInsets.only(
-                bottom: lookup.isLastInSection ? 20.sp : 12.sp,
-              ),
-              child:
-                  gamesListViewMode == GamesListViewMode.chessBoardGrid
-                      ? _buildGridRow(context, ref, lookup, orderedGamesList, matchGroupsByRound)
-                      : _buildCardRow(context, ref, lookup, orderedGamesList, matchGroupsByRound),
-            );
-            // TABLET: Wrap with SizedBox to provide bounded width
-            if (itemWidth != null) {
-              if (gamesListViewMode != GamesListViewMode.chessBoardGrid && ResponsiveHelper.isTablet) {
-                // Compact List View for Tablet
-                rowContent = SizedBox(
-                  width: itemWidth,
-                  child: Center(
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 600.0),
-                      child: rowContent,
-                    ),
+              if (lookup is _MatchFormatHeaderData) {
+                return Padding(
+                  padding: EdgeInsets.only(bottom: 16.sp),
+                  child: MatchHeader(
+                    match: lookup.matchHeader,
+                    isExpanded: true,
+                    onToggle: null,
                   ),
                 );
-              } else {
-                rowContent = SizedBox(width: itemWidth, child: rowContent);
               }
-            }
-            return rowContent;
-          }
 
-          return const SizedBox.shrink();
+              if (lookup is _HeaderData) {
+                final isRoundExpanded =
+                    isSearchMode
+                        ? true
+                        : ref.watch(
+                          roundExpansionStateProvider(lookup.round.id),
+                        );
+                return Padding(
+                  padding: EdgeInsets.only(bottom: 16.sp),
+                  child: RoundHeader(
+                    round: lookup.round,
+                    roundGames: lookup.roundGames,
+                    isExpanded: isRoundExpanded,
+                    onToggle:
+                        isSearchMode
+                            ? null // Disable toggle in search mode
+                            : () {
+                              ref
+                                  .read(roundExpansionProvider.notifier)
+                                  .toggleRound(lookup.round.id);
+                            },
+                  ),
+                );
+              }
+
+              if (lookup is _MatchHeaderData) {
+                final matchKey = lookup.matchHeader.matchKey;
+                final isExpanded =
+                    isSearchMode
+                        ? true
+                        : ref.watch(matchExpansionStateProvider(matchKey));
+
+                return Padding(
+                  padding: EdgeInsets.only(bottom: 12.sp),
+                  child: MatchHeader(
+                    match: lookup.matchHeader,
+                    isExpanded: isExpanded,
+                    onToggle:
+                        isSearchMode
+                            ? null // Disable toggle in search mode
+                            : () {
+                              ref
+                                  .read(matchExpansionProvider.notifier)
+                                  .toggleMatch(matchKey);
+                            },
+                  ),
+                );
+              }
+
+              if (lookup is _GameRowData) {
+                Widget rowContent = Padding(
+                  padding: EdgeInsets.only(
+                    bottom: lookup.isLastInSection ? 20.sp : 12.sp,
+                  ),
+                  child:
+                      gamesListViewMode == GamesListViewMode.chessBoardGrid
+                          ? _buildGridRow(
+                            context,
+                            ref,
+                            lookup,
+                            orderedGamesList,
+                            matchGroupsByRound,
+                          )
+                          : _buildCardRow(
+                            context,
+                            ref,
+                            lookup,
+                            orderedGamesList,
+                            matchGroupsByRound,
+                          ),
+                );
+                // TABLET: Wrap with SizedBox to provide bounded width
+                if (itemWidth != null) {
+                  if (gamesListViewMode != GamesListViewMode.chessBoardGrid &&
+                      ResponsiveHelper.isTablet) {
+                    // Compact List View for Tablet
+                    rowContent = SizedBox(
+                      width: itemWidth,
+                      child: Center(
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 600.0),
+                          child: rowContent,
+                        ),
+                      ),
+                    );
+                  } else {
+                    rowContent = SizedBox(width: itemWidth, child: rowContent);
+                  }
+                }
+                return rowContent;
+              }
+
+              return const SizedBox.shrink();
             },
             padding: EdgeInsets.only(
               left: horizontalPadding,
@@ -254,16 +277,17 @@ class GamesListView extends ConsumerWidget {
       matchGroupsByRound,
     );
 
-    final game2Widget = item.game2 != null
-        ? _buildGridGame(
-            context,
-            ref,
-            item.game2!,
-            item.globalIndex2!,
-            orderedGamesList,
-            matchGroupsByRound,
-          )
-        : null;
+    final game2Widget =
+        item.game2 != null
+            ? _buildGridGame(
+              context,
+              ref,
+              item.game2!,
+              item.globalIndex2!,
+              orderedGamesList,
+              matchGroupsByRound,
+            )
+            : null;
 
     // On tablet, use Expanded to give children bounded width constraints.
     // Without this, Row with spaceBetween gives children unbounded width,
@@ -282,10 +306,7 @@ class GamesListView extends ConsumerWidget {
     // On phone, keep original spaceBetween layout
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        game1Widget,
-        if (game2Widget != null) game2Widget,
-      ],
+      children: [game1Widget, if (game2Widget != null) game2Widget],
     );
   }
 
@@ -418,7 +439,8 @@ int _computeItemCount(
     final roundGames = gamesByRound[round.id] ?? const <GamesTourModel>[];
     if (roundGames.isEmpty) continue;
     // In search mode, default to expanded (true)
-    final isRoundExpanded = isSearchMode ? true : (roundExpansionState[round.id] ?? true);
+    final isRoundExpanded =
+        isSearchMode ? true : (roundExpansionState[round.id] ?? true);
 
     count++; // round header always counted
 
@@ -433,18 +455,20 @@ int _computeItemCount(
         final matchKey = entry.key;
         final matchGames = entry.value;
         // In search mode, default to expanded (true)
-        final isExpanded = isSearchMode
-            ? true
-            : resolveMatchExpansionState(matchExpansionState, matchKey);
+        final isExpanded =
+            isSearchMode
+                ? true
+                : resolveMatchExpansionState(matchExpansionState, matchKey);
 
         count++; // match header
 
         // Only count games if match is expanded
         if (isExpanded) {
           // Filter games based on displayMode for knockout tournaments
-          final filteredGames = matchGames.where((game) {
-            return _shouldShowGame(displayMode, game);
-          }).toList();
+          final filteredGames =
+              matchGames.where((game) {
+                return _shouldShowGame(displayMode, game);
+              }).toList();
 
           if (isGrid) {
             count += (filteredGames.length / 2).ceil();
@@ -505,7 +529,8 @@ Object? _lookupItem({
 
     final roundStartIndex = globalGameIndex;
     // In search mode, default to expanded (true)
-    final isRoundExpanded = isSearchMode ? true : (roundExpansionState[round.id] ?? true);
+    final isRoundExpanded =
+        isSearchMode ? true : (roundExpansionState[round.id] ?? true);
 
     if (index == currentIndex) {
       return _HeaderData(round, roundGames);
@@ -537,9 +562,10 @@ Object? _lookupItem({
         final matchGames = matchHeader.games;
         final matchKey = matchHeader.matchKey;
         // In search mode, default to expanded (true)
-        final isExpanded = isSearchMode
-            ? true
-            : resolveMatchExpansionState(matchExpansionState, matchKey);
+        final isExpanded =
+            isSearchMode
+                ? true
+                : resolveMatchExpansionState(matchExpansionState, matchKey);
         final matchGamesCount = matchGames.length;
         final matchStartIndex = roundStartIndex + matchGameOffset;
 
@@ -553,9 +579,10 @@ Object? _lookupItem({
         // Only process games if match is expanded
         if (isExpanded) {
           // Filter games based on displayMode for knockout tournaments
-          final filteredGames = matchGames.where((game) {
-            return _shouldShowGame(displayMode, game);
-          }).toList();
+          final filteredGames =
+              matchGames.where((game) {
+                return _shouldShowGame(displayMode, game);
+              }).toList();
 
           // Build index mapping from filtered to original
           final filteredToOriginalIndex = <int, int>{};
@@ -578,7 +605,8 @@ Object? _lookupItem({
 
               return _GameRowData(
                 game1: filteredGames[game1Index],
-                globalIndex1: matchStartIndex + filteredToOriginalIndex[game1Index]!,
+                globalIndex1:
+                    matchStartIndex + filteredToOriginalIndex[game1Index]!,
                 game2:
                     game2Index < filteredCount
                         ? filteredGames[game2Index]
@@ -596,7 +624,8 @@ Object? _lookupItem({
               final localIndex = index - currentIndex;
               return _GameRowData(
                 game1: filteredGames[localIndex],
-                globalIndex1: matchStartIndex + filteredToOriginalIndex[localIndex]!,
+                globalIndex1:
+                    matchStartIndex + filteredToOriginalIndex[localIndex]!,
                 isLastInSection: localIndex == filteredCount - 1,
               );
             }
@@ -674,7 +703,8 @@ int? _listIndexForGameIndex({
     final roundStartIndex = globalGameIndex;
     final isKnockoutFormat = _isKnockoutRound(isKnockoutTournament, round);
     // In search mode, default to expanded (true)
-    final isRoundExpanded = isSearchMode ? true : (roundExpansionState[round.id] ?? true);
+    final isRoundExpanded =
+        isSearchMode ? true : (roundExpansionState[round.id] ?? true);
 
     // skip round header
     currentIndex++;
@@ -693,9 +723,10 @@ int? _listIndexForGameIndex({
         final matchKey = entry.key;
         final matchGames = entry.value;
         // In search mode, default to expanded (true)
-        final isExpanded = isSearchMode
-            ? true
-            : resolveMatchExpansionState(matchExpansionState, matchKey);
+        final isExpanded =
+            isSearchMode
+                ? true
+                : resolveMatchExpansionState(matchExpansionState, matchKey);
         final matchStartIndex = roundStartIndex + matchGameOffset;
         final matchGamesCount = matchGames.length;
 
@@ -708,9 +739,10 @@ int? _listIndexForGameIndex({
         }
 
         // Filter games based on displayMode for knockout tournaments
-        final filteredGames = matchGames.where((game) {
-          return _shouldShowGame(displayMode, game);
-        }).toList();
+        final filteredGames =
+            matchGames.where((game) {
+              return _shouldShowGame(displayMode, game);
+            }).toList();
         final filteredCount = filteredGames.length;
 
         if (gameIndex >= matchStartIndex &&

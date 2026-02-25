@@ -85,7 +85,9 @@ class EvalRepository extends BaseRepository {
       final firstUci = moves.split(' ').first;
       final move = Move.parse(firstUci);
       if (move == null || !position.isLegal(move)) {
-        print('⚠️ CORRUPT EVAL FILTERED: First PV move $firstUci is illegal for FEN $fen (eval id=${eval.id})');
+        print(
+          '⚠️ CORRUPT EVAL FILTERED: First PV move $firstUci is illegal for FEN $fen (eval id=${eval.id})',
+        );
         return false;
       }
       return true;
@@ -100,9 +102,10 @@ class EvalRepository extends BaseRepository {
     final pos = await posRepo.getByFen(fen);
     if (pos == null) return null;
 
-    final evals = (await getByPositionId(pos.id))
-        .where((e) => _isEvalLegalForFen(fen, e))
-        .toList();
+    final evals =
+        (await getByPositionId(
+          pos.id,
+        )).where((e) => _isEvalLegalForFen(fen, e)).toList();
     if (evals.isEmpty) return null;
 
     Evals? selectBestMatch(Iterable<Evals> candidates) {
@@ -131,12 +134,10 @@ class EvalRepository extends BaseRepository {
         if (existingMulti == desiredMultiPv) {
           return exactOrBetter;
         }
-        final trimmedPvs =
-            exactOrBetter.pvs.take(desiredMultiPv).toList(growable: false);
-        return exactOrBetter.copyWith(
-          pvs: trimmedPvs,
-          multiPv: desiredMultiPv,
-        );
+        final trimmedPvs = exactOrBetter.pvs
+            .take(desiredMultiPv)
+            .toList(growable: false);
+        return exactOrBetter.copyWith(pvs: trimmedPvs, multiPv: desiredMultiPv);
       }
       return null;
     }

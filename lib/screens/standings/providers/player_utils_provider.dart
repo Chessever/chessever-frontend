@@ -70,8 +70,10 @@ class _PlayerUtilsController {
       final intersection = set1.intersection(set2);
       if (intersection.length >= 2) {
         // If intersection covers most of the smaller name, consider it a match
-        final smallerSize = set1.length < set2.length ? set1.length : set2.length;
-        if (intersection.length >= smallerSize - 1 && intersection.length >= 2) {
+        final smallerSize =
+            set1.length < set2.length ? set1.length : set2.length;
+        if (intersection.length >= smallerSize - 1 &&
+            intersection.length >= 2) {
           return true;
         }
       }

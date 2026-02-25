@@ -131,12 +131,13 @@ class _SegmentedSwitcherState extends State<SegmentedSwitcher> {
             children: List.generate(widget.options.length, (index) {
               final isSelected = index == _selectedIndex;
               final textOpacity = isSelected ? 1.0 : 0.7;
-              final style =
-                  (isSelected ? defaultSelectedTextStyle : defaultTextStyle)
-                      .copyWith(
-                        color: (isSelected ? selectedTextColor : textColor)
-                            .withOpacity(textOpacity),
-                      );
+              final style = (isSelected
+                      ? defaultSelectedTextStyle
+                      : defaultTextStyle)
+                  .copyWith(
+                    color: (isSelected ? selectedTextColor : textColor)
+                        .withOpacity(textOpacity),
+                  );
 
               return Expanded(
                 child: GestureDetector(
