@@ -341,7 +341,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
     final headerHeight =
         58.h +
         (state.hasActiveFilters ? 36.h : 0) +
-        (isSelectionMode ? 108.h : 0);
+        (isSelectionMode ? 136.h : 0);
 
     // Watch event data for event-grouped display
     final eventCardsAsync =
@@ -458,7 +458,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
                 horizontalPadding,
                 0,
                 horizontalPadding,
-                state.hasActiveFilters ? 2.h : 4.h,
+                state.hasActiveFilters ? 4.h : 6.h,
               ),
               child: _buildSelectionToolbar(state, selectedVisibleCount),
             ),
@@ -1091,6 +1091,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
 
   Widget _buildSelectableCardWrapper(Widget child, {required bool isSelected}) {
     return Stack(
+      clipBehavior: Clip.none,
       children: [
         AnimatedContainer(
           duration: const Duration(milliseconds: 160),
@@ -1119,30 +1120,38 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
           child: child,
         ),
         Positioned(
-          top: 8.h,
-          right: 8.w,
+          top: -6.h,
+          right: -6.w,
           child: Container(
-            width: 22.w,
-            height: 22.h,
+            width: 24.w,
+            height: 24.h,
             decoration: BoxDecoration(
               color:
                   isSelected
                       ? kPrimaryColor
                       : kBlack2Color.withValues(alpha: 0.95),
               shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: kBackgroundColor.withValues(alpha: 0.55),
+                  blurRadius: 8,
+                  spreadRadius: 0.5,
+                  offset: const Offset(0, 2),
+                ),
+              ],
               border: Border.all(
                 color:
                     isSelected
                         ? kWhiteColor
                         : kWhiteColor.withValues(alpha: 0.24),
-                width: 1,
+                width: 1.2,
               ),
             ),
             child: Icon(
               isSelected
                   ? Icons.check_rounded
                   : Icons.radio_button_unchecked_rounded,
-              size: 14.sp,
+              size: 14.5.sp,
               color: kWhiteColor,
             ),
           ),

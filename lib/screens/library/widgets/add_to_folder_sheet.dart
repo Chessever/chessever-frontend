@@ -6,7 +6,6 @@ import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
 import 'package:chessever2/screens/chessboard/widgets/smooth_sheet_config.dart';
 import 'package:chessever2/screens/library/providers/library_folders_provider.dart';
-import 'package:chessever2/screens/library/utils/gamebase_game_to_games_tour_model.dart';
 import 'package:chessever2/screens/library/utils/gamebase_pgn_builder.dart';
 import 'package:chessever2/screens/library/widgets/create_folder_dialog.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
@@ -14,6 +13,7 @@ import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:smooth_sheets/smooth_sheets.dart';
@@ -23,6 +23,10 @@ Future<void> showAddToFolderSheet({
   required BuildContext context,
   required GamesTourModel game,
 }) async {
+  final allowed = await requirePremiumGuardNoRef(context);
+  if (!allowed) return;
+  if (!context.mounted) return;
+
   final route = ChessSheetRoutes.commentEditor(
     context: context,
     builder: (_) => _AddToFolderSheetShell(game: game),
@@ -163,9 +167,16 @@ class _AddToFolderPageState extends ConsumerState<_AddToFolderPage> {
       meta['BlackElo'] = widget.game.blackPlayer.rating.toString();
     }
 
-    // Set event/tournament name
-    if (widget.game.tourId.isNotEmpty && widget.game.tourId != 'library') {
-      meta['Event'] = widget.game.tourId;
+    final resolvedEventName = _resolveEventName(
+      metadataEvent: meta['Event']?.toString(),
+      tourSlug: widget.game.tourSlug,
+      tourId: widget.game.tourId,
+    );
+    if (resolvedEventName != null) {
+      meta['Event'] = resolvedEventName;
+    } else if (_looksLikeOpaqueEventId(meta['Event']?.toString())) {
+      // Avoid persisting hash/UUID-like placeholders as event names.
+      meta.remove('Event');
     }
 
     return chessGame.copyWith(metadata: meta);
@@ -222,6 +233,79 @@ class _AddToFolderPageState extends ConsumerState<_AddToFolderPage> {
         ),
       );
     }
+  }
+
+  String? _resolveEventName({
+    required String? metadataEvent,
+    required String? tourSlug,
+    required String? tourId,
+  }) {
+    final fromMetadata = metadataEvent?.trim() ?? '';
+    if (_isReadableEventName(fromMetadata)) return fromMetadata;
+
+    final fromSlug = tourSlug?.trim() ?? '';
+    if (_isReadableEventName(fromSlug)) return _humanizeSlug(fromSlug);
+
+    final fromId = tourId?.trim() ?? '';
+    if (_isReadableEventName(fromId)) return fromId;
+
+    return null;
+  }
+
+  bool _isReadableEventName(String value) {
+    if (value.isEmpty) return false;
+    final lower = value.toLowerCase();
+    if (lower == 'library' ||
+        lower == 'gamebase' ||
+        lower == 'opening_explorer') {
+      return false;
+    }
+    return !_looksLikeOpaqueEventId(value);
+  }
+
+  bool _looksLikeOpaqueEventId(String? value) {
+    final text = value?.trim() ?? '';
+    if (text.isEmpty) return false;
+
+    final uuid = RegExp(
+      r'^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$',
+      caseSensitive: false,
+    );
+    if (uuid.hasMatch(text)) return true;
+
+    final objectId = RegExp(r'^[0-9a-f]{24}$', caseSensitive: false);
+    if (objectId.hasMatch(text)) return true;
+
+    final longHex = RegExp(r'^[0-9a-f]{12,64}$', caseSensitive: false);
+    if (longHex.hasMatch(text)) return true;
+
+    if (text.length >= 16 && !text.contains(RegExp(r'\s'))) {
+      final alphaCount = RegExp(r'[A-Za-z]').allMatches(text).length;
+      final digitCount = RegExp(r'\d').allMatches(text).length;
+      final separatorCount = RegExp(r'[-_]').allMatches(text).length;
+      final otherCount = text.length - alphaCount - digitCount - separatorCount;
+      if (otherCount == 0 && digitCount >= (alphaCount * 2)) return true;
+    }
+
+    return false;
+  }
+
+  String _humanizeSlug(String value) {
+    if (!value.contains('-') && !value.contains('_')) return value;
+    final words = value
+        .split(RegExp(r'[-_]+'))
+        .map((segment) => segment.trim())
+        .where((segment) => segment.isNotEmpty)
+        .toList(growable: false);
+    if (words.isEmpty) return value;
+    return words.map(_capitalizeWord).join(' ');
+  }
+
+  String _capitalizeWord(String word) {
+    if (word.isEmpty) return word;
+    if (RegExp(r'^\d+$').hasMatch(word)) return word;
+    final lower = word.toLowerCase();
+    return '${lower[0].toUpperCase()}${lower.substring(1)}';
   }
 
   Future<void> _handleAddToSelected(List<LibraryFolder> selected) async {

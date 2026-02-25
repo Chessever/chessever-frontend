@@ -608,6 +608,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
   int _pageSettleGeneration = 0;
   ProviderSubscription<AsyncValue<ChessBoardStateNew>>? _audioSub;
   ChessBoardProviderParams? _audioParams;
+  bool _didInitialBoardBootstrap = false;
 
   bool _hasCheckedWalkthrough = false;
   bool _showTutorialOverlay = false;
@@ -923,6 +924,9 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    if (_didInitialBoardBootstrap) return;
+    _didInitialBoardBootstrap = true;
+
     // Set the initial visible page index - delayed to avoid modifying provider during build
     Future.microtask(() {
       if (mounted) {
@@ -944,7 +948,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
           );
           unawaited(
             notifier.parseMoves().whenComplete(
-              () => notifier.onBecameVisible(force: true),
+              notifier.evaluateCurrentPosition,
             ),
           );
         } catch (e) {
@@ -1127,9 +1131,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
         final params = _createParams(newGame, newIndex);
         final notifier = ref.read(chessBoardScreenProviderNew(params).notifier);
         unawaited(
-          notifier.parseMoves().whenComplete(
-            () => notifier.onBecameVisible(force: false),
-          ),
+          notifier.parseMoves().whenComplete(notifier.evaluateCurrentPosition),
         );
       } catch (e) {
         debugPrint('Error parsing moves for new index: $e');

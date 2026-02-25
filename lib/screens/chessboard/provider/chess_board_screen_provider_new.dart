@@ -33,6 +33,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 const int _minPersistDepth = 20;
 const int _minPersistFullMoves = 8;
 const Duration _evalWatchdogInterval = Duration(milliseconds: 1000);
+const Duration _evalWatchdogMinActiveRuntime = Duration(seconds: 4);
 const Duration _cascadeEvalSoftTimeout = Duration(milliseconds: 60);
 
 bool _shouldPersistCloudEval(CloudEval eval) {
@@ -336,6 +337,28 @@ class ChessBoardScreenNotifierNew
     );
   }
 
+  bool _hasRecentDepthProgressForFen(String targetFen) {
+    final depthMap = ref.read(engineDepthTrackerProvider);
+    final now = DateTime.now();
+    final maxAge = Duration(
+      milliseconds: _evalWatchdogInterval.inMilliseconds * 2,
+    );
+
+    for (final component in const <EngineComponent>[
+      EngineComponent.evaluationGauge,
+      EngineComponent.principalVariation,
+    ]) {
+      final progress = depthMap[component];
+      if (progress == null) continue;
+      if (_normalizeFen(progress.fenFragment) != targetFen) continue;
+      if (now.difference(progress.timestamp) <= maxAge) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
   void _handleEvalWatchdogTimeout(String targetFen) {
     if (!mounted || _pendingEvalFen != targetFen) {
       return;
@@ -382,15 +405,16 @@ class ChessBoardScreenNotifierNew
         stateSnapshot.principalVariationsBaseFen != null &&
         _normalizeFen(stateSnapshot.principalVariationsBaseFen!) == targetFen &&
         stateSnapshot.principalVariations.isNotEmpty;
+    final hasRecentDepthProgress = _hasRecentDepthProgressForFen(targetFen);
 
-    // If Stockfish is already streaming PVs for this FEN, keep monitoring without forcing a restart.
-    if (hasActiveEval && hasTargetPvProgress) {
+    // If Stockfish is still producing data for this FEN, keep monitoring without forcing a restart.
+    if (hasActiveEval && (hasTargetPvProgress || hasRecentDepthProgress)) {
       _scheduleEvalWatchdog(targetFen);
       return;
     }
 
-    // Abort stale jobs quickly: one watchdog interval is enough time for the engine to respond.
-    if (hasActiveEval && evalDuration < _evalWatchdogInterval) {
+    // Give deep searches time to breathe before declaring a stall.
+    if (hasActiveEval && evalDuration < _evalWatchdogMinActiveRuntime) {
       _scheduleEvalWatchdog(targetFen);
       return;
     }
@@ -3570,6 +3594,41 @@ class ChessBoardScreenNotifierNew
     EasyDebounce.cancel('evaluation-$index');
 
     final stockfish = StockfishSingleton();
+    final currentState = state.value;
+    final currentPosition =
+        currentState?.isAnalysisMode == true
+            ? currentState!.analysisState.position
+            : currentState?.position;
+    final currentFen = currentPosition?.fen;
+    final activeFen =
+        currentFen == null
+            ? null
+            : (currentState?.isThreatsMode == true
+                ? _getThreatFen(currentFen)
+                : currentFen);
+    final activeCacheKey =
+        activeFen == null
+            ? null
+            : _fenCacheKey(activeFen, multiPV: _currentMultiPvSetting());
+    final alreadyEvaluatingCurrentFen =
+        !force &&
+        currentState != null &&
+        currentState.isEvaluating &&
+        activeCacheKey != null &&
+        _activeEvalRequestId != null &&
+        _activeEvalKey == activeCacheKey;
+
+    // If an evaluation is already active for the currently visible FEN,
+    // avoid cancelling and restarting it. This prevents depth jitter/resets
+    // from duplicate visibility callbacks.
+    if (alreadyEvaluatingCurrentFen && !stockfish.requiresRecovery) {
+      _cancelEvaluation = false;
+      if (activeFen != null) {
+        _registerPendingEvaluation(activeFen);
+      }
+      return;
+    }
+
     // Cancel only THIS provider's stale jobs before starting new evaluation
     await stockfish.cancelEvaluationsForOwner(_stockfishOwnerId);
 
@@ -4817,6 +4876,12 @@ class ChessBoardScreenNotifierNew
         allowCache: false,
         ownerId: _stockfishOwnerId, // Tag job with this provider's owner ID
         onDepthUpdate: (depth, knodes) {
+          if (!mounted ||
+              _cancelEvaluation ||
+              _activeEvalRequestId != currentRequestId ||
+              _activeEvalKey != cacheKey) {
+            return;
+          }
           final progress = EngineSearchProgress(
             depth: depth,
             kiloNodes: knodes,
@@ -4831,6 +4896,12 @@ class ChessBoardScreenNotifierNew
           );
         },
         onPvUpdate: (pvs, depth) {
+          if (!mounted ||
+              _cancelEvaluation ||
+              _activeEvalRequestId != currentRequestId ||
+              _activeEvalKey != cacheKey) {
+            return;
+          }
           // CRITICAL: Update evaluation synchronously so the eval bar
           // never stalls while depth keeps increasing. Previously, the
           // entire callback was wrapped in Future<void> which could
@@ -4872,9 +4943,14 @@ class ChessBoardScreenNotifierNew
             // deferred but eval bar is already updated above.
             Future<void>(() async {
               try {
-                if (!mounted) return;
+                if (!mounted ||
+                    _cancelEvaluation ||
+                    _activeEvalRequestId != currentRequestId ||
+                    _activeEvalKey != cacheKey) {
+                  return;
+                }
                 final visiblePage = ref.read(currentlyVisiblePageIndexProvider);
-                if (visiblePage != index && !isCurrentlyVisible) return;
+                if (visiblePage != index) return;
 
                 var lines = await _buildPrincipalVariations(fenToAnalyze, pvs);
                 if (lines.isEmpty) return;
@@ -4882,7 +4958,12 @@ class ChessBoardScreenNotifierNew
                   lines = lines.take(multiPV).toList(growable: false);
                 }
 
-                if (!mounted) return;
+                if (!mounted ||
+                    _cancelEvaluation ||
+                    _activeEvalRequestId != currentRequestId ||
+                    _activeEvalKey != cacheKey) {
+                  return;
+                }
 
                 primaryEval = CloudEval(
                   fen: fenToAnalyze,

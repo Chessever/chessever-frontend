@@ -71,6 +71,16 @@ class _EvaluationBarWidgetState extends State<EvaluationBarWidget> {
         widget.evaluation != null &&
         (widget.evaluation != _lastEval || positionChanged);
 
+    // Position changed but no evaluation ever arrived for it (cancelled/timeout).
+    // Stop waiting so the UI doesn't stay on "..." indefinitely.
+    if (_awaitingNewEvaluation && !widget.isEvaluating && !hasIncomingData) {
+      _awaitingNewEvaluation = false;
+      _lastEval = null;
+      _lastMate = null;
+      _whiteRatioTarget = 0.5;
+      changed = true;
+    }
+
     if (positionChanged) {
       _lastPositionKey = widget.positionKey;
       _awaitingNewEvaluation = true;
