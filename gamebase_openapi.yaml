@@ -2,7 +2,7 @@ openapi: 3.1.0
 info:
   title: Chess Database API
   description: API for querying chess game positions and player data
-  version: 1.0.8
+  version: 1.0.9
 
 servers:
   - url: http://localhost:3232
@@ -48,7 +48,10 @@ paths:
         - name: timeControl
           in: query
           required: false
-          description: Filter by time control
+          description: |
+            Filter games by their classified time control category.
+            Classification is based on the PGN TimeControl header when available,
+            with fallback to event-name heuristics for common TWIC events.
           schema:
             type: string
             enum:
@@ -58,14 +61,18 @@ paths:
         - name: minRating
           in: query
           required: false
-          description: Minimum player rating filter
+          description: |
+            Minimum rating filter (player to move at this position).
+            Aggregates use 100-point rating buckets, so precision is ±99.
           schema:
             type: integer
             minimum: 1
         - name: maxRating
           in: query
           required: false
-          description: Maximum player rating filter
+          description: |
+            Maximum rating filter (player to move at this position).
+            Aggregates use 100-point rating buckets, so precision is ±99.
           schema:
             type: integer
             minimum: 1
@@ -178,7 +185,8 @@ paths:
         expensive `COUNT(*)` queries by relying on `hasMore` pagination.
 
         **Coverage:** Position data is indexed for the first 21 plies (~10-11 full moves) of each game.
-        Queries for positions beyond this depth will return an empty list.
+        For deeper exploration, use `POST /api/game-position/games/query` and provide
+        the explored `moves` line in UCI notation.
       operationId: getPositionGames
       tags:
         - Game Position
@@ -248,6 +256,45 @@ paths:
             minimum: 1
             maximum: 50
             default: 20
+      responses:
+        "200":
+          description: Successful response with games
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PositionGamesResponse"
+        "400":
+          description: Invalid request (e.g., invalid FEN)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/game-position/games/query:
+    post:
+      summary: Query games for a position (supports deep lines)
+      description: |
+        Returns a paginated list of games where the given position occurred.
+        Same response shape as `GET /api/game-position/games`.
+
+        This endpoint supports deep exploration by accepting the explored move list (`moves`).
+        When the position is beyond the indexed opening window, the server uses the first
+        21 plies as a key and validates the rest of the line from stored game move lists.
+      operationId: postPositionGamesQuery
+      tags:
+        - Game Position
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PositionGamesQueryRequest"
       responses:
         "200":
           description: Successful response with games
@@ -533,6 +580,13 @@ paths:
           schema:
             type: string
           example: "Carlsen"
+        - name: fideId
+          in: query
+          required: false
+          description: Exact FIDE ID match (preferred for deterministic cross-database mapping)
+          schema:
+            type: string
+          example: "1503014"
         - name: pageNumber
           in: query
           required: false
@@ -774,6 +828,108 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /api/player/{id}/stats:
+    get:
+      summary: Get exact player stats
+      description: >
+        Returns exact aggregated stats for a player, using the same server-side filters as
+        `GET /api/player/{id}/games`. Useful for TWIC player profile analytics without relying on
+        paginated game prefetch.
+      operationId: getPlayerStats
+      tags:
+        - Player
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Player UUID
+          schema:
+            type: string
+            format: uuid
+        - name: color
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [all, white, black]
+            default: all
+        - name: timeControl
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [CLASSICAL, RAPID, BLITZ]
+        - name: outcome
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [win, loss, draw]
+        - name: opponentId
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+        - name: eco
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: opening
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: variation
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: event
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: site
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: dateFrom
+          in: query
+          required: false
+          description: Start date (inclusive)
+          schema:
+            type: string
+            format: date-time
+        - name: dateTo
+          in: query
+          required: false
+          description: End date (exclusive)
+          schema:
+            type: string
+            format: date-time
+      responses:
+        "200":
+          description: Successful response with exact player stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlayerStatsResponse"
+        "401":
+          description: Missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Player not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /api/game/{id}:
     get:
       summary: Get game by ID
@@ -868,15 +1024,79 @@ components:
         timeControl:
           type: string
           enum: [CLASSICAL, RAPID, BLITZ]
-          description: Filter by time control
+          description: |
+            Filter games by their classified time control category.
+            Classification is based on the PGN TimeControl header when available,
+            with fallback to event-name heuristics for common TWIC events.
         minRating:
           type: integer
           minimum: 1
-          description: Minimum rating filter (player to move at this position)
+          description: |
+            Minimum rating filter (player to move at this position).
+            Aggregates use 100-point rating buckets, so precision is ±99.
         maxRating:
           type: integer
           minimum: 1
-          description: Maximum rating filter (player to move at this position)
+          description: |
+            Maximum rating filter (player to move at this position).
+            Aggregates use 100-point rating buckets, so precision is ±99.
+    PositionGamesQueryRequest:
+      type: object
+      required:
+        - fen
+      properties:
+        fen:
+          type: string
+          description: |
+            FEN string representing the chess position.
+            The halfmove clock and fullmove number (last two FEN fields) are ignored for matching.
+        moves:
+          type: array
+          description: |
+            Explored mainline moves (UCI), from the start position to the current position.
+            Required for deep position queries beyond the indexed opening window.
+          items:
+            type: string
+            pattern: "^[a-h][1-8][a-h][1-8][qrbn]?$"
+          example: ["e2e4", "e7e5", "g1f3", "b8c6"]
+        uci:
+          type: string
+          pattern: "^[a-h][1-8][a-h][1-8][qrbn]?$"
+          description: Filter by next move in UCI notation (e.g. "e2e4", "e7e8q")
+        playerId:
+          type: string
+          format: uuid
+          description: Filter by player UUID (player to move at this position)
+        timeControl:
+          type: string
+          enum: [CLASSICAL, RAPID, BLITZ]
+          description: |
+            Filter games by their classified time control category.
+            Classification is based on the PGN TimeControl header when available,
+            with fallback to event-name heuristics for common TWIC events.
+        minRating:
+          type: integer
+          minimum: 1
+          description: |
+            Minimum rating filter (player to move at this position).
+            Aggregates use 100-point rating buckets, so precision is ±99.
+        maxRating:
+          type: integer
+          minimum: 1
+          description: |
+            Maximum rating filter (player to move at this position).
+            Aggregates use 100-point rating buckets, so precision is ±99.
+        pageNumber:
+          type: integer
+          minimum: 0
+          default: 0
+          description: Page number (0-indexed)
+        pageSize:
+          type: integer
+          minimum: 1
+          maximum: 50
+          default: 20
+          description: Number of results per page
     SearchColumn:
       type: object
       required: [name, type, nullable, searchable, filterable, sortable, operators]
@@ -959,6 +1179,8 @@ components:
         site: { type: string, nullable: true }
         white: { type: string, nullable: true }
         black: { type: string, nullable: true }
+        whiteTitle: { type: string, nullable: true }
+        blackTitle: { type: string, nullable: true }
         whiteElo: { type: integer, nullable: true }
         blackElo: { type: integer, nullable: true }
         whiteFed: { type: string, nullable: true, description: "White player's country/federation" }
@@ -996,6 +1218,76 @@ components:
             pageNumber: { type: integer }
             pageSize: { type: integer }
             hasMore: { type: boolean }
+
+    PlayerStatsOpening:
+      type: object
+      required: [eco, games, wins, draws, losses, winRate]
+      properties:
+        eco: { type: string }
+        openingName: { type: string, nullable: true }
+        games: { type: integer }
+        wins: { type: integer }
+        draws: { type: integer }
+        losses: { type: integer }
+        winRate:
+          type: number
+          description: Win rate percentage in range [0, 100]
+
+    PlayerStatsColorSplit:
+      type: object
+      required: [games, wins, draws, losses]
+      properties:
+        games: { type: integer }
+        wins: { type: integer }
+        draws: { type: integer }
+        losses: { type: integer }
+
+    PlayerStatsResponse:
+      type: object
+      required: [status, data, metadata]
+      properties:
+        status:
+          type: string
+          enum: [success]
+        data:
+          type: object
+          required: [totals, color, avgOpponentRating, openings]
+          properties:
+            totals:
+              $ref: "#/components/schemas/PlayerStatsColorSplit"
+            color:
+              type: object
+              required: [white, black]
+              properties:
+                white:
+                  $ref: "#/components/schemas/PlayerStatsColorSplit"
+                black:
+                  $ref: "#/components/schemas/PlayerStatsColorSplit"
+            avgOpponentRating:
+              type: integer
+            openings:
+              type: object
+              required: [all, white, black]
+              properties:
+                all:
+                  type: array
+                  items:
+                    $ref: "#/components/schemas/PlayerStatsOpening"
+                white:
+                  type: array
+                  items:
+                    $ref: "#/components/schemas/PlayerStatsOpening"
+                black:
+                  type: array
+                  items:
+                    $ref: "#/components/schemas/PlayerStatsOpening"
+        metadata:
+          type: object
+          required: [exact]
+          properties:
+            exact:
+              type: boolean
+              enum: [true]
 
     PositionGamesResponse:
       type: object
@@ -1046,7 +1338,7 @@ components:
               items: { $ref: "#/components/schemas/SearchResult" }
             metadata:
               type: object
-              required: [pageNumber, pageSize, totalCount, hasMore]
+              required: [pageNumber, pageSize, totalCount, totalCountIsEstimate, hasMore]
               properties:
                 pageNumber: { type: integer }
                 pageSize: { type: integer }
@@ -1147,6 +1439,15 @@ components:
             properties:
               field: { type: string }
               direction: { type: string, enum: [asc, desc] }
+        countMode:
+          type: string
+          enum: [auto, estimate, exact]
+          default: auto
+          description: |
+            Count strategy for `metadata.totalCount`.
+            - `auto`: exact for selective queries, estimated for broad ones.
+            - `estimate`: always use fast estimate.
+            - `exact`: always run exact COUNT(*).
         pageNumber:
           type: integer
           default: 1
@@ -1166,7 +1467,7 @@ components:
           items: { type: object }
         metadata:
           type: object
-          required: [pageNumber, pageSize, totalCount, hasMore]
+          required: [pageNumber, pageSize, totalCount, totalCountIsEstimate, hasMore]
           properties:
             pageNumber: { type: integer }
             pageSize: { type: integer }

@@ -44,6 +44,11 @@ class _GamebaseExplorerScreenState
   Timer? _backwardLongPressTimer;
   Timer? _forwardLongPressTimer;
 
+  void _resetExplorerState({bool fetch = false}) {
+    ref.read(gamebaseExplorerProvider.notifier).reset(fetch: fetch);
+    ref.invalidate(explorerEvalProvider);
+  }
+
   @override
   void initState() {
     super.initState();
@@ -59,15 +64,8 @@ class _GamebaseExplorerScreenState
       if (widget.initialPlayer != null) {
         notifier.initializeWithPlayer(widget.initialPlayer!);
       } else {
-        // Ensure we have a valid starting position and kick off the initial fetch.
-        // Without this, the explorer can render with an empty FEN and never load stats.
-        final state = ref.read(gamebaseExplorerProvider);
-
-        if (state.currentFen.trim().isEmpty) {
-          notifier.goToStart();
-        } else if (state.moveAggregates.isEmpty) {
-          notifier.refresh();
-        }
+        // Always start fresh when opening standalone explorer.
+        notifier.reset();
       }
     });
   }
@@ -76,9 +74,7 @@ class _GamebaseExplorerScreenState
   void dispose() {
     _stopLongPressBackward();
     _stopLongPressForward();
-    // Reset the full explorer state when leaving so stale moves/position
-    // don't persist into the next visit or bleed into the chessboard overlay.
-    ref.read(gamebaseExplorerProvider.notifier).reset();
+    _resetExplorerState();
     super.dispose();
   }
 
@@ -142,62 +138,68 @@ class _GamebaseExplorerScreenState
     final state = ref.watch(gamebaseExplorerProvider);
 
     return ScreenWrapper(
-      child: Scaffold(
-        backgroundColor: kBlack2Color,
-        appBar: _buildAppBar(context),
-        bottomNavigationBar: ChessBoardBottomNavBar(
-          gameIndex: 0,
-          onFlip: () => setState(() => _isFlipped = !_isFlipped),
-          toggleEngineVisibility: _toggleEngineAnalysis,
-          onEngineSettingsLongPress: () {
-            requireFullAuthGuard(context).then((allowed) {
-              if (!allowed || !context.mounted) return;
-              Navigator.of(context).push(ChessBoardSettingsPage.route());
-            });
-          },
-          onRightMove:
-              state.canGoForward
-                  ? () =>
-                      ref.read(gamebaseExplorerProvider.notifier).goForward()
-                  : null,
-          onLeftMove:
-              state.canGoBack
-                  ? () => ref.read(gamebaseExplorerProvider.notifier).goBack()
-                  : null,
-          onLongPressBackwardStart:
-              state.canGoBack ? _startLongPressBackward : null,
-          onLongPressBackwardEnd: _stopLongPressBackward,
-          onLongPressForwardStart:
-              state.canGoForward ? _startLongPressForward : null,
-          onLongPressForwardEnd: _stopLongPressForward,
-          canMoveForward: state.canGoForward,
-          canMoveBackward: state.canGoBack,
-          showEngineAnalysis: showEngineAnalysis,
-          showUnseenMoveBadge: false,
-          showGamebaseButton: false,
-        ),
-        body: LayoutBuilder(
-          builder: (context, constraints) {
-            final isTablet = ResponsiveHelper.isTablet;
-            final isLandscape = ResponsiveHelper.isLandscape;
+      child: PopScope(
+        onPopInvokedWithResult: (didPop, result) {
+          if (!didPop) return;
+          _resetExplorerState();
+        },
+        child: Scaffold(
+          backgroundColor: kBlack2Color,
+          appBar: _buildAppBar(context),
+          bottomNavigationBar: ChessBoardBottomNavBar(
+            gameIndex: 0,
+            onFlip: () => setState(() => _isFlipped = !_isFlipped),
+            toggleEngineVisibility: _toggleEngineAnalysis,
+            onEngineSettingsLongPress: () {
+              requireFullAuthGuard(context).then((allowed) {
+                if (!allowed || !context.mounted) return;
+                Navigator.of(context).push(ChessBoardSettingsPage.route());
+              });
+            },
+            onRightMove:
+                state.canGoForward
+                    ? () =>
+                        ref.read(gamebaseExplorerProvider.notifier).goForward()
+                    : null,
+            onLeftMove:
+                state.canGoBack
+                    ? () => ref.read(gamebaseExplorerProvider.notifier).goBack()
+                    : null,
+            onLongPressBackwardStart:
+                state.canGoBack ? _startLongPressBackward : null,
+            onLongPressBackwardEnd: _stopLongPressBackward,
+            onLongPressForwardStart:
+                state.canGoForward ? _startLongPressForward : null,
+            onLongPressForwardEnd: _stopLongPressForward,
+            canMoveForward: state.canGoForward,
+            canMoveBackward: state.canGoBack,
+            showEngineAnalysis: showEngineAnalysis,
+            showUnseenMoveBadge: false,
+            showGamebaseButton: false,
+          ),
+          body: LayoutBuilder(
+            builder: (context, constraints) {
+              final isTablet = ResponsiveHelper.isTablet;
+              final isLandscape = ResponsiveHelper.isLandscape;
 
-            if (isTablet && isLandscape) {
-              return _buildTabletLandscapeLayout(
-                constraints,
-                showEngineAnalysis: showEngineAnalysis,
-              );
-            } else if (isTablet) {
-              return _buildTabletPortraitLayout(
-                constraints,
-                showEngineAnalysis: showEngineAnalysis,
-              );
-            } else {
-              return _buildPhoneLayout(
-                constraints,
-                showEngineAnalysis: showEngineAnalysis,
-              );
-            }
-          },
+              if (isTablet && isLandscape) {
+                return _buildTabletLandscapeLayout(
+                  constraints,
+                  showEngineAnalysis: showEngineAnalysis,
+                );
+              } else if (isTablet) {
+                return _buildTabletPortraitLayout(
+                  constraints,
+                  showEngineAnalysis: showEngineAnalysis,
+                );
+              } else {
+                return _buildPhoneLayout(
+                  constraints,
+                  showEngineAnalysis: showEngineAnalysis,
+                );
+              }
+            },
+          ),
         ),
       ),
     );
@@ -446,6 +448,11 @@ class _GamebaseExplorerScreenState
             tooltip: 'Clear filters',
           ),
         IconButton(
+          icon: Icon(Icons.restart_alt, size: 24.ic),
+          onPressed: () => _resetExplorerState(fetch: true),
+          tooltip: 'Reset explorer',
+        ),
+        IconButton(
           icon: Icon(Icons.tune, size: 24.ic),
           onPressed: () => _showFilterSheet(context),
           tooltip: 'Filters',
@@ -540,6 +547,8 @@ class _GamebaseExplorerScreenState
       tourId: 'opening_explorer',
       pgn: pgn,
     );
+
+    _resetExplorerState();
 
     ref.read(chessboardViewFromProviderNew.notifier).state =
         ChessboardView.tour;
@@ -751,11 +760,21 @@ class _FilterSheet extends ConsumerStatefulWidget {
 
 class _FilterSheetState extends ConsumerState<_FilterSheet> {
   late GamebaseFilters _draftFilters;
+  final TextEditingController _playerSearchController = TextEditingController();
+  final FocusNode _playerSearchFocusNode = FocusNode();
+  String _playerSearchQuery = '';
 
   @override
   void initState() {
     super.initState();
     _draftFilters = ref.read(gamebaseExplorerProvider).filters;
+  }
+
+  @override
+  void dispose() {
+    _playerSearchController.dispose();
+    _playerSearchFocusNode.dispose();
+    super.dispose();
   }
 
   void _toggleTimeControl(TimeControl timeControl) {
@@ -776,6 +795,34 @@ class _FilterSheetState extends ConsumerState<_FilterSheet> {
       _draftFilters = _draftFilters.copyWith(
         minRating: minRating,
         maxRating: maxRating,
+      );
+    });
+  }
+
+  void _setPlayer(GamebasePlayer player) {
+    setState(() {
+      // Backend currently supports a single player filter.
+      _draftFilters = _draftFilters.copyWith(
+        playerIds: [player.id],
+        selectedPlayers: [player],
+      );
+      _playerSearchQuery = '';
+      _playerSearchController.clear();
+    });
+    _playerSearchFocusNode.unfocus();
+  }
+
+  void _removePlayer(String playerId) {
+    final currentIds = List<String>.from(_draftFilters.playerIds);
+    final currentPlayers = List<GamebasePlayer>.from(
+      _draftFilters.selectedPlayers,
+    );
+    currentIds.remove(playerId);
+    currentPlayers.removeWhere((p) => p.id == playerId);
+    setState(() {
+      _draftFilters = _draftFilters.copyWith(
+        playerIds: currentIds,
+        selectedPlayers: currentPlayers,
       );
     });
   }
@@ -908,6 +955,110 @@ class _FilterSheetState extends ConsumerState<_FilterSheet> {
             ),
             SizedBox(height: 24.sp),
 
+            // Player search
+            Text(
+              'Player',
+              style: TextStyle(
+                color: kSecondaryTextColor,
+                fontSize: 12.f,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            SizedBox(height: 8.sp),
+            TextField(
+              controller: _playerSearchController,
+              focusNode: _playerSearchFocusNode,
+              style: TextStyle(color: kWhiteColor, fontSize: 13.f),
+              decoration: InputDecoration(
+                hintText: 'Search player',
+                hintStyle: TextStyle(
+                  color: kSecondaryTextColor.withValues(alpha: 0.65),
+                  fontSize: 13.f,
+                ),
+                prefixIcon: Icon(
+                  Icons.search_rounded,
+                  size: 18.sp,
+                  color: kSecondaryTextColor,
+                ),
+                filled: true,
+                fillColor: kBlack2Color,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8.br),
+                  borderSide: BorderSide(color: kDividerColor),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8.br),
+                  borderSide: BorderSide(color: kDividerColor),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8.br),
+                  borderSide: BorderSide(color: kPrimaryColor),
+                ),
+                contentPadding: EdgeInsets.symmetric(
+                  horizontal: 12.sp,
+                  vertical: 10.sp,
+                ),
+              ),
+              onChanged: (value) {
+                setState(() {
+                  _playerSearchQuery = value.trim();
+                });
+              },
+            ),
+            if (_playerSearchQuery.length >= 2) ...[
+              SizedBox(height: 8.sp),
+              _PlayerSearchResults(
+                query: _playerSearchQuery,
+                onPlayerSelected: _setPlayer,
+              ),
+            ],
+            if (filters.selectedPlayers.isNotEmpty) ...[
+              SizedBox(height: 10.sp),
+              Wrap(
+                spacing: 8.sp,
+                runSpacing: 8.sp,
+                children: [
+                  for (final player in filters.selectedPlayers)
+                    Container(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 10.sp,
+                        vertical: 6.sp,
+                      ),
+                      decoration: BoxDecoration(
+                        color: kPrimaryColor.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(24.br),
+                        border: Border.all(
+                          color: kPrimaryColor.withValues(alpha: 0.45),
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            player.titleAndName,
+                            style: TextStyle(
+                              color: kWhiteColor,
+                              fontSize: 12.f,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          SizedBox(width: 6.sp),
+                          GestureDetector(
+                            onTap: () => _removePlayer(player.id),
+                            child: Icon(
+                              Icons.close_rounded,
+                              size: 14.sp,
+                              color: kWhiteColor,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
+            ],
+            SizedBox(height: 24.sp),
+
             // Apply button
             SizedBox(
               width: double.infinity,
@@ -932,6 +1083,103 @@ class _FilterSheetState extends ConsumerState<_FilterSheet> {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _PlayerSearchResults extends ConsumerWidget {
+  const _PlayerSearchResults({
+    required this.query,
+    required this.onPlayerSelected,
+  });
+
+  final String query;
+  final ValueChanged<GamebasePlayer> onPlayerSelected;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final results = ref.watch(playerSearchProvider(query));
+
+    return Container(
+      constraints: BoxConstraints(maxHeight: 200.h),
+      decoration: BoxDecoration(
+        color: kBlack2Color,
+        borderRadius: BorderRadius.circular(8.br),
+        border: Border.all(color: kDividerColor),
+      ),
+      child: results.when(
+        data: (players) {
+          if (players.isEmpty) {
+            return Padding(
+              padding: EdgeInsets.all(12.sp),
+              child: Text(
+                'No players found',
+                style: TextStyle(color: kSecondaryTextColor, fontSize: 12.f),
+              ),
+            );
+          }
+          return ListView.separated(
+            shrinkWrap: true,
+            itemCount: players.length,
+            separatorBuilder:
+                (_, __) => Divider(height: 1, color: kDividerColor),
+            itemBuilder: (context, index) {
+              final player = players[index];
+              return ListTile(
+                dense: true,
+                onTap: () => onPlayerSelected(player),
+                title: Text(
+                  player.titleAndName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(color: kWhiteColor, fontSize: 13.f),
+                ),
+                subtitle: Text(
+                  '${player.fed}${player.highestRating != null ? ' • ${player.highestRating}' : ''}',
+                  style: TextStyle(color: kSecondaryTextColor, fontSize: 11.f),
+                ),
+                trailing: Icon(
+                  Icons.add_rounded,
+                  size: 18.sp,
+                  color: kPrimaryColor,
+                ),
+              );
+            },
+          );
+        },
+        loading:
+            () => Padding(
+              padding: EdgeInsets.all(12.sp),
+              child: Row(
+                children: [
+                  SizedBox(
+                    width: 16.sp,
+                    height: 16.sp,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: kPrimaryColor,
+                    ),
+                  ),
+                  SizedBox(width: 10.sp),
+                  Text(
+                    'Searching...',
+                    style: TextStyle(
+                      color: kSecondaryTextColor,
+                      fontSize: 12.f,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        error:
+            (_, __) => Padding(
+              padding: EdgeInsets.all(12.sp),
+              child: Text(
+                'Search failed',
+                style: TextStyle(color: kRedColor, fontSize: 12.f),
+              ),
+            ),
       ),
     );
   }
@@ -1082,6 +1330,8 @@ class _ExplorerEngineLines extends ConsumerWidget {
         fenParts.length > 5 ? (int.tryParse(fenParts[5]) ?? 1) : 1;
 
     final lines = pvLines.take(3).toList();
+    final notifier = ref.read(gamebaseExplorerProvider.notifier);
+    final uciRegex = RegExp(r'^[a-h][1-8][a-h][1-8][qrbn]?$');
 
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -1101,6 +1351,12 @@ class _ExplorerEngineLines extends ConsumerWidget {
             startMoveNumber: startMoveNumber,
             useFigurine: useFigurine,
             pieceAssets: pieceAssets,
+            onTap: () {
+              if (lines[i].uciMoves.isEmpty) return;
+              final firstUci = lines[i].uciMoves.first.trim().toLowerCase();
+              if (!uciRegex.hasMatch(firstUci)) return;
+              notifier.makeMove(firstUci);
+            },
           ),
         ],
         Divider(color: kDividerColor, height: 1),
@@ -1118,6 +1374,7 @@ class _EngineLine extends StatelessWidget {
     required this.startMoveNumber,
     required this.useFigurine,
     required this.pieceAssets,
+    this.onTap,
   });
 
   final ExplorerPvLine line;
@@ -1126,6 +1383,7 @@ class _EngineLine extends StatelessWidget {
   final int startMoveNumber;
   final bool useFigurine;
   final PieceAssets pieceAssets;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -1159,54 +1417,60 @@ class _EngineLine extends StatelessWidget {
       fontWeight: lineIndex == 0 ? FontWeight.w500 : FontWeight.w400,
     );
 
-    return Padding(
-      padding: EdgeInsets.symmetric(vertical: 5.sp, horizontal: 12.sp),
-      child: Row(
-        children: [
-          // Eval badge
-          Container(
-            width: 44.w,
-            padding: EdgeInsets.symmetric(vertical: 2.sp),
-            decoration: BoxDecoration(
-              color: evalBgColor,
-              borderRadius: BorderRadius.circular(3.br),
-            ),
-            child: Text(
-              evalText,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: evalTextColor,
-                fontSize: 11.f,
-                fontWeight: FontWeight.w700,
-                fontFeatures: const [FontFeature.tabularFigures()],
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: EdgeInsets.symmetric(vertical: 5.sp, horizontal: 12.sp),
+          child: Row(
+            children: [
+              // Eval badge
+              Container(
+                width: 44.w,
+                padding: EdgeInsets.symmetric(vertical: 2.sp),
+                decoration: BoxDecoration(
+                  color: evalBgColor,
+                  borderRadius: BorderRadius.circular(3.br),
+                ),
+                child: Text(
+                  evalText,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: evalTextColor,
+                    fontSize: 11.f,
+                    fontWeight: FontWeight.w700,
+                    fontFeatures: const [FontFeature.tabularFigures()],
+                  ),
+                ),
               ),
-            ),
-          ),
-          SizedBox(width: 8.sp),
-          // Moves
-          Expanded(
-            child:
-                useFigurine
-                    ? RichText(
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      text: TextSpan(
-                        children: buildFigurineSpans(
-                          text: moveText,
-                          pieceAssets: pieceAssets,
+              SizedBox(width: 8.sp),
+              // Moves
+              Expanded(
+                child:
+                    useFigurine
+                        ? RichText(
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          text: TextSpan(
+                            children: buildFigurineSpans(
+                              text: moveText,
+                              pieceAssets: pieceAssets,
+                              style: moveStyle,
+                              pieceSize: 14.f,
+                            ),
+                          ),
+                        )
+                        : Text(
+                          moveText,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                           style: moveStyle,
-                          pieceSize: 14.f,
                         ),
-                      ),
-                    )
-                    : Text(
-                      moveText,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: moveStyle,
-                    ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
