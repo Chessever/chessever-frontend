@@ -80,6 +80,7 @@ class ExplorerEvalNotifier extends StateNotifier<ExplorerEvalState> {
   final Ref ref;
   int _requestId = 0;
   bool _isDisposed = false;
+  bool _engineEnabled = true;
 
   /// Stable position identity (board + side/castling/ep).
   ///
@@ -96,10 +97,16 @@ class ExplorerEvalNotifier extends StateNotifier<ExplorerEvalState> {
     required String fen,
     bool force = false,
   }) {
+    _engineEnabled = enabled;
+
     if (!enabled) {
+      // Invalidate in-flight callbacks so stale completion handlers cannot
+      // restart analysis after the engine was intentionally disabled.
+      _requestId++;
       _stopAndClear(reason: 'disabled');
       return;
     }
+
     if (fen.trim().isEmpty) return;
     evaluatePosition(fen, force: force);
   }
@@ -107,6 +114,7 @@ class ExplorerEvalNotifier extends StateNotifier<ExplorerEvalState> {
   void evaluatePosition(String fen, {bool force = false, int attempt = 0}) {
     final normalizedFen = fen.trim();
     if (_isDisposed ||
+        !_engineEnabled ||
         normalizedFen.isEmpty ||
         normalizedFen.split(' ').length < 4) {
       return;
@@ -127,8 +135,7 @@ class ExplorerEvalNotifier extends StateNotifier<ExplorerEvalState> {
     // true but no Stockfish job is actually running.
     if (force &&
         stateKey == normalizedKey &&
-        (state.pvLines.isNotEmpty ||
-            (state.isEvaluating && state.depth > 0))) {
+        (state.pvLines.isNotEmpty || (state.isEvaluating && state.depth > 0))) {
       return;
     }
 
@@ -338,6 +345,7 @@ class ExplorerEvalNotifier extends StateNotifier<ExplorerEvalState> {
       final noProgressYet =
           state.isEvaluating && state.depth <= 0 && state.pvLines.isEmpty;
       if (!noProgressYet) return;
+      if (!_engineEnabled) return;
 
       // Retry once — cancel only this owner's stale jobs to avoid nuking
       // other providers' in-flight evaluations.
@@ -362,7 +370,12 @@ class ExplorerEvalNotifier extends StateNotifier<ExplorerEvalState> {
 
   void _scheduleRetry(String fen, int attempt, {required String fenKey}) {
     Future<void>.delayed(const Duration(milliseconds: 180), () {
-      if (_isDisposed || !mounted || _positionKey(state.fen) != fenKey) return;
+      if (_isDisposed ||
+          !_engineEnabled ||
+          !mounted ||
+          _positionKey(state.fen) != fenKey) {
+        return;
+      }
       evaluatePosition(fen, force: true, attempt: attempt);
     });
   }
@@ -475,6 +488,7 @@ class ExplorerEvalNotifier extends StateNotifier<ExplorerEvalState> {
   @override
   void dispose() {
     _isDisposed = true;
+    _engineEnabled = false;
     _requestId++;
     _stopAndClear(reason: 'dispose');
     super.dispose();
