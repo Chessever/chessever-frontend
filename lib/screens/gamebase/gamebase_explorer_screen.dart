@@ -784,19 +784,9 @@ class _ExplorerEvalBarState extends ConsumerState<_ExplorerEvalBar> {
   void didUpdateWidget(covariant _ExplorerEvalBar oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (!_samePosition(widget.fen, oldWidget.fen)) {
-      // Position changed meaningfully (not just halfmove/fullmove counters) —
-      // force restart for the new FEN.
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        _syncEngineState(force: true);
-      });
+      _syncEngineState(force: true);
     } else if (widget.showEngineAnalysis != oldWidget.showEngineAnalysis) {
-      // Visibility toggled but same position — soft start (no force) to avoid
-      // restarting an evaluation that is already running for this FEN.
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        _syncEngineState();
-      });
+      _syncEngineState();
     }
   }
 
