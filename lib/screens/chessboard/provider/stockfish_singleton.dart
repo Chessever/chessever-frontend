@@ -1224,12 +1224,47 @@ class StockfishSingleton {
   }
 
   void dispose() {
-    _cancelCurrentEvaluation();
+    // Complete current job synchronously — don't call async
+    // _cancelCurrentEvaluation() since we're about to destroy the engine.
+    if (_currentJob != null && !_currentJob!.completer.isCompleted) {
+      _currentJob!.completer.complete(
+        EnhancedCloudEval(
+          fen: _currentJob!.fen,
+          knodes: 0,
+          depth: 0,
+          pvs: [Pv(moves: '', cp: 0, mate: 0)],
+          isCancelled: true,
+          requestedMultiPv: _currentJob!.multiPV,
+        ),
+      );
+    }
+    _currentJob = null;
+    // Don't await — engine is being destroyed, subscription will die with it.
+    _currentSubscription?.cancel();
+    _currentSubscription = null;
+
+    // Complete all queued jobs as cancelled
+    for (final job in _jobQueue) {
+      if (!job.completer.isCompleted) {
+        job.completer.complete(
+          EnhancedCloudEval(
+            fen: job.fen,
+            knodes: 0,
+            depth: 0,
+            pvs: [Pv(moves: '', cp: 0, mate: 0)],
+            isCancelled: true,
+            requestedMultiPv: job.multiPV,
+          ),
+        );
+      }
+    }
     _jobQueue.clear();
     _pendingJobs.clear();
     _isProcessing = false;
+    _queueGeneration++;
     _isInitializing = false;
     _initCompleter = null;
+    _previousJobCompleted = true;
 
     // Release any pending instance lock
     if (_instanceLock != null && !_instanceLock!.isCompleted) {

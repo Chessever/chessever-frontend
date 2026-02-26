@@ -131,10 +131,33 @@ class _GamebaseExplorerScreenState
   }
 
   @override
+  void deactivate() {
+    // Capture notifier references synchronously while ref is still valid
+    // (ConsumerStatefulElement.unmount invalidates ref before dispose runs).
+    final explorerNotifier = ref.read(gamebaseExplorerProvider.notifier);
+    final evalNotifier = ref.read(explorerEvalProvider.notifier);
+    final currentFen = ref.read(gamebaseExplorerProvider).currentFen;
+
+    // Defer provider state modifications: deactivate() is called during the
+    // widget tree build phase and Riverpod forbids synchronous state changes
+    // at that point ("Tried to modify a provider while the widget tree was
+    // building"). Scheduling via Future() runs after the build completes.
+    Future(() {
+      if (explorerNotifier.mounted) {
+        explorerNotifier.reset();
+      }
+      if (evalNotifier.mounted) {
+        evalNotifier.setEngineEnabled(enabled: false, fen: currentFen);
+      }
+    });
+
+    super.deactivate();
+  }
+
+  @override
   void dispose() {
     _stopLongPressBackward();
     _stopLongPressForward();
-    _resetExplorerState();
     super.dispose();
   }
 
@@ -787,11 +810,17 @@ class _ExplorerEvalBarState extends ConsumerState<_ExplorerEvalBar> {
     if (!_samePosition(widget.fen, oldWidget.fen)) {
       // Position changed meaningfully (not just halfmove/fullmove counters) —
       // force restart for the new FEN.
-      _syncEngineState(force: true);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _syncEngineState(force: true);
+      });
     } else if (widget.showEngineAnalysis != oldWidget.showEngineAnalysis) {
       // Visibility toggled but same position — soft start (no force) to avoid
       // restarting an evaluation that is already running for this FEN.
-      _syncEngineState();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _syncEngineState();
+      });
     }
   }
 
