@@ -141,13 +141,13 @@ class ExplorerEvalNotifier extends StateNotifier<ExplorerEvalState> {
     // Skip if forced but we already have meaningful results for this FEN.
     if (force && isSamePosition && state.pvLines.isNotEmpty) return;
 
-    // --- Cancel previous evaluation for this owner ---
-    // This is fire-and-forget; the singleton handles the async cleanup.
-    // We bump generation FIRST so any in-flight callbacks from the old
-    // evaluation are guaranteed to see a stale generation.
+    // Bump generation so any in-flight callbacks from the previous
+    // evaluation see a stale generation and are silently dropped.
+    // Do NOT fire-and-forget cancelEvaluationsForOwner here — it races
+    // with the new enqueue and can cancel the freshly added job.
+    // StockfishSingleton already handles preemption for same-owner
+    // isCurrentPosition jobs internally.
     final gen = ++_generation;
-
-    StockfishSingleton().cancelEvaluationsForOwner(_ownerId);
 
     if (!isSamePosition) {
       final tracker = ref.read(engineDepthTrackerProvider.notifier);
