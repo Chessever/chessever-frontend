@@ -122,9 +122,13 @@ class ExplorerEvalNotifier extends StateNotifier<ExplorerEvalState> {
 
     // Guard against duplicate forced starts for the same position while
     // analysis is already in progress (e.g. multiple post-frame triggers).
+    // Allow forced restart when stuck at depth 0 with no PV lines — this
+    // enables stall recovery to break the deadlock where isEvaluating is
+    // true but no Stockfish job is actually running.
     if (force &&
         stateKey == normalizedKey &&
-        (state.isEvaluating || state.pvLines.isNotEmpty)) {
+        (state.pvLines.isNotEmpty ||
+            (state.isEvaluating && state.depth > 0))) {
       return;
     }
 
@@ -138,6 +142,16 @@ class ExplorerEvalNotifier extends StateNotifier<ExplorerEvalState> {
     );
     final requestId = ++_requestId;
     final isSameFen = stateKey == normalizedKey;
+
+    // Guard against rare queue starvation where the request is accepted but no
+    // depth/PV callbacks ever arrive (UI remains on "..."). If we detect this,
+    // reset the singleton queue once and retry the same position.
+    _scheduleStallRecovery(
+      fen: normalizedFen,
+      fenKey: normalizedKey,
+      requestId: requestId,
+      attempt: attempt,
+    );
 
     // Do not fire-and-forget owner cancellation here: it races with the new
     // request and can cancel the freshly enqueued job, causing indefinite
@@ -237,11 +251,14 @@ class ExplorerEvalNotifier extends StateNotifier<ExplorerEvalState> {
           if (!_isActiveRequest(requestId, normalizedKey)) return;
 
           if (result.isCancelled) {
+            // Always clear isEvaluating on cancellation so that stall
+            // recovery and scheduled retries don't deadlock on guard 4
+            // (which blocks forced restarts when isEvaluating is true).
+            state = state.copyWith(isEvaluating: false);
             if (attempt < 1) {
               _scheduleRetry(normalizedFen, attempt + 1, fenKey: normalizedKey);
               return;
             }
-            state = state.copyWith(isEvaluating: false);
             return;
           }
 
@@ -307,6 +324,33 @@ class ExplorerEvalNotifier extends StateNotifier<ExplorerEvalState> {
           }
           state = state.copyWith(isEvaluating: false);
         });
+  }
+
+  void _scheduleStallRecovery({
+    required String fen,
+    required String fenKey,
+    required int requestId,
+    required int attempt,
+  }) {
+    Future<void>.delayed(const Duration(milliseconds: 2400), () async {
+      if (!_isActiveRequest(requestId, fenKey)) return;
+
+      final noProgressYet =
+          state.isEvaluating && state.depth <= 0 && state.pvLines.isEmpty;
+      if (!noProgressYet) return;
+
+      // Retry once — cancel only this owner's stale jobs to avoid nuking
+      // other providers' in-flight evaluations.
+      if (attempt < 1) {
+        await StockfishSingleton().cancelEvaluationsForOwner(_ownerId);
+        if (!_isActiveRequest(requestId, fenKey)) return;
+        evaluatePosition(fen, force: true, attempt: attempt + 1);
+        return;
+      }
+
+      // Never leave the UI stuck in an endless loading state.
+      state = state.copyWith(isEvaluating: false);
+    });
   }
 
   bool _isActiveRequest(int requestId, String fenKey) {

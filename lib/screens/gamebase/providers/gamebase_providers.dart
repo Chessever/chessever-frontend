@@ -35,12 +35,26 @@ int _pliesFromFen(String fen) {
 
 /// StateNotifier for managing Gamebase explorer state.
 class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
-  GamebaseExplorerNotifier(this.ref) : super(const GamebaseExplorerState());
+  GamebaseExplorerNotifier(this.ref)
+      : super(
+          const GamebaseExplorerState(
+            currentFen:
+                'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+            currentMoveIndex: -1,
+          ),
+        );
   // NOTE: We intentionally do NOT fetch in the constructor.
   // The view calls setPosition() with the actual board FEN, which triggers
   // the fetch. Fetching here with the default starting FEN causes a race
   // condition where the starting position response can overwrite the real
   // position's data.
+  //
+  // However, the initial state DOES include the starting FEN so that
+  // child widgets (e.g. _ExplorerEvalBar) receive a valid FEN on the very
+  // first build frame, before any postFrameCallback has fired. Without
+  // this, the eval bar's initState postFrameCallback sees an empty FEN
+  // and silently skips engine startup — leaving the eval stuck on "..."
+  // until the user navigates at least once.
 
   final Ref ref;
 

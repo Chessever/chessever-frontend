@@ -5045,7 +5045,7 @@ class ChessBoardScreenNotifierNew
           _releaseLog(
             '🎯 EVAL: Stockfish result cancelled before completion for $fen',
           );
-          if (_activeEvalRequestId == currentRequestId) {
+          if (mounted && _activeEvalRequestId == currentRequestId) {
             _activeEvalRequestId = null;
             _activeEvalKey = null;
             _activeEvalStartTime = null;
@@ -5086,7 +5086,7 @@ class ChessBoardScreenNotifierNew
         }
 
         if (!mounted || _cancelEvaluation) return;
-        if (stockfishResult.pvs.isNotEmpty) {
+        if (stockfishResult.pvs.isNotEmpty && mounted) {
           primaryEval = CloudEval(
             fen: fenToAnalyze,
             knodes: stockfishResult.knodes,
@@ -5118,7 +5118,7 @@ class ChessBoardScreenNotifierNew
               fenToAnalyze,
               stockfishResult.pvs,
             );
-            if (finalLines.isNotEmpty) {
+            if (finalLines.isNotEmpty && mounted) {
               if (finalLines.length > configuredMultiPV) {
                 finalLines = finalLines
                     .take(configuredMultiPV)
@@ -5209,14 +5209,16 @@ class ChessBoardScreenNotifierNew
       if (primaryEval == null) {
         _releaseLog('❌ EVAL FAILED: No primaryEval available for $fen');
         _failedEvalTimestamps[cacheKey] = DateTime.now();
-        final fallbackState = state.value;
-        if (fallbackState != null) {
-          state = AsyncValue.data(
-            fallbackState.copyWith(
-              isEvaluating: false,
-              evaluation: fallbackState.evaluation ?? 0,
-            ),
-          );
+        if (mounted) {
+          final fallbackState = state.value;
+          if (fallbackState != null) {
+            state = AsyncValue.data(
+              fallbackState.copyWith(
+                isEvaluating: false,
+                evaluation: fallbackState.evaluation ?? 0,
+              ),
+            );
+          }
         }
         return;
       }
@@ -5238,6 +5240,7 @@ class ChessBoardScreenNotifierNew
         );
 
         // IMMEDIATE UPDATE: Show eval bar with loading PVs indicator
+        if (!mounted) return;
         final currentSnapshot = state.value;
         if (currentSnapshot != null) {
           state = AsyncValue.data(
@@ -5383,12 +5386,8 @@ class ChessBoardScreenNotifierNew
         );
       }
 
-      if (_cancelEvaluation || state.value == null || !mounted) {
-        // CRITICAL FIX: Clear evaluating state on early return
-        final fallbackState = state.value;
-        if (fallbackState != null && fallbackState.isEvaluating) {
-          state = AsyncValue.data(fallbackState.copyWith(isEvaluating: false));
-        }
+      if (!mounted || _cancelEvaluation) return;
+      if (state.value == null) {
         return;
       }
       if (_activeEvalRequestId != currentRequestId) {
@@ -5550,9 +5549,11 @@ class ChessBoardScreenNotifierNew
       if (!_cancelEvaluation) {
         _releaseLog('Evaluation error: $e');
       }
-      final fallbackState = state.value;
-      if (fallbackState != null) {
-        state = AsyncValue.data(fallbackState.copyWith(isEvaluating: false));
+      if (mounted) {
+        final fallbackState = state.value;
+        if (fallbackState != null) {
+          state = AsyncValue.data(fallbackState.copyWith(isEvaluating: false));
+        }
       }
     } finally {
       if (requestId != null && _activeEvalRequestId == requestId) {

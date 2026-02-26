@@ -7,6 +7,7 @@ import 'package:chessever2/screens/calendar/calendar_detail_screen.dart';
 import 'package:chessever2/screens/favorites/favorites_tab_screen.dart';
 import 'package:chessever2/screens/home/home_screen.dart';
 import 'package:chessever2/screens/chessboard/provider/stockfish_singleton.dart';
+import 'package:flutter_soloud/flutter_soloud.dart';
 import 'package:chessever2/screens/countryman_games_screen.dart';
 import 'package:chessever2/screens/library/library_screen.dart';
 import 'package:chessever2/screens/players/player_screen.dart';
@@ -443,13 +444,16 @@ void _initializePostStartupServices() {
   WidgetsBinding.instance.addObserver(
     LifecycleEventHandler(
       onAppExit: () async {
-        // Keep lifecycle transitions deterministic by clearing pending engine
-        // work whenever app truly backgrounds.
-        await StockfishSingleton().cancelAllEvaluations();
+        // Fully dispose the engine on background to free native resources.
+        // On Android this prevents the OS from aggressively killing the app
+        // due to background native thread activity. The engine will lazily
+        // reinitialize on the next evaluatePosition() call after resume.
+        await StockfishSingleton().disposeAsync();
       },
       onAppResume: () async {
-        // If engine exists in terminal state after lifecycle change, recover it
-        // before new board evaluations start.
+        // Engine was disposed on background — it will lazily reinitialize
+        // on the next evaluatePosition() call. Only force recovery if a
+        // stale engine reference remains in a broken state.
         final stockfish = StockfishSingleton();
         if (stockfish.requiresRecovery) {
           unawaited(stockfish.forceRecovery());
@@ -542,6 +546,20 @@ class _StartupGateState extends State<StartupGate> {
   void initState() {
     super.initState();
     _startInitialization();
+  }
+
+  /// Tear down native FFI engines before hot restart to prevent orphaned
+  /// isolates/threads from blocking Flutter's reassemble mechanism.
+  @override
+  void reassemble() {
+    StockfishSingleton().dispose();
+    try {
+      final soloud = SoLoud.instance;
+      if (soloud.isInitialized) {
+        soloud.deinit();
+      }
+    } catch (_) {}
+    super.reassemble();
   }
 
   Future<void> _startInitialization() async {
