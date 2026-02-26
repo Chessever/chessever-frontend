@@ -1,6 +1,7 @@
 import 'package:chessever2/repository/library/library_repository.dart';
 import 'package:chessever2/repository/library/models/library_folder.dart';
 import 'package:chessever2/repository/library/models/saved_analysis.dart';
+import 'package:chessever2/screens/library/providers/book_games_paginated_provider.dart';
 import 'package:chessever2/screens/library/providers/library_folders_provider.dart';
 import 'package:chessever2/screens/library/utils/load_saved_analysis.dart';
 import 'package:chessever2/screens/library/widgets/book_saved_game_card.dart';
@@ -19,9 +20,10 @@ import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-/// Book (folder) screen.
+/// Book (folder) screen with paginated loading.
 ///
-/// Search only filters within the book.
+/// Loads games in pages of [kBookPageSize]. Infinite scroll triggers loading
+/// more. Search filters within loaded pages.
 class FolderContentsScreen extends ConsumerStatefulWidget {
   const FolderContentsScreen({super.key, required this.folder});
 
@@ -35,15 +37,38 @@ class FolderContentsScreen extends ConsumerStatefulWidget {
 class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
+  final ScrollController _scrollController = ScrollController();
   final Set<String> _removingIds = {};
 
   bool get _isSubscribed => widget.folder.isSubscribed;
+
+  BookPaginationKey get _paginationKey => BookPaginationKey(
+    folderId: widget.folder.id,
+    isSubscribed: _isSubscribed,
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(_onScroll);
+  }
 
   @override
   void dispose() {
     _searchController.dispose();
     _searchFocusNode.dispose();
+    _scrollController.dispose();
     super.dispose();
+  }
+
+  void _onScroll() {
+    if (!_scrollController.hasClients) return;
+    final maxScroll = _scrollController.position.maxScrollExtent;
+    final currentScroll = _scrollController.offset;
+    // Trigger load more when within 200px of the bottom.
+    if (currentScroll >= maxScroll - 200) {
+      ref.read(bookGamesPaginatedProvider(_paginationKey).notifier).loadMore();
+    }
   }
 
   void _clearSearch() {
@@ -64,6 +89,9 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
       await repository.moveAnalysisToFolder(analysis.id, null);
 
       if (!mounted) return;
+      // Refresh the paginated list after removal.
+      ref.read(bookGamesPaginatedProvider(_paginationKey).notifier).refresh();
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -81,6 +109,11 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
                   analysis.id,
                   widget.folder.id,
                 );
+                ref
+                    .read(
+                      bookGamesPaginatedProvider(_paginationKey).notifier,
+                    )
+                    .refresh();
               } catch (_) {
                 // Best-effort undo; show nothing if it fails.
               }
@@ -132,7 +165,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
     }
   }
 
-  /// Open a shared game in read-only analysis mode (no analysisId → no save-back).
+  /// Open a shared game in read-only analysis mode (no analysisId -> no save-back).
   void _openSharedGame(SavedAnalysis analysis) {
     final md = analysis.chessGame.metadata;
     final whiteName = md['White'] as String? ?? 'White';
@@ -196,10 +229,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final analysesAsync =
-        _isSubscribed
-            ? ref.watch(subscribedFolderAnalysesProvider(widget.folder.id))
-            : ref.watch(_folderAnalysesProvider(widget.folder.id));
+    final bookAsync = ref.watch(bookGamesPaginatedProvider(_paginationKey));
     final query = _searchController.text.trim().toLowerCase();
 
     return Scaffold(
@@ -215,8 +245,8 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
             ),
             child: Column(
               children: [
-                _buildTopArea(context),
-                Expanded(child: _buildSavedGames(analysesAsync, query)),
+                _buildTopArea(context, bookAsync),
+                Expanded(child: _buildSavedGames(bookAsync, query)),
               ],
             ),
           ),
@@ -225,7 +255,10 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
     );
   }
 
-  Widget _buildTopArea(BuildContext context) {
+  Widget _buildTopArea(
+    BuildContext context,
+    AsyncValue<PaginatedBookState> bookAsync,
+  ) {
     final topPadding = MediaQuery.of(context).viewPadding.top;
 
     return Container(
@@ -237,15 +270,22 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
           colors: [kBlackColor, kBackgroundColor],
         ),
       ),
-      child: Column(children: [_buildHeader(context), _buildSearchBar()]),
+      child: Column(
+        children: [_buildHeader(context, bookAsync), _buildSearchBar()],
+      ),
     );
   }
 
-  Widget _buildHeader(BuildContext context) {
+  Widget _buildHeader(
+    BuildContext context,
+    AsyncValue<PaginatedBookState> bookAsync,
+  ) {
     final horizontalPadding = ResponsiveHelper.adaptive(
       phone: 8.w,
       tablet: 16.w,
     );
+    final totalCount = bookAsync.valueOrNull?.totalCount;
+
     return Padding(
       padding: EdgeInsets.fromLTRB(
         horizontalPadding,
@@ -285,6 +325,13 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
                 if (_isSubscribed && widget.folder.ownerDisplayName != null)
                   Text(
                     'by ${widget.folder.ownerDisplayName}',
+                    style: AppTypography.textXsRegular.copyWith(
+                      color: kWhiteColor.withValues(alpha: 0.5),
+                    ),
+                  )
+                else if (totalCount != null && totalCount > 0)
+                  Text(
+                    '$totalCount ${totalCount == 1 ? 'game' : 'games'}',
                     style: AppTypography.textXsRegular.copyWith(
                       color: kWhiteColor.withValues(alpha: 0.5),
                     ),
@@ -376,23 +423,21 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
   }
 
   Widget _buildSavedGames(
-    AsyncValue<List<SavedAnalysis>> analysesAsync,
+    AsyncValue<PaginatedBookState> bookAsync,
     String query,
   ) {
-    final providerToInvalidate =
-        _isSubscribed
-            ? subscribedFolderAnalysesProvider(widget.folder.id)
-            : _folderAnalysesProvider(widget.folder.id);
-
     return RefreshIndicator(
       onRefresh: () async {
         HapticFeedbackService.medium();
-        ref.invalidate(providerToInvalidate);
+        await ref
+            .read(bookGamesPaginatedProvider(_paginationKey).notifier)
+            .refresh();
       },
       color: kWhiteColor,
       backgroundColor: kBlack2Color,
-      child: analysesAsync.when(
-        data: (analyses) {
+      child: bookAsync.when(
+        data: (bookState) {
+          final analyses = bookState.games;
           final filtered =
               analyses.where((analysis) {
                 if (query.isEmpty) return true;
@@ -407,13 +452,41 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
                     event.contains(query);
               }).toList();
 
-          if (analyses.isEmpty) return _buildEmptySavedState();
-          if (filtered.isEmpty) return _buildEmptySearchState();
+          if (analyses.isEmpty && !bookState.hasMore) {
+            return _buildEmptySavedState();
+          }
+          if (filtered.isEmpty && query.isNotEmpty) {
+            return _buildEmptySearchState();
+          }
+
+          // +1 for the loading indicator when there are more pages
+          final showLoadingTail =
+              bookState.hasMore && query.isEmpty;
+          final itemCount =
+              filtered.length + (showLoadingTail ? 1 : 0);
 
           return ListView.builder(
+            controller: _scrollController,
             padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
-            itemCount: filtered.length,
+            itemCount: itemCount,
             itemBuilder: (context, index) {
+              // Loading indicator at the bottom
+              if (index >= filtered.length) {
+                return Padding(
+                  padding: EdgeInsets.symmetric(vertical: 16.h),
+                  child: const Center(
+                    child: SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: kWhiteColor,
+                      ),
+                    ),
+                  ),
+                );
+              }
+
               final analysis = filtered[index];
 
               // Subscribed: read-only cards (no swipe-to-remove)
@@ -658,10 +731,3 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
     );
   }
 }
-
-final _folderAnalysesProvider = StreamProvider.family
-    .autoDispose<List<SavedAnalysis>, String>((ref, folderId) {
-      return ref
-          .watch(libraryRepositoryProvider)
-          .subscribeAnalyses(folderId: folderId);
-    });

@@ -1,6 +1,5 @@
 import 'package:chessever2/repository/library/library_repository.dart';
 import 'package:chessever2/repository/library/models/library_folder.dart';
-import 'package:chessever2/repository/library/models/saved_analysis.dart';
 import 'package:chessever2/repository/library/models/shared_book_preview.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -61,9 +60,3 @@ final sharedBookPreviewProvider = FutureProvider.autoDispose
       return repository.getBookByShareToken(shareToken);
     });
 
-/// Stream analyses in a subscribed (shared) folder.
-final subscribedFolderAnalysesProvider = StreamProvider.autoDispose
-    .family<List<SavedAnalysis>, String>((ref, folderId) {
-      final repository = ref.watch(libraryRepositoryProvider);
-      return repository.subscribeSharedFolderAnalyses(folderId);
-    });
