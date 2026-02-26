@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:dartchess/dartchess.dart';
+import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 import 'package:chessever2/providers/engine_settings_provider.dart';
@@ -71,26 +74,34 @@ class ExplorerEvalState {
 class ExplorerEvalNotifier extends StateNotifier<ExplorerEvalState> {
   ExplorerEvalNotifier(this.ref) : super(const ExplorerEvalState());
 
-  // Unique owner per notifier instance so stale cancellations from a disposed
-  // explorer cannot cancel jobs enqueued by a freshly created instance.
   final String _ownerId = StockfishSingleton.generateOwnerId(
     'explorer_eval',
     0,
   );
   final Ref ref;
-  int _requestId = 0;
+
+  /// Simple monotonic generation counter. Incremented every time a new
+  /// evaluation starts or the engine is disabled/disposed. Callbacks check
+  /// their captured generation against the current one — if they differ,
+  /// the callback is stale and is silently dropped.
+  int _generation = 0;
+
   bool _isDisposed = false;
   bool _engineEnabled = true;
 
-  /// Stable position identity (board + side/castling/ep).
-  ///
-  /// Halfmove/fullmove counters are intentionally ignored because they can
-  /// change without a meaningful position change for engine evaluation.
+  // ---------------------------------------------------------------
+  // Position key — ignores halfmove/fullmove counters
+  // ---------------------------------------------------------------
+
   String _positionKey(String fen) {
     final parts = fen.trim().split(RegExp(r'\s+'));
     if (parts.length < 4) return fen.trim();
     return parts.take(4).join(' ');
   }
+
+  // ---------------------------------------------------------------
+  // Public API
+  // ---------------------------------------------------------------
 
   void setEngineEnabled({
     required bool enabled,
@@ -100,9 +111,7 @@ class ExplorerEvalNotifier extends StateNotifier<ExplorerEvalState> {
     _engineEnabled = enabled;
 
     if (!enabled) {
-      // Invalidate in-flight callbacks so stale completion handlers cannot
-      // restart analysis after the engine was intentionally disabled.
-      _requestId++;
+      _generation++;
       _stopAndClear(reason: 'disabled');
       return;
     }
@@ -111,7 +120,7 @@ class ExplorerEvalNotifier extends StateNotifier<ExplorerEvalState> {
     evaluatePosition(fen, force: force);
   }
 
-  void evaluatePosition(String fen, {bool force = false, int attempt = 0}) {
+  void evaluatePosition(String fen, {bool force = false}) {
     final normalizedFen = fen.trim();
     if (_isDisposed ||
         !_engineEnabled ||
@@ -122,50 +131,25 @@ class ExplorerEvalNotifier extends StateNotifier<ExplorerEvalState> {
 
     final normalizedKey = _positionKey(normalizedFen);
     final stateKey = _positionKey(state.fen);
+    final isSamePosition = stateKey == normalizedKey;
 
-    if (!force && stateKey == normalizedKey) {
-      if (state.isEvaluating) return;
-      if (state.pvLines.isNotEmpty) return;
+    // Skip if we already have results or are evaluating this position.
+    if (!force && isSamePosition) {
+      if (state.isEvaluating || state.pvLines.isNotEmpty) return;
     }
 
-    // Guard against duplicate forced starts for the same position while
-    // analysis is already in progress (e.g. multiple post-frame triggers).
-    // Allow forced restart when stuck at depth 0 with no PV lines — this
-    // enables stall recovery to break the deadlock where isEvaluating is
-    // true but no Stockfish job is actually running.
-    if (force &&
-        stateKey == normalizedKey &&
-        (state.pvLines.isNotEmpty || (state.isEvaluating && state.depth > 0))) {
-      return;
-    }
+    // Skip if forced but we already have meaningful results for this FEN.
+    if (force && isSamePosition && state.pvLines.isNotEmpty) return;
 
-    final settings =
-        ref.read(engineSettingsProviderNew).valueOrNull ??
-        const EngineSettings();
-    final multiPv = settings.multiPvForStockfish().clamp(1, 5);
-    final maxDepth = settings.maxDepthFor(EngineComponent.evaluationGauge);
-    final searchDuration = settings.searchDurationFor(
-      EngineComponent.evaluationGauge,
-    );
-    final requestId = ++_requestId;
-    final isSameFen = stateKey == normalizedKey;
+    // --- Cancel previous evaluation for this owner ---
+    // This is fire-and-forget; the singleton handles the async cleanup.
+    // We bump generation FIRST so any in-flight callbacks from the old
+    // evaluation are guaranteed to see a stale generation.
+    final gen = ++_generation;
 
-    // Guard against rare queue starvation where the request is accepted but no
-    // depth/PV callbacks ever arrive (UI remains on "..."). If we detect this,
-    // reset the singleton queue once and retry the same position.
-    _scheduleStallRecovery(
-      fen: normalizedFen,
-      fenKey: normalizedKey,
-      requestId: requestId,
-      attempt: attempt,
-    );
+    StockfishSingleton().cancelEvaluationsForOwner(_ownerId);
 
-    // Do not fire-and-forget owner cancellation here: it races with the new
-    // request and can cancel the freshly enqueued job, causing indefinite
-    // "..." loading states. StockfishSingleton already cancels stale current
-    // jobs for `isCurrentPosition: true` requests.
-
-    if (!isSameFen) {
+    if (!isSamePosition) {
       final tracker = ref.read(engineDepthTrackerProvider.notifier);
       tracker.clear(
         EngineComponent.evaluationGauge,
@@ -180,12 +164,24 @@ class ExplorerEvalNotifier extends StateNotifier<ExplorerEvalState> {
     state = state.copyWith(
       fen: normalizedFen,
       isEvaluating: true,
-      // Keep previous depth/eval/PVs when retrying the same position to avoid
-      // UI flicker (depth text jumping back to 0 and panel collapsing).
-      depth: isSameFen ? state.depth : 0,
-      clearEval: !isSameFen,
-      clearMate: !isSameFen,
-      pvLines: isSameFen ? state.pvLines : const [],
+      depth: isSamePosition ? state.depth : 0,
+      clearEval: !isSamePosition,
+      clearMate: !isSamePosition,
+      pvLines: isSamePosition ? state.pvLines : const [],
+    );
+
+    final settings =
+        ref.read(engineSettingsProviderNew).valueOrNull ??
+        const EngineSettings();
+    final multiPv = settings.multiPvForStockfish().clamp(1, 5);
+    final maxDepth = settings.maxDepthFor(EngineComponent.evaluationGauge);
+    final searchDuration = settings.searchDurationFor(
+      EngineComponent.evaluationGauge,
+    );
+
+    debugPrint(
+      '🔍 EXPLORER EVAL: Starting for ${normalizedKey.split(' ').first} '
+      '(gen=$gen, owner=$_ownerId)',
     );
 
     StockfishSingleton()
@@ -199,7 +195,7 @@ class ExplorerEvalNotifier extends StateNotifier<ExplorerEvalState> {
           allowCache: false,
           ownerId: _ownerId,
           onDepthUpdate: (depth, knodes) {
-            if (!_isActiveRequest(requestId, normalizedKey)) return;
+            if (_isStale(gen)) return;
             final nextDepth = depth > state.depth ? depth : state.depth;
             state = state.copyWith(depth: nextDepth, isEvaluating: true);
             _updateDepthTracking(
@@ -211,27 +207,11 @@ class ExplorerEvalNotifier extends StateNotifier<ExplorerEvalState> {
             );
           },
           onPvUpdate: (pvs, depth) {
-            if (!_isActiveRequest(requestId, normalizedKey)) return;
+            if (_isStale(gen)) return;
             if (pvs.isEmpty) return;
 
-            final lines = <ExplorerPvLine>[];
-            for (final pv in pvs) {
-              final normalizedEval = _pvToWhiteEval(pv, normalizedFen);
-              final normalizedMate = _pvToWhiteMate(pv, normalizedFen);
-              final sanMoves = _uciToSanMoves(normalizedFen, pv.moves);
-
-              lines.add(
-                ExplorerPvLine(
-                  evaluation: normalizedEval,
-                  mate:
-                      (normalizedMate != null && normalizedMate != 0)
-                          ? normalizedMate
-                          : null,
-                  sanMoves: sanMoves,
-                  uciMoves: pv.moves.trim().split(RegExp(r'\s+')),
-                ),
-              );
-            }
+            final lines = _parsePvLines(pvs, normalizedFen);
+            if (lines.isEmpty) return;
 
             final first = lines.first;
             final streamedDepth = depth > 0 ? depth : state.depth;
@@ -255,41 +235,24 @@ class ExplorerEvalNotifier extends StateNotifier<ExplorerEvalState> {
           },
         )
         .then((result) {
-          if (!_isActiveRequest(requestId, normalizedKey)) return;
+          if (_isStale(gen)) return;
 
           if (result.isCancelled) {
-            // Always clear isEvaluating on cancellation so that stall
-            // recovery and scheduled retries don't deadlock on guard 4
-            // (which blocks forced restarts when isEvaluating is true).
-            state = state.copyWith(isEvaluating: false);
-            if (attempt < 1) {
-              _scheduleRetry(normalizedFen, attempt + 1, fenKey: normalizedKey);
-              return;
+            debugPrint(
+              '🛑 EXPLORER EVAL: Cancelled for ${normalizedKey.split(' ').first} (gen=$gen)',
+            );
+            // Don't leave isEvaluating stuck — clear it. If this was a
+            // spurious cancel, the next evaluatePosition() call will restart.
+            if (!_isStale(gen)) {
+              state = state.copyWith(isEvaluating: false);
             }
             return;
           }
 
-          final lines = <ExplorerPvLine>[];
-          for (final pv in result.pvs) {
-            if (pv.moves.trim().isEmpty) continue;
-            final normalizedEval = _pvToWhiteEval(pv, normalizedFen);
-            final normalizedMate = _pvToWhiteMate(pv, normalizedFen);
-            final sanMoves = _uciToSanMoves(normalizedFen, pv.moves);
-
-            lines.add(
-              ExplorerPvLine(
-                evaluation: normalizedEval,
-                mate: normalizedMate,
-                sanMoves: sanMoves,
-                uciMoves: pv.moves.trim().split(RegExp(r'\s+')),
-              ),
-            );
-          }
-
-          if (lines.isEmpty && attempt < 1) {
-            _scheduleRetry(normalizedFen, attempt + 1, fenKey: normalizedKey);
-            return;
-          }
+          final lines = _parsePvLines(
+            result.pvs.where((pv) => pv.moves.trim().isNotEmpty).toList(),
+            normalizedFen,
+          );
 
           if (lines.isNotEmpty) {
             final first = lines.first;
@@ -312,6 +275,10 @@ class ExplorerEvalNotifier extends StateNotifier<ExplorerEvalState> {
               allowDecrease: false,
               context: 'opening explorer final',
             );
+            debugPrint(
+              '✅ EXPLORER EVAL: Complete depth=$resolvedDepth '
+              'pvs=${lines.length} (gen=$gen)',
+            );
           } else {
             final hasStableData = state.pvLines.isNotEmpty;
             state = state.copyWith(
@@ -321,63 +288,44 @@ class ExplorerEvalNotifier extends StateNotifier<ExplorerEvalState> {
               clearEval: !hasStableData,
               clearMate: !hasStableData,
             );
+            debugPrint(
+              '⚠️ EXPLORER EVAL: No lines returned (gen=$gen)',
+            );
           }
         })
-        .catchError((Object _, StackTrace __) {
-          if (!_isActiveRequest(requestId, normalizedKey)) return;
-          if (attempt < 1) {
-            _scheduleRetry(normalizedFen, attempt + 1, fenKey: normalizedKey);
-            return;
-          }
+        .catchError((Object e, StackTrace __) {
+          if (_isStale(gen)) return;
+          debugPrint('❌ EXPLORER EVAL: Error $e (gen=$gen)');
           state = state.copyWith(isEvaluating: false);
         });
   }
 
-  void _scheduleStallRecovery({
-    required String fen,
-    required String fenKey,
-    required int requestId,
-    required int attempt,
-  }) {
-    Future<void>.delayed(const Duration(milliseconds: 2400), () async {
-      if (!_isActiveRequest(requestId, fenKey)) return;
+  // ---------------------------------------------------------------
+  // Internals
+  // ---------------------------------------------------------------
 
-      final noProgressYet =
-          state.isEvaluating && state.depth <= 0 && state.pvLines.isEmpty;
-      if (!noProgressYet) return;
-      if (!_engineEnabled) return;
+  bool _isStale(int gen) => _isDisposed || !mounted || gen != _generation;
 
-      // Retry once — cancel only this owner's stale jobs to avoid nuking
-      // other providers' in-flight evaluations.
-      if (attempt < 1) {
-        await StockfishSingleton().cancelEvaluationsForOwner(_ownerId);
-        if (!_isActiveRequest(requestId, fenKey)) return;
-        evaluatePosition(fen, force: true, attempt: attempt + 1);
-        return;
-      }
-
-      // Never leave the UI stuck in an endless loading state.
-      state = state.copyWith(isEvaluating: false);
-    });
-  }
-
-  bool _isActiveRequest(int requestId, String fenKey) {
-    return !_isDisposed &&
-        mounted &&
-        _requestId == requestId &&
-        _positionKey(state.fen) == fenKey;
-  }
-
-  void _scheduleRetry(String fen, int attempt, {required String fenKey}) {
-    Future<void>.delayed(const Duration(milliseconds: 180), () {
-      if (_isDisposed ||
-          !_engineEnabled ||
-          !mounted ||
-          _positionKey(state.fen) != fenKey) {
-        return;
-      }
-      evaluatePosition(fen, force: true, attempt: attempt);
-    });
+  List<ExplorerPvLine> _parsePvLines(List<Pv> pvs, String fen) {
+    final lines = <ExplorerPvLine>[];
+    for (final pv in pvs) {
+      if (pv.moves.trim().isEmpty) continue;
+      final normalizedEval = _pvToWhiteEval(pv, fen);
+      final normalizedMate = _pvToWhiteMate(pv, fen);
+      final sanMoves = _uciToSanMoves(fen, pv.moves);
+      lines.add(
+        ExplorerPvLine(
+          evaluation: normalizedEval,
+          mate:
+              (normalizedMate != null && normalizedMate != 0)
+                  ? normalizedMate
+                  : null,
+          sanMoves: sanMoves,
+          uciMoves: pv.moves.trim().split(RegExp(r'\s+')),
+        ),
+      );
+    }
+    return lines;
   }
 
   void _updateDepthTracking({
@@ -453,9 +401,6 @@ class ExplorerEvalNotifier extends StateNotifier<ExplorerEvalState> {
     return sanMoves;
   }
 
-  /// Normalize centipawn eval to White's perspective.
-  /// Used for intermediate onPvUpdate callbacks where PVs are raw
-  /// (from side-to-move perspective).
   double _normalizeEval(double cpEval, String fen) {
     final isWhiteToMove =
         fen.split(' ').length > 1 ? fen.split(' ')[1] == 'w' : true;
@@ -469,16 +414,11 @@ class ExplorerEvalNotifier extends StateNotifier<ExplorerEvalState> {
     return isWhiteToMove ? mate : -mate;
   }
 
-  /// Normalize a PV score to White's perspective.
-  ///
-  /// `Pv.whitePerspective == false` means score is in side-to-move
-  /// perspective and must be normalized using FEN turn.
   double _pvToWhiteEval(Pv pv, String fen) {
     final cpEval = pv.cp / 100.0;
     return pv.whitePerspective ? cpEval : _normalizeEval(cpEval, fen);
   }
 
-  /// Normalize a mate score to White's perspective.
   int? _pvToWhiteMate(Pv pv, String fen) {
     final mate = pv.mate;
     if (mate == null || mate == 0) return null;
@@ -489,7 +429,7 @@ class ExplorerEvalNotifier extends StateNotifier<ExplorerEvalState> {
   void dispose() {
     _isDisposed = true;
     _engineEnabled = false;
-    _requestId++;
+    _generation++;
     _stopAndClear(reason: 'dispose');
     super.dispose();
   }
