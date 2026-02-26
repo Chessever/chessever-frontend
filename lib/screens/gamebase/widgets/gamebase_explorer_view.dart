@@ -217,6 +217,27 @@ class _HorizontalPvLines extends ConsumerWidget {
 
           final firstUci = line.moves.isNotEmpty ? line.moves.first.uci : null;
 
+          // Eval badge colors: white bg for white advantage, dark for black.
+          final bool isWhiteWinning =
+              (line.mate != null && line.mate! > 0) ||
+              (line.evaluation != null && line.evaluation! > 0);
+          final bool isBlackWinning =
+              (line.mate != null && line.mate! < 0) ||
+              (line.evaluation != null && line.evaluation! < 0);
+
+          final Color evalBgColor;
+          final Color evalTextColor;
+          if (isWhiteWinning) {
+            evalBgColor = kWhiteColor;
+            evalTextColor = kBlack2Color;
+          } else if (isBlackWinning) {
+            evalBgColor = kDividerColor;
+            evalTextColor = kWhiteColor;
+          } else {
+            evalBgColor = kSecondaryTextColor.withValues(alpha: 0.3);
+            evalTextColor = kWhiteColor;
+          }
+
           final movesStyle = AppTypography.textXsRegular.copyWith(
             color: kWhiteColor.withValues(alpha: 0.8),
           );
@@ -235,13 +256,13 @@ class _HorizontalPvLines extends ConsumerWidget {
                         vertical: 2.h,
                       ),
                       decoration: BoxDecoration(
-                        color: kWhiteColor.withValues(alpha: 0.1),
+                        color: evalBgColor,
                         borderRadius: BorderRadius.circular(4.br),
                       ),
                       child: Text(
                         eval,
                         style: AppTypography.textXsBold.copyWith(
-                          color: kWhiteColor,
+                          color: evalTextColor,
                         ),
                       ),
                     ),

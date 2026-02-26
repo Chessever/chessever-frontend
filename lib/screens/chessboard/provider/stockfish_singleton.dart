@@ -168,17 +168,24 @@ class StockfishSingleton {
       await _cancelCurrentEvaluation();
     }
 
-    // Remove pending duplicate current-position jobs to avoid stale searches.
-    // Scope this cleanup to the same owner. When ownerId is known, also clean
-    // up legacy ownerless pending current-position jobs.
+    // When a high-priority (isCurrentPosition) job arrives, aggressively
+    // clean the queue:
+    // 1. Drop same-owner duplicate current-position jobs for other FENs
+    // 2. Drop ALL low-priority background jobs (game cards, etc.) — the user
+    //    navigated to a new screen, so stale background evals are wasted work
+    //    that would delay the visible analysis by minutes.
     if (isCurrentPosition && _jobQueue.isNotEmpty) {
+      int droppedCount = 0;
       _jobQueue.removeWhere((job) {
         final sameOwner =
             ownerId == null
                 ? job.ownerId == null
                 : (job.ownerId == ownerId || job.ownerId == null);
-        final shouldDrop = job.isCurrentPosition && sameOwner && job.fen != fen;
-        if (shouldDrop) {
+        final isDuplicateHighPriority =
+            job.isCurrentPosition && sameOwner && job.fen != fen;
+        final isLowPriority = !job.isCurrentPosition;
+
+        if (isDuplicateHighPriority || isLowPriority) {
           _pendingJobs.remove(job.key);
           if (!job.completer.isCompleted) {
             job.completer.complete(
@@ -192,10 +199,16 @@ class StockfishSingleton {
               ),
             );
           }
-          debugPrint('🗑️ QUEUE: Dropped pending job for ${job.fen}');
+          droppedCount++;
+          return true;
         }
-        return shouldDrop;
+        return false;
       });
+      if (droppedCount > 0) {
+        debugPrint(
+          '🗑️ QUEUE: Dropped $droppedCount pending jobs (priority cleanup)',
+        );
+      }
     }
 
     // Back-pressure for low-priority workloads (game cards/background lookups).
@@ -480,6 +493,14 @@ class StockfishSingleton {
 
       // Check if job was cancelled while waiting for engine
       if (_currentJob != job || completer.isCompleted) return;
+
+      // Guard: engine must be non-null and ready after initialization.
+      // After forceRecovery the engine may still be null if init timed out.
+      if (_engine == null) {
+        throw StateError(
+          'Engine is null after _ensureEngineReady — init likely timed out',
+        );
+      }
 
       final List<Pv> pvs = [];
       int knodes = 0;

@@ -79,6 +79,7 @@ import 'package:chessever2/repository/local_storage/local_storage_repository.dar
 import 'package:flutter/foundation.dart';
 import 'package:chessever2/services/lichess_move_annotations_service.dart';
 import 'package:chessever2/services/live_updates_service.dart';
+import 'package:chessever2/main.dart' show routeObserver;
 import 'package:chessever2/providers/auth_state_provider.dart';
 import 'package:chessever2/providers/notification_preferences_provider.dart';
 import 'package:chessever2/providers/notifications_settings_provider.dart';
@@ -595,7 +596,7 @@ class _ChessBoardPopupState {
 }
 
 class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
-    with WidgetsBindingObserver, TickerProviderStateMixin {
+    with WidgetsBindingObserver, TickerProviderStateMixin, RouteAware {
   late PageController _pageController;
   // REMOVED: bool analysisMode - was causing useless full rebuilds
   int? _lastViewedIndex;
@@ -924,6 +925,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    routeObserver.subscribe(this, ModalRoute.of(context)!);
     if (_didInitialBoardBootstrap) return;
     _didInitialBoardBootstrap = true;
 
@@ -1269,6 +1271,21 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
   }
 
   @override
+  void didPushNext() {
+    // Another route pushed on top (e.g. Player Profile, Explorer).
+    // Pause Stockfish so it doesn't compete with the foreground screen.
+    _handleLifecyclePaused();
+    super.didPushNext();
+  }
+
+  @override
+  void didPopNext() {
+    // Route on top was popped — board is visible again.
+    _handleLifecycleResume();
+    super.didPopNext();
+  }
+
+  @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
     if (!mounted) return;
@@ -1282,6 +1299,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
 
   @override
   void dispose() {
+    routeObserver.unsubscribe(this);
     WidgetsBinding.instance.removeObserver(this);
     _boardKeepAliveSub?.close();
     _audioSub?.close();

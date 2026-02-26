@@ -585,6 +585,10 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
                           title: effectiveTitle,
                         ),
                         playerKey: activePlayerKey,
+                        knownTotalCount:
+                            _currentDataSource == PlayerProfileDataSource.twic
+                                ? twicSummaryAsync.valueOrNull?.totalGames
+                                : null,
                       ),
                   ],
                 ),
@@ -825,6 +829,7 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
   Widget _buildActionButtons({
     required String displayName,
     required PlayerProfileKey playerKey,
+    int? knownTotalCount,
   }) {
     final horizontalPadding = ResponsiveHelper.adaptive(
       phone: 20.sp,
@@ -859,6 +864,7 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
                   context: context,
                   ref: ref,
                   playerKey: playerKey,
+                  knownTotalCount: knownTotalCount,
                   onSelectSpecific: () {
                     _handleTabSelection(
                       PlayerProfileTab.values.indexOf(PlayerProfileTab.games),
@@ -953,9 +959,8 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
   }
 }
 
-/// Compact single-row banner for switching between Regular and TWIC data sources.
-/// Tap to toggle — animates in with a spring entrance and has a subtle press feedback.
-class _DataSourceBanner extends StatefulWidget {
+/// Segmented toggle for switching between ChessEver and TWIC data sources.
+class _DataSourceBanner extends StatelessWidget {
   const _DataSourceBanner({
     required this.isTwic,
     required this.isLoading,
@@ -973,156 +978,151 @@ class _DataSourceBanner extends StatefulWidget {
   final VoidCallback? onSelectTwic;
 
   @override
-  State<_DataSourceBanner> createState() => _DataSourceBannerState();
+  Widget build(BuildContext context) {
+    final canSwitchToTwic =
+        twicEnabled && onSelectTwic != null && !isLoading;
+
+    return Container(
+      padding: EdgeInsets.all(3.sp),
+      decoration: BoxDecoration(
+        color: kWhiteColor.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(10.br),
+      ),
+      child: Row(
+        children: [
+          // ChessEver tab
+          Expanded(
+            child: _SourceTab(
+              label: 'ChessEver',
+              isActive: !isTwic,
+              onTap: isTwic ? onSelectRegular : null,
+            ),
+          ),
+          SizedBox(width: 3.w),
+          // TWIC tab
+          Expanded(
+            child: _SourceTab(
+              label: isLoading ? 'TWIC' : 'TWIC · $twicGameCount',
+              isActive: isTwic,
+              isLoading: isLoading && !isTwic,
+              onTap: !isTwic && canSwitchToTwic ? onSelectTwic : null,
+              accentColor: kPrimaryColor,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
-class _DataSourceBannerState extends State<_DataSourceBanner> {
+class _SourceTab extends StatefulWidget {
+  const _SourceTab({
+    required this.label,
+    required this.isActive,
+    this.isLoading = false,
+    this.onTap,
+    this.accentColor,
+  });
+
+  final String label;
+  final bool isActive;
+  final bool isLoading;
+  final VoidCallback? onTap;
+  final Color? accentColor;
+
+  @override
+  State<_SourceTab> createState() => _SourceTabState();
+}
+
+class _SourceTabState extends State<_SourceTab> {
   bool _pressed = false;
-
-  bool get _canTap =>
-      widget.isTwic ||
-      (widget.twicEnabled && widget.onSelectTwic != null && !widget.isLoading);
-
-  void _handleTap() {
-    if (widget.isTwic) {
-      widget.onSelectRegular();
-    } else {
-      widget.onSelectTwic?.call();
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
+    final activeColor = widget.accentColor ?? kWhiteColor;
+
     return GestureDetector(
-      onTapDown: _canTap ? (_) => setState(() => _pressed = true) : null,
+      onTapDown:
+          widget.onTap != null
+              ? (_) => setState(() => _pressed = true)
+              : null,
       onTapUp:
-          _canTap
+          widget.onTap != null
               ? (_) {
                 setState(() => _pressed = false);
-                _handleTap();
+                HapticFeedbackService.light();
+                widget.onTap!();
               }
               : null,
-      onTapCancel: _canTap ? () => setState(() => _pressed = false) : null,
+      onTapCancel:
+          widget.onTap != null
+              ? () => setState(() => _pressed = false)
+              : null,
       child: SingleMotionBuilder(
         motion: const CupertinoMotion.snappy(),
         value: _pressed ? 1.0 : 0.0,
         builder: (context, pressProgress, _) {
           return Transform.scale(
-            scale: 1.0 - 0.025 * pressProgress,
+            scale: 1.0 - 0.02 * pressProgress,
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 260),
               curve: Curves.easeOutCubic,
-              padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 9.h),
+              padding: EdgeInsets.symmetric(
+                horizontal: 10.w,
+                vertical: 7.h,
+              ),
               decoration: BoxDecoration(
                 color:
-                    widget.isTwic
-                        ? kPrimaryColor.withValues(alpha: 0.09)
-                        : kPopUpColor,
-                borderRadius: BorderRadius.circular(10.br),
+                    widget.isActive
+                        ? (widget.accentColor != null
+                            ? activeColor.withValues(alpha: 0.12)
+                            : kWhiteColor.withValues(alpha: 0.10))
+                        : Colors.transparent,
+                borderRadius: BorderRadius.circular(8.br),
                 border: Border.all(
                   color:
-                      widget.isTwic
-                          ? kPrimaryColor.withValues(alpha: 0.28)
-                          : kWhiteColor.withValues(alpha: 0.08),
+                      widget.isActive
+                          ? (widget.accentColor != null
+                              ? activeColor.withValues(alpha: 0.30)
+                              : kWhiteColor.withValues(alpha: 0.12))
+                          : Colors.transparent,
                 ),
               ),
               child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  // Source state dot
-                  AnimatedContainer(
-                    duration: const Duration(milliseconds: 300),
-                    curve: Curves.easeOutCubic,
-                    width: 6.w,
-                    height: 6.h,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color:
-                          widget.isTwic
-                              ? kPrimaryColor
-                              : kWhiteColor.withValues(alpha: 0.28),
-                    ),
-                  ),
-                  SizedBox(width: 10.w),
-
-                  // Info label
-                  Expanded(
-                    child: AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 200),
-                      transitionBuilder:
-                          (child, anim) =>
-                              FadeTransition(opacity: anim, child: child),
-                      child: Text(
-                        widget.isTwic
-                            ? 'TWIC database · ${widget.twicGameCount} games'
-                            : widget.isLoading
-                            ? 'Checking TWIC availability...'
-                            : 'TWIC database · ${widget.twicGameCount} games available',
-                        key: ValueKey(
-                          widget.isTwic
-                              ? 'twic'
-                              : widget.isLoading
-                              ? 'loading'
-                              : 'ready',
-                        ),
-                        style: AppTypography.textXsMedium.copyWith(
-                          color:
-                              widget.isTwic
-                                  ? kPrimaryColor.withValues(alpha: 0.9)
-                                  : kWhiteColor.withValues(alpha: 0.6),
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ),
-
-                  SizedBox(width: 8.w),
-
-                  // Action area
-                  if (widget.isLoading && !widget.isTwic)
+                  if (widget.isLoading) ...[
                     SizedBox(
-                      width: 11.w,
-                      height: 11.h,
+                      width: 10.w,
+                      height: 10.h,
                       child: CircularProgressIndicator(
                         strokeWidth: 1.5,
                         valueColor: AlwaysStoppedAnimation<Color>(
-                          kPrimaryColor.withValues(alpha: 0.8),
+                          kPrimaryColor.withValues(alpha: 0.7),
                         ),
                       ),
-                    )
-                  else if (_canTap)
-                    AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 200),
-                      transitionBuilder:
-                          (child, anim) =>
-                              FadeTransition(opacity: anim, child: child),
-                      child:
-                          widget.isTwic
-                              ? Text(
-                                'ChessEver',
-                                key: const ValueKey('to-regular'),
-                                style: AppTypography.textXsBold.copyWith(
-                                  color: kWhiteColor.withValues(alpha: 0.42),
-                                ),
-                              )
-                              : Container(
-                                key: const ValueKey('to-twic'),
-                                padding: EdgeInsets.symmetric(
-                                  horizontal: 7.w,
-                                  vertical: 3.h,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: kPrimaryColor.withValues(alpha: 0.15),
-                                  borderRadius: BorderRadius.circular(5.br),
-                                ),
-                                child: Text(
-                                  'Switch',
-                                  style: AppTypography.textXsBold.copyWith(
-                                    color: kPrimaryColor,
-                                  ),
-                                ),
-                              ),
                     ),
+                    SizedBox(width: 6.w),
+                  ],
+                  Flexible(
+                    child: Text(
+                      widget.label,
+                      style: AppTypography.textXsMedium.copyWith(
+                        color:
+                            widget.isActive
+                                ? (widget.accentColor != null
+                                    ? activeColor.withValues(alpha: 0.95)
+                                    : kWhiteColor.withValues(alpha: 0.95))
+                                : kWhiteColor.withValues(alpha: 0.40),
+                        fontWeight:
+                            widget.isActive
+                                ? FontWeight.w600
+                                : FontWeight.w500,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
                 ],
               ),
             ),
