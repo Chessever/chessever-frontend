@@ -147,9 +147,12 @@ class StockfishSingleton {
     // different FEN when it is safe to preempt:
     // - always preempt low-priority jobs (isCurrentPosition == false)
     // - preempt same-owner current jobs
-    // - when ownerId is known, also preempt legacy ownerless current jobs
-    // This keeps foreground explorer analysis responsive without reintroducing
-    // cross-owner cancellation loops.
+    // - when ownerId is known, preempt ANY current job (including cross-owner)
+    //   because only one position can be "current" at a time — the user is
+    //   looking at one screen, so the previous current-position job is obsolete.
+    //   Cross-owner cancellation loops are prevented by the fact that cancelled
+    //   providers do NOT auto-retry (explorer drops stale callbacks, chess board
+    //   checks visibility before re-evaluating).
     final canPreemptCurrent =
         _currentJob != null &&
         _currentJob!.fen != fen &&
@@ -157,8 +160,7 @@ class StockfishSingleton {
         (!_currentJob!.isCurrentPosition ||
             (ownerId == null
                 ? _currentJob!.ownerId == null
-                : (_currentJob!.ownerId == ownerId ||
-                    _currentJob!.ownerId == null)));
+                : true));
     if (isCurrentPosition && canPreemptCurrent) {
       debugPrint(
         '🛑 QUEUE: Cancelling in-flight evaluation for ${_currentJob!.fen} → new position $fen',

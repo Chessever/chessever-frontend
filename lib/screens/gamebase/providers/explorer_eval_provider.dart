@@ -89,6 +89,12 @@ class ExplorerEvalNotifier extends StateNotifier<ExplorerEvalState> {
   bool _isDisposed = false;
   bool _engineEnabled = true;
 
+  /// Watchdog timer that detects stalled evaluations and forces a retry.
+  Timer? _evalWatchdog;
+  int _consecutiveWatchdogTimeouts = 0;
+  static const Duration _watchdogInterval = Duration(seconds: 5);
+  static const int _maxWatchdogRetries = 3;
+
   // ---------------------------------------------------------------
   // Position key — ignores halfmove/fullmove counters
   // ---------------------------------------------------------------
@@ -184,6 +190,8 @@ class ExplorerEvalNotifier extends StateNotifier<ExplorerEvalState> {
       '(gen=$gen, owner=$_ownerId)',
     );
 
+    _scheduleWatchdog(gen, normalizedFen);
+
     StockfishSingleton()
         .evaluatePosition(
           normalizedFen,
@@ -213,6 +221,10 @@ class ExplorerEvalNotifier extends StateNotifier<ExplorerEvalState> {
             final lines = _parsePvLines(pvs, normalizedFen);
             if (lines.isEmpty) return;
 
+            // Got real data — cancel watchdog and reset timeout counter.
+            _cancelWatchdog();
+            _consecutiveWatchdogTimeouts = 0;
+
             final first = lines.first;
             final streamedDepth = depth > 0 ? depth : state.depth;
             final resolvedDepth =
@@ -235,16 +247,26 @@ class ExplorerEvalNotifier extends StateNotifier<ExplorerEvalState> {
           },
         )
         .then((result) {
+          _cancelWatchdog();
           if (_isStale(gen)) return;
 
           if (result.isCancelled) {
             debugPrint(
               '🛑 EXPLORER EVAL: Cancelled for ${normalizedKey.split(' ').first} (gen=$gen)',
             );
-            // Don't leave isEvaluating stuck — clear it. If this was a
-            // spurious cancel, the next evaluatePosition() call will restart.
             if (!_isStale(gen)) {
+              // Job was preempted (likely by another provider). Retry after a
+              // brief delay so the explorer doesn't stay stuck on "...".
+              debugPrint(
+                '🔄 EXPLORER EVAL: Scheduling retry after cancellation',
+              );
               state = state.copyWith(isEvaluating: false);
+              Future.delayed(const Duration(milliseconds: 400), () {
+                if (!_isDisposed && mounted && _engineEnabled &&
+                    _positionKey(state.fen) == normalizedKey) {
+                  evaluatePosition(normalizedFen, force: true);
+                }
+              });
             }
             return;
           }
@@ -305,6 +327,49 @@ class ExplorerEvalNotifier extends StateNotifier<ExplorerEvalState> {
   // ---------------------------------------------------------------
 
   bool _isStale(int gen) => _isDisposed || !mounted || gen != _generation;
+
+  void _scheduleWatchdog(int gen, String fen) {
+    _cancelWatchdog();
+    _evalWatchdog = Timer(_watchdogInterval, () {
+      if (_isStale(gen) || !state.isEvaluating) return;
+
+      // Evaluation is still running with no PV data — likely stuck.
+      _consecutiveWatchdogTimeouts++;
+      debugPrint(
+        '⚠️ EXPLORER EVAL WATCHDOG: Stalled for $fen '
+        '(consecutive: $_consecutiveWatchdogTimeouts)',
+      );
+
+      if (_consecutiveWatchdogTimeouts >= _maxWatchdogRetries) {
+        debugPrint(
+          '🔧 EXPLORER EVAL WATCHDOG: Forcing Stockfish recovery',
+        );
+        _consecutiveWatchdogTimeouts = 0;
+        state = state.copyWith(isEvaluating: false);
+        StockfishSingleton().cancelEvaluationsForOwner(_ownerId);
+        StockfishSingleton().forceRecovery().then((_) {
+          if (!_isDisposed && mounted && _engineEnabled) {
+            evaluatePosition(fen, force: true);
+          }
+        });
+        return;
+      }
+
+      // Cancel stuck job and retry.
+      state = state.copyWith(isEvaluating: false);
+      StockfishSingleton().cancelEvaluationsForOwner(_ownerId);
+      Future.delayed(const Duration(milliseconds: 300), () {
+        if (!_isDisposed && mounted && _engineEnabled) {
+          evaluatePosition(fen, force: true);
+        }
+      });
+    });
+  }
+
+  void _cancelWatchdog() {
+    _evalWatchdog?.cancel();
+    _evalWatchdog = null;
+  }
 
   List<ExplorerPvLine> _parsePvLines(List<Pv> pvs, String fen) {
     final lines = <ExplorerPvLine>[];
@@ -430,6 +495,7 @@ class ExplorerEvalNotifier extends StateNotifier<ExplorerEvalState> {
     _isDisposed = true;
     _engineEnabled = false;
     _generation++;
+    _cancelWatchdog();
     _stopAndClear(reason: 'dispose');
     super.dispose();
   }

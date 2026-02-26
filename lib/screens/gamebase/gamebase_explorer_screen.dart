@@ -784,9 +784,15 @@ class _ExplorerEvalBarState extends ConsumerState<_ExplorerEvalBar> {
   void didUpdateWidget(covariant _ExplorerEvalBar oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (!_samePosition(widget.fen, oldWidget.fen)) {
-      _syncEngineState(force: true);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _syncEngineState(force: true);
+      });
     } else if (widget.showEngineAnalysis != oldWidget.showEngineAnalysis) {
-      _syncEngineState();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _syncEngineState();
+      });
     }
   }
 
