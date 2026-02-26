@@ -492,6 +492,61 @@ class LibraryRepository extends BaseRepository {
         return response.count;
       });
 
+  // ============ PAGINATED QUERIES ============
+
+  /// Paginated query for folder contents (owned folders).
+  /// Uses the composite index (user_id, folder_id, created_at DESC).
+  Future<List<SavedAnalysis>> getSavedAnalysesPaginated({
+    required String folderId,
+    int limit = 30,
+    int offset = 0,
+  }) => handleApiCall(() async {
+    final userId = supabase.auth.currentUser?.id;
+    if (userId == null) throw Exception('User not authenticated');
+
+    final response = await supabase
+        .from('user_saved_analyses')
+        .select()
+        .eq('user_id', userId)
+        .eq('folder_id', folderId)
+        .order('created_at', ascending: false)
+        .range(offset, offset + limit - 1);
+
+    return (response as List)
+        .map((json) => SavedAnalysis.fromSupabase(json))
+        .toList();
+  });
+
+  /// Paginated query for shared folder contents (RLS handles access control).
+  Future<List<SavedAnalysis>> getSharedFolderAnalysesPaginated({
+    required String folderId,
+    int limit = 30,
+    int offset = 0,
+  }) => handleApiCall(() async {
+    final response = await supabase
+        .from('user_saved_analyses')
+        .select()
+        .eq('folder_id', folderId)
+        .order('created_at', ascending: false)
+        .range(offset, offset + limit - 1);
+
+    return (response as List)
+        .map((json) => SavedAnalysis.fromSupabase(json))
+        .toList();
+  });
+
+  /// Count analyses in a shared folder (RLS handles access control).
+  Future<int> getSharedFolderAnalysisCount(String folderId) =>
+      handleApiCall(() async {
+        final response = await supabase
+            .from('user_saved_analyses')
+            .select('id')
+            .eq('folder_id', folderId)
+            .count();
+
+        return response.count;
+      });
+
   // ============ STREAM SUBSCRIPTIONS ============
 
   /// Stream folder changes for real-time updates
