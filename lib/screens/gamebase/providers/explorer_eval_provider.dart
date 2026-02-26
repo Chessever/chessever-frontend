@@ -255,17 +255,24 @@ class ExplorerEvalNotifier extends StateNotifier<ExplorerEvalState> {
               '🛑 EXPLORER EVAL: Cancelled for ${normalizedKey.split(' ').first} (gen=$gen)',
             );
             if (!_isStale(gen)) {
-              // Job was preempted (likely by another provider). Retry after a
-              // brief delay so the explorer doesn't stay stuck on "...".
+              // Job was preempted (likely by another provider). Cancel our
+              // own Stockfish jobs first, then retry after a brief delay.
+              // Cancelling first prevents the retry from coalescing with a
+              // still-running job whose callbacks reference a stale generation
+              // (which causes watchdog loops and perpetual "..." states).
               debugPrint(
                 '🔄 EXPLORER EVAL: Scheduling retry after cancellation',
               );
               state = state.copyWith(isEvaluating: false);
-              Future.delayed(const Duration(milliseconds: 400), () {
-                if (!_isDisposed && mounted && _engineEnabled &&
-                    _positionKey(state.fen) == normalizedKey) {
-                  evaluatePosition(normalizedFen, force: true);
-                }
+              StockfishSingleton()
+                  .cancelEvaluationsForOwner(_ownerId)
+                  .then((_) {
+                Future.delayed(const Duration(milliseconds: 300), () {
+                  if (!_isDisposed && mounted && _engineEnabled &&
+                      _positionKey(state.fen) == normalizedKey) {
+                    evaluatePosition(normalizedFen, force: true);
+                  }
+                });
               });
             }
             return;
@@ -345,6 +352,11 @@ class ExplorerEvalNotifier extends StateNotifier<ExplorerEvalState> {
           '🔧 EXPLORER EVAL WATCHDOG: Forcing Stockfish recovery',
         );
         _consecutiveWatchdogTimeouts = 0;
+        // Bump generation BEFORE cancelling so the cancelled job's .then
+        // callback sees a stale generation and does NOT schedule its own
+        // retry. Only forceRecovery().then will retry — preventing double
+        // evaluatePosition calls that coalesce and break streaming callbacks.
+        _generation++;
         state = state.copyWith(isEvaluating: false);
         StockfishSingleton().cancelEvaluationsForOwner(_ownerId);
         StockfishSingleton().forceRecovery().then((_) {
@@ -355,14 +367,12 @@ class ExplorerEvalNotifier extends StateNotifier<ExplorerEvalState> {
         return;
       }
 
-      // Cancel stuck job and retry.
+      // Cancel stuck job. Do NOT schedule a retry here — the cancelled
+      // job's `.then` callback already handles retry after cancellation.
+      // Retrying from BOTH the watchdog AND `.then` causes double
+      // evaluatePosition calls that coalesce and invalidate callbacks.
       state = state.copyWith(isEvaluating: false);
       StockfishSingleton().cancelEvaluationsForOwner(_ownerId);
-      Future.delayed(const Duration(milliseconds: 300), () {
-        if (!_isDisposed && mounted && _engineEnabled) {
-          evaluatePosition(fen, force: true);
-        }
-      });
     });
   }
 

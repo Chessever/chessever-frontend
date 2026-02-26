@@ -20,6 +20,7 @@ import 'package:chessever2/widgets/event_card/event_card.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
+import 'package:chessever2/utils/number_format_utils.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/game_filter/game_filter.dart';
@@ -205,6 +206,17 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
         setState(() => _isLoadingAllPagesForSelection = false);
       }
     }
+  }
+
+  String _selectAllLabel(PlayerProfileGamesState state) {
+    final total = state.totalCount;
+    if (state.hasActiveFilters) {
+      return 'Select filtered';
+    }
+    if (total != null && total > 0) {
+      return 'Select all (${formatCompactCount(total)})';
+    }
+    return 'Select all';
   }
 
   Future<void> _addSelectedToLibrary(PlayerProfileGamesState state) async {
@@ -632,12 +644,13 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
         selectedVisibleCount == 0
             ? 'Choose games to save'
             : '$selectedVisibleCount selected';
-    final subtitle =
-        _isLoadingAllPagesForSelection
-            ? 'Preparing your filtered game list...'
-            : state.hasActiveFilters
-            ? 'Selection follows current filters and search'
-            : 'Tap games manually or use quick select';
+    final subtitle = _isLoadingAllPagesForSelection
+        ? (state.totalCount != null && state.totalCount! > state.allGames.length
+            ? 'Loading ${formatCompactCount(state.allGames.length)} of ${formatCompactCount(state.totalCount!)} games...'
+            : 'Preparing your filtered game list...')
+        : state.hasActiveFilters
+        ? 'Selection follows current filters and search'
+        : 'Tap games manually or use quick select';
 
     return SingleMotionBuilder(
       motion: const CupertinoMotion.bouncy(),
@@ -728,12 +741,12 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
                     children: [
                       Expanded(
                         child: _SelectionActionButton(
-                          label:
-                              _isLoadingAllPagesForSelection
-                                  ? 'Selecting...'
-                                  : (state.hasActiveFilters
-                                      ? 'Select filtered'
-                                      : 'Select all'),
+                          label: _isLoadingAllPagesForSelection
+                              ? (state.totalCount != null &&
+                                      state.totalCount! > state.allGames.length
+                                  ? 'Loading ${formatCompactCount(state.allGames.length)}/${formatCompactCount(state.totalCount!)}...'
+                                  : 'Selecting...')
+                              : _selectAllLabel(state),
                           icon: Icons.select_all_rounded,
                           onTap:
                               _isLoadingAllPagesForSelection

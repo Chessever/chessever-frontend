@@ -3587,7 +3587,10 @@ class ChessBoardScreenNotifierNew
     _clearActiveEvalState();
     // Cancel only THIS provider's Stockfish jobs, not all jobs globally
     await StockfishSingleton().cancelEvaluationsForOwner(_stockfishOwnerId);
-    _cancelEvaluation = false;
+    // Do NOT reset _cancelEvaluation here — keep it true so async retry
+    // callbacks (.then, Future.microtask) that fire after cancellation see
+    // the flag and bail out. onBecameVisible() resets it when the board
+    // is actually visible again.
   }
 
   Future<void> onBecameVisible({bool force = true}) async {

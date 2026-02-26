@@ -4,6 +4,7 @@ import 'package:chessever2/screens/library/widgets/bulk_add_to_folder_sheet.dart
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
+import 'package:chessever2/utils/number_format_utils.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:flutter/material.dart';
@@ -16,6 +17,7 @@ Future<void> showSaveToLibrarySheet({
   required WidgetRef ref,
   required PlayerProfileKey playerKey,
   required VoidCallback onSelectSpecific,
+  int? knownTotalCount,
 }) async {
   final route = ChessSheetRoutes.commentEditor(
     context: context,
@@ -23,6 +25,7 @@ Future<void> showSaveToLibrarySheet({
         (_) => _SaveToLibrarySheet(
           playerKey: playerKey,
           onSelectSpecific: onSelectSpecific,
+          knownTotalCount: knownTotalCount,
         ),
   );
   await Navigator.of(context).push(route);
@@ -32,10 +35,12 @@ class _SaveToLibrarySheet extends ConsumerStatefulWidget {
   const _SaveToLibrarySheet({
     required this.playerKey,
     required this.onSelectSpecific,
+    this.knownTotalCount,
   });
 
   final PlayerProfileKey playerKey;
   final VoidCallback onSelectSpecific;
+  final int? knownTotalCount;
 
   @override
   ConsumerState<_SaveToLibrarySheet> createState() =>
@@ -125,10 +130,24 @@ class _SaveToLibrarySheetState extends ConsumerState<_SaveToLibrarySheet> {
     widget.onSelectSpecific();
   }
 
+  String _buildSaveAllSubtitle(PlayerProfileGamesState state) {
+    final total = state.totalCount ?? widget.knownTotalCount;
+    final loaded = state.allGames.length;
+
+    if (_isLoadingAll && total != null && total > loaded) {
+      return 'Loading ${formatCompactCount(loaded)} of ${formatCompactCount(total)} games...';
+    }
+
+    if (total != null && total > 0) {
+      return 'Add all ${formatCompactCount(total)} games to a book';
+    }
+
+    return 'Add all $loaded games to a book';
+  }
+
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(playerProfileGamesKeyProvider(widget.playerKey));
-    final count = state.totalCount ?? state.filteredGames.length;
 
     return SheetKeyboardDismissible(
       dismissBehavior: const DragDownSheetKeyboardDismissBehavior(),
@@ -175,7 +194,7 @@ class _SaveToLibrarySheetState extends ConsumerState<_SaveToLibrarySheet> {
                               _ActionTile(
                                 icon: Icons.all_inclusive_rounded,
                                 title: 'Save all games',
-                                subtitle: 'Add all $count games to a book',
+                                subtitle: _buildSaveAllSubtitle(state),
                                 isLoading: _isLoadingAll,
                                 onTap: _handleSaveAll,
                               ),

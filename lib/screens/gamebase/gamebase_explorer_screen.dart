@@ -23,6 +23,7 @@ import 'package:chessever2/screens/gamebase/providers/gamebase_providers.dart';
 import 'package:chessever2/screens/gamebase/providers/gamebase_explorer_state.dart';
 import 'package:chessever2/screens/gamebase/widgets/widgets.dart';
 import 'package:chessever2/screens/gamebase/models/models.dart';
+import 'package:chessever2/main.dart' show routeObserver;
 import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 
 /// Main screen for exploring the Gamebase opening database.
@@ -54,8 +55,9 @@ class GamebaseExplorerScreen extends ConsumerStatefulWidget {
 }
 
 class _GamebaseExplorerScreenState
-    extends ConsumerState<GamebaseExplorerScreen> {
+    extends ConsumerState<GamebaseExplorerScreen> with RouteAware {
   bool _isFlipped = false;
+  bool _routeActive = true;
   Timer? _backwardLongPressTimer;
   Timer? _forwardLongPressTimer;
 
@@ -116,6 +118,30 @@ class _GamebaseExplorerScreenState
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    routeObserver.subscribe(this, ModalRoute.of(context)!);
+  }
+
+  @override
+  void didPushNext() {
+    // Another route was pushed on top — this explorer is now in the background.
+    // Disable its engine to prevent Stockfish contention with the foreground
+    // explorer (which also uses isCurrentPosition: true). Multiple background
+    // explorers retrying after cancellation cause an infinite preemption cycle.
+    setState(() => _routeActive = false);
+    super.didPushNext();
+  }
+
+  @override
+  void didPopNext() {
+    // The route on top was popped — this explorer is visible again.
+    // Re-enable its engine so the eval restarts.
+    setState(() => _routeActive = true);
+    super.didPopNext();
+  }
+
+  @override
   void initState() {
     super.initState();
 
@@ -132,6 +158,7 @@ class _GamebaseExplorerScreenState
 
   @override
   void dispose() {
+    routeObserver.unsubscribe(this);
     _stopLongPressBackward();
     _stopLongPressForward();
     super.dispose();
@@ -188,11 +215,12 @@ class _GamebaseExplorerScreenState
 
   @override
   Widget build(BuildContext context) {
-    final showEngineAnalysis = ref.watch(
-      engineSettingsProviderNew.select(
-        (s) => s.valueOrNull?.showEngineAnalysis ?? true,
-      ),
-    );
+    final showEngineAnalysis = _routeActive &&
+        ref.watch(
+          engineSettingsProviderNew.select(
+            (s) => s.valueOrNull?.showEngineAnalysis ?? true,
+          ),
+        );
 
     final state = ref.watch(gamebaseExplorerProvider);
 
@@ -634,6 +662,7 @@ class _GamebaseExplorerScreenState
   }
 
   void _showFilterSheet(BuildContext context) {
+    final container = ProviderScope.containerOf(context);
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -642,7 +671,10 @@ class _GamebaseExplorerScreenState
         borderRadius: BorderRadius.vertical(top: Radius.circular(16.br)),
       ),
       constraints: ResponsiveHelper.bottomSheetConstraints,
-      builder: (context) => _FilterSheet(scopedPlayer: widget.initialPlayer),
+      builder: (_) => UncontrolledProviderScope(
+        container: container,
+        child: _FilterSheet(scopedPlayer: widget.initialPlayer),
+      ),
     );
   }
 }
@@ -1528,13 +1560,13 @@ class _EngineLine extends StatelessWidget {
   Widget build(BuildContext context) {
     final evalText = line.displayEval;
 
-    // Eval badge: white bg for white advantage, dark for black, muted for equal.
+    // Eval badge: white bg for white advantage, dark for black, neutral for 0.0.
     final bool isWhiteWinning =
         (line.mate != null && line.mate! > 0) ||
-        (line.evaluation != null && line.evaluation! > 0.2);
+        (line.evaluation != null && line.evaluation! > 0);
     final bool isBlackWinning =
         (line.mate != null && line.mate! < 0) ||
-        (line.evaluation != null && line.evaluation! < -0.2);
+        (line.evaluation != null && line.evaluation! < 0);
 
     Color evalBgColor;
     Color evalTextColor;
