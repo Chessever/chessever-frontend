@@ -60,7 +60,7 @@ class PlayerProfileScreen extends ConsumerStatefulWidget {
     this.title,
     this.federation,
     this.rating,
-    this.dataSource = PlayerProfileDataSource.supabase,
+    this.dataSource = PlayerProfileDataSource.twic,
     this.gamebasePlayerId,
   });
 
