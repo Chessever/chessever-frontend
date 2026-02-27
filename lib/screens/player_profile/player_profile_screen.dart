@@ -1291,6 +1291,7 @@ class _ActionCard extends StatefulWidget {
 }
 
 class _ActionCardState extends State<_ActionCard> {
+  static const _filterRed = Color(0xFFEF4444);
   bool _pressed = false;
 
   @override
@@ -1312,34 +1313,64 @@ class _ActionCardState extends State<_ActionCard> {
             child: SingleMotionBuilder(
               motion: const CupertinoMotion.snappy(),
               value: widget.isHighlighted ? 1.0 : 0.0,
-              builder: (context, highlightProgress, _) {
-                final borderAlpha =
-                    0.2 + 0.45 * highlightProgress; // 0.2 → 0.65
+              builder: (context, h, _) {
+                // Idle: solid dark card. Highlighted: red-tinted.
+                final bg = Color.lerp(
+                  const Color(0xFF141414),
+                  _filterRed.withValues(alpha: 0.10),
+                  h,
+                )!;
+                final iconBg = Color.lerp(
+                  kWhiteColor.withValues(alpha: 0.08),
+                  _filterRed.withValues(alpha: 0.18),
+                  h,
+                )!;
+                final iconColor = Color.lerp(
+                  kWhiteColor.withValues(alpha: 0.85),
+                  _filterRed,
+                  h,
+                )!;
                 return Container(
                   padding:
                       EdgeInsets.symmetric(horizontal: 10.w, vertical: 10.h),
                   decoration: BoxDecoration(
-                    color: kPopUpColor,
+                    color: bg,
                     borderRadius: BorderRadius.circular(12.br),
-                    border: Border.all(
-                      color:
-                          kPrimaryColor.withValues(alpha: borderAlpha),
-                    ),
                   ),
                   child: Row(
                     children: [
-                      Container(
-                        width: 34.w,
-                        height: 34.h,
-                        decoration: BoxDecoration(
-                          color: kPrimaryColor.withValues(alpha: 0.16),
-                          borderRadius: BorderRadius.circular(9.br),
-                        ),
-                        child: Icon(
-                          widget.icon,
-                          size: 18.ic,
-                          color: kWhiteColor,
-                        ),
+                      // Icon badge
+                      Stack(
+                        clipBehavior: Clip.none,
+                        children: [
+                          Container(
+                            width: 34.w,
+                            height: 34.h,
+                            decoration: BoxDecoration(
+                              color: iconBg,
+                              borderRadius: BorderRadius.circular(9.br),
+                            ),
+                            child: Icon(
+                              widget.icon,
+                              size: 18.ic,
+                              color: iconColor,
+                            ),
+                          ),
+                          // Red dot badge when highlighted
+                          if (widget.isHighlighted)
+                            Positioned(
+                              right: -3,
+                              top: -3,
+                              child: Container(
+                                width: 9.w,
+                                height: 9.w,
+                                decoration: const BoxDecoration(
+                                  color: _filterRed,
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                            ),
+                        ],
                       ),
                       SizedBox(width: 8.w),
                       Expanded(
@@ -1361,7 +1392,10 @@ class _ActionCardState extends State<_ActionCard> {
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: AppTypography.textXsRegular.copyWith(
-                                color: kWhiteColor.withValues(alpha: 0.72),
+                                color:
+                                    widget.isHighlighted
+                                        ? _filterRed.withValues(alpha: 0.9)
+                                        : kWhiteColor.withValues(alpha: 0.5),
                               ),
                             ),
                           ],

@@ -468,6 +468,8 @@ class GamebaseRepository {
     String? dateFrom,
     String? dateTo,
     String? opponentId,
+    int? ratingFrom,
+    int? ratingTo,
     int pageNumber = 0,
     int pageSize = 100,
   }) async {
@@ -485,6 +487,8 @@ class GamebaseRepository {
       if (dateFrom != null) 'dateFrom': dateFrom,
       if (dateTo != null) 'dateTo': dateTo,
       if (opponentId != null) 'opponentId': opponentId,
+      if (ratingFrom != null) 'ratingFrom': ratingFrom,
+      if (ratingTo != null) 'ratingTo': ratingTo,
     };
 
     if (kDebugMode) {
@@ -519,6 +523,8 @@ class GamebaseRepository {
     String? dateFrom,
     String? dateTo,
     String? opponentId,
+    int? ratingFrom,
+    int? ratingTo,
   }) async {
     final queryParams = <String, dynamic>{
       'color': color,
@@ -532,6 +538,8 @@ class GamebaseRepository {
       if (dateFrom != null) 'dateFrom': dateFrom,
       if (dateTo != null) 'dateTo': dateTo,
       if (opponentId != null) 'opponentId': opponentId,
+      if (ratingFrom != null) 'ratingFrom': ratingFrom,
+      if (ratingTo != null) 'ratingTo': ratingTo,
     };
 
     final response = await _dio.get(
