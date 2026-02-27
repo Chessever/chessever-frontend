@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 10.6.2+1059
+version: 10.6.3+1060
 
 environment:
   sdk: ^3.7.2
@@ -107,7 +107,7 @@ dependencies:
   permission_handler: ^12.0.0+1
 
   flutter_native_splash: ^2.4.6
-  purchases_flutter: ^9.10.1
+  purchases_flutter: ^9.12.3
   logger: ^2.6.1
   collection: ^1.19.1
 
@@ -186,7 +186,7 @@ flutter:
     - assets/sfx/
     - assets/launch.jpg
     - assets/app_icon.png
-    # - .env
+    - .env
     - shorebird.yaml
 
   # An image asset can refer to one or more resolution-specific "variants", see

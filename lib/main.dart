@@ -557,7 +557,7 @@ class _StartupGateState extends State<StartupGate> {
   /// isolates/threads from blocking Flutter's reassemble mechanism.
   @override
   void reassemble() {
-    StockfishSingleton().dispose();
+    StockfishSingleton().prepareForHotRestart();
     try {
       final soloud = SoLoud.instance;
       if (soloud.isInitialized) {
