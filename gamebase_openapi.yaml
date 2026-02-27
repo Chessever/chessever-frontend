@@ -791,6 +791,18 @@ paths:
           schema:
             type: string
             format: date-time
+        - name: ratingFrom
+          in: query
+          required: false
+          description: Minimum Elo (inclusive)
+          schema:
+            type: integer
+        - name: ratingTo
+          in: query
+          required: false
+          description: Maximum Elo (inclusive)
+          schema:
+            type: integer
         - name: pageNumber
           in: query
           required: false
@@ -910,6 +922,18 @@ paths:
           schema:
             type: string
             format: date-time
+        - name: ratingFrom
+          in: query
+          required: false
+          description: Minimum Elo (inclusive)
+          schema:
+            type: integer
+        - name: ratingTo
+          in: query
+          required: false
+          description: Maximum Elo (inclusive)
+          schema:
+            type: integer
       responses:
         "200":
           description: Successful response with exact player stats
