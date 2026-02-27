@@ -1,3 +1,4 @@
+import 'package:chessever2/screens/player_profile/player_profile_data_source.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
@@ -13,18 +14,27 @@ import 'package:motor/motor.dart';
 Future<GameFilter?> showGameFilterDialog({
   required BuildContext context,
   required GameFilter currentFilter,
+  PlayerProfileDataSource dataSource = PlayerProfileDataSource.supabase,
 }) {
   return showDialog<GameFilter>(
     context: context,
     barrierColor: Colors.transparent,
-    builder: (_) => GameFilterDialog(initialFilter: currentFilter),
+    builder: (_) => GameFilterDialog(
+      initialFilter: currentFilter,
+      dataSource: dataSource,
+    ),
   );
 }
 
 class GameFilterDialog extends StatefulWidget {
-  const GameFilterDialog({super.key, required this.initialFilter});
+  const GameFilterDialog({
+    super.key,
+    required this.initialFilter,
+    this.dataSource = PlayerProfileDataSource.supabase,
+  });
 
   final GameFilter initialFilter;
+  final PlayerProfileDataSource dataSource;
 
   @override
   State<GameFilterDialog> createState() => _GameFilterDialogState();
@@ -191,20 +201,23 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
                         labelEnd: _yearRange.end.round().toString(),
                         onChanged: (v) => setState(() => _yearRange = v),
                       ),
-                      SizedBox(height: 20.h),
-
-                      // Rating range slider
-                      _sectionLabel('Rating'),
-                      SizedBox(height: 8.h),
-                      _rangeSliderCard(
-                        values: _ratingRange,
-                        min: 1000,
-                        max: 3500,
-                        divisions: 50,
-                        labelStart: _ratingRange.start.round().toString(),
-                        labelEnd: _ratingRange.end.round().toString(),
-                        onChanged: (v) => setState(() => _ratingRange = v),
-                      ),
+                      // Rating range slider (TWIC player games endpoint
+                      // does not support server-side rating filtering)
+                      if (widget.dataSource !=
+                          PlayerProfileDataSource.twic) ...[
+                        SizedBox(height: 20.h),
+                        _sectionLabel('Rating'),
+                        SizedBox(height: 8.h),
+                        _rangeSliderCard(
+                          values: _ratingRange,
+                          min: 1000,
+                          max: 3500,
+                          divisions: 50,
+                          labelStart: _ratingRange.start.round().toString(),
+                          labelEnd: _ratingRange.end.round().toString(),
+                          onChanged: (v) => setState(() => _ratingRange = v),
+                        ),
+                      ],
                       SizedBox(height: 12.h),
                     ],
                   ),

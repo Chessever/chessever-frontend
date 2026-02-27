@@ -546,6 +546,27 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
     _scheduleFetch(Duration.zero);
   }
 
+  /// Initialize the explorer pre-filtered to a specific player with additional
+  /// filters (e.g. time control, rating range) merged in.
+  void initializeWithPlayerAndFilters(
+    GamebasePlayer player,
+    GamebaseFilters filters,
+  ) {
+    _chess = Chess();
+    state = GamebaseExplorerState(
+      currentFen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+      currentMoveIndex: -1,
+      filters: GamebaseFilters(
+        playerIds: [player.id],
+        selectedPlayers: [player],
+        timeControls: filters.timeControls,
+        minRating: filters.minRating,
+        maxRating: filters.maxRating,
+      ),
+    );
+    _scheduleFetch(Duration.zero);
+  }
+
   /// Reset to initial position.
   ///
   /// When [fetch] is false, this is used for exit/teardown paths where we

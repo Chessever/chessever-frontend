@@ -29,12 +29,20 @@ import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 /// Main screen for exploring the Gamebase opening database.
 /// Displays a chess board, move statistics, and navigation controls.
 class GamebaseExplorerScreen extends ConsumerStatefulWidget {
-  const GamebaseExplorerScreen({super.key, this.initialPlayer});
+  const GamebaseExplorerScreen({
+    super.key,
+    this.initialPlayer,
+    this.initialFilters,
+  });
 
   /// Creates an isolated explorer scope so other mounted routes (for example
   /// hidden player-profile/game-card widgets) cannot mutate this explorer's
   /// provider state and continuously restart engine analysis.
-  static Widget scoped({Key? key, GamebasePlayer? initialPlayer}) {
+  static Widget scoped({
+    Key? key,
+    GamebasePlayer? initialPlayer,
+    GamebaseFilters? initialFilters,
+  }) {
     return ProviderScope(
       overrides: [
         gamebaseExplorerProvider.overrideWith(
@@ -42,12 +50,19 @@ class GamebaseExplorerScreen extends ConsumerStatefulWidget {
         ),
         explorerEvalProvider.overrideWith((ref) => ExplorerEvalNotifier(ref)),
       ],
-      child: GamebaseExplorerScreen(key: key, initialPlayer: initialPlayer),
+      child: GamebaseExplorerScreen(
+        key: key,
+        initialPlayer: initialPlayer,
+        initialFilters: initialFilters,
+      ),
     );
   }
 
   /// When non-null, the explorer opens pre-filtered to this player's games.
   final GamebasePlayer? initialPlayer;
+
+  /// Optional filters to pre-apply (e.g. time control, rating from player profile).
+  final GamebaseFilters? initialFilters;
 
   @override
   ConsumerState<GamebaseExplorerScreen> createState() =>
@@ -66,8 +81,12 @@ class _GamebaseExplorerScreenState
     final scopedPlayer = preserveScope ? widget.initialPlayer : null;
 
     if (fetch && scopedPlayer != null) {
-      // Player-scoped explorer reset: keep the original player filter.
-      notifier.initializeWithPlayer(scopedPlayer);
+      final filters = preserveScope ? widget.initialFilters : null;
+      if (filters != null) {
+        notifier.initializeWithPlayerAndFilters(scopedPlayer, filters);
+      } else {
+        notifier.initializeWithPlayer(scopedPlayer);
+      }
     } else {
       notifier.reset(fetch: fetch);
     }
@@ -546,7 +565,25 @@ class _GamebaseExplorerScreenState
           tooltip: 'Reset explorer',
         ),
         IconButton(
-          icon: Icon(Icons.tune, size: 24.ic),
+          icon: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Icon(Icons.tune, size: 24.ic),
+              if (_shouldShowClearFilters(state))
+                Positioned(
+                  top: -2,
+                  right: -2,
+                  child: Container(
+                    width: 8.sp,
+                    height: 8.sp,
+                    decoration: const BoxDecoration(
+                      color: kPrimaryColor,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                ),
+            ],
+          ),
           onPressed: () => _showFilterSheet(context),
           tooltip: 'Filters',
         ),
@@ -861,7 +898,11 @@ class _FilterSheet extends ConsumerStatefulWidget {
 }
 
 class _FilterSheetState extends ConsumerState<_FilterSheet> {
+  static const double _ratingMin = 1000;
+  static const double _ratingMax = 3500;
+
   late GamebaseFilters _draftFilters;
+  late RangeValues _ratingRange;
   final TextEditingController _playerSearchController = TextEditingController();
   final FocusNode _playerSearchFocusNode = FocusNode();
   String _playerSearchQuery = '';
@@ -877,6 +918,10 @@ class _FilterSheetState extends ConsumerState<_FilterSheet> {
         selectedPlayers: [scopedPlayer],
       );
     }
+    _ratingRange = RangeValues(
+      (_draftFilters.minRating?.toDouble() ?? _ratingMin).clamp(_ratingMin, _ratingMax),
+      (_draftFilters.maxRating?.toDouble() ?? _ratingMax).clamp(_ratingMin, _ratingMax),
+    );
   }
 
   @override
@@ -899,13 +944,20 @@ class _FilterSheetState extends ConsumerState<_FilterSheet> {
     });
   }
 
-  void _setRatingRange({int? minRating, int? maxRating}) {
-    setState(() {
-      _draftFilters = _draftFilters.copyWith(
-        minRating: minRating,
-        maxRating: maxRating,
-      );
-    });
+  void _onRatingRangeChanged(RangeValues values) {
+    setState(() => _ratingRange = values);
+  }
+
+  /// Converts the current slider range into nullable min/max for [GamebaseFilters].
+  /// Returns null when at the boundary (meaning "no filter").
+  int? get _effectiveMinRating {
+    final v = _ratingRange.start.round();
+    return v <= _ratingMin ? null : v;
+  }
+
+  int? get _effectiveMaxRating {
+    final v = _ratingRange.end.round();
+    return v >= _ratingMax ? null : v;
   }
 
   void _setPlayer(GamebasePlayer player) {
@@ -937,7 +989,11 @@ class _FilterSheetState extends ConsumerState<_FilterSheet> {
   }
 
   void _apply() {
-    ref.read(gamebaseExplorerProvider.notifier).updateFilters(_draftFilters);
+    final finalFilters = _draftFilters.copyWith(
+      minRating: _effectiveMinRating,
+      maxRating: _effectiveMaxRating,
+    );
+    ref.read(gamebaseExplorerProvider.notifier).updateFilters(finalFilters);
     Navigator.pop(context);
   }
 
@@ -953,8 +1009,8 @@ class _FilterSheetState extends ConsumerState<_FilterSheet> {
   bool _hasActiveDraft(GamebaseFilters filters) {
     final hasTimeOrRating =
         filters.timeControls.isNotEmpty ||
-        filters.minRating != null ||
-        filters.maxRating != null;
+        _effectiveMinRating != null ||
+        _effectiveMaxRating != null;
     if (widget.scopedPlayer == null) {
       return hasTimeOrRating || filters.playerIds.isNotEmpty;
     }
@@ -974,6 +1030,9 @@ class _FilterSheetState extends ConsumerState<_FilterSheet> {
     } else {
       notifier.clearFilters();
     }
+    setState(() {
+      _ratingRange = const RangeValues(_ratingMin, _ratingMax);
+    });
     Navigator.pop(context);
   }
 
@@ -1069,40 +1128,62 @@ class _FilterSheetState extends ConsumerState<_FilterSheet> {
                   ),
                 ),
                 SizedBox(height: 8.sp),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _RatingDropdown(
-                        value: filters.minRating,
-                        hint: 'Min',
-                        onChanged:
-                            (value) => _setRatingRange(
-                              minRating: value,
-                              maxRating: filters.maxRating,
+                Container(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: 16.w,
+                    vertical: 14.h,
+                  ),
+                  decoration: BoxDecoration(
+                    color: kBlack2Color,
+                    borderRadius: BorderRadius.circular(12.br),
+                    border: Border.all(color: kDividerColor),
+                  ),
+                  child: Column(
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            _ratingRange.start.round().toString(),
+                            style: AppTypography.textSmMedium.copyWith(
+                              color: kWhiteColor,
                             ),
-                      ),
-                    ),
-                    SizedBox(width: 16.sp),
-                    Text(
-                      'to',
-                      style: TextStyle(
-                        color: kSecondaryTextColor,
-                        fontSize: 14.f,
-                      ),
-                    ),
-                    SizedBox(width: 16.sp),
-                    Expanded(
-                      child: _RatingDropdown(
-                        value: filters.maxRating,
-                        hint: 'Max',
-                        onChanged:
-                            (value) => _setRatingRange(
-                              minRating: filters.minRating,
-                              maxRating: value,
+                          ),
+                          Text(
+                            _ratingRange.end.round().toString(),
+                            style: AppTypography.textSmMedium.copyWith(
+                              color: kWhiteColor,
                             ),
+                          ),
+                        ],
                       ),
-                    ),
-                  ],
+                      SizedBox(height: 4.h),
+                      SliderTheme(
+                        data: SliderThemeData(
+                          activeTrackColor: kWhiteColor,
+                          inactiveTrackColor: kDividerColor,
+                          thumbColor: kWhiteColor,
+                          overlayColor: kWhiteColor.withValues(alpha: 0.2),
+                          trackHeight: 3,
+                          thumbShape: const RoundSliderThumbShape(
+                            enabledThumbRadius: 10,
+                          ),
+                          rangeThumbShape: const RoundRangeSliderThumbShape(
+                            enabledThumbRadius: 10,
+                          ),
+                          rangeTrackShape:
+                              const RoundedRectRangeSliderTrackShape(),
+                        ),
+                        child: RangeSlider(
+                          values: _ratingRange,
+                          min: _ratingMin,
+                          max: _ratingMax,
+                          divisions: 50, // (3500-1000)/50 = 50 steps of 50
+                          onChanged: _onRatingRangeChanged,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
                 SizedBox(height: 24.sp),
 
@@ -1338,68 +1419,6 @@ class _PlayerSearchResults extends ConsumerWidget {
                 style: TextStyle(color: kRedColor, fontSize: 12.f),
               ),
             ),
-      ),
-    );
-  }
-}
-
-/// Dropdown for rating selection.
-class _RatingDropdown extends StatelessWidget {
-  const _RatingDropdown({
-    required this.value,
-    required this.hint,
-    required this.onChanged,
-  });
-
-  final int? value;
-  final String hint;
-  final ValueChanged<int?> onChanged;
-
-  static const List<int?> _ratings = [
-    null,
-    1000,
-    1200,
-    1400,
-    1600,
-    1800,
-    2000,
-    2200,
-    2400,
-    2600,
-    2800,
-  ];
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: EdgeInsets.symmetric(horizontal: 12.sp),
-      decoration: BoxDecoration(
-        color: kBlack2Color,
-        borderRadius: BorderRadius.circular(8.br),
-        border: Border.all(color: kDividerColor),
-      ),
-      child: DropdownButtonHideUnderline(
-        child: DropdownButton<int?>(
-          value: value,
-          hint: Text(
-            hint,
-            style: TextStyle(color: kSecondaryTextColor, fontSize: 14.f),
-          ),
-          dropdownColor: kBlack2Color,
-          isExpanded: true,
-          icon: Icon(Icons.arrow_drop_down, color: kSecondaryTextColor),
-          items:
-              _ratings.map((rating) {
-                return DropdownMenuItem<int?>(
-                  value: rating,
-                  child: Text(
-                    rating?.toString() ?? 'Any',
-                    style: TextStyle(color: kWhiteColor, fontSize: 14.f),
-                  ),
-                );
-              }).toList(),
-          onChanged: onChanged,
-        ),
       ),
     );
   }

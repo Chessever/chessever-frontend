@@ -27,6 +27,7 @@ import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:chessever2/widgets/segmented_switcher.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:chessever2/screens/gamebase/gamebase_explorer_screen.dart';
+import 'package:chessever2/screens/gamebase/providers/gamebase_explorer_state.dart';
 import 'package:chessever2/screens/gamebase/providers/gamebase_providers.dart';
 import 'package:country_flags/country_flags.dart';
 import 'package:flutter/material.dart';
@@ -344,10 +345,26 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
     final initialPlayer = _buildExplorerFallbackPlayer(uuid);
     if (!mounted) return;
 
+    // Map player profile filters → explorer filters (time control + rating only).
+    final playerKey = PlayerProfileKey(
+      fideId: widget.fideId,
+      playerName: widget.playerName,
+      source: _currentDataSource,
+      gamebasePlayerId: _currentGamebasePlayerId,
+    );
+    final gameFilter = ref.read(playerProfileGamesKeyProvider(playerKey)).filter;
+    final GamebaseFilters? explorerFilters =
+        gameFilter.hasExplorerMappableFilters
+            ? gameFilter.toGamebaseFilters()
+            : null;
+
     Navigator.of(context).push(
       MaterialPageRoute(
         builder:
-            (_) => GamebaseExplorerScreen.scoped(initialPlayer: initialPlayer),
+            (_) => GamebaseExplorerScreen.scoped(
+              initialPlayer: initialPlayer,
+              initialFilters: explorerFilters,
+            ),
       ),
     );
 
@@ -602,6 +619,7 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
                         selectedTab == PlayerProfileTab.games)
                       _buildGamesActionButtons(
                         playerKey: activePlayerKey,
+                        hasActiveFilter: hasActiveFilter,
                         knownTotalCount:
                             _currentDataSource == PlayerProfileDataSource.twic
                                 ? twicSummaryAsync.valueOrNull?.totalGames
@@ -864,6 +882,7 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
   /// Full action buttons row for the Games tab (study opening + save to library).
   Widget _buildGamesActionButtons({
     required PlayerProfileKey playerKey,
+    required bool hasActiveFilter,
     int? knownTotalCount,
   }) {
     final horizontalPadding = ResponsiveHelper.adaptive(
@@ -884,7 +903,8 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
             child: _ActionCard(
               icon: Icons.account_tree_outlined,
               title: 'Study opening',
-              subtitle: 'Repertoire view',
+              subtitle: hasActiveFilter ? 'Filtered games' : 'Repertoire view',
+              isHighlighted: hasActiveFilter,
               onTap: _openExplorer,
             ),
           ),
@@ -893,7 +913,8 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
             child: _ActionCard(
               icon: Icons.library_add_outlined,
               title: 'Save to Library',
-              subtitle: 'Games collection',
+              subtitle: hasActiveFilter ? 'Filtered games' : 'Games collection',
+              isHighlighted: hasActiveFilter,
               onTap: () {
                 showSaveToLibrarySheet(
                   context: context,
@@ -1255,12 +1276,14 @@ class _ActionCard extends StatefulWidget {
   final String title;
   final String subtitle;
   final VoidCallback onTap;
+  final bool isHighlighted;
 
   const _ActionCard({
     required this.icon,
     required this.title,
     required this.subtitle,
     required this.onTap,
+    this.isHighlighted = false,
   });
 
   @override
@@ -1286,52 +1309,68 @@ class _ActionCardState extends State<_ActionCard> {
         builder: (context, pressProgress, _) {
           return Transform.scale(
             scale: 1.0 - 0.03 * pressProgress,
-            child: Container(
-              padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 10.h),
-              decoration: BoxDecoration(
-                color: kPopUpColor,
-                borderRadius: BorderRadius.circular(12.br),
-                border: Border.all(color: kPrimaryColor.withValues(alpha: 0.2)),
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    width: 34.w,
-                    height: 34.h,
-                    decoration: BoxDecoration(
-                      color: kPrimaryColor.withValues(alpha: 0.16),
-                      borderRadius: BorderRadius.circular(9.br),
-                    ),
-                    child: Icon(widget.icon, size: 18.ic, color: kWhiteColor),
-                  ),
-                  SizedBox(width: 8.w),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          widget.title,
-                          style: AppTypography.textSmBold.copyWith(
-                            color: kWhiteColor,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        SizedBox(height: 2.h),
-                        Text(
-                          widget.subtitle,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: AppTypography.textXsRegular.copyWith(
-                            color: kWhiteColor.withValues(alpha: 0.72),
-                          ),
-                        ),
-                      ],
+            child: SingleMotionBuilder(
+              motion: const CupertinoMotion.snappy(),
+              value: widget.isHighlighted ? 1.0 : 0.0,
+              builder: (context, highlightProgress, _) {
+                final borderAlpha =
+                    0.2 + 0.45 * highlightProgress; // 0.2 → 0.65
+                return Container(
+                  padding:
+                      EdgeInsets.symmetric(horizontal: 10.w, vertical: 10.h),
+                  decoration: BoxDecoration(
+                    color: kPopUpColor,
+                    borderRadius: BorderRadius.circular(12.br),
+                    border: Border.all(
+                      color:
+                          kPrimaryColor.withValues(alpha: borderAlpha),
                     ),
                   ),
-                ],
-              ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 34.w,
+                        height: 34.h,
+                        decoration: BoxDecoration(
+                          color: kPrimaryColor.withValues(alpha: 0.16),
+                          borderRadius: BorderRadius.circular(9.br),
+                        ),
+                        child: Icon(
+                          widget.icon,
+                          size: 18.ic,
+                          color: kWhiteColor,
+                        ),
+                      ),
+                      SizedBox(width: 8.w),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              widget.title,
+                              style: AppTypography.textSmBold.copyWith(
+                                color: kWhiteColor,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            SizedBox(height: 2.h),
+                            Text(
+                              widget.subtitle,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: AppTypography.textXsRegular.copyWith(
+                                color: kWhiteColor.withValues(alpha: 0.72),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              },
             ),
           );
         },

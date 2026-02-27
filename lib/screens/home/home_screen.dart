@@ -15,6 +15,7 @@ import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/hamburger_menu/hamburger_menu.dart';
 import 'package:chessever2/widgets/shorebird_update_dialog.dart';
+import 'package:chessever2/services/push_notifications_service.dart';
 import 'package:chessever2/services/review_prompt_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -42,6 +43,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     unawaited(ReviewPromptService.instance.recordSession());
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _checkForShorebirdUpdate();
+      // Plan B: request notification permission if not already granted.
+      // Delayed to avoid clashing with onboarding or other early dialogs.
+      Future.delayed(const Duration(seconds: 5), () {
+        if (!mounted) return;
+        unawaited(
+          PushNotificationsService.instance.requestPermissionIfNotGranted(),
+        );
+      });
       Future.delayed(const Duration(seconds: 8), () {
         if (!mounted) return;
         unawaited(
