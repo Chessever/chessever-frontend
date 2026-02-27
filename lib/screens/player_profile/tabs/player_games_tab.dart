@@ -132,7 +132,6 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
     final result = await showGameFilterDialog(
       context: context,
       currentFilter: currentState.filter,
-      dataSource: widget.dataSource,
     );
     if (result != null && mounted) {
       ref
