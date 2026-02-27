@@ -803,7 +803,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
             Icon(Icons.filter_list_rounded, size: 16.sp, color: filterRedColor),
             SizedBox(width: 6.w),
             Text(
-              '${state.activeFilterCount} filter${state.activeFilterCount > 1 ? 's' : ''} active',
+              '${state.activeFilterCount} filter${state.activeFilterCount > 1 ? 's' : ''} active · ${formatCompactCount(state.filteredGames.length)} games',
               style: AppTypography.textXsMedium.copyWith(color: filterRedColor),
             ),
             if (state.playerResultFilter != PlayerResultFilter.all) ...[
