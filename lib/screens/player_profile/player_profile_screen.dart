@@ -613,11 +613,15 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
                       isChesseverLoading: supabaseGamesState.isLoading,
                     ),
                     if (hasPlayerExplorer &&
+                        _currentDataSource ==
+                            PlayerProfileDataSource.twic &&
                         selectedTab == PlayerProfileTab.about)
                       _buildStudyOpeningRow(),
-                    if (hasPlayerExplorer &&
-                        selectedTab == PlayerProfileTab.games)
+                    if (selectedTab == PlayerProfileTab.games)
                       _buildGamesActionButtons(
+                        showStudyOpening: hasPlayerExplorer &&
+                            _currentDataSource ==
+                                PlayerProfileDataSource.twic,
                         playerKey: activePlayerKey,
                         hasActiveFilter: hasActiveFilter,
                         knownTotalCount:
@@ -880,9 +884,12 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
   }
 
   /// Full action buttons row for the Games tab (study opening + save to library).
+  /// Animates the study opening card in/out with a spring when switching
+  /// between TWIC (both cards) and ChessEver (save-to-library only).
   Widget _buildGamesActionButtons({
     required PlayerProfileKey playerKey,
     required bool hasActiveFilter,
+    required bool showStudyOpening,
     int? knownTotalCount,
   }) {
     final horizontalPadding = ResponsiveHelper.adaptive(
@@ -897,45 +904,75 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
         horizontalPadding,
         2.h,
       ),
-      child: Row(
-        children: [
-          Expanded(
-            child: _ActionCard(
-              icon: Icons.account_tree_outlined,
-              title: 'Study opening',
-              subtitle: hasActiveFilter ? 'Filtered games' : 'Repertoire view',
-              isHighlighted: hasActiveFilter,
-              onTap: _openExplorer,
-            ),
-          ),
-          SizedBox(width: 12.w),
-          Expanded(
-            child: _ActionCard(
-              icon: Icons.library_add_outlined,
-              title: 'Save to Library',
-              subtitle: hasActiveFilter ? 'Filtered games' : 'Games collection',
-              isHighlighted: hasActiveFilter,
-              onTap: () {
-                showSaveToLibrarySheet(
-                  context: context,
-                  ref: ref,
-                  playerKey: playerKey,
-                  knownTotalCount: knownTotalCount,
-                  onSelectSpecific: () {
-                    _handleTabSelection(
-                      PlayerProfileTab.values.indexOf(PlayerProfileTab.games),
+      child: SingleMotionBuilder(
+        motion: const CupertinoMotion.bouncy(),
+        value: showStudyOpening ? 1.0 : 0.0,
+        builder: (context, t, _) {
+          // t: 1 = both cards visible (TWIC), 0 = only save-to-library.
+          final gap = 12.w * t;
+
+          return Row(
+            children: [
+              // Study opening — collapses via flex weight + fade + scale.
+              if (t > 0.001)
+                Flexible(
+                  flex: (t * 1000).round().clamp(1, 1000),
+                  child: ClipRect(
+                    child: Opacity(
+                      opacity: t.clamp(0.0, 1.0),
+                      child: Transform.scale(
+                        scale: 0.92 + 0.08 * t,
+                        alignment: Alignment.centerLeft,
+                        child: _ActionCard(
+                          icon: Icons.account_tree_outlined,
+                          title: 'Study opening',
+                          subtitle:
+                              hasActiveFilter
+                                  ? 'Filtered games'
+                                  : 'Repertoire view',
+                          isHighlighted: hasActiveFilter,
+                          onTap: _openExplorer,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              if (t > 0.001) SizedBox(width: gap),
+              // Save to Library — always present, smoothly fills full width.
+              Flexible(
+                flex: 1000,
+                child: _ActionCard(
+                  icon: Icons.library_add_outlined,
+                  title: 'Save to Library',
+                  subtitle:
+                      hasActiveFilter ? 'Filtered games' : 'Games collection',
+                  isHighlighted: hasActiveFilter,
+                  onTap: () {
+                    showSaveToLibrarySheet(
+                      context: context,
+                      ref: ref,
+                      playerKey: playerKey,
+                      knownTotalCount: knownTotalCount,
+                      onSelectSpecific: () {
+                        _handleTabSelection(
+                          PlayerProfileTab.values.indexOf(
+                            PlayerProfileTab.games,
+                          ),
+                        );
+                        ref
+                            .read(
+                              playerGamesSelectionModeProvider(playerKey)
+                                  .notifier,
+                            )
+                            .state = true;
+                      },
                     );
-                    ref
-                        .read(
-                          playerGamesSelectionModeProvider(playerKey).notifier,
-                        )
-                        .state = true;
                   },
-                );
-              },
-            ),
-          ),
-        ],
+                ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
