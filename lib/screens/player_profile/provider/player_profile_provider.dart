@@ -2278,6 +2278,12 @@ final twicPlayerStatsProvider = FutureProvider.family.autoDispose<
     colorFilter: filter.color,
   );
 
+  final defaultFilter = GameFilter();
+  final ratingFrom =
+      filter.minRating != defaultFilter.minRating ? filter.minRating : null;
+  final ratingTo =
+      filter.maxRating != defaultFilter.maxRating ? filter.maxRating : null;
+
   final repo = ref.read(gamebaseRepositoryProvider);
   Map<String, dynamic> response;
   try {
@@ -2289,6 +2295,8 @@ final twicPlayerStatsProvider = FutureProvider.family.autoDispose<
       eco: request.scope == TwicStatsScope.filteredIgnoringEco ? null : eco,
       dateFrom: _yearMinToDateFrom(filter),
       dateTo: _yearMaxToExclusiveDateTo(filter),
+      ratingFrom: ratingFrom,
+      ratingTo: ratingTo,
     );
   } on DioException catch (e) {
     if (e.response?.statusCode == 404) {
@@ -2313,6 +2321,8 @@ final twicPlayerStatsProvider = FutureProvider.family.autoDispose<
                     : eco,
             dateFrom: _yearMinToDateFrom(filter),
             dateTo: _yearMaxToExclusiveDateTo(filter),
+            ratingFrom: ratingFrom,
+            ratingTo: ratingTo,
           );
         } on DioException catch (retryError) {
           if (retryError.response?.statusCode == 404) {
@@ -2580,6 +2590,13 @@ class PlayerProfileGamesNotifier
     final dateFrom = _yearMinToDateFrom(filter);
     final dateTo = _yearMaxToExclusiveDateTo(filter);
 
+    // Rating filter: only send non-default values.
+    final defaultFilter = GameFilter();
+    final ratingFrom =
+        filter.minRating != defaultFilter.minRating ? filter.minRating : null;
+    final ratingTo =
+        filter.maxRating != defaultFilter.maxRating ? filter.maxRating : null;
+
     final response = await repo.getPlayerGames(
       playerId: playerId,
       color: color,
@@ -2590,6 +2607,8 @@ class PlayerProfileGamesNotifier
       variation: null,
       dateFrom: dateFrom,
       dateTo: dateTo,
+      ratingFrom: ratingFrom,
+      ratingTo: ratingTo,
       pageNumber: pageNumber,
       pageSize: pageSize,
     );

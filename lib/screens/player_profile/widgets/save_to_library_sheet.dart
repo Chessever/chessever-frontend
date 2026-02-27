@@ -146,7 +146,17 @@ class _SaveToLibrarySheetState extends ConsumerState<_SaveToLibrarySheet> {
       }
     }
 
-    // TWIC: use server-side filtered total (totalCount) as the authoritative count
+    // When filters are active, use client-side filteredGames count — the
+    // server totalCount doesn't reflect client-side filters like rating range.
+    if (state.hasActiveFilters) {
+      final filteredCount = state.filteredGames.length;
+      if (isTwic && state.hasMorePages) {
+        return '${formatCompactCount(filteredCount)}+ filtered games to a book';
+      }
+      return 'Add all ${formatCompactCount(filteredCount)} games to a book';
+    }
+
+    // No filters active — use server total for TWIC (most accurate)
     if (isTwic) {
       final total = state.totalCount ?? widget.knownTotalCount;
       if (total != null && total > 0) {
@@ -154,7 +164,6 @@ class _SaveToLibrarySheetState extends ConsumerState<_SaveToLibrarySheet> {
       }
     }
 
-    // ChessEver: all games are loaded locally, filteredGames is accurate
     final count = state.filteredGames.length;
     return 'Add all ${formatCompactCount(count)} games to a book';
   }
