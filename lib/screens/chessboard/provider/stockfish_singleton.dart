@@ -1,9 +1,29 @@
 import 'dart:async';
+import 'dart:ffi';
 import 'dart:io' show Platform;
 import 'package:chessever2/repository/lichess/cloud_eval/cloud_eval.dart';
+import 'package:ffi/ffi.dart';
 import 'package:flutter/foundation.dart';
 import 'package:stockfish/stockfish.dart';
 import 'package:chessever2/providers/engine_settings_provider.dart';
+
+/// Write a UCI command directly to the native Stockfish stdin buffer via FFI,
+/// bypassing the Dart [Stockfish] wrapper's state check that throws when the
+/// engine isn't in [StockfishState.ready].
+void _rawStockfishStdin(String command) {
+  try {
+    final lib = Platform.isAndroid
+        ? DynamicLibrary.open('libstockfish.so')
+        : DynamicLibrary.process();
+    final write = lib
+        .lookup<NativeFunction<IntPtr Function(Pointer<Utf8>)>>(
+            'stockfish_stdin_write')
+        .asFunction<int Function(Pointer<Utf8>)>();
+    final ptr = '$command\n'.toNativeUtf8();
+    write(ptr);
+    calloc.free(ptr);
+  } catch (_) {}
+}
 
 // Enhanced CloudEval class with cancellation support
 class EnhancedCloudEval {
@@ -1244,6 +1264,67 @@ class StockfishSingleton {
     } finally {
       await sub.cancel();
     }
+  }
+
+  /// Cleanup for hot restart. Sends `stop` + `quit` directly via FFI
+  /// (bypasses the Dart wrapper's state check) so the native engine exits
+  /// and its isolate can be killed by the hot restart mechanism.
+  void prepareForHotRestart() {
+    _queueGeneration++;
+
+    // Write directly to native stdin — works even if Dart-side engine state
+    // is not `ready` (e.g. still starting, or already errored).
+    _rawStockfishStdin('stop');
+    _rawStockfishStdin('quit');
+
+    if (_currentJob != null && !_currentJob!.completer.isCompleted) {
+      _currentJob!.completer.complete(
+        EnhancedCloudEval(
+          fen: _currentJob!.fen,
+          knodes: 0,
+          depth: 0,
+          pvs: [Pv(moves: '', cp: 0, mate: 0)],
+          isCancelled: true,
+          requestedMultiPv: _currentJob!.multiPV,
+        ),
+      );
+    }
+    _currentJob = null;
+    _currentSubscription?.cancel();
+    _currentSubscription = null;
+
+    for (final job in _jobQueue) {
+      if (!job.completer.isCompleted) {
+        job.completer.complete(
+          EnhancedCloudEval(
+            fen: job.fen,
+            knodes: 0,
+            depth: 0,
+            pvs: [Pv(moves: '', cp: 0, mate: 0)],
+            isCancelled: true,
+            requestedMultiPv: job.multiPV,
+          ),
+        );
+      }
+    }
+    _jobQueue.clear();
+    _pendingJobs.clear();
+    _isProcessing = false;
+    _isInitializing = false;
+    _initCompleter = null;
+    _previousJobCompleted = true;
+
+    if (_instanceLock != null && !_instanceLock!.isCompleted) {
+      _instanceLock!.complete();
+    }
+    _instanceLock = null;
+
+    // Don't call _engine!.dispose() (which also sends quit via the Dart
+    // wrapper and can throw). The FFI quit above is sufficient.
+    _engine = null;
+    _lastDisposeTime = DateTime.now();
+    _evaluationCache.clear();
+    debugPrint('🧹 STOCKFISH: Hot restart cleanup done (FFI quit sent)');
   }
 
   void dispose() {

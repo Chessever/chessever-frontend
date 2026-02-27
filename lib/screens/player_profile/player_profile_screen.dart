@@ -8,9 +8,9 @@ import 'package:chessever2/screens/gamebase/models/models.dart';
 import 'package:chessever2/screens/player_profile/player_profile_data_source.dart';
 import 'package:chessever2/screens/player_profile/provider/player_profile_provider.dart';
 import 'package:chessever2/screens/player_profile/tabs/player_about_tab.dart';
+import 'package:chessever2/screens/player_profile/widgets/save_to_library_sheet.dart';
 import 'package:chessever2/screens/player_profile/tabs/player_events_tab.dart';
 import 'package:chessever2/screens/player_profile/tabs/player_games_tab.dart';
-import 'package:chessever2/screens/player_profile/widgets/save_to_library_sheet.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
@@ -525,6 +525,19 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
     final isTwicLoading =
         isTwicSource && (gamesState.isLoading || isTwicStatsLoading);
 
+    // Always watch supabase games state for ChessEver game count
+    final supabaseKey = PlayerProfileKey(
+      fideId: widget.fideId,
+      playerName: widget.playerName,
+      source: PlayerProfileDataSource.supabase,
+      gamebasePlayerId: _currentGamebasePlayerId,
+    );
+    final supabaseGamesState = ref.watch(
+      playerProfileGamesKeyProvider(supabaseKey),
+    );
+    final chesseverGameCount =
+        supabaseGamesState.totalCount ?? supabaseGamesState.allGames.length;
+
     return Scaffold(
       backgroundColor: kBackgroundColor,
       body: Center(
@@ -577,13 +590,17 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    _buildDataSourceSelector(twicSummaryAsync),
-                    if (hasPlayerExplorer)
-                      _buildActionButtons(
-                        displayName: _formatDisplayName(
-                          name: effectiveName,
-                          title: effectiveTitle,
-                        ),
+                    _buildDataSourceSelector(
+                      twicSummaryAsync,
+                      chesseverGameCount: chesseverGameCount,
+                      isChesseverLoading: supabaseGamesState.isLoading,
+                    ),
+                    if (hasPlayerExplorer &&
+                        selectedTab == PlayerProfileTab.about)
+                      _buildStudyOpeningRow(),
+                    if (hasPlayerExplorer &&
+                        selectedTab == PlayerProfileTab.games)
+                      _buildGamesActionButtons(
                         playerKey: activePlayerKey,
                         knownTotalCount:
                             _currentDataSource == PlayerProfileDataSource.twic
@@ -826,8 +843,26 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
     );
   }
 
-  Widget _buildActionButtons({
-    required String displayName,
+  /// Compact inline row for study opening on the About tab.
+  Widget _buildStudyOpeningRow() {
+    final horizontalPadding = ResponsiveHelper.adaptive(
+      phone: 20.sp,
+      tablet: 32.sp,
+    );
+
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        horizontalPadding,
+        14.h,
+        horizontalPadding,
+        0,
+      ),
+      child: _StudyOpeningPill(onTap: _openExplorer),
+    );
+  }
+
+  /// Full action buttons row for the Games tab (study opening + save to library).
+  Widget _buildGamesActionButtons({
     required PlayerProfileKey playerKey,
     int? knownTotalCount,
   }) {
@@ -904,8 +939,10 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
   }
 
   Widget _buildDataSourceSelector(
-    AsyncValue<TwicProfileSummary?> twicSummaryAsync,
-  ) {
+    AsyncValue<TwicProfileSummary?> twicSummaryAsync, {
+    required int chesseverGameCount,
+    required bool isChesseverLoading,
+  }) {
     final summary = twicSummaryAsync.valueOrNull;
     final isLoading = twicSummaryAsync.isLoading;
     final isTwic = _currentDataSource == PlayerProfileDataSource.twic;
@@ -920,6 +957,10 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
     );
     final twicGameCount =
         summary != null ? formatCompactCount(summary.totalGames) : '--';
+    final chesseverCount =
+        isChesseverLoading
+            ? null
+            : formatCompactCount(chesseverGameCount);
 
     return SingleMotionBuilder(
       motion: const CupertinoMotion.bouncy(),
@@ -940,6 +981,7 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
                 isTwic: isTwic,
                 isLoading: isLoading,
                 twicGameCount: twicGameCount,
+                chesseverGameCount: chesseverCount,
                 twicEnabled: summary != null || isTwic,
                 onSelectRegular:
                     () => _setDataSource(PlayerProfileDataSource.supabase),
@@ -965,6 +1007,7 @@ class _DataSourceBanner extends StatelessWidget {
     required this.isTwic,
     required this.isLoading,
     required this.twicGameCount,
+    this.chesseverGameCount,
     required this.twicEnabled,
     required this.onSelectRegular,
     required this.onSelectTwic,
@@ -973,6 +1016,7 @@ class _DataSourceBanner extends StatelessWidget {
   final bool isTwic;
   final bool isLoading;
   final String twicGameCount;
+  final String? chesseverGameCount;
   final bool twicEnabled;
   final VoidCallback onSelectRegular;
   final VoidCallback? onSelectTwic;
@@ -981,6 +1025,11 @@ class _DataSourceBanner extends StatelessWidget {
   Widget build(BuildContext context) {
     final canSwitchToTwic =
         twicEnabled && onSelectTwic != null && !isLoading;
+
+    final chesseverLabel =
+        chesseverGameCount != null
+            ? 'ChessEver · $chesseverGameCount'
+            : 'ChessEver';
 
     return Container(
       padding: EdgeInsets.all(3.sp),
@@ -993,7 +1042,7 @@ class _DataSourceBanner extends StatelessWidget {
           // ChessEver tab
           Expanded(
             child: _SourceTab(
-              label: 'ChessEver',
+              label: chesseverLabel,
               isActive: !isTwic,
               onTap: isTwic ? onSelectRegular : null,
             ),
@@ -1133,7 +1182,74 @@ class _SourceTabState extends State<_SourceTab> {
   }
 }
 
-/// Model for recent opponent data (keeping for backward compatibility)
+/// Compact pill-style button for study opening on the About tab.
+class _StudyOpeningPill extends StatefulWidget {
+  const _StudyOpeningPill({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  State<_StudyOpeningPill> createState() => _StudyOpeningPillState();
+}
+
+class _StudyOpeningPillState extends State<_StudyOpeningPill> {
+  bool _pressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTapDown: (_) => setState(() => _pressed = true),
+      onTapUp: (_) {
+        setState(() => _pressed = false);
+        HapticFeedbackService.light();
+        widget.onTap();
+      },
+      onTapCancel: () => setState(() => _pressed = false),
+      child: SingleMotionBuilder(
+        motion: const CupertinoMotion.snappy(),
+        value: _pressed ? 1.0 : 0.0,
+        builder: (context, pressProgress, _) {
+          return Transform.scale(
+            scale: 1.0 - 0.02 * pressProgress,
+            child: Container(
+              padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
+              decoration: BoxDecoration(
+                color: kPrimaryColor.withValues(alpha: 0.10),
+                borderRadius: BorderRadius.circular(10.br),
+                border: Border.all(
+                  color: kPrimaryColor.withValues(alpha: 0.24),
+                ),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.account_tree_outlined,
+                    size: 16.ic,
+                    color: kPrimaryColor,
+                  ),
+                  SizedBox(width: 8.w),
+                  Text(
+                    'Study opening repertoire',
+                    style: AppTypography.textSmMedium.copyWith(
+                      color: kWhiteColor.withValues(alpha: 0.92),
+                    ),
+                  ),
+                  const Spacer(),
+                  Icon(
+                    Icons.chevron_right_rounded,
+                    size: 18.ic,
+                    color: kWhiteColor.withValues(alpha: 0.5),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
 class _ActionCard extends StatefulWidget {
   final IconData icon;
   final String title;
