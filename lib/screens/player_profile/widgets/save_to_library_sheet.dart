@@ -130,19 +130,33 @@ class _SaveToLibrarySheetState extends ConsumerState<_SaveToLibrarySheet> {
     widget.onSelectSpecific();
   }
 
+  String _buildSaveAllTitle(PlayerProfileGamesState state) {
+    return state.hasActiveFilters ? 'Add all filtered games' : 'Add all games';
+  }
+
   String _buildSaveAllSubtitle(PlayerProfileGamesState state) {
-    final total = state.totalCount ?? widget.knownTotalCount;
     final loaded = state.allGames.length;
+    final isTwic =
+        state.playerKey.source == PlayerProfileDataSource.twic;
 
-    if (_isLoadingAll && total != null && total > loaded) {
-      return 'Loading ${formatCompactCount(loaded)} of ${formatCompactCount(total)} games...';
+    if (_isLoadingAll) {
+      final total = state.totalCount ?? widget.knownTotalCount;
+      if (total != null && total > loaded) {
+        return 'Loading ${formatCompactCount(loaded)} of ${formatCompactCount(total)} games...';
+      }
     }
 
-    if (total != null && total > 0) {
-      return 'Add all ${formatCompactCount(total)} games to a book';
+    // TWIC: use server-side filtered total (totalCount) as the authoritative count
+    if (isTwic) {
+      final total = state.totalCount ?? widget.knownTotalCount;
+      if (total != null && total > 0) {
+        return 'Add all ${formatCompactCount(total)} games to a book';
+      }
     }
 
-    return 'Add all $loaded games to a book';
+    // ChessEver: all games are loaded locally, filteredGames is accurate
+    final count = state.filteredGames.length;
+    return 'Add all ${formatCompactCount(count)} games to a book';
   }
 
   @override
@@ -193,7 +207,7 @@ class _SaveToLibrarySheetState extends ConsumerState<_SaveToLibrarySheet> {
                               SizedBox(height: 24.h),
                               _ActionTile(
                                 icon: Icons.all_inclusive_rounded,
-                                title: 'Save all games',
+                                title: _buildSaveAllTitle(state),
                                 subtitle: _buildSaveAllSubtitle(state),
                                 isLoading: _isLoadingAll,
                                 onTap: _handleSaveAll,

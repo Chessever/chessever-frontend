@@ -1,3 +1,4 @@
+import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:dart_mappable/dart_mappable.dart';
 import '../models/models.dart';
 
@@ -103,4 +104,40 @@ class GamebaseExplorerState with GamebaseExplorerStateMappable {
       filters.minRating != null ||
       filters.maxRating != null ||
       filters.playerIds.isNotEmpty;
+}
+
+/// Maps a [GameFilter] (player profile) into [GamebaseFilters] (explorer).
+///
+/// Only time control and rating range have equivalents in the explorer.
+/// Result, color, ECO, and year filters are dropped (no explorer equivalent).
+extension GameFilterToGamebaseFilters on GameFilter {
+  GamebaseFilters toGamebaseFilters() {
+    final List<TimeControl> timeControls;
+    switch (timeControl) {
+      case GameTimeControlFilter.classical:
+        timeControls = [TimeControl.classical];
+      case GameTimeControlFilter.rapid:
+        timeControls = [TimeControl.rapid];
+      case GameTimeControlFilter.blitz:
+        timeControls = [TimeControl.blitz];
+      case GameTimeControlFilter.all:
+        timeControls = [];
+    }
+
+    // Explorer slider range is 1000–3500. Clamp and null-out when at boundary.
+    final clampedMin = minRating.clamp(1000, 3500);
+    final clampedMax = maxRating.clamp(1000, 3500);
+
+    return GamebaseFilters(
+      timeControls: timeControls,
+      minRating: clampedMin > 1000 ? clampedMin : null,
+      maxRating: clampedMax < 3500 ? clampedMax : null,
+    );
+  }
+
+  /// Whether this filter has any fields that map to explorer filters.
+  bool get hasExplorerMappableFilters =>
+      timeControl != GameTimeControlFilter.all ||
+      minRating != 1000 ||
+      maxRating != 3500;
 }

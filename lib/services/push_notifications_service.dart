@@ -64,6 +64,9 @@ class PushNotificationsService {
     _pendingPushObservers.add(observer);
   }
 
+  /// Whether OS-level notification permission is currently granted.
+  bool get hasPermission => _initialized && OneSignal.Notifications.permission;
+
   Future<bool> requestPermissionWithDialog() async {
     final granted = await OneSignal.Notifications.requestPermission(true);
     await _persistLocalEnabled(granted);
@@ -74,6 +77,15 @@ class PushNotificationsService {
       OneSignal.User.pushSubscription.optOut();
     }
     return granted;
+  }
+
+  /// Request permission only if not already granted.
+  /// Safe to call repeatedly — no-ops if permission is already granted,
+  /// and on iOS the OS dialog only shows once regardless.
+  Future<void> requestPermissionIfNotGranted() async {
+    if (!_initialized) return;
+    if (OneSignal.Notifications.permission) return;
+    await requestPermissionWithDialog();
   }
 
   Future<void> setPushEnabled(bool enabled) async {
