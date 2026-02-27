@@ -352,7 +352,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
     );
     final headerHeight =
         58.h +
-        (state.hasActiveFilters ? 36.h : 0) +
+        (state.hasActiveFilters ? 42.h : 0) +
         (isSelectionMode ? 136.h : 0);
 
     // Watch event data for event-grouped display
