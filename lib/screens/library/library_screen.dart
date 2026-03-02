@@ -93,7 +93,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'Book "$name" created',
+              'Database "$name" created',
               style: TextStyle(color: kWhiteColor),
             ),
             backgroundColor: kBlack2Color.withValues(alpha: 0.95),
@@ -117,7 +117,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'Failed to create book: $e',
+              'Failed to create database: $e',
               style: TextStyle(color: kWhiteColor),
             ),
             backgroundColor: kRedColor,
@@ -289,7 +289,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     final filteredFolders = _filterFolders(allFolders);
 
     if (filteredFolders.isEmpty) {
-      return _buildSearchEmptyState('No books match your search');
+      return _buildSearchEmptyState('No databases match your search');
     }
 
     final horizontalPadding = ResponsiveHelper.adaptive(
@@ -540,7 +540,7 @@ class _LibraryBackgroundDecoration extends StatelessWidget {
                 Padding(
                   padding: EdgeInsets.symmetric(horizontal: 20.w),
                   child: Text(
-                    'Search any player, opening, or tournament. Save games to your personal books for study.',
+                    'Search any player, opening, or tournament. Save games to your personal databases for study.',
                     style: AppTypography.textSmRegular.copyWith(
                       color: kWhiteColor,
                       height: 1.5,
