@@ -153,6 +153,21 @@ class _FilterContent extends HookConsumerWidget {
 
           SizedBox(height: 16.h),
 
+          // Result Section
+          _SectionLabel(label: 'Result'),
+          SizedBox(height: 8.h),
+          _GameResultChips(selectedResult: filters.gameResult),
+
+          SizedBox(height: 16.h),
+
+          // Color Section (only when a player is selected)
+          if (filters.playerIds.isNotEmpty) ...[
+            _SectionLabel(label: 'Color'),
+            SizedBox(height: 8.h),
+            _PlayerColorChips(selectedColor: filters.playerColor),
+            SizedBox(height: 16.h),
+          ],
+
           // Rating Range Section
           _SectionLabel(label: 'Rating Range'),
           SizedBox(height: 8.h),
@@ -242,6 +257,85 @@ class _TimeControlChips extends ConsumerWidget {
   }
 }
 
+/// Game result filter chips (1-0, 0-1, ½-½).
+class _GameResultChips extends ConsumerWidget {
+  const _GameResultChips({required this.selectedResult});
+
+  final GamebaseGameResult? selectedResult;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return Wrap(
+      spacing: 8.w,
+      runSpacing: 8.h,
+      children:
+          GamebaseGameResult.values.map((r) {
+            final isSelected = selectedResult == r;
+            return _FilterChip(
+              label: r.displayText,
+              icon: _getResultIcon(r),
+              isSelected: isSelected,
+              onTap: () {
+                ref
+                    .read(gamebaseExplorerProvider.notifier)
+                    .toggleGameResult(r);
+              },
+            );
+          }).toList(),
+    );
+  }
+
+  IconData _getResultIcon(GamebaseGameResult r) {
+    switch (r) {
+      case GamebaseGameResult.whiteWins:
+        return Icons.looks_one_rounded;
+      case GamebaseGameResult.blackWins:
+        return Icons.looks_one_rounded;
+      case GamebaseGameResult.draw:
+        return Icons.handshake_rounded;
+    }
+  }
+}
+
+/// Player color filter chips (White, Black).
+class _PlayerColorChips extends ConsumerWidget {
+  const _PlayerColorChips({required this.selectedColor});
+
+  final GamebasePlayerColor? selectedColor;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return Wrap(
+      spacing: 8.w,
+      runSpacing: 8.h,
+      children: [
+        _FilterChip(
+          label: 'White',
+          icon: Icons.circle,
+          isSelected: selectedColor == GamebasePlayerColor.white,
+          iconColor: kWhiteColor,
+          onTap: () {
+            ref
+                .read(gamebaseExplorerProvider.notifier)
+                .togglePlayerColor(GamebasePlayerColor.white);
+          },
+        ),
+        _FilterChip(
+          label: 'Black',
+          icon: Icons.circle_outlined,
+          isSelected: selectedColor == GamebasePlayerColor.black,
+          iconColor: kSecondaryTextColor,
+          onTap: () {
+            ref
+                .read(gamebaseExplorerProvider.notifier)
+                .togglePlayerColor(GamebasePlayerColor.black);
+          },
+        ),
+      ],
+    );
+  }
+}
+
 /// Reusable filter chip widget.
 class _FilterChip extends StatelessWidget {
   const _FilterChip({
@@ -249,12 +343,14 @@ class _FilterChip extends StatelessWidget {
     required this.icon,
     required this.isSelected,
     required this.onTap,
+    this.iconColor,
   });
 
   final String label;
   final IconData icon;
   final bool isSelected;
   final VoidCallback onTap;
+  final Color? iconColor;
 
   @override
   Widget build(BuildContext context) {
@@ -278,7 +374,7 @@ class _FilterChip extends StatelessWidget {
             Icon(
               icon,
               size: 16.sp,
-              color: isSelected ? kWhiteColor : kSecondaryTextColor,
+              color: iconColor ?? (isSelected ? kWhiteColor : kSecondaryTextColor),
             ),
             SizedBox(width: 6.w),
             Text(

@@ -68,6 +68,7 @@ import 'package:chessever2/repository/supabase/group_broadcast/group_tour_reposi
 import 'package:motor/motor.dart';
 import 'package:chessever2/screens/gamebase/widgets/gamebase_explorer_view.dart';
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
+import 'package:chessever2/repository/gamebase/search/gamebase_search_models.dart';
 import 'package:chessever2/screens/gamebase/models/models.dart';
 import 'package:chessever2/screens/gamebase/providers/gamebase_providers.dart';
 import 'package:chessever2/screens/library/utils/gamebase_pgn_builder.dart';
@@ -5294,15 +5295,47 @@ class _AnalysisGameBody extends ConsumerWidget {
                     lastMoveTime: date,
                   );
 
-                  // Best-effort: fetch the full game payload (moves + PGN headers)
-                  // and show it if available; fall back to preview-only if the
-                  // backend errors or returns an incomplete record.
-                  final full = await repo
-                      .getGameById(gameId)
-                      .timeout(
-                        const Duration(seconds: 2),
-                        onTimeout: () => null,
-                      );
+                  // Fetch the full game AND all position games in parallel
+                  // so the user can swipe between games in context.
+                  final currentFen = state.analysisState.position.fen;
+                  final combinedMoves = state.analysisState.combinedMoves;
+                  final currentMoveIndex = state.analysisState.currentMoveIndex;
+                  final movesToCurrentCount = currentMoveIndex < 0
+                      ? 0
+                      : (currentMoveIndex + 1).clamp(0, combinedMoves.length);
+                  final lineToCurrent = combinedMoves
+                      .take(movesToCurrentCount)
+                      .map((m) => m.uci.trim().toLowerCase())
+                      .where((uci) => RegExp(r'^[a-h][1-8][a-h][1-8][qrbn]?$').hasMatch(uci))
+                      .toList(growable: false);
+
+                  final positionQuery = GamebasePositionGamesQuery(
+                    fen: currentFen,
+                    moves: lineToCurrent,
+                    pageSize: 50,
+                  );
+
+                  final results = await Future.wait([
+                    // 1) Full game payload (best-effort)
+                    repo
+                        .getGameById(gameId)
+                        .timeout(
+                          const Duration(seconds: 2),
+                          onTimeout: () => null,
+                        ),
+                    // 2) All position games for swiping context
+                    ref
+                        .read(positionGamesProvider(positionQuery).future)
+                        .then<GamebaseSearchQueryResponse?>((v) => v)
+                        .timeout(
+                          const Duration(seconds: 3),
+                          onTimeout: () => null,
+                        ),
+                  ]);
+
+                  final full = results[0] as GamebaseGame?;
+                  final positionGamesResponse =
+                      results[1] as GamebaseSearchQueryResponse?;
 
                   GamesTourModel resolvedForOpen = resolvedGame;
                   if (full != null) {
@@ -5340,6 +5373,105 @@ class _AnalysisGameBody extends ConsumerWidget {
                     resolvedForOpen = merged;
                   }
 
+                  // Build the game list for swiping. If position games
+                  // were fetched, map them and replace the selected game
+                  // with the fully resolved version.
+                  List<GamesTourModel> allGames;
+                  int openIndex;
+
+                  if (positionGamesResponse != null &&
+                      positionGamesResponse.data.isNotEmpty) {
+                    GamesTourModel mapRow(Map<String, dynamic> row) {
+                      final id = (row['id']?.toString() ?? '').trim();
+                      final safeId = id.isNotEmpty ? id : 'unknown';
+                      DateTime? d;
+                      final rawDate = row['date'];
+                      if (rawDate != null) {
+                        d = DateTime.tryParse(rawDate.toString());
+                      }
+                      final r = row['result']?.toString() ?? '*';
+                      final tc = row['timeControl']?.toString();
+                      final ec = row['eco']?.toString() ?? '';
+                      final op = row['opening']?.toString() ?? '';
+                      final va = row['variation']?.toString() ?? '';
+                      final ev = row['event']?.toString() ?? '';
+                      final wn = (row['white']?.toString() ?? '').trim();
+                      final bn = (row['black']?.toString() ?? '').trim();
+                      final we = (row['whiteElo'] as num?)?.toInt() ?? 0;
+                      final be = (row['blackElo'] as num?)?.toInt() ?? 0;
+                      final wf = row['whiteFed']?.toString() ?? '';
+                      final bf = row['blackFed']?.toString() ?? '';
+                      final wpId = row['whitePlayerId']?.toString().trim();
+                      final bpId = row['blackPlayerId']?.toString().trim();
+                      final fmt = ec.trim().isNotEmpty ? ec.trim() : (tc ?? '');
+                      final opName = va.trim().isNotEmpty
+                          ? '$op: $va'
+                          : (op.trim().isNotEmpty ? op : null);
+                      return GamesTourModel(
+                        gameId: safeId,
+                        whitePlayer: PlayerCard(
+                          name: wn.isNotEmpty ? wn : 'White',
+                          federation: '',
+                          title: '',
+                          rating: we,
+                          countryCode: wf,
+                          team: null,
+                          fideId: null,
+                          gamebasePlayerId:
+                              (wpId != null && wpId.isNotEmpty)
+                                  ? wpId
+                                  : null,
+                        ),
+                        blackPlayer: PlayerCard(
+                          name: bn.isNotEmpty ? bn : 'Black',
+                          federation: '',
+                          title: '',
+                          rating: be,
+                          countryCode: bf,
+                          team: null,
+                          fideId: null,
+                          gamebasePlayerId:
+                              (bpId != null && bpId.isNotEmpty)
+                                  ? bpId
+                                  : null,
+                        ),
+                        whiteTimeDisplay: '--:--',
+                        blackTimeDisplay: '--:--',
+                        whiteClockCentiseconds: 0,
+                        blackClockCentiseconds: 0,
+                        gameStatus: GameStatus.fromString(r),
+                        roundId: 'opening_explorer',
+                        roundSlug: fmt.isNotEmpty ? fmt : null,
+                        tourId: ev.trim().isNotEmpty ? ev.trim() : 'Gamebase',
+                        tourSlug: null,
+                        lastMoveTime: d,
+                        eco: ec.trim().isNotEmpty ? ec.trim() : null,
+                        openingName: opName,
+                        timeControl: tc,
+                      );
+                    }
+
+                    allGames = positionGamesResponse.data
+                        .map(mapRow)
+                        .toList();
+
+                    // Replace the selected game with the fully resolved version
+                    openIndex = allGames.indexWhere(
+                      (g) => g.gameId == resolvedForOpen.gameId,
+                    );
+                    if (openIndex >= 0) {
+                      allGames[openIndex] = resolvedForOpen;
+                    } else {
+                      // Selected game not in first page — prepend it
+                      allGames.insert(0, resolvedForOpen);
+                      openIndex = 0;
+                    }
+                  } else {
+                    // Fallback: single game (position games fetch failed)
+                    allGames = [resolvedForOpen];
+                    openIndex = 0;
+                  }
+
                   if (!context.mounted) return;
                   ref.read(chessboardViewFromProviderNew.notifier).state =
                       ChessboardView.tour;
@@ -5347,8 +5479,8 @@ class _AnalysisGameBody extends ConsumerWidget {
                     MaterialPageRoute(
                       builder:
                           (_) => ChessBoardScreenNew(
-                            games: [resolvedForOpen],
-                            currentIndex: 0,
+                            games: allGames,
+                            currentIndex: openIndex,
                             hideEventInfo:
                                 playerProfileDataSource !=
                                 PlayerProfileDataSource.twic,

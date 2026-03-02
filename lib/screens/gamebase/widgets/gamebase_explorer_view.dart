@@ -244,31 +244,32 @@ class _HorizontalPvLines extends ConsumerWidget {
 
           return InkWell(
             onTap: firstUci == null ? null : () => onMoveSelected(firstUci),
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Padding(
-                padding: EdgeInsets.symmetric(vertical: 2.h),
-                child: Row(
-                  children: [
-                    Container(
-                      padding: EdgeInsets.symmetric(
-                        horizontal: 6.w,
-                        vertical: 2.h,
-                      ),
-                      decoration: BoxDecoration(
-                        color: evalBgColor,
-                        borderRadius: BorderRadius.circular(4.br),
-                      ),
-                      child: Text(
-                        eval,
-                        style: AppTypography.textXsBold.copyWith(
-                          color: evalTextColor,
-                        ),
+            child: Padding(
+              padding: EdgeInsets.symmetric(vertical: 2.h),
+              child: Row(
+                children: [
+                  Container(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: 6.w,
+                      vertical: 2.h,
+                    ),
+                    decoration: BoxDecoration(
+                      color: evalBgColor,
+                      borderRadius: BorderRadius.circular(4.br),
+                    ),
+                    child: Text(
+                      eval,
+                      style: AppTypography.textXsBold.copyWith(
+                        color: evalTextColor,
                       ),
                     ),
-                    SizedBox(width: 8.w),
-                    useFigurine
+                  ),
+                  SizedBox(width: 8.w),
+                  Expanded(
+                    child: useFigurine
                         ? RichText(
+                          overflow: TextOverflow.ellipsis,
+                          maxLines: 1,
                           text: TextSpan(
                             children: buildFigurineSpans(
                               text: moves,
@@ -278,9 +279,9 @@ class _HorizontalPvLines extends ConsumerWidget {
                             ),
                           ),
                         )
-                        : Text(moves, style: movesStyle),
-                  ],
-                ),
+                        : Text(moves, style: movesStyle, overflow: TextOverflow.ellipsis, maxLines: 1),
+                  ),
+                ],
               ),
             ),
           );

@@ -76,6 +76,15 @@ paths:
           schema:
             type: integer
             minimum: 1
+        - name: color
+          in: query
+          required: false
+          description: Filter by player's color. Requires `playerId`.
+          schema:
+            type: string
+            enum:
+              - white
+              - black
       responses:
         "200":
           description: Successful response with move aggregates
@@ -239,6 +248,15 @@ paths:
           schema:
             type: integer
             minimum: 1
+        - name: color
+          in: query
+          required: false
+          description: Filter by player's color. Requires `playerId`.
+          schema:
+            type: string
+            enum:
+              - white
+              - black
         - name: pageNumber
           in: query
           required: false
@@ -1064,6 +1082,14 @@ components:
           description: |
             Maximum rating filter (player to move at this position).
             Aggregates use 100-point rating buckets, so precision is ±99.
+        color:
+          type: string
+          enum: [white, black]
+          description: Filter by player's color. Requires `playerId`.
+        result:
+          type: string
+          enum: [W, B, D]
+          description: Filter by game result (W=White wins, B=Black wins, D=Draw).
     PositionGamesQueryRequest:
       type: object
       required:
@@ -1110,6 +1136,14 @@ components:
           description: |
             Maximum rating filter (player to move at this position).
             Aggregates use 100-point rating buckets, so precision is ±99.
+        color:
+          type: string
+          enum: [white, black]
+          description: Filter by player's color. Requires `playerId`.
+        result:
+          type: string
+          enum: [W, B, D]
+          description: Filter by game result (W=White wins, B=Black wins, D=Draw).
         pageNumber:
           type: integer
           minimum: 0

@@ -114,13 +114,16 @@ class _GamebaseExplorerScreenState
         state.filters.minRating != null ||
         state.filters.maxRating != null;
 
+    final hasColorFilter = state.filters.playerColor != null;
+    final hasResultFilter = state.filters.gameResult != null;
+
     final hasDifferentPlayerScope =
         state.filters.playerIds.length != 1 ||
         state.filters.playerIds.first != scopedPlayer.id ||
         state.filters.selectedPlayers.length != 1 ||
         state.filters.selectedPlayers.first.id != scopedPlayer.id;
 
-    return hasRatingOrTimeFilters || hasDifferentPlayerScope;
+    return hasRatingOrTimeFilters || hasColorFilter || hasResultFilter || hasDifferentPlayerScope;
   }
 
   void _clearFiltersForCurrentScope() {
@@ -984,6 +987,25 @@ class _FilterSheetState extends ConsumerState<_FilterSheet> {
       _draftFilters = _draftFilters.copyWith(
         playerIds: currentIds,
         selectedPlayers: currentPlayers,
+        playerColor: currentIds.isEmpty ? null : _draftFilters.playerColor,
+      );
+    });
+  }
+
+  void _toggleColor(GamebasePlayerColor color) {
+    setState(() {
+      _draftFilters = _draftFilters.copyWith(
+        playerColor:
+            _draftFilters.playerColor == color ? null : color,
+      );
+    });
+  }
+
+  void _toggleResult(GamebaseGameResult result) {
+    setState(() {
+      _draftFilters = _draftFilters.copyWith(
+        gameResult:
+            _draftFilters.gameResult == result ? null : result,
       );
     });
   }
@@ -1011,10 +1033,12 @@ class _FilterSheetState extends ConsumerState<_FilterSheet> {
         filters.timeControls.isNotEmpty ||
         _effectiveMinRating != null ||
         _effectiveMaxRating != null;
+    final hasColor = filters.playerColor != null;
+    final hasResult = filters.gameResult != null;
     if (widget.scopedPlayer == null) {
-      return hasTimeOrRating || filters.playerIds.isNotEmpty;
+      return hasTimeOrRating || hasColor || hasResult || filters.playerIds.isNotEmpty;
     }
-    return hasTimeOrRating || !_isScopedPlayerDraft(filters);
+    return hasTimeOrRating || hasColor || hasResult || !_isScopedPlayerDraft(filters);
   }
 
   void _clearAll() {
@@ -1031,6 +1055,7 @@ class _FilterSheetState extends ConsumerState<_FilterSheet> {
       notifier.clearFilters();
     }
     setState(() {
+      _draftFilters = _draftFilters.copyWith(playerColor: null, gameResult: null);
       _ratingRange = const RangeValues(_ratingMin, _ratingMax);
     });
     Navigator.pop(context);
@@ -1117,6 +1142,108 @@ class _FilterSheetState extends ConsumerState<_FilterSheet> {
                       }).toList(),
                 ),
                 SizedBox(height: 16.sp),
+
+                // Result filter
+                Text(
+                  'Result',
+                  style: TextStyle(
+                    color: kSecondaryTextColor,
+                    fontSize: 12.f,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                SizedBox(height: 8.sp),
+                Wrap(
+                  spacing: 8.sp,
+                  children:
+                      GamebaseGameResult.values.map((r) {
+                        final isSelected = filters.gameResult == r;
+                        return FilterChip(
+                          label: Text(r.displayText),
+                          selected: isSelected,
+                          onSelected: (_) => _toggleResult(r),
+                          selectedColor: kPrimaryColor.withValues(alpha: 0.2),
+                          checkmarkColor: kPrimaryColor,
+                          labelStyle: TextStyle(
+                            color: isSelected ? kPrimaryColor : kWhiteColor,
+                            fontSize: 12.f,
+                          ),
+                          backgroundColor: kBlack2Color,
+                          side: BorderSide(
+                            color: isSelected ? kPrimaryColor : kDividerColor,
+                          ),
+                        );
+                      }).toList(),
+                ),
+                SizedBox(height: 16.sp),
+
+                // Color filter (visible when a player is selected)
+                if (widget.scopedPlayer != null ||
+                    filters.playerIds.isNotEmpty) ...[
+                  Text(
+                    'Color',
+                    style: TextStyle(
+                      color: kSecondaryTextColor,
+                      fontSize: 12.f,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  SizedBox(height: 8.sp),
+                  Wrap(
+                    spacing: 8.sp,
+                    children: [
+                      FilterChip(
+                        label: const Text('White'),
+                        avatar: Icon(Icons.circle, size: 14.sp, color: kWhiteColor),
+                        selected:
+                            filters.playerColor == GamebasePlayerColor.white,
+                        onSelected: (_) =>
+                            _toggleColor(GamebasePlayerColor.white),
+                        selectedColor: kPrimaryColor.withValues(alpha: 0.2),
+                        checkmarkColor: kPrimaryColor,
+                        labelStyle: TextStyle(
+                          color: filters.playerColor ==
+                                  GamebasePlayerColor.white
+                              ? kPrimaryColor
+                              : kWhiteColor,
+                          fontSize: 12.f,
+                        ),
+                        backgroundColor: kBlack2Color,
+                        side: BorderSide(
+                          color: filters.playerColor ==
+                                  GamebasePlayerColor.white
+                              ? kPrimaryColor
+                              : kDividerColor,
+                        ),
+                      ),
+                      FilterChip(
+                        label: const Text('Black'),
+                        avatar: Icon(Icons.circle, size: 14.sp, color: kBlackColor),
+                        selected:
+                            filters.playerColor == GamebasePlayerColor.black,
+                        onSelected: (_) =>
+                            _toggleColor(GamebasePlayerColor.black),
+                        selectedColor: kPrimaryColor.withValues(alpha: 0.2),
+                        checkmarkColor: kPrimaryColor,
+                        labelStyle: TextStyle(
+                          color: filters.playerColor ==
+                                  GamebasePlayerColor.black
+                              ? kPrimaryColor
+                              : kWhiteColor,
+                          fontSize: 12.f,
+                        ),
+                        backgroundColor: kBlack2Color,
+                        side: BorderSide(
+                          color: filters.playerColor ==
+                                  GamebasePlayerColor.black
+                              ? kPrimaryColor
+                              : kDividerColor,
+                        ),
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: 16.sp),
+                ],
 
                 // Rating range
                 Text(
