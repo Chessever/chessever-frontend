@@ -462,11 +462,11 @@ class FolderCard extends ConsumerWidget {
                   borderRadius: BorderRadius.circular(16.br),
                 ),
                 title: Text(
-                  'Delete book?',
+                  'Delete database?',
                   style: AppTypography.textSmBold.copyWith(color: kWhiteColor),
                 ),
                 content: Text(
-                  'This removes the book. Games in it will stay saved but become unassigned.',
+                  'This removes the database. Games in it will stay saved but become unassigned.',
                   style: AppTypography.textXsRegular.copyWith(
                     color: kWhiteColor.withValues(alpha: 0.7),
                   ),
@@ -507,7 +507,7 @@ class FolderCard extends ConsumerWidget {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Book deleted',
+            'Database deleted',
             style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
           ),
           backgroundColor: kBlack2Color.withValues(alpha: 0.95),

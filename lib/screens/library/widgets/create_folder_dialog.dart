@@ -11,14 +11,14 @@ Future<String?> showCreateFolderDialog(BuildContext context) async {
     context: context,
     builder:
         (context) => const _FolderNameDialog(
-          title: 'Create Book',
-          description: 'Enter a name for your new book',
+          title: 'Create Database',
+          description: 'Enter a name for your new database',
           confirmLabel: 'Create',
         ),
   );
 }
 
-/// Shows a dialog to rename a book.
+/// Shows a dialog to rename a database.
 /// Returns the new name if saved, null if cancelled.
 Future<String?> showRenameFolderDialog(
   BuildContext context, {
@@ -28,7 +28,7 @@ Future<String?> showRenameFolderDialog(
     context: context,
     builder:
         (context) => _FolderNameDialog(
-          title: 'Rename Book',
+          title: 'Rename Database',
           description: 'Enter a new name',
           confirmLabel: 'Save',
           initialValue: currentName,
@@ -126,7 +126,7 @@ class _FolderNameDialogState extends State<_FolderNameDialog> {
                 autofocus: true,
                 style: AppTypography.textMdRegular.copyWith(color: kWhiteColor),
                 decoration: InputDecoration(
-                  hintText: 'Book name',
+                  hintText: 'Database name',
                   hintStyle: AppTypography.textMdRegular.copyWith(
                     color: kWhiteColor.withValues(alpha: 0.4),
                   ),

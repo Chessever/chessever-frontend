@@ -245,9 +245,9 @@ class _ChessBoardNotificationSettingsPageState
                 SizedBox(height: 12.h),
                 _SettingCard(
                   child: _ToggleRow(
-                    title: 'Book updates',
+                    title: 'Database updates',
                     description:
-                        'Get notified when new games are added to your subscribed books.',
+                        'Get notified when new games are added to your subscribed databases.',
                     value: prefs.bookUpdateAlerts,
                     onChanged:
                         (!pushEnabled || prefsLoading)

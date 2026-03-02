@@ -213,7 +213,7 @@ class _AddToFolderPageState extends ConsumerState<_AddToFolderPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Book "$name" created',
+            'Database "$name" created',
             style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
           ),
           backgroundColor: kBlack2Color.withValues(alpha: 0.95),
@@ -225,7 +225,7 @@ class _AddToFolderPageState extends ConsumerState<_AddToFolderPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Failed to create book: $e',
+            'Failed to create database: $e',
             style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
           ),
           backgroundColor: kRedColor,
@@ -315,7 +315,7 @@ class _AddToFolderPageState extends ConsumerState<_AddToFolderPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Select at least one book',
+            'Select at least one database',
             style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
           ),
           backgroundColor: kBlack2Color.withValues(alpha: 0.95),
@@ -370,8 +370,8 @@ class _AddToFolderPageState extends ConsumerState<_AddToFolderPage> {
         SnackBar(
           content: Text(
             successCount == 1
-                ? 'Added to 1 book'
-                : 'Added to $successCount books',
+                ? 'Added to 1 database'
+                : 'Added to $successCount databases',
             style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
           ),
           backgroundColor: kBlack2Color.withValues(alpha: 0.95),
@@ -414,7 +414,7 @@ class _AddToFolderPageState extends ConsumerState<_AddToFolderPage> {
             Padding(
               padding: EdgeInsets.symmetric(horizontal: 20.w),
               child: Text(
-                'Add to Books',
+                'Add to Databases',
                 style: AppTypography.textLgBold.copyWith(color: kWhiteColor),
               ),
             ),
@@ -428,7 +428,7 @@ class _AddToFolderPageState extends ConsumerState<_AddToFolderPage> {
                       return Padding(
                         padding: EdgeInsets.all(20.sp),
                         child: Text(
-                          'No books yet.',
+                          'No databases yet.',
                           style: AppTypography.textSmRegular.copyWith(
                             color: kWhiteColor.withValues(alpha: 0.5),
                           ),
@@ -458,7 +458,7 @@ class _AddToFolderPageState extends ConsumerState<_AddToFolderPage> {
                   error:
                       (e, _) => Center(
                         child: Text(
-                          'Error loading books',
+                          'Error loading databases',
                           style: AppTypography.textSmRegular.copyWith(
                             color: kRedColor,
                           ),
@@ -496,7 +496,7 @@ class _AddToFolderPageState extends ConsumerState<_AddToFolderPage> {
                               ),
                               SizedBox(width: 8.w),
                               Text(
-                                'New Book',
+                                'New Database',
                                 style: AppTypography.textSmMedium.copyWith(
                                   color: kWhiteColor,
                                 ),

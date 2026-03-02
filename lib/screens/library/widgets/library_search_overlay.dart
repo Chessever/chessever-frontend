@@ -94,14 +94,14 @@ class LibrarySearchOverlay extends ConsumerWidget {
         children: [
           // 1. Books (folders) - highest priority, always shown first
           if (result.folders.isNotEmpty) ...[
-            _buildSectionHeader('Books'),
+            _buildSectionHeader('Databases'),
             ...result.folders
                 .take(_maxBooksInDropdown)
                 .map((f) => _buildFolderTile(f)),
             if (result.folders.length > _maxBooksInDropdown)
               _buildMoreIndicator(
                 result.folders.length - _maxBooksInDropdown,
-                'books',
+                'databases',
               ),
             SizedBox(height: 8.h),
           ],
@@ -212,7 +212,7 @@ class LibrarySearchOverlay extends ConsumerWidget {
       onTap: () => onFolderTap(folder),
       icon: Icons.folder_open_rounded,
       title: folder.name,
-      subtitle: 'Book',
+      subtitle: 'Database',
     );
   }
 

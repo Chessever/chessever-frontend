@@ -591,7 +591,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
               ),
               SizedBox(height: 6.h),
               Text(
-                'The owner hasn\'t added any games to this book yet.',
+                'The owner hasn\'t added any games to this database yet.',
                 style: AppTypography.textSmRegular.copyWith(
                   color: kWhiteColor.withValues(alpha: 0.55),
                 ),
@@ -616,7 +616,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
             ),
             SizedBox(height: 12.h),
             Text(
-              'No games in this book',
+              'No games in this database',
               style: AppTypography.textMdMedium.copyWith(
                 color: kWhiteColor.withValues(alpha: 0.85),
               ),
