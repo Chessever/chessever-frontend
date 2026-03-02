@@ -34,8 +34,11 @@ class SelectedCountryNotifier extends StateNotifier<AsyncValue<Country>> {
 
   Future<void> _loadSavedCountry() async {
     try {
+      // Read from SQLite only for instant UI render on cold start.
+      // The existing syncFromSupabase() in auth_state_listener corrects
+      // any stale data shortly after authentication completes.
       final savedValue =
-          await ref.read(countryManRepository).getSavedCountryMan();
+          await ref.read(countryManRepository).getSavedCountryManLocal();
 
       if (savedValue != null && savedValue.isNotEmpty) {
         Country? matchedCountry;

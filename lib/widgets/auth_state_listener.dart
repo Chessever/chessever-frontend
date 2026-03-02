@@ -155,20 +155,23 @@ class AuthStateListener extends ConsumerWidget {
                   // Step 1: Migrate old SharedPreferences favorites (runs only once per user)
                   await FavoritesMigration.migrateIfNeeded();
 
-                  // Step 1a: Push any locally cached country selection (picked while guest) to Supabase
-                  await ref
-                      .read(countryManRepository)
-                      .syncLocalSelectionToSupabase();
-
-                  // Step 1b: Sync country selection from Supabase (fetch user's saved selection)
-                  await ref
-                      .read(countryDropdownProvider.notifier)
-                      .syncFromSupabase();
-
-                  // Step 2: Flush any pending (pre-auth) favorite toggles
-                  await ref
-                      .read(pendingFavoriteSelectionsProvider.notifier)
-                      .flushToSupabase();
+                  // Steps 1a+1b and step 2 are independent (different Supabase tables)
+                  // so run them in parallel to shave ~200-400ms off the sync chain.
+                  await Future.wait([
+                    // Steps 1a→1b must remain sequential (1b reads what 1a wrote)
+                    Future(() async {
+                      await ref
+                          .read(countryManRepository)
+                          .syncLocalSelectionToSupabase();
+                      await ref
+                          .read(countryDropdownProvider.notifier)
+                          .syncFromSupabase();
+                    }),
+                    // Step 2: Flush any pending (pre-auth) favorite toggles
+                    ref
+                        .read(pendingFavoriteSelectionsProvider.notifier)
+                        .flushToSupabase(),
+                  ]);
 
                   // Step 3: Sync from Supabase (fetch latest)
                   await Future.wait([

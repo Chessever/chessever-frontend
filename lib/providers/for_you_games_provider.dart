@@ -8,7 +8,7 @@ import 'package:chessever2/repository/supabase/tour/tour.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
 import 'package:chessever2/repository/supabase/tour/tour_repository.dart';
-import 'package:chessever2/screens/favorites/favorite_players_provider.dart';
+import 'package:chessever2/providers/favorite_players_provider.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/screens/group_event/providers/live_group_broadcast_id_provider.dart';
 import 'package:chessever2/screens/group_event/providers/sorting_all_event_provider.dart';
@@ -191,9 +191,17 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
       // Pre-fetch heart data in background — don't block page render.
       // This prevents For You from saturating the HTTP connection pool
       // and starving other tabs (e.g. Current) of network access.
-      _prefetchHeartData(models).then((_) {
-        if (mounted) _reSortList();
-      });
+      // 5s timeout prevents indefinite stalling if any provider hangs.
+      _prefetchHeartData(models)
+          .timeout(
+            const Duration(seconds: 5),
+            onTimeout: () {
+              debugPrint('[ForYou] _prefetchHeartData timed out after 5s');
+            },
+          )
+          .then((_) {
+            if (mounted) _reSortList();
+          });
 
       // Sort this batch (without heart data initially — will re-sort once heart data arrives)
       final sortedModels = await _sortModels(models);
@@ -230,11 +238,11 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
   /// pattern (20 individual Supabase queries) with 1 batch query.
   Future<void> _prefetchHeartData(List<GroupEventCardModel> models) async {
     try {
-      // 1. Get the user's favorite players
-      final favoritePlayersState = await ref.read(
-        favoritePlayersNotifierProvider.future,
-      );
-      final favoritePlayers = favoritePlayersState.players;
+      // 1. Get the user's favorite players from the new provider (in-memory, no Supabase call).
+      // Data is already synced by the auth flow — reading synchronously avoids
+      // a redundant Supabase round-trip that the old autoDispose provider triggered.
+      final favoritePlayers =
+          ref.read(favoritePlayersProviderNew).valueOrNull ?? [];
 
       if (favoritePlayers.isEmpty) {
         // No favorites — cache empty results and return early
@@ -250,7 +258,8 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
       final favoriteFideIds =
           favoritePlayers
               .where((p) => p.fideId != null)
-              .map((p) => p.fideId!)
+              .map((p) => int.tryParse(p.fideId!))
+              .whereType<int>()
               .toSet();
 
       if (favoriteFideIds.isEmpty) {
