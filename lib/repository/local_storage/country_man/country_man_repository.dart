@@ -77,6 +77,22 @@ class _CountryManRepository {
     }
   }
 
+  /// Get saved countryman from SQLite only (no Supabase call).
+  /// Returns instantly from local cache — use for initial UI render.
+  Future<String?> getSavedCountryManLocal() async {
+    try {
+      final userId = _supabase.auth.currentUser?.id;
+      final cachedCode = await _getLocalCountry(userId);
+      if (cachedCode != null && cachedCode.isNotEmpty) {
+        debugPrint('[CountryMan] Loaded from SQLite (local-only): $cachedCode');
+        return cachedCode;
+      }
+      return null;
+    } catch (e) {
+      return null;
+    }
+  }
+
   /// Get saved countryman with Supabase as source of truth
   /// Returns country code (e.g., 'US', 'TR', 'GB') or null if not set
   Future<String?> getSavedCountryMan() async {

@@ -1,7 +1,7 @@
 import 'package:chessever2/repository/local_storage/tournament/tour_local_storage.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
-import 'package:chessever2/screens/favorites/favorite_players_provider.dart';
+import 'package:chessever2/providers/favorite_players_provider.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 /// Model representing favorite player information for an event
@@ -34,23 +34,22 @@ final eventFavoritePlayersProvider = FutureProvider.autoDispose.family<
   String
 >((ref, eventId) async {
   try {
-    // Read the favorite players (not watch) to avoid infinite rebuild loops
-    // Reactivity is handled by the parent provider (forYouEventsProvider)
-    final favoritePlayersState = await ref.read(
-      favoritePlayersNotifierProvider.future,
-    );
-    final favoritePlayers = favoritePlayersState.players;
+    // Read from the new provider (in-memory, no Supabase call).
+    // Data is already synced by the auth flow — avoids a redundant round-trip.
+    final favoritePlayers =
+        ref.read(favoritePlayersProviderNew).valueOrNull ?? [];
 
     // If no favorites, return empty
     if (favoritePlayers.isEmpty) {
       return const EventFavoritePlayers.empty();
     }
 
-    // Get favorite player FIDE IDs (filter out nulls)
+    // Get favorite player FIDE IDs (filter out nulls, parse String→int)
     final favoriteFideIds =
         favoritePlayers
             .where((p) => p.fideId != null)
-            .map((p) => p.fideId!)
+            .map((p) => int.tryParse(p.fideId!))
+            .whereType<int>()
             .toSet();
 
     if (favoriteFideIds.isEmpty) {
