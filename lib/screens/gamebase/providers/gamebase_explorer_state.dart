@@ -4,6 +4,38 @@ import '../models/models.dart';
 
 part 'gamebase_explorer_state.mapper.dart';
 
+/// Player color filter for Gamebase explorer queries.
+enum GamebasePlayerColor { white, black }
+
+/// Game result filter for Gamebase explorer queries.
+enum GamebaseGameResult { whiteWins, blackWins, draw }
+
+extension GamebaseGameResultX on GamebaseGameResult {
+  /// API value sent to the backend (W/B/D).
+  String get apiValue {
+    switch (this) {
+      case GamebaseGameResult.whiteWins:
+        return 'W';
+      case GamebaseGameResult.blackWins:
+        return 'B';
+      case GamebaseGameResult.draw:
+        return 'D';
+    }
+  }
+
+  /// Display text for UI chips.
+  String get displayText {
+    switch (this) {
+      case GamebaseGameResult.whiteWins:
+        return '1-0';
+      case GamebaseGameResult.blackWins:
+        return '0-1';
+      case GamebaseGameResult.draw:
+        return '½-½';
+    }
+  }
+}
+
 /// Filter settings for Gamebase explorer queries.
 @MappableClass()
 class GamebaseFilters with GamebaseFiltersMappable {
@@ -13,6 +45,8 @@ class GamebaseFilters with GamebaseFiltersMappable {
     this.maxRating,
     this.playerIds = const [],
     this.selectedPlayers = const [],
+    this.playerColor,
+    this.gameResult,
   });
 
   /// Selected time controls (empty = all)
@@ -29,6 +63,12 @@ class GamebaseFilters with GamebaseFiltersMappable {
 
   /// Selected players (for display purposes)
   final List<GamebasePlayer> selectedPlayers;
+
+  /// Player color filter (null = both sides)
+  final GamebasePlayerColor? playerColor;
+
+  /// Game result filter (null = all results)
+  final GamebaseGameResult? gameResult;
 }
 
 /// State for the Gamebase explorer screen.
@@ -103,13 +143,15 @@ class GamebaseExplorerState with GamebaseExplorerStateMappable {
       filters.timeControls.isNotEmpty ||
       filters.minRating != null ||
       filters.maxRating != null ||
-      filters.playerIds.isNotEmpty;
+      filters.playerIds.isNotEmpty ||
+      filters.playerColor != null ||
+      filters.gameResult != null;
 }
 
 /// Maps a [GameFilter] (player profile) into [GamebaseFilters] (explorer).
 ///
-/// Only time control and rating range have equivalents in the explorer.
-/// Result, color, ECO, and year filters are dropped (no explorer equivalent).
+/// Time control, rating range, color, and result have equivalents in the
+/// explorer. ECO and year filters are dropped (no explorer equivalent).
 extension GameFilterToGamebaseFilters on GameFilter {
   GamebaseFilters toGamebaseFilters() {
     final List<TimeControl> timeControls;
@@ -128,16 +170,42 @@ extension GameFilterToGamebaseFilters on GameFilter {
     final clampedMin = minRating.clamp(1000, 3500);
     final clampedMax = maxRating.clamp(1000, 3500);
 
+    final GamebasePlayerColor? playerColor;
+    switch (color) {
+      case GameColorFilter.white:
+        playerColor = GamebasePlayerColor.white;
+      case GameColorFilter.black:
+        playerColor = GamebasePlayerColor.black;
+      case GameColorFilter.all:
+        playerColor = null;
+    }
+
+    final GamebaseGameResult? gameResult;
+    switch (result) {
+      case GameResultFilter.whiteWins:
+        gameResult = GamebaseGameResult.whiteWins;
+      case GameResultFilter.blackWins:
+        gameResult = GamebaseGameResult.blackWins;
+      case GameResultFilter.draw:
+        gameResult = GamebaseGameResult.draw;
+      case GameResultFilter.all:
+        gameResult = null;
+    }
+
     return GamebaseFilters(
       timeControls: timeControls,
       minRating: clampedMin > 1000 ? clampedMin : null,
       maxRating: clampedMax < 3500 ? clampedMax : null,
+      playerColor: playerColor,
+      gameResult: gameResult,
     );
   }
 
   /// Whether this filter has any fields that map to explorer filters.
   bool get hasExplorerMappableFilters =>
       timeControl != GameTimeControlFilter.all ||
+      color != GameColorFilter.all ||
+      result != GameResultFilter.all ||
       minRating != 1000 ||
       maxRating != 3500;
 }

@@ -64,6 +64,8 @@ class GamebaseRepository {
     TimeControl? timeControl,
     int? minRating,
     int? maxRating,
+    String? color,
+    String? result,
   }) async {
     try {
       final normalizedFen = _normalizeFenForLookup(fen);
@@ -76,6 +78,8 @@ class GamebaseRepository {
         if (timeControl != null) 'timeControl': timeControl.name.toUpperCase(),
         if (minRating != null) 'minRating': minRating,
         if (maxRating != null) 'maxRating': maxRating,
+        if (color != null) 'color': color,
+        if (result != null) 'result': result,
       };
 
       if (kDebugMode) {
@@ -562,6 +566,8 @@ class GamebaseRepository {
     String? uci,
     TimeControl? timeControl,
     String? playerId,
+    String? color,
+    String? result,
     int? minRating,
     int? maxRating,
     int pageNumber = 0,
@@ -590,6 +596,8 @@ class GamebaseRepository {
                     'timeControl': timeControl.name.toUpperCase(),
                   if (minRating != null) 'minRating': minRating,
                   if (maxRating != null) 'maxRating': maxRating,
+                  if (color != null) 'color': color,
+                  if (result != null) 'result': result,
                 },
                 options: Options(
                   headers: {'X-API-Key': _apiKey, 'Accept': 'application/json'},
@@ -608,6 +616,8 @@ class GamebaseRepository {
                     'timeControl': timeControl.name.toUpperCase(),
                   if (minRating != null) 'minRating': minRating,
                   if (maxRating != null) 'maxRating': maxRating,
+                  if (color != null) 'color': color,
+                  if (result != null) 'result': result,
                 },
                 options: Options(
                   headers: {'X-API-Key': _apiKey, 'Accept': 'application/json'},

@@ -99,6 +99,8 @@ class _PositionGamesSheetState extends ConsumerState<PositionGamesSheet> {
       uci: widget.uci,
       timeControl: timeControlFilter,
       playerId: playerIdFilter,
+      color: widget.filters.playerColor?.name,
+      result: widget.filters.gameResult?.apiValue,
       minRating: widget.filters.minRating,
       maxRating: widget.filters.maxRating,
       pageNumber: pageNumber,

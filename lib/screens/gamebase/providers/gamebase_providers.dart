@@ -1,6 +1,8 @@
+import 'package:chessever2/providers/board_settings_provider_new.dart';
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
 import 'package:chessever2/repository/gamebase/search/gamebase_search_models.dart';
 import 'package:chessever2/screens/gamebase/models/models.dart';
+import 'package:chessever2/utils/audio_player_service.dart';
 import 'package:chess/chess.dart' hide State;
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -79,6 +81,30 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
     return _chess!;
   }
 
+  /// Play SFX for a SAN move string if sound is enabled.
+  void _playSfx(String san) {
+    final boardSettings = ref.read(boardSettingsProviderNew).valueOrNull;
+    if (boardSettings?.soundEnabled != true) return;
+    AudioPlayerService.instance.playSfxForSan(san);
+  }
+
+  /// Get the SAN for a UCI move at the current chess position.
+  /// Returns null if the move is not found in legal moves.
+  String? _getSanForUci(String uci) {
+    final from = uci.substring(0, 2);
+    final to = uci.substring(2, 4);
+    final promotion = uci.length > 4 ? uci[4] : null;
+    final moves = chess.generate_moves();
+    for (final m in moves) {
+      if (m.fromAlgebraic == from &&
+          m.toAlgebraic == to &&
+          (promotion == null || m.promotion?.name == promotion)) {
+        return chess.move_to_san(m);
+      }
+    }
+    return null;
+  }
+
   void _scheduleFetch([Duration delay = const Duration(milliseconds: 200)]) {
     _debounceTimer?.cancel();
 
@@ -92,7 +118,8 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
 
   bool _isPlayerScopedOnlyFilter(GamebaseFilters f) {
     // Safe aggressive prefetch mode: player-scoped explorer with no extra
-    // filters. Keeps load bounded while making per-move navigation feel instant.
+    // filters (color is fine — same player, same index). Keeps load bounded
+    // while making per-move navigation feel instant.
     return f.playerIds.length == 1 &&
         f.timeControls.isEmpty &&
         f.minRating == null &&
@@ -103,7 +130,9 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
     return f.playerIds.isNotEmpty ||
         f.timeControls.isNotEmpty ||
         f.minRating != null ||
-        f.maxRating != null;
+        f.maxRating != null ||
+        f.playerColor != null ||
+        f.gameResult != null;
   }
 
   Future<List<MoveAggregate>> _getOrStartAggregatesRequest({
@@ -121,6 +150,11 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
     final playerIdFilter =
         filters.playerIds.isNotEmpty ? filters.playerIds.first : null;
 
+    final colorFilter =
+        filters.playerColor != null ? filters.playerColor!.name : null;
+    final resultFilter =
+        filters.gameResult != null ? filters.gameResult!.apiValue : null;
+
     final future = () async {
       final response = await repository.getMoveAggregates(
         fen: fen,
@@ -129,6 +163,8 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
         minRating: filters.minRating,
         maxRating: filters.maxRating,
         playerId: playerIdFilter,
+        color: colorFilter,
+        result: resultFilter,
       );
 
       final aggregates = response.data.moves
@@ -363,6 +399,9 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
       // Reset chess to current position if needed
       _rebuildChessPosition();
 
+      // Get SAN before making the move (for SFX)
+      final san = _getSanForUci(normalizedUci);
+
       // Make the move
       final moved = chess.move({
         'from': from,
@@ -371,6 +410,7 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
       });
 
       if (moved) {
+        if (san != null) _playSfx(san);
         // If we're not at the end of history, truncate
         final newHistory = state.moveHistory.sublist(
           0,
@@ -430,6 +470,11 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
       });
     }
 
+    // Play SFX for the move being undone (from the position we just rebuilt)
+    final undoneUci = state.moveHistory[state.currentMoveIndex];
+    final san = _getSanForUci(undoneUci);
+    if (san != null) _playSfx(san);
+
     state = state.copyWith(
       currentMoveIndex: newIndex,
       currentFen:
@@ -455,6 +500,10 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
       _rebuildChessPosition();
 
       final uci = state.moveHistory[newIndex];
+
+      // Get SAN before making the move (for SFX)
+      final san = _getSanForUci(uci);
+
       final from = uci.substring(0, 2);
       final to = uci.substring(2, 4);
       final promotion = uci.length > 4 ? uci[4] : null;
@@ -463,6 +512,8 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
         'to': to,
         if (promotion != null) 'promotion': promotion,
       });
+
+      if (san != null) _playSfx(san);
 
       state = state.copyWith(
         currentMoveIndex: newIndex,
@@ -478,11 +529,13 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
 
   /// Go to first position
   void goToStart() {
+    final wasAtStart = state.currentMoveIndex < 0;
     _chess = Chess();
     state = state.copyWith(
       currentMoveIndex: -1,
       currentFen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
     );
+    if (!wasAtStart) _playSfx('');
     _scheduleFetch(Duration.zero);
   }
 
@@ -516,6 +569,8 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
         if (promotion != null) 'promotion': promotion,
       });
     }
+
+    if (index != state.currentMoveIndex) _playSfx('');
 
     state = state.copyWith(
       currentMoveIndex: index,
@@ -562,6 +617,8 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
         timeControls: filters.timeControls,
         minRating: filters.minRating,
         maxRating: filters.maxRating,
+        playerColor: filters.playerColor,
+        gameResult: filters.gameResult,
       ),
     );
     _scheduleFetch(Duration.zero);
@@ -664,6 +721,26 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
     );
   }
 
+  /// Toggle player color filter (white/black). Toggles off if already set.
+  void togglePlayerColor(GamebasePlayerColor color) {
+    final current = state.filters.playerColor;
+    updateFilters(
+      state.filters.copyWith(
+        playerColor: current == color ? null : color,
+      ),
+    );
+  }
+
+  /// Toggle game result filter (1-0/0-1/½-½). Toggles off if already set.
+  void toggleGameResult(GamebaseGameResult result) {
+    final current = state.filters.gameResult;
+    updateFilters(
+      state.filters.copyWith(
+        gameResult: current == result ? null : result,
+      ),
+    );
+  }
+
   /// Remove a player filter
   void removePlayerFilter(String playerId) {
     final currentIds = List<String>.from(state.filters.playerIds);
@@ -677,6 +754,7 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
       state.filters.copyWith(
         playerIds: currentIds,
         selectedPlayers: currentPlayers,
+        playerColor: null,
       ),
     );
   }
@@ -721,6 +799,9 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
     final minRating = filters.minRating?.toString() ?? 'any';
     final maxRating = filters.maxRating?.toString() ?? 'any';
 
+    final color = filters.playerColor?.name ?? 'any';
+    final result = filters.gameResult?.apiValue ?? 'any';
+
     return [
       fen,
       exploredMoves.join(','),
@@ -728,6 +809,8 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
       playerId,
       minRating,
       maxRating,
+      color,
+      result,
     ].join('|');
   }
 
@@ -836,6 +919,8 @@ class GamebasePositionGamesQuery {
   final String? uci;
   final TimeControl? timeControl;
   final String? playerId;
+  final String? color;
+  final String? result;
   final int? minRating;
   final int? maxRating;
   final int pageNumber; // 0-indexed
@@ -847,6 +932,8 @@ class GamebasePositionGamesQuery {
     this.uci,
     this.timeControl,
     this.playerId,
+    this.color,
+    this.result,
     this.minRating,
     this.maxRating,
     this.pageNumber = 0,
@@ -861,6 +948,8 @@ class GamebasePositionGamesQuery {
         other.uci == uci &&
         other.timeControl == timeControl &&
         other.playerId == playerId &&
+        other.color == color &&
+        other.result == result &&
         other.minRating == minRating &&
         other.maxRating == maxRating &&
         other.pageNumber == pageNumber &&
@@ -874,6 +963,8 @@ class GamebasePositionGamesQuery {
     uci,
     timeControl,
     playerId,
+    color,
+    result,
     minRating,
     maxRating,
     pageNumber,
@@ -893,6 +984,8 @@ final positionGamesProvider = FutureProvider.autoDispose
         uci: query.uci,
         timeControl: query.timeControl,
         playerId: query.playerId,
+        color: query.color,
+        result: query.result,
         minRating: query.minRating,
         maxRating: query.maxRating,
         pageNumber: query.pageNumber,

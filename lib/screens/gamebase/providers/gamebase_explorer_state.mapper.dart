@@ -49,6 +49,12 @@ class GamebaseFiltersMapper extends ClassMapperBase<GamebaseFilters> {
       v.selectedPlayers;
   static const Field<GamebaseFilters, List<GamebasePlayer>> _f$selectedPlayers =
       Field('selectedPlayers', _$selectedPlayers, opt: true, def: const []);
+  static GamebasePlayerColor? _$playerColor(GamebaseFilters v) => v.playerColor;
+  static const Field<GamebaseFilters, GamebasePlayerColor> _f$playerColor =
+      Field('playerColor', _$playerColor, opt: true);
+  static GamebaseGameResult? _$gameResult(GamebaseFilters v) => v.gameResult;
+  static const Field<GamebaseFilters, GamebaseGameResult> _f$gameResult =
+      Field('gameResult', _$gameResult, opt: true);
 
   @override
   final MappableFields<GamebaseFilters> fields = const {
@@ -57,6 +63,8 @@ class GamebaseFiltersMapper extends ClassMapperBase<GamebaseFilters> {
     #maxRating: _f$maxRating,
     #playerIds: _f$playerIds,
     #selectedPlayers: _f$selectedPlayers,
+    #playerColor: _f$playerColor,
+    #gameResult: _f$gameResult,
   };
 
   static GamebaseFilters _instantiate(DecodingData data) {
@@ -66,6 +74,8 @@ class GamebaseFiltersMapper extends ClassMapperBase<GamebaseFilters> {
       maxRating: data.dec(_f$maxRating),
       playerIds: data.dec(_f$playerIds),
       selectedPlayers: data.dec(_f$selectedPlayers),
+      playerColor: data.dec(_f$playerColor),
+      gameResult: data.dec(_f$gameResult),
     );
   }
 
@@ -146,6 +156,8 @@ abstract class GamebaseFiltersCopyWith<$R, $In extends GamebaseFilters, $Out>
     int? maxRating,
     List<String>? playerIds,
     List<GamebasePlayer>? selectedPlayers,
+    GamebasePlayerColor? playerColor,
+    GamebaseGameResult? gameResult,
   });
   GamebaseFiltersCopyWith<$R2, $In, $Out2> $chain<$R2, $Out2>(
     Then<$Out2, $R2> t,
@@ -192,6 +204,8 @@ class _GamebaseFiltersCopyWithImpl<$R, $Out>
     Object? maxRating = $none,
     List<String>? playerIds,
     List<GamebasePlayer>? selectedPlayers,
+    Object? playerColor = $none,
+    Object? gameResult = $none,
   }) => $apply(
     FieldCopyWithData({
       if (timeControls != null) #timeControls: timeControls,
@@ -199,6 +213,8 @@ class _GamebaseFiltersCopyWithImpl<$R, $Out>
       if (maxRating != $none) #maxRating: maxRating,
       if (playerIds != null) #playerIds: playerIds,
       if (selectedPlayers != null) #selectedPlayers: selectedPlayers,
+      if (playerColor != $none) #playerColor: playerColor,
+      if (gameResult != $none) #gameResult: gameResult,
     }),
   );
   @override
@@ -208,6 +224,8 @@ class _GamebaseFiltersCopyWithImpl<$R, $Out>
     maxRating: data.get(#maxRating, or: $value.maxRating),
     playerIds: data.get(#playerIds, or: $value.playerIds),
     selectedPlayers: data.get(#selectedPlayers, or: $value.selectedPlayers),
+    playerColor: data.get(#playerColor, or: $value.playerColor),
+    gameResult: data.get(#gameResult, or: $value.gameResult),
   );
 
   @override
