@@ -1366,7 +1366,9 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     }
   }
 
-  void _toggleGamebase() {
+  Future<void> _toggleGamebase() async {
+    final allowed = await requireFullAuthGuard(context);
+    if (!allowed) return;
     ref.read(gamebaseOverlayEnabledProvider.notifier).toggle();
   }
 
@@ -2425,7 +2427,12 @@ class _AppBarState extends ConsumerState<_AppBar> {
     }
 
     // If this is an existing library game, show update/save-as-copy choice
-    final analysisId = widget.savedAnalysisData?.analysisId;
+    // Read from the notifier (not widget) because savedAnalysisData may have
+    // been attached after a first-time save from the save sheet.
+    final notifier = ref.read(
+      chessBoardScreenProviderNew(params).notifier,
+    );
+    final analysisId = notifier.savedAnalysisData?.analysisId;
     if (analysisId != null) {
       final choice = await showModalBottomSheet<String>(
         context: context,
@@ -2671,21 +2678,13 @@ class _AppBarState extends ConsumerState<_AppBar> {
   }
 
   Widget _buildSaveButton() {
-    final hasAnalysisId = widget.savedAnalysisData?.analysisId != null;
-
-    if (!hasAnalysisId) {
-      return IconButton(
-        icon: Icon(Icons.save_outlined, color: kWhiteColor, size: 20.sp),
-        tooltip: 'Save analysis',
-        onPressed: widget.isLoading ? null : _showSaveAnalysisDialog,
-      );
-    }
-
-    // For library games, show animated save icon based on autoSaveStatus
     final params = ChessBoardProviderParams(
       game: widget.game,
       index: widget.currentGameIndex,
     );
+
+    // Watch autoSaveStatus — this also triggers rebuilds after
+    // attachSavedAnalysisId emits AutoSaveStatus.saved.
     final autoSaveStatus = ref.watch(
       chessBoardScreenProviderNew(params).select(
         (state) =>

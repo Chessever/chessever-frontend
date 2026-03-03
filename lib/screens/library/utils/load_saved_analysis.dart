@@ -3,12 +3,13 @@ import 'dart:async';
 import 'package:chessever2/repository/library/library_repository.dart';
 import 'package:chessever2/repository/library/models/saved_analysis.dart';
 import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
+import 'package:chessever2/screens/chessboard/notation/notation_tree.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-/// Navigates to chess board screen with a loaded saved analysis
+/// Navigates to chess board screen with a loaded saved analysis (single game, no swiping)
 ///
 /// This creates a SavedAnalysisData from the SavedAnalysis and passes it
 /// to ChessBoardScreenNew for full state restoration including:
@@ -32,10 +33,10 @@ Future<void> loadSavedAnalysis(
   if (!context.mounted) return;
 
   // Convert SavedAnalysis to GamesTourModel format
-  final game = _convertToGamesTourModel(analysis);
+  final game = convertSavedAnalysisToGame(analysis);
 
   // Create SavedAnalysisData for full state restoration
-  final savedAnalysisData = _createSavedAnalysisData(analysis);
+  final savedAnalysisData = createSavedAnalysisData(analysis);
 
   // Navigate to chess board with saved analysis data
   Navigator.of(context).push(
@@ -53,8 +54,56 @@ Future<void> loadSavedAnalysis(
   );
 }
 
+/// Navigates to chess board screen with swiping support across multiple saved analyses.
+///
+/// Converts all analyses to GamesTourModel (with PGN for swiped-to games)
+/// and passes the tapped game's SavedAnalysisData for full state restoration.
+Future<void> loadSavedAnalysisWithSwiping(
+  BuildContext context,
+  List<SavedAnalysis> allAnalyses,
+  int tappedIndex, {
+  bool readOnly = false,
+}) async {
+  final analysis = allAnalyses[tappedIndex];
+
+  // Update last opened timestamp but don't block navigation on errors
+  if (!readOnly) {
+    try {
+      final container = ProviderScope.containerOf(context, listen: false);
+      final repository = container.read(libraryRepositoryProvider);
+      await repository.updateLastOpened(analysis.id);
+    } catch (_) {
+      // Best-effort update; proceed even if we cannot write
+    }
+  }
+
+  if (!context.mounted) return;
+
+  // Convert all analyses to GamesTourModel with PGN populated for swiping
+  final games = allAnalyses.map(convertSavedAnalysisToGame).toList();
+
+  // Create SavedAnalysisData for the tapped game only
+  final savedAnalysisData = readOnly
+      ? createReadOnlySavedAnalysisData(analysis)
+      : createSavedAnalysisData(analysis);
+
+  Navigator.of(context).push(
+    MaterialPageRoute(
+      builder:
+          (_) => ChessBoardScreenNew(
+            currentIndex: tappedIndex,
+            games: games,
+            savedAnalysisData: savedAnalysisData,
+            showGamebaseButton: false,
+            disableGamebaseOverlayByDefault: true,
+            showClock: false,
+          ),
+    ),
+  );
+}
+
 /// Creates SavedAnalysisData from SavedAnalysis for state restoration
-SavedAnalysisData _createSavedAnalysisData(SavedAnalysis analysis) {
+SavedAnalysisData createSavedAnalysisData(SavedAnalysis analysis) {
   // Extract board flip preference from analysisState (snake_case from DB)
   final isBoardFlipped =
       analysis.analysisState['is_board_flipped'] as bool? ?? false;
@@ -78,11 +127,25 @@ SavedAnalysisData _createSavedAnalysisData(SavedAnalysis analysis) {
   );
 }
 
+/// Creates a read-only SavedAnalysisData (no analysisId, so board won't save back).
+/// Used for shared/subscribed database games.
+SavedAnalysisData createReadOnlySavedAnalysisData(SavedAnalysis analysis) {
+  return SavedAnalysisData(
+    analysisId: null,
+    chessGame: analysis.chessGame,
+    variationComments: analysis.variationComments,
+    movePointer: null,
+    isBoardFlipped: false,
+    lastViewedPosition: analysis.lastViewedPosition,
+  );
+}
+
 /// Converts a SavedAnalysis to GamesTourModel format
 ///
 /// This creates a minimal GamesTourModel that the chess board can display.
 /// Uses analysis.id as gameId to avoid conflicts with live games.
-GamesTourModel _convertToGamesTourModel(SavedAnalysis analysis) {
+/// PGN is populated via exportGameToPgn so swiped-to games can load moves.
+GamesTourModel convertSavedAnalysisToGame(SavedAnalysis analysis) {
   final chessGame = analysis.chessGame;
 
   // Extract player info from metadata
@@ -131,8 +194,8 @@ GamesTourModel _convertToGamesTourModel(SavedAnalysis analysis) {
     gameStatus: GameStatus.fromString(result),
     roundId: 'saved_analysis',
     tourId: 'library',
-    // PGN is not used when savedAnalysisData is provided - the ChessGame is used directly
-    pgn: '',
+    // PGN populated for swiped-to games (the tapped game uses savedAnalysisData instead)
+    pgn: exportGameToPgn(chessGame),
   );
 }
 

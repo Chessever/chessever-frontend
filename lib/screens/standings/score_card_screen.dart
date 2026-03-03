@@ -239,33 +239,20 @@ class ScoreCardScreen extends ConsumerWidget {
             : null;
     final contextEvent = contextTourId?.trim();
     final playerGamebaseId = player.gamebasePlayerId?.trim();
+    // Always prefer explicit game context tourId when present.
+    // This avoids stale selectedBroadcast races causing false empty state.
+    final bool hasExplicitContextEvent =
+        hasEventContext && contextEvent != null && contextEvent.isNotEmpty;
     final bool shouldFetchFullTwicEventGames =
-        selectedBroadcast == null &&
-        hasEventContext &&
+        hasExplicitContextEvent &&
         profileDataSource == PlayerProfileDataSource.twic &&
-        contextEvent != null &&
-        contextEvent.isNotEmpty &&
         playerGamebaseId != null &&
         playerGamebaseId.isNotEmpty;
     final bool shouldFetchFullEventGames =
-        selectedBroadcast == null &&
-        hasEventContext &&
-        profileDataSource != PlayerProfileDataSource.twic &&
-        contextEvent != null &&
-        contextEvent.isNotEmpty;
+        hasExplicitContextEvent &&
+        profileDataSource != PlayerProfileDataSource.twic;
 
-    if (selectedBroadcast != null) {
-      // Tournament context: use games from the tournament
-      final gamesTourAsync = ref.watch(gamesTourScreenProvider);
-      allGames = gamesTourAsync.when(
-        data: (data) => data.gamesTourModels,
-        loading: () {
-          isLoadingGames = true;
-          return [];
-        },
-        error: (_, __) => [],
-      );
-    } else if (shouldFetchFullEventGames) {
+    if (shouldFetchFullEventGames) {
       // Event context from non-tournament routes (e.g. For You, Countryman)
       // Fetch full event games by tourId to include all rounds.
       final fullGamesAsync = ref.watch(gamesTourProvider(contextEvent));
@@ -296,6 +283,17 @@ class ScoreCardScreen extends ConsumerWidget {
           return gamesContext ?? [];
         },
         error: (_, __) => gamesContext ?? [],
+      );
+    } else if (selectedBroadcast != null) {
+      // Tournament context fallback when no explicit event context is available.
+      final gamesTourAsync = ref.watch(gamesTourScreenProvider);
+      allGames = gamesTourAsync.when(
+        data: (data) => data.gamesTourModels,
+        loading: () {
+          isLoadingGames = true;
+          return [];
+        },
+        error: (_, __) => [],
       );
     } else if (gamesContext != null && gamesContext.isNotEmpty) {
       // Games context provided (from favorites, countrymen, player profile, etc.)

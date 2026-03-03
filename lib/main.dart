@@ -813,17 +813,9 @@ class MyApp extends HookConsumerWidget {
           }
         }
 
-        // Initialize deep link handling for game sharing URLs
-        try {
-          await DeepLinkService.instance.initialize(navigatorKey, ref);
-        } catch (e, st) {
-          if (kDebugMode) {
-            debugPrint('Failed to initialize deep link service: $e');
-            debugPrintStack(stackTrace: st);
-          }
-        }
-
-        // Handle OneSignal notification taps — route to correct screen
+        // Handle OneSignal notification taps — route to correct screen.
+        // Registered BEFORE DeepLinkService.initialize() so that clicks
+        // queued during async I/O are not missed.
         OneSignal.Notifications.addClickListener((event) {
           final data = event.notification.additionalData;
           if (data != null) {
@@ -834,6 +826,16 @@ class MyApp extends HookConsumerWidget {
             );
           }
         });
+
+        // Initialize deep link handling for game sharing URLs
+        try {
+          await DeepLinkService.instance.initialize(navigatorKey, ref);
+        } catch (e, st) {
+          if (kDebugMode) {
+            debugPrint('Failed to initialize deep link service: $e');
+            debugPrintStack(stackTrace: st);
+          }
+        }
       });
 
       return () => DeepLinkService.instance.dispose();

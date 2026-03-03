@@ -84,6 +84,11 @@ class AuthStateListener extends ConsumerWidget {
             unawaited(
               PushNotificationsService.instance.loginUser(currentUserId),
             );
+            // Prompt from auth flow as an additional safety net.
+            // This covers paths where onboarding prompt might be skipped.
+            unawaited(
+              PushNotificationsService.instance.requestPermissionIfNotGranted(),
+            );
           }
 
           if (shouldRunSync && currentUserId != null) {
