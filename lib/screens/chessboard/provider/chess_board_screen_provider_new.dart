@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:math' as math;
 import 'package:chessever2/providers/board_settings_provider_new.dart';
+import 'package:chessever2/repository/library/library_repository.dart';
+import 'package:chessever2/repository/library/models/saved_analysis.dart';
 import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/repository/lichess/cloud_eval/cloud_eval.dart';
 import 'package:chessever2/repository/local_storage/local_eval/local_eval_cache.dart';
@@ -148,6 +150,9 @@ class ChessBoardScreenNotifierNew
   ProviderSubscription<ChessGameNavigatorState>? _navigatorSubscription;
   bool _isInitialLoad = true;
   ChessBoardStateNew? _pvPreviewSnapshot;
+  Timer? _autoSaveTimer;
+  /// Snapshot of the game tree at last auto-save for diff detection
+  String? _lastAutoSavedGameJson;
 
   void _clearActiveEvalState() {
     _activeEvalKey = null;
@@ -1571,6 +1576,7 @@ class ChessBoardScreenNotifierNew
     state = AsyncValue.data(
       currentState.copyWith(variationComments: nextComments),
     );
+    _scheduleAutoSave();
   }
 
   void previewPrincipalVariationMoveAt(
@@ -2945,6 +2951,162 @@ class ChessBoardScreenNotifierNew
     await _analysisStateManager!.saveState(navigatorState);
   }
 
+  /// Performs an immediate save update to the existing library analysis.
+  /// Returns true on success, false on failure.
+  Future<bool> performManualUpdate() async {
+    _autoSaveTimer?.cancel();
+    final analysisId = savedAnalysisData?.analysisId;
+    if (analysisId == null) return false;
+
+    final currentState = state.valueOrNull;
+    if (currentState == null) return false;
+
+    final analysisGame = currentState.analysisState.game;
+    if (analysisGame == null) return false;
+
+    try {
+      final repository = ref.read(libraryRepositoryProvider);
+      final userId = repository.supabase.auth.currentUser?.id;
+      if (userId == null) return false;
+
+      final analysisStateJson = <String, dynamic>{
+        'move_pointer': currentState.analysisState.movePointer,
+        'is_board_flipped': currentState.isBoardFlipped,
+      };
+
+      final savedAnalysis = SavedAnalysis(
+        id: analysisId,
+        userId: userId,
+        folderId: savedAnalysisData?.folderId,
+        title: savedAnalysisData?.title ?? currentState.game.whitePlayer.name +
+            ' vs ' + currentState.game.blackPlayer.name,
+        chessGame: analysisGame,
+        analysisState: analysisStateJson,
+        variationComments: currentState.variationComments,
+        lastViewedPosition: currentState.analysisState.currentMoveIndex,
+        tags: const [],
+        isFavorite: false,
+        createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
+      );
+
+      await repository.updateSavedAnalysis(savedAnalysis);
+      _lastAutoSavedGameJson = analysisGame.toJson().toString();
+
+      if (!mounted) return true;
+      final s = state.valueOrNull;
+      if (s != null) {
+        state = AsyncValue.data(
+          s.copyWith(autoSaveStatus: AutoSaveStatus.saved),
+        );
+        Future.delayed(const Duration(milliseconds: 1500), () {
+          if (!mounted) return;
+          final s2 = state.valueOrNull;
+          if (s2 != null && s2.autoSaveStatus == AutoSaveStatus.saved) {
+            state = AsyncValue.data(
+              s2.copyWith(autoSaveStatus: AutoSaveStatus.idle),
+            );
+          }
+        });
+      }
+      return true;
+    } catch (e) {
+      debugPrint('⚠️ Manual update failed: $e');
+      return false;
+    }
+  }
+
+  /// Schedule a debounced auto-save to Supabase for library games.
+  /// Only activates when we have a saved analysis ID to update.
+  void _scheduleAutoSave() {
+    final analysisId = savedAnalysisData?.analysisId;
+    if (analysisId == null) return;
+
+    _autoSaveTimer?.cancel();
+    _autoSaveTimer = Timer(const Duration(seconds: 3), _performAutoSave);
+  }
+
+  /// Perform the actual auto-save by updating the existing row in Supabase.
+  Future<void> _performAutoSave() async {
+    final analysisId = savedAnalysisData?.analysisId;
+    if (analysisId == null || !mounted) return;
+
+    final currentState = state.valueOrNull;
+    if (currentState == null) return;
+
+    final analysisGame = currentState.analysisState.game;
+    if (analysisGame == null) return;
+
+    // Check if anything actually changed since last auto-save
+    final currentJson = analysisGame.toJson().toString();
+    final commentsChanged =
+        currentState.variationComments != savedAnalysisData?.variationComments;
+    if (currentJson == _lastAutoSavedGameJson && !commentsChanged) return;
+
+    // Set saving status
+    state = AsyncValue.data(
+      currentState.copyWith(autoSaveStatus: AutoSaveStatus.saving),
+    );
+
+    try {
+      final repository = ref.read(libraryRepositoryProvider);
+      final userId = repository.supabase.auth.currentUser?.id;
+      if (userId == null) return;
+
+      final analysisStateJson = <String, dynamic>{
+        'move_pointer': currentState.analysisState.movePointer,
+        'is_board_flipped': currentState.isBoardFlipped,
+      };
+
+      final savedAnalysis = SavedAnalysis(
+        id: analysisId,
+        userId: userId,
+        folderId: savedAnalysisData?.folderId,
+        title: savedAnalysisData?.title ?? currentState.game.whitePlayer.name +
+            ' vs ' + currentState.game.blackPlayer.name,
+        chessGame: analysisGame,
+        analysisState: analysisStateJson,
+        variationComments: currentState.variationComments,
+        lastViewedPosition: currentState.analysisState.currentMoveIndex,
+        tags: const [],
+        isFavorite: false,
+        createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
+      );
+
+      await repository.updateSavedAnalysis(savedAnalysis);
+      _lastAutoSavedGameJson = currentJson;
+
+      if (!mounted) return;
+      final afterState = state.valueOrNull;
+      if (afterState == null) return;
+
+      state = AsyncValue.data(
+        afterState.copyWith(autoSaveStatus: AutoSaveStatus.saved),
+      );
+
+      // Reset status back to idle after 1.5s
+      Future.delayed(const Duration(milliseconds: 1500), () {
+        if (!mounted) return;
+        final s = state.valueOrNull;
+        if (s != null && s.autoSaveStatus == AutoSaveStatus.saved) {
+          state = AsyncValue.data(
+            s.copyWith(autoSaveStatus: AutoSaveStatus.idle),
+          );
+        }
+      });
+    } catch (e) {
+      debugPrint('⚠️ Auto-save failed: $e');
+      if (!mounted) return;
+      final s = state.valueOrNull;
+      if (s != null) {
+        state = AsyncValue.data(
+          s.copyWith(autoSaveStatus: AutoSaveStatus.idle),
+        );
+      }
+    }
+  }
+
   ChessGame _createChessGameFromPgn(String pgn) {
     final parsed = ChessGame.fromPgn(game.gameId, pgn);
     final needsLiveFlag = game.gameStatus.isOngoing;
@@ -3516,6 +3678,7 @@ class ChessBoardScreenNotifierNew
     state = AsyncValue.data(
       currentState.copyWith(isBoardFlipped: !currentState.isBoardFlipped),
     );
+    _scheduleAutoSave();
   }
 
   void updatePlayerName({required bool isWhite, required String newName}) {
@@ -5678,6 +5841,11 @@ class ChessBoardScreenNotifierNew
       // scheduled evaluation is allowed to run if a transient cancel flag was set.
       _cancelEvaluation = false;
       _updateEvaluation();
+
+      // Schedule auto-save when the game tree has changed (new moves/variations)
+      if (navigatorState.game != current.analysisState.game) {
+        _scheduleAutoSave();
+      }
     } catch (e) {
       _releaseLog('Failed to sync analysis navigator state: $e');
     }
@@ -6119,6 +6287,12 @@ class ChessBoardScreenNotifierNew
       }
     }
     _navigationQueue.clear();
+    // Cancel debounce timer and fire a final auto-save
+    if (_autoSaveTimer?.isActive ?? false) {
+      _autoSaveTimer!.cancel();
+      unawaited(_performAutoSave());
+    }
+    _autoSaveTimer = null;
     unawaited(_persistAnalysisState());
     _navigatorSubscription?.close();
     _navigatorSubscription = null;
@@ -6187,6 +6361,12 @@ class SavedAnalysisData {
   /// Last viewed position (move index)
   final int lastViewedPosition;
 
+  /// Title of the saved analysis (for auto-save updates)
+  final String? title;
+
+  /// Folder ID the analysis belongs to (for auto-save updates)
+  final String? folderId;
+
   const SavedAnalysisData({
     this.analysisId,
     required this.chessGame,
@@ -6194,6 +6374,8 @@ class SavedAnalysisData {
     this.movePointer,
     required this.isBoardFlipped,
     required this.lastViewedPosition,
+    this.title,
+    this.folderId,
   });
 }
 

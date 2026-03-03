@@ -6,7 +6,7 @@ This document describes the current push notification pipeline for ChessEver and
 
 - **Client:** OneSignal Flutter SDK (`onesignal_flutter`) with external user ID set to Supabase `auth.users.id`.
 - **Server:** Supabase `notification_outbox` table + `onesignal-dispatch` Edge Function.
-- **Triggers:** DB triggers and scheduled functions enqueue rows into `notification_outbox`.
+- **Dispatch:** Trigger-based immediate dispatch via `pg_net` + 1-minute fallback heartbeat cron.
 
 ## Environment Variables
 
@@ -20,30 +20,73 @@ Configure these secrets in Supabase Edge Functions:
 - `ONESIGNAL_REST_API_KEY`
 - `SUPABASE_SERVICE_ROLE_KEY`
 
+Vault secrets (Supabase DB):
+
+- `live_dispatch_url`: Edge Function URL for dispatch.
+- `live_dispatch_token`: Shared secret for `x-stream-token` auth.
+
 ## OneSignal Dashboard Setup
 
 1. Create a OneSignal app.
 2. **Android:** configure Firebase (FCM) credentials for the app.
-3. **iOS:** upload APNs `.p8` key (required for Live Activities later).
+3. **iOS:** upload APNs `.p8` key (required for Live Activities).
+4. **Android channels:** create the following channel IDs in OneSignal dashboard:
+   - `fav_updates` — favorites: `round_started`, `game_started`, `game_finished`
+   - `heads_up` — heads-up alerts: `round_heads_up`
+   - `live_updates` — live game updates: `live_game_update`
+   - `live_alerts` — live game milestone alerts
+   - `call_to_action` — chess world updates
+   - `general` — fallback (book updates, etc.)
 
 ## Supabase: Notifications Pipeline
 
 ### Tables
 
-- `user_notification_preferences`: user opt-in + preferences.
+- `user_notification_preferences`: user opt-in + per-category preferences.
 - `user_push_tokens`: device subscription IDs + tokens for OneSignal (kept current).
 - `user_live_game_subscriptions`: per-game opt-ins for Live Activities / Android live notifications.
 - `notification_outbox`: server-side queue for notification dispatch.
+- `notification_user_windows`: start-family cooldown state (service-role only).
 
-### Triggers
+### Enqueue Triggers & Functions
 
-The following DB triggers/functions are included in
-`supabase/migrations/012_notifications_prefs_and_outbox.sql`:
+- `queue_game_notifications` (trigger on `games`): enqueues `game_started` and `game_finished` on game state transitions. Includes `board_nr` in payload. Also piggybacks `round_started` when a game goes live and has a `round_id` (catches rounds missed by cron).
+- `queue_round_start_notifications()` (cron): enqueues `round_started` for rounds within 10-min window.
+- `queue_round_heads_up_notifications()` (cron): enqueues `round_heads_up` for rounds 25-45 min away.
+- `queue_live_game_updates()` (cron/trigger): enqueues `live_game_update` for active games.
 
-- `queue_game_notifications`: enqueue `game_started` and `game_finished`.
-- `queue_round_start_notifications()`: enqueue `round_started` (2-hour rate limit per event).
-- `queue_round_heads_up_notifications()`: enqueue `round_heads_up` (opt-in, 30 min lead).
-- `queue_live_game_updates()`: enqueue `live_game_update` (call via cron).
+### Dispatch Triggers
+
+Two `AFTER INSERT` triggers on `notification_outbox` provide immediate dispatch:
+
+- `dispatch_live_game_update_outbox`: fires for `live_game_update` events only, calls the Edge Function via `pg_net`.
+- `dispatch_notification_outbox`: fires for all other event types, calls the Edge Function via `pg_net`.
+
+Both use named parameters for `net.http_post` and authenticate with `x-stream-token` from Vault.
+
+### Fallback Heartbeat
+
+`dispatch_pending_heartbeat()` runs every 1 minute via `pg_cron`. It checks for any pending outbox rows and calls the Edge Function if items exist. This ensures trigger failures degrade to bounded delay (~60s worst case) instead of silent backlog growth.
+
+### Queue Claiming & Priority
+
+`claim_notification_outbox_batch()` atomically claims pending rows with priority ordering:
+
+1. **Priority 0:** `game_started`, `game_finished` (immediate per-game events)
+2. **Priority 1:** `round_started`, `round_heads_up` (round-level events)
+3. **Priority 2:** `book_game_added`
+4. **Priority 3:** `call_to_action`, other
+5. **Priority 4:** `live_game_update` (high-volume, separate pipeline)
+
+This ensures game-level notifications are processed within SLA even under high `live_game_update` volume.
+
+### Start-Family Precedence (Cooldown)
+
+When a user receives `game_started`, a 20-second cooldown window is recorded in `notification_user_windows`. If a `round_started` is processed for the same user+round during this window, the round notification is suppressed for that user (they already know their game started).
+
+- Only applies to player-favorite users (event-only followers always get round-level notifications).
+- `game_started` has precedence — it's more specific and actionable.
+- Cooldown windows are cleaned up every 10 minutes by `cleanup_notification_user_windows()`.
 
 ### Edge Function
 
@@ -51,16 +94,24 @@ The following DB triggers/functions are included in
 
 This function:
 
-1. Pulls `pending` rows from `notification_outbox`.
+1. Claims `pending` rows from `notification_outbox` via `claim_notification_outbox_batch()`.
 2. Resolves recipients using `user_favorite_events` and `user_favorite_players`.
 3. Filters using `user_notification_preferences`.
-4. Sends notifications via OneSignal (player favorites vs event favorites for rounds and heads-up).
-   - Android channels (IDs):
-     - `fav_updates` for `round_started`, `game_started`, `game_finished`
-     - `heads_up` for `round_heads_up`
-     - `live_updates` for `live_game_update`
-     - `general` fallback
-5. Marks rows as `sent`, `skipped`, or `failed`.
+4. For `game_started`/`game_finished`: only player-favorite users receive these.
+5. For `round_started`: player + event favorites, with cooldown filtering for player-favorites.
+6. For `round_heads_up`: player + event favorites with `heads_up_alerts` pref check.
+7. Sends notifications via OneSignal with `android_channel_id` routing.
+8. Per-game notifications include `board_nr` in body text ("Board N") and data payload when available.
+9. Records cooldown windows after sending `game_started`.
+10. Marks rows as `sent`, `skipped`, or `failed`.
+
+## Per-Game Board Identity
+
+`game_started` and `game_finished` payloads include `board_nr` (nullable smallint from `games.board_nr`). When present:
+
+- Notification body includes "(Board N)" suffix.
+- `data.board_nr` is included in the OneSignal data payload for client-side routing.
+- When `board_nr` is null, notifications use existing player-vs-player copy without board info.
 
 ## Live Updates (Per-Game)
 
@@ -71,22 +122,21 @@ Live Activities / Android Live Notifications are opt-in per game:
   - iOS Live Activity updates (OneSignal Live Activities API).
   - Android Live Notifications (collapse_id + `live_notification` payload).
 
-Deploy the function and call it on a schedule.
+## Scheduling (pg_cron)
 
-## Scheduling (Cron)
+Active cron jobs:
 
-Recommended cadence:
+| Job | Schedule | Description |
+|-----|----------|-------------|
+| `queue-round-heads-up` | `*/5 * * * *` | Queue heads-up for rounds 25-45 min away |
+| `queue-round-started` | `*/3 * * * *` | Queue round_started for rounds in 10-min window |
+| `dispatch-pending-heartbeat` | `* * * * *` | Fallback dispatch for any pending items |
+| `cleanup-notification-outbox` | `0 */6 * * *` | Delete terminal rows older than 48h |
+| `cleanup-notification-user-windows` | `*/10 * * * *` | Remove expired cooldown windows |
 
-- `queue_round_start_notifications()` every 5 minutes (window is 10 minutes).
-- `queue_round_heads_up_notifications()` every 5 minutes (window is 20–40 minutes ahead).
-- `queue_live_game_updates()` every 1–2 minutes (for live game updates).
-- `onesignal-dispatch` every 1 minute (or faster if needed).
+## Live Activities / Live Notifications
 
-You can schedule via Supabase Scheduled Functions or `pg_cron`.
-
-## Live Activities / Live Notifications (Future)
-
-Now supported (requires native wiring):
+Now supported:
 
 - **iOS Live Activities:** ActivityKit + Widget extension + OneSignal Live Activities updates.
 - **Android Live Notifications:** Notification Service Extension + `live_notification` payloads.

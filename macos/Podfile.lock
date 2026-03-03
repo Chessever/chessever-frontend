@@ -1,66 +1,100 @@
 PODS:
+  - amplitude_flutter (0.0.1):
+    - AmplitudeSwift (= 1.15.1)
+    - Flutter
+    - FlutterMacOS
+  - AmplitudeCore (1.4.3)
+  - AmplitudeSwift (1.15.1):
+    - AmplitudeCore (< 2.0.0, >= 1.1.0)
+    - AnalyticsConnector (~> 1.3.0)
+  - AnalyticsConnector (1.3.1)
   - app_links (6.4.1):
     - FlutterMacOS
-  - AppAuth (1.7.6):
-    - AppAuth/Core (= 1.7.6)
-    - AppAuth/ExternalUserAgent (= 1.7.6)
-  - AppAuth/Core (1.7.6)
-  - AppAuth/ExternalUserAgent (1.7.6):
+  - app_settings (5.1.1):
+    - FlutterMacOS
+  - AppAuth (2.0.0):
+    - AppAuth/Core (= 2.0.0)
+    - AppAuth/ExternalUserAgent (= 2.0.0)
+  - AppAuth/Core (2.0.0)
+  - AppAuth/ExternalUserAgent (2.0.0):
     - AppAuth/Core
   - AppCheckCore (11.2.0):
     - GoogleUtilities/Environment (~> 8.0)
     - GoogleUtilities/UserDefaults (~> 8.0)
     - PromisesObjC (~> 2.4)
+  - device_info_plus (0.0.1):
+    - FlutterMacOS
+  - Firebase/CoreOnly (11.15.0):
+    - FirebaseCore (~> 11.15.0)
+  - firebase_core (3.15.2):
+    - Firebase/CoreOnly (~> 11.15.0)
+    - FlutterMacOS
+  - FirebaseCore (11.15.0):
+    - FirebaseCoreInternal (~> 11.15.0)
+    - GoogleUtilities/Environment (~> 8.1)
+    - GoogleUtilities/Logger (~> 8.1)
+  - FirebaseCoreInternal (11.15.0):
+    - "GoogleUtilities/NSData+zlib (~> 8.1)"
   - flutter_local_notifications (0.0.1):
     - FlutterMacOS
   - flutter_soloud (0.0.1):
     - FlutterMacOS
   - FlutterMacOS (1.0.0)
-  - google_sign_in_ios (0.0.1):
-    - AppAuth (>= 1.7.4)
+  - gal (1.0.0):
     - Flutter
     - FlutterMacOS
-    - GoogleSignIn (~> 8.0)
+  - google_sign_in_ios (0.0.1):
+    - Flutter
+    - FlutterMacOS
+    - GoogleSignIn (~> 9.0)
     - GTMSessionFetcher (>= 3.4.0)
-  - GoogleSignIn (8.0.0):
-    - AppAuth (< 2.0, >= 1.7.3)
+  - GoogleSignIn (9.1.0):
+    - AppAuth (~> 2.0)
     - AppCheckCore (~> 11.0)
-    - GTMAppAuth (< 5.0, >= 4.1.1)
+    - GTMAppAuth (~> 5.0)
     - GTMSessionFetcher/Core (~> 3.3)
   - GoogleUtilities/Environment (8.1.0):
     - GoogleUtilities/Privacy
   - GoogleUtilities/Logger (8.1.0):
     - GoogleUtilities/Environment
     - GoogleUtilities/Privacy
+  - "GoogleUtilities/NSData+zlib (8.1.0)":
+    - GoogleUtilities/Privacy
   - GoogleUtilities/Privacy (8.1.0)
   - GoogleUtilities/UserDefaults (8.1.0):
     - GoogleUtilities/Logger
     - GoogleUtilities/Privacy
-  - GTMAppAuth (4.1.1):
-    - AppAuth/Core (~> 1.7)
+  - GTMAppAuth (5.0.0):
+    - AppAuth/Core (~> 2.0)
     - GTMSessionFetcher/Core (< 4.0, >= 3.3)
   - GTMSessionFetcher (3.5.0):
     - GTMSessionFetcher/Full (= 3.5.0)
   - GTMSessionFetcher/Core (3.5.0)
   - GTMSessionFetcher/Full (3.5.0):
     - GTMSessionFetcher/Core
+  - in_app_review (2.0.0):
+    - FlutterMacOS
+  - objective_c (0.0.1):
+    - FlutterMacOS
   - package_info_plus (0.0.1):
     - FlutterMacOS
   - path_provider_foundation (0.0.1):
     - Flutter
     - FlutterMacOS
   - PromisesObjC (2.4.0)
-  - purchases_flutter (8.11.0):
+  - purchases_flutter (9.12.3):
     - FlutterMacOS
-    - PurchasesHybridCommon (= 14.3.0)
-  - PurchasesHybridCommon (14.3.0):
-    - RevenueCat (= 5.32.0)
-  - RevenueCat (5.32.0)
-  - Sentry/HybridSDK (8.52.1)
-  - sentry_flutter (9.6.0):
+    - PurchasesHybridCommon (= 17.41.1)
+  - PurchasesHybridCommon (17.41.1):
+    - RevenueCat (= 5.59.2)
+  - RevenueCat (5.59.2)
+  - Sentry/HybridSDK (8.56.2)
+  - sentry_flutter (9.7.0):
     - Flutter
     - FlutterMacOS
-    - Sentry/HybridSDK (= 8.52.1)
+    - Sentry/HybridSDK (= 8.56.2)
+  - share_plus (0.0.1):
+    - FlutterMacOS
   - shared_preferences_foundation (0.0.1):
     - Flutter
     - FlutterMacOS
@@ -73,15 +107,23 @@ PODS:
     - FlutterMacOS
 
 DEPENDENCIES:
+  - amplitude_flutter (from `Flutter/ephemeral/.symlinks/plugins/amplitude_flutter/darwin`)
   - app_links (from `Flutter/ephemeral/.symlinks/plugins/app_links/macos`)
+  - app_settings (from `Flutter/ephemeral/.symlinks/plugins/app_settings/macos`)
+  - device_info_plus (from `Flutter/ephemeral/.symlinks/plugins/device_info_plus/macos`)
+  - firebase_core (from `Flutter/ephemeral/.symlinks/plugins/firebase_core/macos`)
   - flutter_local_notifications (from `Flutter/ephemeral/.symlinks/plugins/flutter_local_notifications/macos`)
   - flutter_soloud (from `Flutter/ephemeral/.symlinks/plugins/flutter_soloud/macos`)
   - FlutterMacOS (from `Flutter/ephemeral`)
+  - gal (from `Flutter/ephemeral/.symlinks/plugins/gal/darwin`)
   - google_sign_in_ios (from `Flutter/ephemeral/.symlinks/plugins/google_sign_in_ios/darwin`)
+  - in_app_review (from `Flutter/ephemeral/.symlinks/plugins/in_app_review/macos`)
+  - objective_c (from `Flutter/ephemeral/.symlinks/plugins/objective_c/macos`)
   - package_info_plus (from `Flutter/ephemeral/.symlinks/plugins/package_info_plus/macos`)
   - path_provider_foundation (from `Flutter/ephemeral/.symlinks/plugins/path_provider_foundation/darwin`)
   - purchases_flutter (from `Flutter/ephemeral/.symlinks/plugins/purchases_flutter/macos`)
   - sentry_flutter (from `Flutter/ephemeral/.symlinks/plugins/sentry_flutter/macos`)
+  - share_plus (from `Flutter/ephemeral/.symlinks/plugins/share_plus/macos`)
   - shared_preferences_foundation (from `Flutter/ephemeral/.symlinks/plugins/shared_preferences_foundation/darwin`)
   - sign_in_with_apple (from `Flutter/ephemeral/.symlinks/plugins/sign_in_with_apple/macos`)
   - sqflite_darwin (from `Flutter/ephemeral/.symlinks/plugins/sqflite_darwin/darwin`)
@@ -89,8 +131,14 @@ DEPENDENCIES:
 
 SPEC REPOS:
   trunk:
+    - AmplitudeCore
+    - AmplitudeSwift
+    - AnalyticsConnector
     - AppAuth
     - AppCheckCore
+    - Firebase
+    - FirebaseCore
+    - FirebaseCoreInternal
     - GoogleSignIn
     - GoogleUtilities
     - GTMAppAuth
@@ -101,16 +149,30 @@ SPEC REPOS:
     - Sentry
 
 EXTERNAL SOURCES:
+  amplitude_flutter:
+    :path: Flutter/ephemeral/.symlinks/plugins/amplitude_flutter/darwin
   app_links:
     :path: Flutter/ephemeral/.symlinks/plugins/app_links/macos
+  app_settings:
+    :path: Flutter/ephemeral/.symlinks/plugins/app_settings/macos
+  device_info_plus:
+    :path: Flutter/ephemeral/.symlinks/plugins/device_info_plus/macos
+  firebase_core:
+    :path: Flutter/ephemeral/.symlinks/plugins/firebase_core/macos
   flutter_local_notifications:
     :path: Flutter/ephemeral/.symlinks/plugins/flutter_local_notifications/macos
   flutter_soloud:
     :path: Flutter/ephemeral/.symlinks/plugins/flutter_soloud/macos
   FlutterMacOS:
     :path: Flutter/ephemeral
+  gal:
+    :path: Flutter/ephemeral/.symlinks/plugins/gal/darwin
   google_sign_in_ios:
     :path: Flutter/ephemeral/.symlinks/plugins/google_sign_in_ios/darwin
+  in_app_review:
+    :path: Flutter/ephemeral/.symlinks/plugins/in_app_review/macos
+  objective_c:
+    :path: Flutter/ephemeral/.symlinks/plugins/objective_c/macos
   package_info_plus:
     :path: Flutter/ephemeral/.symlinks/plugins/package_info_plus/macos
   path_provider_foundation:
@@ -119,6 +181,8 @@ EXTERNAL SOURCES:
     :path: Flutter/ephemeral/.symlinks/plugins/purchases_flutter/macos
   sentry_flutter:
     :path: Flutter/ephemeral/.symlinks/plugins/sentry_flutter/macos
+  share_plus:
+    :path: Flutter/ephemeral/.symlinks/plugins/share_plus/macos
   shared_preferences_foundation:
     :path: Flutter/ephemeral/.symlinks/plugins/shared_preferences_foundation/darwin
   sign_in_with_apple:
@@ -129,30 +193,44 @@ EXTERNAL SOURCES:
     :path: Flutter/ephemeral/.symlinks/plugins/url_launcher_macos/macos
 
 SPEC CHECKSUMS:
-  app_links: c3185399a5cabc2e610ee5ad52fb7269b84ff869
-  AppAuth: d4f13a8fe0baf391b2108511793e4b479691fb73
+  amplitude_flutter: 6cc0a673ea65900beab45e3c9c55f2095e6287e7
+  AmplitudeCore: 3b61daa947e49322bbec0e3e913f42bfa63f24b3
+  AmplitudeSwift: 41d52966044cc377435eda13124854ab7b4ec454
+  AnalyticsConnector: 3def11199b4ddcad7202c778bde982ec5da0ebb3
+  app_links: 05a6ec2341985eb05e9f97dc63f5837c39895c3f
+  app_settings: cd21e176b56f8172043640ade81322a98896bff4
+  AppAuth: 1c1a8afa7e12f2ec3a294d9882dfa5ab7d3cb063
   AppCheckCore: cc8fd0a3a230ddd401f326489c99990b013f0c4f
-  flutter_local_notifications: 4ccab5b7a22835214a6672e3f9c5e8ae207dab36
-  flutter_soloud: 6487a1bee397951f3f15f4a855d4da3812e1c3a8
+  device_info_plus: 4fb280989f669696856f8b129e4a5e3cd6c48f76
+  Firebase: d99ac19b909cd2c548339c2241ecd0d1599ab02e
+  firebase_core: 7667f880631ae8ad10e3d6567ab7582fe0682326
+  FirebaseCore: efb3893e5b94f32b86e331e3bd6dadf18b66568e
+  FirebaseCoreInternal: 9afa45b1159304c963da48addb78275ef701c6b4
+  flutter_local_notifications: 4bf37a31afde695b56091b4ae3e4d9c7a7e6cda0
+  flutter_soloud: cb69d77c6ca89760429201880cf416b72d4d0c6a
   FlutterMacOS: d0db08ddef1a9af05a5ec4b724367152bb0500b1
-  google_sign_in_ios: 7411fab6948df90490dc4620ecbcabdc3ca04017
-  GoogleSignIn: ce8c89bb9b37fb624b92e7514cc67335d1e277e4
+  gal: baecd024ebfd13c441269ca7404792a7152fde89
+  google_sign_in_ios: 00dfa94252eb10278b64828c81bcb7158a81a53a
+  GoogleSignIn: fcee2257188d5eda57a5e2b6a715550ffff9206d
   GoogleUtilities: 00c88b9a86066ef77f0da2fab05f65d7768ed8e1
-  GTMAppAuth: f69bd07d68cd3b766125f7e072c45d7340dea0de
+  GTMAppAuth: 217a876b249c3c585a54fd6f73e6b58c4f5c4238
   GTMSessionFetcher: 5aea5ba6bd522a239e236100971f10cb71b96ab6
-  package_info_plus: 12f1c5c2cfe8727ca46cbd0b26677728972d9a5b
-  path_provider_foundation: 2b6b4c569c0fb62ec74538f866245ac84301af46
+  in_app_review: 66e7680752b632d83f4f0e88b34d52ed303fbff4
+  objective_c: ec13431e45ba099cb734eb2829a5c1cd37986cba
+  package_info_plus: f0052d280d17aa382b932f399edf32507174e870
+  path_provider_foundation: 080d55be775b7414fd5a5ef3ac137b97b097e564
   PromisesObjC: f5707f49cb48b9636751c5b2e7d227e43fba9f47
-  purchases_flutter: 471328f85fe9fe442fe549cf0326bdb3be1f6391
-  PurchasesHybridCommon: 7f0944cc5411bdcd1ea5d69affa6a6f9aaf87b13
-  RevenueCat: 7e1d0768fb287c9983173c9b28e39ccbeeb828a9
-  Sentry: 2cbbe3592f30050c60e916c63c7f5a2fa584005e
-  sentry_flutter: feb376a4d8fd37387898b94e00da2060eeab2a41
-  shared_preferences_foundation: fcdcbc04712aee1108ac7fda236f363274528f78
-  sign_in_with_apple: a9e97e744e8edc36aefc2723111f652102a7a727
-  sqflite_darwin: 5a7236e3b501866c1c9befc6771dfd73ffb8702d
-  url_launcher_macos: c82c93949963e55b228a30115bd219499a6fe404
+  purchases_flutter: 39cf1810439cebe9f051e87bc09bf5358da6ed17
+  PurchasesHybridCommon: 8eb130ab98f8dab600dea932a2599dee79304bb5
+  RevenueCat: f352b3661288080bd8bf30bbb96e331940e73c88
+  Sentry: b53951377b78e21a734f5dc8318e333dbfc682d7
+  sentry_flutter: 7f88e12d1882ec6e648644a7c0ff5b1466f07f99
+  share_plus: 510bf0af1a42cd602274b4629920c9649c52f4cc
+  shared_preferences_foundation: 9e1978ff2562383bd5676f64ec4e9aa8fa06a6f7
+  sign_in_with_apple: 6673c03c9e3643f6c8d33601943fbfa9ae99f94e
+  sqflite_darwin: 20b2a3a3b70e43edae938624ce550a3cbf66a3d0
+  url_launcher_macos: 0fba8ddabfc33ce0a9afe7c5fef5aab3d8d2d673
 
-PODFILE CHECKSUM: 54d867c82ac51cbd61b565781b9fada492027009
+PODFILE CHECKSUM: 346bfb2deb41d4a6ebd6f6799f92188bde2d246f
 
 COCOAPODS: 1.16.2
