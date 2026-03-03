@@ -1123,8 +1123,8 @@ class _GamesAppBarNotifier
     for (final status in const [
       RoundStatus.live,
       RoundStatus.ongoing,
-      RoundStatus.upcoming,
       RoundStatus.completed,
+      RoundStatus.upcoming,
     ]) {
       final pick = _pickRoundModelByStatus(models, counts, status);
       if (pick != null) {
@@ -1303,7 +1303,7 @@ class _GamesAppBarNotifier
       return;
     }
 
-    // 5) Fall back to auto-select (ongoing → upcoming → completed)
+    // 5) Fall back to auto-select (ongoing → completed → upcoming)
     final autoModel = _selectAutoRound(models, counts);
     final fallbackId = autoModel?.id ?? '';
     state = AsyncValue.data(
