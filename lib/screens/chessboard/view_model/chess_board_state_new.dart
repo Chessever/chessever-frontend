@@ -6,6 +6,8 @@ import 'package:chessground/chessground.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:fast_immutable_collections/fast_immutable_collections.dart';
 
+enum AutoSaveStatus { idle, saving, saved }
+
 class AnalysisLine {
   static const ListEquality<String> _stringListEquality =
       ListEquality<String>();
@@ -344,6 +346,9 @@ class ChessBoardStateNew {
   /// Whether threats mode is enabled (shows opponent's threats with red arrows)
   final bool isThreatsMode;
 
+  /// Auto-save status for library games
+  final AutoSaveStatus autoSaveStatus;
+
   /// Navigator position where PVs start
   final ChessMovePointer? variantBaseMovePointer;
 
@@ -426,6 +431,7 @@ class ChessBoardStateNew {
     this.lockedPvBaseMoveCount,
     this.variationComments = const <String, String>{},
     this.isThreatsMode = false,
+    this.autoSaveStatus = AutoSaveStatus.idle,
   });
 
   static const _noChange = Object();
@@ -475,6 +481,7 @@ class ChessBoardStateNew {
     Object? lockedPvBaseMoveCount = _noChange,
     Map<String, String>? variationComments,
     bool? isThreatsMode,
+    AutoSaveStatus? autoSaveStatus,
   }) {
     final newAnalysisState = analysisState ?? this.analysisState;
 
@@ -575,6 +582,7 @@ class ChessBoardStateNew {
       variationComments: variationComments ?? this.variationComments,
       analysisState: newAnalysisState,
       isThreatsMode: isThreatsMode ?? this.isThreatsMode,
+      autoSaveStatus: autoSaveStatus ?? this.autoSaveStatus,
     );
   }
 
@@ -670,7 +678,8 @@ class ChessBoardStateNew {
         ) &&
         other.principalVariationsBaseFen == principalVariationsBaseFen &&
         _intListEquality.equals(other.variantMovePointer, variantMovePointer) &&
-        other.isThreatsMode == isThreatsMode;
+        other.isThreatsMode == isThreatsMode &&
+        other.autoSaveStatus == autoSaveStatus;
   }
 
   @override
@@ -725,6 +734,7 @@ class ChessBoardStateNew {
       lockedPvBaseMoveCount,
       _stringMapEquality.hash(variationComments),
       isThreatsMode,
+      autoSaveStatus,
     ]);
   }
 }

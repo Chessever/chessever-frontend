@@ -29,6 +29,7 @@ type GameRow = {
   last_move_time: string | null;
   last_clock_white: number | null;
   last_clock_black: number | null;
+  board_nr: number | null;
 };
 
 type RoundGameRow = {
@@ -415,11 +416,20 @@ async function processItem(item: OutboxItem, cloudEvalState: CloudEvalState) {
       const eventName = context.eventName ?? "Live chess";
       const roundName = context.round?.name ?? "";
 
+      // Start-family cooldown: suppress round_started for player-favorite
+      // users who already received game_started for this round.
+      const cooledDownUsers = roundId
+        ? await fetchCooledDownUsers(playerRecipients, roundId)
+        : new Set<string>();
+      const filteredPlayerRecipients = cooledDownUsers.size > 0
+        ? playerRecipients.filter((uid) => !cooledDownUsers.has(uid))
+        : playerRecipients;
+
       // Send one notification per favorited player so users receive all
       // of their matching favorites for this round.
-      if (playerRecipients.length > 0) {
+      if (filteredPlayerRecipients.length > 0) {
         const { byPlayer, ungrouped } = buildPlayerRecipientBatches(
-          playerRecipients,
+          filteredPlayerRecipients,
           context.playerFavoriteMap,
         );
 
@@ -469,7 +479,8 @@ async function processItem(item: OutboxItem, cloudEvalState: CloudEvalState) {
       return {
         id: item.id,
         status: "sent",
-        recipients: playerRecipients.length + eventRecipients.length,
+        recipients: filteredPlayerRecipients.length + eventRecipients.length,
+        suppressed_by_cooldown: cooledDownUsers.size,
       };
     }
 
@@ -599,6 +610,162 @@ async function processItem(item: OutboxItem, cloudEvalState: CloudEvalState) {
       return { id: item.id, status: "sent", recipients: eligible.length };
     }
 
+    if (item.event_type === "book_game_updated") {
+      const folderId = item.payload?.folder_id as string;
+      if (!folderId) {
+        await markSkipped(item.id, "missing_folder_id");
+        return { id: item.id, status: "skipped", reason: "missing_folder_id" };
+      }
+
+      const { data: subs } = await supabase
+        .from("book_subscriptions")
+        .select("subscriber_id")
+        .eq("folder_id", folderId);
+
+      const subscriberIds = (subs ?? []).map((s) => s.subscriber_id as string);
+      if (subscriberIds.length === 0) {
+        await markSkipped(item.id, "no_subscribers");
+        return { id: item.id, status: "skipped", reason: "no_subscribers" };
+      }
+
+      const eligible = await filterBookUpdateRecipients(subscriberIds);
+      if (eligible.length === 0) {
+        await markSkipped(item.id, "no_recipients");
+        return { id: item.id, status: "skipped", reason: "no_recipients" };
+      }
+
+      const folderName = (item.payload?.folder_name as string) ?? "a book";
+      const gameTitle = (item.payload?.game_title as string) ?? "a game";
+      const ownerName =
+        (item.payload?.owner_display_name as string) ?? "Someone";
+
+      await sendOneSignal(eligible, {
+        title: folderName,
+        body: `${ownerName} updated "${gameTitle}"`,
+        url: null,
+        data: { type: "book_game_updated", folder_id: folderId },
+        androidChannelId: ANDROID_CHANNELS.general,
+      });
+
+      await markSent(item.id);
+      return { id: item.id, status: "sent", recipients: eligible.length };
+    }
+
+    // --- game_started / game_finished: personalized per favorite player ---
+    if (item.event_type === "game_started" || item.event_type === "game_finished") {
+      const allUserIds = new Set([
+        ...context.eventUserIds,
+        ...context.playerUserIds,
+      ]);
+      const filteredUserIds = await applyPreferences(
+        item.event_type,
+        allUserIds,
+        context.eventUserIds,
+        context.playerUserIds,
+      );
+
+      if (filteredUserIds.size === 0) {
+        await markSkipped(item.id, "no_recipients");
+        return { id: item.id, status: "skipped", reason: "no_recipients" };
+      }
+
+      const payload = item.payload ?? {};
+      const white = (payload.player_white as string) ?? context.game?.player_white ?? "White";
+      const black = (payload.player_black as string) ?? context.game?.player_black ?? "Black";
+      const boardNr = (payload.board_nr as number | null) ?? context.game?.board_nr ?? null;
+      const boardTag = boardNr ? ` (Board ${boardNr})` : "";
+      const eventHeader = buildEventHeader(context.eventName, context.round?.name);
+      const androidChannelId = channelForEvent(item.event_type);
+      const gameId = item.game_id;
+
+      const { byPlayer, ungrouped } = buildPlayerRecipientBatches(
+        Array.from(filteredUserIds),
+        context.playerFavoriteMap,
+      );
+
+      if (item.event_type === "game_started") {
+        // Per-favorite-player personalized notifications
+        for (const [playerName, recipients] of byPlayer) {
+          const shortName = extractLastName(playerName);
+          const template = pickTemplate(GAME_STARTED_PLAYER, gameId ?? "");
+          const { title, body } = fillTemplate(template, {
+            p: shortName,
+            e: eventHeader ?? `${white} vs ${black}`,
+            r: context.round?.name ?? "",
+          });
+          await sendOneSignal(recipients, {
+            title,
+            body: `${body}${boardTag}`,
+            url: null,
+            data: { type: "game_started", game_id: gameId, board_nr: boardNr },
+            androidChannelId,
+          });
+        }
+
+        // Users whose specific favorite couldn't be resolved — generic copy
+        if (ungrouped.length > 0) {
+          await sendOneSignal(ungrouped, {
+            title: eventHeader ?? `${white} vs ${black}`,
+            body: eventHeader
+              ? `${white} vs ${black}${boardTag} is live.`
+              : `A favorite game just went live.${boardTag}`,
+            url: null,
+            data: { type: "game_started", game_id: gameId, board_nr: boardNr },
+            androidChannelId,
+          });
+        }
+
+        // Record cooldown window for start-family precedence
+        if (item.round_id) {
+          await recordGameStartWindow(
+            Array.from(filteredUserIds),
+            item.round_id,
+          );
+        }
+      } else {
+        // game_finished
+        const status = (payload.status as string) ?? context.game?.status ?? "";
+        const resultStr = status || "Game over";
+
+        for (const [playerName, recipients] of byPlayer) {
+          const shortName = extractLastName(playerName);
+          const template = pickTemplate(GAME_FINISHED_PLAYER, gameId ?? "");
+          const { title, body } = fillTemplate(template, {
+            p: shortName,
+            e: eventHeader ?? `${white} vs ${black}`,
+            r: context.round?.name ?? "",
+          });
+          await sendOneSignal(recipients, {
+            title,
+            body: `${body} ${resultStr}${boardTag}`,
+            url: null,
+            data: { type: "game_finished", game_id: gameId, board_nr: boardNr },
+            androidChannelId,
+          });
+        }
+
+        if (ungrouped.length > 0) {
+          await sendOneSignal(ungrouped, {
+            title: eventHeader ?? `${white} vs ${black}`,
+            body: eventHeader
+              ? `${white} vs ${black}${boardTag}: ${resultStr}`
+              : `Result: ${resultStr}${boardTag}`,
+            url: null,
+            data: { type: "game_finished", game_id: gameId, board_nr: boardNr },
+            androidChannelId,
+          });
+        }
+      }
+
+      await markSent(item.id);
+      return {
+        id: item.id,
+        status: "sent",
+        recipients: filteredUserIds.size,
+      };
+    }
+
+    // --- Generic fallback for any other event types ---
     const allUserIds = new Set([
       ...context.eventUserIds,
       ...context.playerUserIds,
@@ -661,7 +828,7 @@ async function buildContext(item: OutboxItem) {
     const { data } = await supabase
       .from("games")
       .select(
-        "id,tour_id,player_white,player_black,player_fide_ids,fen,players,status,last_move,last_move_time,last_clock_white,last_clock_black",
+        "id,tour_id,player_white,player_black,player_fide_ids,fen,players,status,last_move,last_move_time,last_clock_white,last_clock_black,board_nr",
       )
       .eq("id", item.game_id)
       .maybeSingle();
@@ -743,6 +910,19 @@ async function buildContext(item: OutboxItem) {
   ) {
     playerFavoriteMap = await resolvePlayerFavoriteMap(
       item.round_id,
+      playerUserIds,
+    );
+  }
+
+  // Resolve per-user player favorites for game-level notifications
+  if (
+    (item.event_type === "game_started" ||
+      item.event_type === "game_finished") &&
+    playerUserIds.size > 0
+  ) {
+    playerFavoriteMap = await resolveGamePlayerFavoriteMap(
+      game,
+      item.payload,
       playerUserIds,
     );
   }
@@ -1252,6 +1432,26 @@ const ROUND_HEADS_UP_EVENT: Template[] = [
   { title: "{e}", body: "{r}: {t} until games begin" },
 ];
 
+const GAME_STARTED_PLAYER: Template[] = [
+  { title: "{e}", body: "{p}'s game is live." },
+  { title: "{e}", body: "{p} just started playing." },
+  { title: "{e}", body: "{p} is at the board." },
+  { title: "{e}", body: "{p} is live right now." },
+  { title: "{e}", body: "{p} just made the first move." },
+  { title: "{e}", body: "{p}'s game just kicked off." },
+  { title: "{e}", body: "{p} is playing. Watch live." },
+  { title: "{e}", body: "{p} at the board. Don't miss it." },
+];
+
+const GAME_FINISHED_PLAYER: Template[] = [
+  { title: "{e}", body: "{p}'s game is over —" },
+  { title: "{e}", body: "{p}'s game just finished —" },
+  { title: "{e}", body: "{p}'s game ended —" },
+  { title: "{e}", body: "Final result for {p}:" },
+  { title: "{e}", body: "{p}'s game wrapped up —" },
+  { title: "{e}", body: "Result is in for {p}:" },
+];
+
 function pickTemplate(templates: Template[], roundId: string): Template {
   let hash = 0;
   for (let i = 0; i < roundId.length; i++) {
@@ -1387,6 +1587,80 @@ async function resolvePlayerFavoriteMap(
   return result;
 }
 
+async function resolveGamePlayerFavoriteMap(
+  game: GameRow | null,
+  payload: Record<string, unknown>,
+  playerUserIds: Set<string>,
+): Promise<Map<string, string[]>> {
+  // For a single game, resolve which of the two players each user has favorited.
+  const result = new Map<string, string[]>();
+  if (playerUserIds.size === 0) return result;
+
+  const white = (payload?.player_white as string) ?? game?.player_white ?? null;
+  const black = (payload?.player_black as string) ?? game?.player_black ?? null;
+  const fideIds = game?.player_fide_ids ?? [];
+
+  const gameFideIds = new Set<string>();
+  const fideIdToName = new Map<string, string>();
+  const gamePlayerNames = new Set<string>();
+
+  if (white) gamePlayerNames.add(white);
+  if (black) gamePlayerNames.add(black);
+
+  for (let i = 0; i < fideIds.length; i++) {
+    const fid = fideIds[i].toString();
+    gameFideIds.add(fid);
+    const name = i === 0 ? white : black;
+    if (name) fideIdToName.set(fid, name);
+  }
+
+  const userIds = Array.from(playerUserIds);
+
+  // Match by fide_id
+  if (gameFideIds.size > 0) {
+    const { data: faveByFide } = await supabase
+      .from("user_favorite_players")
+      .select("user_id,fide_id")
+      .in("user_id", userIds)
+      .in("fide_id", Array.from(gameFideIds));
+
+    for (const row of faveByFide ?? []) {
+      const userId = row.user_id as string;
+      const fideId = (row.fide_id as number).toString();
+      const name = fideIdToName.get(fideId);
+      if (name) {
+        if (!result.has(userId)) result.set(userId, []);
+        result.get(userId)!.push(name);
+      }
+    }
+  }
+
+  // Match by player_name (fallback)
+  if (gamePlayerNames.size > 0) {
+    const { data: faveByName } = await supabase
+      .from("user_favorite_players")
+      .select("user_id,player_name")
+      .in("user_id", userIds)
+      .in("player_name", Array.from(gamePlayerNames));
+
+    for (const row of faveByName ?? []) {
+      const userId = row.user_id as string;
+      const name = row.player_name as string;
+      if (!result.has(userId)) result.set(userId, []);
+      const existing = result.get(userId)!;
+      const lastNameLower = extractLastName(name).toLowerCase();
+      const alreadyHas = existing.some(
+        (n) => extractLastName(n).toLowerCase() === lastNameLower,
+      );
+      if (!alreadyHas) {
+        existing.push(name);
+      }
+    }
+  }
+
+  return result;
+}
+
 function buildPlayerRecipientBatches(
   playerRecipients: string[],
   playerFavoriteMap: Map<string, string[]>,
@@ -1442,6 +1716,7 @@ function channelForEvent(eventType: string) {
     case "call_to_action":
       return ANDROID_CHANNELS.callToAction;
     case "book_game_added":
+    case "book_game_updated":
       return ANDROID_CHANNELS.general;
     default:
       return ANDROID_CHANNELS.general;
@@ -1463,17 +1738,19 @@ function buildNotification(
   const black = (payload.player_black as string) ?? context.game?.player_black ??
     "Black";
   const status = (payload.status as string) ?? context.game?.status ?? "";
+  const boardNr = (payload.board_nr as number | null) ?? context.game?.board_nr ?? null;
   const androidChannelId = channelForEvent(item.event_type);
 
   if (item.event_type === "game_started") {
     const eventHeader = buildEventHeader(context.eventName, context.round?.name);
+    const boardTag = boardNr ? ` (Board ${boardNr})` : "";
     return {
       title: eventHeader ?? `${white} vs ${black}`,
       body: eventHeader
-        ? `${white} vs ${black} is live.`
-        : "A favorite game just went live.",
+        ? `${white} vs ${black}${boardTag} is live.`
+        : `A favorite game just went live.${boardTag}`,
       url: null,
-      data: { type: "game_started", game_id: item.game_id },
+      data: { type: "game_started", game_id: item.game_id, board_nr: boardNr },
       androidChannelId,
     };
   }
@@ -1481,13 +1758,14 @@ function buildNotification(
   if (item.event_type === "game_finished") {
     const eventHeader = buildEventHeader(context.eventName, context.round?.name);
     const resultStr = status || "Game over";
+    const boardTag = boardNr ? ` (Board ${boardNr})` : "";
     return {
       title: eventHeader ?? `${white} vs ${black}`,
       body: eventHeader
-        ? `${white} vs ${black}: ${resultStr}`
-        : `Result: ${resultStr}`,
+        ? `${white} vs ${black}${boardTag}: ${resultStr}`
+        : `Result: ${resultStr}${boardTag}`,
       url: null,
-      data: { type: "game_finished", game_id: item.game_id },
+      data: { type: "game_finished", game_id: item.game_id, board_nr: boardNr },
       androidChannelId,
     };
   }
@@ -2378,8 +2656,9 @@ async function sendOneSignal(
       payload.url = notification.url;
     }
 
-    // NOTE: android_channel_id omitted — channels are not registered in
-    // OneSignal yet.  Notifications use the default channel instead.
+    if (notification.androidChannelId) {
+      payload.android_channel_id = notification.androidChannelId;
+    }
 
     if (notification.iosSound) {
       payload.ios_sound = notification.iosSound;
@@ -2398,4 +2677,39 @@ function chunk<T>(list: T[], size: number) {
     chunks.push(list.slice(i, i + size));
   }
   return chunks;
+}
+
+// --- Start-family cooldown helpers ---
+
+async function recordGameStartWindow(
+  userIds: string[],
+  roundId: string,
+): Promise<void> {
+  if (userIds.length === 0 || !roundId) return;
+  await supabase.rpc("record_game_start_window", {
+    p_user_ids: userIds,
+    p_round_id: roundId,
+    p_cooldown_seconds: 20,
+  });
+}
+
+async function fetchCooledDownUsers(
+  userIds: string[],
+  roundId: string,
+): Promise<Set<string>> {
+  if (userIds.length === 0 || !roundId) return new Set();
+
+  const { data } = await supabase
+    .from("notification_user_windows")
+    .select("user_id")
+    .in("user_id", userIds)
+    .eq("round_id", roundId)
+    .eq("family", "game_start")
+    .gt("expires_at", new Date().toISOString());
+
+  const set = new Set<string>();
+  for (const row of data ?? []) {
+    set.add(row.user_id as string);
+  }
+  return set;
 }

@@ -49,6 +49,7 @@ import 'package:fast_immutable_collections/fast_immutable_collections.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_animate/flutter_animate.dart' hide ShimmerEffect;
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 import 'package:chessever2/widgets/logo_pattern_fallback.dart';
@@ -1596,6 +1597,8 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
                                         showGamebaseButton:
                                             widget.showGamebaseButton,
                                         showClock: widget.showClock,
+                                        savedAnalysisData:
+                                            _getSavedAnalysisDataForIndex(index),
                                       );
                                     },
                                     loading:
@@ -2094,6 +2097,7 @@ class _GamePage extends StatelessWidget {
   final VoidCallback onToggleGamebase;
   final bool showGamebaseButton;
   final bool showClock;
+  final SavedAnalysisData? savedAnalysisData;
 
   const _GamePage({
     required this.game,
@@ -2108,6 +2112,7 @@ class _GamePage extends StatelessWidget {
     this.playerProfileDataSource = PlayerProfileDataSource.supabase,
     this.showGamebaseButton = false,
     this.showClock = true,
+    this.savedAnalysisData,
   });
 
   @override
@@ -2129,6 +2134,7 @@ class _GamePage extends StatelessWidget {
         onGameChanged: onGameChanged,
         lastViewedIndex: lastViewedIndex,
         hideEventInfo: hideEventInfo,
+        savedAnalysisData: savedAnalysisData,
       ),
       body: _GameBody(
         index: currentGameIndex,
@@ -2376,6 +2382,7 @@ class _AppBar extends ConsumerStatefulWidget implements PreferredSizeWidget {
   final bool isLoading;
   final int? lastViewedIndex;
   final bool hideEventInfo;
+  final SavedAnalysisData? savedAnalysisData;
 
   const _AppBar({
     required this.game,
@@ -2385,6 +2392,7 @@ class _AppBar extends ConsumerStatefulWidget implements PreferredSizeWidget {
     this.isLoading = false,
     this.lastViewedIndex,
     this.hideEventInfo = false,
+    this.savedAnalysisData,
   });
 
   @override
@@ -2414,6 +2422,148 @@ class _AppBarState extends ConsumerState<_AppBar> {
         ),
       );
       return;
+    }
+
+    // If this is an existing library game, show update/save-as-copy choice
+    final analysisId = widget.savedAnalysisData?.analysisId;
+    if (analysisId != null) {
+      final choice = await showModalBottomSheet<String>(
+        context: context,
+        backgroundColor: Colors.transparent,
+        constraints: ResponsiveHelper.bottomSheetConstraints,
+        builder: (ctx) => Container(
+          decoration: BoxDecoration(
+            color: const Color(0xFF1A1A1C),
+            borderRadius: BorderRadius.vertical(
+              top: Radius.circular(20.br),
+            ),
+          ),
+          padding: EdgeInsets.fromLTRB(24.w, 16.h, 24.w, 24.h),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Drag handle
+              Container(
+                width: 40.w,
+                height: 4.h,
+                decoration: BoxDecoration(
+                  color: kWhiteColor.withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(2.br),
+                ),
+              ),
+              SizedBox(height: 20.h),
+              Text(
+                'Save Analysis',
+                style: AppTypography.textLgBold.copyWith(
+                  color: kWhiteColor,
+                ),
+              ),
+              SizedBox(height: 6.h),
+              Text(
+                'This game was loaded from your library.',
+                style: AppTypography.textSmRegular.copyWith(
+                  color: kWhiteColor.withValues(alpha: 0.5),
+                ),
+              ),
+              SizedBox(height: 24.h),
+              // Update button (primary)
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: () => Navigator.of(ctx).pop('update'),
+                  icon: Icon(Icons.save_rounded, size: 18.sp),
+                  label: Text('Update'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: kPrimaryColor,
+                    foregroundColor: Colors.white,
+                    padding: EdgeInsets.symmetric(vertical: 14.h),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12.br),
+                    ),
+                  ),
+                ),
+              ),
+              SizedBox(height: 12.h),
+              // Save as copy button (secondary)
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () => Navigator.of(ctx).pop('copy'),
+                  icon: Icon(Icons.copy_rounded, size: 18.sp),
+                  label: Text('Save as copy'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: kWhiteColor.withValues(alpha: 0.8),
+                    side: BorderSide(
+                      color: kWhiteColor.withValues(alpha: 0.15),
+                    ),
+                    padding: EdgeInsets.symmetric(vertical: 14.h),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12.br),
+                    ),
+                  ),
+                ),
+              ),
+              SizedBox(height: 8.h),
+            ],
+          ),
+        ),
+      );
+
+      if (choice == null || !context.mounted) return;
+
+      if (choice == 'update') {
+        // Perform direct update
+        final notifier = ref.read(
+          chessBoardScreenProviderNew(params).notifier,
+        );
+        final success = await notifier.performManualUpdate();
+        if (context.mounted) {
+          HapticFeedback.mediumImpact();
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              duration: const Duration(seconds: 2),
+              behavior: SnackBarBehavior.floating,
+              backgroundColor:
+                  const Color(0xFF1A1A1C).withValues(alpha: 0.95),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12.br),
+              ),
+              content: Row(
+                children: [
+                  Container(
+                    padding: EdgeInsets.all(6.sp),
+                    decoration: BoxDecoration(
+                      color: (success ? kPrimaryColor : kRedColor)
+                          .withValues(alpha: 0.2),
+                      borderRadius: BorderRadius.circular(8.br),
+                    ),
+                    child: Icon(
+                      success
+                          ? Icons.check_rounded
+                          : Icons.error_outline_rounded,
+                      color: success ? kPrimaryColor : kRedColor,
+                      size: 16.sp,
+                    ),
+                  ),
+                  SizedBox(width: 12.w),
+                  Expanded(
+                    child: Text(
+                      success
+                          ? 'Analysis updated'
+                          : 'Failed to update',
+                      style: AppTypography.textSmMedium.copyWith(
+                        color: kWhiteColor,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
+        return;
+      }
+      // choice == 'copy' → fall through to open normal save sheet
     }
 
     await showSaveAnalysisSheet(
@@ -2520,6 +2670,70 @@ class _AppBarState extends ConsumerState<_AppBar> {
     }
   }
 
+  Widget _buildSaveButton() {
+    final hasAnalysisId = widget.savedAnalysisData?.analysisId != null;
+
+    if (!hasAnalysisId) {
+      return IconButton(
+        icon: Icon(Icons.save_outlined, color: kWhiteColor, size: 20.sp),
+        tooltip: 'Save analysis',
+        onPressed: widget.isLoading ? null : _showSaveAnalysisDialog,
+      );
+    }
+
+    // For library games, show animated save icon based on autoSaveStatus
+    final params = ChessBoardProviderParams(
+      game: widget.game,
+      index: widget.currentGameIndex,
+    );
+    final autoSaveStatus = ref.watch(
+      chessBoardScreenProviderNew(params).select(
+        (state) =>
+            state.valueOrNull?.autoSaveStatus ?? AutoSaveStatus.idle,
+      ),
+    );
+
+    Widget icon;
+    switch (autoSaveStatus) {
+      case AutoSaveStatus.saving:
+        icon = SizedBox(
+          width: 20.sp,
+          height: 20.sp,
+          child: CircularProgressIndicator(
+            strokeWidth: 2,
+            valueColor: AlwaysStoppedAnimation(
+              kWhiteColor.withValues(alpha: 0.7),
+            ),
+          ),
+        );
+        break;
+      case AutoSaveStatus.saved:
+        icon = Icon(
+          Icons.check_circle_outline_rounded,
+          color: kPrimaryColor,
+          size: 20.sp,
+        )
+            .animate()
+            .scale(
+              begin: const Offset(0.6, 0.6),
+              end: const Offset(1.0, 1.0),
+              duration: 300.ms,
+              curve: Curves.easeOutBack,
+            )
+            .fadeIn(duration: 200.ms);
+        break;
+      case AutoSaveStatus.idle:
+        icon = Icon(Icons.save_outlined, color: kWhiteColor, size: 20.sp);
+        break;
+    }
+
+    return IconButton(
+      icon: icon,
+      tooltip: 'Save analysis',
+      onPressed: widget.isLoading ? null : _showSaveAnalysisDialog,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     // Watch the board state for PGN data
@@ -2585,12 +2799,8 @@ class _AppBarState extends ConsumerState<_AppBar> {
                     ? null
                     : () => _showEventInfoSheet(context, ref, infoSheetPgn),
           ),
-        // Save Analysis button
-        IconButton(
-          icon: Icon(Icons.save_outlined, color: kWhiteColor, size: 20.sp),
-          tooltip: 'Save analysis',
-          onPressed: widget.isLoading ? null : _showSaveAnalysisDialog,
-        ),
+        // Save Analysis button — with auto-save status animation for library games
+        _buildSaveButton(),
         // 3-dot menu - use tablet-safe overlay popup on tablets to prevent
         // phantom tap dismissals, use standard PopupMenuButton on mobile
         if (ResponsiveHelper.isTablet)

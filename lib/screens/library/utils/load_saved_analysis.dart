@@ -73,6 +73,8 @@ SavedAnalysisData _createSavedAnalysisData(SavedAnalysis analysis) {
     movePointer: movePointer,
     isBoardFlipped: isBoardFlipped,
     lastViewedPosition: analysis.lastViewedPosition,
+    title: analysis.title,
+    folderId: analysis.folderId,
   );
 }
 
