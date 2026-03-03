@@ -14,6 +14,7 @@ import 'package:chessever2/repository/favorites/models/favorite_player.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/hamburger_menu/hamburger_menu.dart';
+import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 import 'package:chessever2/widgets/shorebird_update_dialog.dart';
 import 'package:chessever2/services/push_notifications_service.dart';
 import 'package:chessever2/services/review_prompt_service.dart';
@@ -137,7 +138,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         context,
       ).push(MaterialPageRoute(builder: (_) => const BoardEditorScreen()));
     },
-    onOpeningExplorerPressed: () {
+    onOpeningExplorerPressed: () async {
+      final allowed = await requireFullAuthGuard(context);
+      if (!allowed) return;
+      if (!context.mounted) return;
       Navigator.of(context).push(
         MaterialPageRoute(builder: (_) => GamebaseExplorerScreen.scoped()),
       );

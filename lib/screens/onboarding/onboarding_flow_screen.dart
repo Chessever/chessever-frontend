@@ -98,6 +98,13 @@ class OnboardingFlowScreen extends HookConsumerWidget {
                   _WelcomeStep(
                     onNext: () => goToPage(1),
                     onSignIn: () async {
+                      // Ask for notifications on direct auth path too.
+                      // Some users sign in from the first page and skip the last step.
+                      unawaited(
+                        PushNotificationsService.instance
+                            .requestPermissionWithDialog(),
+                      );
+
                       // Mark onboarding as seen before navigating to auth
                       try {
                         await ref

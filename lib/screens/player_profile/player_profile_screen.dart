@@ -215,6 +215,9 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
     PlayerResultFilter? playerResultFilter,
     String? searchQuery,
   }) async {
+    final allowed = await requireFullAuthGuard(context);
+    if (!allowed) return;
+
     HapticFeedbackService.buttonPress();
     final playerKey = PlayerProfileKey(
       fideId: widget.fideId,
@@ -336,6 +339,9 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
   }
 
   Future<void> _openExplorer() async {
+    final hasPremium = await requirePremiumGuard(context, ref);
+    if (!hasPremium || !mounted) return;
+
     HapticFeedbackService.buttonPress();
     final uuid = _resolveGamebasePlayerId();
     if (uuid == null) return;

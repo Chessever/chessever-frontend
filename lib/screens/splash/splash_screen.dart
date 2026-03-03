@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:chessever2/screens/splash/splash_screen_provider.dart';
+import 'package:chessever2/services/deep_link_service.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/notification_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -47,6 +48,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
     } on NoNetworkException catch (e) {
       // Remove native splash to show error UI
       FlutterNativeSplash.remove();
+      DeepLinkService.notifyAppReady();
       if (mounted) {
         setState(() {
           _errorMessage = e.message;
@@ -55,6 +57,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
     } catch (e) {
       // Remove native splash to show error UI
       FlutterNativeSplash.remove();
+      DeepLinkService.notifyAppReady();
       if (mounted) {
         setState(() {
           _errorMessage = 'Something went wrong. Please try again.';

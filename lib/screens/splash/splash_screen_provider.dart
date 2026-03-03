@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:chessever2/providers/country_dropdown_provider.dart';
+import 'package:chessever2/providers/favorite_players_provider.dart';
 import 'package:chessever2/repository/local_storage/group_broadcast/group_broadcast_local_storage.dart';
 import 'package:chessever2/repository/local_storage/onboarding/onboarding_repository.dart';
 import 'package:chessever2/repository/local_storage/sesions_manager/session_manager.dart';
@@ -154,7 +155,10 @@ class _SplashScreenProvider {
     );
 
     // Check if context is still valid before navigation
-    if (!context.mounted) return;
+    if (!context.mounted) {
+      DeepLinkService.notifyAppReady();
+      return;
+    }
 
     // PRIORITY 1: Check onboarding FIRST - simple boolean, no user dependency
     // This ensures ALL new users see onboarding regardless of auth state
@@ -175,6 +179,10 @@ class _SplashScreenProvider {
     if (!hasSeenOnboarding) {
       // New user - show onboarding (handles both signed-in and guest on last page)
       ref.read(countryDropdownProvider);
+      if (!context.mounted) {
+        DeepLinkService.notifyAppReady();
+        return;
+      }
       FlutterNativeSplash.remove();
       Navigator.pushNamedAndRemoveUntil(context, '/onboarding', (_) => false);
       DeepLinkService.notifyAppReady();
@@ -182,7 +190,10 @@ class _SplashScreenProvider {
     }
 
     // PRIORITY 2: User has seen onboarding - check auth state
-    if (!context.mounted) return;
+    if (!context.mounted) {
+      DeepLinkService.notifyAppReady();
+      return;
+    }
 
     // Remove native splash right before navigation
     FlutterNativeSplash.remove();
@@ -190,6 +201,8 @@ class _SplashScreenProvider {
     if (isLoggedIn) {
       // User is logged in - go to home
       ref.read(countryDropdownProvider);
+      // Warm favorite players before home renders For You cards.
+      ref.read(favoritePlayersProviderNew);
       Navigator.pushNamedAndRemoveUntil(context, '/home_screen', (_) => false);
     } else {
       // User is not logged in - go to auth screen

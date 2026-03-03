@@ -6,9 +6,6 @@ import 'package:chessever2/screens/library/providers/library_folders_provider.da
 import 'package:chessever2/screens/library/utils/load_saved_analysis.dart';
 import 'package:chessever2/screens/library/widgets/book_saved_game_card.dart';
 import 'package:chessever2/screens/library/widgets/swipe_action_card.dart';
-import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
-import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
-import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
@@ -163,68 +160,6 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
         ),
       );
     }
-  }
-
-  /// Open a shared game in read-only analysis mode (no analysisId -> no save-back).
-  void _openSharedGame(SavedAnalysis analysis) {
-    final md = analysis.chessGame.metadata;
-    final whiteName = md['White'] as String? ?? 'White';
-    final blackName = md['Black'] as String? ?? 'Black';
-    final result = md['Result'] as String? ?? '*';
-    final whiteTitle = (md['WhiteTitle'] ?? '').toString().trim();
-    final blackTitle = (md['BlackTitle'] ?? '').toString().trim();
-
-    final game = GamesTourModel(
-      gameId: 'shared_${analysis.id}',
-      whitePlayer: PlayerCard(
-        name: whiteName,
-        federation: '',
-        title: whiteTitle,
-        rating: 0,
-        countryCode: '',
-        team: null,
-      ),
-      blackPlayer: PlayerCard(
-        name: blackName,
-        federation: '',
-        title: blackTitle,
-        rating: 0,
-        countryCode: '',
-        team: null,
-      ),
-      whiteTimeDisplay: '--:--',
-      blackTimeDisplay: '--:--',
-      whiteClockCentiseconds: 0,
-      blackClockCentiseconds: 0,
-      gameStatus: GameStatus.fromString(result),
-      roundId: 'shared',
-      tourId: 'library',
-      pgn: '',
-    );
-
-    // Create SavedAnalysisData WITHOUT analysisId so board won't save back
-    final savedData = SavedAnalysisData(
-      analysisId: null,
-      chessGame: analysis.chessGame,
-      variationComments: analysis.variationComments,
-      movePointer: null,
-      isBoardFlipped: false,
-      lastViewedPosition: analysis.lastViewedPosition,
-    );
-
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder:
-            (_) => ChessBoardScreenNew(
-              currentIndex: 0,
-              games: [game],
-              savedAnalysisData: savedData,
-              showGamebaseButton: false,
-              disableGamebaseOverlayByDefault: true,
-              showClock: false,
-            ),
-      ),
-    );
   }
 
   @override
@@ -501,7 +436,12 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
                             ref,
                           );
                           if (!allowed || !mounted) return;
-                          _openSharedGame(analysis);
+                          loadSavedAnalysisWithSwiping(
+                            context,
+                            filtered,
+                            index,
+                            readOnly: true,
+                          );
                         },
                       )
                       .animate()
@@ -541,7 +481,11 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
                             ref,
                           );
                           if (!allowed || !mounted) return;
-                          loadSavedAnalysis(context, analysis);
+                          loadSavedAnalysisWithSwiping(
+                            context,
+                            filtered,
+                            index,
+                          );
                         },
                       )
                       .animate()
