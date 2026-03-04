@@ -310,13 +310,12 @@ class _TourDetailScreenNotifier
     DateTime endDate,
     List<String> liveTourIds,
   ) {
-    // Never treat future tours as live, even if settings contain stale IDs.
-    if (now.isBefore(startDate)) {
+    if (liveTourIds.contains(tourId)) {
+      return RoundStatus.live;
+    } else if (now.isBefore(startDate)) {
       return RoundStatus.upcoming;
     } else if (now.isAfter(endDate)) {
       return RoundStatus.completed;
-    } else if (liveTourIds.contains(tourId)) {
-      return RoundStatus.live;
     } else {
       return RoundStatus.ongoing;
     }
@@ -365,7 +364,7 @@ class _TourDetailScreenNotifier
     // 2️⃣ Prefer live tours — a tour with active games always takes priority
     final liveModels =
         tourModels
-            .where((model) => model.roundStatus == RoundStatus.live)
+            .where((model) => liveTourIds.contains(model.tour.id))
             .toList();
 
     if (liveModels.isNotEmpty) {
