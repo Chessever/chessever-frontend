@@ -336,6 +336,40 @@ class LibraryRepository extends BaseRepository {
         return response != null ? SavedAnalysis.fromSupabase(response) : null;
       });
 
+  /// Get the most recently updated saved analysis for a source game.
+  ///
+  /// This is used when opening a game from database/gamebase lists so the app
+  /// can resume and overwrite the existing user analysis instead of creating a
+  /// disconnected copy each time.
+  Future<SavedAnalysis?> getLatestSavedAnalysisBySourceGame({
+    required String sourceGameId,
+    String? sourceTournamentId,
+  }) => handleApiCall(() async {
+    final userId = supabase.auth.currentUser?.id;
+    if (userId == null) return null;
+
+    var query = supabase
+        .from('user_saved_analyses')
+        .select()
+        .eq('user_id', userId)
+        .eq('source_game_id', sourceGameId);
+
+    if (sourceTournamentId != null && sourceTournamentId.isNotEmpty) {
+      query = query.eq('source_tournament_id', sourceTournamentId);
+    }
+
+    final response = await query
+        .order('updated_at', ascending: false)
+        .order('created_at', ascending: false)
+        .limit(1);
+
+    if (response.isEmpty) {
+      return null;
+    }
+
+    return SavedAnalysis.fromSupabase(response.first);
+  });
+
   /// Create a new saved analysis
   Future<SavedAnalysis> createSavedAnalysis(SavedAnalysis analysis) =>
       handleApiCall(() async {
@@ -538,11 +572,12 @@ class LibraryRepository extends BaseRepository {
   /// Count analyses in a shared folder (RLS handles access control).
   Future<int> getSharedFolderAnalysisCount(String folderId) =>
       handleApiCall(() async {
-        final response = await supabase
-            .from('user_saved_analyses')
-            .select('id')
-            .eq('folder_id', folderId)
-            .count();
+        final response =
+            await supabase
+                .from('user_saved_analyses')
+                .select('id')
+                .eq('folder_id', folderId)
+                .count();
 
         return response.count;
       });
