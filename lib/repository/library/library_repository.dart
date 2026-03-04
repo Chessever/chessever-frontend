@@ -348,20 +348,32 @@ class LibraryRepository extends BaseRepository {
     final userId = supabase.auth.currentUser?.id;
     if (userId == null) return null;
 
-    var query = supabase
-        .from('user_saved_analyses')
-        .select()
-        .eq('user_id', userId)
-        .eq('source_game_id', sourceGameId);
+    Future<List<dynamic>> fetch({String? tournamentId}) async {
+      var query = supabase
+          .from('user_saved_analyses')
+          .select()
+          .eq('user_id', userId)
+          .eq('source_game_id', sourceGameId);
 
-    if (sourceTournamentId != null && sourceTournamentId.isNotEmpty) {
-      query = query.eq('source_tournament_id', sourceTournamentId);
+      if (tournamentId != null && tournamentId.isNotEmpty) {
+        query = query.eq('source_tournament_id', tournamentId);
+      }
+
+      return await query
+          .order('updated_at', ascending: false)
+          .order('created_at', ascending: false)
+          .limit(1);
     }
 
-    final response = await query
-        .order('updated_at', ascending: false)
-        .order('created_at', ascending: false)
-        .limit(1);
+    var response = await fetch(tournamentId: sourceTournamentId);
+
+    // Tournament IDs can differ between data sources for the same game.
+    // Fall back to source_game_id-only lookup when strict match finds nothing.
+    if (response.isEmpty &&
+        sourceTournamentId != null &&
+        sourceTournamentId.isNotEmpty) {
+      response = await fetch();
+    }
 
     if (response.isEmpty) {
       return null;
@@ -449,6 +461,7 @@ class LibraryRepository extends BaseRepository {
                   'tags': analysis.tags,
                   'notes': analysis.notes,
                   'is_favorite': analysis.isFavorite,
+                  'updated_at': DateTime.now().toIso8601String(),
                 })
                 .eq('id', analysis.id)
                 .eq('user_id', userId)
