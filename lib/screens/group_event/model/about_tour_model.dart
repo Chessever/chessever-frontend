@@ -11,6 +11,8 @@ class AboutTourModel extends Equatable {
   final String date;
   final String location;
   final String websiteUrl;
+  final String standingsUrl;
+  final String tourUrl;
   final String? groupBroadcastId;
 
   const AboutTourModel({
@@ -23,6 +25,8 @@ class AboutTourModel extends Equatable {
     required this.date,
     required this.location,
     required this.websiteUrl,
+    required this.standingsUrl,
+    required this.tourUrl,
     this.groupBroadcastId,
   });
 
@@ -30,18 +34,16 @@ class AboutTourModel extends Equatable {
     return AboutTourModel(
       id: tour.id,
       name: tour.name,
-      //todo: add a fallback
       imageUrl: tour.image ?? '',
       //todo: This field needs to be added in the Tour Model
       description: '',
       players: tour.players,
-      //todo: add a fallback
       timeControl: tour.info.tc ?? '',
       date: tour.dateRangeFormatted,
-      //todo: add a fallback
       location: tour.info.location ?? '',
-      //todo: add a fallback
       websiteUrl: tour.info.website ?? '',
+      standingsUrl: tour.info.standings ?? '',
+      tourUrl: tour.url,
       groupBroadcastId: tour.groupBroadcastId,
     );
   }
@@ -56,6 +58,8 @@ class AboutTourModel extends Equatable {
       date: '',
       location: '',
       websiteUrl: '',
+      standingsUrl: '',
+      tourUrl: '',
     );
   }
 
@@ -90,6 +94,8 @@ class AboutTourModel extends Equatable {
     date,
     location,
     websiteUrl,
+    standingsUrl,
+    tourUrl,
     groupBroadcastId,
   ];
 }
