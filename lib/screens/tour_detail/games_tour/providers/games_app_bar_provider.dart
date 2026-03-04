@@ -1290,19 +1290,7 @@ class _GamesAppBarNotifier
       }
     } catch (e) {}
 
-    // 4) If we have a recent round by activity, prefer it.
-    // But don't jump to upcoming rounds while there are started rounds with games.
-    final hasStartedRoundsWithGames = models.any(
-      (m) => m.roundStatus != RoundStatus.upcoming && _hasGames(m.id, counts),
-    );
-    if (latestByActivityModel != null) {
-      final activityIsUpcoming =
-          latestByActivityModel.roundStatus == RoundStatus.upcoming;
-      if (activityIsUpcoming && hasStartedRoundsWithGames) {
-        latestByActivityModel = null;
-      }
-    }
-
+    // 4) If we have a recent round by activity, prefer it (consistent with For You tab)
     if (latestByActivityModel != null) {
       state = AsyncValue.data(
         GamesAppBarViewModel(
