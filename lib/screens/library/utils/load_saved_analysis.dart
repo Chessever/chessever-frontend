@@ -21,10 +21,16 @@ Future<void> loadSavedAnalysis(
   BuildContext context,
   SavedAnalysis analysis,
 ) async {
+  var resolvedAnalysis = analysis;
+
   // Update last opened timestamp but don't block navigation on errors
   try {
     final container = ProviderScope.containerOf(context, listen: false);
     final repository = container.read(libraryRepositoryProvider);
+    final latest = await repository.getSavedAnalysis(analysis.id);
+    if (latest != null) {
+      resolvedAnalysis = latest;
+    }
     await repository.updateLastOpened(analysis.id);
   } catch (_) {
     // Best-effort update; proceed even if we cannot write
@@ -33,10 +39,10 @@ Future<void> loadSavedAnalysis(
   if (!context.mounted) return;
 
   // Convert SavedAnalysis to GamesTourModel format
-  final game = convertSavedAnalysisToGame(analysis);
+  final game = convertSavedAnalysisToGame(resolvedAnalysis);
 
   // Create SavedAnalysisData for full state restoration
-  final savedAnalysisData = createSavedAnalysisData(analysis);
+  final savedAnalysisData = createSavedAnalysisData(resolvedAnalysis);
 
   // Navigate to chess board with saved analysis data
   Navigator.of(context).push(
@@ -64,14 +70,20 @@ Future<void> loadSavedAnalysisWithSwiping(
   int tappedIndex, {
   bool readOnly = false,
 }) async {
-  final analysis = allAnalyses[tappedIndex];
+  final analysesForNavigation = List<SavedAnalysis>.from(allAnalyses);
+  var tappedAnalysis = analysesForNavigation[tappedIndex];
 
   // Update last opened timestamp but don't block navigation on errors
   if (!readOnly) {
     try {
       final container = ProviderScope.containerOf(context, listen: false);
       final repository = container.read(libraryRepositoryProvider);
-      await repository.updateLastOpened(analysis.id);
+      final latest = await repository.getSavedAnalysis(tappedAnalysis.id);
+      if (latest != null) {
+        tappedAnalysis = latest;
+        analysesForNavigation[tappedIndex] = latest;
+      }
+      await repository.updateLastOpened(tappedAnalysis.id);
     } catch (_) {
       // Best-effort update; proceed even if we cannot write
     }
@@ -80,12 +92,18 @@ Future<void> loadSavedAnalysisWithSwiping(
   if (!context.mounted) return;
 
   // Convert all analyses to GamesTourModel with PGN populated for swiping
-  final games = allAnalyses.map(convertSavedAnalysisToGame).toList();
+  final games = analysesForNavigation.map(convertSavedAnalysisToGame).toList();
+  final savedAnalysesDataByIndex = analysesForNavigation
+      .map(
+        (analysis) =>
+            readOnly
+                ? createReadOnlySavedAnalysisData(analysis)
+                : createSavedAnalysisData(analysis),
+      )
+      .toList(growable: false);
 
   // Create SavedAnalysisData for the tapped game only
-  final savedAnalysisData = readOnly
-      ? createReadOnlySavedAnalysisData(analysis)
-      : createSavedAnalysisData(analysis);
+  final savedAnalysisData = savedAnalysesDataByIndex[tappedIndex];
 
   Navigator.of(context).push(
     MaterialPageRoute(
@@ -94,6 +112,7 @@ Future<void> loadSavedAnalysisWithSwiping(
             currentIndex: tappedIndex,
             games: games,
             savedAnalysisData: savedAnalysisData,
+            savedAnalysesDataByIndex: savedAnalysesDataByIndex,
             showGamebaseButton: false,
             disableGamebaseOverlayByDefault: true,
             showClock: false,
