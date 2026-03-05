@@ -1,5 +1,4 @@
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:chessever2/providers/event_favorite_players_provider.dart';
 import 'package:chessever2/providers/favorite_events_provider.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/services/analytics/analytics_service.dart';
@@ -804,45 +803,7 @@ class _StarWidget extends ConsumerWidget {
     );
     final favoritesCount = favoritesAsync.valueOrNull?.length ?? 0;
 
-    // Check if event has favorite players
-    final eventFavoritePlayersAsync = ref.watch(
-      eventFavoritePlayersProvider(tourEventCardModel.id),
-    );
-
-    // Get current value and check if already cached
-    final currentCache = ref.watch(eventFavoritePlayersCacheProvider);
-    final eventFavoritePlayers = eventFavoritePlayersAsync.maybeWhen(
-      data: (data) {
-        // Update cache if data has changed (do this after build with microtask)
-        if (currentCache[tourEventCardModel.id] != data) {
-          Future.microtask(() {
-            ref
-                .read(eventFavoritePlayersCacheProvider.notifier)
-                .updateCache(tourEventCardModel.id, data);
-          });
-        }
-        return data;
-      },
-      orElse:
-          () =>
-              currentCache[tourEventCardModel.id] ??
-              const EventFavoritePlayers.empty(),
-    );
-
-    // Priority: Star icon (user favorited) ALWAYS takes precedence
-    // Heart icon shows ONLY when NOT starred but has favorite players
-    final bool showHeart = !isStarred && eventFavoritePlayers.hasFavorites;
     final bool showFilledStar = isStarred;
-
-    // Heart icon is NOT tappable - it's just informational
-    if (showHeart) {
-      return Container(
-        alignment: Alignment.centerRight,
-        width: 30.w,
-        height: 40.h,
-        child: _HeartIconWithCount(count: eventFavoritePlayers.count),
-      );
-    }
 
     // Star icon is tappable - user can favorite/unfavorite
     return InkWell(
@@ -907,55 +868,6 @@ class _StarWidget extends ConsumerWidget {
           height: 20.h,
           width: 20.w,
         ),
-      ),
-    );
-  }
-}
-
-class _HeartIconWithCount extends StatelessWidget {
-  const _HeartIconWithCount({required this.count});
-
-  final int count;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: 24.w,
-      height: 24.h,
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          // Heart icon
-          SvgWidget(
-            SvgAsset.favouriteRedIcon,
-            semanticsLabel: 'Has Favorite Players',
-            height: 20.h,
-            width: 20.w,
-          ),
-          // Count text centered in the middle (only show if > 1)
-          if (count > 1)
-            Text(
-              count > 9 ? '9+' : count.toString(),
-              style: AppTypography.textXsBold.copyWith(
-                color: kWhiteColor,
-                fontSize: 10.sp,
-                height: 1,
-                fontWeight: FontWeight.w900,
-                shadows: [
-                  Shadow(
-                    offset: Offset(0.5, 0.5),
-                    blurRadius: 1.5,
-                    color: kBlackColor.withValues(alpha: 0.7),
-                  ),
-                  Shadow(
-                    offset: Offset(-0.5, -0.5),
-                    blurRadius: 1.5,
-                    color: kBlackColor.withValues(alpha: 0.7),
-                  ),
-                ],
-              ),
-            ),
-        ],
       ),
     );
   }
