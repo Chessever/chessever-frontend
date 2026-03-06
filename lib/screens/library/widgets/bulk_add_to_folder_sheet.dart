@@ -5,6 +5,7 @@ import 'package:chessever2/repository/library/library_repository.dart';
 import 'package:chessever2/repository/library/models/library_folder.dart';
 import 'package:chessever2/repository/library/models/saved_analysis.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
+import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
 import 'package:chessever2/screens/chessboard/widgets/smooth_sheet_config.dart';
 import 'package:chessever2/screens/library/providers/library_folders_provider.dart';
@@ -98,6 +99,8 @@ class _BulkAddToFolderPage extends ConsumerStatefulWidget {
 }
 
 class _BulkAddToFolderPageState extends ConsumerState<_BulkAddToFolderPage> {
+  static const int _freeBookCreationLimit = 3;
+
   final Set<String> _selectedFolderIds = <String>{};
   bool _isSaving = false;
   int _processedGames = 0;
@@ -196,6 +199,19 @@ class _BulkAddToFolderPageState extends ConsumerState<_BulkAddToFolderPage> {
   Future<void> _handleCreateNewBook() async {
     if (_isSaving) return;
 
+    final isPremium = ref.read(subscriptionProvider).isSubscribed;
+    if (!isPremium) {
+      final folders = await ref.read(libraryFoldersStreamProvider.future);
+      final ownedBookCount =
+          folders.where((f) => !f.isSubscribed && f.id != kTwicBookId).length;
+      if (ownedBookCount >= _freeBookCreationLimit) {
+        if (!mounted) return;
+        await showPremiumPaywallSheet(context: context);
+        return;
+      }
+    }
+
+    if (!mounted) return;
     final name = await showCreateFolderDialog(context);
     if (name == null || name.trim().isEmpty) return;
 
