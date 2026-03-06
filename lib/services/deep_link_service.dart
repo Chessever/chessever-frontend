@@ -246,6 +246,28 @@ class DeepLinkService {
       final game = await gameRepo.getGameById(gameId);
       final gameTourModel = GamesTourModel.fromGame(game);
 
+      // Load full round context so users can swipe between games after opening
+      // from notifications (single-game payload would otherwise disable swipe).
+      List<GamesTourModel> gameList = <GamesTourModel>[gameTourModel];
+      var openIndex = 0;
+      try {
+        final roundGames = await gameRepo.getGamesByRoundId(game.roundId);
+        if (roundGames.isNotEmpty) {
+          gameList = roundGames.map(GamesTourModel.fromGame).toList(growable: false);
+          // Keep board order stable for swipe navigation.
+          gameList.sort((a, b) {
+            final aBoard = a.boardNr ?? 1 << 30;
+            final bBoard = b.boardNr ?? 1 << 30;
+            if (aBoard != bBoard) return aBoard.compareTo(bBoard);
+            return a.gameId.compareTo(b.gameId);
+          });
+          final idx = gameList.indexWhere((g) => g.gameId == gameId);
+          openIndex = idx >= 0 ? idx : 0;
+        }
+      } catch (e) {
+        debugPrint('DeepLinkService: Failed to load round games for swipe context: $e');
+      }
+
       debugPrint('DeepLinkService: Game loaded, navigating to chess board');
 
       // Set view to forYou so PlayerFirstRowDetailWidget uses the correct
@@ -264,8 +286,8 @@ class DeepLinkService {
           MaterialPageRoute(
             builder:
                 (_) => ChessBoardScreenNew(
-                  games: [gameTourModel],
-                  currentIndex: 0,
+                  games: gameList,
+                  currentIndex: openIndex,
                 ),
           ),
           (route) {
