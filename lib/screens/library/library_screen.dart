@@ -8,6 +8,7 @@ import 'package:chessever2/screens/library/twic_contents_screen.dart';
 import 'package:chessever2/screens/library/widgets/create_folder_dialog.dart';
 import 'package:chessever2/screens/library/widgets/folder_card.dart';
 import 'package:chessever2/screens/library/widgets/library_search_bar.dart';
+import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
@@ -15,6 +16,7 @@ import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:chessever2/widgets/screen_wrapper.dart';
+import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -28,6 +30,8 @@ class LibraryScreen extends ConsumerStatefulWidget {
 }
 
 class _LibraryScreenState extends ConsumerState<LibraryScreen> {
+  static const int _freeBookCreationLimit = 3;
+
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
   String _searchQuery = '';
@@ -76,6 +80,20 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
 
   Future<void> _handleCreateFolder() async {
     HapticFeedback.mediumImpact();
+
+    final isPremium = ref.read(subscriptionProvider).isSubscribed;
+    if (!isPremium) {
+      final folders = await ref.read(libraryFoldersStreamProvider.future);
+      final ownedBookCount =
+          folders.where((f) => !f.isSubscribed && f.id != kTwicBookId).length;
+      if (ownedBookCount >= _freeBookCreationLimit) {
+        if (!mounted) return;
+        await showPremiumPaywallSheet(context: context);
+        return;
+      }
+    }
+
+    if (!mounted) return;
     final name = await showCreateFolderDialog(context);
     if (name == null || name.isEmpty) return;
 
