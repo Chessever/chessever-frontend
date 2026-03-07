@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'package:chessever2/e2e/e2e_config.dart';
+import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/providers/country_dropdown_provider.dart';
 import 'package:chessever2/widgets/player_initials_avatar.dart';
 import 'package:chessever2/providers/favorite_players_provider.dart';
@@ -39,6 +41,7 @@ class PlayerSelectionScreen extends HookConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     return ScreenWrapper(
       child: Scaffold(
+        key: e2eKey(E2eIds.playerSelectionRoot),
         backgroundColor: kBackgroundColor,
         body: SafeArea(
           child: PlayerSelectionContent(
@@ -225,6 +228,7 @@ class PlayerSelectionContent extends HookConsumerWidget {
                           SizedBox(width: 10.w),
                           Expanded(
                             child: TextField(
+                              key: e2eKey(E2eIds.playerSelectionSearchField),
                               controller: searchController,
                               style: AppTypography.textSmRegular.copyWith(
                                 color: kWhiteColor,
@@ -308,6 +312,7 @@ class PlayerSelectionContent extends HookConsumerWidget {
                     width: double.infinity,
                     height: 52.h,
                     child: ElevatedButton(
+                      key: e2eKey(E2eIds.playerSelectionContinueButton),
                       onPressed:
                           selectedCount >= 3
                               ? () async {
@@ -347,7 +352,9 @@ class PlayerSelectionContent extends HookConsumerWidget {
 
 Future<void> markOnboardingComplete(BuildContext context, WidgetRef ref) async {
   // Request notification permission on last page of onboarding (fire and forget)
-  unawaited(PushNotificationsService.instance.requestPermissionWithDialog());
+  if (!E2eConfig.suppressInterruptivePrompts) {
+    unawaited(PushNotificationsService.instance.requestPermissionWithDialog());
+  }
 
   // Ensure we don't lose onboarding selections: do not navigate away if we fail here
   // (user can retry without losing in-memory providers)

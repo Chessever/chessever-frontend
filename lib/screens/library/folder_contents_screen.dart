@@ -1,3 +1,4 @@
+import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/repository/library/library_repository.dart';
 import 'package:chessever2/repository/library/models/library_folder.dart';
 import 'package:chessever2/repository/library/models/saved_analysis.dart';
@@ -168,6 +169,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
     final query = _searchController.text.trim().toLowerCase();
 
     return Scaffold(
+      key: e2eKey(E2eIds.folderContentsRoot),
       backgroundColor: kBackgroundColor,
       body: ScreenWrapper(
         child: Center(

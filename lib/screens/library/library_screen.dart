@@ -1,3 +1,4 @@
+import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/repository/library/library_repository.dart';
 import 'package:chessever2/repository/library/models/library_folder.dart';
 import 'package:chessever2/screens/library/folder_contents_screen.dart';
@@ -149,13 +150,16 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   @override
   Widget build(BuildContext context) {
     return ScreenWrapper(
-      child: Center(
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-            maxWidth: ResponsiveHelper.contentMaxWidth,
-          ),
-          child: Column(
-            children: [_buildTopBar(), Expanded(child: _buildContent())],
+      child: KeyedSubtree(
+        key: e2eKey(E2eIds.libraryRoot),
+        child: Center(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: ResponsiveHelper.contentMaxWidth,
+            ),
+            child: Column(
+              children: [_buildTopBar(), Expanded(child: _buildContent())],
+            ),
           ),
         ),
       ),
@@ -196,17 +200,30 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 // Opening explorer: 32x32
-                                _OpeningExplorerButton(
-                                  onTap: _navigateToOpeningExplorer,
+                                KeyedSubtree(
+                                  key: e2eKey(
+                                    E2eIds.libraryOpeningExplorerButton,
+                                  ),
+                                  child: _OpeningExplorerButton(
+                                    onTap: _navigateToOpeningExplorer,
+                                  ),
                                 ),
                                 SizedBox(width: 8.w),
                                 // CSS: 32x32, bg #1D1D1D, border 0.1px #444444, radius 4px
-                                _BoardSettingsButton(
-                                  onTap: _navigateToEmptyBoard,
+                                KeyedSubtree(
+                                  key: e2eKey(E2eIds.libraryBoardEditorButton),
+                                  child: _BoardSettingsButton(
+                                    onTap: _navigateToEmptyBoard,
+                                  ),
                                 ),
                                 SizedBox(width: 8.w),
                                 // CSS: 36x36, bg #262626, radius 10px
-                                _PlusButton(onTap: _handleCreateFolder),
+                                KeyedSubtree(
+                                  key: e2eKey(E2eIds.libraryCreateFolderButton),
+                                  child: _PlusButton(
+                                    onTap: _handleCreateFolder,
+                                  ),
+                                ),
                               ],
                             )
                             : const SizedBox.shrink(),
@@ -224,6 +241,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     return LibrarySearchBar(
       controller: _searchController,
       focusNode: _searchFocusNode,
+      textFieldKey: e2eKey(E2eIds.librarySearchField),
       enableOverlay: false,
       showFilterIcon: false,
       hintText: 'Search',

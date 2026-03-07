@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'package:chessever2/e2e/e2e_config.dart';
+import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/localization/locale_provider.dart';
 import 'package:chessever2/screens/authentication/auth_screen.dart';
 import 'package:chessever2/screens/calendar/calendar_detail_screen.dart';
@@ -37,6 +39,8 @@ import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
+import 'package:chessever2/repository/local_storage/onboarding/onboarding_repository.dart';
+import 'package:chessever2/repository/local_storage/sesions_manager/session_manager.dart';
 import 'package:chessever2/repository/local_storage/supabase_safe_storage.dart';
 import 'package:chessever2/repository/sqlite/app_database.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -66,6 +70,11 @@ final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 ///   flags (e.g. Codemagic build arguments).
 ///   See [_releaseEnvValues] for the list of required keys.
 String _getEnv(String key) {
+  final releaseValue = _releaseEnvValues[key];
+  if (E2eConfig.isEnabled && releaseValue != null && releaseValue.isNotEmpty) {
+    return releaseValue;
+  }
+
   if (kDebugMode) {
     final value = dotenv.env[key];
     if (value == null || value.isEmpty) {
@@ -74,7 +83,7 @@ String _getEnv(String key) {
     return value;
   }
 
-  final value = _releaseEnvValues[key];
+  final value = releaseValue;
   if (value == null || value.isEmpty) {
     throw Exception(
       'Missing env variable "$key". '
@@ -133,24 +142,50 @@ String _resolveOneSignalAppId() {
   return '';
 }
 
+void _e2eStartupLog(String message) {
+  if (!E2eConfig.isEnabled) {
+    return;
+  }
+
+  final line = '[E2E][main] $message';
+  try {
+    final traceFile = File(
+      '${Directory.systemTemp.path}/chessever_e2e_trace.log',
+    );
+    traceFile.writeAsStringSync('$line\n', mode: FileMode.append, flush: true);
+  } catch (_) {}
+
+  debugPrint(line);
+}
+
 Future<void> main() async {
   await runZonedGuarded(
     () async {
+      _e2eStartupLog('runZonedGuarded entered');
       WidgetsBinding widgetsBinding;
-      if (kDebugMode) {
+      if (kDebugMode && !E2eConfig.isEnabled) {
         widgetsBinding = MarionetteBinding.ensureInitialized();
+      } else if (E2eConfig.isEnabled) {
+        widgetsBinding = WidgetsFlutterBinding.ensureInitialized();
       } else {
         widgetsBinding = SentryWidgetsFlutterBinding.ensureInitialized();
       }
+      _e2eStartupLog('binding initialized: ${widgetsBinding.runtimeType}');
       FlutterNativeSplash.preserve(widgetsBinding: widgetsBinding);
+      _e2eStartupLog('native splash preserved');
 
-      // Load environment variables (only in debug mode)
-      if (kDebugMode) {
+      // Load environment variables only for local debug runs.
+      // Patrol E2E uses --dart-define values because dotenv asset loading can
+      // block under the test host before the widget tree is ready.
+      if (kDebugMode && !E2eConfig.isEnabled) {
+        _e2eStartupLog('loading .env');
         await dotenv.load(fileName: ".env");
+        _e2eStartupLog('.env loaded');
       }
 
       // Sentry init with timeout - don't let it block app startup indefinitely
       try {
+        _e2eStartupLog('starting SentryFlutter.init');
         await SentryFlutter.init(
           (options) {
             options.dsn = _getEnv('SENTRY_FLUTTER');
@@ -201,13 +236,16 @@ Future<void> main() async {
         ).timeout(
           const Duration(seconds: 5),
           onTimeout: () {
+            _e2eStartupLog('SentryFlutter.init timed out, running app directly');
             debugPrint(
               '⚠️ SentryFlutter.init() timed out - starting app anyway',
             );
             runApp(ProviderScope(child: StartupGate()));
           },
         );
+        _e2eStartupLog('SentryFlutter.init completed');
       } catch (e) {
+        _e2eStartupLog('Sentry init failed: $e');
         debugPrint('⚠️ Sentry init failed: $e - starting app anyway');
         runApp(ProviderScope(child: StartupGate()));
       }
@@ -438,6 +476,47 @@ Future<void> _initializeCoreServices() async {
   );
 }
 
+Future<void> _bootstrapE2eSession(WidgetRef ref) async {
+  if (!E2eConfig.isEnabled) {
+    return;
+  }
+
+  if (!E2eConfig.hasCredentials) {
+    throw StateError(
+      'E2E mode requires E2E_TEST_EMAIL and E2E_TEST_PASSWORD dart defines.',
+    );
+  }
+
+  final auth = Supabase.instance.client.auth;
+  final sessionManager = ref.read(sessionManagerProvider);
+  final onboardingRepository = ref.read(onboardingRepositoryProvider);
+
+  try {
+    await auth.signOut(scope: SignOutScope.local);
+  } catch (_) {}
+
+  await sessionManager.clearLocalStorage();
+
+  final response = await auth.signInWithPassword(
+    email: E2eConfig.testEmail.trim(),
+    password: E2eConfig.testPassword,
+  );
+
+  final session = response.session;
+  final user = response.user;
+  if (session == null || user == null) {
+    throw StateError('Supabase did not return an authenticated E2E session.');
+  }
+
+  await sessionManager.saveSession(session, user);
+
+  if (E2eConfig.resetOnboarding) {
+    await onboardingRepository.resetOnboarding(userId: user.id);
+  } else {
+    await onboardingRepository.markAsSeen(userId: user.id);
+  }
+}
+
 void _initializePostStartupServices() {
   final supabaseUrl = _getEnv('SUPABASE_URL');
   final persistSessionKey = _buildPersistSessionKey(supabaseUrl);
@@ -502,11 +581,13 @@ void _initializePostStartupServices() {
   );
 
   // Initialize OneSignal (non-blocking)
-  unawaited(
-    PushNotificationsService.instance.initialize(
-      appId: _resolveOneSignalAppId(),
-    ),
-  );
+  if (!E2eConfig.suppressInterruptivePrompts) {
+    unawaited(
+      PushNotificationsService.instance.initialize(
+        appId: _resolveOneSignalAppId(),
+      ),
+    );
+  }
 
   // Non-critical initializers - run in parallel, don't block app startup
   unawaited(
@@ -533,14 +614,14 @@ void _initializePostStartupServices() {
   unawaited(AudioPlayerService.instance.initializeAndLoadAllAssets());
 }
 
-class StartupGate extends StatefulWidget {
+class StartupGate extends ConsumerStatefulWidget {
   const StartupGate({super.key});
 
   @override
-  State<StartupGate> createState() => _StartupGateState();
+  ConsumerState<StartupGate> createState() => _StartupGateState();
 }
 
-class _StartupGateState extends State<StartupGate> {
+class _StartupGateState extends ConsumerState<StartupGate> {
   bool _ready = false;
   bool _initializing = true;
   bool _inFlight = false;
@@ -576,18 +657,27 @@ class _StartupGateState extends State<StartupGate> {
     });
 
     try {
+      _e2eStartupLog('StartupGate: initializeCoreServices start');
       await _initializeCoreServices();
+      _e2eStartupLog('StartupGate: initializeCoreServices done');
+      _e2eStartupLog('StartupGate: bootstrapE2eSession start');
+      await _bootstrapE2eSession(ref);
+      _e2eStartupLog('StartupGate: bootstrapE2eSession done');
       if (!_postStartupInitialized) {
+        _e2eStartupLog('StartupGate: initializePostStartupServices start');
         _initializePostStartupServices();
         _postStartupInitialized = true;
+        _e2eStartupLog('StartupGate: initializePostStartupServices done');
       }
       if (!mounted) return;
       FlutterNativeSplash.remove();
+      _e2eStartupLog('StartupGate: splash removed, app ready');
       setState(() {
         _ready = true;
         _initializing = false;
       });
     } catch (e, st) {
+      _e2eStartupLog('StartupGate: failed with $e');
       debugPrint('❌ Startup failed: $e');
       if (kDebugMode) {
         debugPrintStack(stackTrace: st);
@@ -649,6 +739,7 @@ class _StartupLoadingApp extends StatelessWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       home: Scaffold(
+        key: e2eKey(E2eIds.splashRoot),
         body: Stack(
           fit: StackFit.expand,
           children: [

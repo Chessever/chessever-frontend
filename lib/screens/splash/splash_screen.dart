@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:chessever2/e2e/e2e_config.dart';
 import 'package:chessever2/screens/splash/splash_screen_provider.dart';
 import 'package:chessever2/services/deep_link_service.dart';
 import 'package:chessever2/theme/app_theme.dart';
@@ -27,7 +28,9 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
   @override
   void initState() {
     super.initState();
-    unawaited(NotificationService.initialize());
+    if (!E2eConfig.isEnabled) {
+      unawaited(NotificationService.initialize());
+    }
     _runInitialization();
   }
 

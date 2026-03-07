@@ -26,6 +26,22 @@ This is a Flutter project for the Chessever application.
    flutter run
    ```
 
+## Mobile E2E Tests
+
+This repository includes a Patrol-based signed-in mobile E2E suite for route
+coverage, live-data fetching, and chess-board engine assertions.
+
+- Full operating guide: `patrol_test/README.md`
+- Local smoke run: `./tool/patrol_smoke.sh`
+- Local deep run: `./tool/patrol_deep.sh`
+- Env template: `.env.e2e.example`
+
+The suite runs the real app in a dedicated `E2E` mode, signs in with a real
+test account, suppresses non-essential prompts, and exercises page roots,
+search/filter flows, tournament/calendar/library/player routes, and board
+interactions such as notation taps, move traversal, game swipes, and engine
+line visibility.
+
 ## Generating Splash Screen
 
 To generate or update the native splash screen for this project, run the following command in your

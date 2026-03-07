@@ -1,5 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
+import 'package:chessever2/e2e/e2e_config.dart';
+import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/providers/country_dropdown_provider.dart';
 import 'package:chessever2/repository/local_storage/onboarding/onboarding_repository.dart';
 import 'package:chessever2/screens/onboarding/player_selection_screen.dart';
@@ -58,6 +60,7 @@ class OnboardingFlowScreen extends HookConsumerWidget {
 
     return ScreenWrapper(
       child: Scaffold(
+        key: e2eKey(E2eIds.onboardingRoot),
         backgroundColor: kBlackColor,
         body: Stack(
           children: [
@@ -100,10 +103,12 @@ class OnboardingFlowScreen extends HookConsumerWidget {
                     onSignIn: () async {
                       // Ask for notifications on direct auth path too.
                       // Some users sign in from the first page and skip the last step.
-                      unawaited(
-                        PushNotificationsService.instance
-                            .requestPermissionWithDialog(),
-                      );
+                      if (!E2eConfig.suppressInterruptivePrompts) {
+                        unawaited(
+                          PushNotificationsService.instance
+                              .requestPermissionWithDialog(),
+                        );
+                      }
 
                       // Mark onboarding as seen before navigating to auth
                       try {
@@ -165,10 +170,12 @@ class OnboardingFlowScreen extends HookConsumerWidget {
                       bottomPadding: bottomPadding,
                       onSignIn: () async {
                         // Request notification permission on last page of onboarding
-                        unawaited(
-                          PushNotificationsService.instance
-                              .requestPermissionWithDialog(),
-                        );
+                        if (!E2eConfig.suppressInterruptivePrompts) {
+                          unawaited(
+                            PushNotificationsService.instance
+                                .requestPermissionWithDialog(),
+                          );
+                        }
 
                         // Mark onboarding as seen BEFORE navigating to auth
                         // This ensures user won't see onboarding again after signing in
@@ -820,6 +827,9 @@ class _AuthenticatedUserStep extends HookWidget {
                           _PrimaryButton(
                                 label: 'Continue to Chessever',
                                 onTap: onContinue,
+                                buttonKey: e2eKey(
+                                  E2eIds.onboardingAuthenticatedContinueButton,
+                                ),
                               )
                               .animate(delay: 600.ms)
                               .fadeIn(duration: 400.ms, curve: _smoothSpring)
@@ -988,6 +998,7 @@ class _UserAvatarVisual extends HookWidget {
 // AMBIENT BACKGROUND GLOW
 // ════════════════════════════════════════════════════════════════════════════
 
+// ignore: unused_element
 class _AmbientGlow extends HookWidget {
   const _AmbientGlow();
 
@@ -1056,6 +1067,7 @@ class _AmbientGlowPainter extends CustomPainter {
 // FLOATING PARTICLES
 // ════════════════════════════════════════════════════════════════════════════
 
+// ignore: unused_element
 class _FloatingParticles extends HookWidget {
   const _FloatingParticles();
 
@@ -1523,17 +1535,20 @@ class _PrimaryButton extends HookWidget {
     required this.label,
     required this.onTap,
     this.isLoading = false,
+    this.buttonKey,
   });
 
   final String label;
   final VoidCallback? onTap;
   final bool isLoading;
+  final Key? buttonKey;
 
   @override
   Widget build(BuildContext context) {
     final isPressed = useState(false);
 
     return GestureDetector(
+      key: buttonKey,
       onTapDown: (_) => isPressed.value = true,
       onTapUp: (_) {
         isPressed.value = false;

@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/screens/home/widget/bottom_nav_bar_widget.dart';
 import 'package:chessever2/services/analytics/analytics_service.dart';
 import 'package:chessever2/theme/app_theme.dart';
@@ -49,6 +50,11 @@ class BottomNavBar extends ConsumerWidget {
         children: List.generate(
           BottomNavBarItem.values.length,
           (index) => BottomNavBarWidget(
+            key: switch (BottomNavBarItem.values[index]) {
+              BottomNavBarItem.tournaments => e2eKey(E2eIds.navEvents),
+              BottomNavBarItem.calendar => e2eKey(E2eIds.navCalendar),
+              BottomNavBarItem.library => e2eKey(E2eIds.navLibrary),
+            },
             width:
                 MediaQuery.of(context).size.width /
                 BottomNavBarItem.values.length,

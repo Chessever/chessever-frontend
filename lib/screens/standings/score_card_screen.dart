@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/providers/player_backfill_provider.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/widgets/player_initials_avatar.dart';
@@ -534,6 +535,7 @@ class ScoreCardScreen extends ConsumerWidget {
     final ratingBoxGap = ResponsiveHelper.adaptive(phone: 6.w, tablet: 10.sp);
 
     return Scaffold(
+      key: e2eKey(E2eIds.scorecardRoot),
       backgroundColor: kBackgroundColor,
       body: SafeArea(
         child: Center(

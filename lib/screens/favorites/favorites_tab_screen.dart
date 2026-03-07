@@ -1,3 +1,4 @@
+import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/screens/favorites/provider/favorites_mode_provider.dart';
 import 'package:chessever2/screens/favorites/tabs/favorites_games_tab.dart';
 import 'package:chessever2/screens/favorites/tabs/favorites_list_tab.dart';
@@ -69,6 +70,7 @@ class _FavoritesTabScreenState extends ConsumerState<FavoritesTabScreen> {
     final selectedMode = ref.watch(selectedFavoritesModeProvider);
 
     return Scaffold(
+      key: e2eKey(E2eIds.favoritesRoot),
       backgroundColor: kBackgroundColor,
       body: Center(
         child: ConstrainedBox(
