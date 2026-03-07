@@ -1,3 +1,4 @@
+import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/screens/calendar/calendar_screen.dart';
 import 'package:chessever2/screens/calendar/provider/calendar_screen_provider.dart';
 import 'package:chessever2/screens/group_event/group_event_screen.dart';
@@ -59,6 +60,7 @@ class _CalendarDetailsScreenState extends ConsumerState<CalendarDetailsScreen> {
     return GestureDetector(
       onTap: FocusScope.of(context).unfocus,
       child: Scaffold(
+        key: e2eKey(E2eIds.calendarDetailRoot),
         body: Center(
           child: ConstrainedBox(
             constraints: BoxConstraints(

@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:chessever2/e2e/e2e_config.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -44,15 +45,20 @@ class GamebaseRepository {
       _apiKey = apiKey ?? _resolveApiKey();
 
   static String _resolveApiKey() {
+    const releaseKey = String.fromEnvironment(
+      'GAMEBASE_API_KEY',
+      defaultValue: '',
+    );
+
+    if (E2eConfig.isEnabled && releaseKey.isNotEmpty) {
+      return releaseKey;
+    }
+
     if (kDebugMode) {
       final envKey = dotenv.env['GAMEBASE_API_KEY']?.trim();
       if (envKey != null && envKey.isNotEmpty) return envKey;
     } else {
-      const envKey = String.fromEnvironment(
-        'GAMEBASE_API_KEY',
-        defaultValue: '',
-      );
-      if (envKey.isNotEmpty) return envKey;
+      if (releaseKey.isNotEmpty) return releaseKey;
     }
     return _fallbackApiKey;
   }

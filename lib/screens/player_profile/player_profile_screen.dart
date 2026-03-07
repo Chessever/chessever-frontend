@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/screens/favorites/favorite_players_provider.dart';
 import 'package:chessever2/providers/player_backfill_provider.dart';
@@ -562,6 +563,7 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
         supabaseGamesState.totalCount ?? supabaseGamesState.allGames.length;
 
     return Scaffold(
+      key: e2eKey(E2eIds.playerProfileRoot),
       backgroundColor: kBackgroundColor,
       body: Center(
         child: ConstrainedBox(

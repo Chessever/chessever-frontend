@@ -159,6 +159,8 @@ dev_dependencies:
   dart_mappable_builder: ^4.2.3
   # riverpod_generator: ^2.6.5
   riverpod_annotation: ^2.6.1
+  patrol: ^4.3.0
+  patrol_finders: ^3.1.0
 
 
 dependency_overrides:
@@ -209,6 +211,12 @@ flutter:
           weight: 500
         - asset: assets/fonts/Inter-Bold.otf
           weight: 700
+
+patrol:
+  android:
+    package_name: com.chessEver.app
+  ios:
+    bundle_id: com.chessever.app
   #   - family: Schyler
   #     fonts:
   #       - asset: fonts/Schyler-Regular.ttf

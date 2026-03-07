@@ -1,13 +1,12 @@
 import 'dart:async';
 import 'dart:math';
+import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/providers/event_favorite_players_provider.dart';
 import 'package:chessever2/providers/favorite_events_provider.dart';
-import 'package:chessever2/screens/group_event/widget/search_results_widget.dart'
-    show searchAnimatedEventIds;
+import 'package:chessever2/screens/group_event/widget/search_results_widget.dart';
 import 'package:chessever2/screens/group_event/widget/all_events_tab_widget.dart';
 import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_provider.dart';
 import 'package:chessever2/screens/group_event/widget/for_you_games_widget.dart';
-import 'package:chessever2/screens/group_event/widget/search_results_widget.dart';
 import 'package:chessever2/screens/home/home_screen_provider.dart';
 import 'package:chessever2/screens/group_event/providers/group_event_screen_provider.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
@@ -175,6 +174,7 @@ class GroupEventScreen extends HookConsumerWidget {
     );
 
     return Material(
+      key: e2eKey(E2eIds.eventsRoot),
       color: kBackgroundColor,
       child: Center(
         child: ConstrainedBox(
@@ -208,6 +208,8 @@ class GroupEventScreen extends HookConsumerWidget {
                     child: EnhancedRoundedSearchBar(
                       focusNode: focusNode,
                       controller: searchController,
+                      textFieldKey: e2eKey(E2eIds.eventsSearchField),
+                      filterButtonKey: e2eKey(E2eIds.eventsFilterButton),
                       hintText: 'Search',
                       showProfile: !isSearching.value,
                       filterBadgeCount: filterBadgeCount,

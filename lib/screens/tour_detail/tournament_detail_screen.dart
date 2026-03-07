@@ -1,3 +1,4 @@
+import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/main.dart';
 import 'package:chessever2/screens/group_event/providers/group_event_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart';
@@ -170,6 +171,7 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
       ],
       child: ScreenWrapper(
         child: Scaffold(
+          key: e2eKey(E2eIds.tournamentDetailRoot),
           body: Center(
             child: ConstrainedBox(
               constraints: BoxConstraints(

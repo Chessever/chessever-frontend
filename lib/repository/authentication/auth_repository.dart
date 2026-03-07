@@ -18,6 +18,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:chessever2/e2e/e2e_config.dart';
 
 /// Compile-time environment values injected via `--dart-define`.
 const Map<String, String> _releaseEnvValues = {
@@ -891,10 +892,14 @@ class AuthController extends AutoDisposeAsyncNotifier<AppAuthState> {
 
   String _env(String key, {bool required = true}) {
     String? value;
-    if (kDebugMode) {
+    final releaseValue = _releaseEnvValues[key]?.trim();
+
+    if (E2eConfig.isEnabled && releaseValue != null && releaseValue.isNotEmpty) {
+      value = releaseValue;
+    } else if (kDebugMode) {
       value = dotenv.env[key]?.trim();
     } else {
-      value = _releaseEnvValues[key];
+      value = releaseValue;
     }
 
     if (value == null || value.isEmpty) {

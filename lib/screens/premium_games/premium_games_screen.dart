@@ -1,3 +1,4 @@
+import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/screens/premium_games/providers/premium_games_provider.dart';
 export 'providers/premium_games_provider.dart' show PremiumGamesType;
 import 'package:chessever2/screens/premium_games/widgets/premium_games_filter.dart';
@@ -49,6 +50,7 @@ class _PremiumGamesScreenState extends ConsumerState<PremiumGamesScreen> {
     final gamesAsync = ref.watch(premiumGamesProvider(widget.type));
 
     return Scaffold(
+      key: e2eKey(E2eIds.premiumGamesRoot),
       backgroundColor: kBlack2Color,
       appBar: _buildAppBar(),
       body: gamesAsync.when(
@@ -169,6 +171,7 @@ class _PremiumGamesScreenState extends ConsumerState<PremiumGamesScreen> {
         Stack(
           children: [
             IconButton(
+              key: e2eKey(E2eIds.premiumGamesFilterButton),
               onPressed: _showFilterDialog,
               icon: Icon(
                 Icons.tune_rounded,

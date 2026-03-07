@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/repository/favorites/models/favorite_player.dart';
 import 'package:chessever2/screens/favorites/favorite_players_provider.dart';
 import 'package:chessever2/screens/favorites/player_games/provider/favorites_combined_games_provider.dart';
@@ -367,6 +368,7 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
                   SizedBox(width: 8.w),
                   Expanded(
                     child: TextField(
+                      key: e2eKey(E2eIds.favoritesGamesSearchField),
                       controller: _searchController,
                       focusNode: _searchFocusNode,
                       style: AppTypography.textSmRegular.copyWith(
@@ -406,6 +408,7 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
           GestureDetector(
             onTap: () => _showFilterDialog(state),
             child: Container(
+              key: e2eKey(E2eIds.favoritesGamesFilterButton),
               width: searchBarHeight,
               height: searchBarHeight,
               decoration: BoxDecoration(

@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/repository/supabase/calendar_event/calendar_event.dart';
 import 'package:chessever2/repository/supabase/calendar_event/calendar_event_repository.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
@@ -69,6 +70,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
         filterMode != CalendarFilterMode.all || searchQuery.trim().isNotEmpty;
 
     return Scaffold(
+      key: e2eKey(E2eIds.calendarRoot),
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -118,7 +120,9 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                                       ]
                                       : [],
                             ),
-                            child: SimpleSearchBar(
+                              child: SimpleSearchBar(
+                              key: e2eKey(E2eIds.calendarSearchField),
+                              textFieldKey: e2eKey(E2eIds.calendarSearchField),
                               controller: searchController,
                               focusNode: focusNode,
                               hintText: 'Search',

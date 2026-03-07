@@ -2,6 +2,7 @@ import 'dart:async';
 // import 'dart:io'; // UNUSED: Removed with old dialog approach
 import 'dart:math' as math;
 import 'dart:ui';
+import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/providers/for_you_games_provider.dart';
 import 'package:chessever2/screens/standings/score_card_screen.dart';
 import 'package:skeletonizer/skeletonizer.dart';
@@ -1543,6 +1544,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
             return Builder(
               builder: (innerContext) {
                 return Scaffold(
+                  key: e2eKey(E2eIds.chessBoardRoot),
                   backgroundColor: Colors.black,
                   resizeToAvoidBottomInset: false,
                   // REMOVED: RawGestureDetector was blocking PageView swipes
@@ -2781,6 +2783,7 @@ class _AppBarState extends ConsumerState<_AppBar> {
                 ),
               )
               : _GameSelectionDropdown(
+                key: e2eKey(E2eIds.boardGameSelector),
                 games: widget.games,
                 currentGameIndex: widget.currentGameIndex,
                 onGameChanged: widget.onGameChanged,
@@ -3391,6 +3394,7 @@ class _GameSelectionDropdown extends StatefulWidget {
   final bool isLoading;
 
   const _GameSelectionDropdown({
+    super.key,
     required this.games,
     required this.currentGameIndex,
     required this.onGameChanged,
@@ -5266,6 +5270,7 @@ class _AnalysisGameBody extends ConsumerWidget {
             state.showPrincipalVariations) {
           pvSection.add(SizedBox(height: 2.h));
           final pvList = _PrincipalVariationList(
+            key: e2eKey(E2eIds.boardPvList),
             index: index,
             state: state,
             game: game,
@@ -6176,6 +6181,7 @@ class _TabletBoardWithSidebar extends ConsumerWidget {
                 final bool isWhiteToMove = activePosition?.turn != Side.black;
 
                 return EvaluationBarWidget(
+                  key: e2eKey(E2eIds.boardEvalBar),
                   width: effectiveEvalWidth,
                   height: boardSize,
                   evaluation: state.evaluation,
@@ -6286,6 +6292,7 @@ class _BoardWithSidebar extends ConsumerWidget {
                           activePosition?.turn != Side.black;
 
                       return EvaluationBarWidget(
+                        key: e2eKey(E2eIds.boardEvalBar),
                         width: sideBarWidth,
                         height: boardSize,
                         evaluation: state.evaluation,
@@ -7145,6 +7152,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
         ResponsiveHelper.isTablet && ResponsiveHelper.isLandscape;
 
     Widget content = Container(
+      key: e2eKey(E2eIds.boardNotationRoot),
       decoration: BoxDecoration(
         color: kDarkGreyColor.withValues(alpha: 0.3),
         borderRadius: BorderRadius.only(
@@ -8988,6 +8996,7 @@ class _PrincipalVariationList extends ConsumerStatefulWidget {
   final GamesTourModel game;
 
   const _PrincipalVariationList({
+    super.key,
     required this.index,
     required this.state,
     required this.game,
