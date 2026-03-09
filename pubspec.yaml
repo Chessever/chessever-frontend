@@ -99,7 +99,7 @@ dependencies:
   url_launcher: ^6.3.1
 
   chess: ^0.8.1
-  stockfish: 1.7.2
+  stockfish: ^1.8.1
   flutter_local_notifications: ^19.3.0
   onesignal_flutter: ^5.1.2
   firebase_core: ^3.4.0
@@ -133,7 +133,7 @@ dependencies:
   heroine: ^0.5.0
   motor: ^1.0.0-dev.0
   smooth_sheets: ^0.15.0
-  app_links: ^7.0.0
+  app_links: ^6.4.1
   dio: ^5.9.0
   app_settings: ^7.0.0
   terminate_restart: ^1.0.11
@@ -164,7 +164,7 @@ dev_dependencies:
 
 
 dependency_overrides:
-  app_links: ^7.0.0
+  app_links: ^6.4.1
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
