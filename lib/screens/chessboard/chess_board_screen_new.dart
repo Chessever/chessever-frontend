@@ -6452,7 +6452,9 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard> {
     // Exact anchor from reference: center the badge on the destination square's
     // top-right corner intersection.
     final badgeLeft = left + squareSize - (badgeSize / 2);
-    final badgeTop = top - (badgeSize / 2) + (squareSize * 0.04);
+    final badgeTopRaw = top - (badgeSize / 2) + (squareSize * 0.04);
+    // Clamp to prevent badge from being clipped on top-rank squares
+    final badgeTop = badgeTopRaw.clamp(0.0, widget.size - badgeSize);
 
     return Positioned(
       left: badgeLeft,
@@ -6576,35 +6578,36 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard> {
     final showGameEndingEffect =
         isGameOver && isAtGameEnd && _showDelayedGameEndingEffect;
 
-    final boardAnnotation = (() {
-      if (navigatorState == null) return null;
-      final mainlineSans =
-          navigatorState.game.mainline.map((move) => move.san).toList();
-      final lichessGameId = _extractLichessGameId(navigatorState.game);
-      final lichessSiteUrl = _extractLichessSiteUrl(navigatorState.game);
-      final lichessAnnotationsAsync = ref.watch(
-        lichessMoveAnnotationsProvider(
-          LichessMoveAnnotationsParams(
-            lichessGameId: lichessGameId,
-            siteUrl: lichessSiteUrl,
-            signature: _moveSansSignature(mainlineSans),
-            moveSans: mainlineSans,
-            isLiveGame: navigatorState.game.isLiveGame,
-          ),
-        ),
-      );
-      final lichessAnnotations =
-          lichessAnnotationsAsync.valueOrNull ??
-          const <int, LichessMoveAnnotation>{};
-      if (lichessAnnotations.isEmpty) return null;
-      final currentMoveIndex =
-          widget.chessBoardState.analysisState.currentMoveIndex;
-      if (currentMoveIndex < 0) return null;
-      final current = lichessAnnotations[currentMoveIndex];
-      if (current != null) return current;
-      final previous = lichessAnnotations[currentMoveIndex - 1];
-      return previous;
-    })();
+    final boardAnnotation =
+        (() {
+          if (navigatorState == null) return null;
+          final mainlineSans =
+              navigatorState.game.mainline.map((move) => move.san).toList();
+          final lichessGameId = _extractLichessGameId(navigatorState.game);
+          final lichessSiteUrl = _extractLichessSiteUrl(navigatorState.game);
+          final lichessAnnotationsAsync = ref.watch(
+            lichessMoveAnnotationsProvider(
+              LichessMoveAnnotationsParams(
+                lichessGameId: lichessGameId,
+                siteUrl: lichessSiteUrl,
+                signature: _moveSansSignature(mainlineSans),
+                moveSans: mainlineSans,
+                isLiveGame: navigatorState.game.isLiveGame,
+              ),
+            ),
+          );
+          final lichessAnnotations =
+              lichessAnnotationsAsync.valueOrNull ??
+              const <int, LichessMoveAnnotation>{};
+          if (lichessAnnotations.isEmpty) return null;
+          final currentMoveIndex =
+              widget.chessBoardState.analysisState.currentMoveIndex;
+          if (currentMoveIndex < 0) return null;
+          final current = lichessAnnotations[currentMoveIndex];
+          if (current != null) return current;
+          final previous = lichessAnnotations[currentMoveIndex - 1];
+          return previous;
+        })();
     final boardAnnotationSquare = _lastMoveDestinationSquare(
       widget.chessBoardState.analysisState.lastMove,
     );
@@ -7719,6 +7722,8 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
               right: -2.sp,
               child: _BlinkingRedDot(size: 6.sp),
             ),
+          if (annotationBadge != null)
+            Positioned(top: -4.sp, right: 10.sp, child: annotationBadge),
         ],
       ),
     );

@@ -13,6 +13,7 @@ import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
+import 'package:chessever2/utils/library_utils.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
@@ -31,8 +32,6 @@ class LibraryScreen extends ConsumerStatefulWidget {
 }
 
 class _LibraryScreenState extends ConsumerState<LibraryScreen> {
-  static const int _freeBookCreationLimit = 3;
-
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
   String _searchQuery = '';
@@ -87,7 +86,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       final folders = await ref.read(libraryFoldersStreamProvider.future);
       final ownedBookCount =
           folders.where((f) => !f.isSubscribed && f.id != kTwicBookId).length;
-      if (ownedBookCount >= _freeBookCreationLimit) {
+      if (ownedBookCount >= kFreeBookCreationLimit) {
         if (!mounted) return;
         await showPremiumPaywallSheet(context: context);
         return;

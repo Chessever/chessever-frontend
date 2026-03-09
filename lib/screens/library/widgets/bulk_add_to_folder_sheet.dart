@@ -15,6 +15,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_mode
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
+import 'package:chessever2/utils/library_utils.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:flutter/material.dart';
@@ -99,8 +100,6 @@ class _BulkAddToFolderPage extends ConsumerStatefulWidget {
 }
 
 class _BulkAddToFolderPageState extends ConsumerState<_BulkAddToFolderPage> {
-  static const int _freeBookCreationLimit = 3;
-
   final Set<String> _selectedFolderIds = <String>{};
   bool _isSaving = false;
   int _processedGames = 0;
@@ -204,7 +203,7 @@ class _BulkAddToFolderPageState extends ConsumerState<_BulkAddToFolderPage> {
       final folders = await ref.read(libraryFoldersStreamProvider.future);
       final ownedBookCount =
           folders.where((f) => !f.isSubscribed && f.id != kTwicBookId).length;
-      if (ownedBookCount >= _freeBookCreationLimit) {
+      if (ownedBookCount >= kFreeBookCreationLimit) {
         if (!mounted) return;
         await showPremiumPaywallSheet(context: context);
         return;
