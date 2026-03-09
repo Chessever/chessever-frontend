@@ -18,6 +18,8 @@ class RoundedSearchBar extends ConsumerStatefulWidget {
   final VoidCallback? onProfileTap;
   final bool showProfile;
   final bool showFilter;
+  final Key? textFieldKey;
+  final Key? filterButtonKey;
 
   const RoundedSearchBar({
     super.key,
@@ -29,6 +31,8 @@ class RoundedSearchBar extends ConsumerStatefulWidget {
     this.onProfileTap,
     this.showProfile = true,
     this.showFilter = true,
+    this.textFieldKey,
+    this.filterButtonKey,
   });
 
   @override
@@ -73,6 +77,7 @@ class _RoundedSearchBarState extends ConsumerState<RoundedSearchBar> {
 
                 Expanded(
                   child: TextField(
+                    key: widget.textFieldKey,
                     controller: widget.controller,
                     onChanged: widget.onChanged,
                     autofocus: widget.autofocus,
@@ -95,6 +100,7 @@ class _RoundedSearchBarState extends ConsumerState<RoundedSearchBar> {
                   Padding(
                     padding: EdgeInsets.only(right: 10.sp),
                     child: InkWell(
+                      key: widget.filterButtonKey,
                       onTap: widget.onFilterTap,
                       borderRadius: BorderRadius.zero,
                       child: SvgWidget(

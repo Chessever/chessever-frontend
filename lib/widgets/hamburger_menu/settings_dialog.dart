@@ -1,4 +1,5 @@
 import 'package:chessever2/repository/authentication/auth_repository.dart';
+import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/screens/chessboard/chess_board_settings_page.dart';
 import 'package:chessever2/screens/chessboard/chess_board_notification_settings_page.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -16,6 +17,7 @@ class SettingsDialog extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return Container(
+      key: e2eKey(E2eIds.settingsRoot),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.all(Radius.circular(20.sp)),
         color: kPopUpColor,

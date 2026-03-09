@@ -1,4 +1,5 @@
 import 'package:chessever2/screens/favorites/favorite_players_provider.dart';
+import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/screens/player_profile/player_profile_data_source.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/screens/standings/score_card_screen.dart';
@@ -22,6 +23,7 @@ class PlayerTourScreen extends ConsumerWidget {
     );
 
     return Center(
+      key: e2eKey(E2eIds.standingsRoot),
       child: ConstrainedBox(
         constraints: BoxConstraints(maxWidth: ResponsiveHelper.contentMaxWidth),
         child: Padding(

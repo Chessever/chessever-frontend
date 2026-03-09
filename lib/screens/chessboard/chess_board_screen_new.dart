@@ -2,6 +2,7 @@ import 'dart:async';
 // import 'dart:io'; // UNUSED: Removed with old dialog approach
 import 'dart:math' as math;
 import 'dart:ui';
+import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/providers/for_you_games_provider.dart';
 import 'package:chessever2/screens/standings/score_card_screen.dart';
 import 'package:skeletonizer/skeletonizer.dart';
@@ -548,6 +549,7 @@ class ChessBoardScreenNew extends ConsumerStatefulWidget {
 
   /// Optional saved analysis data to restore full state (variations, comments, position)
   final SavedAnalysisData? savedAnalysisData;
+  final List<SavedAnalysisData>? savedAnalysesDataByIndex;
 
   /// When true, hides the event info button in the app bar.
   /// Use this when navigating from library for position analysis where event info is not relevant.
@@ -568,6 +570,7 @@ class ChessBoardScreenNew extends ConsumerStatefulWidget {
     required this.currentIndex,
     required this.games,
     this.savedAnalysisData,
+    this.savedAnalysesDataByIndex,
     this.hideEventInfo = false,
     this.playerProfileDataSource = PlayerProfileDataSource.supabase,
     this.showGamebaseButton = false,
@@ -820,8 +823,15 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
   }
 
   /// Returns saved analysis data only for the initial page (currentIndex)
-  /// This ensures variations and comments are only restored for the saved analysis game
+  /// This ensures variations/comments and update linkage are restored correctly.
   SavedAnalysisData? _getSavedAnalysisDataForIndex(int index) {
+    final allSavedAnalyses = widget.savedAnalysesDataByIndex;
+    if (allSavedAnalyses != null &&
+        index >= 0 &&
+        index < allSavedAnalyses.length) {
+      return allSavedAnalyses[index];
+    }
+
     // Only apply saved analysis data to the initial page
     if (index == widget.currentIndex) {
       return widget.savedAnalysisData;
@@ -1366,7 +1376,9 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     }
   }
 
-  void _toggleGamebase() {
+  Future<void> _toggleGamebase() async {
+    final allowed = await requireFullAuthGuard(context);
+    if (!allowed) return;
     ref.read(gamebaseOverlayEnabledProvider.notifier).toggle();
   }
 
@@ -1532,6 +1544,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
             return Builder(
               builder: (innerContext) {
                 return Scaffold(
+                  key: e2eKey(E2eIds.chessBoardRoot),
                   backgroundColor: Colors.black,
                   resizeToAvoidBottomInset: false,
                   // REMOVED: RawGestureDetector was blocking PageView swipes
@@ -1598,7 +1611,9 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
                                             widget.showGamebaseButton,
                                         showClock: widget.showClock,
                                         savedAnalysisData:
-                                            _getSavedAnalysisDataForIndex(index),
+                                            _getSavedAnalysisDataForIndex(
+                                              index,
+                                            ),
                                       );
                                     },
                                     loading:
@@ -2425,97 +2440,99 @@ class _AppBarState extends ConsumerState<_AppBar> {
     }
 
     // If this is an existing library game, show update/save-as-copy choice
-    final analysisId = widget.savedAnalysisData?.analysisId;
+    // Read from the notifier (not widget) because savedAnalysisData may have
+    // been attached after a first-time save from the save sheet.
+    final notifier = ref.read(chessBoardScreenProviderNew(params).notifier);
+    final analysisId = notifier.savedAnalysisData?.analysisId;
     if (analysisId != null) {
       final choice = await showModalBottomSheet<String>(
         context: context,
         backgroundColor: Colors.transparent,
         constraints: ResponsiveHelper.bottomSheetConstraints,
-        builder: (ctx) => Container(
-          decoration: BoxDecoration(
-            color: const Color(0xFF1A1A1C),
-            borderRadius: BorderRadius.vertical(
-              top: Radius.circular(20.br),
+        builder:
+            (ctx) => Container(
+              decoration: BoxDecoration(
+                color: const Color(0xFF1A1A1C),
+                borderRadius: BorderRadius.vertical(
+                  top: Radius.circular(20.br),
+                ),
+              ),
+              padding: EdgeInsets.fromLTRB(24.w, 16.h, 24.w, 24.h),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Drag handle
+                  Container(
+                    width: 40.w,
+                    height: 4.h,
+                    decoration: BoxDecoration(
+                      color: kWhiteColor.withValues(alpha: 0.2),
+                      borderRadius: BorderRadius.circular(2.br),
+                    ),
+                  ),
+                  SizedBox(height: 20.h),
+                  Text(
+                    'Save Analysis',
+                    style: AppTypography.textLgBold.copyWith(
+                      color: kWhiteColor,
+                    ),
+                  ),
+                  SizedBox(height: 6.h),
+                  Text(
+                    'This game was loaded from your library.',
+                    style: AppTypography.textSmRegular.copyWith(
+                      color: kWhiteColor.withValues(alpha: 0.5),
+                    ),
+                  ),
+                  SizedBox(height: 24.h),
+                  // Update button (primary)
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: () => Navigator.of(ctx).pop('update'),
+                      icon: Icon(Icons.save_rounded, size: 18.sp),
+                      label: Text('Update'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: kPrimaryColor,
+                        foregroundColor: Colors.white,
+                        padding: EdgeInsets.symmetric(vertical: 14.h),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12.br),
+                        ),
+                      ),
+                    ),
+                  ),
+                  SizedBox(height: 12.h),
+                  // Save as copy button (secondary)
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: () => Navigator.of(ctx).pop('copy'),
+                      icon: Icon(Icons.copy_rounded, size: 18.sp),
+                      label: Text('Save as copy'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: kWhiteColor.withValues(alpha: 0.8),
+                        side: BorderSide(
+                          color: kWhiteColor.withValues(alpha: 0.15),
+                        ),
+                        padding: EdgeInsets.symmetric(vertical: 14.h),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12.br),
+                        ),
+                      ),
+                    ),
+                  ),
+                  SizedBox(height: 8.h),
+                ],
+              ),
             ),
-          ),
-          padding: EdgeInsets.fromLTRB(24.w, 16.h, 24.w, 24.h),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Drag handle
-              Container(
-                width: 40.w,
-                height: 4.h,
-                decoration: BoxDecoration(
-                  color: kWhiteColor.withValues(alpha: 0.2),
-                  borderRadius: BorderRadius.circular(2.br),
-                ),
-              ),
-              SizedBox(height: 20.h),
-              Text(
-                'Save Analysis',
-                style: AppTypography.textLgBold.copyWith(
-                  color: kWhiteColor,
-                ),
-              ),
-              SizedBox(height: 6.h),
-              Text(
-                'This game was loaded from your library.',
-                style: AppTypography.textSmRegular.copyWith(
-                  color: kWhiteColor.withValues(alpha: 0.5),
-                ),
-              ),
-              SizedBox(height: 24.h),
-              // Update button (primary)
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: () => Navigator.of(ctx).pop('update'),
-                  icon: Icon(Icons.save_rounded, size: 18.sp),
-                  label: Text('Update'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: kPrimaryColor,
-                    foregroundColor: Colors.white,
-                    padding: EdgeInsets.symmetric(vertical: 14.h),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12.br),
-                    ),
-                  ),
-                ),
-              ),
-              SizedBox(height: 12.h),
-              // Save as copy button (secondary)
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton.icon(
-                  onPressed: () => Navigator.of(ctx).pop('copy'),
-                  icon: Icon(Icons.copy_rounded, size: 18.sp),
-                  label: Text('Save as copy'),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: kWhiteColor.withValues(alpha: 0.8),
-                    side: BorderSide(
-                      color: kWhiteColor.withValues(alpha: 0.15),
-                    ),
-                    padding: EdgeInsets.symmetric(vertical: 14.h),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12.br),
-                    ),
-                  ),
-                ),
-              ),
-              SizedBox(height: 8.h),
-            ],
-          ),
-        ),
       );
 
       if (choice == null || !context.mounted) return;
 
       if (choice == 'update') {
         // Perform direct update
-        final notifier = ref.read(
-          chessBoardScreenProviderNew(params).notifier,
-        );
+        final notifier = ref.read(chessBoardScreenProviderNew(params).notifier);
         final success = await notifier.performManualUpdate();
         if (context.mounted) {
           HapticFeedback.mediumImpact();
@@ -2523,8 +2540,7 @@ class _AppBarState extends ConsumerState<_AppBar> {
             SnackBar(
               duration: const Duration(seconds: 2),
               behavior: SnackBarBehavior.floating,
-              backgroundColor:
-                  const Color(0xFF1A1A1C).withValues(alpha: 0.95),
+              backgroundColor: const Color(0xFF1A1A1C).withValues(alpha: 0.95),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12.br),
               ),
@@ -2533,8 +2549,9 @@ class _AppBarState extends ConsumerState<_AppBar> {
                   Container(
                     padding: EdgeInsets.all(6.sp),
                     decoration: BoxDecoration(
-                      color: (success ? kPrimaryColor : kRedColor)
-                          .withValues(alpha: 0.2),
+                      color: (success ? kPrimaryColor : kRedColor).withValues(
+                        alpha: 0.2,
+                      ),
                       borderRadius: BorderRadius.circular(8.br),
                     ),
                     child: Icon(
@@ -2548,9 +2565,7 @@ class _AppBarState extends ConsumerState<_AppBar> {
                   SizedBox(width: 12.w),
                   Expanded(
                     child: Text(
-                      success
-                          ? 'Analysis updated'
-                          : 'Failed to update',
+                      success ? 'Analysis updated' : 'Failed to update',
                       style: AppTypography.textSmMedium.copyWith(
                         color: kWhiteColor,
                       ),
@@ -2671,25 +2686,16 @@ class _AppBarState extends ConsumerState<_AppBar> {
   }
 
   Widget _buildSaveButton() {
-    final hasAnalysisId = widget.savedAnalysisData?.analysisId != null;
-
-    if (!hasAnalysisId) {
-      return IconButton(
-        icon: Icon(Icons.save_outlined, color: kWhiteColor, size: 20.sp),
-        tooltip: 'Save analysis',
-        onPressed: widget.isLoading ? null : _showSaveAnalysisDialog,
-      );
-    }
-
-    // For library games, show animated save icon based on autoSaveStatus
     final params = ChessBoardProviderParams(
       game: widget.game,
       index: widget.currentGameIndex,
     );
+
+    // Watch autoSaveStatus — this also triggers rebuilds after
+    // attachSavedAnalysisId emits AutoSaveStatus.saved.
     final autoSaveStatus = ref.watch(
       chessBoardScreenProviderNew(params).select(
-        (state) =>
-            state.valueOrNull?.autoSaveStatus ?? AutoSaveStatus.idle,
+        (state) => state.valueOrNull?.autoSaveStatus ?? AutoSaveStatus.idle,
       ),
     );
 
@@ -2709,10 +2715,10 @@ class _AppBarState extends ConsumerState<_AppBar> {
         break;
       case AutoSaveStatus.saved:
         icon = Icon(
-          Icons.check_circle_outline_rounded,
-          color: kPrimaryColor,
-          size: 20.sp,
-        )
+              Icons.check_circle_outline_rounded,
+              color: kPrimaryColor,
+              size: 20.sp,
+            )
             .animate()
             .scale(
               begin: const Offset(0.6, 0.6),
@@ -2777,6 +2783,7 @@ class _AppBarState extends ConsumerState<_AppBar> {
                 ),
               )
               : _GameSelectionDropdown(
+                key: e2eKey(E2eIds.boardGameSelector),
                 games: widget.games,
                 currentGameIndex: widget.currentGameIndex,
                 onGameChanged: widget.onGameChanged,
@@ -3387,6 +3394,7 @@ class _GameSelectionDropdown extends StatefulWidget {
   final bool isLoading;
 
   const _GameSelectionDropdown({
+    super.key,
     required this.games,
     required this.currentGameIndex,
     required this.onGameChanged,
@@ -5262,6 +5270,7 @@ class _AnalysisGameBody extends ConsumerWidget {
             state.showPrincipalVariations) {
           pvSection.add(SizedBox(height: 2.h));
           final pvList = _PrincipalVariationList(
+            key: e2eKey(E2eIds.boardPvList),
             index: index,
             state: state,
             game: game,
@@ -5510,13 +5519,21 @@ class _AnalysisGameBody extends ConsumerWidget {
                   final currentFen = state.analysisState.position.fen;
                   final combinedMoves = state.analysisState.combinedMoves;
                   final currentMoveIndex = state.analysisState.currentMoveIndex;
-                  final movesToCurrentCount = currentMoveIndex < 0
-                      ? 0
-                      : (currentMoveIndex + 1).clamp(0, combinedMoves.length);
+                  final movesToCurrentCount =
+                      currentMoveIndex < 0
+                          ? 0
+                          : (currentMoveIndex + 1).clamp(
+                            0,
+                            combinedMoves.length,
+                          );
                   final lineToCurrent = combinedMoves
                       .take(movesToCurrentCount)
                       .map((m) => m.uci.trim().toLowerCase())
-                      .where((uci) => RegExp(r'^[a-h][1-8][a-h][1-8][qrbn]?$').hasMatch(uci))
+                      .where(
+                        (uci) => RegExp(
+                          r'^[a-h][1-8][a-h][1-8][qrbn]?$',
+                        ).hasMatch(uci),
+                      )
                       .toList(growable: false);
 
                   final positionQuery = GamebasePositionGamesQuery(
@@ -5614,9 +5631,10 @@ class _AnalysisGameBody extends ConsumerWidget {
                       final wpId = row['whitePlayerId']?.toString().trim();
                       final bpId = row['blackPlayerId']?.toString().trim();
                       final fmt = ec.trim().isNotEmpty ? ec.trim() : (tc ?? '');
-                      final opName = va.trim().isNotEmpty
-                          ? '$op: $va'
-                          : (op.trim().isNotEmpty ? op : null);
+                      final opName =
+                          va.trim().isNotEmpty
+                              ? '$op: $va'
+                              : (op.trim().isNotEmpty ? op : null);
                       return GamesTourModel(
                         gameId: safeId,
                         whitePlayer: PlayerCard(
@@ -5628,9 +5646,7 @@ class _AnalysisGameBody extends ConsumerWidget {
                           team: null,
                           fideId: null,
                           gamebasePlayerId:
-                              (wpId != null && wpId.isNotEmpty)
-                                  ? wpId
-                                  : null,
+                              (wpId != null && wpId.isNotEmpty) ? wpId : null,
                         ),
                         blackPlayer: PlayerCard(
                           name: bn.isNotEmpty ? bn : 'Black',
@@ -5641,9 +5657,7 @@ class _AnalysisGameBody extends ConsumerWidget {
                           team: null,
                           fideId: null,
                           gamebasePlayerId:
-                              (bpId != null && bpId.isNotEmpty)
-                                  ? bpId
-                                  : null,
+                              (bpId != null && bpId.isNotEmpty) ? bpId : null,
                         ),
                         whiteTimeDisplay: '--:--',
                         blackTimeDisplay: '--:--',
@@ -5661,9 +5675,7 @@ class _AnalysisGameBody extends ConsumerWidget {
                       );
                     }
 
-                    allGames = positionGamesResponse.data
-                        .map(mapRow)
-                        .toList();
+                    allGames = positionGamesResponse.data.map(mapRow).toList();
 
                     // Replace the selected game with the fully resolved version
                     openIndex = allGames.indexWhere(
@@ -6169,6 +6181,7 @@ class _TabletBoardWithSidebar extends ConsumerWidget {
                 final bool isWhiteToMove = activePosition?.turn != Side.black;
 
                 return EvaluationBarWidget(
+                  key: e2eKey(E2eIds.boardEvalBar),
                   width: effectiveEvalWidth,
                   height: boardSize,
                   evaluation: state.evaluation,
@@ -6279,6 +6292,7 @@ class _BoardWithSidebar extends ConsumerWidget {
                           activePosition?.turn != Side.black;
 
                       return EvaluationBarWidget(
+                        key: e2eKey(E2eIds.boardEvalBar),
                         width: sideBarWidth,
                         height: boardSize,
                         evaluation: state.evaluation,
@@ -7138,6 +7152,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
         ResponsiveHelper.isTablet && ResponsiveHelper.isLandscape;
 
     Widget content = Container(
+      key: e2eKey(E2eIds.boardNotationRoot),
       decoration: BoxDecoration(
         color: kDarkGreyColor.withValues(alpha: 0.3),
         borderRadius: BorderRadius.only(
@@ -8981,6 +8996,7 @@ class _PrincipalVariationList extends ConsumerStatefulWidget {
   final GamesTourModel game;
 
   const _PrincipalVariationList({
+    super.key,
     required this.index,
     required this.state,
     required this.game,

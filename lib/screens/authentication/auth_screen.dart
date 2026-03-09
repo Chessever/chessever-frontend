@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/providers/country_dropdown_provider.dart';
 import 'package:chessever2/repository/local_storage/onboarding/onboarding_repository.dart';
 import 'package:chessever2/screens/authentication/auth_screen_state.dart';
@@ -75,6 +76,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
     if (isTablet && isLandscape) {
       return ScreenWrapper(
         child: Scaffold(
+          key: e2eKey(E2eIds.authRoot),
           body: Stack(
             children: [
               const Hero(tag: 'blur', child: BlurBackground()),
@@ -123,6 +125,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
     if (isTablet) {
       return ScreenWrapper(
         child: Scaffold(
+          key: e2eKey(E2eIds.authRoot),
           body: Stack(
             children: [
               const Hero(tag: 'blur', child: BlurBackground()),
@@ -166,6 +169,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
     // Phone: stacked layout with bottom buttons
     return ScreenWrapper(
       child: Scaffold(
+        key: e2eKey(E2eIds.authRoot),
         body: Stack(
           children: [
             // Background blur layer

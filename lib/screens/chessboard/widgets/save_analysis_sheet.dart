@@ -228,8 +228,17 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
         updatedAt: DateTime.now(),
       );
 
-      // Save to database
-      await repository.createSavedAnalysis(savedAnalysis);
+      // Save to database and capture the returned ID
+      final created = await repository.createSavedAnalysis(savedAnalysis);
+
+      // Attach the new ID to the provider so auto-save and update work
+      ref
+          .read(chessBoardScreenProviderNew(widget.config.params).notifier)
+          .attachSavedAnalysisId(
+            analysisId: created.id,
+            title: title,
+            folderId: targetFolderId,
+          );
 
       if (mounted && context.mounted) {
         HapticFeedback.mediumImpact();
