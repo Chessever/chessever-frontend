@@ -42,6 +42,8 @@ class _AboutTourScreenState extends ConsumerState<AboutTourScreen> {
     date: 'Chessever',
     location: 'US',
     websiteUrl: 'https://www.chessever.com/',
+    standingsUrl: '',
+    tourUrl: '',
   );
 
   late String _heroTag;
@@ -204,6 +206,22 @@ class _AboutTourScreenState extends ConsumerState<AboutTourScreen> {
                                   : null,
                           description: aboutModel.location,
                         ),
+                        if (aboutModel.tourUrl.trim().isNotEmpty ||
+                            isSkeleton) ...[
+                          SizedBox(height: 12.h),
+                          _InlineLinkRow(
+                            prefix: 'Game Source:',
+                            linkLabel: 'Lichess',
+                            onTap:
+                                isSkeleton
+                                    ? null
+                                    : () => ref
+                                        .read(urlLauncherProvider)
+                                        .launchCustomUrl(
+                                          aboutModel.tourUrl.trim(),
+                                        ),
+                          ),
+                        ],
                         SizedBox(
                           height: MediaQuery.of(context).viewPadding.bottom,
                         ),
@@ -266,7 +284,12 @@ class _AboutTourScreenState extends ConsumerState<AboutTourScreen> {
     bool isSkeleton,
     AboutTourModel aboutModel,
   ) {
-    if (!isSkeleton && domain.isEmpty) {
+    final websiteUrl = aboutModel.websiteUrl.trim();
+    final standingsUrl = aboutModel.standingsUrl.trim();
+    final hasWebsite = websiteUrl.isNotEmpty;
+    final hasStandings = standingsUrl.isNotEmpty;
+
+    if (!isSkeleton && !hasWebsite && !hasStandings) {
       return const SizedBox.shrink();
     }
 
@@ -278,30 +301,54 @@ class _AboutTourScreenState extends ConsumerState<AboutTourScreen> {
         padding: EdgeInsets.only(
           bottom: MediaQuery.of(context).viewPadding.bottom,
         ),
-        child: GestureDetector(
-          onTap:
-              isSkeleton
-                  ? null
-                  : () => ref
-                      .read(urlLauncherProvider)
-                      .launchCustomUrl(aboutModel.websiteUrl),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              SvgWidget(SvgAsset.websiteIcon, height: 12.h, width: 12.h),
-              SizedBox(width: 4.w),
-              Flexible(
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            if (hasWebsite || isSkeleton)
+              GestureDetector(
+                onTap:
+                    isSkeleton
+                        ? null
+                        : () => ref
+                            .read(urlLauncherProvider)
+                            .launchCustomUrl(websiteUrl),
+                child: Row(
+                  children: [
+                    SvgWidget(SvgAsset.websiteIcon, height: 12.h, width: 12.h),
+                    SizedBox(width: 4.w),
+                    Flexible(
+                      child: Text(
+                        domain.isEmpty ? 'Chessever' : domain,
+                        maxLines: 1,
+                        style: AppTypography.textXsMedium.copyWith(
+                          color: kPrimaryColor,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            if ((hasWebsite && hasStandings) || isSkeleton)
+              SizedBox(width: 24.w),
+            if (hasStandings || isSkeleton)
+              GestureDetector(
+                onTap:
+                    isSkeleton
+                        ? null
+                        : () => ref
+                            .read(urlLauncherProvider)
+                            .launchCustomUrl(standingsUrl),
                 child: Text(
-                  domain.isEmpty ? 'Chessever' : domain,
-                  maxLines: 1,
+                  'Official Standings',
                   style: AppTypography.textXsMedium.copyWith(
                     color: kPrimaryColor,
-                    overflow: TextOverflow.ellipsis,
+                    decoration: TextDecoration.underline,
+                    decorationColor: kPrimaryColor,
                   ),
                 ),
               ),
-            ],
-          ),
+          ],
         ),
       ),
     );
@@ -331,6 +378,48 @@ class _TitleDescWidget extends StatelessWidget {
         Text(
           description,
           style: AppTypography.textXsMedium.copyWith(color: kWhiteColor),
+        ),
+      ],
+    );
+  }
+}
+
+class _InlineLinkRow extends StatelessWidget {
+  const _InlineLinkRow({
+    required this.prefix,
+    required this.linkLabel,
+    this.onTap,
+    super.key,
+  });
+
+  final String prefix;
+  final String linkLabel;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Wrap(
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            Text(
+              '$prefix ',
+              style: AppTypography.textXsMedium.copyWith(color: kWhiteColor),
+            ),
+            GestureDetector(
+              onTap: onTap,
+              child: Text(
+                linkLabel,
+                style: AppTypography.textXsMedium.copyWith(
+                  color: kPrimaryColor,
+                  decoration: TextDecoration.underline,
+                  decorationColor: kPrimaryColor,
+                ),
+              ),
+            ),
+          ],
         ),
       ],
     );
