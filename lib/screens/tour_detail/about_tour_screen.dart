@@ -414,6 +414,7 @@ class _InlineLinkRow extends StatelessWidget {
 
 class _CountryFlag extends StatelessWidget {
   const _CountryFlag({
+    super.key,
     required this.title,
     required this.flag,
     required this.description,
