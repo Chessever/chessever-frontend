@@ -883,15 +883,22 @@ class _ExplorerEvalBarState extends ConsumerState<_ExplorerEvalBar> {
     }
 
     final evalState = ref.watch(explorerEvalProvider);
+    final currentKey = _positionKey(widget.fen);
+    final evalKey = _positionKey(evalState.fen);
+    final isEvalForCurrentPosition = currentKey == evalKey;
+
     return EvaluationBarWidget(
       key: e2eKey(E2eIds.boardEvalBar),
       width: widget.width,
       height: widget.height,
       isFlipped: widget.isFlipped,
-      evaluation: evalState.evaluation,
-      mate: evalState.mate,
-      isEvaluating: evalState.isEvaluating,
-      positionKey: _positionKey(widget.fen),
+      // Ignore stale engine output from previous positions. This prevents
+      // transient wrong eval values while a new position evaluation starts.
+      evaluation: isEvalForCurrentPosition ? evalState.evaluation : null,
+      mate: isEvalForCurrentPosition ? evalState.mate : null,
+      isEvaluating:
+          isEvalForCurrentPosition ? evalState.isEvaluating : true,
+      positionKey: currentKey,
     );
   }
 }
