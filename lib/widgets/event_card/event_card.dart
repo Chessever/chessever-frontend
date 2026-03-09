@@ -24,6 +24,7 @@ import 'package:skeletonizer/skeletonizer.dart';
 class EventCard extends ConsumerWidget {
   final GroupEventCardModel tourEventCardModel;
   final VoidCallback? onTap;
+  final bool showHeartIndicator;
 
   /// Optional suffix to make hero tag unique when same event appears in multiple lists
   final String? heroTagSuffix;
@@ -31,6 +32,7 @@ class EventCard extends ConsumerWidget {
   const EventCard({
     required this.tourEventCardModel,
     this.onTap,
+    this.showHeartIndicator = false,
     this.heroTagSuffix,
     super.key,
   });
@@ -174,7 +176,10 @@ class EventCard extends ConsumerWidget {
                       ),
                     ),
                     // Star icon
-                    _StarWidget(tourEventCardModel: tourEventCardModel),
+                    _StarWidget(
+                      tourEventCardModel: tourEventCardModel,
+                      showHeartIndicator: showHeartIndicator,
+                    ),
                   ],
                 ),
               ],
@@ -299,7 +304,10 @@ class EventCard extends ConsumerWidget {
           SizedBox(width: 8.w),
 
           // Star icon on the right
-          _StarWidget(tourEventCardModel: tourEventCardModel),
+          _StarWidget(
+            tourEventCardModel: tourEventCardModel,
+            showHeartIndicator: showHeartIndicator,
+          ),
         ],
       ),
     );
@@ -786,9 +794,13 @@ class _CompletedIndicator extends StatelessWidget {
 }
 
 class _StarWidget extends ConsumerWidget {
-  const _StarWidget({required this.tourEventCardModel});
+  const _StarWidget({
+    required this.tourEventCardModel,
+    required this.showHeartIndicator,
+  });
 
   final GroupEventCardModel tourEventCardModel;
+  final bool showHeartIndicator;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -825,13 +837,14 @@ class _StarWidget extends ConsumerWidget {
       },
       orElse:
           () =>
-              currentCache[tourEventCardModel.id] ??
-              const EventFavoritePlayers.empty(),
+      currentCache[tourEventCardModel.id] ??
+          const EventFavoritePlayers.empty(),
     );
 
     // Priority: Star icon (user favorited) ALWAYS takes precedence
     // Heart icon shows ONLY when NOT starred but has favorite players
-    final bool showHeart = !isStarred && eventFavoritePlayers.hasFavorites;
+    final bool showHeart =
+        showHeartIndicator && !isStarred && eventFavoritePlayers.hasFavorites;
     final bool showFilledStar = isStarred;
 
     // Heart icon is NOT tappable - it's just informational
@@ -843,8 +856,6 @@ class _StarWidget extends ConsumerWidget {
         child: _HeartIconWithCount(count: eventFavoritePlayers.count),
       );
     }
-
-    // Star icon is tappable - user can favorite/unfavorite
     return InkWell(
       onTap: () async {
         final allowed = await requireFullAuthGuard(context);

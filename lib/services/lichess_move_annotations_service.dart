@@ -3,7 +3,16 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
-enum LichessMoveAnnotationType { inaccuracy, mistake, blunder }
+enum LichessMoveAnnotationType {
+  brilliant,
+  missedWin,
+  mistake,
+  blunder,
+  inaccuracy,
+  goodMove,
+  bestMove,
+  bookMove,
+}
 
 class LichessMoveAnnotation {
   final LichessMoveAnnotationType type;
@@ -128,13 +137,33 @@ class LichessMoveAnnotationsService {
   }
 
   static LichessMoveAnnotationType? _annotationTypeFromName(String? name) {
-    switch (name) {
-      case 'Inaccuracy':
-        return LichessMoveAnnotationType.inaccuracy;
-      case 'Mistake':
+    if (name == null || name.trim().isEmpty) return null;
+    final normalized = name.trim().toLowerCase();
+    switch (normalized) {
+      case 'brilliant':
+        return LichessMoveAnnotationType.brilliant;
+      case 'missed win':
+      case 'missed_win':
+      case 'miss':
+        return LichessMoveAnnotationType.missedWin;
+      case 'mistake':
         return LichessMoveAnnotationType.mistake;
-      case 'Blunder':
+      case 'blunder':
         return LichessMoveAnnotationType.blunder;
+      case 'inaccuracy':
+        return LichessMoveAnnotationType.inaccuracy;
+      case 'good move':
+      case 'good_move':
+      case 'good':
+        return LichessMoveAnnotationType.goodMove;
+      case 'best move':
+      case 'best_move':
+      case 'best':
+        return LichessMoveAnnotationType.bestMove;
+      case 'book move':
+      case 'book_move':
+      case 'book':
+        return LichessMoveAnnotationType.bookMove;
       default:
         return null;
     }

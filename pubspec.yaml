@@ -267,8 +267,8 @@ icons_launcher:
   platforms:
     android:
       enable: true
-      adaptive_background_color: '#000000'
-      adaptive_foreground_image: "assets/pngs/new_app_logo_circle.png"
+      adaptive_background_color: '#0C0C0E'
+      adaptive_foreground_image: "assets/pngs/new_app_logo.png"
       notification_image: "assets/pngs/notification_icon.png"
     ios:
       enable: true
