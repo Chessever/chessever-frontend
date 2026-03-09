@@ -1,3 +1,4 @@
+import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:chessever2/repository/supabase/calendar_event/calendar_event.dart';
 import 'package:chessever2/theme/app_theme.dart';
@@ -80,6 +81,7 @@ class CalendarEventDetailScreen extends StatelessWidget {
     final topPlayers = _getTopPlayers();
 
     return Scaffold(
+      key: e2eKey(E2eIds.calendarEventDetailRoot),
       backgroundColor: kBlackColor,
       appBar: AppBar(
         title: Text(

@@ -54,6 +54,12 @@
             targetSdk = 36
             versionCode = flutter.versionCode
             versionName = flutter.versionName
+            testInstrumentationRunner = "pl.leancode.patrol.PatrolJUnitRunner"
+            testInstrumentationRunnerArguments["clearPackageData"] = "true"
+        }
+
+        testOptions {
+            execution = "ANDROIDX_TEST_ORCHESTRATOR"
         }
 
         buildTypes {
@@ -87,6 +93,8 @@
 
         // Core library desugaring dependency
         coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
+
+        androidTestUtil("androidx.test:orchestrator:1.5.1")
 
     }
 

@@ -1123,8 +1123,8 @@ class _GamesAppBarNotifier
     for (final status in const [
       RoundStatus.live,
       RoundStatus.ongoing,
-      RoundStatus.upcoming,
       RoundStatus.completed,
+      RoundStatus.upcoming,
     ]) {
       final pick = _pickRoundModelByStatus(models, counts, status);
       if (pick != null) {
@@ -1290,7 +1290,19 @@ class _GamesAppBarNotifier
       }
     } catch (e) {}
 
-    // 4) If we have a recent round by activity, prefer it (consistent with For You tab)
+    // 4) If we have a recent round by activity, prefer it.
+    // But don't jump to upcoming rounds while there are started rounds with games.
+    final hasStartedRoundsWithGames = models.any(
+      (m) => m.roundStatus != RoundStatus.upcoming && _hasGames(m.id, counts),
+    );
+    if (latestByActivityModel != null) {
+      final activityIsUpcoming =
+          latestByActivityModel.roundStatus == RoundStatus.upcoming;
+      if (activityIsUpcoming && hasStartedRoundsWithGames) {
+        latestByActivityModel = null;
+      }
+    }
+
     if (latestByActivityModel != null) {
       state = AsyncValue.data(
         GamesAppBarViewModel(
@@ -1303,7 +1315,7 @@ class _GamesAppBarNotifier
       return;
     }
 
-    // 5) Fall back to auto-select (ongoing → upcoming → completed)
+    // 5) Fall back to auto-select (ongoing → completed → upcoming)
     final autoModel = _selectAutoRound(models, counts);
     final fallbackId = autoModel?.id ?? '';
     state = AsyncValue.data(

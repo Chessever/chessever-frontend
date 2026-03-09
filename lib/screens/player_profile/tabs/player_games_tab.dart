@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
@@ -512,6 +513,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
                   SizedBox(width: 8.w),
                   Expanded(
                     child: TextField(
+                      key: e2eKey(E2eIds.playerGamesSearchField),
                       controller: _searchController,
                       focusNode: _searchFocusNode,
                       style: AppTypography.textSmRegular.copyWith(
@@ -552,6 +554,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
           GestureDetector(
             onTap: _showFilterDialog,
             child: Container(
+              key: e2eKey(E2eIds.playerGamesFilterButton),
               width: searchBarHeight,
               height: searchBarHeight,
               decoration: BoxDecoration(

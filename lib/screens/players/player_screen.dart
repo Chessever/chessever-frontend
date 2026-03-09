@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -81,6 +82,7 @@ class _PlayerScreenState extends ConsumerState<PlayerListScreen> {
     );
 
     return Scaffold(
+      key: e2eKey(E2eIds.playersRoot),
       backgroundColor: kBackgroundColor,
       body: SafeArea(
         child: Center(
@@ -100,6 +102,7 @@ class _PlayerScreenState extends ConsumerState<PlayerListScreen> {
                       hintText: 'Search',
                       onFilterTap: () {},
                       onProfileTap: () {},
+                      textFieldKey: e2eKey(E2eIds.playersSearchField),
                     ),
                   ),
 
