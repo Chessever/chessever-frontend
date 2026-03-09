@@ -1106,6 +1106,10 @@ class _SliverScoreboardAppBarState
   }
 
   Future<void> _toggleFavorite() async {
+    if (ref.read(chessboardViewFromProviderNew) != ChessboardView.forYou) {
+      return;
+    }
+
     final allowed = await requireFullAuthGuard(context);
     if (!allowed) return;
 
@@ -1171,18 +1175,23 @@ class _SliverScoreboardAppBarState
 
     final selectedBroadcast = ref.watch(selectedBroadcastModelProvider);
     final hasTournamentContext = selectedBroadcast != null;
+    final isForYouView =
+        ref.watch(chessboardViewFromProviderNew) == ChessboardView.forYou;
 
     final validCountryCode = ref
         .read(locationServiceProvider)
         .getValidCountryCode(player.countryCode);
 
-    final favoritesAsync = ref.watch(favoritePlayersNotifierProvider);
-    final isFavorite = favoritesAsync.maybeWhen(
-      data: (state) => state.players.any((p) => p.fideId == player.fideId),
-      orElse: () => false,
-      skipLoadingOnRefresh: true,
-      skipLoadingOnReload: true,
-    );
+    bool isFavorite = false;
+    if (isForYouView) {
+      final favoritesAsync = ref.watch(favoritePlayersNotifierProvider);
+      isFavorite = favoritesAsync.maybeWhen(
+        data: (state) => state.players.any((p) => p.fideId == player.fideId),
+        orElse: () => false,
+        skipLoadingOnRefresh: true,
+        skipLoadingOnReload: true,
+      );
+    }
 
     final headerRow = _PlayerHeaderRow(
       countryCode: validCountryCode,
@@ -1214,24 +1223,25 @@ class _SliverScoreboardAppBarState
               )
               : headerRow,
       actions: [
-        InkWell(
-          onTap: _toggleFavorite,
-          child: Container(
-            width: 48.w,
-            padding: EdgeInsets.all(8.sp),
-            child: ScaleTransition(
-              scale: _scaleAnimation,
-              child: SvgWidget(
-                isFavorite
-                    ? SvgAsset.favouriteRedIcon
-                    : SvgAsset.favouriteIcon2,
-                semanticsLabel: 'Favorite Icon',
-                height: 20.h,
-                width: 20.w,
+        if (isForYouView)
+          InkWell(
+            onTap: _toggleFavorite,
+            child: Container(
+              width: 48.w,
+              padding: EdgeInsets.all(8.sp),
+              child: ScaleTransition(
+                scale: _scaleAnimation,
+                child: SvgWidget(
+                  isFavorite
+                      ? SvgAsset.favouriteRedIcon
+                      : SvgAsset.favouriteIcon2,
+                  semanticsLabel: 'Favorite Icon',
+                  height: 20.h,
+                  width: 20.w,
+                ),
               ),
             ),
           ),
-        ),
         SizedBox(width: 8.w),
       ],
     );
