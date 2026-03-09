@@ -6,13 +6,11 @@ import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_tour_con
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
-import 'package:chessever2/utils/location_service_provider.dart';
-import 'package:chessever2/utils/png_asset.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/string_utils_provider.dart';
 import 'package:chessever2/widgets/app_button.dart';
 import 'package:chessever2/widgets/atomic_countdown_text.dart';
-import 'package:country_flags/country_flags.dart';
+import 'package:chessever2/widgets/federation_flag.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -396,9 +394,10 @@ class _GamesRound extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final validCountryCode = ref
-        .read(locationServiceProvider)
-        .getValidCountryCode(player.countryCode);
+    final federationForFlag =
+        player.countryCode.trim().isNotEmpty
+            ? player.countryCode
+            : (player.federation.trim().isNotEmpty ? player.federation : 'FID');
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -412,24 +411,13 @@ class _GamesRound extends ConsumerWidget {
         ),
         Row(
           children: [
-            if (player.countryCode.toUpperCase() == 'FID') ...<Widget>[
-              Image.asset(
-                PngAsset.fideLogo,
-                height: 12.h,
-                width: 16.w,
-                fit: BoxFit.cover,
-                cacheWidth: 48,
-                cacheHeight: 36,
-              ),
-              SizedBox(width: 4.w),
-            ] else if (validCountryCode.isNotEmpty) ...<Widget>[
-              CountryFlag.fromCountryCode(
-                validCountryCode,
-                height: 12.h,
-                width: 16.w,
-              ),
-              SizedBox(width: 4.w),
-            ],
+            FederationFlag(
+              federation: federationForFlag,
+              height: 12.h,
+              width: 16.w,
+              borderRadius: BorderRadius.circular(2.br),
+            ),
+            SizedBox(width: 4.w),
             Flexible(
               child: Text(
                 '${player.title} ${player.rating}',

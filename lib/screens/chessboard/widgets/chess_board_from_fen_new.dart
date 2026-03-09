@@ -102,7 +102,7 @@ void _showShareOverlay(
   // We use the theme colors but hide all highlights for clean screenshots
   // IMPORTANT: Disable animations for instant static frame capture in GIF generation
   final chessboardSettings = ChessboardSettings(
-    enableCoordinates: false,
+    enableCoordinates: true,
     animationDuration: Duration.zero, // Disable animations for screenshot/GIF
     colorScheme: ChessboardColorScheme(
       lightSquare: baseColorScheme.lightSquare,

@@ -6,6 +6,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:chessever2/screens/standings/score_card_screen.dart';
+import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 
 class ScoreboardAppbar extends ConsumerStatefulWidget {
@@ -42,6 +43,10 @@ class _ScoreboardAppbarState extends ConsumerState<ScoreboardAppbar>
   }
 
   Future<void> _toggleFavorite() async {
+    if (ref.read(chessboardViewFromProviderNew) != ChessboardView.forYou) {
+      return;
+    }
+
     final allowed = await requireFullAuthGuard(context);
     if (!allowed) return;
 
@@ -77,17 +82,22 @@ class _ScoreboardAppbarState extends ConsumerState<ScoreboardAppbar>
   @override
   Widget build(BuildContext context) {
     final player = ref.watch(selectedPlayerProvider);
+    final isForYouView =
+        ref.watch(chessboardViewFromProviderNew) == ChessboardView.forYou;
 
-    // Use old provider system
-    final favoritesAsync = ref.watch(favoritePlayersNotifierProvider);
-    final isFavorite =
-        player != null &&
-        favoritesAsync.maybeWhen(
-          data: (state) => state.players.any((p) => p.fideId == player.fideId),
-          orElse: () => false,
-          skipLoadingOnRefresh: true,
-          skipLoadingOnReload: true,
-        );
+    bool isFavorite = false;
+    if (isForYouView) {
+      final favoritesAsync = ref.watch(favoritePlayersNotifierProvider);
+      isFavorite =
+          player != null &&
+          favoritesAsync.maybeWhen(
+            data:
+                (state) => state.players.any((p) => p.fideId == player.fideId),
+            orElse: () => false,
+            skipLoadingOnRefresh: true,
+            skipLoadingOnReload: true,
+          );
+    }
 
     return Row(
       children: [
@@ -107,25 +117,26 @@ class _ScoreboardAppbarState extends ConsumerState<ScoreboardAppbar>
         SizedBox(width: 16.w),
         Expanded(child: const PlayerDropDown()),
         SizedBox(width: 16.w),
-        InkWell(
-          onTap: _toggleFavorite,
-          child: Container(
-            width: 48.w,
-            height: 36.h,
-            padding: EdgeInsets.all(8.sp),
-            child: ScaleTransition(
-              scale: _scaleAnimation,
-              child: SvgWidget(
-                isFavorite
-                    ? SvgAsset.favouriteRedIcon
-                    : SvgAsset.favouriteIcon2,
-                semanticsLabel: 'Favorite Icon',
-                height: 20.h,
-                width: 20.w,
+        if (isForYouView)
+          InkWell(
+            onTap: _toggleFavorite,
+            child: Container(
+              width: 48.w,
+              height: 36.h,
+              padding: EdgeInsets.all(8.sp),
+              child: ScaleTransition(
+                scale: _scaleAnimation,
+                child: SvgWidget(
+                  isFavorite
+                      ? SvgAsset.favouriteRedIcon
+                      : SvgAsset.favouriteIcon2,
+                  semanticsLabel: 'Favorite Icon',
+                  height: 20.h,
+                  width: 20.w,
+                ),
               ),
             ),
           ),
-        ),
         SizedBox(width: 20.w),
       ],
     );

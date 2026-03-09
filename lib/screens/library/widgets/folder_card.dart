@@ -110,7 +110,7 @@ class FolderCard extends ConsumerWidget {
     final Widget countWidget;
     if (isTwic) {
       countWidget = Text(
-        '4M+ master games',
+        '4.5 million master games',
         style: AppTypography.textXsRegular.copyWith(
           color: const Color(0xFFA1A1A1),
           height: 16 / 12,
