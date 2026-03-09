@@ -49,6 +49,7 @@ import 'package:fast_immutable_collections/fast_immutable_collections.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter_animate/flutter_animate.dart' hide ShimmerEffect;
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
@@ -175,6 +176,16 @@ class BouncySpringCurve extends Curve {
 extension LichessMoveAnnotationTypeX on LichessMoveAnnotationType {
   String get symbol {
     switch (this) {
+      case LichessMoveAnnotationType.brilliant:
+        return '!!';
+      case LichessMoveAnnotationType.missedWin:
+        return '??';
+      case LichessMoveAnnotationType.goodMove:
+        return '!';
+      case LichessMoveAnnotationType.bestMove:
+        return '!';
+      case LichessMoveAnnotationType.bookMove:
+        return '';
       case LichessMoveAnnotationType.inaccuracy:
         return '?!';
       case LichessMoveAnnotationType.mistake:
@@ -184,14 +195,45 @@ extension LichessMoveAnnotationTypeX on LichessMoveAnnotationType {
     }
   }
 
+  String get iconAssetPath {
+    switch (this) {
+      case LichessMoveAnnotationType.brilliant:
+        return 'assets/svgs/brilliant.svg';
+      case LichessMoveAnnotationType.missedWin:
+        return 'assets/svgs/missed_win.svg';
+      case LichessMoveAnnotationType.mistake:
+        return 'assets/svgs/mistake.svg';
+      case LichessMoveAnnotationType.blunder:
+        return 'assets/svgs/blunder.svg';
+      case LichessMoveAnnotationType.inaccuracy:
+        return 'assets/svgs/inaccuracy.svg';
+      case LichessMoveAnnotationType.goodMove:
+        return 'assets/svgs/good_move.svg';
+      case LichessMoveAnnotationType.bestMove:
+        return 'assets/svgs/best_move.svg';
+      case LichessMoveAnnotationType.bookMove:
+        return 'assets/svgs/book_move.svg';
+    }
+  }
+
   Color get color {
     switch (this) {
+      case LichessMoveAnnotationType.brilliant:
+        return const Color(0xFF177A68);
+      case LichessMoveAnnotationType.missedWin:
+        return const Color(0xFFF70400);
+      case LichessMoveAnnotationType.goodMove:
+        return const Color(0xFF177A68);
+      case LichessMoveAnnotationType.bestMove:
+        return const Color(0xFF28833A);
+      case LichessMoveAnnotationType.bookMove:
+        return const Color(0xFF4E5B4F);
       case LichessMoveAnnotationType.inaccuracy:
-        return const Color(0xFFF2C94C); // Yellow
+        return const Color(0xFFFABE46);
       case LichessMoveAnnotationType.mistake:
-        return const Color(0xFFFFA726); // Orange
+        return const Color(0xFFEB9518);
       case LichessMoveAnnotationType.blunder:
-        return const Color(0xFF8B1E1E); // Dark red
+        return const Color(0xFFC9342E);
     }
   }
 }
@@ -466,6 +508,28 @@ Color getLastMoveHighlightColor(ChessBoardStateNew state) {
 // Helper function to get move highlight color for analysis mode
 Color getAnalysisLastMoveHighlightColor(ChessBoardStateNew state) {
   return kLastMoveHighlightColor;
+}
+
+bool _isLightBoardSquare(Square square) {
+  // a1 is dark; odd parity is light.
+  return (square.file + square.rank) % 2 == 1;
+}
+
+IMap<Square, SquareHighlight> _buildLastMoveSquareHighlights(Move? lastMove) {
+  if (lastMove == null) return const IMap.empty();
+
+  final highlights = <Square, SquareHighlight>{};
+  for (final square in lastMove.squares) {
+    final color =
+        _isLightBoardSquare(square)
+            ? kLastMoveHighlightLightSquare
+            : kLastMoveHighlightDarkSquare;
+    highlights[square] = SquareHighlight(
+      details: HighlightDetails(solidColor: color),
+    );
+  }
+
+  return highlights.lock;
 }
 
 bool _gameHasCustomVariations(ChessGame? game) {
@@ -6354,6 +6418,56 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard> {
   bool _isAtGameEnd(AnalysisBoardState s) =>
       s.isAtEnd && s.movePointer.length == 1;
 
+  Square? _lastMoveDestinationSquare(Move? lastMove) {
+    if (lastMove == null) return null;
+    final squares = lastMove.squares.toList();
+    if (squares.isEmpty) return null;
+    return squares.last;
+  }
+
+  Positioned _buildBoardAnnotationBadge({
+    required Square square,
+    required LichessMoveAnnotation annotation,
+  }) {
+    final squareSize = widget.size / 8;
+    final effectiveFile = widget.isFlipped ? 7 - square.file : square.file;
+    final effectiveRank = widget.isFlipped ? square.rank : 7 - square.rank;
+    final left = effectiveFile * squareSize;
+    final top = effectiveRank * squareSize;
+    final badgeSize = squareSize * 0.40;
+    // Exact anchor from reference: center the badge on the destination square's
+    // top-right corner intersection.
+    final badgeLeft = left + squareSize - (badgeSize / 2);
+    final badgeTop = top - (badgeSize / 2) + (squareSize * 0.04);
+
+    return Positioned(
+      left: badgeLeft,
+      top: badgeTop,
+      child: IgnorePointer(
+        child: Container(
+          width: badgeSize,
+          height: badgeSize,
+          decoration: BoxDecoration(
+            color: annotation.type.color,
+            borderRadius: BorderRadius.circular(999),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.35),
+                blurRadius: 4,
+                offset: const Offset(0, 1),
+              ),
+            ],
+          ),
+          padding: EdgeInsets.all(badgeSize * 0.18),
+          child: SvgPicture.asset(
+            annotation.type.iconAssetPath,
+            fit: BoxFit.contain,
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   void didUpdateWidget(covariant _AnalysisBoard oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -6425,6 +6539,11 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard> {
       index: widget.index,
     );
     final notifier = ref.read(chessBoardScreenProviderNew(params).notifier);
+    final analysisGame = widget.chessBoardState.analysisState.game;
+    final navigatorState =
+        analysisGame == null
+            ? null
+            : ref.watch(chessGameNavigatorProvider(analysisGame));
 
     // PERF: Use .select() to only rebuild when showPvArrows changes
     final showPvArrows = ref.watch(
@@ -6442,6 +6561,46 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard> {
     // Use delayed flag to allow move animation to complete first
     final showGameEndingEffect =
         isGameOver && isAtGameEnd && _showDelayedGameEndingEffect;
+
+    final boardAnnotation = (() {
+      if (navigatorState == null) return null;
+      final mainlineSans =
+          navigatorState.game.mainline.map((move) => move.san).toList();
+      final lichessGameId = _extractLichessGameId(navigatorState.game);
+      final lichessSiteUrl = _extractLichessSiteUrl(navigatorState.game);
+      final lichessAnnotationsAsync = ref.watch(
+        lichessMoveAnnotationsProvider(
+          LichessMoveAnnotationsParams(
+            lichessGameId: lichessGameId,
+            siteUrl: lichessSiteUrl,
+            signature: _moveSansSignature(mainlineSans),
+            moveSans: mainlineSans,
+            isLiveGame: navigatorState.game.isLiveGame,
+          ),
+        ),
+      );
+      final lichessAnnotations =
+          lichessAnnotationsAsync.valueOrNull ??
+          const <int, LichessMoveAnnotation>{};
+      if (lichessAnnotations.isEmpty) return null;
+      final currentMoveIndex =
+          widget.chessBoardState.analysisState.currentMoveIndex;
+      if (currentMoveIndex < 0) return null;
+      final current = lichessAnnotations[currentMoveIndex];
+      if (current != null) return current;
+      final previous = lichessAnnotations[currentMoveIndex - 1];
+      return previous;
+    })();
+    final boardAnnotationSquare = _lastMoveDestinationSquare(
+      widget.chessBoardState.analysisState.lastMove,
+    );
+    final boardAnnotationBadge =
+        (boardAnnotation != null && boardAnnotationSquare != null)
+            ? _buildBoardAnnotationBadge(
+              square: boardAnnotationSquare,
+              annotation: boardAnnotation,
+            )
+            : null;
 
     // Calculate square highlights and annotations for game ending
     final gameEndingData =
@@ -6464,6 +6623,18 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard> {
         gameEndingData!.loserKingSquare!,
         gameStatus == GameStatus.whiteWins ? 'k' : 'K',
       );
+    }
+
+    final lastMoveHighlights = _buildLastMoveSquareHighlights(
+      widget.chessBoardState.analysisState.lastMove,
+    );
+    final squareHighlightsMap = <Square, SquareHighlight>{};
+    for (final entry
+        in (gameEndingData?.squareHighlights ?? const IMap.empty()).entries) {
+      squareHighlightsMap[entry.key] = entry.value;
+    }
+    for (final entry in lastMoveHighlights.entries) {
+      squareHighlightsMap.putIfAbsent(entry.key, () => entry.value);
     }
 
     final chessboard = Chessboard(
@@ -6494,7 +6665,7 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard> {
                   showPvArrows)
               ? widget.chessBoardState.shapes
               : const ISet.empty(),
-      squareHighlights: gameEndingData?.squareHighlights ?? const IMap.empty(),
+      squareHighlights: IMap(squareHighlightsMap),
       annotations: gameEndingData?.annotations ?? const IMap.empty(),
       game: GameData(
         playerSide:
@@ -6533,6 +6704,7 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard> {
         child: Stack(
           children: [
             chessboard,
+            if (boardAnnotationBadge != null) boardAnnotationBadge,
             // Animated falling king overlay using motor springs
             _FallenKingOverlay(
               left: effectiveFile * squareSize,
@@ -6560,6 +6732,7 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard> {
           child: Stack(
             children: [
               chessboard,
+              if (boardAnnotationBadge != null) boardAnnotationBadge,
               // Animated peace icon on white king
               _AnimatedPeaceIcon(
                 square: whiteKingSquare,
@@ -6580,7 +6753,14 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard> {
       }
     }
 
-    return RepaintBoundary(child: chessboard);
+    return RepaintBoundary(
+      child: Stack(
+        children: [
+          chessboard,
+          if (boardAnnotationBadge != null) boardAnnotationBadge,
+        ],
+      ),
+    );
   }
 
   /// Calculate game ending visual data (square highlights and annotations)
@@ -7457,18 +7637,22 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       moveSpans = [TextSpan(text: token.text, style: textStyle)];
     }
 
-    // Add annotation symbol if present
-    if (annotation != null) {
-      moveSpans.add(
-        TextSpan(
-          text: annotation.type.symbol,
-          style: AppTypography.textXsMedium.copyWith(
-            color: annotation.type.color,
-            fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
-          ),
-        ),
-      );
-    }
+    final Widget? annotationBadge =
+        annotation == null
+            ? null
+            : Container(
+              width: 14.sp,
+              height: 14.sp,
+              decoration: BoxDecoration(
+                color: annotation.type.color,
+                borderRadius: BorderRadius.circular(999),
+              ),
+              padding: EdgeInsets.all(2.sp),
+              child: SvgPicture.asset(
+                annotation.type.iconAssetPath,
+                fit: BoxFit.contain,
+              ),
+            );
 
     return GestureDetector(
       key: key,
