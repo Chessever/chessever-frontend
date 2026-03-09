@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:chessever2/repository/local_storage/tournament/tour_local_storage.dart';
+import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.dart';
 import 'package:chessever2/repository/supabase/tour/tour.dart';
 import 'package:chessever2/screens/group_event/model/about_tour_model.dart';
@@ -309,12 +310,13 @@ class _TourDetailScreenNotifier
     DateTime endDate,
     List<String> liveTourIds,
   ) {
-    if (liveTourIds.contains(tourId)) {
-      return RoundStatus.live;
-    } else if (now.isBefore(startDate)) {
+    // Never treat future tours as live, even if settings contain stale IDs.
+    if (now.isBefore(startDate)) {
       return RoundStatus.upcoming;
     } else if (now.isAfter(endDate)) {
       return RoundStatus.completed;
+    } else if (liveTourIds.contains(tourId)) {
+      return RoundStatus.live;
     } else {
       return RoundStatus.ongoing;
     }
@@ -360,22 +362,10 @@ class _TourDetailScreenNotifier
       }
     }
 
-    // 2️⃣ If user previously selected a tour during this session (stored locally)
-    final savedTourId = await ref
-        .read(tourDetailRepoProvider)
-        .getSelectedTourId(groupBroadcast.id);
-
-    if (savedTourId != null) {
-      final savedModel = findTourModel(tourModels, savedTourId);
-      if (savedModel != null && canUseSelection(savedModel)) {
-        return savedModel.tour;
-      }
-    }
-
-    // 3️⃣ Prefer live tours — a tour with active games always takes priority
+    // 2️⃣ Prefer live tours — a tour with active games always takes priority
     final liveModels =
         tourModels
-            .where((model) => liveTourIds.contains(model.tour.id))
+            .where((model) => model.roundStatus == RoundStatus.live)
             .toList();
 
     if (liveModels.isNotEmpty) {
@@ -392,7 +382,35 @@ class _TourDetailScreenNotifier
       return liveModels.first.tour;
     }
 
-    // 4️⃣ No live tour — prefer highest avgElo among started tours first.
+    // 3️⃣ No live tour — choose by actual game activity across all tours.
+    // This avoids opening future categories with no played games.
+    try {
+      final activityTourId = await ref
+          .read(gameRepositoryProvider)
+          .getMostRelevantTourId(
+            tourIds: tourModels.map((m) => m.tour.id).toList(),
+          );
+      if (activityTourId != null) {
+        final activityModel = findTourModel(tourModels, activityTourId);
+        if (activityModel != null && canUseSelection(activityModel)) {
+          return activityModel.tour;
+        }
+      }
+    } catch (_) {}
+
+    // 4️⃣ If user previously selected a tour, keep it only after activity checks.
+    final savedTourId = await ref
+        .read(tourDetailRepoProvider)
+        .getSelectedTourId(groupBroadcast.id);
+
+    if (savedTourId != null) {
+      final savedModel = findTourModel(tourModels, savedTourId);
+      if (savedModel != null && canUseSelection(savedModel)) {
+        return savedModel.tour;
+      }
+    }
+
+    // 5️⃣ No strong activity signal — prefer highest avgElo among started tours first.
     final selectableModels =
         hasStartedTours
             ? tourModels
@@ -404,7 +422,7 @@ class _TourDetailScreenNotifier
       return bestByElo.tour;
     }
 
-    // 5️⃣ If no ELO signal, prefer started tours (ongoing first, then completed).
+    // 6️⃣ If no ELO signal, prefer started tours (ongoing first, then completed).
     final ongoingTours =
         tourModels
             .where((model) => model.roundStatus == RoundStatus.ongoing)
@@ -437,7 +455,7 @@ class _TourDetailScreenNotifier
       return completedTours.first.tour;
     }
 
-    // 6️⃣ If everything is upcoming, prefer the nearest one.
+    // 7️⃣ If everything is upcoming, prefer the nearest one.
     final upcomingTours =
         tourModels
             .where((model) => model.roundStatus == RoundStatus.upcoming)
@@ -453,7 +471,7 @@ class _TourDetailScreenNotifier
       return upcomingTours.first.tour;
     }
 
-    // 7️⃣ Fallback: first tour
+    // 8️⃣ Fallback: first tour
     return tourModels.first.tour;
   }
 

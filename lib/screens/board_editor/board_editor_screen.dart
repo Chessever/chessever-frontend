@@ -1,3 +1,4 @@
+import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/providers/board_settings_provider_new.dart';
 import 'package:chessever2/repository/lichess/cloud_eval/cloud_eval.dart';
 import 'package:chessever2/screens/board_editor/board_editor_state.dart';
@@ -372,6 +373,7 @@ class _BoardEditorScreenState extends ConsumerState<BoardEditorScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      key: e2eKey(E2eIds.boardEditorRoot),
       backgroundColor: kBackgroundColor,
       body: SafeArea(
         child: Column(
@@ -543,6 +545,7 @@ class _BoardEditorScreenState extends ConsumerState<BoardEditorScreen> {
           GestureDetector(
             onTap: _onDone,
             child: Container(
+              key: e2eKey(E2eIds.boardEditorDoneButton),
               padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 8.h),
               decoration: BoxDecoration(
                 color: kWhiteColor,
@@ -625,6 +628,7 @@ class _BoardWithEvalBar extends ConsumerWidget {
                 child: Opacity(
                   opacity: clamped,
                   child: EvaluationBarWidget(
+                    key: e2eKey(E2eIds.boardEvalBar),
                     width: currentEvalWidth,
                     height: boardSize,
                     evaluation: evaluation,

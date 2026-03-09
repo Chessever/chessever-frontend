@@ -926,6 +926,89 @@ class GameRepository extends BaseRepository {
     }
   }
 
+  /// Resolve the best tour to open for an event group.
+  ///
+  /// Priority:
+  /// 1) live games with moves
+  /// 2) most recently moved game
+  /// 3) most recently started round
+  /// 4) nearest upcoming round when nothing started yet
+  Future<String?> getMostRelevantTourId({required List<String> tourIds}) async {
+    if (tourIds.isEmpty) return null;
+
+    try {
+      final liveResponse = await supabase
+          .from('games')
+          .select('tour_id,last_move_time,date_start')
+          .inFilter('tour_id', tourIds)
+          .inFilter('status', ['*', 'ongoing'])
+          .not('last_move_time', 'is', null)
+          .order('last_move_time', ascending: false, nullsFirst: false)
+          .order('date_start', ascending: false, nullsFirst: false)
+          .limit(1);
+
+      if (liveResponse.isNotEmpty) {
+        final id = liveResponse.first['tour_id'];
+        if (id is String && id.isNotEmpty) {
+          return id;
+        }
+      }
+
+      final recentResponse = await supabase
+          .from('games')
+          .select('tour_id,last_move_time,date_start')
+          .inFilter('tour_id', tourIds)
+          .not('last_move_time', 'is', null)
+          .order('last_move_time', ascending: false, nullsFirst: false)
+          .limit(1);
+
+      if (recentResponse.isNotEmpty) {
+        final id = recentResponse.first['tour_id'];
+        if (id is String && id.isNotEmpty) {
+          return id;
+        }
+      }
+
+      final nowIso = DateTime.now().toUtc().toIso8601String();
+      final startedRounds = await supabase
+          .from('rounds')
+          .select('tour_id,starts_at')
+          .inFilter('tour_id', tourIds)
+          .not('starts_at', 'is', null)
+          .lte('starts_at', nowIso)
+          .order('starts_at', ascending: false)
+          .limit(1);
+
+      if (startedRounds.isNotEmpty) {
+        final id = startedRounds.first['tour_id'];
+        if (id is String && id.isNotEmpty) {
+          return id;
+        }
+      }
+
+      final upcomingRounds = await supabase
+          .from('rounds')
+          .select('tour_id,starts_at')
+          .inFilter('tour_id', tourIds)
+          .not('starts_at', 'is', null)
+          .gte('starts_at', nowIso)
+          .order('starts_at', ascending: true)
+          .limit(1);
+
+      if (upcomingRounds.isNotEmpty) {
+        final id = upcomingRounds.first['tour_id'];
+        if (id is String && id.isNotEmpty) {
+          return id;
+        }
+      }
+
+      return null;
+    } catch (e) {
+      debugPrint('[GameRepository] Error in getMostRelevantTourId: $e');
+      return null;
+    }
+  }
+
   /// Get games for "For You" event cards
   /// Current round = live games with moves, else most recently played,
   /// else earliest upcoming round when nothing has started yet.

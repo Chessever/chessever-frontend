@@ -1,3 +1,4 @@
+import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/providers/auth_state_provider.dart';
 import 'package:chessever2/repository/library/library_repository.dart';
 import 'package:chessever2/screens/library/folder_contents_screen.dart';
@@ -31,6 +32,7 @@ class _BookPreviewScreenState extends ConsumerState<BookPreviewScreen> {
     );
 
     return Scaffold(
+      key: e2eKey(E2eIds.bookPreviewRoot),
       backgroundColor: kBackgroundColor,
       body: ScreenWrapper(
         child: Center(

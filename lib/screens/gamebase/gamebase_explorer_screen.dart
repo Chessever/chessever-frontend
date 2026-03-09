@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessground/chessground.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:flutter/material.dart';
@@ -69,8 +70,8 @@ class GamebaseExplorerScreen extends ConsumerStatefulWidget {
       _GamebaseExplorerScreenState();
 }
 
-class _GamebaseExplorerScreenState
-    extends ConsumerState<GamebaseExplorerScreen> with RouteAware {
+class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
+    with RouteAware {
   bool _isFlipped = false;
   bool _routeActive = true;
   Timer? _backwardLongPressTimer;
@@ -123,7 +124,10 @@ class _GamebaseExplorerScreenState
         state.filters.selectedPlayers.length != 1 ||
         state.filters.selectedPlayers.first.id != scopedPlayer.id;
 
-    return hasRatingOrTimeFilters || hasColorFilter || hasResultFilter || hasDifferentPlayerScope;
+    return hasRatingOrTimeFilters ||
+        hasColorFilter ||
+        hasResultFilter ||
+        hasDifferentPlayerScope;
   }
 
   void _clearFiltersForCurrentScope() {
@@ -237,7 +241,8 @@ class _GamebaseExplorerScreenState
 
   @override
   Widget build(BuildContext context) {
-    final showEngineAnalysis = _routeActive &&
+    final showEngineAnalysis =
+        _routeActive &&
         ref.watch(
           engineSettingsProviderNew.select(
             (s) => s.valueOrNull?.showEngineAnalysis ?? true,
@@ -253,6 +258,7 @@ class _GamebaseExplorerScreenState
           _resetExplorerState();
         },
         child: Scaffold(
+          key: e2eKey(E2eIds.openingExplorerRoot),
           backgroundColor: kBlack2Color,
           appBar: _buildAppBar(context),
           bottomNavigationBar: ChessBoardBottomNavBar(
@@ -593,6 +599,7 @@ class _GamebaseExplorerScreenState
         GestureDetector(
           onTap: () => _openAnalysis(context),
           child: Container(
+            key: e2eKey(E2eIds.openingExplorerDoneButton),
             margin: EdgeInsets.only(right: 8.sp),
             padding: EdgeInsets.symmetric(horizontal: 8.sp, vertical: 6.sp),
             decoration: BoxDecoration(
@@ -711,10 +718,11 @@ class _GamebaseExplorerScreenState
         borderRadius: BorderRadius.vertical(top: Radius.circular(16.br)),
       ),
       constraints: ResponsiveHelper.bottomSheetConstraints,
-      builder: (_) => UncontrolledProviderScope(
-        container: container,
-        child: _FilterSheet(scopedPlayer: widget.initialPlayer),
-      ),
+      builder:
+          (_) => UncontrolledProviderScope(
+            container: container,
+            child: _FilterSheet(scopedPlayer: widget.initialPlayer),
+          ),
     );
   }
 }
@@ -880,6 +888,7 @@ class _ExplorerEvalBarState extends ConsumerState<_ExplorerEvalBar> {
     final isEvalForCurrentPosition = currentKey == evalKey;
 
     return EvaluationBarWidget(
+      key: e2eKey(E2eIds.boardEvalBar),
       width: widget.width,
       height: widget.height,
       isFlipped: widget.isFlipped,
@@ -929,8 +938,14 @@ class _FilterSheetState extends ConsumerState<_FilterSheet> {
       );
     }
     _ratingRange = RangeValues(
-      (_draftFilters.minRating?.toDouble() ?? _ratingMin).clamp(_ratingMin, _ratingMax),
-      (_draftFilters.maxRating?.toDouble() ?? _ratingMax).clamp(_ratingMin, _ratingMax),
+      (_draftFilters.minRating?.toDouble() ?? _ratingMin).clamp(
+        _ratingMin,
+        _ratingMax,
+      ),
+      (_draftFilters.maxRating?.toDouble() ?? _ratingMax).clamp(
+        _ratingMin,
+        _ratingMax,
+      ),
     );
   }
 
@@ -1002,8 +1017,7 @@ class _FilterSheetState extends ConsumerState<_FilterSheet> {
   void _toggleColor(GamebasePlayerColor color) {
     setState(() {
       _draftFilters = _draftFilters.copyWith(
-        playerColor:
-            _draftFilters.playerColor == color ? null : color,
+        playerColor: _draftFilters.playerColor == color ? null : color,
       );
     });
   }
@@ -1011,8 +1025,7 @@ class _FilterSheetState extends ConsumerState<_FilterSheet> {
   void _toggleResult(GamebaseGameResult result) {
     setState(() {
       _draftFilters = _draftFilters.copyWith(
-        gameResult:
-            _draftFilters.gameResult == result ? null : result,
+        gameResult: _draftFilters.gameResult == result ? null : result,
       );
     });
   }
@@ -1043,9 +1056,15 @@ class _FilterSheetState extends ConsumerState<_FilterSheet> {
     final hasColor = filters.playerColor != null;
     final hasResult = filters.gameResult != null;
     if (widget.scopedPlayer == null) {
-      return hasTimeOrRating || hasColor || hasResult || filters.playerIds.isNotEmpty;
+      return hasTimeOrRating ||
+          hasColor ||
+          hasResult ||
+          filters.playerIds.isNotEmpty;
     }
-    return hasTimeOrRating || hasColor || hasResult || !_isScopedPlayerDraft(filters);
+    return hasTimeOrRating ||
+        hasColor ||
+        hasResult ||
+        !_isScopedPlayerDraft(filters);
   }
 
   void _clearAll() {
@@ -1062,7 +1081,10 @@ class _FilterSheetState extends ConsumerState<_FilterSheet> {
       notifier.clearFilters();
     }
     setState(() {
-      _draftFilters = _draftFilters.copyWith(playerColor: null, gameResult: null);
+      _draftFilters = _draftFilters.copyWith(
+        playerColor: null,
+        gameResult: null,
+      );
       _ratingRange = const RangeValues(_ratingMin, _ratingMax);
     });
     Navigator.pop(context);
@@ -1201,50 +1223,58 @@ class _FilterSheetState extends ConsumerState<_FilterSheet> {
                     children: [
                       FilterChip(
                         label: const Text('White'),
-                        avatar: Icon(Icons.circle, size: 14.sp, color: kWhiteColor),
+                        avatar: Icon(
+                          Icons.circle,
+                          size: 14.sp,
+                          color: kWhiteColor,
+                        ),
                         selected:
                             filters.playerColor == GamebasePlayerColor.white,
-                        onSelected: (_) =>
-                            _toggleColor(GamebasePlayerColor.white),
+                        onSelected:
+                            (_) => _toggleColor(GamebasePlayerColor.white),
                         selectedColor: kPrimaryColor.withValues(alpha: 0.2),
                         checkmarkColor: kPrimaryColor,
                         labelStyle: TextStyle(
-                          color: filters.playerColor ==
-                                  GamebasePlayerColor.white
-                              ? kPrimaryColor
-                              : kWhiteColor,
+                          color:
+                              filters.playerColor == GamebasePlayerColor.white
+                                  ? kPrimaryColor
+                                  : kWhiteColor,
                           fontSize: 12.f,
                         ),
                         backgroundColor: kBlack2Color,
                         side: BorderSide(
-                          color: filters.playerColor ==
-                                  GamebasePlayerColor.white
-                              ? kPrimaryColor
-                              : kDividerColor,
+                          color:
+                              filters.playerColor == GamebasePlayerColor.white
+                                  ? kPrimaryColor
+                                  : kDividerColor,
                         ),
                       ),
                       FilterChip(
                         label: const Text('Black'),
-                        avatar: Icon(Icons.circle, size: 14.sp, color: kBlackColor),
+                        avatar: Icon(
+                          Icons.circle,
+                          size: 14.sp,
+                          color: kBlackColor,
+                        ),
                         selected:
                             filters.playerColor == GamebasePlayerColor.black,
-                        onSelected: (_) =>
-                            _toggleColor(GamebasePlayerColor.black),
+                        onSelected:
+                            (_) => _toggleColor(GamebasePlayerColor.black),
                         selectedColor: kPrimaryColor.withValues(alpha: 0.2),
                         checkmarkColor: kPrimaryColor,
                         labelStyle: TextStyle(
-                          color: filters.playerColor ==
-                                  GamebasePlayerColor.black
-                              ? kPrimaryColor
-                              : kWhiteColor,
+                          color:
+                              filters.playerColor == GamebasePlayerColor.black
+                                  ? kPrimaryColor
+                                  : kWhiteColor,
                           fontSize: 12.f,
                         ),
                         backgroundColor: kBlack2Color,
                         side: BorderSide(
-                          color: filters.playerColor ==
-                                  GamebasePlayerColor.black
-                              ? kPrimaryColor
-                              : kDividerColor,
+                          color:
+                              filters.playerColor == GamebasePlayerColor.black
+                                  ? kPrimaryColor
+                                  : kDividerColor,
                         ),
                       ),
                     ],
@@ -1595,6 +1625,7 @@ class _ExplorerEngineLines extends ConsumerWidget {
     final uciRegex = RegExp(r'^[a-h][1-8][a-h][1-8][qrbn]?$');
 
     return Column(
+      key: e2eKey(E2eIds.openingExplorerEngineLines),
       mainAxisSize: MainAxisSize.min,
       children: [
         for (var i = 0; i < _kMaxRows; i++) ...[

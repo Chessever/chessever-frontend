@@ -27,6 +27,8 @@ class LibrarySearchBar extends ConsumerStatefulWidget {
   final String hintText;
   final FocusNode? focusNode;
   final List<String>? hintPhrases;
+  final Key? textFieldKey;
+  final Key? filterButtonKey;
 
   const LibrarySearchBar({
     super.key,
@@ -43,6 +45,8 @@ class LibrarySearchBar extends ConsumerStatefulWidget {
     this.hintText = 'Search',
     this.focusNode,
     this.hintPhrases,
+    this.textFieldKey,
+    this.filterButtonKey,
   });
 
   @override
@@ -228,6 +232,7 @@ class _LibrarySearchBarState extends ConsumerState<LibrarySearchBar> {
                     ),
                 // CSS: 12px, Inter, rgba(255,255,255,0.7)
                 TextField(
+                  key: widget.textFieldKey,
                   controller: widget.controller,
                   focusNode: _effectiveFocusNode,
                   onTapOutside: (_) => _effectiveFocusNode.unfocus(),
@@ -265,6 +270,7 @@ class _LibrarySearchBarState extends ConsumerState<LibrarySearchBar> {
             if (widget.controller.text.isNotEmpty) SizedBox(width: 4.w),
             // CSS: list-filter icon 24x24 in 32x32 container, radius 4px
             GestureDetector(
+              key: widget.filterButtonKey,
               onTap: widget.onFilterTap,
               child: Container(
                 width: 32.h,

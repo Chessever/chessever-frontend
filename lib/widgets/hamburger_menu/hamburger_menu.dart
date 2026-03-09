@@ -1,3 +1,4 @@
+import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/providers/app_version_provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
@@ -10,7 +11,6 @@ import 'package:chessever2/widgets/hamburger_menu/hamburger_menu_dialogs.dart';
 import 'package:chessever2/widgets/paywall/premium_celebration_overlay.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
-import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 import 'package:chessever2/services/review_prompt_service.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -51,6 +51,7 @@ class HamburgerMenu extends StatelessWidget {
     return SizedBox(
       width: drawerWidth,
       child: Drawer(
+        key: e2eKey(E2eIds.homeDrawer),
         backgroundColor: kBackgroundColor,
         child: SafeArea(
           // Ensure bottom safe area is respected on all devices
@@ -98,6 +99,7 @@ class HamburgerMenu extends StatelessWidget {
                     const _SubscriptionTierHeader(),
                     SizedBox(height: 16.h),
                     _MenuItem(
+                      key: e2eKey(E2eIds.drawerSettings),
                       icon: Icons.settings,
                       customIcon: SvgWidget(
                         SvgAsset.settingsIcon,
@@ -110,6 +112,27 @@ class HamburgerMenu extends StatelessWidget {
                       showChevron: true,
                     ),
                     _MenuItem(
+                      key: e2eKey(E2eIds.drawerPlayers),
+                      icon: Icons.groups_outlined,
+                      title: 'Players',
+                      onPressed: () {
+                        Navigator.of(context).pop();
+                        callbacks.onPlayersPressed();
+                      },
+                      showChevron: true,
+                    ),
+                    _MenuItem(
+                      key: e2eKey(E2eIds.drawerPremium),
+                      icon: Icons.workspace_premium_outlined,
+                      title: 'Premium',
+                      onPressed: () {
+                        Navigator.of(context).pop();
+                        callbacks.onPremiumPressed();
+                      },
+                      showChevron: true,
+                    ),
+                    _MenuItem(
+                      key: e2eKey(E2eIds.drawerOpeningExplorer),
                       icon: Icons.explore_outlined,
                       title: 'Opening Explorer',
                       onPressed: () {
@@ -119,6 +142,7 @@ class HamburgerMenu extends StatelessWidget {
                       showChevron: true,
                     ),
                     _MenuItem(
+                      key: e2eKey(E2eIds.drawerAnalysisBoard),
                       icon: Icons.grid_view_rounded,
                       title: 'Analysis Board',
                       onPressed: () {
@@ -154,6 +178,7 @@ class HamburgerMenu extends StatelessWidget {
                   children: [
                     _VersionFooter(),
                     _LogOutButton(
+                      key: e2eKey(E2eIds.drawerLogout),
                       onLogoutPressed: () {
                         callbacks.onLogoutPressed();
                       },

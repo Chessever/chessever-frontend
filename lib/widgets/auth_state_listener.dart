@@ -11,6 +11,7 @@ import 'package:chessever2/providers/pending_favorite_players_provider.dart';
 import 'package:chessever2/repository/local_storage/country_man/country_man_repository.dart';
 import 'package:chessever2/repository/local_storage/onboarding/onboarding_repository.dart';
 import 'package:chessever2/repository/local_storage/sesions_manager/session_manager.dart';
+import 'package:chessever2/e2e/e2e_config.dart';
 import 'package:chessever2/utils/favorites_migration.dart';
 import 'package:chessever2/services/analytics/analytics_service.dart';
 import 'package:chessever2/services/push_notifications_service.dart';
@@ -84,6 +85,14 @@ class AuthStateListener extends ConsumerWidget {
             unawaited(
               PushNotificationsService.instance.loginUser(currentUserId),
             );
+            if (!E2eConfig.suppressInterruptivePrompts) {
+              // Prompt from auth flow as an additional safety net.
+              // This covers paths where onboarding prompt might be skipped.
+              unawaited(
+                PushNotificationsService.instance
+                    .requestPermissionIfNotGranted(),
+              );
+            }
           }
 
           if (shouldRunSync && currentUserId != null) {

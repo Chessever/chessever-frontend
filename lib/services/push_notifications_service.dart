@@ -10,8 +10,10 @@ class PushNotificationsService {
   static final PushNotificationsService instance = PushNotificationsService._();
 
   static const String _notificationsEnabledKey = 'notifications_enabled';
+  static const String _notificationsPromptedKey = 'notifications_prompted_once';
 
   bool _initialized = false;
+  bool _permissionRequestInFlight = false;
   String? _pendingUserId;
   final List<void Function(OSPushSubscriptionChangedState)>
   _pendingPushObservers = [];
@@ -32,9 +34,19 @@ class PushNotificationsService {
     OneSignal.initialize(appId);
     await LiveUpdatesService.instance.setup();
 
-    // Apply stored opt-in preference so we don't accidentally opt-in users.
-    final enabled = await _loadLocalEnabled();
-    if (!enabled) {
+    // Apply opt-in state based on local preference and current OS permission.
+    // This prevents release builds from forcing users into opt-out when iOS
+    // permission is already granted but no local preference exists yet.
+    final hasPermission = OneSignal.Notifications.permission;
+    final storedEnabled = await _loadLocalEnabledNullable();
+
+    if (storedEnabled == null && hasPermission) {
+      await _persistLocalEnabled(true);
+      await _syncPreferenceToSupabase(true);
+      OneSignal.User.pushSubscription.optIn();
+    } else if (storedEnabled == true && hasPermission) {
+      OneSignal.User.pushSubscription.optIn();
+    } else {
       OneSignal.User.pushSubscription.optOut();
     }
 
@@ -68,15 +80,26 @@ class PushNotificationsService {
   bool get hasPermission => _initialized && OneSignal.Notifications.permission;
 
   Future<bool> requestPermissionWithDialog() async {
-    final granted = await OneSignal.Notifications.requestPermission(true);
-    await _persistLocalEnabled(granted);
-    await _syncPreferenceToSupabase(granted);
-    if (granted) {
-      OneSignal.User.pushSubscription.optIn();
-    } else {
-      OneSignal.User.pushSubscription.optOut();
+    if (!_initialized) return false;
+    if (_permissionRequestInFlight) {
+      return OneSignal.Notifications.permission;
     }
-    return granted;
+
+    _permissionRequestInFlight = true;
+    try {
+      final granted = await OneSignal.Notifications.requestPermission(true);
+      await _persistLocalEnabled(granted);
+      await _persistPromptedOnce();
+      await _syncPreferenceToSupabase(granted);
+      if (granted) {
+        OneSignal.User.pushSubscription.optIn();
+      } else {
+        OneSignal.User.pushSubscription.optOut();
+      }
+      return granted;
+    } finally {
+      _permissionRequestInFlight = false;
+    }
   }
 
   /// Request permission only if not already granted.
@@ -84,7 +107,20 @@ class PushNotificationsService {
   /// and on iOS the OS dialog only shows once regardless.
   Future<void> requestPermissionIfNotGranted() async {
     if (!_initialized) return;
-    if (OneSignal.Notifications.permission) return;
+    if (OneSignal.Notifications.permission) {
+      final enabled = await _loadLocalEnabledNullable();
+      if (enabled != false) {
+        await _persistLocalEnabled(true);
+        await _persistPromptedOnce();
+        await _syncPreferenceToSupabase(true);
+        OneSignal.User.pushSubscription.optIn();
+      }
+      return;
+    }
+
+    final prompted = await _loadPromptedOnce();
+    if (prompted) return;
+
     await requestPermissionWithDialog();
   }
 
@@ -117,11 +153,15 @@ class PushNotificationsService {
   }
 
   Future<bool> _loadLocalEnabled() async {
+    return await _loadLocalEnabledNullable() ?? false;
+  }
+
+  Future<bool?> _loadLocalEnabledNullable() async {
     try {
       final db = AppDatabase.instance;
-      return await db.getBool(_notificationsEnabledKey) ?? false;
+      return await db.getBool(_notificationsEnabledKey);
     } catch (_) {
-      return false;
+      return null;
     }
   }
 
@@ -129,6 +169,24 @@ class PushNotificationsService {
     try {
       final db = AppDatabase.instance;
       await db.setBool(_notificationsEnabledKey, enabled);
+    } catch (_) {
+      // Local storage failure isn't critical.
+    }
+  }
+
+  Future<bool> _loadPromptedOnce() async {
+    try {
+      final db = AppDatabase.instance;
+      return await db.getBool(_notificationsPromptedKey) ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<void> _persistPromptedOnce() async {
+    try {
+      final db = AppDatabase.instance;
+      await db.setBool(_notificationsPromptedKey, true);
     } catch (_) {
       // Local storage failure isn't critical.
     }

@@ -16,6 +16,8 @@ class SimpleSearchBar extends StatelessWidget {
     this.autofocus = false,
     this.onChanged,
     this.filterBadgeCount = 0,
+    this.textFieldKey,
+    this.filterButtonKey,
   });
 
   final TextEditingController controller;
@@ -26,6 +28,8 @@ class SimpleSearchBar extends StatelessWidget {
   final bool autofocus;
   final ValueChanged<String>? onChanged;
   final int filterBadgeCount;
+  final Key? textFieldKey;
+  final Key? filterButtonKey;
 
   @override
   Widget build(BuildContext context) {
@@ -50,6 +54,7 @@ class SimpleSearchBar extends StatelessWidget {
           SizedBox(width: 8.w),
           Expanded(
             child: TextField(
+              key: textFieldKey,
               controller: controller,
               focusNode: focusNode,
               autofocus: autofocus,
@@ -83,6 +88,7 @@ class SimpleSearchBar extends StatelessWidget {
           if (onOpenFilter != null) ...[
             SizedBox(width: 8.w),
             GestureDetector(
+              key: filterButtonKey,
               onTap: onOpenFilter,
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 300),
