@@ -206,17 +206,20 @@ class _AboutTourScreenState extends ConsumerState<AboutTourScreen> {
                                   : null,
                           description: aboutModel.location,
                         ),
-                        SizedBox(height: 12.h),
-                        _InlineLinkRow(
-                          prefix: 'Game Source:',
-                          linkLabel: 'Lichess',
-                          onTap:
-                              isSkeleton
-                                  ? null
-                                  : () => ref
-                                      .read(urlLauncherProvider)
-                                      .launchCustomUrl(aboutModel.tourUrl),
-                        ),
+                        if (aboutModel.tourUrl.trim().isNotEmpty ||
+                            isSkeleton) ...[
+                          SizedBox(height: 12.h),
+                          _InlineLinkRow(
+                            prefix: 'Game Source:',
+                            linkLabel: 'Lichess',
+                            onTap:
+                                isSkeleton
+                                    ? null
+                                    : () => ref
+                                        .read(urlLauncherProvider)
+                                        .launchCustomUrl(aboutModel.tourUrl),
+                          ),
+                        ],
                         SizedBox(
                           height: MediaQuery.of(context).viewPadding.bottom,
                         ),
@@ -279,7 +282,7 @@ class _AboutTourScreenState extends ConsumerState<AboutTourScreen> {
     bool isSkeleton,
     AboutTourModel aboutModel,
   ) {
-    final hasWebsite = domain.isNotEmpty;
+    final hasWebsite = aboutModel.websiteUrl.trim().isNotEmpty;
     final hasStandings = aboutModel.standingsUrl.trim().isNotEmpty;
 
     if (!isSkeleton && !hasWebsite && !hasStandings) {
@@ -309,12 +312,14 @@ class _AboutTourScreenState extends ConsumerState<AboutTourScreen> {
                   children: [
                     SvgWidget(SvgAsset.websiteIcon, height: 12.h, width: 12.h),
                     SizedBox(width: 4.w),
-                    Text(
-                      domain.isEmpty ? 'Chessever' : domain,
-                      maxLines: 1,
-                      style: AppTypography.textXsMedium.copyWith(
-                        color: kPrimaryColor,
-                        overflow: TextOverflow.ellipsis,
+                    Flexible(
+                      child: Text(
+                        domain.isEmpty ? 'Chessever' : domain,
+                        maxLines: 1,
+                        style: AppTypography.textXsMedium.copyWith(
+                          color: kPrimaryColor,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
                     ),
                   ],
@@ -347,7 +352,11 @@ class _AboutTourScreenState extends ConsumerState<AboutTourScreen> {
 }
 
 class _TitleDescWidget extends StatelessWidget {
-  const _TitleDescWidget({required this.title, required this.description});
+  const _TitleDescWidget({
+    required this.title,
+    required this.description,
+    super.key,
+  });
 
   final String title;
   final String description;
@@ -376,6 +385,7 @@ class _InlineLinkRow extends StatelessWidget {
     required this.prefix,
     required this.linkLabel,
     this.onTap,
+    super.key,
   });
 
   final String prefix;
@@ -417,6 +427,7 @@ class _CountryFlag extends StatelessWidget {
     required this.title,
     required this.flag,
     required this.description,
+    super.key,
   });
 
   final String title;
