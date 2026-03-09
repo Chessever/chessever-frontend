@@ -217,7 +217,9 @@ class _AboutTourScreenState extends ConsumerState<AboutTourScreen> {
                                     ? null
                                     : () => ref
                                         .read(urlLauncherProvider)
-                                        .launchCustomUrl(aboutModel.tourUrl),
+                                        .launchCustomUrl(
+                                          aboutModel.tourUrl.trim(),
+                                        ),
                           ),
                         ],
                         SizedBox(
@@ -282,8 +284,10 @@ class _AboutTourScreenState extends ConsumerState<AboutTourScreen> {
     bool isSkeleton,
     AboutTourModel aboutModel,
   ) {
-    final hasWebsite = aboutModel.websiteUrl.trim().isNotEmpty;
-    final hasStandings = aboutModel.standingsUrl.trim().isNotEmpty;
+    final websiteUrl = aboutModel.websiteUrl.trim();
+    final standingsUrl = aboutModel.standingsUrl.trim();
+    final hasWebsite = websiteUrl.isNotEmpty;
+    final hasStandings = standingsUrl.isNotEmpty;
 
     if (!isSkeleton && !hasWebsite && !hasStandings) {
       return const SizedBox.shrink();
@@ -307,7 +311,7 @@ class _AboutTourScreenState extends ConsumerState<AboutTourScreen> {
                         ? null
                         : () => ref
                             .read(urlLauncherProvider)
-                            .launchCustomUrl(aboutModel.websiteUrl),
+                            .launchCustomUrl(websiteUrl),
                 child: Row(
                   children: [
                     SvgWidget(SvgAsset.websiteIcon, height: 12.h, width: 12.h),
@@ -334,7 +338,7 @@ class _AboutTourScreenState extends ConsumerState<AboutTourScreen> {
                         ? null
                         : () => ref
                             .read(urlLauncherProvider)
-                            .launchCustomUrl(aboutModel.standingsUrl),
+                            .launchCustomUrl(standingsUrl),
                 child: Text(
                   'Official Standings',
                   style: AppTypography.textXsMedium.copyWith(
