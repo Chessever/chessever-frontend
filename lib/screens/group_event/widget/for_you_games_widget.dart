@@ -400,6 +400,7 @@ class _ForYouEventSection extends ConsumerWidget {
   Widget _buildEventCard(BuildContext context, WidgetRef ref) {
     final eventCard = EventCard(
       tourEventCardModel: event,
+      showHeartIndicator: true,
       heroTagSuffix: '_foryou',
       onTap: () {
         ref
@@ -514,6 +515,7 @@ class _ForYouTabletEventColumn extends ConsumerWidget {
           aspectRatio: eventCardAspectRatio,
           child: EventCard(
             tourEventCardModel: event,
+            showHeartIndicator: true,
             heroTagSuffix: '_foryou_tablet_col',
             onTap: () {
               ref
