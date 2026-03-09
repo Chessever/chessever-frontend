@@ -254,59 +254,33 @@ class DeepLinkService {
       final gameRepo = ref.read(gameRepositoryProvider);
       final game = await gameRepo.getGameById(gameId).timeout(_fetchTimeout);
       final gameTourModel = GamesTourModel.fromGame(game);
-
-      // Resolve full tournament games for swiping (same as game card tap).
-      // Falls back to single-game list on any failure.
-      List<GamesTourModel> games = [gameTourModel];
-      int currentIndex = 0;
-
-      final tourId = gameTourModel.tourId;
-      if (tourId.isNotEmpty) {
-        try {
-          final fullGames = await ref
-              .read(gamesLocalStorage)
-              .getGames(tourId)
-              .timeout(_fetchTimeout);
-
-          if (fullGames.isNotEmpty) {
-            final sortedGames = _sortGamesForNavigation(fullGames);
-
-            final fullModels = <GamesTourModel>[];
-            for (final g in sortedGames) {
-              try {
-                fullModels.add(GamesTourModel.fromGame(g));
-              } catch (_) {
-                // Skip invalid game rows to keep navigation resilient.
-              }
-            }
-
-            if (fullModels.isNotEmpty) {
-              final resolvedIndex = fullModels.indexWhere(
-                (g) => g.gameId == gameId,
-              );
-              if (resolvedIndex >= 0) {
-                games = fullModels;
-                currentIndex = resolvedIndex;
-              } else {
-                debugPrint(
-                  'DeepLinkService: Tapped game not found in cached tour list, '
-                  'using single-game navigation for safety',
-                );
-              }
-            }
-          }
-        } catch (e) {
-          debugPrint(
-            'DeepLinkService: Tour expansion failed, using single game: $e',
-          );
+      List<GamesTourModel> gameList = <GamesTourModel>[gameTourModel];
+      var openIndex = 0;
+      try {
+        final roundGames = await gameRepo
+            .getGamesByRoundId(game.roundId)
+            .timeout(_fetchTimeout);
+        if (roundGames.isNotEmpty) {
+          gameList = roundGames
+              .map(GamesTourModel.fromGame)
+              .toList(growable: false);
+          // Keep board order stable for swipe navigation.
+          gameList.sort((a, b) {
+            final aBoard = a.boardNr ?? 1 << 30;
+            final bBoard = b.boardNr ?? 1 << 30;
+            if (aBoard != bBoard) return aBoard.compareTo(bBoard);
+            return a.gameId.compareTo(b.gameId);
+          });
+          final idx = gameList.indexWhere((g) => g.gameId == gameId);
+          openIndex = idx >= 0 ? idx : 0;
         }
+      } catch (e) {
+        debugPrint(
+          'DeepLinkService: Failed to load round games for swipe context: $e',
+        );
       }
 
-      debugPrint(
-        'DeepLinkService: Navigating to chess board '
-        '(${games.length} games, index=$currentIndex)',
-      );
-
+      debugPrint('DeepLinkService: Game loaded, navigating to chess board');
       ref.read(chessboardViewFromProviderNew.notifier).state =
           ChessboardView.forYou;
       ref.read(shouldStreamProvider.notifier).state = false;
@@ -317,8 +291,8 @@ class DeepLinkService {
           MaterialPageRoute(
             builder:
                 (_) => ChessBoardScreenNew(
-                  games: games,
-                  currentIndex: currentIndex,
+                  games: gameList,
+                  currentIndex: openIndex,
                 ),
           ),
           (route) => route.isFirst,
@@ -347,20 +321,14 @@ class DeepLinkService {
 
     debugPrint('DeepLinkService: Handling notification data: type=$type');
 
-    final gameId = _firstNonEmptyString([
-      data['game_id'],
-      data['gameId'],
-    ]);
+    final gameId = _firstNonEmptyString([data['game_id'], data['gameId']]);
     final broadcastId = _firstNonEmptyString([
       data['group_broadcast_id'],
       data['groupBroadcastId'],
       data['group_id'],
       data['event_id'],
     ]);
-    final roundId = _firstNonEmptyString([
-      data['round_id'],
-      data['roundId'],
-    ]);
+    final roundId = _firstNonEmptyString([data['round_id'], data['roundId']]);
     final tourId = _firstNonEmptyString([
       data['tour_id'],
       data['tourId'],

@@ -135,6 +135,9 @@ class DatabaseGamesPaginationNotifier
         (escapedEvent == null || escapedEvent.isEmpty)
             ? baseQuery
             : '$baseQuery event:"$escapedEvent"';
+    final hasRatingFilter = _filter.minRating > 0 || _filter.maxRating < 3500;
+    final useClientSideAverageRating =
+        _filter.colorApiValue == null && hasRatingFilter;
 
     // Use GET /api/search (token-based + FTS) because it is indexed and fast.
     // POST /api/search/query currently can be very slow for free-text search.
@@ -148,8 +151,14 @@ class DatabaseGamesPaginationNotifier
       timeControl: _filter.timeControlApiValue,
       yearFrom: _filter.minYear != 1800 ? _filter.minYear : null,
       yearTo: _filter.maxYear != DateTime.now().year ? _filter.maxYear : null,
-      ratingFrom: _filter.minRating > 0 ? _filter.minRating : null,
-      ratingTo: _filter.maxRating < 3500 ? _filter.maxRating : null,
+      ratingFrom:
+          !useClientSideAverageRating && _filter.minRating > 0
+              ? _filter.minRating
+              : null,
+      ratingTo:
+          !useClientSideAverageRating && _filter.maxRating < 3500
+              ? _filter.maxRating
+              : null,
     );
 
     final gameResults = response.results
@@ -351,6 +360,11 @@ class DatabaseGamesPaginationNotifier
             lastMoveTime: date,
           );
         })
+        .where(
+          (game) =>
+              !useClientSideAverageRating ||
+              _matchesAverageRatingRange(game, _filter.minRating, _filter.maxRating),
+        )
         .toList(growable: false);
 
     final totalCount = response.metadata.totalCount ?? 0;
@@ -431,6 +445,9 @@ final gamebaseDatabaseGamesProvider = FutureProvider.autoDispose<
   final repo = ref.read(gamebaseRepositoryProvider);
 
   try {
+    final hasRatingFilter = filter.minRating > 0 || filter.maxRating < 3500;
+    final useClientSideAverageRating =
+        filter.colorApiValue == null && hasRatingFilter;
     // Call globalSearch with filter parameters
     // Use resources: ['game'] to limit search to games only (faster)
     final response = await repo.globalSearch(
@@ -443,8 +460,14 @@ final gamebaseDatabaseGamesProvider = FutureProvider.autoDispose<
       timeControl: filter.timeControlApiValue,
       yearFrom: filter.minYear != 1800 ? filter.minYear : null,
       yearTo: filter.maxYear != DateTime.now().year ? filter.maxYear : null,
-      ratingFrom: filter.minRating > 0 ? filter.minRating : null,
-      ratingTo: filter.maxRating < 3500 ? filter.maxRating : null,
+      ratingFrom:
+          !useClientSideAverageRating && filter.minRating > 0
+              ? filter.minRating
+              : null,
+      ratingTo:
+          !useClientSideAverageRating && filter.maxRating < 3500
+              ? filter.maxRating
+              : null,
     );
 
     // Extract game results
@@ -668,6 +691,11 @@ final gamebaseDatabaseGamesProvider = FutureProvider.autoDispose<
             lastMoveTime: date,
           );
         })
+        .where(
+          (game) =>
+              !useClientSideAverageRating ||
+              _matchesAverageRatingRange(game, filter.minRating, filter.maxRating),
+        )
         .toList(growable: false);
   } catch (e, st) {
     if (kDebugMode) {
@@ -677,3 +705,11 @@ final gamebaseDatabaseGamesProvider = FutureProvider.autoDispose<
     return const <GamesTourModel>[];
   }
 });
+
+bool _matchesAverageRatingRange(GamesTourModel game, int minRating, int maxRating) {
+  final white = game.whitePlayer.rating;
+  final black = game.blackPlayer.rating;
+  if (white <= 0 || black <= 0) return false;
+  final average = (white + black) / 2.0;
+  return average >= minRating && average <= maxRating;
+}
