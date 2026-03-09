@@ -24,8 +24,14 @@ const Color kChessBlackMoveColor = Color(
   0xFFFF8A65,
 ); // Warm coral-orange for black moves
 const Color kLastMoveHighlightColor = Color(
-  0xFFCFCDAF,
-); // Muted beige for last move highlight
+  0xFFADB9CF,
+); // Semi-transparent blue-grey: renders distinct light/dark square hues
+const Color kLastMoveHighlightLightSquare = Color(
+  0xFFADB9CF,
+); // Last-move highlight on light squares
+const Color kLastMoveHighlightDarkSquare = Color(
+  0xFF9DAAC2,
+); // Last-move highlight on dark squares
 const Color kActiveCalendarColor = Color(0xff68D3FF);
 const Color kpinColor = Color(0xFFBD3D44);
 const Color kBoardColorDefault = Color(0xFF6B939F); // Default
