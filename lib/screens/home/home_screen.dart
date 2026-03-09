@@ -1,5 +1,7 @@
 import 'dart:async';
 import 'dart:io';
+import 'package:chessever2/e2e/e2e_config.dart';
+import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/repository/authentication/auth_repository.dart';
 import 'package:chessever2/screens/authentication/auth_screen_provider.dart';
 import 'package:chessever2/screens/calendar/calendar_screen.dart';
@@ -14,6 +16,7 @@ import 'package:chessever2/repository/favorites/models/favorite_player.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/hamburger_menu/hamburger_menu.dart';
+import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 import 'package:chessever2/widgets/shorebird_update_dialog.dart';
 import 'package:chessever2/services/push_notifications_service.dart';
 import 'package:chessever2/services/review_prompt_service.dart';
@@ -40,26 +43,30 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    unawaited(ReviewPromptService.instance.recordSession());
+    if (!E2eConfig.suppressInterruptivePrompts) {
+      unawaited(ReviewPromptService.instance.recordSession());
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _checkForShorebirdUpdate();
-      // Plan B: request notification permission if not already granted.
-      // Delayed to avoid clashing with onboarding or other early dialogs.
-      Future.delayed(const Duration(seconds: 5), () {
-        if (!mounted) return;
-        unawaited(
-          PushNotificationsService.instance.requestPermissionIfNotGranted(),
-        );
-      });
-      Future.delayed(const Duration(seconds: 8), () {
-        if (!mounted) return;
-        unawaited(
-          ReviewPromptService.instance.maybePrompt(
-            context: context,
-            trigger: ReviewPromptTrigger.session,
-          ),
-        );
-      });
+      if (!E2eConfig.suppressInterruptivePrompts) {
+        // Plan B: request notification permission if not already granted.
+        // Delayed to avoid clashing with onboarding or other early dialogs.
+        Future.delayed(const Duration(seconds: 5), () {
+          if (!mounted) return;
+          unawaited(
+            PushNotificationsService.instance.requestPermissionIfNotGranted(),
+          );
+        });
+        Future.delayed(const Duration(seconds: 8), () {
+          if (!mounted) return;
+          unawaited(
+            ReviewPromptService.instance.maybePrompt(
+              context: context,
+              trigger: ReviewPromptTrigger.session,
+            ),
+          );
+        });
+      }
     });
   }
 
@@ -90,6 +97,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   void _listenForFavoriteSignals() {
+    if (E2eConfig.suppressInterruptivePrompts) {
+      return;
+    }
+
     ref.listen<AsyncValue<List<FavoriteEvent>>>(favoriteEventsProvider, (
       previous,
       next,
@@ -137,7 +148,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         context,
       ).push(MaterialPageRoute(builder: (_) => const BoardEditorScreen()));
     },
-    onOpeningExplorerPressed: () {
+    onOpeningExplorerPressed: () async {
+      final allowed = await requireFullAuthGuard(context);
+      if (!allowed) return;
+      if (!context.mounted) return;
       Navigator.of(context).push(
         MaterialPageRoute(builder: (_) => GamebaseExplorerScreen.scoped()),
       );
@@ -209,7 +223,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             // Vertical divider
             Container(width: 1, color: kDarkGreyColor),
             // Main content
-            Expanded(child: BottomNavBarView()),
+            Expanded(
+              child: KeyedSubtree(
+                key: e2eKey(E2eIds.homeRoot),
+                child: BottomNavBarView(),
+              ),
+            ),
           ],
         ),
       );
@@ -221,7 +240,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       resizeToAvoidBottomInset: false,
       drawer: HamburgerMenu(callbacks: _menuCallbacks),
       bottomNavigationBar: BottomNavBar(),
-      body: BottomNavBarView(),
+      body: KeyedSubtree(
+        key: e2eKey(E2eIds.homeRoot),
+        child: BottomNavBarView(),
+      ),
     );
   }
 }

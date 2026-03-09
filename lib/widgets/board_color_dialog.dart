@@ -1,4 +1,4 @@
-import 'dart:ui';
+import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
@@ -11,7 +11,7 @@ import '../theme/app_theme.dart';
 
 // Update the BoardColorDialog to use blur effect
 class BoardColorDialog extends ConsumerWidget {
-  const BoardColorDialog({Key? key}) : super(key: key);
+  const BoardColorDialog({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -34,6 +34,7 @@ class BoardColorDialog extends ConsumerWidget {
     }
 
     return Container(
+      key: e2eKey(E2eIds.boardColorDialogRoot),
       // height: 259, // Fixed height of 259px as requested
       decoration: BoxDecoration(
         color: kPopUpColor,
@@ -41,7 +42,7 @@ class BoardColorDialog extends ConsumerWidget {
         borderRadius: BorderRadius.circular(20.sp),
         boxShadow: [
           BoxShadow(
-            color: kBlack2Color.withOpacity(0.3),
+            color: kBlack2Color.withValues(alpha: 0.3),
             blurRadius: 10,
             spreadRadius: 1,
           ),

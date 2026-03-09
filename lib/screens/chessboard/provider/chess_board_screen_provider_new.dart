@@ -124,8 +124,9 @@ class ChessBoardScreenNotifierNew
   /// Allows this provider to cancel only its own jobs without affecting others.
   late final String _stockfishOwnerId;
 
-  /// Optional saved analysis data to restore full state
-  final SavedAnalysisData? savedAnalysisData;
+  /// Optional saved analysis data to restore full state.
+  /// Mutable so it can be set after a first-time save from the save sheet.
+  SavedAnalysisData? savedAnalysisData;
   final bool startAtLastMove;
   Timer? _longPressTimer;
   bool _hasParsedMoves = false;
@@ -2949,6 +2950,46 @@ class ChessBoardScreenNotifierNew
 
     final navigatorState = ref.read(chessGameNavigatorProvider(_analysisGame!));
     await _analysisStateManager!.saveState(navigatorState);
+  }
+
+  /// Called after the save-analysis sheet creates a new row in Supabase.
+  /// Sets the analysis ID so that auto-save and manual update start working.
+  void attachSavedAnalysisId({
+    required String analysisId,
+    required String title,
+    String? folderId,
+  }) {
+    final currentState = state.valueOrNull;
+    savedAnalysisData = SavedAnalysisData(
+      analysisId: analysisId,
+      chessGame: currentState?.analysisState.game ?? savedAnalysisData!.chessGame,
+      variationComments: currentState?.variationComments ?? const {},
+      isBoardFlipped: currentState?.isBoardFlipped ?? false,
+      lastViewedPosition: currentState?.analysisState.currentMoveIndex ?? 0,
+      title: title,
+      folderId: folderId,
+    );
+    // Snapshot current game tree so auto-save doesn't immediately re-save
+    final analysisGame = currentState?.analysisState.game;
+    if (analysisGame != null) {
+      _lastAutoSavedGameJson = analysisGame.toJson().toString();
+    }
+    // Emit a state change so the save button rebuilds to show auto-save icon
+    if (currentState != null) {
+      state = AsyncValue.data(
+        currentState.copyWith(autoSaveStatus: AutoSaveStatus.saved),
+      );
+      Future.delayed(const Duration(milliseconds: 1500), () {
+        if (!mounted) return;
+        final s = state.valueOrNull;
+        if (s != null && s.autoSaveStatus == AutoSaveStatus.saved) {
+          state = AsyncValue.data(
+            s.copyWith(autoSaveStatus: AutoSaveStatus.idle),
+          );
+        }
+      });
+    }
+    debugPrint('🎯 ChessBoard[$index]: Attached saved analysis ID=$analysisId');
   }
 
   /// Performs an immediate save update to the existing library analysis.

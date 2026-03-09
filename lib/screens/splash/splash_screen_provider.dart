@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:chessever2/e2e/e2e_config.dart';
 import 'package:chessever2/providers/country_dropdown_provider.dart';
+import 'package:chessever2/providers/favorite_players_provider.dart';
 import 'package:chessever2/repository/local_storage/group_broadcast/group_broadcast_local_storage.dart';
 import 'package:chessever2/repository/local_storage/onboarding/onboarding_repository.dart';
 import 'package:chessever2/repository/local_storage/sesions_manager/session_manager.dart';
@@ -30,6 +32,96 @@ class _SplashScreenProvider {
   final Ref ref;
 
   _SplashScreenProvider(this.ref);
+
+  Future<void> _warmTournamentDataInBackground() async {
+    unawaited(
+      Future(() async {
+        try {
+          await Future.wait([
+            ref
+                .read(groupBroadcastLocalStorage(GroupEventCategory.current))
+                .fetchAndSaveGroupBroadcasts(),
+            ref
+                .read(groupBroadcastLocalStorage(GroupEventCategory.forYou))
+                .fetchAndSaveGroupBroadcasts(),
+          ]);
+        } catch (e) {
+          if (kDebugMode) {
+            print('⚠️ Background tournament refresh failed: $e');
+          }
+        }
+      }),
+    );
+  }
+
+  Future<void> _warmPastTournamentDataInBackground() async {
+    unawaited(
+      Future(() async {
+        try {
+          await Future.wait([
+            ref
+                .read(groupBroadcastLocalStorage(GroupEventCategory.past))
+                .fetchAndSaveGroupBroadcasts(),
+            ref
+                .read(starredProvider(GroupEventCategory.past.name).notifier)
+                .init(),
+          ]);
+        } catch (e) {
+          if (kDebugMode) {
+            print('⚠️ Failed to load past tournaments: $e');
+          }
+        }
+      }),
+    );
+  }
+
+  Future<void> _routeAfterStartup(
+    BuildContext context, {
+    required bool isLoggedIn,
+  }) async {
+    if (!context.mounted) {
+      DeepLinkService.notifyAppReady();
+      return;
+    }
+
+    final onboardingRepo = ref.read(onboardingRepositoryProvider);
+    bool hasSeenOnboarding = true;
+    try {
+      hasSeenOnboarding = await onboardingRepo.hasSeenOnboarding().timeout(
+        const Duration(seconds: 3),
+      );
+    } catch (e) {
+      if (kDebugMode) {
+        print('⚠️ Onboarding check failed/timeout: $e');
+      }
+      hasSeenOnboarding = true;
+    }
+
+    if (!context.mounted) {
+      DeepLinkService.notifyAppReady();
+      return;
+    }
+
+    if (!hasSeenOnboarding) {
+      ref.read(countryDropdownProvider);
+      FlutterNativeSplash.remove();
+      Navigator.pushNamedAndRemoveUntil(context, '/onboarding', (_) => false);
+      DeepLinkService.notifyAppReady();
+      return;
+    }
+
+    FlutterNativeSplash.remove();
+
+    if (isLoggedIn) {
+      ref.read(countryDropdownProvider);
+      ref.read(favoritePlayersProviderNew);
+      Navigator.pushNamedAndRemoveUntil(context, '/home_screen', (_) => false);
+    } else {
+      Navigator.pushNamedAndRemoveUntil(context, '/auth_screen', (_) => false);
+    }
+
+    DeepLinkService.notifyAppReady();
+  }
 
   /// Check if we have network connectivity by attempting DNS lookup
   Future<bool> _hasNetworkConnectivity() async {
@@ -60,6 +152,17 @@ class _SplashScreenProvider {
         print('⚠️ Startup session warm-up failed/timeout: $e');
       }
       isLoggedIn = false;
+    }
+
+    if (E2eConfig.isEnabled) {
+      _warmTournamentDataInBackground();
+      _warmPastTournamentDataInBackground();
+      if (!context.mounted) {
+        DeepLinkService.notifyAppReady();
+        return;
+      }
+      await _routeAfterStartup(context, isLoggedIn: isLoggedIn);
+      return;
     }
 
     // Tournament data: use local cache when available to avoid blocking on
@@ -116,87 +219,15 @@ class _SplashScreenProvider {
       // Warm up starred providers (constructor calls init).
       ref.read(starredProvider(GroupEventCategory.current.name).notifier);
       ref.read(starredProvider(GroupEventCategory.forYou.name).notifier);
-
-      unawaited(
-        Future(() async {
-          try {
-            await Future.wait([
-              currentStorage.fetchAndSaveGroupBroadcasts(),
-              forYouStorage.fetchAndSaveGroupBroadcasts(),
-            ]);
-          } catch (e) {
-            if (kDebugMode) {
-              print('⚠️ Background tournament refresh failed: $e');
-            }
-          }
-        }),
-      );
+      _warmTournamentDataInBackground();
     }
 
     // Non-critical: Load past tournaments in background
-    unawaited(
-      Future(() async {
-        try {
-          await Future.wait([
-            ref
-                .read(groupBroadcastLocalStorage(GroupEventCategory.past))
-                .fetchAndSaveGroupBroadcasts(),
-            ref
-                .read(starredProvider(GroupEventCategory.past.name).notifier)
-                .init(),
-          ]);
-        } catch (e) {
-          if (kDebugMode) {
-            print('⚠️ Failed to load past tournaments: $e');
-          }
-        }
-      }),
-    );
-
-    // Check if context is still valid before navigation
-    if (!context.mounted) return;
-
-    // PRIORITY 1: Check onboarding FIRST - simple boolean, no user dependency
-    // This ensures ALL new users see onboarding regardless of auth state
-    final onboardingRepo = ref.read(onboardingRepositoryProvider);
-    bool hasSeenOnboarding = true;
-    try {
-      hasSeenOnboarding = await onboardingRepo.hasSeenOnboarding().timeout(
-        const Duration(seconds: 3),
-      );
-    } catch (e) {
-      if (kDebugMode) {
-        print('⚠️ Onboarding check failed/timeout: $e');
-      }
-      // Fail open to avoid getting stuck on splash.
-      hasSeenOnboarding = true;
-    }
-
-    if (!hasSeenOnboarding) {
-      // New user - show onboarding (handles both signed-in and guest on last page)
-      ref.read(countryDropdownProvider);
-      FlutterNativeSplash.remove();
-      Navigator.pushNamedAndRemoveUntil(context, '/onboarding', (_) => false);
+    _warmPastTournamentDataInBackground();
+    if (!context.mounted) {
       DeepLinkService.notifyAppReady();
       return;
     }
-
-    // PRIORITY 2: User has seen onboarding - check auth state
-    if (!context.mounted) return;
-
-    // Remove native splash right before navigation
-    FlutterNativeSplash.remove();
-
-    if (isLoggedIn) {
-      // User is logged in - go to home
-      ref.read(countryDropdownProvider);
-      Navigator.pushNamedAndRemoveUntil(context, '/home_screen', (_) => false);
-    } else {
-      // User is not logged in - go to auth screen
-      Navigator.pushNamedAndRemoveUntil(context, '/auth_screen', (_) => false);
-    }
-
-    // Signal that splash navigation is complete so pending deep links can proceed
-    DeepLinkService.notifyAppReady();
+    await _routeAfterStartup(context, isLoggedIn: isLoggedIn);
   }
 }

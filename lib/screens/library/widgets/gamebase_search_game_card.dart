@@ -1,9 +1,11 @@
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
+import 'package:chessever2/repository/library/library_repository.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/player_profile/player_profile_data_source.dart';
 import 'package:chessever2/screens/library/utils/gamebase_pgn_builder.dart';
+import 'package:chessever2/screens/library/utils/load_saved_analysis.dart';
 import 'package:chessever2/screens/library/widgets/library_game_card.dart';
 import 'package:chessever2/screens/library/widgets/swipe_action_card.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
@@ -104,13 +106,21 @@ class GamebaseSearchGameCard extends ConsumerWidget {
     ref.read(chessboardViewFromProviderNew.notifier).state =
         ChessboardView.tour;
 
+    final savedAnalysisData = await _resolveSavedAnalysisData(ref, game);
+    if (!context.mounted) return;
+
     // Check if PGN has actual moves (not just headers)
     // Search results only return metadata, so we need to fetch the full game
     final hasMoves = pgnHasMoves(game.pgn);
 
     if (hasMoves) {
       // Already have PGN with moves, navigate directly
-      _navigateToChessboard(context, allGames, gameIndex);
+      _navigateToChessboard(
+        context,
+        allGames,
+        gameIndex,
+        savedAnalysisData: savedAnalysisData,
+      );
       return;
     }
 
@@ -199,7 +209,12 @@ class GamebaseSearchGameCard extends ConsumerWidget {
 
       final patched = List<GamesTourModel>.from(allGames);
       patched[gameIndex] = game.copyWith(pgn: pgn);
-      _navigateToChessboard(context, patched, gameIndex);
+      _navigateToChessboard(
+        context,
+        patched,
+        gameIndex,
+        savedAnalysisData: savedAnalysisData,
+      );
     } catch (e) {
       debugPrint('[GamebaseSearchGameCard] Error fetching PGN: $e');
       if (!context.mounted) return;
@@ -220,15 +235,38 @@ class GamebaseSearchGameCard extends ConsumerWidget {
         date: game.lastMoveTime,
       );
       patched[gameIndex] = game.copyWith(pgn: pgn);
-      _navigateToChessboard(context, patched, gameIndex);
+      _navigateToChessboard(
+        context,
+        patched,
+        gameIndex,
+        savedAnalysisData: savedAnalysisData,
+      );
+    }
+  }
+
+  Future<SavedAnalysisData?> _resolveSavedAnalysisData(
+    WidgetRef ref,
+    GamesTourModel game,
+  ) async {
+    try {
+      final repository = ref.read(libraryRepositoryProvider);
+      final saved = await repository.getLatestSavedAnalysisBySourceGame(
+        sourceGameId: game.gameId,
+        sourceTournamentId: game.tourId,
+      );
+      if (saved == null) return null;
+      return createSavedAnalysisData(saved);
+    } catch (_) {
+      return null;
     }
   }
 
   void _navigateToChessboard(
     BuildContext context,
     List<GamesTourModel> games,
-    int index,
-  ) {
+    int index, {
+    SavedAnalysisData? savedAnalysisData,
+  }) {
     if (!context.mounted) return;
     Navigator.push(
       context,
@@ -243,6 +281,7 @@ class GamebaseSearchGameCard extends ConsumerWidget {
               disableGamebaseOverlayByDefault: true,
               showClock:
                   playerProfileDataSource != PlayerProfileDataSource.twic,
+              savedAnalysisData: savedAnalysisData,
             ),
       ),
     );

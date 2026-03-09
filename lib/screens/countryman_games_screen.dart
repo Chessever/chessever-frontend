@@ -1,3 +1,4 @@
+import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_board_from_fen_new.dart';
@@ -29,6 +30,7 @@ class CountrymanGamesScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return ScreenWrapper(
       child: Scaffold(
+        key: e2eKey(E2eIds.countrymenRoot),
         body: Column(
           children: [
             SizedBox(height: MediaQuery.of(context).viewPadding.top + 24),
@@ -282,6 +284,7 @@ class _GamesAppBarWidgetState extends ConsumerState<CountrymanGamesAppBar> {
                             SizedBox(width: 4.w),
                             Expanded(
                               child: TextField(
+                                key: e2eKey(E2eIds.countrymenSearchField),
                                 controller: _searchController,
                                 focusNode: _focusNode,
                                 style: const TextStyle(color: kWhiteColor70),
@@ -340,6 +343,7 @@ class _GamesAppBarWidgetState extends ConsumerState<CountrymanGamesAppBar> {
                     ),
                     Spacer(),
                     AppBarIcons(
+                      key: e2eKey(E2eIds.countrymenSearchToggle),
                       image: SvgAsset.searchIcon,
                       onTap: _startSearch,
                     ),

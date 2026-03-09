@@ -1,3 +1,4 @@
+import 'package:chessever2/e2e/e2e_ids.dart';
 import 'dart:async';
 
 import 'package:chessever2/utils/number_format_utils.dart';
@@ -178,6 +179,7 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      key: e2eKey(E2eIds.twicContentsRoot),
       backgroundColor: kBackgroundColor,
       body: ScreenWrapper(
         child: Center(
@@ -282,6 +284,7 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen> {
         hintText: 'Search',
         onChanged: _onSearchChanged,
         onFilterTap: _openFilters,
+        filterButtonKey: e2eKey(E2eIds.libraryFilterButton),
       ),
     );
   }

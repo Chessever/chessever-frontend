@@ -25,6 +25,13 @@ final effectiveCountryProvider = Provider<AsyncValue<Country>>((ref) {
   return ref.watch(countryDropdownProvider);
 });
 
+Country _defaultCountry() {
+  final service = CountryService();
+  return service.findByCode('US') ??
+      service.findByName('United States') ??
+      service.getAll().first;
+}
+
 class SelectedCountryNotifier extends StateNotifier<AsyncValue<Country>> {
   SelectedCountryNotifier(this.ref) : super(AsyncValue.loading()) {
     _loadSavedCountry();
@@ -48,7 +55,7 @@ class SelectedCountryNotifier extends StateNotifier<AsyncValue<Country>> {
           final legacyName = savedValue.substring(7); // Remove 'LEGACY:' prefix
           matchedCountry = CountryService().getAll().firstWhere(
             (c) => c.name.toLowerCase() == legacyName.toLowerCase(),
-            orElse: () => CountryService().getAll().first,
+            orElse: _defaultCountry,
           );
 
           // Migrate to new format by saving country code
@@ -70,13 +77,10 @@ class SelectedCountryNotifier extends StateNotifier<AsyncValue<Country>> {
       final countryCode =
           await ref.read(locationRepositoryProvider).getCountryCode();
       final country = CountryService().findByCode(countryCode);
-      state = AsyncValue.data(country ?? CountryService().getAll().first);
+      state = AsyncValue.data(country ?? _defaultCountry());
     } catch (e) {
       try {
-        final country = CountryService().findByCode('US');
-        state = AsyncValue.data(
-          country ?? CountryService().findByName('United States')!,
-        );
+        state = AsyncValue.data(_defaultCountry());
       } catch (e, st) {
         state = AsyncValue.error(e, st);
       }
@@ -93,18 +97,14 @@ class SelectedCountryNotifier extends StateNotifier<AsyncValue<Country>> {
         ref.read(countryManRepository).saveCountryMan(country.countryCode),
       );
     } else {
-      state = AsyncValue.data(CountryService().getAll().first);
-      unawaited(
-        ref
-            .read(countryManRepository)
-            .saveCountryMan(CountryService().getAll().first.countryCode),
-      );
+      // Invalid country code should never clobber an existing valid state.
+      state = AsyncValue.data(state.valueOrNull ?? _defaultCountry());
     }
   }
 
   void clearSelection() {
     // Update state immediately for instant UI response
-    state = AsyncValue.data(CountryService().getAll().first);
+    state = AsyncValue.data(_defaultCountry());
     // Remove in background (fire-and-forget)
     unawaited(ref.read(countryManRepository).removeCountrySelection());
   }
@@ -112,7 +112,7 @@ class SelectedCountryNotifier extends StateNotifier<AsyncValue<Country>> {
   /// Clear local state only (for logout) without touching Supabase.
   /// User's preference persists in Supabase for next login.
   void clearLocalOnly() {
-    state = AsyncValue.data(CountryService().getAll().first);
+    state = AsyncValue.data(_defaultCountry());
     unawaited(ref.read(countryManRepository).clearLocalCacheOnly());
   }
 
@@ -131,7 +131,7 @@ class SelectedCountryNotifier extends StateNotifier<AsyncValue<Country>> {
           final legacyName = savedValue.substring(7);
           matchedCountry = CountryService().getAll().firstWhere(
             (c) => c.name.toLowerCase() == legacyName.toLowerCase(),
-            orElse: () => CountryService().getAll().first,
+            orElse: _defaultCountry,
           );
           // Migrate to new format
           await ref
@@ -151,7 +151,7 @@ class SelectedCountryNotifier extends StateNotifier<AsyncValue<Country>> {
       final countryCode =
           await ref.read(locationRepositoryProvider).getCountryCode();
       final country = CountryService().findByCode(countryCode);
-      state = AsyncValue.data(country ?? CountryService().getAll().first);
+      state = AsyncValue.data(country ?? _defaultCountry());
     } catch (e) {
       // Keep existing state on error
     }
@@ -159,7 +159,7 @@ class SelectedCountryNotifier extends StateNotifier<AsyncValue<Country>> {
 
   String getCountryName(String countryCode) {
     final country = CountryService().findByCode(countryCode);
-    return country?.name ?? CountryService().getAll().first.name;
+    return country?.name ?? _defaultCountry().name;
   }
 
   List<Country> getAllCountries() {

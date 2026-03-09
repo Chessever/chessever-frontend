@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_board_bottom_navbar.dart';
 import 'package:chessever2/theme/app_theme.dart';
@@ -124,7 +125,7 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
         // Gamebase Explorer Toggle (only shown when showGamebaseButton is true)
         if (showGamebaseButton)
           ChessSvgBottomNavbar(
-            key: ValueKey('gamebase_toggle_$isGamebaseActive'),
+            key: e2eKey(E2eIds.boardGamebaseToggle),
             width: buttonWidth,
             svgPath: SvgAsset.bookIcon,
             onPressed: onGamebaseToggle,
@@ -133,6 +134,7 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
 
         // Computer/Engine Analysis Toggle Button
         ChessSvgBottomNavbar(
+          key: e2eKey(E2eIds.boardEngineToggle),
           width: buttonWidth,
           svgPath: SvgAsset.laptop,
           onPressed: toggleEngineVisibility,
@@ -143,11 +145,13 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
 
         // Flip Board Button
         ChessSvgBottomNavbar(
+          key: e2eKey(E2eIds.boardFlip),
           width: buttonWidth,
           svgPath: SvgAsset.refresh,
           onPressed: onFlip,
         ),
         ChessSvgBottomNavbarWithLongPress(
+          key: e2eKey(E2eIds.boardMoveBack),
           svgPath: SvgAsset.left_arrow,
           width: buttonWidth,
           onPressed: canMoveBackward ? onLeftMove : null,
@@ -156,6 +160,7 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
         ),
 
         ChessSvgBottomNavbarWithLongPress(
+          key: e2eKey(E2eIds.boardMoveForward),
           svgPath: SvgAsset.right_arrow,
           width: buttonWidth,
           onPressed: canMoveForward ? onRightMove : null,

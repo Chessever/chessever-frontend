@@ -22,6 +22,7 @@ class FavoritePlayersNotifierNew extends AsyncNotifier<List<FavoritePlayer>> {
   /// Guards concurrent calls to _loadFavorites so only one Supabase
   /// request + cache write happens at a time.
   static Completer<List<FavoritePlayer>>? _loadCompleter;
+  bool _backgroundRefreshRunning = false;
 
   /// Get user-specific cache key to prevent cross-user cache pollution
   String get _cacheKey {
@@ -32,10 +33,12 @@ class FavoritePlayersNotifierNew extends AsyncNotifier<List<FavoritePlayer>> {
 
   @override
   Future<List<FavoritePlayer>> build() async {
-    return await _loadFavorites();
+    return await _loadFavorites(preferCacheFirst: true);
   }
 
-  Future<List<FavoritePlayer>> _loadFavorites() async {
+  Future<List<FavoritePlayer>> _loadFavorites({
+    required bool preferCacheFirst,
+  }) async {
     // Deduplicate concurrent calls (e.g. build() + refresh() racing)
     if (_loadCompleter != null) return _loadCompleter!.future;
 
@@ -49,24 +52,19 @@ class FavoritePlayersNotifierNew extends AsyncNotifier<List<FavoritePlayer>> {
         return result;
       }
 
-      // Fetch from Supabase (source of truth)
-      final response = await _supabase
-          .from('user_favorite_players')
-          .select()
-          .eq('user_id', userId)
-          .order('created_at', ascending: false);
+      if (preferCacheFirst) {
+        final cached = await _getCachedPlayers();
+        if (cached.isNotEmpty) {
+          debugPrint(
+            '[FavoritePlayers] Loaded ${cached.length} players from cache (cache-first)',
+          );
+          _loadCompleter!.complete(cached);
+          unawaited(_refreshInBackground(userId, cached));
+          return cached;
+        }
+      }
 
-      final players =
-          (response as List)
-              .map((json) => FavoritePlayer.fromSupabase(json))
-              .toList();
-
-      // Cache locally in background (Supabase stays primary path)
-      unawaited(_cachePlayers(players));
-
-      debugPrint(
-        '[FavoritePlayers] Fetched ${players.length} players from Supabase',
-      );
+      final players = await _fetchFromSupabase(userId);
       _loadCompleter!.complete(players);
       return players;
     } catch (e, st) {
@@ -80,6 +78,62 @@ class FavoritePlayersNotifierNew extends AsyncNotifier<List<FavoritePlayer>> {
     } finally {
       _loadCompleter = null;
     }
+  }
+
+  Future<List<FavoritePlayer>> _fetchFromSupabase(String userId) async {
+    final response = await _supabase
+        .from('user_favorite_players')
+        .select()
+        .eq('user_id', userId)
+        .order('created_at', ascending: false);
+
+    final players =
+        (response as List)
+            .map((json) => FavoritePlayer.fromSupabase(json))
+            .toList();
+
+    // Cache locally in background (Supabase stays primary path)
+    unawaited(_cachePlayers(players));
+    debugPrint(
+      '[FavoritePlayers] Fetched ${players.length} players from Supabase',
+    );
+    return players;
+  }
+
+  Future<void> _refreshInBackground(
+    String userId,
+    List<FavoritePlayer> currentPlayers,
+  ) async {
+    if (_backgroundRefreshRunning) return;
+    _backgroundRefreshRunning = true;
+    try {
+      final fresh = await _fetchFromSupabase(userId);
+      if (_hasDifferentPlayers(currentPlayers, fresh)) {
+        state = AsyncValue.data(fresh);
+      }
+    } catch (_) {
+      // Background refresh is best-effort; keep cached state.
+    } finally {
+      _backgroundRefreshRunning = false;
+    }
+  }
+
+  bool _hasDifferentPlayers(
+    List<FavoritePlayer> current,
+    List<FavoritePlayer> next,
+  ) {
+    if (current.length != next.length) return true;
+    for (var i = 0; i < current.length; i++) {
+      final a = current[i];
+      final b = next[i];
+      if (a.id != b.id ||
+          a.updatedAt != b.updatedAt ||
+          a.playerName != b.playerName ||
+          a.fideId != b.fideId) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /// Add player to favorites
@@ -209,7 +263,9 @@ class FavoritePlayersNotifierNew extends AsyncNotifier<List<FavoritePlayer>> {
   /// Refresh favorites from Supabase
   Future<void> refresh() async {
     state = const AsyncValue.loading();
-    state = await AsyncValue.guard(() => _loadFavorites());
+    state = await AsyncValue.guard(
+      () => _loadFavorites(preferCacheFirst: false),
+    );
   }
 
   /// Sync favorites from Supabase to local cache
