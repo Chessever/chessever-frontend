@@ -65,8 +65,11 @@ class AboutTourModel extends Equatable {
 
   String extractDomain() {
     try {
+      // Trim the URL to remove leading/trailing whitespace
+      final trimmedUrl = websiteUrl.trim();
+
       // Parse the URL
-      Uri uri = Uri.parse(websiteUrl);
+      Uri uri = Uri.parse(trimmedUrl);
 
       // Get the host (domain)
       String host = uri.host;
