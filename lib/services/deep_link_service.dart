@@ -58,9 +58,9 @@ class DeepLinkService {
   /// Initialize the deep link service
   /// Should be called once after app startup when auth state is ready
   Future<void> initialize(
-      GlobalKey<NavigatorState> navigatorKey,
-      WidgetRef ref,
-      ) async {
+    GlobalKey<NavigatorState> navigatorKey,
+    WidgetRef ref,
+  ) async {
     if (_isInitialized) return;
     _isInitialized = true;
 
@@ -76,7 +76,7 @@ class DeepLinkService {
 
     // Listen for links while app is running (warm start / already open)
     _subscription = _appLinks.uriLinkStream.listen(
-          (uri) => _handleDeepLink(uri, navigatorKey, ref),
+      (uri) => _handleDeepLink(uri, navigatorKey, ref),
       onError:
           (e) => debugPrint('DeepLinkService: Error listening to links: $e'),
     );
@@ -84,10 +84,10 @@ class DeepLinkService {
 
   /// Parse and handle incoming deep link
   void _handleDeepLink(
-      Uri uri,
-      GlobalKey<NavigatorState> navigatorKey,
-      WidgetRef ref,
-      ) {
+    Uri uri,
+    GlobalKey<NavigatorState> navigatorKey,
+    WidgetRef ref,
+  ) {
     debugPrint('DeepLinkService: Received link: $uri');
 
     String? gameId;
@@ -133,10 +133,10 @@ class DeepLinkService {
 
   /// Navigate to the book preview screen for a shared book deep link.
   Future<void> _navigateToBookPreview(
-      String shareToken,
-      GlobalKey<NavigatorState> navigatorKey,
-      WidgetRef ref,
-      ) async {
+    String shareToken,
+    GlobalKey<NavigatorState> navigatorKey,
+    WidgetRef ref,
+  ) async {
     if (_isNavigating) return;
     _isNavigating = true;
 
@@ -162,7 +162,7 @@ class DeepLinkService {
         debugPrint('DeepLinkService: User not authenticated, routing to home');
         navigatorKey.currentState?.pushNamedAndRemoveUntil(
           '/home_screen',
-              (route) => false,
+          (route) => false,
         );
         return;
       }
@@ -181,7 +181,7 @@ class DeepLinkService {
       debugPrint('DeepLinkService: Failed to open book preview: $e');
       navigatorKey.currentState?.pushNamedAndRemoveUntil(
         '/home_screen',
-            (route) => false,
+        (route) => false,
       );
     } finally {
       _isNavigating = false;
@@ -191,10 +191,10 @@ class DeepLinkService {
   /// Fetch game by ID, load full tournament context for swiping,
   /// and navigate to chess board screen.
   Future<void> _navigateToGame(
-      String gameId,
-      GlobalKey<NavigatorState> navigatorKey,
-      WidgetRef ref,
-      ) async {
+    String gameId,
+    GlobalKey<NavigatorState> navigatorKey,
+    WidgetRef ref,
+  ) async {
     // Guard: Prevent concurrent navigation
     if (_isNavigating) {
       debugPrint('DeepLinkService: Navigation already in progress, ignoring');
@@ -243,7 +243,7 @@ class DeepLinkService {
         );
         navigatorKey.currentState?.pushNamedAndRemoveUntil(
           '/home_screen',
-              (route) => false,
+          (route) => false,
         );
         return;
       }
@@ -257,9 +257,13 @@ class DeepLinkService {
       List<GamesTourModel> gameList = <GamesTourModel>[gameTourModel];
       var openIndex = 0;
       try {
-        final roundGames = await gameRepo.getGamesByRoundId(game.roundId);
+        final roundGames = await gameRepo
+            .getGamesByRoundId(game.roundId)
+            .timeout(_fetchTimeout);
         if (roundGames.isNotEmpty) {
-          gameList = roundGames.map(GamesTourModel.fromGame).toList(growable: false);
+          gameList = roundGames
+              .map(GamesTourModel.fromGame)
+              .toList(growable: false);
           // Keep board order stable for swipe navigation.
           gameList.sort((a, b) {
             final aBoard = a.boardNr ?? 1 << 30;
@@ -271,7 +275,9 @@ class DeepLinkService {
           openIndex = idx >= 0 ? idx : 0;
         }
       } catch (e) {
-        debugPrint('DeepLinkService: Failed to load round games for swipe context: $e');
+        debugPrint(
+          'DeepLinkService: Failed to load round games for swipe context: $e',
+        );
       }
 
       debugPrint('DeepLinkService: Game loaded, navigating to chess board');
@@ -285,11 +291,11 @@ class DeepLinkService {
           MaterialPageRoute(
             builder:
                 (_) => ChessBoardScreenNew(
-              games: gameList,
-              currentIndex: openIndex,
-            ),
+                  games: gameList,
+                  currentIndex: openIndex,
+                ),
           ),
-              (route) => route.isFirst,
+          (route) => route.isFirst,
         );
       }
     } catch (e) {
@@ -297,7 +303,7 @@ class DeepLinkService {
       debugPrint('DeepLinkService: Failed to load game: $e');
       navigatorKey.currentState?.pushNamedAndRemoveUntil(
         '/home_screen',
-            (route) => false,
+        (route) => false,
       );
     } finally {
       _isNavigating = false;
@@ -307,28 +313,22 @@ class DeepLinkService {
   /// Route based on OneSignal notification data payload.
   /// Called from the OneSignal click listener.
   void handleNotificationData(
-      Map<String, dynamic> data,
-      GlobalKey<NavigatorState> navigatorKey,
-      WidgetRef ref,
-      ) {
+    Map<String, dynamic> data,
+    GlobalKey<NavigatorState> navigatorKey,
+    WidgetRef ref,
+  ) {
     final type = _asNonEmptyString(data['type'])?.toLowerCase();
 
     debugPrint('DeepLinkService: Handling notification data: type=$type');
 
-    final gameId = _firstNonEmptyString([
-      data['game_id'],
-      data['gameId'],
-    ]);
+    final gameId = _firstNonEmptyString([data['game_id'], data['gameId']]);
     final broadcastId = _firstNonEmptyString([
       data['group_broadcast_id'],
       data['groupBroadcastId'],
       data['group_id'],
       data['event_id'],
     ]);
-    final roundId = _firstNonEmptyString([
-      data['round_id'],
-      data['roundId'],
-    ]);
+    final roundId = _firstNonEmptyString([data['round_id'], data['roundId']]);
     final tourId = _firstNonEmptyString([
       data['tour_id'],
       data['tourId'],
@@ -361,7 +361,7 @@ class DeepLinkService {
         }
         return;
       default:
-      // Best-effort fallback for payloads with routing hints.
+        // Best-effort fallback for payloads with routing hints.
         if (gameId != null) {
           _navigateToGame(gameId, navigatorKey, ref);
           return;
@@ -388,18 +388,18 @@ class DeepLinkService {
   void _navigateToHome(GlobalKey<NavigatorState> navigatorKey) {
     navigatorKey.currentState?.pushNamedAndRemoveUntil(
       '/home_screen',
-          (route) => false,
+      (route) => false,
     );
   }
 
   /// Fetch event by group_broadcast_id and navigate to tournament detail screen
   Future<void> _navigateToEvent(
-      String? groupBroadcastId,
-      GlobalKey<NavigatorState> navigatorKey,
-      WidgetRef ref, {
-        String? roundId,
-        String? tourId,
-      }) async {
+    String? groupBroadcastId,
+    GlobalKey<NavigatorState> navigatorKey,
+    WidgetRef ref, {
+    String? roundId,
+    String? tourId,
+  }) async {
     if (_isNavigating) {
       debugPrint('DeepLinkService: Navigation already in progress, ignoring');
       return;
@@ -428,7 +428,7 @@ class DeepLinkService {
         debugPrint('DeepLinkService: User not authenticated, routing to home');
         navigatorKey.currentState?.pushNamedAndRemoveUntil(
           '/home_screen',
-              (route) => false,
+          (route) => false,
         );
         return;
       }
@@ -442,7 +442,7 @@ class DeepLinkService {
       if (routeContext == null) {
         debugPrint(
           'DeepLinkService: Could not resolve event route context from '
-              'group_broadcast_id=$groupBroadcastId, round_id=$roundId, tour_id=$tourId',
+          'group_broadcast_id=$groupBroadcastId, round_id=$roundId, tour_id=$tourId',
         );
         _navigateToHome(navigatorKey);
         return;
@@ -474,13 +474,13 @@ class DeepLinkService {
 
       navigatorKey.currentState?.pushNamedAndRemoveUntil(
         '/tournament_detail_screen',
-            (route) => route.isFirst,
+        (route) => route.isFirst,
       );
     } catch (e) {
       debugPrint('DeepLinkService: Failed to load event: $e');
       navigatorKey.currentState?.pushNamedAndRemoveUntil(
         '/home_screen',
-            (route) => false,
+        (route) => false,
       );
     } finally {
       _isNavigating = false;
@@ -502,11 +502,11 @@ class DeepLinkService {
   }
 
   Future<void> _preselectTourAndRound(
-      WidgetRef ref, {
-        required String groupBroadcastId,
-        String? tourId,
-        String? roundId,
-      }) async {
+    WidgetRef ref, {
+    required String groupBroadcastId,
+    String? tourId,
+    String? roundId,
+  }) async {
     final cleanTourId = _asNonEmptyString(tourId);
     final cleanRoundId = _asNonEmptyString(roundId);
 
@@ -521,18 +521,18 @@ class DeepLinkService {
 
     if (cleanRoundId != null) {
       ref.read(userSelectedRoundProvider.notifier).state = (
-      id: cleanRoundId,
-      userSelected: true,
+        id: cleanRoundId,
+        userSelected: true,
       );
     }
   }
 
   Future<_EventRouteContext?> _resolveEventRouteContext(
-      WidgetRef ref, {
-        String? groupBroadcastId,
-        String? roundId,
-        String? tourId,
-      }) async {
+    WidgetRef ref, {
+    String? groupBroadcastId,
+    String? roundId,
+    String? tourId,
+  }) async {
     var resolvedGroupBroadcastId = _asNonEmptyString(groupBroadcastId);
     var resolvedRoundId = _asNonEmptyString(roundId);
     var resolvedTourId = _asNonEmptyString(tourId);
@@ -593,8 +593,8 @@ class DeepLinkService {
     final gameInfo = <String, (int, int)>{};
     for (final game in games) {
       gameInfo[game.id] = (
-      _extractRoundNumber(game.roundSlug),
-      _extractGameNumber(game.roundSlug),
+        _extractRoundNumber(game.roundSlug),
+        _extractGameNumber(game.roundSlug),
       );
     }
 
@@ -633,7 +633,7 @@ class DeepLinkService {
     }
     final match =
         RegExp(r'round-?(\d+)', caseSensitive: false).firstMatch(roundSlug) ??
-            RegExp(r'(\d+)').firstMatch(roundSlug);
+        RegExp(r'(\d+)').firstMatch(roundSlug);
     return int.tryParse(match?.group(1) ?? '0') ?? 0;
   }
 

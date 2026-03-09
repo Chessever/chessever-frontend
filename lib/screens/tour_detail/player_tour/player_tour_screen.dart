@@ -39,105 +39,104 @@ class PlayerTourScreen extends ConsumerWidget {
               ref
                   .watch(playerTourScreenProvider)
                   .when(
-                data: (data) {
-                  return data.isEmpty
-                      ? Center(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        SizedBox(height: 64.h),
-                        EmptyWidget(title: "No data available"),
-                      ],
-                    ),
-                  )
-                      : ref
-                      .watch(favoritePlayersNotifierProvider)
-                      .when(
-                    data: (favData) {
-                      final favIds =
-                      favData.players
-                          .map((e) => e.fideId)
-                          .toSet();
+                    data: (data) {
+                      return data.isEmpty
+                          ? Center(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.center,
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                SizedBox(height: 64.h),
+                                EmptyWidget(title: "No data available"),
+                              ],
+                            ),
+                          )
+                          : ref
+                              .watch(favoritePlayersNotifierProvider)
+                              .when(
+                                data: (favData) {
+                                  final favIds =
+                                      favData.players
+                                          .map((e) => e.fideId)
+                                          .toSet();
 
-                      // Keep players in their original ranking order (by score)
-                      // Do NOT reorder based on favorite status
+                                  // Keep players in their original ranking order (by score)
+                                  // Do NOT reorder based on favorite status
 
-                      return Expanded(
-                        child: ListView.builder(
-                          shrinkWrap: true,
-                          padding: EdgeInsets.only(
-                            bottom:
-                            MediaQuery.of(
-                              context,
-                            ).viewInsets.bottom +
-                                16.sp,
-                          ),
-                          itemCount: data.length,
-                          itemBuilder: (context, index) {
-                            final player = data[index];
-                            final isFav = favIds.contains(
-                              player.fideId,
-                            );
-                            return FigmaPlayerCard(
-                              player: player,
-                              rank: index + 1,
-                              isFavorite: isFav,
-                              showFavoriteButton: false,
-                              onTap: () {
-                                ref
-                                    .read(
-                                  selectedPlayerProvider
-                                      .notifier,
-                                )
-                                    .state = player;
-                                // Clear games context - tournament games come from gamesTourScreenProvider
-                                ref
-                                    .read(
-                                  scoreCardGamesContextProvider
-                                      .notifier,
-                                )
-                                    .state = null;
-                                ref
-                                    .read(
-                                  scoreCardPlayerProfileDataSourceProvider
-                                      .notifier,
-                                )
-                                    .state = PlayerProfileDataSource
-                                    .supabase;
-                                ref
-                                    .read(
-                                  chessboardViewFromProviderNew
-                                      .notifier,
-                                )
-                                    .state =
-                                    ChessboardView.tour;
-                                Navigator.of(
-                                  context,
-                                ).pushNamed('/scorecard_screen');
-                              },
-                            );
-                          },
-                        ),
-                      );
+                                  return Expanded(
+                                    child: ListView.builder(
+                                      shrinkWrap: true,
+                                      padding: EdgeInsets.only(
+                                        bottom:
+                                            MediaQuery.of(
+                                              context,
+                                            ).viewInsets.bottom +
+                                            16.sp,
+                                      ),
+                                      itemCount: data.length,
+                                      itemBuilder: (context, index) {
+                                        final player = data[index];
+                                        final isFav = favIds.contains(
+                                          player.fideId,
+                                        );
+                                        return FigmaPlayerCard(
+                                          player: player,
+                                          rank: index + 1,
+                                          isFavorite: isFav,
+                                          showFavoriteButton: false,
+                                          onTap: () {
+                                            ref
+                                                .read(
+                                                  selectedPlayerProvider
+                                                      .notifier,
+                                                )
+                                                .state = player;
+                                            // Clear games context - tournament games come from gamesTourScreenProvider
+                                            ref
+                                                .read(
+                                                  scoreCardGamesContextProvider
+                                                      .notifier,
+                                                )
+                                                .state = null;
+                                            ref
+                                                .read(
+                                                  scoreCardPlayerProfileDataSourceProvider
+                                                      .notifier,
+                                                )
+                                                .state = PlayerProfileDataSource
+                                                    .supabase;
+                                            ref
+                                                .read(
+                                                  chessboardViewFromProviderNew
+                                                      .notifier,
+                                                )
+                                                .state = ChessboardView.tour;
+                                            Navigator.of(
+                                              context,
+                                            ).pushNamed('/scorecard_screen');
+                                          },
+                                        );
+                                      },
+                                    ),
+                                  );
+                                },
+                                loading: () {
+                                  return _StandingScreenLoading();
+                                },
+                                error: (error, stackTrace) {
+                                  return _StandingScreenLoading();
+                                },
+                                skipLoadingOnRefresh: true,
+                                skipLoadingOnReload: true,
+                              );
+                    },
+                    error: (e, _) {
+                      return _StandingScreenLoading();
                     },
                     loading: () {
                       return _StandingScreenLoading();
                     },
-                    error: (error, stackTrace) {
-                      return _StandingScreenLoading();
-                    },
-                    skipLoadingOnRefresh: true,
-                    skipLoadingOnReload: true,
-                  );
-                },
-                error: (e, _) {
-                  return _StandingScreenLoading();
-                },
-                loading: () {
-                  return _StandingScreenLoading();
-                },
-              ),
+                  ),
             ],
           ),
         ),

@@ -25,7 +25,7 @@ const Color kChessBlackMoveColor = Color(
 ); // Warm coral-orange for black moves
 const Color kLastMoveHighlightColor = Color(
   0xFFADB9CF,
-); // Semi-transparent blue-grey: renders distinct light/dark square hues
+); // Opaque blue-grey: renders distinct light/dark square hues
 const Color kLastMoveHighlightLightSquare = Color(
   0xFFADB9CF,
 ); // Last-move highlight on light squares
