@@ -1,5 +1,7 @@
+import 'package:chessever2/providers/auto_pin_preferences_provider.dart';
 import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/providers/board_settings_provider_new.dart';
+import 'package:chessever2/repository/local_storage/auto_pin_preferences/auto_pin_preferences_repository.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/board_customization_utils.dart';
@@ -453,6 +455,12 @@ class _ChessBoardSettingsPageState
               ),
             ),
 
+            // Auto Pin Section
+            SizedBox(height: 24.h),
+            _SectionLabel(title: 'Auto Pin'),
+            SizedBox(height: 12.h),
+            _buildAutoPinSection(),
+
             // Board Settings Section
             SizedBox(height: 24.h),
             _SectionLabel(title: 'Board Settings'),
@@ -637,6 +645,100 @@ class _ChessBoardSettingsPageState
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildAutoPinSection() {
+    final autoPinAsync = ref.watch(autoPinPreferencesProvider);
+    final prefs = autoPinAsync.valueOrNull ?? AutoPinPreferences.defaults;
+    final notifier = ref.read(autoPinPreferencesProvider.notifier);
+
+    return Column(
+      children: [
+        _SettingCard(
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Favorite Players',
+                      style: AppTypography.textMdMedium.copyWith(
+                        color: kWhiteColor,
+                        fontSize: 13.f,
+                      ),
+                    ),
+                    SizedBox(height: 4.h),
+                    Text(
+                      'Automatically pin games of your favorite players.',
+                      style: AppTypography.textSmRegular.copyWith(
+                        color: kWhiteColor70,
+                        fontSize: 11.f,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Switch.adaptive(
+                value: prefs.favoritePlayersAutoPinEnabled,
+                thumbColor: WidgetStatePropertyAll(kPrimaryColor),
+                trackColor: WidgetStateProperty.resolveWith(
+                  (states) =>
+                      states.contains(WidgetState.selected)
+                          ? kPrimaryColor.withValues(alpha: 0.35)
+                          : kDividerColor.withValues(alpha: 0.5),
+                ),
+                onChanged: (value) {
+                  _trackPersist(notifier.setFavoritePlayersAutoPin(value));
+                },
+              ),
+            ],
+          ),
+        ),
+        SizedBox(height: 18.h),
+        _SettingCard(
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Countrymen',
+                      style: AppTypography.textMdMedium.copyWith(
+                        color: kWhiteColor,
+                        fontSize: 13.f,
+                      ),
+                    ),
+                    SizedBox(height: 4.h),
+                    Text(
+                      'Automatically pin games of players from your country.',
+                      style: AppTypography.textSmRegular.copyWith(
+                        color: kWhiteColor70,
+                        fontSize: 11.f,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Switch.adaptive(
+                value: prefs.countrymenAutoPinEnabled,
+                thumbColor: WidgetStatePropertyAll(kPrimaryColor),
+                trackColor: WidgetStateProperty.resolveWith(
+                  (states) =>
+                      states.contains(WidgetState.selected)
+                          ? kPrimaryColor.withValues(alpha: 0.35)
+                          : kDividerColor.withValues(alpha: 0.5),
+                ),
+                onChanged: (value) {
+                  _trackPersist(notifier.setCountrymenAutoPin(value));
+                },
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }
