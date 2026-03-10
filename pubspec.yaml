@@ -99,7 +99,7 @@ dependencies:
   url_launcher: ^6.3.1
 
   chess: ^0.8.1
-  stockfish: ^1.8.1
+  stockfish: 1.7.2
   flutter_local_notifications: ^19.3.0
   onesignal_flutter: ^5.1.2
   firebase_core: ^3.4.0
