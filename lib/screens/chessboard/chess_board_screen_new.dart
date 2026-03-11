@@ -16,6 +16,7 @@ import 'package:chessever2/screens/chessboard/analysis/chess_game_navigator.dart
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/chessboard/provider/lichess_move_annotations_provider.dart';
 import 'package:chessever2/screens/chessboard/notation/notation_cache.dart';
+import 'package:chessever2/screens/chessboard/notation/notation_token_builder.dart';
 import 'package:chessever2/screens/chessboard/notation/notation_pointer.dart';
 import 'package:chessever2/screens/chessboard/notation/notation_tree.dart';
 import 'package:chessever2/screens/chessboard/view_model/chess_board_state_new.dart';
@@ -7263,13 +7264,18 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     );
 
     final pointerMap = <String, NotationMoveNode>{};
-    final tokens = _buildTokens(
+    final tokens = buildNotationTokens(
       tree.mainline,
       depth: 0,
       startingPly: tree.startingPly,
       pointerMap: pointerMap,
       forcedOpenIds: forcedOpenIds,
       variationComments: widget.state.variationComments,
+      lichessAnnotations: lichessAnnotations,
+      collapsedVariationIds: _collapsedVariationIds,
+      expandedVariationIds: _expandedVariationIds,
+      autoCollapseDepth: _autoCollapseDepth,
+      autoCollapseMoveThreshold: _autoCollapseMoveThreshold,
     );
 
     if (tokens.isEmpty) {
@@ -7304,7 +7310,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
             children:
                 tokens.map((token) {
                   switch (token.type) {
-                    case _NotationTokenType.move:
+                    case NotationTokenType.move:
                       return _buildMoveChip(
                         token,
                         params,
@@ -7315,12 +7321,14 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
                         useFigurine: useFigurine,
                         pieceAssets: pieceAssets,
                       );
-                    case _NotationTokenType.comment:
+                    case NotationTokenType.comment:
                       return _buildVariationCommentChip(token, params);
-                    case _NotationTokenType.openParen:
-                    case _NotationTokenType.closeParen:
-                    case _NotationTokenType.ellipsis:
-                    case _NotationTokenType.variationPlaceholder:
+                    case NotationTokenType.lichessComment:
+                      return _buildLichessCommentChip(token);
+                    case NotationTokenType.openParen:
+                    case NotationTokenType.closeParen:
+                    case NotationTokenType.ellipsis:
+                    case NotationTokenType.variationPlaceholder:
                       return _buildAuxToken(token);
                   }
                 }).toList(),
@@ -7604,7 +7612,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
   }
 
   Widget _buildMoveChip(
-    _NotationDisplayToken token,
+    NotationDisplayToken token,
     ChessBoardProviderParams params,
     int currentPly,
     String? currentPointerId,
@@ -7655,14 +7663,36 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       moveSpans = [TextSpan(text: token.text, style: textStyle)];
     }
 
+    // Determine annotation presentation: inline symbol or badge
+    final annotationPres =
+        annotation != null
+            ? resolveAnnotationPresentation(annotation.type)
+            : null;
+
+    // Evaluative annotations: append colored symbol inline after the SAN text
+    if (annotationPres == AnnotationPresentation.inlineSymbol) {
+      final symbol = annotation!.type.symbol;
+      if (symbol.isNotEmpty) {
+        moveSpans.add(
+          TextSpan(
+            text: symbol,
+            style: textStyle.copyWith(
+              color: annotation.type.color,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        );
+      }
+    }
+
+    // bookMove: keep the floating badge (no inline symbol available)
     final Widget? annotationBadge =
-        annotation == null
-            ? null
-            : Container(
+        annotationPres == AnnotationPresentation.badgeOnly
+            ? Container(
               width: 14.sp,
               height: 14.sp,
               decoration: BoxDecoration(
-                color: annotation.type.color,
+                color: annotation!.type.color,
                 borderRadius: BorderRadius.circular(999),
               ),
               padding: EdgeInsets.all(2.sp),
@@ -7670,7 +7700,8 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
                 annotation.type.iconAssetPath,
                 fit: BoxFit.contain,
               ),
-            );
+            )
+            : null;
 
     return GestureDetector(
       key: key,
@@ -7729,9 +7760,9 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     );
   }
 
-  Widget _buildAuxToken(_NotationDisplayToken token) {
+  Widget _buildAuxToken(NotationDisplayToken token) {
     final isVariationToken =
-        token.type != _NotationTokenType.ellipsis &&
+        token.type != NotationTokenType.ellipsis &&
         (token.variation != null || token.variationColorKey != null);
     Color depthColor;
     if (isVariationToken) {
@@ -7743,7 +7774,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     }
 
     Widget child;
-    if (token.type == _NotationTokenType.variationPlaceholder) {
+    if (token.type == NotationTokenType.variationPlaceholder) {
       // Collapsed variation placeholder - tappable to expand
       child = GestureDetector(
         behavior: HitTestBehavior.opaque,
@@ -7787,7 +7818,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       );
       // Return early - already has gesture handling
       return child;
-    } else if (token.type == _NotationTokenType.openParen &&
+    } else if (token.type == NotationTokenType.openParen &&
         token.variation != null) {
       // Opening paren with +/- toggle button
       final isCollapsed = token.isCollapsed;
@@ -7850,7 +7881,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       );
       // Return early - already has gesture handling
       return child;
-    } else if (token.type == _NotationTokenType.closeParen &&
+    } else if (token.type == NotationTokenType.closeParen &&
         token.variation != null) {
       // Closing paren - tappable to collapse
       child = GestureDetector(
@@ -7876,11 +7907,11 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
         token.text,
         style: AppTypography.textXsMedium.copyWith(
           color:
-              token.type == _NotationTokenType.ellipsis
+              token.type == NotationTokenType.ellipsis
                   ? kWhiteColor70
                   : depthColor.withValues(alpha: 0.85),
           fontStyle:
-              token.type == _NotationTokenType.ellipsis
+              token.type == NotationTokenType.ellipsis
                   ? FontStyle.normal
                   : FontStyle.italic,
         ),
@@ -7908,7 +7939,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
 
   /// Compact inline comment display - italic text with accent color
   Widget _buildVariationCommentChip(
-    _NotationDisplayToken token,
+    NotationDisplayToken token,
     ChessBoardProviderParams params,
   ) {
     final fullText = token.commentText?.trim() ?? token.text.trim();
@@ -7973,6 +8004,20 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     );
   }
 
+  Widget _buildLichessCommentChip(NotationDisplayToken token) {
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: 2.sp),
+      child: Text(
+        token.text,
+        style: AppTypography.textXsRegular.copyWith(
+          color: kWhiteColor70.withValues(alpha: 0.6),
+          fontStyle: FontStyle.italic,
+          height: 1.4,
+        ),
+      ),
+    );
+  }
+
   void _toggleCommentExpansion(String id, bool isExpanded) {
     setState(() {
       if (isExpanded) {
@@ -7985,7 +8030,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
   }
 
   Future<void> _editNotationComment(
-    _NotationDisplayToken token,
+    NotationDisplayToken token,
     ChessBoardProviderParams params,
     String fallbackText,
   ) async {
@@ -8046,7 +8091,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
         .goToMovePointer(headPointer);
   }
 
-  void _toggleVariationCollapse(_NotationDisplayToken token) {
+  void _toggleVariationCollapse(NotationDisplayToken token) {
     final variation = token.variation;
     if (variation == null) {
       HapticFeedback.lightImpact();
@@ -8101,7 +8146,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     Color(0xFF8EB2CB),
   ];
 
-  Color _accentColorForToken(_NotationDisplayToken token) {
+  Color _accentColorForToken(NotationDisplayToken token) {
     final depth = math.max(1, token.depth);
     final seed = token.variationColorKey ?? token.variation?.id;
     return _colorForVariationAccent(depth, seed: seed);
@@ -8132,7 +8177,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     return _variationDepthPalette[paletteIndex];
   }
 
-  Color _resolveMoveColor(_NotationDisplayToken token, int currentPly) {
+  Color _resolveMoveColor(NotationDisplayToken token, int currentPly) {
     final node = token.node;
     if (node == null) {
       return kWhiteColor;
@@ -8155,7 +8200,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
   }
 
   LichessMoveAnnotation? _resolveLichessAnnotation(
-    _NotationDisplayToken token,
+    NotationDisplayToken token,
     Map<int, LichessMoveAnnotation> annotations,
   ) {
     final node = token.node;
@@ -8170,213 +8215,6 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       );
     }
     return result;
-  }
-
-  List<_NotationDisplayToken> _buildTokens(
-    List<NotationMoveNode> moves, {
-    required int depth,
-    required int startingPly,
-    NotationVariationNode? variationContext,
-    required Map<String, NotationMoveNode> pointerMap,
-    required Set<String> forcedOpenIds,
-    required Map<String, String> variationComments,
-  }) {
-    final tokens = <_NotationDisplayToken>[];
-    for (var i = 0; i < moves.length; i++) {
-      final node = moves[i];
-      final pointerList = List<Number>.of(node.pointer);
-      final pointerId = NotationPointer.encode(pointerList);
-      pointerMap[pointerId] = node;
-      final isVariationHead = variationContext != null && i == 0;
-
-      // CRITICAL FIX: Never suppress black move prefix for proper PGN notation
-      // Variations starting with black moves MUST show ellipsis (e.g., "1... c5")
-      final text = _formatMoveText(node);
-      final variationMovesList = variationContext?.moves;
-      final variationHeadPointer =
-          (variationMovesList?.isNotEmpty ?? false)
-              ? List<Number>.of(variationMovesList!.first.pointer)
-              : null;
-      final moveIndex = node.ply - startingPly;
-      tokens.add(
-        _NotationDisplayToken(
-          type: _NotationTokenType.move,
-          text: text,
-          depth: depth,
-          pointerId: pointerId,
-          moveIndex: moveIndex >= 0 ? moveIndex : null,
-          node: node,
-          pointer: pointerList,
-          variationIndex: variationContext?.variationIndex,
-          isVariationHead: isVariationHead,
-          variationHeadPointer: variationHeadPointer,
-          variationMoves: variationMovesList,
-          variationColorKey: variationContext?.id,
-        ),
-      );
-
-      final moveComment = variationComments[pointerId];
-      if (moveComment != null && moveComment.isNotEmpty) {
-        tokens.add(
-          _NotationDisplayToken(
-            type: _NotationTokenType.comment,
-            text: moveComment,
-            depth: depth,
-            pointerId: pointerId,
-            variation: variationContext,
-            variationIndex: variationContext?.variationIndex,
-            variationColorKey: variationContext?.id,
-          ),
-        );
-      }
-
-      for (final variation in node.variations) {
-        final defaultCollapsed = _shouldCollapseByDefault(variation);
-        final forcedOpen = forcedOpenIds.contains(variation.id);
-        final manuallyCollapsed = _collapsedVariationIds.contains(variation.id);
-        final manuallyExpanded = _expandedVariationIds.contains(variation.id);
-        final variationHeroTagBase =
-            'notation-variation-${variation.id}-${variation.depth}-${variation.variationIndex}';
-
-        bool collapsed = defaultCollapsed;
-        if (forcedOpen) {
-          collapsed = false;
-        } else if (defaultCollapsed) {
-          if (manuallyExpanded) {
-            collapsed = false;
-          } else {
-            collapsed = true;
-          }
-        } else {
-          collapsed = manuallyCollapsed;
-        }
-
-        tokens.add(
-          _NotationDisplayToken(
-            type: _NotationTokenType.openParen,
-            text: '(',
-            depth: variation.depth,
-            pointerId: null,
-            variationIndex: variation.variationIndex,
-            variation: variation,
-            isCollapsed: collapsed,
-            defaultsToCollapsed: defaultCollapsed,
-            isForcedOpen: forcedOpen,
-            variationHeadPointer:
-                variation.moves.isNotEmpty
-                    ? List<Number>.of(variation.moves.first.pointer)
-                    : null,
-            heroineTag: '$variationHeroTagBase-open',
-            variationColorKey: variation.id,
-          ),
-        );
-        if (collapsed) {
-          tokens.add(
-            _NotationDisplayToken(
-              type: _NotationTokenType.variationPlaceholder,
-              text: '... ${variation.moves.length} moves',
-              depth: variation.depth,
-              pointerId: null,
-              variationIndex: variation.variationIndex,
-              variation: variation,
-              isCollapsed: true,
-              defaultsToCollapsed: defaultCollapsed,
-              isForcedOpen: forcedOpen,
-              variationHeadPointer:
-                  variation.moves.isNotEmpty
-                      ? List<Number>.of(variation.moves.first.pointer)
-                      : null,
-              heroineTag: '$variationHeroTagBase-placeholder',
-              variationColorKey: variation.id,
-            ),
-          );
-        } else {
-          tokens.addAll(
-            _buildTokens(
-              variation.moves,
-              depth: variation.depth,
-              startingPly: startingPly,
-              variationContext: variation,
-              pointerMap: pointerMap,
-              forcedOpenIds: forcedOpenIds,
-              variationComments: variationComments,
-            ),
-          );
-        }
-
-        final variationComment = variationComments[variation.id];
-        if (variationComment != null && variationComment.isNotEmpty) {
-          tokens.add(
-            _NotationDisplayToken(
-              type: _NotationTokenType.comment,
-              text: variationComment,
-              depth: variation.depth,
-              variationIndex: variation.variationIndex,
-              variation: variation,
-              variationHeadPointer:
-                  variation.moves.isNotEmpty
-                      ? List<Number>.of(variation.moves.first.pointer)
-                      : null,
-              commentText: variationComment,
-              variationColorKey: variation.id,
-            ),
-          );
-        }
-
-        tokens.add(
-          _NotationDisplayToken(
-            type: _NotationTokenType.closeParen,
-            text: ')',
-            depth: variation.depth,
-            pointerId: null,
-            variationIndex: variation.variationIndex,
-            variation: variation,
-            isCollapsed: collapsed,
-            defaultsToCollapsed: defaultCollapsed,
-            isForcedOpen: forcedOpen,
-            variationHeadPointer:
-                variation.moves.isNotEmpty
-                    ? List<Number>.of(variation.moves.first.pointer)
-                    : null,
-            heroineTag: '$variationHeroTagBase-close',
-            variationColorKey: variation.id,
-          ),
-        );
-      }
-    }
-    return tokens;
-  }
-
-  bool _shouldCollapseByDefault(NotationVariationNode variation) {
-    if (variation.depth >= _autoCollapseDepth) {
-      return true;
-    }
-    if (variation.moves.length >= _autoCollapseMoveThreshold) {
-      return true;
-    }
-    return false;
-  }
-
-  String _formatMoveText(
-    NotationMoveNode node, {
-    bool suppressBlackMovePrefix = false,
-  }) {
-    final buffer = StringBuffer();
-    if (node.showMoveNumber) {
-      final bool isNullMove = node.move.san == '--';
-      final bool isFirstBlackInLine =
-          !node.isWhiteMove && (node.showEllipsis || suppressBlackMovePrefix);
-      if (isNullMove && !node.isWhiteMove) {
-        buffer.write('${node.moveNumber}... ');
-      } else if (isFirstBlackInLine) {
-        // Still suppress for regular variation heads
-      } else {
-        final separator = node.isWhiteMove ? '. ' : '... ';
-        buffer.write('${node.moveNumber}$separator');
-      }
-    }
-    buffer.write(node.move.san);
-    return buffer.toString();
   }
 
   void _schedulePointerScroll(ChessMovePointer pointer, String? pointerId) {
@@ -8558,7 +8396,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     return null;
   }
 
-  ChessMovePointer? _variantHeadPointerForToken(_NotationDisplayToken token) {
+  ChessMovePointer? _variantHeadPointerForToken(NotationDisplayToken token) {
     final variation = token.variation;
     if (variation != null) {
       final head = <Number>[
@@ -8827,7 +8665,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     );
   }
 
-  Future<void> _showVariationActions(_NotationDisplayToken token) async {
+  Future<void> _showVariationActions(NotationDisplayToken token) async {
     final variation = token.variation;
     final headPointer = _variantHeadPointerForToken(token);
     if (variation == null || headPointer == null) {
@@ -9123,57 +8961,6 @@ class _DirectCommentSheet extends ConsumerWidget {
       ),
     );
   }
-}
-
-enum _NotationTokenType {
-  move,
-  openParen,
-  closeParen,
-  ellipsis,
-  variationPlaceholder,
-  comment,
-}
-
-class _NotationDisplayToken {
-  final _NotationTokenType type;
-  final String text;
-  final int depth;
-  final String? pointerId;
-  final int? moveIndex;
-  final NotationMoveNode? node;
-  final ChessMovePointer? pointer;
-  final int? variationIndex;
-  final bool isVariationHead;
-  final ChessMovePointer? variationHeadPointer;
-  final List<NotationMoveNode>? variationMoves;
-  final NotationVariationNode? variation;
-  final bool isCollapsed;
-  final bool defaultsToCollapsed;
-  final bool isForcedOpen;
-  final String? heroineTag;
-  final String? commentText;
-  final String? variationColorKey;
-
-  const _NotationDisplayToken({
-    required this.type,
-    required this.text,
-    required this.depth,
-    this.pointerId,
-    this.moveIndex,
-    this.node,
-    this.pointer,
-    this.variationIndex,
-    this.isVariationHead = false,
-    this.variationHeadPointer,
-    this.variationMoves,
-    this.variation,
-    this.isCollapsed = false,
-    this.defaultsToCollapsed = false,
-    this.isForcedOpen = false,
-    this.heroineTag,
-    this.commentText,
-    this.variationColorKey,
-  });
 }
 
 const int _variationCommentPreviewChars = 80;
