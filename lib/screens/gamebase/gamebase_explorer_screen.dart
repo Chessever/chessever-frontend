@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:chessever2/e2e/e2e_ids.dart';
+import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessground/chessground.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:flutter/material.dart';
@@ -26,6 +27,7 @@ import 'package:chessever2/screens/gamebase/widgets/widgets.dart';
 import 'package:chessever2/screens/gamebase/models/models.dart';
 import 'package:chessever2/main.dart' show routeObserver;
 import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
+import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 
 /// Main screen for exploring the Gamebase opening database.
 /// Displays a chess board, move statistics, and navigation controls.
@@ -896,8 +898,7 @@ class _ExplorerEvalBarState extends ConsumerState<_ExplorerEvalBar> {
       // transient wrong eval values while a new position evaluation starts.
       evaluation: isEvalForCurrentPosition ? evalState.evaluation : null,
       mate: isEvalForCurrentPosition ? evalState.mate : null,
-      isEvaluating:
-          isEvalForCurrentPosition ? evalState.isEvaluating : true,
+      isEvaluating: isEvalForCurrentPosition ? evalState.isEvaluating : true,
       positionKey: currentKey,
     );
   }
@@ -985,6 +986,84 @@ class _FilterSheetState extends ConsumerState<_FilterSheet> {
     return v >= _ratingMax ? null : v;
   }
 
+  bool _canUsePlayerFilter(bool isSubscribed) {
+    return widget.scopedPlayer != null || isSubscribed;
+  }
+
+  GamebaseFilters _sanitizePlayerFilters(
+    GamebaseFilters filters, {
+    required bool canUsePlayerFilter,
+  }) {
+    if (widget.scopedPlayer != null || canUsePlayerFilter) {
+      return filters;
+    }
+
+    return filters.copyWith(
+      playerIds: const [],
+      selectedPlayers: const [],
+      playerColor: null,
+    );
+  }
+
+  Widget _buildPlayerSearchField({required bool canUsePlayerFilter}) {
+    final field = TextField(
+      controller: _playerSearchController,
+      focusNode: _playerSearchFocusNode,
+      readOnly: !canUsePlayerFilter,
+      style: TextStyle(color: kWhiteColor, fontSize: 13.f),
+      decoration: InputDecoration(
+        hintText: 'Search player',
+        hintStyle: TextStyle(
+          color: kSecondaryTextColor.withValues(alpha: 0.65),
+          fontSize: 13.f,
+        ),
+        prefixIcon: Icon(
+          Icons.search_rounded,
+          size: 18.sp,
+          color: kSecondaryTextColor,
+        ),
+        filled: true,
+        fillColor: kBlack2Color,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8.br),
+          borderSide: BorderSide(color: kDividerColor),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8.br),
+          borderSide: BorderSide(color: kDividerColor),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8.br),
+          borderSide: BorderSide(color: kPrimaryColor),
+        ),
+        contentPadding: EdgeInsets.symmetric(
+          horizontal: 12.sp,
+          vertical: 10.sp,
+        ),
+      ),
+      onChanged:
+          canUsePlayerFilter
+              ? (value) {
+                setState(() {
+                  _playerSearchQuery = value.trim();
+                });
+              }
+              : null,
+    );
+
+    if (canUsePlayerFilter) {
+      return field;
+    }
+
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () async {
+        await requirePremiumGuard(context, ref);
+      },
+      child: AbsorbPointer(ignoringSemantics: true, child: field),
+    );
+  }
+
   void _setPlayer(GamebasePlayer player) {
     setState(() {
       // Backend currently supports a single player filter.
@@ -1031,9 +1110,15 @@ class _FilterSheetState extends ConsumerState<_FilterSheet> {
   }
 
   void _apply() {
-    final finalFilters = _draftFilters.copyWith(
-      minRating: _effectiveMinRating,
-      maxRating: _effectiveMaxRating,
+    final canUsePlayerFilter = _canUsePlayerFilter(
+      ref.read(subscriptionProvider).isSubscribed,
+    );
+    final finalFilters = _sanitizePlayerFilters(
+      _draftFilters.copyWith(
+        minRating: _effectiveMinRating,
+        maxRating: _effectiveMaxRating,
+      ),
+      canUsePlayerFilter: canUsePlayerFilter,
     );
     ref.read(gamebaseExplorerProvider.notifier).updateFilters(finalFilters);
     Navigator.pop(context);
@@ -1092,7 +1177,14 @@ class _FilterSheetState extends ConsumerState<_FilterSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final filters = _draftFilters;
+    final isSubscribed = ref.watch(
+      subscriptionProvider.select((s) => s.isSubscribed),
+    );
+    final canUsePlayerFilter = _canUsePlayerFilter(isSubscribed);
+    final filters = _sanitizePlayerFilters(
+      _draftFilters,
+      canUsePlayerFilter: canUsePlayerFilter,
+    );
     final hasActiveDraft = _hasActiveDraft(filters);
 
     return SafeArea(
@@ -1362,47 +1454,10 @@ class _FilterSheetState extends ConsumerState<_FilterSheet> {
                     ),
                   ),
                   SizedBox(height: 8.sp),
-                  TextField(
-                    controller: _playerSearchController,
-                    focusNode: _playerSearchFocusNode,
-                    style: TextStyle(color: kWhiteColor, fontSize: 13.f),
-                    decoration: InputDecoration(
-                      hintText: 'Search player',
-                      hintStyle: TextStyle(
-                        color: kSecondaryTextColor.withValues(alpha: 0.65),
-                        fontSize: 13.f,
-                      ),
-                      prefixIcon: Icon(
-                        Icons.search_rounded,
-                        size: 18.sp,
-                        color: kSecondaryTextColor,
-                      ),
-                      filled: true,
-                      fillColor: kBlack2Color,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8.br),
-                        borderSide: BorderSide(color: kDividerColor),
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8.br),
-                        borderSide: BorderSide(color: kDividerColor),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8.br),
-                        borderSide: BorderSide(color: kPrimaryColor),
-                      ),
-                      contentPadding: EdgeInsets.symmetric(
-                        horizontal: 12.sp,
-                        vertical: 10.sp,
-                      ),
-                    ),
-                    onChanged: (value) {
-                      setState(() {
-                        _playerSearchQuery = value.trim();
-                      });
-                    },
+                  _buildPlayerSearchField(
+                    canUsePlayerFilter: canUsePlayerFilter,
                   ),
-                  if (_playerSearchQuery.length >= 2) ...[
+                  if (canUsePlayerFilter && _playerSearchQuery.length >= 2) ...[
                     SizedBox(height: 8.sp),
                     _PlayerSearchResults(
                       query: _playerSearchQuery,
@@ -1411,6 +1466,7 @@ class _FilterSheetState extends ConsumerState<_FilterSheet> {
                   ],
                 ],
                 if (widget.scopedPlayer == null &&
+                    canUsePlayerFilter &&
                     filters.selectedPlayers.isNotEmpty) ...[
                   SizedBox(height: 10.sp),
                   Wrap(
