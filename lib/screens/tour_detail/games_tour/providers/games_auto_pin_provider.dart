@@ -36,7 +36,7 @@ class _AutoPinLogController {
     }
 
     final prefs =
-        ref.read(autoPinPreferencesProvider).valueOrNull ??
+        await ref.read(autoPinPreferencesProvider.future) ??
         AutoPinPreferences.defaults;
 
     if (!prefs.favoritePlayersAutoPinEnabled &&
