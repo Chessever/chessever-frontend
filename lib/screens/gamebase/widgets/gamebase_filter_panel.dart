@@ -567,7 +567,10 @@ class _PlayerSearchField extends HookConsumerWidget {
         onTap: () async {
           await requirePremiumGuard(context, ref);
         },
-        child: const AbsorbPointer(child: _PlayerSearchInput()),
+        child: const AbsorbPointer(
+          ignoringSemantics: true,
+          child: _PlayerSearchInput(),
+        ),
       );
     }
 
