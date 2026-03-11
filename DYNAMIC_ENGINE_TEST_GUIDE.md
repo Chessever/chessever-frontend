@@ -26,7 +26,7 @@ When you change engine settings, the system should:
 
 ```
 🔄 ═══ ENGINE SETTINGS CHANGED ═══
-   Previous: searchTime=5s
+   Previous: searchTime=∞
    New: searchTime=10s
    SearchDuration: 10s
    MaxDepth: 30
