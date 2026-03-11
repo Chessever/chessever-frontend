@@ -29,7 +29,8 @@ Games _makeGame({
     dateStart: dateStart,
     status: status,
     boardNr: boardNr,
-    players: players ??
+    players:
+        players ??
         [
           Player(
             name: 'White $id',
@@ -191,6 +192,57 @@ void main() {
       expect(result.where((g) => g.tourId == 'tour-a').length, 2);
       // Filled from tour B
       expect(result.where((g) => g.tourId == 'tour-b').length, 2);
+    });
+
+    test('null-timestamp rounds remain eligible for backfill', () {
+      final now = DateTime(2025, 6, 1, 12, 0);
+
+      final games = [
+        _makeGame(
+          id: 'recent-1',
+          roundId: 'r2',
+          roundSlug: 'round-2',
+          lastMoveTime: now,
+          boardNr: 1,
+        ),
+        _makeGame(
+          id: 'recent-2',
+          roundId: 'r2',
+          roundSlug: 'round-2',
+          lastMoveTime: now,
+          boardNr: 2,
+        ),
+        _makeGame(
+          id: 'unknown-1',
+          roundId: 'r1',
+          roundSlug: 'round-1',
+          lastMoveTime: null,
+          gameDay: null,
+          dateStart: null,
+          boardNr: 1,
+        ),
+        _makeGame(
+          id: 'unknown-2',
+          roundId: 'r1',
+          roundSlug: 'round-1',
+          lastMoveTime: null,
+          gameDay: null,
+          dateStart: null,
+          boardNr: 2,
+        ),
+      ];
+
+      final result = selectForYouEventGames(
+        allStartedGames: games,
+        pinnedIds: [],
+        formatStrings: ['9-round Swiss'],
+      );
+
+      expect(result.length, 4);
+      expect(result[0].roundId, 'r2');
+      expect(result[1].roundId, 'r2');
+      expect(result[2].roundId, 'r1');
+      expect(result[3].roundId, 'r1');
     });
 
     test('match format: returns latest 4 across entire match', () {

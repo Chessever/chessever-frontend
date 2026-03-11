@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:chessever2/providers/event_favorite_players_provider.dart';
 import 'package:chessever2/providers/favorite_events_provider.dart';
 import 'package:chessever2/repository/local_storage/tournament/games/games_local_storage.dart';
+import 'package:chessever2/repository/local_storage/tournament/games/pin_games_local_storage.dart';
 import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/repository/supabase/tour/tour.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.dart';
@@ -15,7 +16,6 @@ import 'package:chessever2/screens/group_event/providers/sorting_all_event_provi
 import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
-import 'package:chessever2/screens/tour_detail/games_tour/providers/games_pin_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/live_rounds_id_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/live_tour_id_provider.dart';
 import 'package:collection/collection.dart';
@@ -384,8 +384,7 @@ final eventGamesProvider = FutureProvider.autoDispose.family<
   // ── 2. Order tours deterministically ──
   // Live tours first, then by avgElo descending, then stable original order.
   if (eventTours.isNotEmpty) {
-    final liveTourIds =
-        ref.read(liveTourIdProvider).valueOrNull ?? <String>[];
+    final liveTourIds = ref.read(liveTourIdProvider).valueOrNull ?? <String>[];
 
     // Capture original indices for stable tie-breaking
     final originalOrder = {
@@ -429,19 +428,25 @@ final eventGamesProvider = FutureProvider.autoDispose.family<
   // ── 3. Fetch and filter started games from EVERY tour ──
   // Always use refresh() to get fresh data from network for For You tab.
   // This ensures we see new rounds immediately when they start.
-  final allStartedGames = <Games>[];
-  for (final tourId in tourIdsToFetch) {
-    try {
-      final games = await gamesStorage.refresh(tourId);
-      for (final game in games) {
-        if (_hasActuallyStarted(game) &&
-            game.players != null &&
-            game.players!.length >= 2) {
-          allStartedGames.add(game);
-        }
+  final fetchedGamesByTour = await Future.wait(
+    tourIdsToFetch.map((tourId) async {
+      try {
+        return await gamesStorage.refresh(tourId);
+      } catch (e) {
+        debugPrint('[ForYou] Error fetching games for tour $tourId: $e');
+        return <Games>[];
       }
-    } catch (e) {
-      debugPrint('[ForYou] Error fetching games for tour $tourId: $e');
+    }),
+  );
+
+  final allStartedGames = <Games>[];
+  for (final games in fetchedGamesByTour) {
+    for (final game in games) {
+      if (_hasActuallyStarted(game) &&
+          game.players != null &&
+          game.players!.length >= 2) {
+        allStartedGames.add(game);
+      }
     }
   }
 
@@ -455,19 +460,26 @@ final eventGamesProvider = FutureProvider.autoDispose.family<
     '${tourIdsToFetch.length} tours for event $eventId',
   );
 
-  // ── 4. Aggregate pin IDs from ALL tours ──
+  // ── 4. Aggregate manual pin IDs from ALL tours ──
+  final pinStorage = ref.read(pinGameLocalStorage);
+  final pinsByTour = await Future.wait(
+    tourIdsToFetch.map((tourId) async {
+      try {
+        return await pinStorage.getPinnedGameIds(tourId);
+      } catch (e) {
+        debugPrint('[ForYou] Error fetching pinned games for tour $tourId: $e');
+        return <String>[];
+      }
+    }),
+  );
+
   final pinnedIds = <String>[];
   final seenPins = <String>{};
-  for (final tourId in tourIdsToFetch) {
-    try {
-      final pinState = ref.read(gamesPinprovider(tourId));
-      for (final pinId in pinState.allPins) {
-        if (seenPins.add(pinId)) {
-          pinnedIds.add(pinId);
-        }
+  for (final pinIds in pinsByTour) {
+    for (final pinId in pinIds) {
+      if (seenPins.add(pinId)) {
+        pinnedIds.add(pinId);
       }
-    } catch (e) {
-      // Pin provider might not be initialized for some tours
     }
   }
 
@@ -646,11 +658,12 @@ List<Games> selectForYouEventGames({
   // --- Normal (non-match) path ---
 
   // 1. Compute per-round recency: max activity timestamp per roundId.
-  //    Fallback chain: lastMoveTime > gameDay > dateStart.
+  //    Fallback chain: lastMoveTime > gameDay > dateStart > Unix epoch.
+  final unknownRoundTime = DateTime.fromMillisecondsSinceEpoch(0, isUtc: true);
   final roundRecency = <String, DateTime>{};
   for (final game in allStartedGames) {
-    final time = game.lastMoveTime ?? game.gameDay ?? game.dateStart;
-    if (time == null) continue;
+    final time =
+        game.lastMoveTime ?? game.gameDay ?? game.dateStart ?? unknownRoundTime;
     final existing = roundRecency[game.roundId];
     if (existing == null || time.isAfter(existing)) {
       roundRecency[game.roundId] = time;
@@ -658,14 +671,9 @@ List<Games> selectForYouEventGames({
   }
 
   // Sort round IDs by recency descending
-  final roundsByRecency = roundRecency.keys.toList()
-    ..sort((a, b) => roundRecency[b]!.compareTo(roundRecency[a]!));
-
-  if (roundsByRecency.isEmpty) {
-    // No timestamps at all — just sort everything and take 4
-    final sorted = _sortGamesLikeGamesTab(allStartedGames, pinnedIds);
-    return sorted.take(kGamesPerEvent).toList();
-  }
+  final roundsByRecency =
+      roundRecency.keys.toList()
+        ..sort((a, b) => roundRecency[b]!.compareTo(roundRecency[a]!));
 
   final primaryRoundId = roundsByRecency.first;
 
@@ -683,9 +691,10 @@ List<Games> selectForYouEventGames({
   for (final roundId in roundsByRecency.skip(1)) {
     if (result.length >= kGamesPerEvent) break;
 
-    final roundGames = allStartedGames
-        .where((g) => g.roundId == roundId && !selectedIds.contains(g.id))
-        .toList();
+    final roundGames =
+        allStartedGames
+            .where((g) => g.roundId == roundId && !selectedIds.contains(g.id))
+            .toList();
     final sortedRound = _sortGamesLikeGamesTab(roundGames, pinnedIds);
 
     for (final game in sortedRound) {
