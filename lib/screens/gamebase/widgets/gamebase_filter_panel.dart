@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
+import '../../../revenue_cat_service/subscribe_state.dart';
 import '../../../theme/app_theme.dart';
 import '../../../utils/app_typography.dart';
 import '../../../utils/responsive_helper.dart';
+import '../../../widgets/paywall/premium_paywall_sheet.dart';
 import '../models/models.dart';
 import '../providers/gamebase_explorer_state.dart';
 import '../providers/gamebase_providers.dart';
@@ -555,7 +557,24 @@ class _PlayerSearchField extends HookConsumerWidget {
       );
     }
 
-    return _PlayerSearchInput();
+    final isSubscribed = ref.watch(
+      subscriptionProvider.select((s) => s.isSubscribed),
+    );
+
+    if (!isSubscribed) {
+      return GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () async {
+          await requirePremiumGuard(context, ref);
+        },
+        child: const AbsorbPointer(
+          ignoringSemantics: true,
+          child: _PlayerSearchInput(),
+        ),
+      );
+    }
+
+    return const _PlayerSearchInput();
   }
 }
 
