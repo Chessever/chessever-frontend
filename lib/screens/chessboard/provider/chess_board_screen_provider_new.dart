@@ -186,6 +186,10 @@ class ChessBoardScreenNotifierNew
       );
     }
 
+    // For live games, seed the board with the current live FEN so it renders
+    // the actual position immediately instead of flashing Chess.initial.
+    final liveFenPosition = _tryParseLiveFenPlaceholder();
+
     state = AsyncValue.data(
       ChessBoardStateNew(
         game: game,
@@ -202,6 +206,10 @@ class ChessBoardScreenNotifierNew
         variationComments: Map<String, String>.from(
           variationComments,
         ), // Restore comments
+        position: liveFenPosition,
+        analysisState: liveFenPosition != null
+            ? AnalysisBoardState(position: liveFenPosition)
+            : const AnalysisBoardState(),
       ),
     );
     parseMoves();
@@ -6107,6 +6115,20 @@ class ChessBoardScreenNotifierNew
   }
 
   String _normalizeFen(String fen) => fen.split(' ').take(4).join(' ');
+
+  /// Parse the live game FEN into a display-only placeholder position.
+  /// Returns null for non-live games, missing FEN, or parse failures.
+  Position? _tryParseLiveFenPlaceholder() {
+    if (!game.gameStatus.isOngoing) return null;
+    final fen = game.fen;
+    if (fen == null || fen.trim().isEmpty) return null;
+    try {
+      final setup = Setup.parseFen(fen.trim());
+      return Chess.fromSetup(setup);
+    } catch (_) {
+      return null;
+    }
+  }
 
   /// Generate a "threat FEN" by flipping the side to move
   /// This allows analyzing what the opponent threatens on the current position
