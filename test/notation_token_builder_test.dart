@@ -1,4 +1,5 @@
 import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
+import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
 import 'package:chessever2/screens/chessboard/notation/notation_token_builder.dart';
 import 'package:chessever2/screens/chessboard/notation/notation_tree.dart';
 import 'package:chessever2/services/lichess_move_annotations_service.dart';
@@ -225,6 +226,43 @@ void main() {
       expect(moves[2].text, '2. Nf3');
       expect(moves[3].text, 'Nc6');
       expect(moves[4].text, '3. Bb5');
+    });
+  });
+
+  group('resolveBoardAnnotation', () {
+    const mistake = LichessMoveAnnotation(
+      type: LichessMoveAnnotationType.mistake,
+      comment: 'Mistake.',
+    );
+    const blunder = LichessMoveAnnotation(
+      type: LichessMoveAnnotationType.blunder,
+      comment: 'Blunder.',
+    );
+
+    test('returns null when currentMoveIndex is negative (start position)', () {
+      final annotations = <int, LichessMoveAnnotation>{0: mistake};
+      expect(resolveBoardAnnotation(annotations, -1), isNull);
+    });
+
+    test('returns annotation for the current move when it exists', () {
+      final annotations = <int, LichessMoveAnnotation>{
+        2: mistake,
+        5: blunder,
+      };
+      expect(resolveBoardAnnotation(annotations, 2), mistake);
+      expect(resolveBoardAnnotation(annotations, 5), blunder);
+    });
+
+    test('returns null when the current move has no annotation (no fallback to previous)', () {
+      // Move 2 has an annotation, but move 3 does not.
+      // The old code would fall back to move 2's annotation — this must NOT happen.
+      final annotations = <int, LichessMoveAnnotation>{2: mistake};
+      expect(resolveBoardAnnotation(annotations, 3), isNull);
+    });
+
+    test('returns null when annotations map is empty', () {
+      expect(resolveBoardAnnotation(const {}, 0), isNull);
+      expect(resolveBoardAnnotation(const {}, 5), isNull);
     });
   });
 }

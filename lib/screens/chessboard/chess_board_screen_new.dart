@@ -240,6 +240,16 @@ extension LichessMoveAnnotationTypeX on LichessMoveAnnotationType {
   }
 }
 
+/// Look up the board annotation badge for the current move index.
+/// Returns null when the current move has no annotation.
+LichessMoveAnnotation? resolveBoardAnnotation(
+  Map<int, LichessMoveAnnotation> annotations,
+  int currentMoveIndex,
+) {
+  if (currentMoveIndex < 0) return null;
+  return annotations[currentMoveIndex];
+}
+
 String _moveSansSignature(List<String> moveSans) {
   // Normalize: strip check indicators (+, #) for consistent signature matching
   // Different PGN parsers may or may not include these symbols
@@ -6603,11 +6613,7 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard> {
           if (lichessAnnotations.isEmpty) return null;
           final currentMoveIndex =
               widget.chessBoardState.analysisState.currentMoveIndex;
-          if (currentMoveIndex < 0) return null;
-          final current = lichessAnnotations[currentMoveIndex];
-          if (current != null) return current;
-          final previous = lichessAnnotations[currentMoveIndex - 1];
-          return previous;
+          return resolveBoardAnnotation(lichessAnnotations, currentMoveIndex);
         })();
     final boardAnnotationSquare = _lastMoveDestinationSquare(
       widget.chessBoardState.analysisState.lastMove,
