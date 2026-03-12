@@ -1,4 +1,6 @@
+import 'package:chessever2/providers/auto_pin_preferences_provider.dart';
 import 'package:chessever2/providers/country_dropdown_provider.dart';
+import 'package:chessever2/repository/local_storage/auto_pin_preferences/auto_pin_preferences_repository.dart';
 import 'package:chessever2/repository/local_storage/tournament/games/pin_games_local_storage.dart';
 import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
@@ -66,6 +68,7 @@ class _GamesPinController extends StateNotifier<GamesPinState> {
     _listenToKnockoutStages();
     _listenToCountrySelection();
     _listenToPrimaryGames();
+    _listenToAutoPinPreferences();
   }
 
   final Ref ref;
@@ -177,6 +180,22 @@ class _GamesPinController extends StateNotifier<GamesPinState> {
 
       computeAutoPins();
     });
+  }
+
+  void _listenToAutoPinPreferences() {
+    ref.listen<AsyncValue<AutoPinPreferences>>(
+      autoPinPreferencesProvider,
+      (previous, next) {
+        final prev = previous?.valueOrNull;
+        final curr = next.valueOrNull;
+        if (curr == null) return;
+        if (prev?.favoritePlayersAutoPinEnabled !=
+                curr.favoritePlayersAutoPinEnabled ||
+            prev?.countrymenAutoPinEnabled != curr.countrymenAutoPinEnabled) {
+          computeAutoPins();
+        }
+      },
+    );
   }
 
   bool _didGameListChange(

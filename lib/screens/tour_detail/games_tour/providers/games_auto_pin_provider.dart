@@ -1,6 +1,9 @@
 import 'dart:async';
 
+import 'package:chessever2/providers/auth_state_provider.dart';
+import 'package:chessever2/providers/auto_pin_preferences_provider.dart';
 import 'package:chessever2/providers/country_dropdown_provider.dart';
+import 'package:chessever2/repository/local_storage/auto_pin_preferences/auto_pin_preferences_repository.dart';
 import 'package:chessever2/repository/sqlite/app_database.dart';
 import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
@@ -15,25 +18,39 @@ final autoPinLogicProvider = AutoDisposeProvider<_AutoPinLogController>(
   (ref) => _AutoPinLogController(ref),
 );
 
-const _autoPinFavKey = 'autoPinFavGames';
-
 class _AutoPinLogController {
   _AutoPinLogController(this.ref);
 
   final Ref ref;
-  String _getTournamentKey(String tourId) => '${_autoPinFavKey}_$tourId';
+
+  AutoPinPreferencesRepository get _repo =>
+      AutoPinPreferencesRepository(AppDatabase.instance);
+
+  String? get _userId => ref.read(currentUserProvider)?.id;
 
   Future<(bool, List<String>)> getAutoPinnedGames(String tourId) async {
-    final shouldHidePin = await _getHidePin(tourId);
+    final shouldHidePin =
+        await _repo.getTournamentAutoPinDisabled(tourId, _userId);
     if (shouldHidePin) {
       return (true, <String>[]);
-    } else {
-      final countryCode = await _resolveCountryCode();
+    }
+
+    final prefs =
+        await ref.read(autoPinPreferencesProvider.future) ??
+        AutoPinPreferences.defaults;
+
+    if (!prefs.favoritePlayersAutoPinEnabled &&
+        !prefs.countrymenAutoPinEnabled) {
+      return (false, <String>[]);
+    }
+
+    final gamesList = _getAllGamesIncludingStages(tourId);
+
+    final allPinIds = <String>{};
+
+    // Favorite players auto-pin
+    if (prefs.favoritePlayersAutoPinEnabled) {
       final players = await ref.read(tournamentFavoritePlayersProvider.future);
-
-      // Collect games from ALL stages in multi-stage knockouts
-      final gamesList = _getAllGamesIncludingStages(tourId);
-
       final favPlayers =
           gamesList
               .where((games) {
@@ -48,38 +65,37 @@ class _AutoPinLogController {
                           games.blackPlayer.federation == player.countryCode,
                     );
               })
-              .map((e) => e.gameId)
-              .toList();
-
-      if (countryCode == null || countryCode.isEmpty) {
-        print(
-          '⚠️ Auto-pin: Country unavailable, falling back to favorites only',
-        );
-        return (false, [...favPlayers]);
-      }
-
-      final filteredGames =
-          gamesList
-              .where((game) {
-                // Use the matcher to compare regardless of ISO format
-                return CountryCodeMatcher.matches(
-                      game.whitePlayer.countryCode,
-                      countryCode,
-                    ) ||
-                    CountryCodeMatcher.matches(
-                      game.blackPlayer.countryCode,
-                      countryCode,
-                    );
-              })
-              .map((e) => e.gameId)
-              .toList();
-
-      if (filteredGames.length == gamesList.length) {
-        return (false, [...favPlayers]);
-      }
-
-      return (false, [...favPlayers, ...filteredGames]);
+              .map((e) => e.gameId);
+      allPinIds.addAll(favPlayers);
     }
+
+    // Countrymen auto-pin
+    if (prefs.countrymenAutoPinEnabled) {
+      final countryCode = await _resolveCountryCode();
+      if (countryCode != null && countryCode.isNotEmpty) {
+        final countryGames =
+            gamesList
+                .where((game) {
+                  return CountryCodeMatcher.matches(
+                        game.whitePlayer.countryCode,
+                        countryCode,
+                      ) ||
+                      CountryCodeMatcher.matches(
+                        game.blackPlayer.countryCode,
+                        countryCode,
+                      );
+                })
+                .map((e) => e.gameId)
+                .toList();
+
+        // Skip if every game matches (entire field is same country)
+        if (countryGames.length < gamesList.length) {
+          allPinIds.addAll(countryGames);
+        }
+      }
+    }
+
+    return (false, allPinIds.toList());
   }
 
   Future<String?> _resolveCountryCode() async {
@@ -89,7 +105,6 @@ class _AutoPinLogController {
     final cachedCountryCode = await db.getString('selected_country_code');
 
     if (cachedCountryCode != null && cachedCountryCode.isNotEmpty) {
-      // Use cached country code (works immediately)
       print('🎯 Auto-pin: Using cached country code: $cachedCountryCode');
       return cachedCountryCode;
     }
@@ -198,26 +213,11 @@ class _AutoPinLogController {
   }
 
   Future<void> enableAutoPin(String tourId) async {
-    await _shouldHidePin(tourId: tourId, shouldHide: false);
+    await _repo.setTournamentAutoPinDisabled(tourId, false, _userId);
   }
 
   Future<void> disableAutoPin(String tourId) async {
-    await _shouldHidePin(tourId: tourId, shouldHide: true);
-  }
-
-  Future<void> _shouldHidePin({
-    required String tourId,
-    required bool shouldHide,
-  }) async {
-    final key = _getTournamentKey(tourId);
-    final db = AppDatabase.instance;
-    await db.setBool(key, shouldHide);
-  }
-
-  Future<bool> _getHidePin(String tourId) async {
-    final key = _getTournamentKey(tourId);
-    final db = AppDatabase.instance;
-    return await db.getBool(key) ?? false;
+    await _repo.setTournamentAutoPinDisabled(tourId, true, _userId);
   }
 }
 
