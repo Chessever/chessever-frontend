@@ -907,12 +907,10 @@ class ChessBoardScreenNotifierNew
           hasNewMoves && !shouldForceLatestPosition && !wasViewingLastMove;
 
       // Determine which move index to display:
-      // - For live games on initial load: show latest move
-      // - For non-live games on initial load: start from beginning (move index -1)
+      // - On initial load: always show latest move
       // - If user was viewing last move: jump to new last move
       // - If user was viewing an earlier move AND it's not initial load: stay at current position (don't jump)
       final isPreviewActive = currentState?.isPvPreviewActive == true;
-      final isLiveGame = game.gameStatus.isOngoing;
 
       final newMoveIndex =
           isPreviewActive
