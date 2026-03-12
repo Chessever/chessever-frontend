@@ -369,7 +369,7 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
         }
       } else if (message is GifWorkerDone) {
         if (!doneCompleter.isCompleted) {
-          doneCompleter.complete(message.gifBytes);
+          doneCompleter.complete(message.gifBytes.materialize().asUint8List());
         }
       } else if (message is GifWorkerError) {
         debugPrint('GIF worker error: ${message.message}');
