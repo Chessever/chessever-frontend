@@ -36,6 +36,9 @@ class AutoPinPreferencesRepository {
 
   AutoPinPreferencesRepository(this._db);
 
+  static String _encodeBool(bool value) => value ? '1' : '0';
+  static bool _decodeBool(String value) => value == '1';
+
   // ---- Global preferences (user-scoped) ----
 
   Future<AutoPinPreferences> loadPreferences(String? userId) async {
@@ -114,7 +117,7 @@ class AutoPinPreferencesRepository {
       );
 
       if (entry != null) {
-        return entry.value == '1';
+        return _decodeBool(entry.value);
       }
 
       // Compatibility fallback: read legacy unscoped key
@@ -123,7 +126,7 @@ class AutoPinPreferencesRepository {
         // Copy to user-scoped cache
         await _db.setCache(
           key: _tourDisabledKey(tourId),
-          value: legacyValue ? '1' : '0',
+          value: _encodeBool(legacyValue),
           userId: userId,
         );
         return legacyValue;
@@ -144,7 +147,7 @@ class AutoPinPreferencesRepository {
     try {
       await _db.setCache(
         key: _tourDisabledKey(tourId),
-        value: disabled ? '1' : '0',
+        value: _encodeBool(disabled),
         userId: userId,
       );
     } catch (e) {
