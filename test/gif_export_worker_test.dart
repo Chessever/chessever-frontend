@@ -176,7 +176,7 @@ void main() {
         } else if (message is GifWorkerFrameAccepted) {
           responses.add(message);
         } else if (message is GifWorkerDone) {
-          doneCompleter.complete(message.gifBytes);
+          doneCompleter.complete(message.gifBytes.materialize().asUint8List());
         } else if (message is GifWorkerError) {
           doneCompleter.completeError(Exception(message.message));
         }

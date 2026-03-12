@@ -68,7 +68,8 @@ class GifWorkerFrameAccepted extends GifWorkerResponse {
 }
 
 class GifWorkerDone extends GifWorkerResponse {
-  final Uint8List gifBytes;
+  /// Zero-copy transfer of the finished GIF bytes.
+  final TransferableTypedData gifBytes;
   GifWorkerDone(this.gifBytes);
 }
 
@@ -239,7 +240,9 @@ void gifEncoderWorker(SendPort mainSendPort) {
             GifWorkerError('GifEncoder.finish() returned null/empty'),
           );
         } else {
-          mainSendPort.send(GifWorkerDone(result));
+          mainSendPort.send(
+            GifWorkerDone(TransferableTypedData.fromList([result])),
+          );
         }
       } catch (e) {
         mainSendPort.send(GifWorkerError('Finish error: $e'));
