@@ -111,36 +111,54 @@ Future<void> _showShareOverlay(
   final candidates = <(String source, String pgn)>[];
 
   // Tier 1: game.pgn (already available on the model)
+  debugPrint('GIF share [${game.gameId}]: Tier 1 game.pgn '
+      '${game.pgn == null ? "null" : "(${game.pgn!.length} chars)"} '
+      'hasMoves=${pgnHasMoves(game.pgn)}');
   try {
     if (pgnHasMoves(game.pgn)) {
       candidates.add(('game.pgn', game.pgn!.trim()));
     }
-  } catch (_) {}
+  } catch (e) {
+    debugPrint('GIF share [${game.gameId}]: Tier 1 failed: $e');
+  }
 
   // Tier 2: Supabase getGamePgn
   try {
     final fetched =
         await ref.read(gameRepositoryProvider).getGamePgn(game.gameId);
+    debugPrint('GIF share [${game.gameId}]: Tier 2 Supabase '
+        '${fetched == null ? "null" : "(${fetched.length} chars)"} '
+        'hasMoves=${pgnHasMoves(fetched)}');
     if (pgnHasMoves(fetched)) {
       candidates.add(('Supabase', fetched!.trim()));
     }
-  } catch (_) {}
+  } catch (e) {
+    debugPrint('GIF share [${game.gameId}]: Tier 2 failed: $e');
+  }
 
-  // Tier 3: Gamebase getGameWithPgn — prefer .pgn, then buildPgnFromGamebaseData
-  try {
-    final gameWithPgn =
-        await ref.read(gamebaseRepositoryProvider).getGameWithPgn(game.gameId);
-    if (gameWithPgn != null) {
-      if (pgnHasMoves(gameWithPgn.pgn)) {
-        candidates.add(('Gamebase.pgn', gameWithPgn.pgn!.trim()));
-      } else {
-        final built = buildPgnFromGamebaseData(gameWithPgn.data);
-        if (pgnHasMoves(built)) {
-          candidates.add(('Gamebase.data', built!.trim()));
+  // Tier 3: Gamebase getGameWithPgn — only for Gamebase-sourced games
+  // Non-Gamebase IDs (e.g. broadcast IDs like mrqvQ9VS) produce HTTP 400.
+  if (_isGamebasePreviewGame(game)) {
+    debugPrint('GIF share [${game.gameId}]: Tier 3 Gamebase attempted');
+    try {
+      final gameWithPgn =
+          await ref.read(gamebaseRepositoryProvider).getGameWithPgn(game.gameId);
+      if (gameWithPgn != null) {
+        if (pgnHasMoves(gameWithPgn.pgn)) {
+          candidates.add(('Gamebase.pgn', gameWithPgn.pgn!.trim()));
+        } else {
+          final built = buildPgnFromGamebaseData(gameWithPgn.data);
+          if (pgnHasMoves(built)) {
+            candidates.add(('Gamebase.data', built!.trim()));
+          }
         }
       }
+    } catch (e) {
+      debugPrint('GIF share [${game.gameId}]: Tier 3 failed: $e');
     }
-  } catch (_) {}
+  } else {
+    debugPrint('GIF share [${game.gameId}]: Tier 3 skipped (not gamebase)');
+  }
 
   // Deduplicate by PGN content so the same string isn't parsed twice
   final seen = <String>{};
@@ -150,6 +168,9 @@ Future<void> _showShareOverlay(
       uniqueCandidates.add(c);
     }
   }
+
+  debugPrint('GIF share [${game.gameId}]: ${uniqueCandidates.length} '
+      'candidate(s) after dedup');
 
   // Parse-and-accept: accept the first candidate that yields non-empty moveSans
   for (final (source, pgn) in uniqueCandidates) {
@@ -166,22 +187,20 @@ Future<void> _showShareOverlay(
             'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1') {
           startingFen = startFen;
         }
-        if (kDebugMode) {
-          debugPrint('GIF share: accepted PGN from $source '
-              '(${moveSans.length} moves)');
-        }
+        debugPrint('GIF share [${game.gameId}]: accepted PGN from $source '
+            '(${moveSans.length} moves)');
         break;
       } else {
-        if (kDebugMode) {
-          debugPrint('GIF share: $source PGN parsed but yielded 0 moves');
-        }
+        debugPrint('GIF share [${game.gameId}]: $source PGN parsed '
+            'but yielded 0 moves');
       }
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('GIF share: $source PGN parse failed: $e');
-      }
+      debugPrint('GIF share [${game.gameId}]: $source PGN parse failed: $e');
     }
   }
+
+  debugPrint('GIF share [${game.gameId}]: '
+      '${moveSans.isNotEmpty ? "resolved ${moveSans.length} moves" : "NO MOVES RESOLVED"}');
   // On total failure: all remain empty/default — overlay opens but GIF
   // is unavailable. resolvedPgn stays '' (non-null String).
 

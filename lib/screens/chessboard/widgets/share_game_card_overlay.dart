@@ -117,6 +117,7 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
   String? _gifFrameWhiteClock;
   String? _gifFrameBlackClock;
   bool _gifFrameIsFinal = false; // Only show game ending effects on final frame
+  bool _cancelled = false; // Set on dispose to abort in-flight GIF generation
 
   // Board settings with animations disabled for instant frame capture
   ChessboardSettings get _gifBoardSettings => ChessboardSettings(
@@ -341,8 +342,14 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
       ReceivePort? mainPort;
       bool useIsolate = true;
 
+      Stream<dynamic>? mainStream;
       try {
         mainPort = ReceivePort();
+        // Convert to broadcast stream so both the handshake and the pipeline
+        // can listen sequentially. ReceivePort is single-subscription — a
+        // second .listen() after cancel throws "Stream has already been
+        // listened to".
+        mainStream = mainPort.asBroadcastStream();
         workerIsolate = await Isolate.spawn(
           gifEncoderWorker,
           mainPort.sendPort,
@@ -350,7 +357,7 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
 
         // Wait for GifWorkerReady (single handshake with SendPort)
         final readyCompleter = Completer<SendPort>();
-        final readySub = mainPort.listen((message) {
+        final readySub = mainStream.listen((message) {
           if (message is GifWorkerReady && !readyCompleter.isCompleted) {
             readyCompleter.complete(message.workerSendPort);
           }
@@ -366,6 +373,7 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
         workerIsolate?.kill();
         mainPort = null;
         workerIsolate = null;
+        mainStream = null;
       }
 
       if (useIsolate) {
@@ -374,6 +382,7 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
           profile: profile,
           totalOutputFrames: totalOutputFrames,
           workerSendPort: workerSendPort!,
+          mainStream: mainStream!,
           mainPort: mainPort!,
           workerIsolate: workerIsolate!,
           captureStartFen: captureStartFen,
@@ -412,6 +421,7 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
     required GifExportProfile profile,
     required int totalOutputFrames,
     required SendPort workerSendPort,
+    required Stream<dynamic> mainStream,
     required ReceivePort mainPort,
     required Isolate workerIsolate,
     String? captureStartFen,
@@ -426,8 +436,8 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
     final doneCompleter = Completer<Uint8List>();
     final includedMoves = profile.frameIndices.toSet();
 
-    // Listen for worker responses
-    final subscription = mainPort.listen((message) {
+    // Listen for worker responses on the broadcast stream
+    final subscription = mainStream.listen((message) {
       if (message is GifWorkerFrameAccepted) {
         framesAccepted++;
         inFlight--;
