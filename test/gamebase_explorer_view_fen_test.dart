@@ -23,6 +23,8 @@ class _FakeGamebaseRepository extends GamebaseRepository {
     TimeControl? timeControl,
     int? minRating,
     int? maxRating,
+    String? color,
+    String? result,
   }) async {
     return const GamebaseResponse(
       status: 'success',
