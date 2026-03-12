@@ -236,7 +236,9 @@ Future<void> main() async {
         ).timeout(
           const Duration(seconds: 5),
           onTimeout: () {
-            _e2eStartupLog('SentryFlutter.init timed out, running app directly');
+            _e2eStartupLog(
+              'SentryFlutter.init timed out, running app directly',
+            );
             debugPrint(
               '⚠️ SentryFlutter.init() timed out - starting app anyway',
             );
