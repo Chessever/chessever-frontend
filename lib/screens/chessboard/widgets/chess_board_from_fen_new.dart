@@ -98,7 +98,7 @@ Future<void> _showShareOverlay(
   GamesTourModel game,
 ) async {
   // ---------------------------------------------------------------------------
-  // Resolve PGN move history (3-tier fallback)
+  // Resolve PGN move history (3-tier fallback, parse-and-accept)
   // ---------------------------------------------------------------------------
   String resolvedPgn = '';
   List<String> moveSans = const [];
@@ -106,55 +106,84 @@ Future<void> _showShareOverlay(
   int currentMoveIndex = -1;
   String? startingFen;
 
+  // Collect candidate PGNs from all tiers as (source, pgn) pairs.
+  // Each tier is wrapped in try/catch so a network failure doesn't block later tiers.
+  final candidates = <(String source, String pgn)>[];
+
   // Tier 1: game.pgn (already available on the model)
   try {
     if (pgnHasMoves(game.pgn)) {
-      resolvedPgn = game.pgn!;
+      candidates.add(('game.pgn', game.pgn!.trim()));
     }
   } catch (_) {}
 
   // Tier 2: Supabase getGamePgn
-  if (resolvedPgn.isEmpty) {
-    try {
-      final fetched =
-          await ref.read(gameRepositoryProvider).getGamePgn(game.gameId);
-      if (pgnHasMoves(fetched)) {
-        resolvedPgn = fetched!;
-      }
-    } catch (_) {}
-  }
+  try {
+    final fetched =
+        await ref.read(gameRepositoryProvider).getGamePgn(game.gameId);
+    if (pgnHasMoves(fetched)) {
+      candidates.add(('Supabase', fetched!.trim()));
+    }
+  } catch (_) {}
 
-  // Tier 3: Gamebase getGameWithPgn → buildPgnFromGamebaseData
-  if (resolvedPgn.isEmpty) {
-    try {
-      final gameWithPgn =
-          await ref.read(gamebaseRepositoryProvider).getGameWithPgn(game.gameId);
-      if (gameWithPgn != null) {
+  // Tier 3: Gamebase getGameWithPgn — prefer .pgn, then buildPgnFromGamebaseData
+  try {
+    final gameWithPgn =
+        await ref.read(gamebaseRepositoryProvider).getGameWithPgn(game.gameId);
+    if (gameWithPgn != null) {
+      if (pgnHasMoves(gameWithPgn.pgn)) {
+        candidates.add(('Gamebase.pgn', gameWithPgn.pgn!.trim()));
+      } else {
         final built = buildPgnFromGamebaseData(gameWithPgn.data);
         if (pgnHasMoves(built)) {
-          resolvedPgn = built!;
+          candidates.add(('Gamebase.data', built!.trim()));
         }
       }
-    } catch (_) {}
-  }
+    }
+  } catch (_) {}
 
-  // Parse PGN into SANs, moveTimes, and startingPos (offloaded to isolate)
-  if (resolvedPgn.isNotEmpty) {
-    try {
-      final parseResult = await compute(parsePgnWorker, resolvedPgn);
-      moveSans = parseResult.moveSans;
-      moveTimes = parseResult.moveTimes;
-      currentMoveIndex = moveSans.isNotEmpty ? moveSans.length - 1 : -1;
-      // Only set startingFen if it's a non-standard start position
-      final startFen = parseResult.startingPos.fen;
-      if (startFen !=
-          'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1') {
-        startingFen = startFen;
-      }
-    } catch (_) {
-      // Parse failed — overlay opens but GIF will be unavailable
+  // Deduplicate by PGN content so the same string isn't parsed twice
+  final seen = <String>{};
+  final uniqueCandidates = <(String, String)>[];
+  for (final c in candidates) {
+    if (seen.add(c.$2)) {
+      uniqueCandidates.add(c);
     }
   }
+
+  // Parse-and-accept: accept the first candidate that yields non-empty moveSans
+  for (final (source, pgn) in uniqueCandidates) {
+    try {
+      final parseResult = await compute(parsePgnWorker, pgn);
+      if (parseResult.moveSans.isNotEmpty) {
+        resolvedPgn = pgn;
+        moveSans = parseResult.moveSans;
+        moveTimes = parseResult.moveTimes;
+        currentMoveIndex = moveSans.length - 1;
+        // Only set startingFen if it's a non-standard start position
+        final startFen = parseResult.startingPos.fen;
+        if (startFen !=
+            'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1') {
+          startingFen = startFen;
+        }
+        if (kDebugMode) {
+          debugPrint('GIF share: accepted PGN from $source '
+              '(${moveSans.length} moves)');
+        }
+        break;
+      } else {
+        if (kDebugMode) {
+          debugPrint('GIF share: $source PGN parsed but yielded 0 moves');
+        }
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('GIF share: $source PGN parse failed: $e');
+      }
+    }
+  }
+  // On total failure: all remain empty/default — overlay opens but GIF
+  // is unavailable. resolvedPgn stays '' (non-null String).
 
   // Guard: widget may have been disposed during async gap
   if (!context.mounted) return;

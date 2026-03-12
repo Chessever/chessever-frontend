@@ -272,33 +272,37 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
       );
     }
 
-    // currentMoveIndex == -1 (initial position): export last 5 plies
+    // currentMoveIndex == -1 (initial position): try to export last 5 plies
     final offset = math.max(0, widget.moveSans.length - 5);
-    final movesToAnimate = widget.moveSans.sublist(offset);
 
-    // Pre-play prefix moves to compute the starting FEN for the window
-    String? captureStartFen = widget.startingFen;
     if (offset > 0) {
+      // Pre-play prefix moves to compute the starting FEN for the window
       try {
-        Position pos = captureStartFen != null
-            ? Chess.fromSetup(Setup.parseFen(captureStartFen))
+        Position pos = widget.startingFen != null
+            ? Chess.fromSetup(Setup.parseFen(widget.startingFen!))
             : Chess.initial;
         for (int i = 0; i < offset; i++) {
           final move = pos.parseSan(widget.moveSans[i]);
-          if (move == null) break;
+          if (move == null) throw StateError('Prefix move $i unparseable');
           pos = pos.play(move);
         }
-        captureStartFen = pos.fen;
+        return (
+          movesToAnimate: widget.moveSans.sublist(offset),
+          globalMoveOffset: offset,
+          captureStartFen: pos.fen,
+        );
       } catch (_) {
-        // If prefix play fails, fall back to standard initial
-        captureStartFen = null;
+        // Prefix replay failed — fall back to exporting the full line
+        // rather than silently using Chess.initial for a clipped window
+        debugPrint('GIF: prefix replay failed, falling back to full line');
       }
     }
 
+    // Either offset == 0 (fewer than 5 moves) or prefix replay failed
     return (
-      movesToAnimate: movesToAnimate,
-      globalMoveOffset: offset,
-      captureStartFen: captureStartFen,
+      movesToAnimate: widget.moveSans.toList(),
+      globalMoveOffset: 0,
+      captureStartFen: widget.startingFen,
     );
   }
 
@@ -482,11 +486,14 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
 
       // Capture initial position (output frame 0)
       Position position;
-      try {
-        position = captureStartFen != null
-            ? Chess.fromSetup(Setup.parseFen(captureStartFen))
-            : Chess.initial;
-      } catch (_) {
+      if (captureStartFen != null) {
+        try {
+          position = Chess.fromSetup(Setup.parseFen(captureStartFen));
+        } catch (e) {
+          _showMessage('Invalid starting position for GIF', isError: true);
+          return;
+        }
+      } else {
         position = Chess.initial;
       }
       setState(() {
@@ -605,11 +612,14 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
 
     // Capture initial position
     Position position;
-    try {
-      position = captureStartFen != null
-          ? Chess.fromSetup(Setup.parseFen(captureStartFen))
-          : Chess.initial;
-    } catch (_) {
+    if (captureStartFen != null) {
+      try {
+        position = Chess.fromSetup(Setup.parseFen(captureStartFen));
+      } catch (e) {
+        _showMessage('Invalid starting position for GIF', isError: true);
+        return;
+      }
+    } else {
       position = Chess.initial;
     }
     setState(() {
