@@ -64,6 +64,7 @@ class ShareGameCardOverlay extends StatefulWidget {
   isAtGameEnd; // Whether viewing the actual final position of the game
   final VoidCallback onClose;
   final String gameId; // CRITICAL: Include game ID for correct eval caching
+  final String? startingFen; // null = standard initial position
 
   const ShareGameCardOverlay({
     super.key,
@@ -93,6 +94,7 @@ class ShareGameCardOverlay extends StatefulWidget {
     this.isAtGameEnd = false,
     required this.onClose,
     required this.gameId, // REQUIRED for correct eval caching
+    this.startingFen, // null = standard initial position
   });
 
   @override
@@ -250,15 +252,71 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
     if (mounted) setState(() => _gifProgress = progress);
   }
 
+  /// Computes the export window for GIF generation.
+  ///
+  /// Returns `null` if no moves are available to animate.
+  ({
+    List<String> movesToAnimate,
+    int globalMoveOffset,
+    String? captureStartFen,
+  })? _computeExportWindow() {
+    if (widget.moveSans.isEmpty) return null;
+
+    if (widget.currentMoveIndex >= 0) {
+      // Normal case: export from start through the selected move
+      return (
+        movesToAnimate:
+            widget.moveSans.take(widget.currentMoveIndex + 1).toList(),
+        globalMoveOffset: 0,
+        captureStartFen: widget.startingFen,
+      );
+    }
+
+    // currentMoveIndex == -1 (initial position): export last 5 plies
+    final offset = math.max(0, widget.moveSans.length - 5);
+    final movesToAnimate = widget.moveSans.sublist(offset);
+
+    // Pre-play prefix moves to compute the starting FEN for the window
+    String? captureStartFen = widget.startingFen;
+    if (offset > 0) {
+      try {
+        Position pos = captureStartFen != null
+            ? Chess.fromSetup(Setup.parseFen(captureStartFen))
+            : Chess.initial;
+        for (int i = 0; i < offset; i++) {
+          final move = pos.parseSan(widget.moveSans[i]);
+          if (move == null) break;
+          pos = pos.play(move);
+        }
+        captureStartFen = pos.fen;
+      } catch (_) {
+        // If prefix play fails, fall back to standard initial
+        captureStartFen = null;
+      }
+    }
+
+    return (
+      movesToAnimate: movesToAnimate,
+      globalMoveOffset: offset,
+      captureStartFen: captureStartFen,
+    );
+  }
+
   Future<void> _shareGif() async {
     if (_isGeneratingGif) return;
 
-    final movesToAnimate =
-        widget.moveSans.take(widget.currentMoveIndex + 1).toList();
-    if (movesToAnimate.isEmpty) {
-      _showMessage('No moves to animate', isError: true);
+    final exportWindow = _computeExportWindow();
+    if (exportWindow == null) {
+      _showMessage(
+        'GIF unavailable: no move history',
+        isError: true,
+      );
       return;
     }
+
+    final movesToAnimate = exportWindow.movesToAnimate;
+    final globalMoveOffset = exportWindow.globalMoveOffset;
+    final captureStartFen = exportWindow.captureStartFen;
 
     setState(() {
       _isGeneratingGif = true;
@@ -314,12 +372,16 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
           workerSendPort: workerSendPort!,
           mainPort: mainPort!,
           workerIsolate: workerIsolate!,
+          captureStartFen: captureStartFen,
+          globalMoveOffset: globalMoveOffset,
         );
       } else {
         await _shareGifFallback(
           movesToAnimate: movesToAnimate,
           profile: profile,
           totalOutputFrames: totalOutputFrames,
+          captureStartFen: captureStartFen,
+          globalMoveOffset: globalMoveOffset,
         );
       }
     } catch (e, st) {
@@ -348,11 +410,14 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
     required SendPort workerSendPort,
     required ReceivePort mainPort,
     required Isolate workerIsolate,
+    String? captureStartFen,
+    int globalMoveOffset = 0,
   }) async {
     int framesCaptured = 0;
     int framesAccepted = 0;
     int inFlight = 0;
     const maxInFlight = 2;
+    bool workerFailed = false;
     Completer<void>? backpressureCompleter;
     final doneCompleter = Completer<Uint8List>();
     final includedMoves = profile.frameIndices.toSet();
@@ -373,6 +438,13 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
         }
       } else if (message is GifWorkerError) {
         debugPrint('GIF worker error: ${message.message}');
+        workerFailed = true;
+        inFlight--;
+        // Unblock any backpressure wait so the capture loop can exit
+        if (backpressureCompleter != null &&
+            !backpressureCompleter!.isCompleted) {
+          backpressureCompleter!.complete();
+        }
         if (!doneCompleter.isCompleted) {
           doneCompleter.completeError(Exception(message.message));
         }
@@ -380,18 +452,20 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
     });
 
     try {
-      // Helper: send a frame to the worker with backpressure
-      Future<void> sendFrame(
+      // Helper: send a frame to the worker with backpressure.
+      // Returns false if the worker has failed and sending should stop.
+      Future<bool> sendFrame(
         Uint8List rgba,
         int width,
         int height,
         int durationCs,
         int outputIndex,
       ) async {
-        while (inFlight >= maxInFlight) {
+        while (inFlight >= maxInFlight && !workerFailed) {
           backpressureCompleter = Completer<void>();
           await backpressureCompleter!.future;
         }
+        if (workerFailed) return false;
         final transferable = TransferableTypedData.fromList([rgba]);
         workerSendPort.send(GifWorkerFrameData(
           rgba: transferable,
@@ -403,10 +477,18 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
         inFlight++;
         framesCaptured++;
         _updateGifProgress(framesCaptured, framesAccepted, totalOutputFrames);
+        return true;
       }
 
       // Capture initial position (output frame 0)
-      Position position = Chess.initial;
+      Position position;
+      try {
+        position = captureStartFen != null
+            ? Chess.fromSetup(Setup.parseFen(captureStartFen))
+            : Chess.initial;
+      } catch (_) {
+        position = Chess.initial;
+      }
       setState(() {
         _gifFrameFen = position.fen;
         _gifFrameLastMove = null;
@@ -421,19 +503,22 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
         _showMessage('Failed to capture initial frame', isError: true);
         return;
       }
-      await sendFrame(
+      final sent = await sendFrame(
         initial.rgba,
         initial.width,
         initial.height,
         profile.frameDurations[0],
         0,
       );
+      if (!sent) return; // Worker failed during initial frame
 
       // Iterate ALL moves sequentially (SAN parsing is stateful).
       // Capture only at indices in the export profile.
       int outputIndex = 1; // next output frame index after initial
 
       for (int i = 0; i < movesToAnimate.length; i++) {
+        if (workerFailed) return;
+
         final move = position.parseSan(movesToAnimate[i]);
         if (move == null) {
           // Abort: broken alignment would produce a corrupted GIF
@@ -450,9 +535,10 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
           lastMoveForDisplay = NormalMove(from: move.from, to: move.to);
         }
 
-        final (whiteClock, blackClock) = _getClocksAtMoveIndex(i);
-        final isGameEnd =
-            widget.isAtGameEnd && i == movesToAnimate.length - 1;
+        final (whiteClock, blackClock) =
+            _getClocksAtMoveIndex(i + globalMoveOffset);
+        final isGameEnd = widget.isAtGameEnd &&
+            i + globalMoveOffset == widget.moveSans.length - 1;
 
         setState(() {
           _gifFrameFen = position.fen;
@@ -470,13 +556,14 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
               isError: true);
           return;
         }
-        await sendFrame(
+        final frameSent = await sendFrame(
           frame.rgba,
           frame.width,
           frame.height,
           profile.frameDurations[outputIndex],
           outputIndex,
         );
+        if (!frameSent) return; // Worker failed
         outputIndex++;
       }
 
@@ -509,13 +596,22 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
     required List<String> movesToAnimate,
     required GifExportProfile profile,
     required int totalOutputFrames,
+    String? captureStartFen,
+    int globalMoveOffset = 0,
   }) async {
     final rawFrames = <_RawFrame>[];
     final durations = <int>[];
     final includedMoves = profile.frameIndices.toSet();
 
     // Capture initial position
-    Position position = Chess.initial;
+    Position position;
+    try {
+      position = captureStartFen != null
+          ? Chess.fromSetup(Setup.parseFen(captureStartFen))
+          : Chess.initial;
+    } catch (_) {
+      position = Chess.initial;
+    }
     setState(() {
       _gifFrameFen = position.fen;
       _gifFrameLastMove = null;
@@ -550,9 +646,10 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
         lastMoveForDisplay = NormalMove(from: move.from, to: move.to);
       }
 
-      final (whiteClock, blackClock) = _getClocksAtMoveIndex(i);
-      final isGameEnd =
-          widget.isAtGameEnd && i == movesToAnimate.length - 1;
+      final (whiteClock, blackClock) =
+          _getClocksAtMoveIndex(i + globalMoveOffset);
+      final isGameEnd = widget.isAtGameEnd &&
+          i + globalMoveOffset == widget.moveSans.length - 1;
 
       setState(() {
         _gifFrameFen = position.fen;
@@ -710,38 +807,49 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
     required String label,
     required VoidCallback onTap,
     bool isPrimary = false,
+    bool enabled = true,
+    String? disabledMessage,
   }) {
+    final effectiveOnTap = enabled
+        ? onTap
+        : () => _showMessage(
+              disabledMessage ?? 'Not available',
+              isError: true,
+            );
+
+    final content = Container(
+      padding: EdgeInsets.symmetric(vertical: 12.h),
+      decoration: BoxDecoration(
+        color: isPrimary ? kPrimaryColor : kBlack3Color,
+        borderRadius: BorderRadius.circular(8.br),
+        border:
+            isPrimary ? null : Border.all(color: kDividerColor, width: 1),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            icon,
+            size: 18.sp,
+            color: isPrimary ? kWhiteColor : kWhiteColor,
+          ),
+          SizedBox(width: 8.w),
+          Text(
+            label,
+            style: TextStyle(
+              color: isPrimary ? kWhiteColor : kWhiteColor,
+              fontSize: 13.sp,
+              fontWeight: isPrimary ? FontWeight.w600 : FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+    );
+
     return Expanded(
       child: GestureDetector(
-        onTap: onTap,
-        child: Container(
-          padding: EdgeInsets.symmetric(vertical: 12.h),
-          decoration: BoxDecoration(
-            color: isPrimary ? kPrimaryColor : kBlack3Color,
-            borderRadius: BorderRadius.circular(8.br),
-            border:
-                isPrimary ? null : Border.all(color: kDividerColor, width: 1),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                icon,
-                size: 18.sp,
-                color: isPrimary ? kWhiteColor : kWhiteColor,
-              ),
-              SizedBox(width: 8.w),
-              Text(
-                label,
-                style: TextStyle(
-                  color: isPrimary ? kWhiteColor : kWhiteColor,
-                  fontSize: 13.sp,
-                  fontWeight: isPrimary ? FontWeight.w600 : FontWeight.w500,
-                ),
-              ),
-            ],
-          ),
-        ),
+        onTap: effectiveOnTap,
+        child: enabled ? content : Opacity(opacity: 0.4, child: content),
       ),
     );
   }
@@ -768,6 +876,9 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
             icon: Icons.gif_box_outlined,
             label: 'Share GIF',
             onTap: _shareGif,
+            enabled: widget.moveSans.isNotEmpty,
+            disabledMessage:
+                'GIF unavailable: move history could not be loaded for this game.',
           ),
           SizedBox(width: 4.w),
           _buildActionButton(
