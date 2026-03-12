@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:chessever2/providers/event_favorite_players_provider.dart';
 import 'package:chessever2/providers/favorite_events_provider.dart';
 import 'package:chessever2/repository/local_storage/tournament/games/games_local_storage.dart';
+import 'package:chessever2/repository/local_storage/tournament/games/pin_games_local_storage.dart';
 import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/repository/supabase/tour/tour.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.dart';
@@ -15,7 +16,6 @@ import 'package:chessever2/screens/group_event/providers/sorting_all_event_provi
 import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
-import 'package:chessever2/screens/tour_detail/games_tour/providers/games_pin_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/live_rounds_id_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/live_tour_id_provider.dart';
 import 'package:collection/collection.dart';
@@ -373,172 +373,128 @@ final eventGamesProvider = FutureProvider.autoDispose.family<
   final tourRepository = ref.read(tourRepositoryProvider);
   final gamesStorage = ref.read(gamesLocalStorage);
 
-  // Get all tours for this event — prefer the live tour, then highest avgElo
-  String? selectedTourId;
-  String? tourFormatString;
+  // ── 1. Fetch all tours for this event ──
   List<Tour> eventTours = [];
   try {
     eventTours = await tourRepository.getTourByGroupId(eventId);
-    if (eventTours.isNotEmpty) {
-      // Prefer a live tour (ongoing games) over highest avgElo.
-      // This ensures knockout events (e.g. Speed Chess Championship) show
-      // the current stage (finals) instead of a completed stage that had
-      // more participants and therefore a higher average Elo.
-      final liveTourIds =
-          ref.read(liveTourIdProvider).valueOrNull ?? <String>[];
-      final liveTour = eventTours.firstWhereOrNull(
-        (t) => liveTourIds.contains(t.id),
-      );
-
-      if (liveTour != null) {
-        selectedTourId = liveTour.id;
-        tourFormatString = liveTour.info.format;
-        debugPrint(
-          '[ForYou] Selected LIVE tour "${liveTour.name}" from ${eventTours.length} tours',
-        );
-      } else {
-        // No live tour — fall back to highest avgElo
-        eventTours.sort((a, b) => (b.avgElo ?? 0).compareTo(a.avgElo ?? 0));
-        selectedTourId = eventTours.first.id;
-        tourFormatString = eventTours.first.info.format;
-        debugPrint(
-          '[ForYou] Selected tour "${eventTours.first.name}" (avgElo: ${eventTours.first.avgElo}) from ${eventTours.length} tours',
-        );
-      }
-    }
   } catch (e) {
     debugPrint('[ForYou] Error fetching tours: $e');
   }
 
-  // Fallback: try getting tour IDs directly
-  if (selectedTourId == null) {
+  // ── 2. Order tours deterministically ──
+  // Live tours first, then by avgElo descending, then stable original order.
+  if (eventTours.isNotEmpty) {
+    final liveTourIds = ref.read(liveTourIdProvider).valueOrNull ?? <String>[];
+
+    // Capture original indices for stable tie-breaking
+    final originalOrder = {
+      for (int i = 0; i < eventTours.length; i++) eventTours[i].id: i,
+    };
+
+    eventTours.sort((a, b) {
+      final aLive = liveTourIds.contains(a.id) ? 0 : 1;
+      final bLive = liveTourIds.contains(b.id) ? 0 : 1;
+      if (aLive != bLive) return aLive.compareTo(bLive);
+
+      final aElo = a.avgElo ?? 0;
+      final bElo = b.avgElo ?? 0;
+      if (aElo != bElo) return bElo.compareTo(aElo);
+
+      return (originalOrder[a.id] ?? 0).compareTo(originalOrder[b.id] ?? 0);
+    });
+
+    debugPrint(
+      '[ForYou] Ordered ${eventTours.length} tours for event $eventId: '
+      '${eventTours.map((t) => '"${t.name}" (elo:${t.avgElo}, live:${liveTourIds.contains(t.id)})').join(', ')}',
+    );
+  }
+
+  // Build the list of tour IDs to fetch games from
+  List<String> tourIdsToFetch = eventTours.map((t) => t.id).toList();
+  if (tourIdsToFetch.isEmpty) {
     try {
-      final tourIds = await groupBroadcastRepo.getTourIdsForGroupBroadcast(
+      tourIdsToFetch = await groupBroadcastRepo.getTourIdsForGroupBroadcast(
         eventId,
       );
-      if (tourIds.isNotEmpty) {
-        selectedTourId = tourIds.first;
-      }
     } catch (e) {
       debugPrint('[ForYou] Error fetching tour IDs: $e');
     }
   }
+  // Final fallback: use eventId as a tour ID
+  if (tourIdsToFetch.isEmpty) {
+    tourIdsToFetch = [eventId];
+  }
 
-  // Final fallback: use eventId as tourId
-  selectedTourId ??= eventId;
+  // ── 3. Fetch and filter started games from EVERY tour ──
+  // Always use refresh() to get fresh data from network for For You tab.
+  // This ensures we see new rounds immediately when they start.
+  final fetchedGamesByTour = await Future.wait(
+    tourIdsToFetch.map((tourId) async {
+      try {
+        return await gamesStorage.refresh(tourId);
+      } catch (e) {
+        debugPrint('[ForYou] Error fetching games for tour $tourId: $e');
+        return <Games>[];
+      }
+    }),
+  );
 
-  // Collect games from the selected tour - only those that have actually started
-  // Always use refresh() to get fresh data from network for For You tab
-  // This ensures we see new rounds immediately when they start
-  final allGames = <Games>[];
-  try {
-    final games = await gamesStorage.refresh(selectedTourId);
+  final allStartedGames = <Games>[];
+  for (final games in fetchedGamesByTour) {
     for (final game in games) {
-      // Only include games that have ACTUALLY started (have moves or finished)
       if (_hasActuallyStarted(game) &&
           game.players != null &&
           game.players!.length >= 2) {
-        allGames.add(game);
-      }
-    }
-  } catch (e) {
-    debugPrint('[ForYou] Error fetching games for tour $selectedTourId: $e');
-  }
-
-  // If the first-choice tour had no started games, try other tours in the group.
-  // This handles events like "Classical + Rapid & Blitz" where one tour might
-  // not have started yet while another already has games.
-  if (allGames.isEmpty && eventTours.length > 1) {
-    for (final tour in eventTours) {
-      if (tour.id == selectedTourId) continue; // already tried
-      try {
-        final games = await gamesStorage.refresh(tour.id);
-        for (final game in games) {
-          if (_hasActuallyStarted(game) &&
-              game.players != null &&
-              game.players!.length >= 2) {
-            allGames.add(game);
-          }
-        }
-        if (allGames.isNotEmpty) {
-          selectedTourId = tour.id;
-          tourFormatString = tour.info.format;
-          debugPrint(
-            '[ForYou] Fallback to tour "${tour.name}" which has ${allGames.length} started games',
-          );
-          break;
-        }
-      } catch (e) {
-        debugPrint('[ForYou] Error fetching fallback tour ${tour.id}: $e');
+        allStartedGames.add(game);
       }
     }
   }
 
-  if (allGames.isEmpty) {
+  if (allStartedGames.isEmpty) {
     debugPrint('[ForYou] No games found for event $eventId');
     return [];
   }
 
-  // Collect pinned game IDs
+  debugPrint(
+    '[ForYou] Collected ${allStartedGames.length} started games across '
+    '${tourIdsToFetch.length} tours for event $eventId',
+  );
+
+  // ── 4. Aggregate manual pin IDs from ALL tours ──
+  final pinStorage = ref.read(pinGameLocalStorage);
+  final pinsByTour = await Future.wait(
+    tourIdsToFetch.map((tourId) async {
+      try {
+        return await pinStorage.getPinnedGameIds(tourId);
+      } catch (e) {
+        debugPrint('[ForYou] Error fetching pinned games for tour $tourId: $e');
+        return <String>[];
+      }
+    }),
+  );
+
   final pinnedIds = <String>[];
-  try {
-    final pinState = ref.read(gamesPinprovider(selectedTourId!));
-    pinnedIds.addAll(pinState.allPins);
-  } catch (e) {
-    // Pin provider might not be initialized, continue without pins
-  }
-
-  // Detect 1v1 match format (e.g., "12-game Match", "6-game Match").
-  // In match events each game has its own round slug (game-1, game-2, …),
-  // so the "latest round" filter would return only 1 game. Instead, show
-  // the most recent N games across the entire match.
-  if (_isMatchFormatEvent(tourFormatString, allGames)) {
-    debugPrint(
-      '[ForYou] Match format detected for event $eventId — showing latest games across all rounds',
-    );
-    final sortedGames = _sortGamesLikeGamesTab(allGames, pinnedIds);
-    final result = sortedGames.take(kGamesPerEvent).toList();
-    debugPrint(
-      '[ForYou] Selected ${result.length} games for match event $eventId (from ${allGames.length} total)',
-    );
-    return result;
-  }
-
-  // Find the latest round by time (most recent activity) rather than round number.
-  // This correctly handles events where rounds are played out of order or have
-  // non-standard naming (e.g., tiebreaks, knockout stages).
-  // Priority: lastMoveTime (precise) > gameDay (date-only, near-universal)
-  String? latestRoundId;
-  DateTime? latestTime;
-  for (final game in allGames) {
-    final time = game.lastMoveTime ?? game.gameDay;
-    if (time != null && (latestTime == null || time.isAfter(latestTime))) {
-      latestTime = time;
-      latestRoundId = game.roundId;
+  final seenPins = <String>{};
+  for (final pinIds in pinsByTour) {
+    for (final pinId in pinIds) {
+      if (seenPins.add(pinId)) {
+        pinnedIds.add(pinId);
+      }
     }
   }
 
-  // Filter to only games from the latest round
-  final latestRoundGames =
-      latestRoundId != null
-          ? allGames.where((game) => game.roundId == latestRoundId).toList()
-          : allGames;
+  // ── 5. Collect format strings and select games ──
+  final formatStrings = eventTours.map((t) => t.info.format).toList();
 
-  debugPrint(
-    '[ForYou] Latest round by time: $latestRoundId with ${latestRoundGames.length} games',
+  final result = selectForYouEventGames(
+    allStartedGames: allStartedGames,
+    pinnedIds: pinnedIds,
+    formatStrings: formatStrings,
   );
 
-  if (latestRoundGames.isEmpty) {
-    return [];
-  }
-
-  // Sort using the SAME logic as Games tab
-  final sortedGames = _sortGamesLikeGamesTab(latestRoundGames, pinnedIds);
-
-  // Return first 4 games
-  final result = sortedGames.take(kGamesPerEvent).toList();
   debugPrint(
-    '[ForYou] Selected ${result.length} games for event $eventId (from ${latestRoundGames.length} in round $latestRoundId)',
+    '[ForYou] Selected ${result.length} games for event $eventId '
+    '(from ${allStartedGames.length} started across ${tourIdsToFetch.length} tours)',
   );
   return result;
 });
@@ -660,6 +616,96 @@ int _extractGameNumber(String roundSlug) {
     caseSensitive: false,
   ).firstMatch(roundSlug);
   return int.tryParse(match?.group(1) ?? '0') ?? 0;
+}
+
+// ============================================================================
+// EVENT-LEVEL GAME SELECTOR — FILLS UP TO kGamesPerEvent FROM ALL TOURS
+// ============================================================================
+
+/// Pure selector: picks up to [kGamesPerEvent] started games from a combined
+/// pool of all tours in an event.
+///
+/// - [allStartedGames]: all started games from every tour, already filtered
+///   by [_hasActuallyStarted] and having >= 2 players.
+/// - [pinnedIds]: aggregated pin IDs from all tours (first-seen order, deduped).
+/// - [formatStrings]: format strings from all tours in the event (used to
+///   detect match format when ANY tour is a 1v1 match).
+///
+/// For match-format events: sort all games and take the first 4.
+/// For normal events: take from the primary round (most recent activity) first,
+/// then fill the deficit from remaining rounds ordered by recency.
+@visibleForTesting
+List<Games> selectForYouEventGames({
+  required List<Games> allStartedGames,
+  required List<String> pinnedIds,
+  required List<String?> formatStrings,
+}) {
+  if (allStartedGames.isEmpty) return [];
+
+  // Match format: check if ANY tour triggers match detection with the
+  // combined game pool. _isMatchFormatEvent already returns false when
+  // there are >2 unique players, so multi-tour events with different
+  // players correctly fall through to the normal path.
+  final isMatch = formatStrings.any(
+    (fmt) => _isMatchFormatEvent(fmt, allStartedGames),
+  );
+
+  if (isMatch) {
+    final sorted = _sortGamesLikeGamesTab(allStartedGames, pinnedIds);
+    return sorted.take(kGamesPerEvent).toList();
+  }
+
+  // --- Normal (non-match) path ---
+
+  // 1. Compute per-round recency: max activity timestamp per roundId.
+  //    Fallback chain: lastMoveTime > gameDay > dateStart > Unix epoch.
+  final unknownRoundTime = DateTime.fromMillisecondsSinceEpoch(0, isUtc: true);
+  final roundRecency = <String, DateTime>{};
+  for (final game in allStartedGames) {
+    final time =
+        game.lastMoveTime ?? game.gameDay ?? game.dateStart ?? unknownRoundTime;
+    final existing = roundRecency[game.roundId];
+    if (existing == null || time.isAfter(existing)) {
+      roundRecency[game.roundId] = time;
+    }
+  }
+
+  // Sort round IDs by recency descending
+  final roundsByRecency =
+      roundRecency.keys.toList()
+        ..sort((a, b) => roundRecency[b]!.compareTo(roundRecency[a]!));
+
+  final primaryRoundId = roundsByRecency.first;
+
+  // 2. Take games from the primary round first
+  final primaryRoundGames =
+      allStartedGames.where((g) => g.roundId == primaryRoundId).toList();
+  final sortedPrimary = _sortGamesLikeGamesTab(primaryRoundGames, pinnedIds);
+  final result = sortedPrimary.take(kGamesPerEvent).toList();
+
+  if (result.length >= kGamesPerEvent) return result;
+
+  // 3. Fill deficit from remaining rounds (by recency descending)
+  final selectedIds = result.map((g) => g.id).toSet();
+
+  for (final roundId in roundsByRecency.skip(1)) {
+    if (result.length >= kGamesPerEvent) break;
+
+    final roundGames =
+        allStartedGames
+            .where((g) => g.roundId == roundId && !selectedIds.contains(g.id))
+            .toList();
+    final sortedRound = _sortGamesLikeGamesTab(roundGames, pinnedIds);
+
+    for (final game in sortedRound) {
+      if (result.length >= kGamesPerEvent) break;
+      if (selectedIds.add(game.id)) {
+        result.add(game);
+      }
+    }
+  }
+
+  return result;
 }
 
 // ============================================================================
