@@ -85,7 +85,8 @@ class _AutoPinLogController {
                         countryCode,
                       );
                 })
-                .map((e) => e.gameId);
+                .map((e) => e.gameId)
+                .toList();
 
         // Skip if every game matches (entire field is same country)
         if (countryGames.length < gamesList.length) {
