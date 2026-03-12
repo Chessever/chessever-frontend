@@ -7,10 +7,10 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('planGifExport', () {
-    test('short game (20 moves) keeps all frames at pixelRatio 1.5', () {
+    test('short game (20 moves) keeps all frames at pixelRatio 1.25', () {
       final profile = planGifExport(moveCount: 20, currentMoveIndex: 19);
 
-      expect(profile.pixelRatio, 1.5);
+      expect(profile.pixelRatio, 1.25);
       expect(profile.frameIndices, List.generate(20, (i) => i));
       // 21 durations: 1 initial + 20 moves
       expect(profile.frameDurations.length, 21);
@@ -22,10 +22,10 @@ void main() {
       expect(profile.frameDurations[20], 300);
     });
 
-    test('medium game (80 moves) keeps all frames at pixelRatio 1.25', () {
+    test('medium game (80 moves) keeps all frames at pixelRatio 1.0', () {
       final profile = planGifExport(moveCount: 80, currentMoveIndex: 79);
 
-      expect(profile.pixelRatio, 1.25);
+      expect(profile.pixelRatio, 1.0);
       expect(profile.frameIndices.length, 80);
       expect(profile.frameDurations.length, 81);
       // Last duration is 300cs
@@ -35,21 +35,21 @@ void main() {
     test('boundary: 60 moves stays in short tier', () {
       final profile = planGifExport(moveCount: 60, currentMoveIndex: 59);
 
-      expect(profile.pixelRatio, 1.5);
+      expect(profile.pixelRatio, 1.25);
       expect(profile.frameIndices.length, 60);
     });
 
     test('boundary: 61 moves moves to medium tier', () {
       final profile = planGifExport(moveCount: 61, currentMoveIndex: 60);
 
-      expect(profile.pixelRatio, 1.25);
+      expect(profile.pixelRatio, 1.0);
       expect(profile.frameIndices.length, 61);
     });
 
     test('boundary: 100 moves stays in medium tier', () {
       final profile = planGifExport(moveCount: 100, currentMoveIndex: 99);
 
-      expect(profile.pixelRatio, 1.25);
+      expect(profile.pixelRatio, 1.0);
       expect(profile.frameIndices.length, 100);
     });
 

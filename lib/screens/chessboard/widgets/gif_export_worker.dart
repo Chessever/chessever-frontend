@@ -98,10 +98,10 @@ GifExportProfile planGifExport({
   late final List<int> frameIndices;
 
   if (moveCount <= 60) {
-    pixelRatio = 1.5;
+    pixelRatio = 1.25;
     frameIndices = List.generate(moveCount, (i) => i);
   } else if (moveCount <= 100) {
-    pixelRatio = 1.25;
+    pixelRatio = 1.0;
     frameIndices = List.generate(moveCount, (i) => i);
   } else {
     pixelRatio = 1.0;

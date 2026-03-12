@@ -229,10 +229,8 @@ Future<void> _showShareOverlay(
       background: baseColorScheme.background,
       whiteCoordBackground: baseColorScheme.whiteCoordBackground,
       blackCoordBackground: baseColorScheme.blackCoordBackground,
-      // Hide all highlights for clean screenshots
-      lastMove: HighlightDetails(
-        solidColor: baseColorScheme.lightSquare.withValues(alpha: 0),
-      ),
+      // Show last-move highlights in screenshots and GIF frames
+      lastMove: baseColorScheme.lastMove,
       selected: HighlightDetails(
         solidColor: baseColorScheme.lightSquare.withValues(alpha: 0),
       ),

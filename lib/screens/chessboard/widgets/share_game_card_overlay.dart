@@ -119,6 +119,12 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
   bool _gifFrameIsFinal = false; // Only show game ending effects on final frame
   bool _cancelled = false; // Set on dispose to abort in-flight GIF generation
 
+  @override
+  void dispose() {
+    _cancelled = true;
+    super.dispose();
+  }
+
   // Board settings with animations disabled for instant frame capture
   ChessboardSettings get _gifBoardSettings => ChessboardSettings(
     enableCoordinates: widget.boardSettings.enableCoordinates,
@@ -250,7 +256,10 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
   void _updateGifProgress(int captured, int accepted, int total) {
     final progress =
         (captured / total * 0.6 + accepted / total * 0.4).clamp(0.0, 0.95);
-    if (mounted) setState(() => _gifProgress = progress);
+    // Only rebuild if progress moved by ≥2% to avoid rebuild storms
+    if (mounted && (progress - _gifProgress).abs() >= 0.02) {
+      setState(() => _gifProgress = progress);
+    }
   }
 
   /// Computes the export window for GIF generation.
@@ -309,13 +318,12 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
 
   Future<void> _shareGif() async {
     if (_isGeneratingGif) return;
+    _cancelled = false;
 
     final exportWindow = _computeExportWindow();
     if (exportWindow == null) {
-      _showMessage(
-        'GIF unavailable: no move history',
-        isError: true,
-      );
+      // No moves to animate — fall back to static image export
+      await _shareImage();
       return;
     }
 
@@ -430,7 +438,7 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
     int framesCaptured = 0;
     int framesAccepted = 0;
     int inFlight = 0;
-    const maxInFlight = 2;
+    const maxInFlight = 4;
     bool workerFailed = false;
     Completer<void>? backpressureCompleter;
     final doneCompleter = Completer<Uint8List>();
@@ -506,6 +514,7 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
       } else {
         position = Chess.initial;
       }
+      if (!mounted) return;
       setState(() {
         _gifFrameFen = position.fen;
         _gifFrameLastMove = null;
@@ -534,7 +543,7 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
       int outputIndex = 1; // next output frame index after initial
 
       for (int i = 0; i < movesToAnimate.length; i++) {
-        if (workerFailed) return;
+        if (workerFailed || _cancelled) return;
 
         final move = position.parseSan(movesToAnimate[i]);
         if (move == null) {
@@ -557,6 +566,7 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
         final isGameEnd = widget.isAtGameEnd &&
             i + globalMoveOffset == widget.moveSans.length - 1;
 
+        if (!mounted) return;
         setState(() {
           _gifFrameFen = position.fen;
           _gifFrameLastMove = lastMoveForDisplay;
@@ -632,6 +642,7 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
     } else {
       position = Chess.initial;
     }
+    if (!mounted) return;
     setState(() {
       _gifFrameFen = position.fen;
       _gifFrameLastMove = null;
@@ -652,6 +663,8 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
     int durationIndex = 1;
 
     for (int i = 0; i < movesToAnimate.length; i++) {
+      if (_cancelled) return;
+
       final move = position.parseSan(movesToAnimate[i]);
       if (move == null) {
         _showMessage('Failed to parse move ${i + 1}', isError: true);
@@ -671,6 +684,7 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
       final isGameEnd = widget.isAtGameEnd &&
           i + globalMoveOffset == widget.moveSans.length - 1;
 
+      if (!mounted) return;
       setState(() {
         _gifFrameFen = position.fen;
         _gifFrameLastMove = lastMoveForDisplay;
@@ -896,9 +910,6 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
             icon: Icons.gif_box_outlined,
             label: 'Share GIF',
             onTap: _shareGif,
-            enabled: widget.moveSans.isNotEmpty,
-            disabledMessage:
-                'GIF unavailable: move history could not be loaded for this game.',
           ),
           SizedBox(width: 4.w),
           _buildActionButton(
