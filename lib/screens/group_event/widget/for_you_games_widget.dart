@@ -572,8 +572,8 @@ class _ForYouTabletColumnGames extends ConsumerWidget {
           return const SizedBox.shrink();
         }
 
-        // Take only first 4 games for tablet column view
-        final gameModels = allGameModels.take(4).toList();
+        // Take only first kGamesPerEvent games for tablet column view
+        final gameModels = allGameModels.take(kGamesPerEvent).toList();
 
         // Build 2-column grid of games (2 per row, max 2 rows = 4 games)
         // Wrap with animated slots for smooth transitions when games change
