@@ -918,7 +918,7 @@ class ChessBoardScreenNotifierNew
           isPreviewActive
               ? (currentState?.analysisState.currentMoveIndex ?? lastMoveIndex)
               : shouldForceLatestPosition
-              ? ((isLiveGame || startAtLastMove) ? lastMoveIndex : -1)
+              ? lastMoveIndex
               : (wasViewingLastMove
                   ? lastMoveIndex // Jump to new last move if user was already viewing last
                   : currentState?.analysisState.currentMoveIndex ??
