@@ -3,6 +3,8 @@ import 'package:chessever2/providers/board_settings_provider_new.dart';
 import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/providers/live_game_subscription_provider.dart';
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
+import 'package:chessever2/repository/supabase/game/game_repository.dart';
+import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new_worker.dart';
 import 'package:chessever2/screens/library/utils/gamebase_pgn_builder.dart';
 import 'package:chessever2/screens/chessboard/widgets/evaluation_bar_widget.dart';
 import 'package:chessever2/screens/chessboard/widgets/player_first_row_detail_widget.dart';
@@ -14,6 +16,7 @@ import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/string_utils.dart';
 import 'package:chessground/chessground.dart';
 import 'package:dartchess/dartchess.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -85,12 +88,80 @@ bool _shouldShowEvalBar(WidgetRef ref) {
       (settings?.showEngineGauge ?? true);
 }
 
-/// Shows the share overlay for a game from the grid/list view
-void _showShareOverlay(
+/// Shows the share overlay for a game from the grid/list view.
+///
+/// Resolves PGN data via a 3-tier fallback (local → Supabase → Gamebase)
+/// before opening the overlay, so that GIF export has move history.
+Future<void> _showShareOverlay(
   BuildContext context,
   WidgetRef ref,
   GamesTourModel game,
-) {
+) async {
+  // ---------------------------------------------------------------------------
+  // Resolve PGN move history (3-tier fallback)
+  // ---------------------------------------------------------------------------
+  String resolvedPgn = '';
+  List<String> moveSans = const [];
+  List<String> moveTimes = const [];
+  int currentMoveIndex = -1;
+  String? startingFen;
+
+  // Tier 1: game.pgn (already available on the model)
+  try {
+    if (pgnHasMoves(game.pgn)) {
+      resolvedPgn = game.pgn!;
+    }
+  } catch (_) {}
+
+  // Tier 2: Supabase getGamePgn
+  if (resolvedPgn.isEmpty) {
+    try {
+      final fetched =
+          await ref.read(gameRepositoryProvider).getGamePgn(game.gameId);
+      if (pgnHasMoves(fetched)) {
+        resolvedPgn = fetched!;
+      }
+    } catch (_) {}
+  }
+
+  // Tier 3: Gamebase getGameWithPgn → buildPgnFromGamebaseData
+  if (resolvedPgn.isEmpty) {
+    try {
+      final gameWithPgn =
+          await ref.read(gamebaseRepositoryProvider).getGameWithPgn(game.gameId);
+      if (gameWithPgn != null) {
+        final built = buildPgnFromGamebaseData(gameWithPgn.data);
+        if (pgnHasMoves(built)) {
+          resolvedPgn = built!;
+        }
+      }
+    } catch (_) {}
+  }
+
+  // Parse PGN into SANs, moveTimes, and startingPos (offloaded to isolate)
+  if (resolvedPgn.isNotEmpty) {
+    try {
+      final parseResult = await compute(parsePgnWorker, resolvedPgn);
+      moveSans = parseResult.moveSans;
+      moveTimes = parseResult.moveTimes;
+      currentMoveIndex = moveSans.isNotEmpty ? moveSans.length - 1 : -1;
+      // Only set startingFen if it's a non-standard start position
+      final startFen = parseResult.startingPos.fen;
+      if (startFen !=
+          'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1') {
+        startingFen = startFen;
+      }
+    } catch (_) {
+      // Parse failed — overlay opens but GIF will be unavailable
+    }
+  }
+
+  // Guard: widget may have been disposed during async gap
+  if (!context.mounted) return;
+
+  // ---------------------------------------------------------------------------
+  // Build board settings and open overlay
+  // ---------------------------------------------------------------------------
   final boardSettingsAsync = ref.read(boardSettingsProviderNew);
   final boardSettingsNew =
       boardSettingsAsync.valueOrNull ?? const BoardSettingsNew();
@@ -134,8 +205,6 @@ void _showShareOverlay(
           ? StringUtils.formatRoundLabel(game.roundSlug)
           : null;
 
-  // For grid/list view, we show the current position (latest move)
-  // We don't have full move history, so moveSans will be empty
   final positionFen = _resolveFen(game.fen);
   final lastMove = _uciToMove(game.lastMove ?? '');
 
@@ -149,8 +218,9 @@ void _showShareOverlay(
             boardSettings: chessboardSettings,
             positionFen: positionFen,
             lastMove: lastMove,
-            pgn: '',
-            moveSans: const [], // No move history available from grid view
+            pgn: resolvedPgn,
+            moveSans: moveSans,
+            moveTimes: moveTimes,
             whitePlayerName: game.whitePlayer.name,
             blackPlayerName: game.blackPlayer.name,
             whitePlayerCountry: game.whitePlayer.federation,
@@ -163,7 +233,7 @@ void _showShareOverlay(
             blackPlayerClock: game.blackTimeDisplay,
             tournamentName: tournamentName,
             roundInfo: roundInfo,
-            currentMoveIndex: -1, // No specific move index
+            currentMoveIndex: currentMoveIndex,
             evaluation: null, // No evaluation available from grid view
             mate: 0,
             isFlipped: false,
@@ -173,6 +243,7 @@ void _showShareOverlay(
                 game.gameStatus != GameStatus.unknown,
             onClose: () => Navigator.of(context).pop(),
             gameId: game.gameId,
+            startingFen: startingFen,
           ),
       transitionsBuilder: (context, animation, secondaryAnimation, child) {
         return FadeTransition(opacity: animation, child: child);

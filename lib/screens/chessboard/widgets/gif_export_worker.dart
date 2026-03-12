@@ -138,9 +138,7 @@ List<int> sampleFrameIndices({
   must.add(currentMoveIndex);
 
   // Include up to 8 moves before current
-  for (int i = currentMoveIndex - 1;
-      i >= 0 && i > currentMoveIndex - 9;
-      i--) {
+  for (int i = currentMoveIndex - 1; i >= 0 && i > currentMoveIndex - 9; i--) {
     must.add(i);
   }
 
@@ -228,9 +226,7 @@ void gifEncoderWorker(SendPort mainSendPort) {
         gif.addFrame(image, duration: message.durationCs);
         mainSendPort.send(GifWorkerFrameAccepted(message.frameIndex));
       } catch (e) {
-        mainSendPort.send(
-          GifWorkerError('Frame ${message.frameIndex}: $e'),
-        );
+        mainSendPort.send(GifWorkerError('Frame ${message.frameIndex}: $e'));
       }
     } else if (message is GifWorkerFinish) {
       try {

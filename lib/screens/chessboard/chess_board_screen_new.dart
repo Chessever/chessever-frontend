@@ -10502,6 +10502,7 @@ class _ShareGameScreen extends ConsumerWidget {
           state.analysisState.movePointer.length == 1,
       gameId: game.gameId, // Pass game ID for correct eval display
       onClose: () => Navigator.of(context).pop(),
+      startingFen: state.analysisState.startingPosition?.fen,
     );
   }
 }
