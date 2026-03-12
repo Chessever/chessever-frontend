@@ -112,26 +112,6 @@ class HamburgerMenu extends StatelessWidget {
                       showChevron: true,
                     ),
                     _MenuItem(
-                      key: e2eKey(E2eIds.drawerPlayers),
-                      icon: Icons.groups_outlined,
-                      title: 'Players',
-                      onPressed: () {
-                        Navigator.of(context).pop();
-                        callbacks.onPlayersPressed();
-                      },
-                      showChevron: true,
-                    ),
-                    _MenuItem(
-                      key: e2eKey(E2eIds.drawerPremium),
-                      icon: Icons.workspace_premium_outlined,
-                      title: 'Premium',
-                      onPressed: () {
-                        Navigator.of(context).pop();
-                        callbacks.onPremiumPressed();
-                      },
-                      showChevron: true,
-                    ),
-                    _MenuItem(
                       key: e2eKey(E2eIds.drawerOpeningExplorer),
                       icon: Icons.explore_outlined,
                       title: 'Opening Explorer',
