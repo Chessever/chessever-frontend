@@ -256,21 +256,27 @@ String buildHeaderOnlyPgn({
 bool pgnHasMoves(String? pgn) {
   if (pgn == null || pgn.trim().isEmpty) return false;
 
-  // Find where the movetext section starts (after all headers)
-  // Headers are lines like [Key "Value"]
+  // Collect movetext lines: everything that isn't a PGN header ([Key "Value"])
+  // or a blank line. Handles three formats:
+  //   1. Standard PGN (headers + blank line + movetext)
+  //   2. No blank-line separator (headers immediately followed by movetext)
+  //   3. Movetext-only (no headers at all)
   final lines = pgn.split('\n');
   final movetextLines = <String>[];
 
-  bool pastHeaders = false;
+  bool inHeaders = true;
   for (final line in lines) {
     final trimmed = line.trim();
     if (trimmed.isEmpty) {
-      pastHeaders = true;
+      if (inHeaders) inHeaders = false; // blank line after headers
       continue;
     }
-    if (pastHeaders && !trimmed.startsWith('[')) {
-      movetextLines.add(trimmed);
+    if (inHeaders && trimmed.startsWith('[')) {
+      continue; // still in headers
     }
+    // Any non-header, non-empty line is movetext
+    inHeaders = false;
+    movetextLines.add(trimmed);
   }
 
   final movetext = movetextLines.join(' ').trim();
