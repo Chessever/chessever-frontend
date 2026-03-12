@@ -186,6 +186,10 @@ class ChessBoardScreenNotifierNew
       );
     }
 
+    // For live games, seed the board with the current live FEN so it renders
+    // the actual position immediately instead of flashing Chess.initial.
+    final liveFenPosition = _tryParseLiveFenPlaceholder();
+
     state = AsyncValue.data(
       ChessBoardStateNew(
         game: game,
@@ -202,6 +206,10 @@ class ChessBoardScreenNotifierNew
         variationComments: Map<String, String>.from(
           variationComments,
         ), // Restore comments
+        position: liveFenPosition,
+        analysisState: liveFenPosition != null
+            ? AnalysisBoardState(position: liveFenPosition)
+            : const AnalysisBoardState(),
       ),
     );
     parseMoves();
@@ -899,18 +907,16 @@ class ChessBoardScreenNotifierNew
           hasNewMoves && !shouldForceLatestPosition && !wasViewingLastMove;
 
       // Determine which move index to display:
-      // - For live games on initial load: show latest move
-      // - For non-live games on initial load: start from beginning (move index -1)
+      // - On initial load: always show latest move
       // - If user was viewing last move: jump to new last move
       // - If user was viewing an earlier move AND it's not initial load: stay at current position (don't jump)
       final isPreviewActive = currentState?.isPvPreviewActive == true;
-      final isLiveGame = game.gameStatus.isOngoing;
 
       final newMoveIndex =
           isPreviewActive
               ? (currentState?.analysisState.currentMoveIndex ?? lastMoveIndex)
               : shouldForceLatestPosition
-              ? ((isLiveGame || startAtLastMove) ? lastMoveIndex : -1)
+              ? lastMoveIndex
               : (wasViewingLastMove
                   ? lastMoveIndex // Jump to new last move if user was already viewing last
                   : currentState?.analysisState.currentMoveIndex ??
@@ -6107,6 +6113,20 @@ class ChessBoardScreenNotifierNew
   }
 
   String _normalizeFen(String fen) => fen.split(' ').take(4).join(' ');
+
+  /// Parse the live game FEN into a display-only placeholder position.
+  /// Returns null for non-live games, missing FEN, or parse failures.
+  Position? _tryParseLiveFenPlaceholder() {
+    if (!game.gameStatus.isOngoing) return null;
+    final fen = game.fen;
+    if (fen == null || fen.trim().isEmpty) return null;
+    try {
+      final setup = Setup.parseFen(fen.trim());
+      return Chess.fromSetup(setup);
+    } catch (_) {
+      return null;
+    }
+  }
 
   /// Generate a "threat FEN" by flipping the side to move
   /// This allows analyzing what the opponent threatens on the current position
