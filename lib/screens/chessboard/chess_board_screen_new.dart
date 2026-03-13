@@ -7667,20 +7667,29 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
             ? resolveAnnotationPresentation(annotation.type)
             : null;
 
-    // Evaluative annotations: append colored symbol inline after the SAN text
+    // Evaluative annotations: append SVG icon badge inline after the SAN text
     if (annotationPres == AnnotationPresentation.inlineSymbol) {
-      final symbol = annotation!.type.symbol;
-      if (symbol.isNotEmpty) {
-        moveSpans.add(
-          TextSpan(
-            text: symbol,
-            style: textStyle.copyWith(
-              color: annotation.type.color,
-              fontWeight: FontWeight.bold,
+      moveSpans.add(
+        WidgetSpan(
+          alignment: PlaceholderAlignment.middle,
+          child: Padding(
+            padding: EdgeInsets.only(left: 1.sp),
+            child: Container(
+              width: 14.sp,
+              height: 14.sp,
+              decoration: BoxDecoration(
+                color: annotation!.type.color,
+                borderRadius: BorderRadius.circular(999),
+              ),
+              padding: EdgeInsets.all(2.sp),
+              child: SvgPicture.asset(
+                annotation.type.iconAssetPath,
+                fit: BoxFit.contain,
+              ),
             ),
           ),
-        );
-      }
+        ),
+      );
     }
 
     // bookMove: keep the floating badge (no inline symbol available)
