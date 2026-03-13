@@ -156,31 +156,47 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
 
       // Query Supabase with filters
       final repo = ref.read(groupBroadcastRepositoryProvider);
-      final broadcasts = await repo.getCurrentGroupBroadcasts(
-        limit: _kPageSize,
-        offset: _offset,
-        timeControlFilters: formatFilters.isNotEmpty ? formatFilters : null,
-        minElo: hasEloFilter ? minElo : null,
-        maxElo: hasEloFilter ? maxElo : null,
-      );
 
-      debugPrint(
-        '[ForYou] Fetched ${broadcasts.length} from Supabase (offset: $_offset, filters: format=$formatFilters, elo=$hasEloFilter)',
-      );
+      // Get live IDs for status filtering — await the stream so we never
+      // filter against an empty list before the first value arrives.
+      final liveIds = await ref.read(liveGroupBroadcastIdsProvider.future);
 
-      // Get live IDs for status filtering
-      final liveIds = ref.read(liveGroupBroadcastIdsProvider).valueOrNull ?? [];
+      // Fetch pages from DB. When status filters are active, a single page
+      // may yield zero matches (e.g. no live events in the first 20 results).
+      // Keep fetching until we have results or the DB is exhausted.
+      List<GroupBroadcast> filteredBroadcasts = [];
+      bool dbHasMore = true;
 
-      // Apply status filter (live/completed) - can't do in DB query
-      List<GroupBroadcast> filteredBroadcasts = broadcasts;
-      if (statusFilters.isNotEmpty) {
-        filteredBroadcasts =
-            broadcasts.where((tour) {
-              final isLive = liveIds.contains(tour.id);
-              return (statusFilters.contains('live') && isLive) ||
-                  (statusFilters.contains('completed') && !isLive);
-            }).toList();
-      }
+      do {
+        final broadcasts = await repo.getCurrentGroupBroadcasts(
+          limit: _kPageSize,
+          offset: _offset,
+          timeControlFilters: formatFilters.isNotEmpty ? formatFilters : null,
+          minElo: hasEloFilter ? minElo : null,
+          maxElo: hasEloFilter ? maxElo : null,
+        );
+
+        debugPrint(
+          '[ForYou] Fetched ${broadcasts.length} from Supabase (offset: $_offset, filters: format=$formatFilters, elo=$hasEloFilter)',
+        );
+
+        dbHasMore = broadcasts.length >= _kPageSize;
+        _offset += broadcasts.length;
+
+        // Apply status filter (live/completed) - can't do in DB query
+        if (statusFilters.isNotEmpty) {
+          final filtered =
+              broadcasts.where((tour) {
+                final isLive = liveIds.contains(tour.id);
+                return (statusFilters.contains('live') && isLive) ||
+                    (statusFilters.contains('completed') && !isLive);
+              }).toList();
+          filteredBroadcasts.addAll(filtered);
+        } else {
+          filteredBroadcasts = broadcasts;
+          break;
+        }
+      } while (filteredBroadcasts.isEmpty && dbHasMore);
 
       // Convert to models
       final models =
@@ -211,17 +227,15 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
         state = ForYouState(
           events: sortedModels,
           isLoading: false,
-          hasMore: broadcasts.length >= _kPageSize,
+          hasMore: dbHasMore,
         );
         _lastRefreshAt = DateTime.now();
       } else {
         state = state.copyWith(
           events: [...state.events, ...sortedModels],
-          hasMore: broadcasts.length >= _kPageSize,
+          hasMore: dbHasMore,
         );
       }
-
-      _offset += broadcasts.length;
     } catch (e, stack) {
       debugPrint('[ForYou] Error: $e');
       debugPrint('[ForYou] Stack: $stack');
