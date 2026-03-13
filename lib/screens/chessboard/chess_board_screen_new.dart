@@ -935,21 +935,34 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
       return;
     }
 
-    // For live games, sync to the latest move.
-    // For non-live games, start from the beginning position.
-    final isLive = state.game.gameStatus.isOngoing;
-    final targetMoveIndex = isLive ? totalMoves - 1 : -1;
+    // If saved analysis data exists for this page, skip correction entirely —
+    // let the provider's _initializeAnalysisBoard handle position restore.
+    final hasSavedAnalysis = _getSavedAnalysisDataForIndex(pageIndex) != null;
+    if (hasSavedAnalysis) {
+      _syncedLatestPositions.add(gameId);
+      return;
+    }
+
+    // Determine target position:
+    // - Live games: latest move
+    // - startAtLastMove: latest move (regardless of game status)
+    // - Finished games: starting position (-1)
+    final isFinished = state.game.gameStatus.isFinished;
+    final int targetMoveIndex;
+    if (isFinished && !widget.startAtLastMove) {
+      targetMoveIndex = -1;
+    } else {
+      targetMoveIndex = totalMoves - 1;
+    }
     final currentIndex = state.analysisState.currentMoveIndex;
 
     // Check if we're already at the target position
-    if (!isLive) {
-      // For non-live games, we want to be at the start (index -1)
+    if (targetMoveIndex == -1) {
       if (currentIndex == -1) {
         _syncedLatestPositions.add(gameId);
         return;
       }
     } else {
-      // For live games, we want to be at the latest move
       if (currentIndex >= totalMoves - 1) {
         _syncedLatestPositions.add(gameId);
         return;
