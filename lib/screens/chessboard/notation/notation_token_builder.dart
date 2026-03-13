@@ -185,24 +185,6 @@ List<NotationDisplayToken> buildNotationTokens(
       ),
     );
 
-    // Insert Lichess annotation comment for mainline moves only
-    if (node.isMainline && moveIndex >= 0) {
-      final annotation = lichessAnnotations[moveIndex];
-      if (annotation != null &&
-          resolveAnnotationPresentation(annotation.type) ==
-              AnnotationPresentation.inlineSymbol &&
-          annotation.comment.isNotEmpty) {
-        tokens.add(
-          NotationDisplayToken(
-            type: NotationTokenType.lichessComment,
-            text: annotation.comment,
-            depth: depth,
-            pointerId: pointerId,
-          ),
-        );
-      }
-    }
-
     final moveComment = variationComments[pointerId];
     if (moveComment != null && moveComment.isNotEmpty) {
       tokens.add(
