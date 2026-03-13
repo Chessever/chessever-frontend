@@ -210,7 +210,7 @@ class _AboutTourScreenState extends ConsumerState<AboutTourScreen> {
                             isSkeleton) ...[
                           SizedBox(height: 12.h),
                           _InlineLinkRow(
-                            prefix: 'Game Source:',
+                            prefix: 'Powered by:',
                             linkLabel: 'Lichess',
                             onTap:
                                 isSkeleton
@@ -305,28 +305,35 @@ class _AboutTourScreenState extends ConsumerState<AboutTourScreen> {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             if (hasWebsite || isSkeleton)
-              GestureDetector(
-                onTap:
-                    isSkeleton
-                        ? null
-                        : () => ref
-                            .read(urlLauncherProvider)
-                            .launchCustomUrl(websiteUrl),
-                child: Row(
-                  children: [
-                    SvgWidget(SvgAsset.websiteIcon, height: 12.h, width: 12.h),
-                    SizedBox(width: 4.w),
-                    Flexible(
-                      child: Text(
-                        domain.isEmpty ? 'Chessever' : domain,
-                        maxLines: 1,
-                        style: AppTypography.textXsMedium.copyWith(
-                          color: kPrimaryColor,
-                          overflow: TextOverflow.ellipsis,
+              Flexible(
+                child: GestureDetector(
+                  onTap:
+                      isSkeleton
+                          ? null
+                          : () => ref
+                              .read(urlLauncherProvider)
+                              .launchCustomUrl(websiteUrl),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      SvgWidget(
+                        SvgAsset.websiteIcon,
+                        height: 12.h,
+                        width: 12.h,
+                      ),
+                      SizedBox(width: 4.w),
+                      Flexible(
+                        child: Text(
+                          domain.isEmpty ? 'Chessever' : domain,
+                          maxLines: 1,
+                          style: AppTypography.textXsMedium.copyWith(
+                            color: kPrimaryColor,
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             if ((hasWebsite && hasStandings) || isSkeleton)
