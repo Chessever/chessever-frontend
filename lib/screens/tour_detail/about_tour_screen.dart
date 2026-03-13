@@ -210,7 +210,7 @@ class _AboutTourScreenState extends ConsumerState<AboutTourScreen> {
                             isSkeleton) ...[
                           SizedBox(height: 12.h),
                           _InlineLinkRow(
-                            prefix: 'Game Source:',
+                            prefix: 'Powered by:',
                             linkLabel: 'Lichess',
                             onTap:
                                 isSkeleton
