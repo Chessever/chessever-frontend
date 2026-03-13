@@ -6452,9 +6452,10 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard> {
     final badgeSize = squareSize * 0.40;
     // Exact anchor from reference: center the badge on the destination square's
     // top-right corner intersection.
-    final badgeLeft = left + squareSize - (badgeSize / 2);
+    final badgeLeftRaw = left + squareSize - (badgeSize / 2);
     final badgeTopRaw = top - (badgeSize / 2) + (squareSize * 0.04);
-    // Clamp to prevent badge from being clipped on top-rank squares
+    // Clamp to prevent badge from being clipped at board edges
+    final badgeLeft = badgeLeftRaw.clamp(0.0, widget.size - badgeSize);
     final badgeTop = badgeTopRaw.clamp(0.0, widget.size - badgeSize);
 
     return Positioned(
@@ -6604,10 +6605,7 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard> {
           final currentMoveIndex =
               widget.chessBoardState.analysisState.currentMoveIndex;
           if (currentMoveIndex < 0) return null;
-          final current = lichessAnnotations[currentMoveIndex];
-          if (current != null) return current;
-          final previous = lichessAnnotations[currentMoveIndex - 1];
-          return previous;
+          return lichessAnnotations[currentMoveIndex];
         })();
     final boardAnnotationSquare = _lastMoveDestinationSquare(
       widget.chessBoardState.analysisState.lastMove,
