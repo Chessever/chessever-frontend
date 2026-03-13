@@ -918,7 +918,7 @@ class ChessBoardScreenNotifierNew
         newMoveIndex =
             currentState?.analysisState.currentMoveIndex ?? lastMoveIndex;
       } else if (isFirstLoad &&
-          !game.gameStatus.isOngoing &&
+          game.gameStatus.isFinished &&
           !startAtLastMove) {
         // Finished game on first load: open at starting position
         newMoveIndex = -1;
