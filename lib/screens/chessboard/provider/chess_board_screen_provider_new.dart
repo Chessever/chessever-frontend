@@ -894,7 +894,6 @@ class ChessBoardScreenNotifierNew
       final hasMovesNow = moveSans.isNotEmpty;
 
       // Use instance-level initial load flag instead of global lastSeenMoveCount
-      // This ensures we ALWAYS focus on latest move when entering the game screen
       final isFirstLoad = _isInitialLoad;
       final wasViewingLastMove =
           currentState != null &&
@@ -907,20 +906,30 @@ class ChessBoardScreenNotifierNew
           hasNewMoves && !shouldForceLatestPosition && !wasViewingLastMove;
 
       // Determine which move index to display:
-      // - On initial load: always show latest move
+      // - On initial load of a finished game: start at beginning (-1)
+      //   unless startAtLastMove is explicitly set
+      // - On initial load of a live game: show latest move
       // - If user was viewing last move: jump to new last move
-      // - If user was viewing an earlier move AND it's not initial load: stay at current position (don't jump)
+      // - If user was viewing an earlier move AND it's not initial load: stay at current position
       final isPreviewActive = currentState?.isPvPreviewActive == true;
 
-      final newMoveIndex =
-          isPreviewActive
-              ? (currentState?.analysisState.currentMoveIndex ?? lastMoveIndex)
-              : shouldForceLatestPosition
-              ? lastMoveIndex
-              : (wasViewingLastMove
-                  ? lastMoveIndex // Jump to new last move if user was already viewing last
-                  : currentState?.analysisState.currentMoveIndex ??
-                      lastMoveIndex); // Stay at current position otherwise
+      final int newMoveIndex;
+      if (isPreviewActive) {
+        newMoveIndex =
+            currentState?.analysisState.currentMoveIndex ?? lastMoveIndex;
+      } else if (isFirstLoad &&
+          !game.gameStatus.isOngoing &&
+          !startAtLastMove) {
+        // Finished game on first load: open at starting position
+        newMoveIndex = -1;
+      } else if (shouldForceLatestPosition) {
+        newMoveIndex = lastMoveIndex;
+      } else if (wasViewingLastMove) {
+        newMoveIndex = lastMoveIndex;
+      } else {
+        newMoveIndex =
+            currentState?.analysisState.currentMoveIndex ?? lastMoveIndex;
+      }
 
       // Calculate position for the move index we're displaying
       Position displayPosition = startingPos;
