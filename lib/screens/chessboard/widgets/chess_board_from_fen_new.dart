@@ -84,8 +84,7 @@ final _gamebaseFinalFenProvider = FutureProvider.autoDispose
 
 bool _shouldShowEvalBar(WidgetRef ref) {
   final settings = ref.watch(engineSettingsProviderNew).valueOrNull;
-  return (settings?.showEngineAnalysis ?? true) &&
-      (settings?.showEngineGauge ?? true);
+  return settings?.showEngineGauge ?? true;
 }
 
 /// Shows the share overlay for a game from the grid/list view.
