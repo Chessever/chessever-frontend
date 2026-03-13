@@ -947,12 +947,12 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     // - Live games: latest move
     // - startAtLastMove: latest move (regardless of game status)
     // - Finished games: starting position (-1)
-    final isLive = state.game.gameStatus.isOngoing;
+    final isFinished = state.game.gameStatus.isFinished;
     final int targetMoveIndex;
-    if (isLive || widget.startAtLastMove) {
-      targetMoveIndex = totalMoves - 1;
-    } else {
+    if (isFinished && !widget.startAtLastMove) {
       targetMoveIndex = -1;
+    } else {
+      targetMoveIndex = totalMoves - 1;
     }
     final currentIndex = state.analysisState.currentMoveIndex;
 
