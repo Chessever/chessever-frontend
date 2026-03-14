@@ -338,21 +338,6 @@ class _TourDetailScreenNotifier
       return model.roundStatus != RoundStatus.upcoming;
     }
 
-    TourModel? pickHighestElo(Iterable<TourModel> models) {
-      final withElo = models.where((m) => m.tour.avgElo != null).toList();
-      if (withElo.isEmpty) return null;
-      withElo.sort((a, b) {
-        final eloCompare = b.tour.avgElo!.compareTo(a.tour.avgElo!);
-        if (eloCompare != 0) return eloCompare;
-        final aDate =
-            a.tour.dates.isNotEmpty ? a.tour.dates.last : DateTime(1970);
-        final bDate =
-            b.tour.dates.isNotEmpty ? b.tour.dates.last : DateTime(1970);
-        return bDate.compareTo(aDate);
-      });
-      return withElo.first;
-    }
-
     // 1️⃣ If user already selected a tour during this session, keep it.
     final currentSelectedId = currentState?.aboutTourModel.id;
     if (currentSelectedId != null && currentSelectedId.isNotEmpty) {
@@ -362,7 +347,24 @@ class _TourDetailScreenNotifier
       }
     }
 
-    // 2️⃣ Prefer live tours — a tour with active games always takes priority
+    // 2️⃣ If user previously selected a tour, respect that choice.
+    String? savedTourId;
+    try {
+      savedTourId = await ref
+          .read(tourDetailRepoProvider)
+          .getSelectedTourId(groupBroadcast.id);
+    } catch (_) {
+      savedTourId = null;
+    }
+
+    if (savedTourId != null) {
+      final savedModel = findTourModel(tourModels, savedTourId);
+      if (savedModel != null && canUseSelection(savedModel)) {
+        return savedModel.tour;
+      }
+    }
+
+    // 3️⃣ Prefer live tours — a tour with active games always takes priority
     final liveModels =
         tourModels
             .where((model) => model.roundStatus == RoundStatus.live)
@@ -382,7 +384,64 @@ class _TourDetailScreenNotifier
       return liveModels.first.tour;
     }
 
-    // 3️⃣ No live tour — choose by actual game activity across all tours.
+    // 4️⃣ Default selection based on start times:
+    //    Same start time → highest average rating
+    //    Different start times → latest starting event
+    final selectableModels =
+        hasStartedTours
+            ? tourModels
+                .where((m) => m.roundStatus != RoundStatus.upcoming)
+                .toList()
+            : tourModels;
+
+    if (selectableModels.isNotEmpty) {
+      final toursWithDates =
+          selectableModels.where((m) => m.tour.dates.isNotEmpty).toList();
+
+      if (toursWithDates.isNotEmpty) {
+        // Check if all tours share the same start date
+        final firstStart = toursWithDates.first.tour.dates.first;
+        final allSameStart = toursWithDates.every(
+          (m) =>
+              m.tour.dates.first.year == firstStart.year &&
+              m.tour.dates.first.month == firstStart.month &&
+              m.tour.dates.first.day == firstStart.day,
+        );
+
+        if (allSameStart) {
+          // Same start → pick highest avgElo
+          final withElo =
+              toursWithDates.where((m) => m.tour.avgElo != null).toList();
+          if (withElo.isNotEmpty) {
+            withElo.sort(
+              (a, b) => b.tour.avgElo!.compareTo(a.tour.avgElo!),
+            );
+            return withElo.first.tour;
+          }
+        } else {
+          // Different start times → pick latest starting event, tiebreak by avgElo
+          toursWithDates.sort((a, b) {
+            final dateCompare =
+                b.tour.dates.first.compareTo(a.tour.dates.first);
+            if (dateCompare != 0) return dateCompare;
+            final aElo = a.tour.avgElo ?? 0;
+            final bElo = b.tour.avgElo ?? 0;
+            return bElo.compareTo(aElo);
+          });
+          return toursWithDates.first.tour;
+        }
+      }
+
+      // Fallback when date-based selection didn't apply: pick highest avgElo from selectableModels
+      final withElo =
+          selectableModels.where((m) => m.tour.avgElo != null).toList();
+      if (withElo.isNotEmpty) {
+        withElo.sort((a, b) => b.tour.avgElo!.compareTo(a.tour.avgElo!));
+        return withElo.first.tour;
+      }
+    }
+
+    // 5️⃣ Fallback — choose by actual game activity across all tours.
     // This avoids opening future categories with no played games.
     try {
       final activityTourId = await ref
@@ -397,30 +456,6 @@ class _TourDetailScreenNotifier
         }
       }
     } catch (_) {}
-
-    // 4️⃣ If user previously selected a tour, keep it only after activity checks.
-    final savedTourId = await ref
-        .read(tourDetailRepoProvider)
-        .getSelectedTourId(groupBroadcast.id);
-
-    if (savedTourId != null) {
-      final savedModel = findTourModel(tourModels, savedTourId);
-      if (savedModel != null && canUseSelection(savedModel)) {
-        return savedModel.tour;
-      }
-    }
-
-    // 5️⃣ No strong activity signal — prefer highest avgElo among started tours first.
-    final selectableModels =
-        hasStartedTours
-            ? tourModels
-                .where((m) => m.roundStatus != RoundStatus.upcoming)
-                .toList()
-            : tourModels;
-    final bestByElo = pickHighestElo(selectableModels);
-    if (bestByElo != null) {
-      return bestByElo.tour;
-    }
 
     // 6️⃣ If no ELO signal, prefer started tours (ongoing first, then completed).
     final ongoingTours =
