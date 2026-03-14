@@ -26,6 +26,8 @@ import 'package:chessever2/screens/chessboard/widgets/chess_board_bottom_nav_bar
 import 'package:chessever2/screens/chessboard/widgets/evaluation_bar_widget.dart';
 // DISABLED: Move annotation overlay (requires move impact analysis)
 // import 'package:chessever2/screens/chessboard/widgets/move_annotation_overlay.dart';
+
+const Color kGameEndingRedColor = Color(0xCCF53236);
 import 'package:chessever2/screens/chessboard/widgets/share_game_card_overlay.dart';
 import 'package:chessever2/screens/chessboard/chess_board_settings_page.dart';
 import 'package:chessever2/screens/chessboard/widgets/smooth_sheet_config.dart';
@@ -6726,7 +6728,7 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard> {
       final baseSquareColor =
           isLightSquare ? colorScheme.lightSquare : colorScheme.darkSquare;
       final compositeColor =
-          Color.alphaBlend(const Color(0xCCF53236), baseSquareColor);
+          Color.alphaBlend(kGameEndingRedColor, baseSquareColor);
 
       return RepaintBoundary(
         child: Stack(
