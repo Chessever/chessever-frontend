@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'package:chessever2/repository/favorites/models/favorite_player.dart';
 import 'package:chessever2/repository/sqlite/app_database.dart';
 import 'package:chessever2/services/analytics/analytics_service.dart';
+import 'package:chessever2/revenue_cat_service/revenue_cat_service.dart';
+import 'package:chessever2/utils/favorite_constants.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -145,6 +147,20 @@ class FavoritePlayersNotifierNew extends AsyncNotifier<List<FavoritePlayer>> {
     String? title,
   }) async {
     try {
+      // Enforce favorite limit for free users
+      if (!kDebugMode) {
+        final currentCount = state.valueOrNull?.length ?? 0;
+        if (currentCount >= kFreeFavoriteLimit) {
+          final isSubscribed = await RevenueCatService().isSubscribed();
+          if (!isSubscribed) {
+            debugPrint(
+              '[FavoritePlayers] Free user at limit ($kFreeFavoriteLimit), blocking add',
+            );
+            return;
+          }
+        }
+      }
+
       final userId = _supabase.auth.currentUser?.id;
       if (userId == null) {
         throw Exception('User must be logged in to favorite players');

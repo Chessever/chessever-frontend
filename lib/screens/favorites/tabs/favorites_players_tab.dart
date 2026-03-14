@@ -9,6 +9,7 @@ import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/utils/favorite_limit_guard.dart';
 import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 import 'package:chessever2/widgets/figma_player_card.dart';
 import 'package:chessever2/widgets/scroll_to_top_button.dart';
@@ -604,8 +605,14 @@ class _FavoritesPlayersTabState extends ConsumerState<FavoritesPlayersTab>
 
   void _toggleFavorite(PlayerStandingModel player, bool currentlyFavorite) {
     // Check auth first, then toggle without blocking
-    requireFullAuthGuard(context).then((allowed) {
+    requireFullAuthGuard(context).then((allowed) async {
       if (!allowed) return;
+
+      // Check favorite limit before adding
+      if (!currentlyFavorite) {
+        final canAdd = await canAddMoreFavorites(context, ref);
+        if (!canAdd) return;
+      }
 
       HapticFeedback.mediumImpact();
 
