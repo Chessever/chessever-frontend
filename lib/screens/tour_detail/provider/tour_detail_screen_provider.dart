@@ -348,9 +348,14 @@ class _TourDetailScreenNotifier
     }
 
     // 2️⃣ If user previously selected a tour, respect that choice.
-    final savedTourId = await ref
-        .read(tourDetailRepoProvider)
-        .getSelectedTourId(groupBroadcast.id);
+    String? savedTourId;
+    try {
+      savedTourId = await ref
+          .read(tourDetailRepoProvider)
+          .getSelectedTourId(groupBroadcast.id);
+    } catch (_) {
+      savedTourId = null;
+    }
 
     if (savedTourId != null) {
       final savedModel = findTourModel(tourModels, savedTourId);
