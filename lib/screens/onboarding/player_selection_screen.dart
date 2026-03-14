@@ -14,6 +14,8 @@ import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen_provider.dart';
 import 'package:chessever2/services/analytics/analytics_service.dart';
 import 'package:chessever2/services/fide_photo_service.dart';
+import 'package:chessever2/utils/favorite_constants.dart';
+import 'package:chessever2/utils/favorite_limit_guard.dart';
 import 'package:chessever2/utils/favorites_migration.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
@@ -202,7 +204,7 @@ class PlayerSelectionContent extends HookConsumerWidget {
                     SizedBox(height: 4.h),
                     // Selection counter
                     Text(
-                      'Selected: $selectedCount of 3',
+                      'Selected: $selectedCount of $kFreeFavoriteLimit',
                       style: AppTypography.textSmRegular.copyWith(
                         color: kWhiteColor.withOpacity(0.6),
                       ),
@@ -314,7 +316,7 @@ class PlayerSelectionContent extends HookConsumerWidget {
                     child: ElevatedButton(
                       key: e2eKey(E2eIds.playerSelectionContinueButton),
                       onPressed:
-                          selectedCount >= 3
+                          selectedCount >= kFreeFavoriteLimit
                               ? () async {
                                 HapticFeedback.mediumImpact();
                                 await onComplete();
@@ -322,11 +324,11 @@ class PlayerSelectionContent extends HookConsumerWidget {
                               : null,
                       style: ElevatedButton.styleFrom(
                         backgroundColor:
-                            selectedCount >= 3
+                            selectedCount >= kFreeFavoriteLimit
                                 ? kWhiteColor
                                 : kWhiteColor.withOpacity(0.16),
                         foregroundColor:
-                            selectedCount >= 3
+                            selectedCount >= kFreeFavoriteLimit
                                 ? kBlackColor
                                 : kWhiteColor.withOpacity(0.6),
                         elevation: 0,
@@ -587,10 +589,23 @@ void _toggleFavorite(
   final isFullyAuthenticated =
       supabaseUser != null && supabaseUser.isAnonymous != true;
 
+  final isAdding = !selectedIds.value.contains(fideId);
+
   // Non-onboarding flow: check auth first, then toggle
   if (!isOnboarding) {
-    requireFullAuthGuard(context).then((allowed) {
+    requireFullAuthGuard(context).then((allowed) async {
       if (!allowed) return;
+
+      // Check favorite limit before adding
+      if (isAdding) {
+        final canAdd = await canAddMoreFavorites(
+          context,
+          ref,
+          isOnboarding: false,
+        );
+        if (!canAdd) return;
+      }
+
       _performToggle(
         ref,
         selectedIds,
@@ -604,7 +619,29 @@ void _toggleFavorite(
     return;
   }
 
-  // Onboarding flow: INSTANT toggle, no auth check needed
+  // Onboarding flow: check limit before adding
+  if (isAdding) {
+    canAddMoreFavorites(
+      context,
+      ref,
+      isOnboarding: true,
+      currentSelectedCount: selectedIds.value.length,
+    ).then((canAdd) {
+      if (!canAdd) return;
+      _performToggle(
+        ref,
+        selectedIds,
+        player,
+        fideId,
+        supabaseUser,
+        isFullyAuthenticated,
+        isOnboarding: true,
+      );
+    });
+    return;
+  }
+
+  // Removing — always allowed
   _performToggle(
     ref,
     selectedIds,

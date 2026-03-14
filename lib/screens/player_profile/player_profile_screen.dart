@@ -22,6 +22,7 @@ import 'package:chessever2/utils/png_asset.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
+import 'package:chessever2/utils/favorite_limit_guard.dart';
 import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
@@ -397,6 +398,20 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
   Future<void> _toggleFavorite() async {
     final allowed = await requireFullAuthGuard(context);
     if (!allowed) return;
+
+    // Check if adding (not removing) and enforce limit
+    final currentlyFavorited = ref
+        .read(favoritePlayersNotifierProvider)
+        .maybeWhen(
+          data:
+              (state) => state.players.any((p) => p.fideId == widget.fideId),
+          orElse: () => false,
+        );
+    if (!currentlyFavorited) {
+      if (!mounted) return;
+      final canAdd = await canAddMoreFavorites(context, ref);
+      if (!canAdd) return;
+    }
 
     HapticFeedbackService.buttonPress();
 
