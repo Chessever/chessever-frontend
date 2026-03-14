@@ -7,6 +7,7 @@ import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:chessever2/screens/standings/score_card_screen.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
+import 'package:chessever2/utils/favorite_limit_guard.dart';
 import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 
 class ScoreboardAppbar extends ConsumerStatefulWidget {
@@ -57,6 +58,21 @@ class _ScoreboardAppbarState extends ConsumerState<ScoreboardAppbar>
 
     if (player != null) {
       try {
+        // Check if adding (not removing) and enforce limit
+        final currentlyFavorited = ref
+            .read(favoritePlayersNotifierProvider)
+            .maybeWhen(
+              data:
+                  (state) =>
+                      state.players.any((p) => p.fideId == player.fideId),
+              orElse: () => false,
+            );
+        if (!currentlyFavorited) {
+          if (!mounted) return;
+          final canAdd = await canAddMoreFavorites(context, ref);
+          if (!canAdd) return;
+        }
+
         // Toggle using old provider with complete PlayerStandingModel
         final isNowFavorite = await favoritesNotifier.toggleFavorite(player);
 

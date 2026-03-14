@@ -34,6 +34,7 @@ import 'package:chessever2/screens/favorites/favorite_players_provider.dart';
 import 'package:chessever2/screens/player_profile/player_profile_data_source.dart';
 import 'package:chessever2/screens/player_profile/player_profile_screen.dart';
 import 'package:chessever2/utils/svg_asset.dart';
+import 'package:chessever2/utils/favorite_limit_guard.dart';
 import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:motor/motor.dart';
@@ -1123,6 +1124,22 @@ class _SliverScoreboardAppBarState
         final player = await ref.read(
           backfilledStandingPlayerProvider(selectedPlayer).future,
         );
+
+        // Check if adding (not removing) and enforce limit
+        final currentlyFavorited = ref
+            .read(favoritePlayersNotifierProvider)
+            .maybeWhen(
+              data:
+                  (state) =>
+                      state.players.any((p) => p.fideId == player.fideId),
+              orElse: () => false,
+            );
+        if (!currentlyFavorited) {
+          if (!mounted) return;
+          final canAdd = await canAddMoreFavorites(context, ref);
+          if (!canAdd) return;
+        }
+
         final isNowFavorite = await favoritesNotifier.toggleFavorite(player);
         if (isNowFavorite) {
           _animationController.forward().then(
