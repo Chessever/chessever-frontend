@@ -6448,6 +6448,17 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard> {
 
   Square? _lastMoveDestinationSquare(Move? lastMove) {
     if (lastMove == null) return null;
+    if (lastMove is NormalMove) {
+      // Castling is encoded as king-captures-rook in dartchess.
+      // Map to the king's actual destination square for annotation placement.
+      final from = lastMove.from;
+      final to = lastMove.to;
+      if (from == Square.e1 && to == Square.h1) return Square.g1;
+      if (from == Square.e1 && to == Square.a1) return Square.c1;
+      if (from == Square.e8 && to == Square.h8) return Square.g8;
+      if (from == Square.e8 && to == Square.a8) return Square.c8;
+      return to;
+    }
     final squares = lastMove.squares.toList();
     if (squares.isEmpty) return null;
     return squares.last;
