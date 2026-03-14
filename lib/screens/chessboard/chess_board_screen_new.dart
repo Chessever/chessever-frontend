@@ -26,6 +26,8 @@ import 'package:chessever2/screens/chessboard/widgets/chess_board_bottom_nav_bar
 import 'package:chessever2/screens/chessboard/widgets/evaluation_bar_widget.dart';
 // DISABLED: Move annotation overlay (requires move impact analysis)
 // import 'package:chessever2/screens/chessboard/widgets/move_annotation_overlay.dart';
+
+const Color kGameEndingRedColor = Color(0xCCF53236);
 import 'package:chessever2/screens/chessboard/widgets/share_game_card_overlay.dart';
 import 'package:chessever2/screens/chessboard/chess_board_settings_page.dart';
 import 'package:chessever2/screens/chessboard/widgets/smooth_sheet_config.dart';
@@ -6654,16 +6656,8 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard> {
     // PERF: RepaintBoundary isolates chessboard repaints from propagating
     // to parent widgets during piece animations and drag operations
 
-    // For fallen king animation: hide the loser's king from the board
-    // so it doesn't show both the original and the tilted overlay
-    String displayFen = widget.chessBoardState.analysisState.position.fen;
-    if (showGameEndingEffect && gameEndingData?.loserKingSquare != null) {
-      displayFen = _removeKingFromFen(
-        displayFen,
-        gameEndingData!.loserKingSquare!,
-        gameStatus == GameStatus.whiteWins ? 'k' : 'K',
-      );
-    }
+    final String displayFen =
+        widget.chessBoardState.analysisState.position.fen;
 
     final lastMoveHighlights = _buildLastMoveSquareHighlights(
       widget.chessBoardState.analysisState.lastMove,
@@ -6740,6 +6734,13 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard> {
           loserSide == Side.white ? PieceKind.whiteKing : PieceKind.blackKing;
       final pieceImage = pieceAssets[pieceKind];
 
+      // Composite square color: board square color + red highlight
+      final isLightSquare = (effectiveFile + effectiveRank) % 2 == 0;
+      final baseSquareColor =
+          isLightSquare ? colorScheme.lightSquare : colorScheme.darkSquare;
+      final compositeColor =
+          Color.alphaBlend(kGameEndingRedColor, baseSquareColor);
+
       return RepaintBoundary(
         child: Stack(
           children: [
@@ -6751,6 +6752,7 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard> {
               top: effectiveRank * squareSize,
               squareSize: squareSize,
               pieceImage: pieceImage!,
+              squareColor: compositeColor,
             ),
           ],
         ),
@@ -6869,58 +6871,6 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard> {
     return null;
   }
 
-  /// Remove a king from FEN string to hide it when showing fallen king overlay
-  String _removeKingFromFen(String fen, Square square, String kingChar) {
-    final parts = fen.split(' ');
-    if (parts.isEmpty) return fen;
-
-    final ranks = parts[0].split('/');
-    final rankIndex = 7 - square.rank; // FEN ranks are 8-1 (top to bottom)
-    if (rankIndex < 0 || rankIndex >= ranks.length) return fen;
-
-    // Expand the rank to individual characters
-    final rank = ranks[rankIndex];
-    final expanded = StringBuffer();
-    for (final char in rank.split('')) {
-      final digit = int.tryParse(char);
-      if (digit != null) {
-        expanded.write('1' * digit); // Replace numbers with 1s
-      } else {
-        expanded.write(char);
-      }
-    }
-
-    // Remove the king at the file position
-    final fileIndex = square.file;
-    final chars = expanded.toString().split('');
-    if (fileIndex >= 0 &&
-        fileIndex < chars.length &&
-        chars[fileIndex] == kingChar) {
-      chars[fileIndex] = '1';
-    }
-
-    // Compress back: consecutive 1s become a single number
-    final compressed = StringBuffer();
-    int emptyCount = 0;
-    for (final char in chars) {
-      if (char == '1') {
-        emptyCount++;
-      } else {
-        if (emptyCount > 0) {
-          compressed.write(emptyCount);
-          emptyCount = 0;
-        }
-        compressed.write(char);
-      }
-    }
-    if (emptyCount > 0) {
-      compressed.write(emptyCount);
-    }
-
-    ranks[rankIndex] = compressed.toString();
-    parts[0] = ranks.join('/');
-    return parts.join(' ');
-  }
 }
 
 /// Data class for game ending visual effects
@@ -6943,12 +6893,14 @@ class _FallenKingOverlay extends StatefulWidget {
   final double top;
   final double squareSize;
   final ImageProvider pieceImage;
+  final Color squareColor;
 
   const _FallenKingOverlay({
     required this.left,
     required this.top,
     required this.squareSize,
     required this.pieceImage,
+    required this.squareColor,
   });
 
   @override
@@ -6974,23 +6926,35 @@ class _FallenKingOverlayState extends State<_FallenKingOverlay> {
     return Positioned(
       left: widget.left,
       top: widget.top,
-      child: SizedBox(
-        width: widget.squareSize,
-        height: widget.squareSize,
-        child: Center(
-          // Animate rotation with motor's bouncy spring
-          child: SingleMotionBuilder(
-            motion: const CupertinoMotion.bouncy(),
-            value: _animate ? -math.pi / 4 : 0.0, // -45 degrees when animated
-            builder: (context, rotation, child) {
-              return Transform.rotate(
-                angle: rotation,
-                // Rotate around exact center - no offset needed
-                alignment: Alignment.center,
-                child: child,
-              );
-            },
-            child: Image(image: widget.pieceImage, fit: BoxFit.contain),
+      child: IgnorePointer(
+        child: SizedBox(
+          width: widget.squareSize,
+          height: widget.squareSize,
+          child: Stack(
+            children: [
+              // Opaque background to hide the king piece underneath
+              ColoredBox(
+                color: widget.squareColor,
+                child: const SizedBox.expand(),
+              ),
+              Center(
+                // Animate rotation with motor's bouncy spring
+                child: SingleMotionBuilder(
+                  motion: const CupertinoMotion.bouncy(),
+                  value:
+                      _animate ? -math.pi / 4 : 0.0, // -45 degrees when animated
+                  builder: (context, rotation, child) {
+                    return Transform.rotate(
+                      angle: rotation,
+                      // Rotate around exact center - no offset needed
+                      alignment: Alignment.center,
+                      child: child,
+                    );
+                  },
+                  child: Image(image: widget.pieceImage, fit: BoxFit.contain),
+                ),
+              ),
+            ],
           ),
         ),
       ),
@@ -7051,7 +7015,8 @@ class _AnimatedPeaceIconState extends State<_AnimatedPeaceIcon> {
           containerSize -
           1,
       top: effectiveRank * widget.squareSize + 1,
-      child: SingleMotionBuilder(
+      child: IgnorePointer(
+        child: SingleMotionBuilder(
         motion: const CupertinoMotion.bouncy(),
         value: _animate ? 1.0 : 0.0,
         builder: (context, scale, child) {
@@ -7088,6 +7053,7 @@ class _AnimatedPeaceIconState extends State<_AnimatedPeaceIcon> {
             ),
           ),
         ),
+      ),
       ),
     );
   }
