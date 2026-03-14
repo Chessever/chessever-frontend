@@ -427,7 +427,7 @@ class _TourDetailScreenNotifier
         }
       }
 
-      // Fallback for tours without dates: pick highest avgElo
+      // Fallback when date-based selection didn't apply: pick highest avgElo from selectableModels
       final withElo =
           selectableModels.where((m) => m.tour.avgElo != null).toList();
       if (withElo.isNotEmpty) {
