@@ -3,6 +3,8 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:chessever2/repository/sqlite/app_database.dart';
+import 'package:chessever2/revenue_cat_service/revenue_cat_service.dart';
+import 'package:chessever2/utils/favorite_constants.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:flutter/foundation.dart';
@@ -117,7 +119,7 @@ class FavoriteStandingsPlayerService {
       final existingIndex = favorites.indexWhere((p) => p.name == player.name);
 
       if (existingIndex != -1) {
-        // Remove from Supabase
+        // Removing — always allowed
         await _supabase
             .from('user_favorite_players')
             .delete()
@@ -128,6 +130,19 @@ class FavoriteStandingsPlayerService {
           '[FavoriteStandings] Removed player ${player.name} from Supabase',
         );
       } else {
+        // Enforce favorite limit for free users before adding
+        if (!kDebugMode) {
+          if (favorites.length >= kFreeFavoriteLimit) {
+            final isSubscribed = await RevenueCatService().isSubscribed();
+            if (!isSubscribed) {
+              debugPrint(
+                '[FavoriteStandings] Free user at limit ($kFreeFavoriteLimit), blocking add',
+              );
+              return;
+            }
+          }
+        }
+
         // Add to Supabase
         final metadata = player.toJson();
 
