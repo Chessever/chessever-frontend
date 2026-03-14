@@ -26,8 +26,6 @@ import 'package:chessever2/screens/chessboard/widgets/chess_board_bottom_nav_bar
 import 'package:chessever2/screens/chessboard/widgets/evaluation_bar_widget.dart';
 // DISABLED: Move annotation overlay (requires move impact analysis)
 // import 'package:chessever2/screens/chessboard/widgets/move_annotation_overlay.dart';
-
-const Color kGameEndingRedColor = Color(0xCCF53236);
 import 'package:chessever2/screens/chessboard/widgets/share_game_card_overlay.dart';
 import 'package:chessever2/screens/chessboard/chess_board_settings_page.dart';
 import 'package:chessever2/screens/chessboard/widgets/smooth_sheet_config.dart';
@@ -83,13 +81,14 @@ import 'package:chessever2/screens/player_profile/player_profile_data_source.dar
 import 'package:chessever2/utils/chess_title_utils.dart';
 import 'package:showcaseview/showcaseview.dart';
 import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
-import 'package:flutter/foundation.dart';
 import 'package:chessever2/services/lichess_move_annotations_service.dart';
 import 'package:chessever2/services/live_updates_service.dart';
 import 'package:chessever2/main.dart' show routeObserver;
 import 'package:chessever2/providers/auth_state_provider.dart';
 import 'package:chessever2/providers/notification_preferences_provider.dart';
 import 'package:chessever2/providers/notifications_settings_provider.dart';
+
+const Color kGameEndingRedColor = Color(0xCCF53236);
 
 /// Spring-based curve that mimics iOS snappy motion
 /// Quick, precise animation with subtle natural settling
@@ -6656,8 +6655,7 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard> {
     // PERF: RepaintBoundary isolates chessboard repaints from propagating
     // to parent widgets during piece animations and drag operations
 
-    final String displayFen =
-        widget.chessBoardState.analysisState.position.fen;
+    final String displayFen = widget.chessBoardState.analysisState.position.fen;
 
     final lastMoveHighlights = _buildLastMoveSquareHighlights(
       widget.chessBoardState.analysisState.lastMove,
@@ -6738,8 +6736,10 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard> {
       final isLightSquare = (effectiveFile + effectiveRank) % 2 == 0;
       final baseSquareColor =
           isLightSquare ? colorScheme.lightSquare : colorScheme.darkSquare;
-      final compositeColor =
-          Color.alphaBlend(kGameEndingRedColor, baseSquareColor);
+      final compositeColor = Color.alphaBlend(
+        kGameEndingRedColor,
+        baseSquareColor,
+      );
 
       return RepaintBoundary(
         child: Stack(
@@ -6870,7 +6870,6 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard> {
 
     return null;
   }
-
 }
 
 /// Data class for game ending visual effects
@@ -6942,7 +6941,9 @@ class _FallenKingOverlayState extends State<_FallenKingOverlay> {
                 child: SingleMotionBuilder(
                   motion: const CupertinoMotion.bouncy(),
                   value:
-                      _animate ? -math.pi / 4 : 0.0, // -45 degrees when animated
+                      _animate
+                          ? -math.pi / 4
+                          : 0.0, // -45 degrees when animated
                   builder: (context, rotation, child) {
                     return Transform.rotate(
                       angle: rotation,
@@ -7017,43 +7018,43 @@ class _AnimatedPeaceIconState extends State<_AnimatedPeaceIcon> {
       top: effectiveRank * widget.squareSize + 1,
       child: IgnorePointer(
         child: SingleMotionBuilder(
-        motion: const CupertinoMotion.bouncy(),
-        value: _animate ? 1.0 : 0.0,
-        builder: (context, scale, child) {
-          return Transform.scale(
-            scale: scale,
-            alignment: Alignment.topRight,
-            child: child,
-          );
-        },
-        child: Container(
-          width: containerSize,
-          height: containerSize,
-          decoration: BoxDecoration(
-            color: Colors.white,
-            shape: BoxShape.circle,
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.2),
-                blurRadius: 2,
-                offset: const Offset(0, 1),
-              ),
-            ],
-          ),
-          child: Center(
-            child: ColorFiltered(
-              colorFilter: const ColorFilter.mode(
-                Colors.black,
-                BlendMode.srcIn,
-              ),
-              child: Text(
-                '🕊️',
-                style: TextStyle(fontSize: containerSize * 0.6),
+          motion: const CupertinoMotion.bouncy(),
+          value: _animate ? 1.0 : 0.0,
+          builder: (context, scale, child) {
+            return Transform.scale(
+              scale: scale,
+              alignment: Alignment.topRight,
+              child: child,
+            );
+          },
+          child: Container(
+            width: containerSize,
+            height: containerSize,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.2),
+                  blurRadius: 2,
+                  offset: const Offset(0, 1),
+                ),
+              ],
+            ),
+            child: Center(
+              child: ColorFiltered(
+                colorFilter: const ColorFilter.mode(
+                  Colors.black,
+                  BlendMode.srcIn,
+                ),
+                child: Text(
+                  '🕊️',
+                  style: TextStyle(fontSize: containerSize * 0.6),
+                ),
               ),
             ),
           ),
         ),
-      ),
       ),
     );
   }
