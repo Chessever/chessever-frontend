@@ -44,7 +44,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   void initState() {
     super.initState();
     if (!E2eConfig.suppressInterruptivePrompts) {
-      unawaited(ReviewPromptService.instance.recordSession());
+      unawaited(ReviewPromptService.instance.incrementSessionCount());
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _checkForShorebirdUpdate();
