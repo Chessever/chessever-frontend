@@ -44,7 +44,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   void initState() {
     super.initState();
     if (!E2eConfig.suppressInterruptivePrompts) {
-      unawaited(ReviewPromptService.instance.recordSession());
+      unawaited(ReviewPromptService.instance.incrementSessionCount());
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _checkForShorebirdUpdate();
@@ -57,9 +57,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             PushNotificationsService.instance.requestPermissionIfNotGranted(),
           );
         });
-        Future.delayed(const Duration(seconds: 8), () async {
-          if (!mounted) return;
-          await ReviewPromptService.instance.incrementSessionCount();
+        Future.delayed(const Duration(seconds: 8), () {
           if (!mounted) return;
           unawaited(
             ReviewPromptService.instance.maybePrompt(
