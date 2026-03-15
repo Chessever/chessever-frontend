@@ -57,7 +57,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             PushNotificationsService.instance.requestPermissionIfNotGranted(),
           );
         });
-        Future.delayed(const Duration(seconds: 8), () {
+        Future.delayed(const Duration(seconds: 8), () async {
+          if (!mounted) return;
+          await ReviewPromptService.instance.incrementSessionCount();
           if (!mounted) return;
           unawaited(
             ReviewPromptService.instance.maybePrompt(
