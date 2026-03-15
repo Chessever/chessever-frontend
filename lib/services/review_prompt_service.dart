@@ -31,6 +31,10 @@ class ReviewPromptService {
   static const String _keyLastPromptVersion = 'review_prompt_last_version';
   static const String _keyHasRatedHigh = 'review_prompt_has_rated_high';
   static const String _keyLastRating = 'review_prompt_last_rating';
+  static const String _keySessionCount = 'review_prompt_session_count';
+
+  /// Number of app opens required before showing the session-based prompt.
+  static const int _minSessionCount = 3;
 
   static bool _promptActive = false;
 
@@ -38,8 +42,11 @@ class ReviewPromptService {
 
   AppDatabase get _db => AppDatabase.instance;
 
-  Future<void> recordSession() async {
-    // No-op: session tracking removed to allow prompts on first session
+  /// Increments the session (app-open) counter.
+  /// Call once per app launch from the home screen.
+  Future<void> incrementSessionCount() async {
+    final current = await _db.getInt(_keySessionCount) ?? 0;
+    await _db.setInt(_keySessionCount, current + 1);
   }
 
   /// Shows the review/feedback flow.
@@ -162,6 +169,12 @@ class ReviewPromptService {
 
     final hasRatedHigh = await _db.getBool(_keyHasRatedHigh) ?? false;
     if (hasRatedHigh) return false;
+
+    // For session-based triggers, require at least N app opens.
+    if (trigger == ReviewPromptTrigger.session) {
+      final sessionCount = await _db.getInt(_keySessionCount) ?? 0;
+      if (sessionCount < _minSessionCount) return false;
+    }
 
     final lastPromptAtMs = await _db.getInt(_keyLastPromptAt);
     if (lastPromptAtMs != null) {
