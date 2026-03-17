@@ -154,6 +154,7 @@ class ChessBoardScreenNotifierNew
   Timer? _autoSaveTimer;
   /// Snapshot of the game tree at last auto-save for diff detection
   String? _lastAutoSavedGameJson;
+  int _parseGeneration = 0;
 
   void _clearActiveEvalState() {
     _activeEvalKey = null;
@@ -685,6 +686,7 @@ class ChessBoardScreenNotifierNew
     // Don't reparse if already parsing or already parsed
     if (_hasParsedMoves) return;
     _hasParsedMoves = true;
+    final thisGeneration = ++_parseGeneration;
 
     // Get current state or null if in loading state (first initialization)
     final currentState = state.value;
@@ -769,7 +771,7 @@ class ChessBoardScreenNotifierNew
       // moves) to avoid falling back to placeholder/sample PGNs.
       if (pgn == null || pgn.trim().isEmpty) {
         final fetched = await fetchRemotePgn(requireMoves: false);
-        if (!mounted) return;
+        if (!mounted || thisGeneration != _parseGeneration) return;
         if (fetched != null) {
           pgn = fetched;
           game = game.copyWith(pgn: pgn);
@@ -838,7 +840,7 @@ class ChessBoardScreenNotifierNew
 
         hasAttemptedUpgrade = true;
         final upgraded = await fetchRemotePgn(requireMoves: true);
-        if (!mounted) return;
+        if (!mounted || thisGeneration != _parseGeneration) return;
         if (upgraded == null ||
             upgraded.trim().isEmpty ||
             upgraded == resolvedPgn) {
@@ -881,8 +883,8 @@ class ChessBoardScreenNotifierNew
         }
       }
 
-      // Only update state if still mounted
-      if (!mounted) return;
+      // Only update state if still mounted and not superseded by a newer parse
+      if (!mounted || thisGeneration != _parseGeneration) return;
 
       // Check if there are new unseen moves
       final lastSeenMoveCount =
@@ -1016,7 +1018,7 @@ class ChessBoardScreenNotifierNew
       state = AsyncValue.data(newState);
 
       // Update last seen move count when we auto-sync to the latest move
-      if (shouldForceLatestPosition) {
+      if (shouldForceLatestPosition || (wasViewingLastMove && hasNewMoves)) {
         _updateLastSeenMoveCount(currentMoveCount);
       }
       if (_isInitialLoad) {
