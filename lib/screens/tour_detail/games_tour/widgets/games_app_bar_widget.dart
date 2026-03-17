@@ -25,6 +25,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:chessever2/providers/event_mute_provider.dart';
+import 'package:chessever2/providers/auth_state_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
 
 // Enum for menu items to improve maintainability
@@ -33,6 +35,7 @@ enum MenuAction {
   showHideFinishedGames,
   collapseAllRounds,
   expandAllRounds,
+  disableNotifications,
 }
 
 class GamesAppBarWidget extends ConsumerStatefulWidget {
@@ -654,6 +657,89 @@ class _GamesAppBarWidgetState extends ConsumerState<GamesAppBarWidget>
                                           ),
                                         ),
                                       ),
+                                      if (tourData
+                                              .aboutTourModel
+                                              .groupBroadcastId
+                                              ?.isNotEmpty ==
+                                          true) ...[
+                                        PopupMenuDivider(
+                                          height: 1.h,
+                                          thickness: 0.5.w,
+                                          color: kDividerColor,
+                                        ),
+                                        () {
+                                          final groupBroadcastId =
+                                              tourData
+                                                  .aboutTourModel
+                                                  .groupBroadcastId!;
+                                          final isMuted =
+                                              ref
+                                                  .read(
+                                                    eventMuteProvider(
+                                                      groupBroadcastId,
+                                                    ),
+                                                  )
+                                                  .valueOrNull ??
+                                              false;
+                                          return PopupMenuItem<MenuAction>(
+                                            value:
+                                                MenuAction.disableNotifications,
+                                            onTap: () {
+                                              final isAuthenticated = ref.read(
+                                                isAuthenticatedProvider,
+                                              );
+                                              if (!isAuthenticated) {
+                                                ScaffoldMessenger.of(
+                                                  context,
+                                                ).showSnackBar(
+                                                  const SnackBar(
+                                                    content: Text(
+                                                      'Please sign in to manage notifications',
+                                                    ),
+                                                  ),
+                                                );
+                                                return;
+                                              }
+                                              ref
+                                                  .read(
+                                                    eventMuteProvider(
+                                                      groupBroadcastId,
+                                                    ).notifier,
+                                                  )
+                                                  .toggleMute();
+                                            },
+                                            child: SizedBox(
+                                              width: 200,
+                                              child: Row(
+                                                mainAxisAlignment:
+                                                    MainAxisAlignment
+                                                        .spaceBetween,
+                                                children: [
+                                                  Text(
+                                                    isMuted
+                                                        ? "Enable notifications"
+                                                        : "Disable notifications",
+                                                    style: AppTypography
+                                                        .textXsMedium
+                                                        .copyWith(
+                                                          color: kWhiteColor,
+                                                        ),
+                                                  ),
+                                                  Icon(
+                                                    isMuted
+                                                        ? Icons
+                                                            .notifications_outlined
+                                                        : Icons
+                                                            .notifications_off_outlined,
+                                                    color: kWhiteColor,
+                                                    size: 16.sp,
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          );
+                                        }(),
+                                      ],
                                     ],
                                   );
                                 }
