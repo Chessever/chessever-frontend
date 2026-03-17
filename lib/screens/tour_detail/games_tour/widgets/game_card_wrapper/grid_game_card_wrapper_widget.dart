@@ -31,9 +31,7 @@ class GridGameCardWrapperWidget extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     // Watch live game updates for ongoing games
     // Use gameId as the stable key to prevent provider recreation
-    final liveGame = ref.watch(
-      liveGameCardProvider((gameId: game.gameId, baseGame: game)),
-    );
+    final liveGame = watchLiveGame(ref, game);
 
     // Build updated games list with the live game data
     List<GamesTourModel> getUpdatedGamesList() {
