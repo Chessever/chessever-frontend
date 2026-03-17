@@ -41,7 +41,8 @@ List<InlineSpan> buildFigurineSpans({
     final char = text[i];
 
     // Track if we're past move number (e.g., "1. " or "12... ")
-    if (!pastMoveNumber && char.contains(RegExp(r'[0-9.]'))) {
+    final c = char.codeUnitAt(0);
+    if (!pastMoveNumber && (char == '.' || (c >= 48 && c <= 57))) {
       buffer.write(char);
       i++;
       continue;

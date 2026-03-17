@@ -1344,13 +1344,16 @@ class ChessBoardScreenNotifierNew
     final updatedState = ref.read(chessGameNavigatorProvider(_analysisGame!));
     _syncAnalysisFromNavigator(updatedState);
 
-    // Update live-follow flag based on whether the user landed on the last move
+    // Update live-follow flag based on whether the user landed on the last mainline move.
+    // Only resume when on the mainline (movePointer.length == 1), not at the end of a variation,
+    // otherwise the next incoming live move would yank the user out of their variation.
     if (game.gameStatus.isOngoing) {
       final navState = ref.read(chessGameNavigatorProvider(_analysisGame!));
       final line = navState.currentLine;
       final isAtTail =
           line != null &&
           navState.movePointer.isNotEmpty &&
+          navState.movePointer.length == 1 &&
           navState.movePointer.last == line.length - 1;
       _isFollowingLive = isAtTail;
     }
@@ -3593,12 +3596,15 @@ class ChessBoardScreenNotifierNew
     final updatedState = ref.read(chessGameNavigatorProvider(_analysisGame!));
     _syncAnalysisFromNavigator(updatedState);
 
-    // If user stepped forward to the last move, resume auto-following live moves
+    // If user stepped forward to the last move of the mainline, resume auto-following live moves.
+    // Only resume when on the mainline (movePointer.length == 1), not at the end of a variation,
+    // otherwise the next incoming live move would yank the user out of their variation.
     if (game.gameStatus.isOngoing) {
       final line = updatedState.currentLine;
       final isAtTail =
           line != null &&
           updatedState.movePointer.isNotEmpty &&
+          updatedState.movePointer.length == 1 &&
           updatedState.movePointer.last == line.length - 1;
       if (isAtTail) {
         _isFollowingLive = true;
@@ -3715,14 +3721,15 @@ class ChessBoardScreenNotifierNew
 
   void jumpToEnd() {
     _releaseLog('🎯 JUMP TO END called');
-    // User explicitly jumped to end — resume auto-following live moves
-    _isFollowingLive = true;
     final currentState = state.value;
     if (currentState == null) return;
 
     if (currentState.isAnalysisMode) {
       // Check if variant is selected
       if (currentState.selectedVariantIndex != null) {
+        // Jumping within a variant — do NOT auto-follow live mainline moves,
+        // otherwise the next incoming move would yank the user out of the variant.
+        _isFollowingLive = false;
         _releaseLog(
           '🎯 JUMP TO END: Variant selected, playing all variant moves',
         );
@@ -3751,6 +3758,8 @@ class ChessBoardScreenNotifierNew
           ),
         );
       } else {
+        // Jumping to mainline tail — resume auto-following live moves
+        _isFollowingLive = true;
         _releaseLog('🎯 JUMP TO END: No variant, jumping to game end');
         _analysisNavigator?.goToTail();
       }
@@ -3763,6 +3772,8 @@ class ChessBoardScreenNotifierNew
         _syncAnalysisFromNavigator(updatedState);
       }
     } else {
+      // Non-analysis mode — resume auto-following live moves
+      _isFollowingLive = true;
       goToMove(currentState.allMoves.length - 1);
     }
   }
