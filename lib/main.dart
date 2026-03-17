@@ -640,13 +640,20 @@ class _StartupGateState extends ConsumerState<StartupGate> {
   /// isolates/threads from blocking Flutter's reassemble mechanism.
   @override
   void reassemble() {
-    StockfishSingleton().prepareForHotRestart();
-    try {
-      final soloud = SoLoud.instance;
-      if (soloud.isInitialized) {
-        soloud.deinit();
-      }
-    } catch (_) {}
+    // Schedule native cleanup asynchronously so reassemble() returns
+    // immediately — blocking FFI calls here freeze hot reload on physical
+    // devices.
+    scheduleMicrotask(() {
+      try {
+        StockfishSingleton().prepareForHotRestart();
+      } catch (_) {}
+      try {
+        final soloud = SoLoud.instance;
+        if (soloud.isInitialized) {
+          soloud.deinit();
+        }
+      } catch (_) {}
+    });
     super.reassemble();
   }
 

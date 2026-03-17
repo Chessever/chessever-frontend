@@ -1272,10 +1272,12 @@ class StockfishSingleton {
   void prepareForHotRestart() {
     _queueGeneration++;
 
-    // Write directly to native stdin — works even if Dart-side engine state
-    // is not `ready` (e.g. still starting, or already errored).
-    _rawStockfishStdin('stop');
-    _rawStockfishStdin('quit');
+    // Only send FFI commands if an engine was actually created — avoids
+    // blocking FFI lookups when no native process exists.
+    if (_engine != null) {
+      _rawStockfishStdin('stop');
+      _rawStockfishStdin('quit');
+    }
 
     if (_currentJob != null && !_currentJob!.completer.isCompleted) {
       _currentJob!.completer.complete(
