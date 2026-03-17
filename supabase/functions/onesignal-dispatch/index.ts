@@ -85,6 +85,39 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
 
 const jsonHeaders = { "Content-Type": "application/json" };
 const fidePhotoCache = new Map<number, string | null>();
+const mutedUsersCache = new Map<string, Set<string>>();
+
+async function getMutedUserIds(
+  groupBroadcastId: string | null,
+): Promise<Set<string>> {
+  if (!groupBroadcastId) return new Set();
+  if (mutedUsersCache.has(groupBroadcastId))
+    return mutedUsersCache.get(groupBroadcastId)!;
+  const { data } = await supabase
+    .from("user_muted_events")
+    .select("user_id")
+    .eq("group_broadcast_id", groupBroadcastId);
+  const set = new Set(
+    (data ?? []).map((r: { user_id: string }) => r.user_id),
+  );
+  mutedUsersCache.set(groupBroadcastId, set);
+  return set;
+}
+
+function removeMutedFromArray(
+  recipients: string[],
+  muted: Set<string>,
+): string[] {
+  if (muted.size === 0) return recipients;
+  return recipients.filter((uid) => !muted.has(uid));
+}
+
+function removeMutedFromSet(
+  recipients: Set<string>,
+  muted: Set<string>,
+): void {
+  for (const uid of muted) recipients.delete(uid);
+}
 const CLOUD_EVAL_MAX_REQUESTS = 5;
 const CHESS_API_MAX_REQUESTS = 10;
 const DEFAULT_DISPATCH_LIMIT = 50;
@@ -402,10 +435,13 @@ async function processItem(item: OutboxItem, cloudEvalState: CloudEvalState) {
       };
     }
     if (item.event_type === "round_started") {
-      const { playerRecipients, eventRecipients } = await filterRoundRecipients(
+      const roundMuted = await getMutedUserIds(context.groupBroadcastId);
+      const { playerRecipients: rawPlayerRecipients, eventRecipients: rawEventRecipients } = await filterRoundRecipients(
         context.eventUserIds,
         context.playerUserIds,
       );
+      const playerRecipients = removeMutedFromArray(rawPlayerRecipients, roundMuted);
+      const eventRecipients = removeMutedFromArray(rawEventRecipients, roundMuted);
 
       if (playerRecipients.length === 0 && eventRecipients.length === 0) {
         await markSkipped(item.id, "no_recipients");
@@ -485,11 +521,14 @@ async function processItem(item: OutboxItem, cloudEvalState: CloudEvalState) {
     }
 
     if (item.event_type === "round_heads_up") {
-      const { playerRecipients, eventRecipients } =
+      const headsUpMuted = await getMutedUserIds(context.groupBroadcastId);
+      const { playerRecipients: rawHuPlayerRecipients, eventRecipients: rawHuEventRecipients } =
         await filterHeadsUpRecipients(
           context.eventUserIds,
           context.playerUserIds,
         );
+      const playerRecipients = removeMutedFromArray(rawHuPlayerRecipients, headsUpMuted);
+      const eventRecipients = removeMutedFromArray(rawHuEventRecipients, headsUpMuted);
 
       if (playerRecipients.length === 0 && eventRecipients.length === 0) {
         await markSkipped(item.id, "no_recipients");
@@ -663,6 +702,8 @@ async function processItem(item: OutboxItem, cloudEvalState: CloudEvalState) {
         context.eventUserIds,
         context.playerUserIds,
       );
+      const gameMuted = await getMutedUserIds(context.groupBroadcastId);
+      removeMutedFromSet(filteredUserIds, gameMuted);
 
       if (filteredUserIds.size === 0) {
         await markSkipped(item.id, "no_recipients");
@@ -776,6 +817,8 @@ async function processItem(item: OutboxItem, cloudEvalState: CloudEvalState) {
       context.eventUserIds,
       context.playerUserIds,
     );
+    const fallbackMuted = await getMutedUserIds(context.groupBroadcastId);
+    removeMutedFromSet(filteredUserIds, fallbackMuted);
 
     if (filteredUserIds.size === 0) {
       await markSkipped(item.id, "no_recipients");
