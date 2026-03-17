@@ -9,11 +9,11 @@ import 'auth_state_provider.dart';
 /// Whether the current user has muted notifications for a given event
 /// (keyed by groupBroadcastId). Returns `true` if muted.
 final eventMuteProvider =
-    AsyncNotifierProvider.family<EventMuteNotifier, bool, String>(
+    AutoDisposeAsyncNotifierProvider.family<EventMuteNotifier, bool, String>(
   EventMuteNotifier.new,
 );
 
-class EventMuteNotifier extends FamilyAsyncNotifier<bool, String> {
+class EventMuteNotifier extends AutoDisposeFamilyAsyncNotifier<bool, String> {
   SupabaseClient get _supabase => Supabase.instance.client;
   bool _listening = false;
 
