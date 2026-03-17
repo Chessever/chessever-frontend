@@ -85,7 +85,9 @@ class GameRepository extends BaseRepository {
           .eq('round_id', roundId)
           .order('id', ascending: true);
 
-      return (response as List).map((json) => Games.fromJson(json)).toList();
+      final games =
+          (response as List).map((json) => Games.fromJson(json)).toList();
+      return _deduplicateGames(games);
     });
   }
 
@@ -232,7 +234,9 @@ class GameRepository extends BaseRepository {
       debugPrint(
         '===== GameRepository: Received ${(response as List).length} games =====',
       );
-      return (response as List).map((json) => Games.fromJson(json)).toList();
+      final games =
+          (response as List).map((json) => Games.fromJson(json)).toList();
+      return _deduplicateGames(games);
     });
   }
 
@@ -1348,8 +1352,15 @@ class GameRepository extends BaseRepository {
 }
 
 List<Games> _decodeGamesInIsolate(List<String> gameJsonList) {
-  return gameJsonList.map((e) {
+  final games = gameJsonList.map((e) {
     final decoded = json.decode(e) as Map<String, dynamic>;
     return Games.fromJson(decoded);
   }).toList();
+  return _deduplicateGames(games);
+}
+
+/// Removes duplicate games by ID, keeping the first occurrence.
+List<Games> _deduplicateGames(List<Games> games) {
+  final seen = <String>{};
+  return games.where((game) => seen.add(game.id)).toList();
 }

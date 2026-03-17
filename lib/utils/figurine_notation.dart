@@ -22,14 +22,17 @@ List<InlineSpan> buildFigurineSpans({
   required PieceAssets pieceAssets,
   required TextStyle style,
   required double pieceSize,
+  TextStyle? numberStyle,
 }) {
   final spans = <InlineSpan>[];
   final buffer = StringBuffer();
   var i = 0;
+  var pastMoveNumber = false;
 
   void flushBuffer() {
     if (buffer.isNotEmpty) {
-      spans.add(TextSpan(text: buffer.toString(), style: style));
+      final effectiveStyle = pastMoveNumber ? style : (numberStyle ?? style);
+      spans.add(TextSpan(text: buffer.toString(), style: effectiveStyle));
       buffer.clear();
     }
   }
@@ -38,16 +41,22 @@ List<InlineSpan> buildFigurineSpans({
     final char = text[i];
 
     // Track if we're past move number (e.g., "1. " or "12... ")
-    if (char.contains(RegExp(r'[0-9.]'))) {
+    if (!pastMoveNumber && char.contains(RegExp(r'[0-9.]'))) {
       buffer.write(char);
       i++;
       continue;
     }
 
-    if (char == ' ') {
+    if (!pastMoveNumber && char == ' ') {
       buffer.write(char);
       i++;
       continue;
+    }
+
+    // We've reached the actual move notation
+    if (!pastMoveNumber) {
+      flushBuffer();
+      pastMoveNumber = true;
     }
 
     // Check if this is a piece letter that should be converted

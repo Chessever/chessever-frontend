@@ -7128,17 +7128,9 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
 
     final analysisGame = widget.state.analysisState.game;
     if (analysisGame == null) {
-      return Container(
-        alignment: Alignment.center,
-        padding: EdgeInsets.all(20.sp),
-        child: Text(
-          'No moves available for this game',
-          style: AppTypography.textXsMedium.copyWith(
-            color: kWhiteColor70,
-            fontWeight: FontWeight.normal,
-          ),
-        ),
-      );
+      // Game is still being initialized by the analysis navigator.
+      // Show loading skeleton instead of "No moves" to avoid flicker.
+      return _buildMovesLoadingSkeleton();
     }
 
     final params = ChessBoardProviderParams(
@@ -7638,6 +7630,25 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       color: color,
       fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
     );
+    final numberStyle = AppTypography.textXsMedium.copyWith(
+      color: kWhiteColor,
+      fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
+    );
+
+    // Build move number prefix (e.g., "1. " or "12... ")
+    String moveNumberPrefix = '';
+    final node = token.node;
+    if (node != null && node.showMoveNumber) {
+      final bool isNullMove = node.move.san == '--';
+      final bool isFirstBlackInLine =
+          !node.isWhiteMove && node.showEllipsis;
+      if (isNullMove && !node.isWhiteMove) {
+        moveNumberPrefix = '${node.moveNumber}... ';
+      } else if (!isFirstBlackInLine) {
+        final separator = node.isWhiteMove ? '. ' : '... ';
+        moveNumberPrefix = '${node.moveNumber}$separator';
+      }
+    }
 
     // Build move text spans - either with figurine pieces or plain text
     final List<InlineSpan> moveSpans;
@@ -7647,9 +7658,17 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
         pieceAssets: pieceAssets,
         style: textStyle,
         pieceSize: 14.sp, // Slightly larger than text for clarity
+        numberStyle: numberStyle,
       );
     } else {
-      moveSpans = [TextSpan(text: token.text, style: textStyle)];
+      moveSpans = [
+        if (moveNumberPrefix.isNotEmpty)
+          TextSpan(text: moveNumberPrefix, style: numberStyle),
+        TextSpan(
+          text: node?.move.san ?? token.text,
+          style: textStyle,
+        ),
+      ];
     }
 
     // Determine annotation presentation: inline symbol or badge
