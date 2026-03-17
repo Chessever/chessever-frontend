@@ -1054,9 +1054,7 @@ class _CountrymenKeepAliveGameCardState
 
     // Watch live game updates for ongoing games
     // Use gameId as the stable key to prevent provider recreation
-    final liveGame = ref.watch(
-      liveGameCardProvider((gameId: widget.game.gameId, baseGame: widget.game)),
-    );
+    final liveGame = watchLiveGame(ref, widget.game);
     final gameId = liveGame.gameId;
 
     // Use ChessBoardFromFENNew directly with premium-guarded navigation
