@@ -7635,21 +7635,6 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
     );
 
-    // Build move number prefix (e.g., "1. " or "12... ")
-    String moveNumberPrefix = '';
-    final node = token.node;
-    if (node != null && node.showMoveNumber) {
-      final bool isNullMove = node.move.san == '--';
-      final bool isFirstBlackInLine =
-          !node.isWhiteMove && node.showEllipsis;
-      if (isNullMove && !node.isWhiteMove) {
-        moveNumberPrefix = '${node.moveNumber}... ';
-      } else if (!isFirstBlackInLine) {
-        final separator = node.isWhiteMove ? '. ' : '... ';
-        moveNumberPrefix = '${node.moveNumber}$separator';
-      }
-    }
-
     // Build move text spans - either with figurine pieces or plain text
     final List<InlineSpan> moveSpans;
     if (useFigurine && pieceAssets != null) {
@@ -7661,13 +7646,24 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
         numberStyle: numberStyle,
       );
     } else {
+      // Derive move-number prefix directly from the formatted move text to
+      // avoid duplicating move-number rules defined in the notation builder.
+      final String fullText = token.text;
+      String prefix = '';
+      String body = fullText;
+
+      // Match patterns like "1. e4", "12... Nf6", etc.
+      final prefixRegex = RegExp(r'^(\d+\.{1,3}\s+)(.*)$');
+      final match = prefixRegex.firstMatch(fullText);
+      if (match != null) {
+        prefix = match.group(1)!;
+        body = match.group(2)!;
+      }
+
       moveSpans = [
-        if (moveNumberPrefix.isNotEmpty)
-          TextSpan(text: moveNumberPrefix, style: numberStyle),
-        TextSpan(
-          text: node?.move.san ?? token.text,
-          style: textStyle,
-        ),
+        if (prefix.isNotEmpty)
+          TextSpan(text: prefix, style: numberStyle),
+        TextSpan(text: body, style: textStyle),
       ];
     }
 

@@ -908,7 +908,8 @@ class ChessBoardScreenNotifierNew
 
       // Use instance-level initial load flag instead of global lastSeenMoveCount
       final isFirstLoad = _isInitialLoad;
-      final wasViewingLastMove =
+      // Raw navigator state: was the UI actually on the last move index?
+      final baseWasViewingLastMove =
           currentState != null &&
           currentState.analysisState.allMoves.isNotEmpty &&
           currentState.analysisState.currentMoveIndex ==
@@ -919,7 +920,10 @@ class ChessBoardScreenNotifierNew
       // conditions where _syncAnalysisFromNavigator temporarily corrupts
       // analysisState.currentMoveIndex between updateWithLatestGame and goToTail.
       final isFollowing =
-          game.gameStatus.isOngoing ? _isFollowingLive : wasViewingLastMove;
+          game.gameStatus.isOngoing ? _isFollowingLive : baseWasViewingLastMove;
+      // Downstream bookkeeping (e.g. lastSeenMoveCount) historically keyed off
+      // "wasViewingLastMove". Use isFollowing so auto-follow advances the count.
+      final wasViewingLastMove = isFollowing;
       final shouldMarkAsUnseen =
           hasNewMoves && !shouldForceLatestPosition && !isFollowing;
 
