@@ -1,5 +1,7 @@
 import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'dart:async';
+
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 /// Stores the base game model for each game, keyed by gameId.
@@ -17,7 +19,7 @@ final baseGameProvider =
 /// cleans up the Supabase Realtime subscription for this game.
 final liveGameCardProvider =
     AutoDisposeProvider.family<GamesTourModel?, String>((ref, gameId) {
-  final baseGame = ref.read(baseGameProvider(gameId));
+  final baseGame = ref.watch(baseGameProvider(gameId));
   if (baseGame == null) return null;
 
   // For finished games, return the base game directly (no stream needed)
@@ -87,6 +89,8 @@ final liveGameCardProvider =
 /// Helper that sets the base game and watches the live provider in one call.
 /// Returns the live game data, falling back to the base game if not yet available.
 GamesTourModel watchLiveGame(WidgetRef ref, GamesTourModel game) {
-  ref.read(baseGameProvider(game.gameId).notifier).state = game;
+  Future.microtask(() {
+    ref.read(baseGameProvider(game.gameId).notifier).state = game;
+  });
   return ref.watch(liveGameCardProvider(game.gameId)) ?? game;
 }
