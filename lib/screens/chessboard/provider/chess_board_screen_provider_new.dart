@@ -1029,6 +1029,7 @@ class ChessBoardScreenNotifierNew
 
       if (_analysisGame == null) {
         await _initializeAnalysisBoard();
+        if (!mounted || thisGeneration != _parseGeneration) return;
       } else if (_analysisNavigator != null) {
         final liveAnalysisGame = _createChessGameFromPgn(resolvedPgn);
         _analysisNavigator!.updateWithLatestGame(liveAnalysisGame);
