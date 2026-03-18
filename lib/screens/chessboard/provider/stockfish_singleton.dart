@@ -884,45 +884,20 @@ class StockfishSingleton {
   }
 
   List<Pv> _normalizeToWhitePerspective(List<Pv> pvs, String fen) {
-    if (pvs.isEmpty) return pvs;
+  if (pvs.isEmpty) return pvs;
 
-    final fenParts = fen.split(' ');
-    final isBlackToMove = fenParts.length >= 2 && fenParts[1] == 'b';
-    if (!isBlackToMove) {
-      // White to move - no conversion needed
-      debugPrint(
-        '🔧 STOCKFISH NORMALIZE: White to move, NO conversion, cp=${pvs.first.cp}',
-      );
-      return pvs
-          .map(
-            (pv) => Pv(
-              moves: pv.moves,
-              cp: pv.cp,
-              isMate: pv.isMate,
-              mate: pv.mate,
-              whitePerspective: true,
-            ),
-          )
-          .toList(growable: false);
-    }
-
-    // Black to move - negate to convert to white's perspective
-    debugPrint(
-      '🔧 STOCKFISH NORMALIZE: Black to move, converting ${pvs.first.cp} -> ${-pvs.first.cp}',
-    );
-    return pvs
-        .map(
-          (pv) => Pv(
-            moves: pv.moves,
-            cp: -pv.cp,
-            isMate: pv.isMate,
-            mate: pv.mate != null ? -pv.mate! : null,
-            whitePerspective: true,
-          ),
-        )
-        .toList(growable: false);
-  }
-
+  return pvs
+      .map(
+        (pv) => Pv(
+          moves: pv.moves,
+          cp: pv.cp,
+          isMate: pv.isMate,
+          mate: pv.mate,
+          whitePerspective: false,
+        ),
+      )
+      .toList(growable: false);
+}
   Future<void> _waitUntilReady({
     Duration timeout = const Duration(
       seconds: 3,
