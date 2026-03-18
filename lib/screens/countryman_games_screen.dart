@@ -73,9 +73,7 @@ class CountrymanGamesList extends ConsumerWidget {
 
               // Update game with unified live stream to keep FEN/PGN/clocks in sync
               if (game.gameStatus == GameStatus.ongoing) {
-                game = ref.watch(
-                  liveGameCardProvider((gameId: game.gameId, baseGame: game)),
-                );
+                game = watchLiveGame(ref, game);
               }
 
               return gamesListViewMode == GamesListViewMode.chessBoard
