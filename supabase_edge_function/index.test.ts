@@ -473,21 +473,139 @@ Deno.test("Decision table — multiple users, mixed scenarios", () => {
 });
 
 // ---------------------------------------------------------------------------
-// 6. game_started skip test
+// 6. game_started notification tests
 // ---------------------------------------------------------------------------
 
-Deno.test("game_started events are skipped", () => {
-    // Simulate the early-return logic
-    const item = { event_type: "game_started", id: "test-123" };
-    if (item.event_type === "game_started") {
-        const result = {
-            id: item.id,
-            status: "skipped",
-            reason: "superseded_by_round_started",
-        };
-        assertEquals(result.status, "skipped");
-        assertEquals(result.reason, "superseded_by_round_started");
-    }
+function buildGameStartedNotification(
+    white: string,
+    black: string,
+    eventName: string | null,
+    roundName: string | null | undefined,
+): { title: string; body: string } {
+    const eventHeader = buildEventHeader(eventName, roundName);
+    return {
+        title: eventHeader ?? `${formatPlayerName(white)} vs ${formatPlayerName(black)}`,
+        body: eventHeader
+            ? `${formatPlayerName(white)} vs ${formatPlayerName(black)} is live.`
+            : "A favorite game just went live.",
+    };
+}
+
+Deno.test("game_started — with event context: title is event header, body names players", () => {
+    const { title, body } = buildGameStartedNotification(
+        "Nakamura, Hikaru",
+        "Liang, Awonder",
+        "Titled Tuesday",
+        "Round 5",
+    );
+    assertEquals(title, "Titled Tuesday — Round 5");
+    assertEquals(body, "Nakamura, Hikaru vs Liang, Awonder is live.");
+});
+
+Deno.test("game_started — event name only, no round: title is event name", () => {
+    const { title, body } = buildGameStartedNotification(
+        "Carlsen, Magnus",
+        "Nakamura, Hikaru",
+        "Speed Chess Championship",
+        null,
+    );
+    assertEquals(title, "Speed Chess Championship");
+    assertEquals(body, "Carlsen, Magnus vs Nakamura, Hikaru is live.");
+});
+
+Deno.test("game_started — no event context: title is player matchup, body is generic", () => {
+    const { title, body } = buildGameStartedNotification(
+        "Carlsen, Magnus",
+        "Nakamura, Hikaru",
+        null,
+        null,
+    );
+    assertEquals(title, "Carlsen, Magnus vs Nakamura, Hikaru");
+    assertEquals(body, "A favorite game just went live.");
+});
+
+Deno.test("game_started — player names in First Last format are converted", () => {
+    const { title, body } = buildGameStartedNotification(
+        "Magnus Carlsen",
+        "Hikaru Nakamura",
+        "World Chess",
+        "Round 1",
+    );
+    assertEquals(title, "World Chess — Round 1");
+    assertEquals(body, "Carlsen, Magnus vs Nakamura, Hikaru is live.");
+});
+
+Deno.test("game_started — only player-favorite users receive notification", () => {
+    const eventUsers = new Set(["user1", "user2"]);
+    const playerUsers = new Set(["user2"]);
+    const allUsers = new Set([...eventUsers, ...playerUsers]);
+    const prefs = new Map<string, Record<string, unknown>>();
+
+    const result = applyPreferencesSync(
+        "game_started",
+        allUsers,
+        eventUsers,
+        playerUsers,
+        prefs,
+    );
+
+    // user1 is event-only → should NOT get game_started
+    // user2 is player-favorited → should get game_started
+    assertEquals(result.has("user1"), false);
+    assertEquals(result.has("user2"), true);
+});
+
+Deno.test("game_started — player with favorite_player_alerts disabled gets nothing", () => {
+    const playerUsers = new Set(["user1"]);
+    const allUsers = new Set(["user1"]);
+    const prefs = new Map<string, Record<string, unknown>>([
+        ["user1", { user_id: "user1", favorite_player_alerts: false }],
+    ]);
+
+    const result = applyPreferencesSync(
+        "game_started",
+        allUsers,
+        new Set(),
+        playerUsers,
+        prefs,
+    );
+
+    assertEquals(result.size, 0);
+});
+
+Deno.test("game_started — push disabled user gets nothing", () => {
+    const playerUsers = new Set(["user1"]);
+    const allUsers = new Set(["user1"]);
+    const prefs = new Map<string, Record<string, unknown>>([
+        ["user1", { user_id: "user1", push_enabled: false }],
+    ]);
+
+    const result = applyPreferencesSync(
+        "game_started",
+        allUsers,
+        new Set(),
+        playerUsers,
+        prefs,
+    );
+
+    assertEquals(result.size, 0);
+});
+
+Deno.test("game_started — event-starred user without player favorite gets nothing", () => {
+    const eventUsers = new Set(["user1"]);
+    const playerUsers = new Set<string>();
+    const allUsers = new Set(["user1"]);
+    const prefs = new Map<string, Record<string, unknown>>();
+
+    const result = applyPreferencesSync(
+        "game_started",
+        allUsers,
+        eventUsers,
+        playerUsers,
+        prefs,
+    );
+
+    assertEquals(result.size, 0);
 });
 
 // ---------------------------------------------------------------------------

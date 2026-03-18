@@ -199,12 +199,6 @@ async function processItem(item: OutboxItem, cloudEvalState: CloudEvalState) {
     }
 
     try {
-        // game_started is superseded by round_started per-user notifications
-        if (item.event_type === "game_started") {
-            await markSkipped(item.id, "superseded_by_round_started");
-            return { id: item.id, status: "skipped", reason: "superseded_by_round_started" };
-        }
-
         const context = await buildContext(item);
         if (item.event_type === "live_game_update") {
             if (!item.game_id) {
