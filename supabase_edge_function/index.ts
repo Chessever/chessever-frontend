@@ -1589,7 +1589,7 @@ function buildNotification(
         return {
             title: eventHeader ?? `${white} vs ${black}`,
             body: eventHeader
-                ? `${white} vs ${black} is live.`
+                ? `${formatPlayerName(white)} vs ${formatPlayerName(black)} is live.`
                 : "A favorite game just went live.",
             url: null,
             data: { type: "game_started", game_id: item.game_id },
