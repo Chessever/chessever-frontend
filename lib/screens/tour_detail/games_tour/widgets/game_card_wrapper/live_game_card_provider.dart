@@ -1,20 +1,26 @@
 import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'dart:async';
+
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-/// Parameters for liveGameCardProvider.
-typedef LiveGameCardParams = ({String gameId, GamesTourModel baseGame});
+/// Stores the base game model for each game, keyed by gameId.
+/// Non-auto-dispose so it persists across provider rebuilds.
+final baseGameProvider =
+    StateProvider.family<GamesTourModel?, String>((ref, gameId) => null);
 
 /// Provider that combines the base game model with real-time updates from the stream.
 /// This is used by game cards to show live updates without entering the game screen.
 ///
+/// Keyed by gameId only (not baseGame) so that polling-triggered rebuilds of the
+/// parent widget don't recreate the provider and disrupt the Supabase stream.
+///
 /// Auto-disposes when the widget is scrolled out of view, which automatically
 /// cleans up the Supabase Realtime subscription for this game.
-final liveGameCardProvider = AutoDisposeProvider.family<
-  GamesTourModel,
-  LiveGameCardParams
->((ref, params) {
-  final (:gameId, :baseGame) = params;
+final liveGameCardProvider =
+    AutoDisposeProvider.family<GamesTourModel?, String>((ref, gameId) {
+  final baseGame = ref.watch(baseGameProvider(gameId));
+  if (baseGame == null) return null;
 
   // For finished games, return the base game directly (no stream needed)
   if (baseGame.gameStatus.isFinished) {
@@ -79,3 +85,12 @@ final liveGameCardProvider = AutoDisposeProvider.family<
     error: (_, __) => baseGame,
   );
 });
+
+/// Helper that sets the base game and watches the live provider in one call.
+/// Returns the live game data, falling back to the base game if not yet available.
+GamesTourModel watchLiveGame(WidgetRef ref, GamesTourModel game) {
+  Future.microtask(() {
+    ref.read(baseGameProvider(game.gameId).notifier).state = game;
+  });
+  return ref.watch(liveGameCardProvider(game.gameId)) ?? game;
+}
