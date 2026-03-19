@@ -23,7 +23,7 @@ const Color kRedColor = Color(0xFFF5453A); // RED
 
 // Move statistics bar segment colors (Lichess-style: white / grey / black)
 const Color kMoveStatWhiteColor = Color(0xFFF0F0F0); // White wins segment
-const Color kMoveStatDrawColor  = Color(0xFF40404E); // Draw segment (dark slate grey)
+const Color kMoveStatDrawColor = Color(0xFF40404E); // Draw segment (dark slate grey)
 const Color kMoveStatBlackColor = Color(0xFF0A0A0A); // Black wins segment (near-black)
 const Color kChessBlackMoveColor = Color(
   0xFFFF8A65,
