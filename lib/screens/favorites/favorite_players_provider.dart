@@ -102,17 +102,19 @@ class FavoritePlayersNotifier
   Future<bool> toggleFavorite(PlayerStandingModel player) async {
     final currentState = state.valueOrNull;
     if (currentState == null) {
-      if (player.fideId != null) {
-        return (await _favoritesService.getFavoritePlayers()).any(
-          (p) => p.fideId == player.fideId,
-        );
-      }
-      return false;
+      final favorites = await _favoritesService.getFavoritePlayers();
+      return favorites.any(
+        (p) =>
+            p.name == player.name ||
+            (player.fideId != null && p.fideId == player.fideId),
+      );
     }
 
-    final isFav = player.fideId != null
-        ? currentState.players.any((p) => p.fideId == player.fideId)
-        : currentState.players.any((p) => p.name == player.name);
+    final isFav = currentState.players.any(
+      (p) =>
+          p.name == player.name ||
+          (player.fideId != null && p.fideId == player.fideId),
+    );
 
     if (isFav) {
       await removeFavorite(player);

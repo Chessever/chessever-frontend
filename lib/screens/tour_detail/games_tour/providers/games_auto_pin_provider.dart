@@ -59,7 +59,7 @@ class _AutoPinLogController {
                           player.name == games.whitePlayer.name &&
                           (player.countryCode.isEmpty ||
                               CountryCodeMatcher.matches(
-                                games.whitePlayer.federation,
+                                games.whitePlayer.countryCode,
                                 player.countryCode,
                               )),
                     ) ||
@@ -68,7 +68,7 @@ class _AutoPinLogController {
                           player.name == games.blackPlayer.name &&
                           (player.countryCode.isEmpty ||
                               CountryCodeMatcher.matches(
-                                games.blackPlayer.federation,
+                                games.blackPlayer.countryCode,
                                 player.countryCode,
                               )),
                     );
