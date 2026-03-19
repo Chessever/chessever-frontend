@@ -1650,11 +1650,10 @@ function buildNotification(
 
     if (item.event_type === "game_started") {
         const eventHeader = buildEventHeader(context.eventName, context.round?.name);
+        const playerLine = `${formatPlayerName(white)} vs ${formatPlayerName(black)} is live.`;
         return {
-            title: eventHeader ?? `${white} vs ${black}`,
-            body: eventHeader
-                ? `${formatPlayerName(white)} vs ${formatPlayerName(black)} is live.`
-                : "A favorite game just went live.",
+            title: eventHeader ?? `${formatPlayerName(white)} vs ${formatPlayerName(black)}`,
+            body: playerLine,
             url: null,
             data: { type: "game_started", game_id: item.game_id },
             androidChannelId,
@@ -2402,7 +2401,7 @@ async function sendLiveActivityUpdate(
     return { ok: true, notFound: false };
 }
 
-async function sendLiveActivityEnd(activityId: string) {
+async function sendLiveActivityEnd(activityId: string): Promise<{ ok: boolean }> {
     const payload = {
         event: "end",
         name: `live_game_update:${activityId}`,
@@ -2420,10 +2419,7 @@ async function sendLiveActivityEnd(activityId: string) {
         },
     );
 
-    if (!res.ok) {
-        const text = await res.text();
-        throw new Error(`OneSignal Live Activity end error: ${res.status} ${text}`);
-    }
+    return { ok: res.ok };
 }
 
 async function sendAndroidLiveNotification(args: {
