@@ -972,27 +972,6 @@ class GamebasePositionGamesQuery {
   );
 }
 
-/// Fetches a game date for a position + specific move (pageSize=1).
-///
-/// Keyed on [GamebasePositionGamesQuery] — all fields including pageNumber/pageSize
-/// are part of the cache key, but the repository ignores pagination and always
-/// fetches 1 game. The API does not support ordering so the date is not
-/// guaranteed to be the most recent.
-final moveLastGameDateProvider = FutureProvider.autoDispose
-    .family<DateTime?, GamebasePositionGamesQuery>((ref, query) async {
-      final repository = ref.read(gamebaseRepositoryProvider);
-      return repository.getMostRecentGameDate(
-        fen: query.fen,
-        moves: query.moves,
-        uci: query.uci,
-        timeControl: query.timeControl,
-        playerId: query.playerId,
-        color: query.color,
-        result: query.result,
-        minRating: query.minRating,
-        maxRating: query.maxRating,
-      );
-    });
 
 final positionGamesProvider = FutureProvider.autoDispose
     .family<GamebaseSearchQueryResponse, GamebasePositionGamesQuery>((

@@ -3,7 +3,6 @@ import 'package:chessever2/utils/figurine_notation.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:intl/intl.dart';
 
 import '../../../theme/app_theme.dart';
 import '../../../utils/responsive_helper.dart';
@@ -280,28 +279,6 @@ class _MoveStatisticsRow extends ConsumerWidget {
                 );
               },
             ),
-            // Date — most recent game date for this move, shown for all moves
-            SizedBox(width: 4.sp),
-            _MoveDateDisplay(
-              query: GamebasePositionGamesQuery(
-                fen: currentFen,
-                moves: exploredMoves,
-                uci: aggregate.uci,
-                timeControl:
-                    filters.timeControls.isNotEmpty
-                        ? filters.timeControls.first
-                        : null,
-                playerId:
-                    filters.playerIds.isNotEmpty
-                        ? filters.playerIds.first
-                        : null,
-                color: filters.playerColor?.name,
-                result: filters.gameResult?.apiValue,
-                minRating: filters.minRating,
-                maxRating: filters.maxRating,
-                pageSize: 1,
-              ),
-            ),
           ],
         ),
       ),
@@ -309,27 +286,6 @@ class _MoveStatisticsRow extends ConsumerWidget {
   }
 }
 
-/// Displays a game date for a move row.
-///
-/// Watches [moveLastGameDateProvider] which fetches 1 game (pageSize=1).
-/// Note: the API does not support ordering, so the date shown is not
-/// guaranteed to be the absolute latest. Will be exact once the backend
-/// includes `lastGameDate` in the aggregates response.
-class _MoveDateDisplay extends ConsumerWidget {
-  const _MoveDateDisplay({required this.query});
-
-  final GamebasePositionGamesQuery query;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final date = ref.watch(moveLastGameDateProvider(query)).valueOrNull;
-    if (date == null) return const SizedBox.shrink();
-    return Text(
-      DateFormat('MM/yyyy').format(date),
-      style: TextStyle(color: kSecondaryTextColor, fontSize: 11.f),
-    );
-  }
-}
 
 /// Convert UCI move notation to SAN (Standard Algebraic Notation) for display.
 String uciToSan(String uci, String fen) {

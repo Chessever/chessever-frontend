@@ -37,13 +37,6 @@ class MoveAggregateMapper extends ClassMapperBase<MoveAggregate> {
     _$gameId,
     opt: true,
   );
-  static DateTime? _$lastGameDate(MoveAggregate v) => v.lastGameDate;
-  static const Field<MoveAggregate, DateTime> _f$lastGameDate = Field(
-    'lastGameDate',
-    _$lastGameDate,
-    opt: true,
-  );
-
   @override
   final MappableFields<MoveAggregate> fields = const {
     #uci: _f$uci,
@@ -52,7 +45,6 @@ class MoveAggregateMapper extends ClassMapperBase<MoveAggregate> {
     #draws: _f$draws,
     #total: _f$total,
     #gameId: _f$gameId,
-    #lastGameDate: _f$lastGameDate,
   };
 
   static MoveAggregate _instantiate(DecodingData data) {
@@ -63,7 +55,6 @@ class MoveAggregateMapper extends ClassMapperBase<MoveAggregate> {
       draws: data.dec(_f$draws),
       total: data.dec(_f$total),
       gameId: data.dec(_f$gameId),
-      lastGameDate: data.dec(_f$lastGameDate),
     );
   }
 
@@ -136,7 +127,6 @@ abstract class MoveAggregateCopyWith<$R, $In extends MoveAggregate, $Out>
     int? draws,
     int? total,
     String? gameId,
-    DateTime? lastGameDate,
   });
   MoveAggregateCopyWith<$R2, $In, $Out2> $chain<$R2, $Out2>(Then<$Out2, $R2> t);
 }
@@ -157,7 +147,6 @@ class _MoveAggregateCopyWithImpl<$R, $Out>
     int? draws,
     int? total,
     Object? gameId = $none,
-    Object? lastGameDate = $none,
   }) => $apply(
     FieldCopyWithData({
       if (uci != null) #uci: uci,
@@ -166,7 +155,6 @@ class _MoveAggregateCopyWithImpl<$R, $Out>
       if (draws != null) #draws: draws,
       if (total != null) #total: total,
       if (gameId != $none) #gameId: gameId,
-      if (lastGameDate != $none) #lastGameDate: lastGameDate,
     }),
   );
   @override
@@ -177,7 +165,6 @@ class _MoveAggregateCopyWithImpl<$R, $Out>
     draws: data.get(#draws, or: $value.draws),
     total: data.get(#total, or: $value.total),
     gameId: data.get(#gameId, or: $value.gameId),
-    lastGameDate: data.get(#lastGameDate, or: $value.lastGameDate),
   );
 
   @override
