@@ -100,35 +100,35 @@ class FavoritePlayersNotifier
   }
 
   Future<bool> toggleFavorite(PlayerStandingModel player) async {
-    if (player.fideId != null) {
-      final currentState = state.valueOrNull;
-      if (currentState == null) {
-        return (await _favoritesService.getFavoritePlayers()).any(
-          (p) => p.fideId == player.fideId,
-        );
-      }
-
-      final isFav = currentState.players.any((p) => p.fideId == player.fideId);
-
-      if (isFav) {
-        await removeFavorite(player);
-        // Increment favorites version to trigger immediate games re-sort
-        ref.read(favoritesVersionProvider.notifier).state++;
-        debugPrint(
-          '[FavoritePlayers] Incremented favorites version after removing favorite',
-        );
-        return false;
-      } else {
-        await addFavorite(player);
-        // Increment favorites version to trigger immediate games re-sort
-        ref.read(favoritesVersionProvider.notifier).state++;
-        debugPrint(
-          '[FavoritePlayers] Incremented favorites version after adding favorite',
-        );
-        return true;
-      }
+    final currentState = state.valueOrNull;
+    if (currentState == null) {
+      final favorites = await _favoritesService.getFavoritePlayers();
+      return favorites.any(
+        (p) =>
+            p.name == player.name ||
+            (player.fideId != null && p.fideId == player.fideId),
+      );
     }
-    return false;
+
+    final isFav = currentState.players.any(
+      (p) =>
+          p.name == player.name ||
+          (player.fideId != null && p.fideId == player.fideId),
+    );
+
+    if (isFav) {
+      await removeFavorite(player);
+    } else {
+      await addFavorite(player);
+    }
+
+    // Always increment favorites version to trigger immediate games re-sort,
+    // regardless of whether the player has a fideId.
+    ref.read(favoritesVersionProvider.notifier).state++;
+    debugPrint(
+      '[FavoritePlayers] Incremented favorites version after ${isFav ? 'removing' : 'adding'} favorite',
+    );
+    return !isFav;
   }
 
   Future<void> addFavorite(PlayerStandingModel player) async {

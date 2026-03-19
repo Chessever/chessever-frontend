@@ -563,6 +563,87 @@ class GamebaseRepository {
     return Map<String, dynamic>.from(response.data);
   }
 
+  /// Fetches the date of a game for a given position + move.
+  ///
+  /// Fetches a single game (pageSize=1). Note: the position-games endpoint does
+  /// not support `orderBy`, so the returned date is not guaranteed to be the
+  /// most recent. Replace with `lastGameDate` from the aggregates API once available.
+  Future<DateTime?> getMostRecentGameDate({
+    required String fen,
+    List<String> moves = const [],
+    String? uci,
+    TimeControl? timeControl,
+    String? playerId,
+    String? color,
+    String? result,
+    int? minRating,
+    int? maxRating,
+  }) async {
+    try {
+      final normalizedFen = _normalizeFenForLookup(fen);
+      final normalizedMoves = moves
+          .map((m) => m.trim().toLowerCase())
+          .where((m) => RegExp(r'^[a-h][1-8][a-h][1-8][qrbn]?$').hasMatch(m))
+          .toList(growable: false);
+
+      final response =
+          normalizedMoves.isNotEmpty
+              ? await _dio.post(
+                '$_baseUrl/api/game-position/games/query',
+                data: {
+                  'fen': normalizedFen,
+                  'moves': normalizedMoves,
+                  'pageNumber': 0,
+                  'pageSize': 1,
+                  if (uci != null && uci.trim().isNotEmpty) 'uci': uci.trim(),
+                  if (playerId != null && playerId.trim().isNotEmpty)
+                    'playerId': playerId.trim(),
+                  if (timeControl != null)
+                    'timeControl': timeControl.name.toUpperCase(),
+                  if (minRating != null) 'minRating': minRating,
+                  if (maxRating != null) 'maxRating': maxRating,
+                  if (color != null) 'color': color,
+                  if (result != null) 'result': result,
+                },
+                options: Options(
+                  headers: {'X-API-Key': _apiKey, 'Accept': 'application/json'},
+                ),
+              )
+              : await _dio.get(
+                '$_baseUrl/api/game-position/games',
+                queryParameters: {
+                  'fen': normalizedFen,
+                  'pageNumber': 0,
+                  'pageSize': 1,
+                  if (uci != null && uci.trim().isNotEmpty) 'uci': uci.trim(),
+                  if (playerId != null && playerId.trim().isNotEmpty)
+                    'playerId': playerId.trim(),
+                  if (timeControl != null)
+                    'timeControl': timeControl.name.toUpperCase(),
+                  if (minRating != null) 'minRating': minRating,
+                  if (maxRating != null) 'maxRating': maxRating,
+                  if (color != null) 'color': color,
+                  if (result != null) 'result': result,
+                },
+                options: Options(
+                  headers: {'X-API-Key': _apiKey, 'Accept': 'application/json'},
+                ),
+              );
+
+      final data = response.data;
+      if (data is! Map) return null;
+      final parsed = GamebaseSearchQueryResponse.fromJson(
+        Map<String, dynamic>.from(data),
+      );
+      if (parsed.data.isEmpty) return null;
+
+      final dateStr = parsed.data.first['date']?.toString();
+      return dateStr != null ? DateTime.tryParse(dateStr) : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// List example games for a given position (and optionally a specific move from that position).
   ///
   /// Pagination is 0-indexed per the API spec for this endpoint.
