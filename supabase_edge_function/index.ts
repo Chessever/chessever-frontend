@@ -431,10 +431,14 @@ async function processItem(item: OutboxItem, cloudEvalState: CloudEvalState) {
             // Batch users with identical messages into a single sendOneSignal() call.
             if (dedupedPlayerRecipients.length > 0) {
                 const messageBatches = new Map<string, string[]>();
+                const unresolved: string[] = []; // favorites not resolved → event fallback
 
                 for (const userId of dedupedPlayerRecipients) {
                     const favNames = context.playerFavoriteMap.get(userId) ?? [];
-                    if (favNames.length === 0) continue;
+                    if (favNames.length === 0) {
+                        unresolved.push(userId);
+                        continue;
+                    }
 
                     // Sort favorites by rating DESC
                     const sorted = [...favNames].sort((a, b) => {
@@ -468,6 +472,20 @@ async function processItem(item: OutboxItem, cloudEvalState: CloudEvalState) {
                     await sendOneSignal(userIds, {
                         title,
                         body,
+                        url: null,
+                        data: { type: "round_started", round_id: roundId, group_broadcast_id: context.groupBroadcastId ?? null },
+                        androidChannelId: channelForEvent("round_started"),
+                    });
+                }
+
+                // Fallback for player-favorite users whose specific favorites
+                // couldn't be resolved to a name — send the event-level template.
+                if (unresolved.length > 0) {
+                    const template = pickTemplate(ROUND_STARTED_EVENT, roundId);
+                    const filled = fillTemplate(template, { e: eventName, r: roundName });
+                    await sendOneSignal(unresolved, {
+                        title: filled.title,
+                        body: filled.body,
                         url: null,
                         data: { type: "round_started", round_id: roundId, group_broadcast_id: context.groupBroadcastId ?? null },
                         androidChannelId: channelForEvent("round_started"),
@@ -696,12 +714,27 @@ async function processItem(item: OutboxItem, cloudEvalState: CloudEvalState) {
             return { id: item.id, status: "skipped", reason: "no_recipients" };
         }
 
+        // For game_started: exclude users with 2+ favorites playing in the round.
+        // Per spec (Scenarios B/C), those users must receive ONE combined notification
+        // from round_started — not individual per-game pushes.
+        // Only single-favorite users (Scenario A) are handled here.
+        if (item.event_type === "game_started" && item.round_id) {
+            for (const uid of Array.from(filteredUserIds)) {
+                const favCount = (context.playerFavoriteMap.get(uid) ?? []).length;
+                if (favCount !== 1) filteredUserIds.delete(uid);
+            }
+        }
+
+        if (filteredUserIds.size === 0) {
+            await markSent(item.id);
+            return { id: item.id, status: "sent", recipients: 0 };
+        }
+
         const notification = buildNotification(context, item);
         await sendOneSignal(Array.from(filteredUserIds), notification);
 
         // Record a cooldown window so that round_started skips these users.
-        // Prevents duplicate "is live" pushes when both game_started and
-        // round_started are queued for the same round.
+        // Only record for the users who actually received this push (1-favorite users).
         if (item.event_type === "game_started" && item.round_id) {
             const playerRecipients = Array.from(filteredUserIds).filter(
                 (uid) => context.playerUserIds.has(uid),
@@ -817,7 +850,8 @@ async function buildContext(item: OutboxItem) {
 
     if (
         (item.event_type === "round_started" ||
-            item.event_type === "round_heads_up") &&
+            item.event_type === "round_heads_up" ||
+            item.event_type === "game_started") &&
         item.round_id
     ) {
         const roundPlayers = await fetchRoundPlayers(item.round_id);
@@ -837,11 +871,12 @@ async function buildContext(item: OutboxItem) {
         players: Array.from(playerNames),
     });
 
-    // Resolve per-user player favorites for round notifications
+    // Resolve per-user player favorites for round/game notifications
     let playerFavoriteMap = new Map<string, string[]>();
     if (
         (item.event_type === "round_started" ||
-            item.event_type === "round_heads_up") &&
+            item.event_type === "round_heads_up" ||
+            item.event_type === "game_started") &&
         item.round_id
     ) {
         playerFavoriteMap = await resolvePlayerFavoriteMap(
