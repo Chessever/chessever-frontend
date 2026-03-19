@@ -57,12 +57,20 @@ class _AutoPinLogController {
                 return players.any(
                       (player) =>
                           player.name == games.whitePlayer.name &&
-                          games.whitePlayer.federation == player.countryCode,
+                          (player.countryCode.isEmpty ||
+                              CountryCodeMatcher.matches(
+                                games.whitePlayer.countryCode,
+                                player.countryCode,
+                              )),
                     ) ||
                     players.any(
                       (player) =>
                           player.name == games.blackPlayer.name &&
-                          games.blackPlayer.federation == player.countryCode,
+                          (player.countryCode.isEmpty ||
+                              CountryCodeMatcher.matches(
+                                games.blackPlayer.countryCode,
+                                player.countryCode,
+                              )),
                     );
               })
               .map((e) => e.gameId);

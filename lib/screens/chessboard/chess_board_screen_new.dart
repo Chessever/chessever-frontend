@@ -7128,17 +7128,9 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
 
     final analysisGame = widget.state.analysisState.game;
     if (analysisGame == null) {
-      return Container(
-        alignment: Alignment.center,
-        padding: EdgeInsets.all(20.sp),
-        child: Text(
-          'No moves available for this game',
-          style: AppTypography.textXsMedium.copyWith(
-            color: kWhiteColor70,
-            fontWeight: FontWeight.normal,
-          ),
-        ),
-      );
+      // Game is still being initialized by the analysis navigator.
+      // Show loading skeleton instead of "No moves" to avoid flicker.
+      return _buildMovesLoadingSkeleton();
     }
 
     final params = ChessBoardProviderParams(
@@ -7638,6 +7630,10 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       color: color,
       fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
     );
+    final numberStyle = AppTypography.textXsMedium.copyWith(
+      color: kWhiteColor,
+      fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
+    );
 
     // Build move text spans - either with figurine pieces or plain text
     final List<InlineSpan> moveSpans;
@@ -7647,9 +7643,28 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
         pieceAssets: pieceAssets,
         style: textStyle,
         pieceSize: 14.sp, // Slightly larger than text for clarity
+        numberStyle: numberStyle,
       );
     } else {
-      moveSpans = [TextSpan(text: token.text, style: textStyle)];
+      // Derive move-number prefix directly from the formatted move text to
+      // avoid duplicating move-number rules defined in the notation builder.
+      final String fullText = token.text;
+      String prefix = '';
+      String body = fullText;
+
+      // Match patterns like "1. e4", "12... Nf6", etc.
+      final prefixRegex = RegExp(r'^(\d+\.{1,3}\s+)(.*)$');
+      final match = prefixRegex.firstMatch(fullText);
+      if (match != null) {
+        prefix = match.group(1)!;
+        body = match.group(2)!;
+      }
+
+      moveSpans = [
+        if (prefix.isNotEmpty)
+          TextSpan(text: prefix, style: numberStyle),
+        TextSpan(text: body, style: textStyle),
+      ];
     }
 
     // Determine annotation presentation: inline symbol or badge
