@@ -1524,7 +1524,7 @@ async function resolvePlayerFavoriteMap(
     // Get all games in this round to know which players are participating
     const { data: games } = await supabase
         .from("games")
-        .select("player_white,player_black,player_fide_ids")
+        .select("player_white,player_black,players")
         .eq("round_id", roundId);
 
     if (!games || games.length === 0) return result;
@@ -1540,19 +1540,16 @@ async function resolvePlayerFavoriteMap(
         if (g.player_black) {
             roundPlayerNames.add(g.player_black);
         }
-        if (g.player_fide_ids) {
-            // Map each FIDE ID explicitly to white or black by position,
-            // rather than iterating blindly — avoids wrong attribution when
-            // only one player has a FIDE ID (e.g. only the black player).
-            if (g.player_fide_ids[0] != null && g.player_white) {
-                const fid = g.player_fide_ids[0].toString();
+        // Use players JSONB array for deterministic fideId→name mapping.
+        // player_fide_ids uses array_agg(DISTINCT) which has non-deterministic
+        // order, so positional indexing ([0]=white, [1]=black) is unreliable.
+        for (const p of g.players ?? []) {
+            const fideId = (p as Record<string, unknown>)["fideId"];
+            const name = (p as Record<string, unknown>)["name"];
+            if (fideId != null && name) {
+                const fid = String(fideId);
                 roundFideIds.add(fid);
-                fideIdToName.set(fid, g.player_white);
-            }
-            if (g.player_fide_ids[1] != null && g.player_black) {
-                const fid = g.player_fide_ids[1].toString();
-                roundFideIds.add(fid);
-                fideIdToName.set(fid, g.player_black);
+                fideIdToName.set(fid, name as string);
             }
         }
     }
@@ -1569,7 +1566,7 @@ async function resolvePlayerFavoriteMap(
 
         for (const row of faveByFide ?? []) {
             const userId = row.user_id as string;
-            const fideId = (row.fide_id as number).toString();
+            const fideId = String(row.fide_id);
             const name = fideIdToName.get(fideId);
             if (name) {
                 if (!result.has(userId)) result.set(userId, []);
