@@ -417,12 +417,22 @@ async function processItem(item: OutboxItem, cloudEvalState: CloudEvalState) {
             const roundName = context.round?.name ?? "";
             const title = buildEventHeader(eventName, roundName) ?? eventName;
 
+            // Exclude player-favorite users who already received a game_started
+            // push for this round (recorded by the game_started handler).
+            const suppressedByWindow = await fetchUsersWithActiveGameStartWindow(
+                roundId,
+                playerRecipients,
+            );
+            const dedupedPlayerRecipients = playerRecipients.filter(
+                (uid) => !suppressedByWindow.has(uid),
+            );
+
             // Per-user personalized notifications for player-favorite users.
             // Batch users with identical messages into a single sendOneSignal() call.
-            if (playerRecipients.length > 0) {
+            if (dedupedPlayerRecipients.length > 0) {
                 const messageBatches = new Map<string, string[]>();
 
-                for (const userId of playerRecipients) {
+                for (const userId of dedupedPlayerRecipients) {
                     const favNames = context.playerFavoriteMap.get(userId) ?? [];
                     if (favNames.length === 0) continue;
 
@@ -482,7 +492,7 @@ async function processItem(item: OutboxItem, cloudEvalState: CloudEvalState) {
             return {
                 id: item.id,
                 status: "sent",
-                recipients: playerRecipients.length + eventRecipients.length,
+                recipients: dedupedPlayerRecipients.length + eventRecipients.length,
             };
         }
 
@@ -688,6 +698,23 @@ async function processItem(item: OutboxItem, cloudEvalState: CloudEvalState) {
 
         const notification = buildNotification(context, item);
         await sendOneSignal(Array.from(filteredUserIds), notification);
+
+        // Record a cooldown window so that round_started skips these users.
+        // Prevents duplicate "is live" pushes when both game_started and
+        // round_started are queued for the same round.
+        if (item.event_type === "game_started" && item.round_id) {
+            const playerRecipients = Array.from(filteredUserIds).filter(
+                (uid) => context.playerUserIds.has(uid),
+            );
+            if (playerRecipients.length > 0) {
+                await supabase.rpc("record_game_start_window", {
+                    p_user_ids: playerRecipients,
+                    p_round_id: item.round_id,
+                    p_cooldown_seconds: 30,
+                });
+            }
+        }
+
         await markSent(item.id);
 
         return {
@@ -899,6 +926,18 @@ async function resolveRecipients(args: {
             .eq("event_id", args.groupBroadcastId);
         for (const row of data ?? []) {
             eventUserIds.add(row.user_id as string);
+        }
+
+        // Remove users who have muted this event
+        if (eventUserIds.size > 0) {
+            const { data: mutedData } = await supabase
+                .from("user_muted_events")
+                .select("user_id")
+                .eq("group_broadcast_id", args.groupBroadcastId)
+                .in("user_id", Array.from(eventUserIds));
+            for (const row of mutedData ?? []) {
+                eventUserIds.delete(row.user_id as string);
+            }
         }
     }
 
@@ -1124,6 +1163,25 @@ async function fetchLiveAlertedUsers(gameId: string): Promise<Set<string>> {
     return userIds;
 }
 
+async function fetchUsersWithActiveGameStartWindow(
+    roundId: string,
+    userIds: string[],
+): Promise<Set<string>> {
+    if (userIds.length === 0) return new Set();
+    const { data } = await supabase
+        .from("notification_user_windows")
+        .select("user_id")
+        .eq("round_id", roundId)
+        .eq("family", "game_start")
+        .gt("expires_at", new Date().toISOString())
+        .in("user_id", userIds);
+    const suppressed = new Set<string>();
+    for (const row of data ?? []) {
+        suppressed.add(row.user_id as string);
+    }
+    return suppressed;
+}
+
 async function disableLiveSubscriptions(args: {
     gameId: string;
     userIds: string[];
@@ -1229,7 +1287,7 @@ async function filterHeadsUpRecipients(
     for (const userId of ids) {
         const prefs = prefsMap.get(userId);
         if (prefs && prefs.push_enabled === false) continue;
-        if (prefs && prefs.heads_up_alerts === false) continue;
+        if (!prefs || prefs.heads_up_alerts !== true) continue;
 
         const isPlayerFav = playerUserIds.has(userId);
         const isEventFav = eventUserIds.has(userId);
@@ -1448,12 +1506,18 @@ async function resolvePlayerFavoriteMap(
             roundPlayerNames.add(g.player_black);
         }
         if (g.player_fide_ids) {
-            for (let i = 0; i < g.player_fide_ids.length; i++) {
-                const fid = g.player_fide_ids[i].toString();
+            // Map each FIDE ID explicitly to white or black by position,
+            // rather than iterating blindly — avoids wrong attribution when
+            // only one player has a FIDE ID (e.g. only the black player).
+            if (g.player_fide_ids[0] != null && g.player_white) {
+                const fid = g.player_fide_ids[0].toString();
                 roundFideIds.add(fid);
-                // Map fide_id to player name for display
-                const name = i === 0 ? g.player_white : g.player_black;
-                if (name) fideIdToName.set(fid, name);
+                fideIdToName.set(fid, g.player_white);
+            }
+            if (g.player_fide_ids[1] != null && g.player_black) {
+                const fid = g.player_fide_ids[1].toString();
+                roundFideIds.add(fid);
+                fideIdToName.set(fid, g.player_black);
             }
         }
     }
