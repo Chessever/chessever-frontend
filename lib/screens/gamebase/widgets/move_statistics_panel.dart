@@ -309,10 +309,12 @@ class _MoveStatisticsRow extends ConsumerWidget {
   }
 }
 
-/// Displays the most recent game date for a move row.
+/// Displays a game date for a move row.
 ///
-/// Watches [moveLastGameDateProvider] which fetches 1 game sorted by date desc,
-/// so it always shows the latest game date regardless of how many games exist.
+/// Watches [moveLastGameDateProvider] which fetches 1 game (pageSize=1).
+/// Note: the API does not support ordering, so the date shown is not
+/// guaranteed to be the absolute latest. Will be exact once the backend
+/// includes `lastGameDate` in the aggregates response.
 class _MoveDateDisplay extends ConsumerWidget {
   const _MoveDateDisplay({required this.query});
 
@@ -400,7 +402,7 @@ class _StatisticsBar extends StatelessWidget {
             // White wins
             if (whiteRate > 0)
               Expanded(
-                flex: (whiteRate * 100).round(),
+                flex: (whiteRate * 100).round().clamp(1, 100),
                 child: Container(
                   color: kMoveStatWhiteColor,
                   alignment: Alignment.center,
@@ -420,7 +422,7 @@ class _StatisticsBar extends StatelessWidget {
             // Draws
             if (drawRate > 0)
               Expanded(
-                flex: (drawRate * 100).round(),
+                flex: (drawRate * 100).round().clamp(1, 100),
                 child: Container(
                   color: kMoveStatDrawColor,
                   alignment: Alignment.center,
@@ -440,7 +442,7 @@ class _StatisticsBar extends StatelessWidget {
             // Black wins
             if (blackRate > 0)
               Expanded(
-                flex: (blackRate * 100).round(),
+                flex: (blackRate * 100).round().clamp(1, 100),
                 child: Container(
                   color: kMoveStatBlackColor,
                   alignment: Alignment.center,
