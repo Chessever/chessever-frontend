@@ -972,6 +972,26 @@ class GamebasePositionGamesQuery {
   );
 }
 
+/// Fetches the date of the most recently played game for a position + specific move.
+///
+/// Keyed on [GamebasePositionGamesQuery] (pageNumber/pageSize fields are ignored;
+/// the repository always uses pageSize=1 with date-desc ordering).
+final moveLastGameDateProvider = FutureProvider.autoDispose
+    .family<DateTime?, GamebasePositionGamesQuery>((ref, query) async {
+      final repository = ref.read(gamebaseRepositoryProvider);
+      return repository.getMostRecentGameDate(
+        fen: query.fen,
+        moves: query.moves,
+        uci: query.uci,
+        timeControl: query.timeControl,
+        playerId: query.playerId,
+        color: query.color,
+        result: query.result,
+        minRating: query.minRating,
+        maxRating: query.maxRating,
+      );
+    });
+
 final positionGamesProvider = FutureProvider.autoDispose
     .family<GamebaseSearchQueryResponse, GamebasePositionGamesQuery>((
       ref,
