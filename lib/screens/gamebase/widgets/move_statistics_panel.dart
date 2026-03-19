@@ -3,6 +3,7 @@ import 'package:chessever2/utils/figurine_notation.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:intl/intl.dart';
 
 import '../../../theme/app_theme.dart';
 import '../../../utils/responsive_helper.dart';
@@ -97,22 +98,12 @@ class MoveStatisticsPanel extends ConsumerWidget {
                 },
                 child: Padding(
                   padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 4.h),
-                  child: Row(
-                    children: [
-                      Text(
-                        '${_formatNumber(state.totalGames)} games',
-                        style: TextStyle(
-                          color: kSecondaryTextColor,
-                          fontSize: 12.f,
-                        ),
-                      ),
-                      SizedBox(width: 6.sp),
-                      Icon(
-                        Icons.list_alt_rounded,
-                        color: kSecondaryTextColor,
-                        size: 16.ic,
-                      ),
-                    ],
+                  child: Text(
+                    '${_formatNumber(state.totalGames)} games',
+                    style: TextStyle(
+                      color: kSecondaryTextColor,
+                      fontSize: 12.f,
+                    ),
                   ),
                 ),
               ),
@@ -289,9 +280,51 @@ class _MoveStatisticsRow extends ConsumerWidget {
                 );
               },
             ),
+            // Date — most recent game date for this move, shown for all moves
+            SizedBox(width: 4.sp),
+            _MoveDateDisplay(
+              query: GamebasePositionGamesQuery(
+                fen: currentFen,
+                moves: exploredMoves,
+                uci: aggregate.uci,
+                timeControl:
+                    filters.timeControls.isNotEmpty
+                        ? filters.timeControls.first
+                        : null,
+                playerId:
+                    filters.playerIds.isNotEmpty
+                        ? filters.playerIds.first
+                        : null,
+                color: filters.playerColor?.name,
+                result: filters.gameResult?.apiValue,
+                minRating: filters.minRating,
+                maxRating: filters.maxRating,
+                pageSize: 1,
+              ),
+            ),
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Displays the most recent game date for a move row.
+///
+/// Watches [moveLastGameDateProvider] which fetches 1 game sorted by date desc,
+/// so it always shows the latest game date regardless of how many games exist.
+class _MoveDateDisplay extends ConsumerWidget {
+  const _MoveDateDisplay({required this.query});
+
+  final GamebasePositionGamesQuery query;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final date = ref.watch(moveLastGameDateProvider(query)).valueOrNull;
+    if (date == null) return const SizedBox.shrink();
+    return Text(
+      DateFormat('MM/yyyy').format(date),
+      style: TextStyle(color: kSecondaryTextColor, fontSize: 11.f),
     );
   }
 }
@@ -359,24 +392,24 @@ class _StatisticsBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ClipRRect(
-      borderRadius: BorderRadius.circular(2.br),
+      borderRadius: BorderRadius.circular(16.br),
       child: SizedBox(
         height: 16.h,
         child: Row(
           children: [
-            // White wins (green)
+            // White wins
             if (whiteRate > 0)
               Expanded(
                 flex: (whiteRate * 100).round(),
                 child: Container(
-                  color: kGreenColor,
+                  color: kMoveStatWhiteColor,
                   alignment: Alignment.center,
                   child:
-                      whiteRate >= 0.15
+                      whiteRate >= 0.08
                           ? Text(
                             '${(whiteRate * 100).toStringAsFixed(0)}%',
                             style: TextStyle(
-                              color: kWhiteColor,
+                              color: kMoveStatBlackColor,
                               fontSize: 10.f,
                               fontWeight: FontWeight.w600,
                             ),
@@ -384,19 +417,19 @@ class _StatisticsBar extends StatelessWidget {
                           : null,
                 ),
               ),
-            // Draws (grey)
+            // Draws
             if (drawRate > 0)
               Expanded(
                 flex: (drawRate * 100).round(),
                 child: Container(
-                  color: kSecondaryTextColor,
+                  color: kMoveStatDrawColor,
                   alignment: Alignment.center,
                   child:
-                      drawRate >= 0.15
+                      drawRate >= 0.08
                           ? Text(
                             '${(drawRate * 100).toStringAsFixed(0)}%',
                             style: TextStyle(
-                              color: kWhiteColor,
+                              color: kMoveStatWhiteColor,
                               fontSize: 10.f,
                               fontWeight: FontWeight.w600,
                             ),
@@ -404,19 +437,19 @@ class _StatisticsBar extends StatelessWidget {
                           : null,
                 ),
               ),
-            // Black wins (red)
+            // Black wins
             if (blackRate > 0)
               Expanded(
                 flex: (blackRate * 100).round(),
                 child: Container(
-                  color: kRedColor,
+                  color: kMoveStatBlackColor,
                   alignment: Alignment.center,
                   child:
-                      blackRate >= 0.15
+                      blackRate >= 0.08
                           ? Text(
                             '${(blackRate * 100).toStringAsFixed(0)}%',
                             style: TextStyle(
-                              color: kWhiteColor,
+                              color: kMoveStatWhiteColor,
                               fontSize: 10.f,
                               fontWeight: FontWeight.w600,
                             ),

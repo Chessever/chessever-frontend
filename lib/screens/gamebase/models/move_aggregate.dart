@@ -13,6 +13,7 @@ class MoveAggregate with MoveAggregateMappable {
     required this.draws,
     required this.total,
     this.gameId,
+    this.lastGameDate,
   });
 
   /// Move in UCI notation (e.g., "e2e4")
@@ -32,6 +33,9 @@ class MoveAggregate with MoveAggregateMappable {
 
   /// Game ID (only present when total = 1)
   final String? gameId;
+
+  /// Date of the most recent game played with this move (nullable)
+  final DateTime? lastGameDate;
 
   factory MoveAggregate.fromJson(Map<String, dynamic> json) =>
       MoveAggregateMapper.fromMap(json);
