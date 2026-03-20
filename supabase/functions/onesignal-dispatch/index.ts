@@ -36,6 +36,22 @@ type RoundGameRow = {
   player_white: string | null;
   player_black: string | null;
   player_fide_ids: number[] | null;
+  players: Record<string, unknown>[] | null;
+  board_nr: number | null;
+};
+
+type RoundPairing = {
+  white: string;
+  black: string;
+  avgRating: number;
+  boardNr: number | null;
+};
+
+type RoundResult = {
+  white: string;
+  black: string;
+  status: string;
+  boardNr: number | null;
 };
 
 type RoundRow = {
@@ -85,12 +101,15 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
 
 const jsonHeaders = { "Content-Type": "application/json" };
 const fidePhotoCache = new Map<number, string | null>();
+// Per-request cache for muted users — scoped to avoid stale data across
+// separate requests while still deduplicating within a single dispatch batch.
 const mutedUsersCache = new Map<string, Set<string>>();
 
 async function getMutedUserIds(
   groupBroadcastId: string | null,
 ): Promise<Set<string>> {
   if (!groupBroadcastId) return new Set();
+  // Within a single request the muted set is stable — safe to cache.
   if (mutedUsersCache.has(groupBroadcastId))
     return mutedUsersCache.get(groupBroadcastId)!;
   const { data } = await supabase
@@ -461,52 +480,111 @@ async function processItem(item: OutboxItem, cloudEvalState: CloudEvalState) {
         ? playerRecipients.filter((uid) => !cooledDownUsers.has(uid))
         : playerRecipients;
 
-      // Send one notification per favorited player so users receive all
-      // of their matching favorites for this round.
+      // Per-user combined messages (Scenarios A/B/C):
+      // A (1 fav in round): "Carlsen is live — Event — Round"
+      // B (2 favs): "Carlsen & Caruana are live."
+      // C (3+ favs): "Carlsen, Caruana & 1 more are live."
       if (filteredPlayerRecipients.length > 0) {
-        const { byPlayer, ungrouped } = buildPlayerRecipientBatches(
-          filteredPlayerRecipients,
-          context.playerFavoriteMap,
-        );
+        const msgGroups = new Map<
+          string,
+          { recipients: string[]; title: string; body: string }
+        >();
+        const ungrouped: string[] = [];
 
-        for (const [playerName, recipients] of byPlayer) {
-          const template = pickTemplate(ROUND_STARTED_PLAYER, roundId);
-          const { title, body } = fillTemplate(template, {
-            p: playerName,
-            e: eventName,
-            r: roundName,
-          });
+        for (const uid of filteredPlayerRecipients) {
+          const favs = context.playerFavoriteMap.get(uid) ?? [];
+          if (favs.length === 0) {
+            ungrouped.push(uid);
+            continue;
+          }
+
+          let title: string;
+          let body: string;
+
+          if (favs.length === 1) {
+            // Scenario A: single-fav template
+            const template = pickTemplate(ROUND_STARTED_PLAYER, roundId);
+            const msg = fillTemplate(template, {
+              p: extractLastName(favs[0]),
+              e: eventName,
+              r: roundName,
+            });
+            title = msg.title;
+            body = msg.body;
+          } else if (favs.length === 2) {
+            // Scenario B: two favs combined
+            title = buildEventHeader(eventName, roundName) ?? eventName;
+            body = `${extractLastName(favs[0])} & ${extractLastName(favs[1])} are live.`;
+          } else {
+            // Scenario C: 3+ favs — show first two + "N more"
+            title = buildEventHeader(eventName, roundName) ?? eventName;
+            const [a, b] = favs.slice(0, 2).map(extractLastName);
+            const rest = favs.length - 2;
+            body = `${a}, ${b} & ${rest} more are live.`;
+          }
+
+          const key = `${title}|${body}`;
+          if (!msgGroups.has(key)) {
+            msgGroups.set(key, { recipients: [], title, body });
+          }
+          msgGroups.get(key)!.recipients.push(uid);
+        }
+
+        const roundStartedData = {
+          type: "round_started",
+          round_id: roundId,
+          tour_id: context.tourId ?? null,
+          group_broadcast_id: context.groupBroadcastId ?? null,
+        };
+
+        for (const { recipients, title, body } of msgGroups.values()) {
           await sendOneSignal(recipients, {
             title,
             body,
             url: null,
-            data: { type: "round_started", round_id: roundId, group_broadcast_id: context.groupBroadcastId ?? null },
+            data: roundStartedData,
             androidChannelId: channelForEvent("round_started"),
           });
         }
 
-        // Fallback for users without a resolved favorite match in this round.
+        // Fallback for users with no resolved favorite in this round.
         if (ungrouped.length > 0) {
           const template = pickTemplate(ROUND_STARTED_EVENT, roundId);
-          const { title, body } = fillTemplate(template, { e: eventName, r: roundName });
+          const { title, body } = fillTemplate(template, {
+            e: eventName,
+            r: roundName,
+          });
           await sendOneSignal(ungrouped, {
             title,
             body,
             url: null,
-            data: { type: "round_started", round_id: roundId, group_broadcast_id: context.groupBroadcastId ?? null },
+            data: roundStartedData,
             androidChannelId: channelForEvent("round_started"),
           });
         }
+
+        // Record bidirectional cooldown so game_started won't double-fire.
+        if (roundId) {
+          await recordGameStartWindow(filteredPlayerRecipients, roundId);
+        }
       }
 
+      // Event-starred recipients (Type 3): pairings digest
       if (eventRecipients.length > 0) {
-        const template = pickTemplate(ROUND_STARTED_EVENT, roundId);
-        const { title, body } = fillTemplate(template, { e: eventName, r: roundName });
+        const title = buildEventHeader(eventName, roundName) ?? eventName;
+        const pairingsBody = context.roundPairings.length > 0
+          ? buildPairingsBody(context.roundPairings)
+          : "Games are live";
         await sendOneSignal(eventRecipients, {
           title,
-          body,
+          body: pairingsBody,
           url: null,
-          data: { type: "round_started", round_id: roundId, group_broadcast_id: context.groupBroadcastId ?? null },
+          data: {
+            type: "round_started",
+            round_id: roundId,
+            tour_id: context.tourId ?? null,
+            group_broadcast_id: context.groupBroadcastId ?? null,
+          },
           androidChannelId: channelForEvent("round_started"),
         });
       }
@@ -541,32 +619,62 @@ async function processItem(item: OutboxItem, cloudEvalState: CloudEvalState) {
       const leadMinutes = (item.payload?.lead_minutes as number) ?? 30;
       const timeStr = `~${leadMinutes} min`;
 
-      // Send one notification per favorited player so users receive all
-      // of their matching favorites for this round.
-      if (playerRecipients.length > 0) {
-        const { byPlayer, ungrouped } = buildPlayerRecipientBatches(
-          playerRecipients,
-          context.playerFavoriteMap,
-        );
+      const headsUpData = {
+        type: "round_heads_up",
+        round_id: roundId,
+        tour_id: context.tourId ?? null,
+        group_broadcast_id: context.groupBroadcastId ?? null,
+      };
 
-        for (const [playerName, recipients] of byPlayer) {
-          const template = pickTemplate(ROUND_HEADS_UP_PLAYER, roundId);
-          const { title, body } = fillTemplate(template, {
-            p: playerName,
-            e: eventName,
-            r: roundName,
-            t: timeStr,
-          });
+      // Per-user combined messages — same Scenario A/B/C approach as round_started.
+      if (playerRecipients.length > 0) {
+        const msgGroups = new Map<
+          string,
+          { recipients: string[]; title: string; body: string }
+        >();
+        const ungrouped: string[] = [];
+
+        for (const uid of playerRecipients) {
+          const favs = context.playerFavoriteMap.get(uid) ?? [];
+          if (favs.length === 0) { ungrouped.push(uid); continue; }
+
+          let title: string;
+          let body: string;
+
+          if (favs.length === 1) {
+            const template = pickTemplate(ROUND_HEADS_UP_PLAYER, roundId);
+            const msg = fillTemplate(template, {
+              p: extractLastName(favs[0]),
+              e: eventName,
+              r: roundName,
+              t: timeStr,
+            });
+            title = msg.title;
+            body = msg.body;
+          } else if (favs.length === 2) {
+            title = buildEventHeader(eventName, roundName) ?? eventName;
+            body = `${extractLastName(favs[0])} & ${extractLastName(favs[1])} in ${timeStr}.`;
+          } else {
+            title = buildEventHeader(eventName, roundName) ?? eventName;
+            const [a, b] = favs.slice(0, 2).map(extractLastName);
+            body = `${a}, ${b} & ${favs.length - 2} more in ${timeStr}.`;
+          }
+
+          const key = `${title}|${body}`;
+          if (!msgGroups.has(key)) msgGroups.set(key, { recipients: [], title, body });
+          msgGroups.get(key)!.recipients.push(uid);
+        }
+
+        for (const { recipients, title, body } of msgGroups.values()) {
           await sendOneSignal(recipients, {
             title,
             body,
             url: null,
-            data: { type: "round_heads_up", round_id: roundId, group_broadcast_id: context.groupBroadcastId ?? null },
+            data: headsUpData,
             androidChannelId: channelForEvent("round_heads_up"),
           });
         }
 
-        // Fallback for users without a resolved favorite match in this round.
         if (ungrouped.length > 0) {
           const template = pickTemplate(ROUND_HEADS_UP_EVENT, roundId);
           const { title, body } = fillTemplate(template, {
@@ -578,7 +686,7 @@ async function processItem(item: OutboxItem, cloudEvalState: CloudEvalState) {
             title,
             body,
             url: null,
-            data: { type: "round_heads_up", round_id: roundId, group_broadcast_id: context.groupBroadcastId ?? null },
+            data: headsUpData,
             androidChannelId: channelForEvent("round_heads_up"),
           });
         }
@@ -595,7 +703,7 @@ async function processItem(item: OutboxItem, cloudEvalState: CloudEvalState) {
           title,
           body,
           url: null,
-          data: { type: "round_heads_up", round_id: roundId, group_broadcast_id: context.groupBroadcastId ?? null },
+          data: headsUpData,
           androidChannelId: channelForEvent("round_heads_up"),
         });
       }
@@ -606,6 +714,55 @@ async function processItem(item: OutboxItem, cloudEvalState: CloudEvalState) {
         status: "sent",
         recipients: playerRecipients.length + eventRecipients.length,
       };
+    }
+
+    // --- round_finished: results digest for event-starred users only ---
+    if (item.event_type === "round_finished") {
+      const roundMuted = await getMutedUserIds(context.groupBroadcastId);
+      const { eventRecipients: rawEventRecipients } = await filterRoundRecipients(
+        context.eventUserIds,
+        context.playerUserIds,
+      );
+      const eventRecipients = removeMutedFromArray(rawEventRecipients, roundMuted);
+
+      if (eventRecipients.length === 0) {
+        await markSkipped(item.id, "no_recipients");
+        return { id: item.id, status: "skipped", reason: "no_recipients" };
+      }
+
+      const roundId = item.round_id ?? context.round?.id ?? "";
+      const eventName = context.eventName ?? "Live chess";
+      const roundName = context.round?.name ?? "";
+      const title = buildEventHeader(eventName, roundName) ?? eventName;
+
+      // Results are embedded in the payload by the DB trigger.
+      const rawResults =
+        (item.payload?.results as Array<Record<string, unknown>>) ?? [];
+      const results: RoundResult[] = rawResults.map((r) => ({
+        white: (r.white as string) ?? "White",
+        black: (r.black as string) ?? "Black",
+        status: (r.status as string) ?? "*",
+        boardNr: (r.board_nr as number | null) ?? null,
+      }));
+      const body = results.length > 0
+        ? buildResultsBody(results)
+        : "Round results are in.";
+
+      await sendOneSignal(eventRecipients, {
+        title,
+        body,
+        url: null,
+        data: {
+          type: "round_finished",
+          round_id: roundId,
+          tour_id: context.tourId ?? null,
+          group_broadcast_id: context.groupBroadcastId ?? null,
+        },
+        androidChannelId: channelForEvent("round_finished"),
+      });
+
+      await markSent(item.id);
+      return { id: item.id, status: "sent", recipients: eventRecipients.length };
     }
 
     if (item.event_type === "book_game_added") {
@@ -690,8 +847,8 @@ async function processItem(item: OutboxItem, cloudEvalState: CloudEvalState) {
       return { id: item.id, status: "sent", recipients: eligible.length };
     }
 
-    // --- game_started / game_finished: personalized per favorite player ---
-    if (item.event_type === "game_started" || item.event_type === "game_finished") {
+    // --- game_started: Scenario A only (users with exactly 1 fav in round) ---
+    if (item.event_type === "game_started") {
       const allUserIds = new Set([
         ...context.eventUserIds,
         ...context.playerUserIds,
@@ -719,14 +876,35 @@ async function processItem(item: OutboxItem, cloudEvalState: CloudEvalState) {
       const androidChannelId = channelForEvent(item.event_type);
       const gameId = item.game_id;
 
-      const { byPlayer, ungrouped } = buildPlayerRecipientBatches(
-        Array.from(filteredUserIds),
-        context.playerFavoriteMap,
-      );
+      // Scenario A/B/C routing:
+      // Only send game_started to users with exactly 1 favourite in the round.
+      // Users with 2+ favourites will receive a combined round_started instead.
+      const scenarioAUsers = Array.from(filteredUserIds).filter((uid) => {
+        if (!item.round_id) return true; // No round context: always send
+        const favs = context.playerFavoriteMap.get(uid) ?? [];
+        return favs.length === 1;
+      });
 
-      if (item.event_type === "game_started") {
-        // Per-favorite-player personalized notifications
-        for (const [playerName, recipients] of byPlayer) {
+      // Bidirectional cooldown: skip users who already received round_started.
+      const cooledDown = item.round_id
+        ? await fetchCooledDownUsers(scenarioAUsers, item.round_id)
+        : new Set<string>();
+      const toNotify = scenarioAUsers.filter((uid) => !cooledDown.has(uid));
+
+      if (toNotify.length > 0) {
+        // Group users by their single favourite name for batching.
+        const byFav = new Map<string, string[]>();
+        const ungrouped: string[] = [];
+
+        for (const uid of toNotify) {
+          const favs = context.playerFavoriteMap.get(uid) ?? [];
+          const favName = favs[0] ?? null;
+          if (!favName) { ungrouped.push(uid); continue; }
+          if (!byFav.has(favName)) byFav.set(favName, []);
+          byFav.get(favName)!.push(uid);
+        }
+
+        for (const [playerName, recipients] of byFav) {
           const shortName = extractLastName(playerName);
           const template = pickTemplate(GAME_STARTED_PLAYER, gameId ?? "");
           const { title, body } = fillTemplate(template, {
@@ -743,7 +921,7 @@ async function processItem(item: OutboxItem, cloudEvalState: CloudEvalState) {
           });
         }
 
-        // Users whose specific favorite couldn't be resolved — generic copy
+        // Users whose specific favourite couldn't be resolved — generic copy.
         if (ungrouped.length > 0) {
           await sendOneSignal(ungrouped, {
             title: eventHeader ?? `${white} vs ${black}`,
@@ -756,47 +934,65 @@ async function processItem(item: OutboxItem, cloudEvalState: CloudEvalState) {
           });
         }
 
-        // Record cooldown window for start-family precedence
+        // Record bidirectional cooldown window so round_started won't double-fire.
         if (item.round_id) {
-          await recordGameStartWindow(
-            Array.from(filteredUserIds),
-            item.round_id,
-          );
-        }
-      } else {
-        // game_finished
-        const status = (payload.status as string) ?? context.game?.status ?? "";
-        const resultStr = status || "Game over";
-
-        for (const [playerName, recipients] of byPlayer) {
-          const shortName = extractLastName(playerName);
-          const template = pickTemplate(GAME_FINISHED_PLAYER, gameId ?? "");
-          const { title, body } = fillTemplate(template, {
-            p: shortName,
-            e: eventHeader ?? `${white} vs ${black}`,
-            r: context.round?.name ?? "",
-          });
-          await sendOneSignal(recipients, {
-            title,
-            body: `${body} ${resultStr}${boardTag}`,
-            url: null,
-            data: { type: "game_finished", game_id: gameId, board_nr: boardNr },
-            androidChannelId,
-          });
-        }
-
-        if (ungrouped.length > 0) {
-          await sendOneSignal(ungrouped, {
-            title: eventHeader ?? `${white} vs ${black}`,
-            body: eventHeader
-              ? `${white} vs ${black}${boardTag}: ${resultStr}`
-              : `Result: ${resultStr}${boardTag}`,
-            url: null,
-            data: { type: "game_finished", game_id: gameId, board_nr: boardNr },
-            androidChannelId,
-          });
+          await recordGameStartWindow(toNotify, item.round_id);
         }
       }
+
+      await markSent(item.id);
+      return {
+        id: item.id,
+        status: "sent",
+        recipients: toNotify.length,
+        suppressed_by_cooldown: cooledDown.size,
+        skipped_multi_fav: filteredUserIds.size - scenarioAUsers.length,
+      };
+    }
+
+    // --- game_finished: single "White vs Black: result" for all player-fav recipients ---
+    if (item.event_type === "game_finished") {
+      const allUserIds = new Set([
+        ...context.eventUserIds,
+        ...context.playerUserIds,
+      ]);
+      const filteredUserIds = await applyPreferences(
+        item.event_type,
+        allUserIds,
+        context.eventUserIds,
+        context.playerUserIds,
+      );
+      const gameMuted = await getMutedUserIds(context.groupBroadcastId);
+      removeMutedFromSet(filteredUserIds, gameMuted);
+
+      if (filteredUserIds.size === 0) {
+        await markSkipped(item.id, "no_recipients");
+        return { id: item.id, status: "skipped", reason: "no_recipients" };
+      }
+
+      const payload = item.payload ?? {};
+      const white = (payload.player_white as string) ?? context.game?.player_white ?? "White";
+      const black = (payload.player_black as string) ?? context.game?.player_black ?? "Black";
+      const boardNr = (payload.board_nr as number | null) ?? context.game?.board_nr ?? null;
+      const boardTag = boardNr ? ` (Board ${boardNr})` : "";
+      const eventHeader = buildEventHeader(context.eventName, context.round?.name);
+      const androidChannelId = channelForEvent(item.event_type);
+      const gameId = item.game_id;
+
+      const status = (payload.status as string) ?? context.game?.status ?? "";
+      const resultStr = formatResultSymbol(status) || "Game over";
+      const whiteLast = extractLastName(white);
+      const blackLast = extractLastName(black);
+      const title = eventHeader ?? `${whiteLast} vs ${blackLast}`;
+      const body = `${whiteLast} vs ${blackLast}: ${resultStr}${boardTag}`;
+
+      await sendOneSignal(Array.from(filteredUserIds), {
+        title,
+        body,
+        url: null,
+        data: { type: "game_finished", game_id: gameId, board_nr: boardNr },
+        androidChannelId,
+      });
 
       await markSent(item.id);
       return {
@@ -887,7 +1083,7 @@ async function buildContext(item: OutboxItem) {
     round = (data ?? null) as RoundRow | null;
   }
 
-  const tourId = item.tour_id ?? game?.tour_id ?? round?.tour_id ?? null;
+  const tourId: string | null = item.tour_id ?? game?.tour_id ?? round?.tour_id ?? null;
   if (!groupBroadcastId && tourId) {
     const { data } = await supabase
       .from("tours")
@@ -924,9 +1120,12 @@ async function buildContext(item: OutboxItem) {
     fideIdSet.add(id.toString());
   }
 
+  let roundPairings: RoundPairing[] = [];
   if (
     (item.event_type === "round_started" ||
-      item.event_type === "round_heads_up") &&
+      item.event_type === "round_heads_up" ||
+      item.event_type === "game_started" ||
+      item.event_type === "round_finished") &&
     item.round_id
   ) {
     const roundPlayers = await fetchRoundPlayers(item.round_id);
@@ -936,6 +1135,7 @@ async function buildContext(item: OutboxItem) {
     for (const id of roundPlayers.fideIds) {
       fideIdSet.add(id);
     }
+    roundPairings = roundPlayers.pairings;
   }
 
   const { eventUserIds, playerUserIds } = await resolveRecipients({
@@ -957,17 +1157,25 @@ async function buildContext(item: OutboxItem) {
     );
   }
 
-  // Resolve per-user player favorites for game-level notifications
+  // Resolve per-user player favorites for game-level notifications.
+  // Use round-level map when round_id is available (needed for Scenario A/B/C routing).
   if (
     (item.event_type === "game_started" ||
       item.event_type === "game_finished") &&
     playerUserIds.size > 0
   ) {
-    playerFavoriteMap = await resolveGamePlayerFavoriteMap(
-      game,
-      item.payload,
-      playerUserIds,
-    );
+    if (item.round_id) {
+      playerFavoriteMap = await resolvePlayerFavoriteMap(
+        item.round_id,
+        playerUserIds,
+      );
+    } else {
+      playerFavoriteMap = await resolveGamePlayerFavoriteMap(
+        game,
+        item.payload,
+        playerUserIds,
+      );
+    }
   }
 
   return {
@@ -975,16 +1183,18 @@ async function buildContext(item: OutboxItem) {
     round,
     eventName,
     groupBroadcastId,
+    tourId,
     eventUserIds,
     playerUserIds,
     playerFavoriteMap,
+    roundPairings,
   };
 }
 
 async function fetchRoundPlayers(roundId: string) {
   const { data, error } = await supabase
     .from("games")
-    .select("player_white,player_black,player_fide_ids")
+    .select("player_white,player_black,player_fide_ids,players,board_nr")
     .eq("round_id", roundId);
 
   if (error) {
@@ -993,6 +1203,7 @@ async function fetchRoundPlayers(roundId: string) {
 
   const playerNames = new Set<string>();
   const fideIds = new Set<string>();
+  const pairings: RoundPairing[] = [];
 
   for (const row of (data ?? []) as RoundGameRow[]) {
     if (row.player_white) playerNames.add(row.player_white);
@@ -1000,11 +1211,34 @@ async function fetchRoundPlayers(roundId: string) {
     for (const id of row.player_fide_ids ?? []) {
       fideIds.add(id.toString());
     }
+
+    if (row.player_white && row.player_black) {
+      // Extract average rating from players JSONB
+      let ratingSum = 0;
+      let ratingCount = 0;
+      for (const p of row.players ?? []) {
+        const r = (p as Record<string, unknown>)["rating"];
+        if (typeof r === "number" && r > 0) {
+          ratingSum += r;
+          ratingCount++;
+        }
+      }
+      const avgRating = ratingCount > 0
+        ? Math.round(ratingSum / ratingCount)
+        : 0;
+      pairings.push({
+        white: row.player_white,
+        black: row.player_black,
+        avgRating,
+        boardNr: row.board_nr ?? null,
+      });
+    }
   }
 
   return {
     playerNames: Array.from(playerNames),
     fideIds: Array.from(fideIds),
+    pairings,
   };
 }
 
@@ -1108,9 +1342,8 @@ async function applyPreferences(
     }
 
     if (eventType === "live_game_update") {
-      if (prefs && prefs.live_game_updates === false) {
-        continue;
-      }
+      // live_game_updates is opt-in (app default = false).
+      if (!prefs || prefs.live_game_updates !== true) continue;
       if (isEventFav || isPlayerFav) {
         filtered.add(userId);
       }
@@ -1161,8 +1394,10 @@ async function filterRoundRecipients(
 
     const isPlayerFav = playerUserIds.has(userId);
     const isEventFav = eventUserIds.has(userId);
+    // favorite_player_alerts is opt-out (app default = true): allow if no prefs row.
     const playerAllowed = !prefs || prefs.favorite_player_alerts !== false;
-    const eventAllowed = !prefs || prefs.favorite_event_alerts !== false;
+    // favorite_event_alerts is opt-in (app default = false): require explicit opt-in.
+    const eventAllowed = prefs?.favorite_event_alerts === true;
 
     if (isPlayerFav && playerAllowed) {
       playerRecipients.add(userId);
@@ -1219,7 +1454,9 @@ async function filterLiveUpdateEnabled(userIds: string[]) {
   for (const id of userIds) {
     const prefs = prefsMap.get(id);
     if (prefs && prefs.push_enabled === false) continue;
-    if (prefs && prefs.live_game_updates === false) continue;
+    // live_game_updates is opt-in (app default = false).
+    // No prefs row → treat as disabled.
+    if (!prefs || prefs.live_game_updates !== true) continue;
     filtered.add(id);
   }
   return filtered;
@@ -1348,12 +1585,14 @@ async function filterHeadsUpRecipients(
   for (const userId of ids) {
     const prefs = prefsMap.get(userId);
     if (prefs && prefs.push_enabled === false) continue;
-    if (prefs && prefs.heads_up_alerts === false) continue;
+    if (!prefs || prefs.heads_up_alerts !== true) continue;
 
     const isPlayerFav = playerUserIds.has(userId);
     const isEventFav = eventUserIds.has(userId);
+    // favorite_player_alerts is opt-out (app default = true): allow if no prefs row.
     const playerAllowed = !prefs || prefs.favorite_player_alerts !== false;
-    const eventAllowed = !prefs || prefs.favorite_event_alerts !== false;
+    // favorite_event_alerts is opt-in (app default = false): require explicit opt-in.
+    const eventAllowed = prefs?.favorite_event_alerts === true;
 
     if (isPlayerFav && playerAllowed) {
       playerRecipients.add(userId);
@@ -1562,6 +1801,60 @@ function extractLastName(name: string): string {
   return parts[parts.length - 1];
 }
 
+function formatResultSymbol(status: string): string {
+  const s = status.trim();
+  if (s === "1-0") return "1-0";
+  if (s === "0-1") return "0-1";
+  if (s === "1/2-1/2" || s === "½-½") return "½-½";
+  if (s === "W") return "1-0";
+  if (s === "B") return "0-1";
+  if (s === "D" || s.toUpperCase() === "DRAW") return "½-½";
+  return s || "*";
+}
+
+function buildPairingsBody(pairings: RoundPairing[]): string {
+  // Sort by board number ascending, fallback by avgRating descending.
+  const sorted = [...pairings].sort((a, b) => {
+    if (a.boardNr !== null && b.boardNr !== null) return a.boardNr - b.boardNr;
+    if (a.boardNr !== null) return -1;
+    if (b.boardNr !== null) return 1;
+    return b.avgRating - a.avgRating;
+  });
+
+  const MAX_SHOWN = 3;
+  const shown = sorted.slice(0, MAX_SHOWN);
+  const rest = sorted.length - MAX_SHOWN;
+
+  const parts = shown.map(
+    (p) => `${extractLastName(p.white)}–${extractLastName(p.black)}`,
+  );
+  let body = parts.join(" · ");
+  if (rest > 0) body += ` +${rest} more`;
+  return body;
+}
+
+function buildResultsBody(results: RoundResult[]): string {
+  // Sort by board number ascending.
+  const sorted = [...results].sort((a, b) => {
+    if (a.boardNr !== null && b.boardNr !== null) return a.boardNr - b.boardNr;
+    if (a.boardNr !== null) return -1;
+    if (b.boardNr !== null) return 1;
+    return 0;
+  });
+
+  const MAX_SHOWN = 3;
+  const shown = sorted.slice(0, MAX_SHOWN);
+  const rest = sorted.length - MAX_SHOWN;
+
+  const parts = shown.map(
+    (r) =>
+      `${extractLastName(r.white)} ${formatResultSymbol(r.status)} ${extractLastName(r.black)}`,
+  );
+  let body = parts.join(" · ");
+  if (rest > 0) body += ` +${rest}`;
+  return body;
+}
+
 async function resolvePlayerFavoriteMap(
   roundId: string,
   playerUserIds: Set<string>,
@@ -1667,11 +1960,24 @@ async function resolveGamePlayerFavoriteMap(
   if (white) gamePlayerNames.add(white);
   if (black) gamePlayerNames.add(black);
 
-  for (let i = 0; i < fideIds.length; i++) {
-    const fid = fideIds[i].toString();
-    gameFideIds.add(fid);
-    const name = i === 0 ? white : black;
-    if (name) fideIdToName.set(fid, name);
+  // Use players JSONB for deterministic fideId→name mapping.
+  // player_fide_ids uses array_agg(DISTINCT) with no ORDER BY, so positional
+  // indexing ([0]=white, [1]=black) is non-deterministic.
+  const playersData: Record<string, unknown>[] = game?.players ??
+    (payload?.players as Record<string, unknown>[] | null) ?? [];
+  for (const p of playersData) {
+    const fideId = (p as Record<string, unknown>)["fideId"];
+    const name = (p as Record<string, unknown>)["name"];
+    if (fideId != null && name) {
+      const fid = String(fideId);
+      gameFideIds.add(fid);
+      fideIdToName.set(fid, name as string);
+    }
+  }
+  // Fallback: include raw fide IDs not covered by players JSONB
+  for (const id of fideIds) {
+    const fid = id.toString();
+    if (!gameFideIds.has(fid)) gameFideIds.add(fid);
   }
 
   const userIds = Array.from(playerUserIds);
@@ -1770,6 +2076,7 @@ function channelForEvent(eventType: string) {
     case "live_game_update":
       return ANDROID_CHANNELS.live;
     case "round_started":
+    case "round_finished":
     case "game_started":
     case "game_finished":
       return ANDROID_CHANNELS.favorites;
@@ -2557,7 +2864,9 @@ async function sendLiveActivityUpdate(
   return { ok: true, notFound: false };
 }
 
-async function sendLiveActivityEnd(activityId: string) {
+async function sendLiveActivityEnd(
+  activityId: string,
+): Promise<{ ok: boolean; notFound: boolean }> {
   const payload = {
     event: "end",
     name: `live_game_update:${activityId}`,
@@ -2577,8 +2886,13 @@ async function sendLiveActivityEnd(activityId: string) {
 
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(`OneSignal Live Activity end error: ${res.status} ${text}`);
+    const lower = text.toLowerCase();
+    const notFound = res.status === 404 || res.status === 410 ||
+      lower.includes("not found");
+    return { ok: false, notFound };
   }
+
+  return { ok: true, notFound: false };
 }
 
 async function sendAndroidLiveNotification(args: {
@@ -2749,7 +3063,7 @@ async function recordGameStartWindow(
   await supabase.rpc("record_game_start_window", {
     p_user_ids: userIds,
     p_round_id: roundId,
-    p_cooldown_seconds: 20,
+    p_cooldown_seconds: 900,
   });
 }
 
