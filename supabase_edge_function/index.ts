@@ -493,6 +493,20 @@ async function processItem(item: OutboxItem, cloudEvalState: CloudEvalState) {
                 }
             }
 
+            // Record game_start windows for every player recipient who just
+            // received this round_started notification.  This prevents
+            // game_started (which fires later, when the first move is played)
+            // from sending a duplicate push to the same users.
+            // TTL = 15 min — comfortably covers the gap between round start
+            // and first moves in any standard tournament format.
+            if (dedupedPlayerRecipients.length > 0) {
+                await supabase.rpc("record_game_start_window", {
+                    p_user_ids: dedupedPlayerRecipients,
+                    p_round_id: roundId,
+                    p_cooldown_seconds: 900,
+                });
+            }
+
             // Event-only recipients (starred event, no favorites playing)
             if (eventRecipients.length > 0) {
                 const template = pickTemplate(ROUND_STARTED_EVENT, roundId);
@@ -723,6 +737,20 @@ async function processItem(item: OutboxItem, cloudEvalState: CloudEvalState) {
                 const favCount = (context.playerFavoriteMap.get(uid) ?? []).length;
                 if (favCount !== 1) filteredUserIds.delete(uid);
             }
+
+            // Also skip users who already received a round_started notification
+            // for this round (window recorded by the round_started handler when
+            // cron fires before the first move arrives).  This prevents the
+            // second push when the game_started trigger fires later.
+            if (filteredUserIds.size > 0) {
+                const alreadyCovered = await fetchUsersWithActiveGameStartWindow(
+                    item.round_id,
+                    Array.from(filteredUserIds),
+                );
+                for (const uid of alreadyCovered) {
+                    filteredUserIds.delete(uid);
+                }
+            }
         }
 
         if (filteredUserIds.size === 0) {
@@ -743,7 +771,7 @@ async function processItem(item: OutboxItem, cloudEvalState: CloudEvalState) {
                 await supabase.rpc("record_game_start_window", {
                     p_user_ids: playerRecipients,
                     p_round_id: item.round_id,
-                    p_cooldown_seconds: 30,
+                    p_cooldown_seconds: 900, // 15 min covers delay until round_started cron runs
                 });
             }
         }
@@ -962,18 +990,6 @@ async function resolveRecipients(args: {
         for (const row of data ?? []) {
             eventUserIds.add(row.user_id as string);
         }
-
-        // Remove users who have muted this event
-        if (eventUserIds.size > 0) {
-            const { data: mutedData } = await supabase
-                .from("user_muted_events")
-                .select("user_id")
-                .eq("group_broadcast_id", args.groupBroadcastId)
-                .in("user_id", Array.from(eventUserIds));
-            for (const row of mutedData ?? []) {
-                eventUserIds.delete(row.user_id as string);
-            }
-        }
     }
 
     if (args.fideIds.length > 0) {
@@ -993,6 +1009,26 @@ async function resolveRecipients(args: {
             .in("player_name", args.players);
         for (const row of data ?? []) {
             playerUserIds.add(row.user_id as string);
+        }
+    }
+
+    // Remove muted users from BOTH channels in one query.
+    // A user who has muted this event must receive no notification from it —
+    // regardless of whether they arrive via eventUserIds (starred) or
+    // playerUserIds (favorite player).
+    if (args.groupBroadcastId) {
+        const allCandidates = new Set([...eventUserIds, ...playerUserIds]);
+        if (allCandidates.size > 0) {
+            const { data: mutedData } = await supabase
+                .from("user_muted_events")
+                .select("user_id")
+                .eq("group_broadcast_id", args.groupBroadcastId)
+                .in("user_id", Array.from(allCandidates));
+            for (const row of mutedData ?? []) {
+                const uid = row.user_id as string;
+                eventUserIds.delete(uid);
+                playerUserIds.delete(uid);
+            }
         }
     }
 
