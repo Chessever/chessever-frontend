@@ -1046,6 +1046,24 @@ async function resolveRecipients(args: {
     }
   }
 
+  // Remove users who muted this event from BOTH sets.
+  // Muting an event silences all notifications for it — including player-favorite
+  // notifications — so we filter here before the sets are used anywhere.
+  if (args.groupBroadcastId) {
+    const allCandidates = new Set([...eventUserIds, ...playerUserIds]);
+    if (allCandidates.size > 0) {
+      const { data: mutedData } = await supabase
+        .from("user_muted_events")
+        .select("user_id")
+        .eq("group_broadcast_id", args.groupBroadcastId)
+        .in("user_id", Array.from(allCandidates));
+      for (const row of mutedData ?? []) {
+        eventUserIds.delete(row.user_id as string);
+        playerUserIds.delete(row.user_id as string);
+      }
+    }
+  }
+
   return { eventUserIds, playerUserIds };
 }
 
@@ -1555,7 +1573,7 @@ async function resolvePlayerFavoriteMap(
   // Get all games in this round to know which players are participating
   const { data: games } = await supabase
     .from("games")
-    .select("player_white,player_black,player_fide_ids")
+    .select("player_white,player_black,players")
     .eq("round_id", roundId);
 
   if (!games || games.length === 0) return result;
@@ -1565,19 +1583,18 @@ async function resolvePlayerFavoriteMap(
   const fideIdToName = new Map<string, string>();
 
   for (const g of games as RoundGameRow[]) {
-    if (g.player_white) {
-      roundPlayerNames.add(g.player_white);
-    }
-    if (g.player_black) {
-      roundPlayerNames.add(g.player_black);
-    }
-    if (g.player_fide_ids) {
-      for (let i = 0; i < g.player_fide_ids.length; i++) {
-        const fid = g.player_fide_ids[i].toString();
+    if (g.player_white) roundPlayerNames.add(g.player_white);
+    if (g.player_black) roundPlayerNames.add(g.player_black);
+    // Use players JSONB for deterministic fideId→name mapping.
+    // player_fide_ids uses array_agg(DISTINCT) with no ORDER BY, so positional
+    // indexing ([0]=white, [1]=black) is non-deterministic.
+    for (const p of g.players ?? []) {
+      const fideId = (p as Record<string, unknown>)["fideId"];
+      const name = (p as Record<string, unknown>)["name"];
+      if (fideId != null && name) {
+        const fid = String(fideId);
         roundFideIds.add(fid);
-        // Map fide_id to player name for display
-        const name = i === 0 ? g.player_white : g.player_black;
-        if (name) fideIdToName.set(fid, name);
+        fideIdToName.set(fid, name as string);
       }
     }
   }
@@ -1594,7 +1611,7 @@ async function resolvePlayerFavoriteMap(
 
     for (const row of faveByFide ?? []) {
       const userId = row.user_id as string;
-      const fideId = (row.fide_id as number).toString();
+      const fideId = String(row.fide_id);
       const name = fideIdToName.get(fideId);
       if (name) {
         if (!result.has(userId)) result.set(userId, []);
@@ -1669,7 +1686,7 @@ async function resolveGamePlayerFavoriteMap(
 
     for (const row of faveByFide ?? []) {
       const userId = row.user_id as string;
-      const fideId = (row.fide_id as number).toString();
+      const fideId = String(row.fide_id);
       const name = fideIdToName.get(fideId);
       if (name) {
         if (!result.has(userId)) result.set(userId, []);
