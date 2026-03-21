@@ -348,6 +348,7 @@ class DeepLinkService {
         return;
       case 'round_started':
       case 'round_heads_up':
+      case 'round_finished':
         if (broadcastId != null || roundId != null || tourId != null) {
           _navigateToEvent(
             broadcastId,
