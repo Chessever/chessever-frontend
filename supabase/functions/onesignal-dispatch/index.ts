@@ -29,7 +29,6 @@ type GameRow = {
   last_move_time: string | null;
   last_clock_white: number | null;
   last_clock_black: number | null;
-  board_nr: number | null;
 };
 
 type RoundGameRow = {
@@ -37,21 +36,6 @@ type RoundGameRow = {
   player_black: string | null;
   player_fide_ids: number[] | null;
   players: Record<string, unknown>[] | null;
-  board_nr: number | null;
-};
-
-type RoundPairing = {
-  white: string;
-  black: string;
-  avgRating: number;
-  boardNr: number | null;
-};
-
-type RoundResult = {
-  white: string;
-  black: string;
-  status: string;
-  boardNr: number | null;
 };
 
 type RoundRow = {
@@ -81,8 +65,8 @@ type CheckState = {
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_SERVICE_ROLE_KEY =
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ??
-    Deno.env.get("SERVICE_ROLE_KEY") ??
-    "";
+  Deno.env.get("SERVICE_ROLE_KEY") ??
+  "";
 const ONESIGNAL_APP_ID = Deno.env.get("ONESIGNAL_APP_ID") ?? "";
 const ONESIGNAL_REST_API_KEY = Deno.env.get("ONESIGNAL_REST_API_KEY") ?? "";
 const LICHESS_CLOUD_EVAL_KEY = Deno.env.get("LICHESS_CLOUD_EVAL_KEY") ?? "";
@@ -101,42 +85,6 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
 
 const jsonHeaders = { "Content-Type": "application/json" };
 const fidePhotoCache = new Map<number, string | null>();
-// Per-request cache for muted users — scoped to avoid stale data across
-// separate requests while still deduplicating within a single dispatch batch.
-const mutedUsersCache = new Map<string, Set<string>>();
-
-async function getMutedUserIds(
-  groupBroadcastId: string | null,
-): Promise<Set<string>> {
-  if (!groupBroadcastId) return new Set();
-  // Within a single request the muted set is stable — safe to cache.
-  if (mutedUsersCache.has(groupBroadcastId))
-    return mutedUsersCache.get(groupBroadcastId)!;
-  const { data } = await supabase
-    .from("user_muted_events")
-    .select("user_id")
-    .eq("group_broadcast_id", groupBroadcastId);
-  const set = new Set(
-    (data ?? []).map((r: { user_id: string }) => r.user_id),
-  );
-  mutedUsersCache.set(groupBroadcastId, set);
-  return set;
-}
-
-function removeMutedFromArray(
-  recipients: string[],
-  muted: Set<string>,
-): string[] {
-  if (muted.size === 0) return recipients;
-  return recipients.filter((uid) => !muted.has(uid));
-}
-
-function removeMutedFromSet(
-  recipients: Set<string>,
-  muted: Set<string>,
-): void {
-  for (const uid of muted) recipients.delete(uid);
-}
 const CLOUD_EVAL_MAX_REQUESTS = 5;
 const CHESS_API_MAX_REQUESTS = 10;
 const DEFAULT_DISPATCH_LIMIT = 50;
@@ -454,13 +402,14 @@ async function processItem(item: OutboxItem, cloudEvalState: CloudEvalState) {
       };
     }
     if (item.event_type === "round_started") {
-      const roundMuted = await getMutedUserIds(context.groupBroadcastId);
-      const { playerRecipients: rawPlayerRecipients, eventRecipients: rawEventRecipients } = await filterRoundRecipients(
+      const rsTimeControl = await resolveGameTimeControl(
+        item.tour_id ?? context.round?.tour_id ?? null,
+      );
+      const { playerRecipients, eventRecipients } = await filterRoundRecipients(
         context.eventUserIds,
         context.playerUserIds,
+        rsTimeControl,
       );
-      const playerRecipients = removeMutedFromArray(rawPlayerRecipients, roundMuted);
-      const eventRecipients = removeMutedFromArray(rawEventRecipients, roundMuted);
 
       if (playerRecipients.length === 0 && eventRecipients.length === 0) {
         await markSkipped(item.id, "no_recipients");
@@ -470,121 +419,107 @@ async function processItem(item: OutboxItem, cloudEvalState: CloudEvalState) {
       const roundId = item.round_id ?? context.round?.id ?? "";
       const eventName = context.eventName ?? "Live chess";
       const roundName = context.round?.name ?? "";
+      const title = buildEventHeader(eventName, roundName) ?? eventName;
 
-      // Start-family cooldown: suppress round_started for player-favorite
-      // users who already received game_started for this round.
-      const cooledDownUsers = roundId
-        ? await fetchCooledDownUsers(playerRecipients, roundId)
-        : new Set<string>();
-      const filteredPlayerRecipients = cooledDownUsers.size > 0
-        ? playerRecipients.filter((uid) => !cooledDownUsers.has(uid))
-        : playerRecipients;
+      // Exclude player-favorite users who already received a game_started
+      // push for this round (recorded by the game_started handler).
+      const suppressedByWindow = await fetchUsersWithActiveGameStartWindow(
+        roundId,
+        playerRecipients,
+      );
+      const dedupedPlayerRecipients = playerRecipients.filter(
+        (uid) => !suppressedByWindow.has(uid),
+      );
 
-      // Per-user combined messages (Scenarios A/B/C):
-      // A (1 fav in round): "Carlsen is live — Event — Round"
-      // B (2 favs): "Carlsen & Caruana are live."
-      // C (3+ favs): "Carlsen, Caruana & 1 more are live."
-      if (filteredPlayerRecipients.length > 0) {
-        const msgGroups = new Map<
-          string,
-          { recipients: string[]; title: string; body: string }
-        >();
-        const ungrouped: string[] = [];
+      // Per-user personalized notifications for player-favorite users.
+      // Batch users with identical messages into a single sendOneSignal() call.
+      if (dedupedPlayerRecipients.length > 0) {
+        const messageBatches = new Map<string, string[]>();
+        const unresolved: string[] = []; // favorites not resolved → event fallback
 
-        for (const uid of filteredPlayerRecipients) {
-          const favs = context.playerFavoriteMap.get(uid) ?? [];
-          if (favs.length === 0) {
-            ungrouped.push(uid);
+        for (const userId of dedupedPlayerRecipients) {
+          const favNames = context.playerFavoriteMap.get(userId) ?? [];
+          if (favNames.length === 0) {
+            unresolved.push(userId);
             continue;
           }
 
-          let title: string;
+          // Sort favorites by rating DESC
+          const sorted = [...favNames].sort((a, b) => {
+            const ra = context.playerRatingMap.get(a) ?? 0;
+            const rb = context.playerRatingMap.get(b) ?? 0;
+            return rb - ra;
+          });
+
           let body: string;
-
-          if (favs.length === 1) {
-            // Scenario A: single-fav template
-            const template = pickTemplate(ROUND_STARTED_PLAYER, roundId);
-            const msg = fillTemplate(template, {
-              p: extractLastName(favs[0]),
-              e: eventName,
-              r: roundName,
-            });
-            title = msg.title;
-            body = msg.body;
-          } else if (favs.length === 2) {
-            // Scenario B: two favs combined
-            title = buildEventHeader(eventName, roundName) ?? eventName;
-            body = `${extractLastName(favs[0])} & ${extractLastName(favs[1])} are live.`;
+          if (sorted.length === 1) {
+            const fav = formatPlayerName(sorted[0]);
+            const oppName = context.playerOpponentMap.get(sorted[0]) ?? "Opponent";
+            const opp = formatPlayerName(oppName);
+            body = `${fav} vs ${opp} is live.`;
+          } else if (sorted.length === 2) {
+            const p1 = formatPlayerName(sorted[0]);
+            const p2 = formatPlayerName(sorted[1]);
+            body = `${p1} and ${p2} are live.`;
           } else {
-            // Scenario C: 3+ favs — show first two + "N more"
-            title = buildEventHeader(eventName, roundName) ?? eventName;
-            const [a, b] = favs.slice(0, 2).map(extractLastName);
-            const rest = favs.length - 2;
-            body = `${a}, ${b} & ${rest} more are live.`;
+            const p1 = formatPlayerName(sorted[0]);
+            const p2 = formatPlayerName(sorted[1]);
+            body = `${p1}, ${p2}, and others are live.`;
           }
 
-          const key = `${title}|${body}`;
-          if (!msgGroups.has(key)) {
-            msgGroups.set(key, { recipients: [], title, body });
-          }
-          msgGroups.get(key)!.recipients.push(uid);
+          const key = body;
+          if (!messageBatches.has(key)) messageBatches.set(key, []);
+          messageBatches.get(key)!.push(userId);
         }
 
-        const roundStartedData = {
-          type: "round_started",
-          round_id: roundId,
-          tour_id: context.tourId ?? null,
-          group_broadcast_id: context.groupBroadcastId ?? null,
-        };
-
-        for (const { recipients, title, body } of msgGroups.values()) {
-          await sendOneSignal(recipients, {
+        for (const [body, userIds] of messageBatches) {
+          await sendOneSignal(userIds, {
             title,
             body,
             url: null,
-            data: roundStartedData,
+            data: { type: "round_started", round_id: roundId, group_broadcast_id: context.groupBroadcastId ?? null },
             androidChannelId: channelForEvent("round_started"),
           });
         }
 
-        // Fallback for users with no resolved favorite in this round.
-        if (ungrouped.length > 0) {
+        // Fallback for player-favorite users whose specific favorites
+        // couldn't be resolved to a name — send the event-level template.
+        if (unresolved.length > 0) {
           const template = pickTemplate(ROUND_STARTED_EVENT, roundId);
-          const { title, body } = fillTemplate(template, {
-            e: eventName,
-            r: roundName,
-          });
-          await sendOneSignal(ungrouped, {
-            title,
-            body,
+          const filled = fillTemplate(template, { e: eventName, r: roundName });
+          await sendOneSignal(unresolved, {
+            title: filled.title,
+            body: filled.body,
             url: null,
-            data: roundStartedData,
+            data: { type: "round_started", round_id: roundId, group_broadcast_id: context.groupBroadcastId ?? null },
             androidChannelId: channelForEvent("round_started"),
           });
-        }
-
-        // Record bidirectional cooldown so game_started won't double-fire.
-        if (roundId) {
-          await recordGameStartWindow(filteredPlayerRecipients, roundId);
         }
       }
 
-      // Event-starred recipients (Type 3): pairings digest
+      // Record game_start windows for every player recipient who just
+      // received this round_started notification.  This prevents
+      // game_started (which fires later, when the first move is played)
+      // from sending a duplicate push to the same users.
+      // TTL = 15 min — comfortably covers the gap between round start
+      // and first moves in any standard tournament format.
+      if (dedupedPlayerRecipients.length > 0) {
+        await supabase.rpc("record_game_start_window", {
+          p_user_ids: dedupedPlayerRecipients,
+          p_round_id: roundId,
+          p_cooldown_seconds: 900,
+        });
+      }
+
+      // Event-only recipients (starred event, no favorites playing)
       if (eventRecipients.length > 0) {
-        const title = buildEventHeader(eventName, roundName) ?? eventName;
-        const pairingsBody = context.roundPairings.length > 0
-          ? buildPairingsBody(context.roundPairings)
-          : "Games are live";
+        const template = pickTemplate(ROUND_STARTED_EVENT, roundId);
+        const filled = fillTemplate(template, { e: eventName, r: roundName });
         await sendOneSignal(eventRecipients, {
-          title,
-          body: pairingsBody,
+          title: filled.title,
+          body: filled.body,
           url: null,
-          data: {
-            type: "round_started",
-            round_id: roundId,
-            tour_id: context.tourId ?? null,
-            group_broadcast_id: context.groupBroadcastId ?? null,
-          },
+          data: { type: "round_started", round_id: roundId, group_broadcast_id: context.groupBroadcastId ?? null },
           androidChannelId: channelForEvent("round_started"),
         });
       }
@@ -593,31 +528,33 @@ async function processItem(item: OutboxItem, cloudEvalState: CloudEvalState) {
       return {
         id: item.id,
         status: "sent",
-        recipients: filteredPlayerRecipients.length + eventRecipients.length,
-        suppressed_by_cooldown: cooledDownUsers.size,
+        recipients: dedupedPlayerRecipients.length + eventRecipients.length,
       };
     }
 
     if (item.event_type === "round_heads_up") {
-      const headsUpMuted = await getMutedUserIds(context.groupBroadcastId);
-      const { playerRecipients: rawHuPlayerRecipients, eventRecipients: rawHuEventRecipients } =
-        await filterHeadsUpRecipients(
-          context.eventUserIds,
-          context.playerUserIds,
-        );
-      const playerRecipients = removeMutedFromArray(rawHuPlayerRecipients, headsUpMuted);
-      const eventRecipients = removeMutedFromArray(rawHuEventRecipients, headsUpMuted);
-
-      if (playerRecipients.length === 0 && eventRecipients.length === 0) {
-        await markSkipped(item.id, "no_recipients");
-        return { id: item.id, status: "skipped", reason: "no_recipients" };
-      }
-
       const roundId = item.round_id ?? context.round?.id ?? "";
       const eventName = context.eventName ?? "Live chess";
       const roundName = context.round?.name ?? "";
       const leadMinutes = (item.payload?.lead_minutes as number) ?? 30;
       const timeStr = `~${leadMinutes} min`;
+
+      // Only send to users whose preferred lead time and time-control filter match.
+      const huTimeControl = await resolveGameTimeControl(
+        item.tour_id ?? context.round?.tour_id ?? null,
+      );
+      const { playerRecipients, eventRecipients } =
+        await filterHeadsUpRecipients(
+          context.eventUserIds,
+          context.playerUserIds,
+          leadMinutes,
+          huTimeControl,
+        );
+
+      if (playerRecipients.length === 0 && eventRecipients.length === 0) {
+        await markSkipped(item.id, "no_recipients");
+        return { id: item.id, status: "skipped", reason: "no_recipients" };
+      }
 
       const headsUpData = {
         type: "round_heads_up",
@@ -626,7 +563,10 @@ async function processItem(item: OutboxItem, cloudEvalState: CloudEvalState) {
         group_broadcast_id: context.groupBroadcastId ?? null,
       };
 
-      // Per-user combined messages — same Scenario A/B/C approach as round_started.
+      // Per-user combined messages — Scenario A/B/C (same logic as round_started).
+      // A (1 fav): "Carlsen at the board in ~30 min"
+      // B (2 favs): "Carlsen & Caruana in ~30 min."
+      // C (3+ favs): "Carlsen, Caruana & 1 more in ~30 min."
       if (playerRecipients.length > 0) {
         const msgGroups = new Map<
           string,
@@ -675,6 +615,7 @@ async function processItem(item: OutboxItem, cloudEvalState: CloudEvalState) {
           });
         }
 
+        // Fallback for users with no resolved favorite in this round.
         if (ungrouped.length > 0) {
           const template = pickTemplate(ROUND_HEADS_UP_EVENT, roundId);
           const { title, body } = fillTemplate(template, {
@@ -714,55 +655,6 @@ async function processItem(item: OutboxItem, cloudEvalState: CloudEvalState) {
         status: "sent",
         recipients: playerRecipients.length + eventRecipients.length,
       };
-    }
-
-    // --- round_finished: results digest for event-starred users only ---
-    if (item.event_type === "round_finished") {
-      const roundMuted = await getMutedUserIds(context.groupBroadcastId);
-      const { eventRecipients: rawEventRecipients } = await filterRoundRecipients(
-        context.eventUserIds,
-        context.playerUserIds,
-      );
-      const eventRecipients = removeMutedFromArray(rawEventRecipients, roundMuted);
-
-      if (eventRecipients.length === 0) {
-        await markSkipped(item.id, "no_recipients");
-        return { id: item.id, status: "skipped", reason: "no_recipients" };
-      }
-
-      const roundId = item.round_id ?? context.round?.id ?? "";
-      const eventName = context.eventName ?? "Live chess";
-      const roundName = context.round?.name ?? "";
-      const title = buildEventHeader(eventName, roundName) ?? eventName;
-
-      // Results are embedded in the payload by the DB trigger.
-      const rawResults =
-        (item.payload?.results as Array<Record<string, unknown>>) ?? [];
-      const results: RoundResult[] = rawResults.map((r) => ({
-        white: (r.white as string) ?? "White",
-        black: (r.black as string) ?? "Black",
-        status: (r.status as string) ?? "*",
-        boardNr: (r.board_nr as number | null) ?? null,
-      }));
-      const body = results.length > 0
-        ? buildResultsBody(results)
-        : "Round results are in.";
-
-      await sendOneSignal(eventRecipients, {
-        title,
-        body,
-        url: null,
-        data: {
-          type: "round_finished",
-          round_id: roundId,
-          tour_id: context.tourId ?? null,
-          group_broadcast_id: context.groupBroadcastId ?? null,
-        },
-        androidChannelId: channelForEvent("round_finished"),
-      });
-
-      await markSent(item.id);
-      return { id: item.id, status: "sent", recipients: eventRecipients.length };
     }
 
     if (item.event_type === "book_game_added") {
@@ -806,192 +698,120 @@ async function processItem(item: OutboxItem, cloudEvalState: CloudEvalState) {
       return { id: item.id, status: "sent", recipients: eligible.length };
     }
 
-    if (item.event_type === "book_game_updated") {
-      const folderId = item.payload?.folder_id as string;
-      if (!folderId) {
-        await markSkipped(item.id, "missing_folder_id");
-        return { id: item.id, status: "skipped", reason: "missing_folder_id" };
-      }
+    // --- round_finished: one results digest per round, event-starred users only ---
+    // Anti-spam guarantees:
+    //   1. DB trigger uses ON CONFLICT (dedupe_key) DO NOTHING → max 1 outbox row per round.
+    //   2. Only eventRecipients receive this — player-fav users already got
+    //      individual game_finished pushes for each game they follow.
+    //   3. Muted users are already stripped by resolveRecipients() above.
+    //   4. Requires favorite_event_alerts opt-in (handled by filterRoundRecipients).
+    if (item.event_type === "round_finished") {
+      const rfTimeControl = await resolveGameTimeControl(
+        item.tour_id ?? context.round?.tour_id ?? null,
+      );
+      const { eventRecipients } = await filterRoundRecipients(
+        context.eventUserIds,
+        context.playerUserIds,
+        rfTimeControl,
+      );
 
-      const { data: subs } = await supabase
-        .from("book_subscriptions")
-        .select("subscriber_id")
-        .eq("folder_id", folderId);
-
-      const subscriberIds = (subs ?? []).map((s) => s.subscriber_id as string);
-      if (subscriberIds.length === 0) {
-        await markSkipped(item.id, "no_subscribers");
-        return { id: item.id, status: "skipped", reason: "no_subscribers" };
-      }
-
-      const eligible = await filterBookUpdateRecipients(subscriberIds);
-      if (eligible.length === 0) {
+      if (eventRecipients.length === 0) {
         await markSkipped(item.id, "no_recipients");
         return { id: item.id, status: "skipped", reason: "no_recipients" };
       }
 
-      const folderName = (item.payload?.folder_name as string) ?? "a book";
-      const gameTitle = (item.payload?.game_title as string) ?? "a game";
-      const ownerName =
-        (item.payload?.owner_display_name as string) ?? "Someone";
+      const roundId = item.round_id ?? context.round?.id ?? "";
+      const eventName = context.eventName ?? "Chess";
+      const roundName = context.round?.name ?? "";
 
-      await sendOneSignal(eligible, {
-        title: folderName,
-        body: `${ownerName} updated "${gameTitle}"`,
+      // Title clearly signals results, not a new round starting.
+      const title = roundName
+        ? `${eventName} — ${roundName} Results`
+        : `${eventName} Results`;
+
+      // Results are embedded in the payload by the DB trigger.
+      const rawResults =
+        (item.payload?.results as Array<Record<string, unknown>>) ?? [];
+      const results = rawResults.map((r) => ({
+        white: (r.white as string) ?? "White",
+        black: (r.black as string) ?? "Black",
+        status: (r.status as string) ?? "*",
+        boardNr: (r.board_nr as number | null) ?? null,
+      }));
+
+      const body = results.length > 0
+        ? buildResultsBody(results)
+        : "Round results are in.";
+
+      await sendOneSignal(eventRecipients, {
+        title,
+        body,
         url: null,
-        data: { type: "book_game_updated", folder_id: folderId },
-        androidChannelId: ANDROID_CHANNELS.general,
+        data: {
+          type: "round_finished",
+          round_id: roundId,
+          tour_id: context.tourId ?? null,
+          group_broadcast_id: context.groupBroadcastId ?? null,
+        },
+        androidChannelId: channelForEvent("round_finished"),
       });
 
       await markSent(item.id);
-      return { id: item.id, status: "sent", recipients: eligible.length };
+      return { id: item.id, status: "sent", recipients: eventRecipients.length };
     }
 
-    // --- game_started: Scenario A only (users with exactly 1 fav in round) ---
-    if (item.event_type === "game_started") {
-      const allUserIds = new Set([
-        ...context.eventUserIds,
-        ...context.playerUserIds,
-      ]);
-      const filteredUserIds = await applyPreferences(
-        item.event_type,
-        allUserIds,
-        context.eventUserIds,
-        context.playerUserIds,
-      );
-      const gameMuted = await getMutedUserIds(context.groupBroadcastId);
-      removeMutedFromSet(filteredUserIds, gameMuted);
-
-      if (filteredUserIds.size === 0) {
-        await markSkipped(item.id, "no_recipients");
-        return { id: item.id, status: "skipped", reason: "no_recipients" };
-      }
-
-      const payload = item.payload ?? {};
-      const white = (payload.player_white as string) ?? context.game?.player_white ?? "White";
-      const black = (payload.player_black as string) ?? context.game?.player_black ?? "Black";
-      const boardNr = (payload.board_nr as number | null) ?? context.game?.board_nr ?? null;
-      const boardTag = boardNr ? ` (Board ${boardNr})` : "";
-      const eventHeader = buildEventHeader(context.eventName, context.round?.name);
-      const androidChannelId = channelForEvent(item.event_type);
-      const gameId = item.game_id;
-
-      // Scenario A/B/C routing:
-      // Only send game_started to users with exactly 1 favourite in the round.
-      // Users with 2+ favourites will receive a combined round_started instead.
-      const scenarioAUsers = Array.from(filteredUserIds).filter((uid) => {
-        if (!item.round_id) return true; // No round context: always send
-        const favs = context.playerFavoriteMap.get(uid) ?? [];
-        return favs.length === 1;
-      });
-
-      // Bidirectional cooldown: skip users who already received round_started.
-      const cooledDown = item.round_id
-        ? await fetchCooledDownUsers(scenarioAUsers, item.round_id)
-        : new Set<string>();
-      const toNotify = scenarioAUsers.filter((uid) => !cooledDown.has(uid));
-
-      if (toNotify.length > 0) {
-        // Group users by their single favourite name for batching.
-        const byFav = new Map<string, string[]>();
-        const ungrouped: string[] = [];
-
-        for (const uid of toNotify) {
-          const favs = context.playerFavoriteMap.get(uid) ?? [];
-          const favName = favs[0] ?? null;
-          if (!favName) { ungrouped.push(uid); continue; }
-          if (!byFav.has(favName)) byFav.set(favName, []);
-          byFav.get(favName)!.push(uid);
-        }
-
-        for (const [playerName, recipients] of byFav) {
-          const shortName = extractLastName(playerName);
-          const template = pickTemplate(GAME_STARTED_PLAYER, gameId ?? "");
-          const { title, body } = fillTemplate(template, {
-            p: shortName,
-            e: eventHeader ?? `${white} vs ${black}`,
-            r: context.round?.name ?? "",
-          });
-          await sendOneSignal(recipients, {
-            title,
-            body: `${body}${boardTag}`,
-            url: null,
-            data: { type: "game_started", game_id: gameId, board_nr: boardNr },
-            androidChannelId,
-          });
-        }
-
-        // Users whose specific favourite couldn't be resolved — generic copy.
-        if (ungrouped.length > 0) {
-          await sendOneSignal(ungrouped, {
-            title: eventHeader ?? `${white} vs ${black}`,
-            body: eventHeader
-              ? `${white} vs ${black}${boardTag} is live.`
-              : `A favorite game just went live.${boardTag}`,
-            url: null,
-            data: { type: "game_started", game_id: gameId, board_nr: boardNr },
-            androidChannelId,
-          });
-        }
-
-        // Record bidirectional cooldown window so round_started won't double-fire.
-        if (item.round_id) {
-          await recordGameStartWindow(toNotify, item.round_id);
-        }
-      }
-
-      await markSent(item.id);
-      return {
-        id: item.id,
-        status: "sent",
-        recipients: toNotify.length,
-        suppressed_by_cooldown: cooledDown.size,
-        skipped_multi_fav: filteredUserIds.size - scenarioAUsers.length,
-      };
-    }
-
-    // --- game_finished: single "White vs Black: result" for all player-fav recipients ---
     if (item.event_type === "game_finished") {
+      const payload = item.payload ?? {};
+      const white = (payload.player_white as string) ?? context.game?.player_white ?? "White";
+      const black = (payload.player_black as string) ?? context.game?.player_black ?? "Black";
+      const status = (payload.status as string) ?? context.game?.status ?? "";
+      const result = status || "Game over";
+
       const allUserIds = new Set([
         ...context.eventUserIds,
         ...context.playerUserIds,
       ]);
+      const timeControl = await resolveGameTimeControl(
+        context.game?.tour_id ?? item.tour_id,
+      );
       const filteredUserIds = await applyPreferences(
         item.event_type,
         allUserIds,
         context.eventUserIds,
         context.playerUserIds,
+        timeControl,
       );
-      const gameMuted = await getMutedUserIds(context.groupBroadcastId);
-      removeMutedFromSet(filteredUserIds, gameMuted);
 
       if (filteredUserIds.size === 0) {
         await markSkipped(item.id, "no_recipients");
         return { id: item.id, status: "skipped", reason: "no_recipients" };
       }
 
-      const payload = item.payload ?? {};
-      const white = (payload.player_white as string) ?? context.game?.player_white ?? "White";
-      const black = (payload.player_black as string) ?? context.game?.player_black ?? "Black";
-      const boardNr = (payload.board_nr as number | null) ?? context.game?.board_nr ?? null;
-      const boardTag = boardNr ? ` (Board ${boardNr})` : "";
-      const eventHeader = buildEventHeader(context.eventName, context.round?.name);
-      const androidChannelId = channelForEvent(item.event_type);
-      const gameId = item.game_id;
+      // Exclude users who already received a game-end alert via their
+      // live subscription (sendLiveGameAlert in the live_game_update
+      // handler). Without this, live-subscribed users get 2 pushes for
+      // the same game ending.
+      if (item.game_id) {
+        const liveAlertedUserIds = await fetchLiveAlertedUsers(item.game_id);
+        for (const uid of liveAlertedUserIds) {
+          filteredUserIds.delete(uid);
+        }
+      }
 
-      const status = (payload.status as string) ?? context.game?.status ?? "";
-      const resultStr = formatResultSymbol(status) || "Game over";
-      const whiteLast = extractLastName(white);
-      const blackLast = extractLastName(black);
-      const title = eventHeader ?? `${whiteLast} vs ${blackLast}`;
-      const body = `${whiteLast} vs ${blackLast}: ${resultStr}${boardTag}`;
+      if (filteredUserIds.size === 0) {
+        await markSkipped(item.id, "no_recipients_after_dedup");
+        return { id: item.id, status: "skipped", reason: "no_recipients_after_dedup" };
+      }
+
+      const title = buildEventHeader(context.eventName, context.round?.name) ?? `${formatPlayerName(white)} vs ${formatPlayerName(black)}`;
+      const body = `${formatPlayerName(white)} vs ${formatPlayerName(black)}: ${result}`;
 
       await sendOneSignal(Array.from(filteredUserIds), {
         title,
         body,
         url: null,
-        data: { type: "game_finished", game_id: gameId, board_nr: boardNr },
-        androidChannelId,
+        data: { type: "game_finished", game_id: item.game_id },
+        androidChannelId: channelForEvent("game_finished"),
       });
 
       await markSent(item.id);
@@ -1002,27 +822,83 @@ async function processItem(item: OutboxItem, cloudEvalState: CloudEvalState) {
       };
     }
 
-    // --- Generic fallback for any other event types ---
+    // Guard: skip game_started if the game already ended before the dispatcher
+    // claimed this row. Happens when a game starts and finishes within the
+    // 1-minute cron window — prevents "is live" pings for finished games.
+    if (item.event_type === "game_started" && isGameOverStatus(context.game?.status ?? null)) {
+      await markSkipped(item.id, "game_already_finished");
+      return { id: item.id, status: "skipped", reason: "game_already_finished" };
+    }
+
     const allUserIds = new Set([
       ...context.eventUserIds,
       ...context.playerUserIds,
     ]);
+    const gsTimeControl = await resolveGameTimeControl(
+      context.game?.tour_id ?? item.tour_id,
+    );
     const filteredUserIds = await applyPreferences(
       item.event_type,
       allUserIds,
       context.eventUserIds,
       context.playerUserIds,
+      gsTimeControl,
     );
-    const fallbackMuted = await getMutedUserIds(context.groupBroadcastId);
-    removeMutedFromSet(filteredUserIds, fallbackMuted);
 
     if (filteredUserIds.size === 0) {
       await markSkipped(item.id, "no_recipients");
       return { id: item.id, status: "skipped", reason: "no_recipients" };
     }
 
+    // For game_started: exclude users with 2+ favorites playing in the round.
+
+    // Per spec (Scenarios B/C), those users must receive ONE combined notification
+    // from round_started — not individual per-game pushes.
+    // Only single-favorite users (Scenario A) are handled here.
+    if (item.event_type === "game_started" && item.round_id) {
+      for (const uid of Array.from(filteredUserIds)) {
+        const favCount = (context.playerFavoriteMap.get(uid) ?? []).length;
+        if (favCount !== 1) filteredUserIds.delete(uid);
+      }
+
+      // Also skip users who already received a round_started notification
+      // for this round (window recorded by the round_started handler when
+      // cron fires before the first move arrives).  This prevents the
+      // second push when the game_started trigger fires later.
+      if (filteredUserIds.size > 0) {
+        const alreadyCovered = await fetchUsersWithActiveGameStartWindow(
+          item.round_id,
+          Array.from(filteredUserIds),
+        );
+        for (const uid of alreadyCovered) {
+          filteredUserIds.delete(uid);
+        }
+      }
+    }
+
+    if (filteredUserIds.size === 0) {
+      await markSent(item.id);
+      return { id: item.id, status: "sent", recipients: 0 };
+    }
+
     const notification = buildNotification(context, item);
     await sendOneSignal(Array.from(filteredUserIds), notification);
+
+    // Record a cooldown window so that round_started skips these users.
+    // Only record for the users who actually received this push (1-favorite users).
+    if (item.event_type === "game_started" && item.round_id) {
+      const playerRecipients = Array.from(filteredUserIds).filter(
+        (uid) => context.playerUserIds.has(uid),
+      );
+      if (playerRecipients.length > 0) {
+        await supabase.rpc("record_game_start_window", {
+          p_user_ids: playerRecipients,
+          p_round_id: item.round_id,
+          p_cooldown_seconds: 900, // 15 min covers delay until round_started cron runs
+        });
+      }
+    }
+
     await markSent(item.id);
 
     return {
@@ -1067,7 +943,7 @@ async function buildContext(item: OutboxItem) {
     const { data } = await supabase
       .from("games")
       .select(
-        "id,tour_id,player_white,player_black,player_fide_ids,fen,players,status,last_move,last_move_time,last_clock_white,last_clock_black,board_nr",
+        "id,tour_id,player_white,player_black,player_fide_ids,fen,players,status,last_move,last_move_time,last_clock_white,last_clock_black",
       )
       .eq("id", item.game_id)
       .maybeSingle();
@@ -1083,7 +959,7 @@ async function buildContext(item: OutboxItem) {
     round = (data ?? null) as RoundRow | null;
   }
 
-  const tourId: string | null = item.tour_id ?? game?.tour_id ?? round?.tour_id ?? null;
+  const tourId = item.tour_id ?? game?.tour_id ?? round?.tour_id ?? null;
   if (!groupBroadcastId && tourId) {
     const { data } = await supabase
       .from("tours")
@@ -1120,12 +996,13 @@ async function buildContext(item: OutboxItem) {
     fideIdSet.add(id.toString());
   }
 
-  let roundPairings: RoundPairing[] = [];
+  let playerRatingMap = new Map<string, number>();
+  let playerOpponentMap = new Map<string, string>();
+
   if (
     (item.event_type === "round_started" ||
       item.event_type === "round_heads_up" ||
-      item.event_type === "game_started" ||
-      item.event_type === "round_finished") &&
+      item.event_type === "game_started") &&
     item.round_id
   ) {
     const roundPlayers = await fetchRoundPlayers(item.round_id);
@@ -1135,7 +1012,8 @@ async function buildContext(item: OutboxItem) {
     for (const id of roundPlayers.fideIds) {
       fideIdSet.add(id);
     }
-    roundPairings = roundPlayers.pairings;
+    playerRatingMap = roundPlayers.playerRatingMap;
+    playerOpponentMap = roundPlayers.playerOpponentMap;
   }
 
   const { eventUserIds, playerUserIds } = await resolveRecipients({
@@ -1144,11 +1022,12 @@ async function buildContext(item: OutboxItem) {
     players: Array.from(playerNames),
   });
 
-  // Resolve per-user player favorites for round notifications
+  // Resolve per-user player favorites for round/game notifications
   let playerFavoriteMap = new Map<string, string[]>();
   if (
     (item.event_type === "round_started" ||
-      item.event_type === "round_heads_up") &&
+      item.event_type === "round_heads_up" ||
+      item.event_type === "game_started") &&
     item.round_id
   ) {
     playerFavoriteMap = await resolvePlayerFavoriteMap(
@@ -1157,44 +1036,23 @@ async function buildContext(item: OutboxItem) {
     );
   }
 
-  // Resolve per-user player favorites for game-level notifications.
-  // Use round-level map when round_id is available (needed for Scenario A/B/C routing).
-  if (
-    (item.event_type === "game_started" ||
-      item.event_type === "game_finished") &&
-    playerUserIds.size > 0
-  ) {
-    if (item.round_id) {
-      playerFavoriteMap = await resolvePlayerFavoriteMap(
-        item.round_id,
-        playerUserIds,
-      );
-    } else {
-      playerFavoriteMap = await resolveGamePlayerFavoriteMap(
-        game,
-        item.payload,
-        playerUserIds,
-      );
-    }
-  }
-
   return {
     game,
     round,
     eventName,
     groupBroadcastId,
-    tourId,
     eventUserIds,
     playerUserIds,
     playerFavoriteMap,
-    roundPairings,
+    playerRatingMap,
+    playerOpponentMap,
   };
 }
 
 async function fetchRoundPlayers(roundId: string) {
   const { data, error } = await supabase
     .from("games")
-    .select("player_white,player_black,player_fide_ids,players,board_nr")
+    .select("player_white,player_black,player_fide_ids,players")
     .eq("round_id", roundId);
 
   if (error) {
@@ -1203,7 +1061,8 @@ async function fetchRoundPlayers(roundId: string) {
 
   const playerNames = new Set<string>();
   const fideIds = new Set<string>();
-  const pairings: RoundPairing[] = [];
+  const playerRatingMap = new Map<string, number>();
+  const playerOpponentMap = new Map<string, string>();
 
   for (const row of (data ?? []) as RoundGameRow[]) {
     if (row.player_white) playerNames.add(row.player_white);
@@ -1212,33 +1071,29 @@ async function fetchRoundPlayers(roundId: string) {
       fideIds.add(id.toString());
     }
 
+    // Build opponent map
     if (row.player_white && row.player_black) {
-      // Extract average rating from players JSONB
-      let ratingSum = 0;
-      let ratingCount = 0;
-      for (const p of row.players ?? []) {
-        const r = (p as Record<string, unknown>)["rating"];
-        if (typeof r === "number" && r > 0) {
-          ratingSum += r;
-          ratingCount++;
+      playerOpponentMap.set(row.player_white, row.player_black);
+      playerOpponentMap.set(row.player_black, row.player_white);
+    }
+
+    // Extract ratings from players JSON
+    if (Array.isArray(row.players)) {
+      for (const p of row.players) {
+        const name = (p?.name as string | undefined) ?? null;
+        const rating = p?.rating as number | undefined;
+        if (name && typeof rating === "number" && rating > 0) {
+          playerRatingMap.set(name, rating);
         }
       }
-      const avgRating = ratingCount > 0
-        ? Math.round(ratingSum / ratingCount)
-        : 0;
-      pairings.push({
-        white: row.player_white,
-        black: row.player_black,
-        avgRating,
-        boardNr: row.board_nr ?? null,
-      });
     }
   }
 
   return {
     playerNames: Array.from(playerNames),
     fideIds: Array.from(fideIds),
-    pairings,
+    playerRatingMap,
+    playerOpponentMap,
   };
 }
 
@@ -1280,9 +1135,10 @@ async function resolveRecipients(args: {
     }
   }
 
-  // Remove users who muted this event from BOTH sets.
-  // Muting an event silences all notifications for it — including player-favorite
-  // notifications — so we filter here before the sets are used anywhere.
+  // Remove muted users from BOTH channels in one query.
+  // A user who has muted this event must receive no notification from it —
+  // regardless of whether they arrive via eventUserIds (starred) or
+  // playerUserIds (favorite player).
   if (args.groupBroadcastId) {
     const allCandidates = new Set([...eventUserIds, ...playerUserIds]);
     if (allCandidates.size > 0) {
@@ -1292,8 +1148,9 @@ async function resolveRecipients(args: {
         .eq("group_broadcast_id", args.groupBroadcastId)
         .in("user_id", Array.from(allCandidates));
       for (const row of mutedData ?? []) {
-        eventUserIds.delete(row.user_id as string);
-        playerUserIds.delete(row.user_id as string);
+        const uid = row.user_id as string;
+        eventUserIds.delete(uid);
+        playerUserIds.delete(uid);
       }
     }
   }
@@ -1301,11 +1158,46 @@ async function resolveRecipients(args: {
   return { eventUserIds, playerUserIds };
 }
 
+// Normalises a raw time-class string from the tours table into one of the
+// three canonical values the preference columns use.
+function normaliseTimeControl(
+  raw: string | null | undefined,
+): "classical" | "rapid" | "blitz" | null {
+  if (!raw) return null;
+  const s = raw.trim().toLowerCase();
+  if (s === "classical" || s === "standard") return "classical";
+  if (s === "rapid") return "rapid";
+  if (s === "blitz" || s === "bullet") return "blitz";
+  return null;
+}
+
+// Fetch the time-control class for a tour. Returns null when unknown so that
+// the preference filter is skipped (fail-open — users always get the push).
+async function resolveGameTimeControl(
+  tourId: string | null | undefined,
+): Promise<"classical" | "rapid" | "blitz" | null> {
+  if (!tourId) return null;
+  try {
+    const { data } = await supabase
+      .from("tours")
+      .select("time_class")
+      .eq("id", tourId)
+      .maybeSingle();
+    return normaliseTimeControl(data?.time_class as string | null);
+  } catch (_) {
+    // Column may not exist yet — fail-open.
+    return null;
+  }
+}
+
 async function applyPreferences(
   eventType: string,
   allUserIds: Set<string>,
   eventUserIds: Set<string>,
   playerUserIds: Set<string>,
+  // Canonical time control for the game/round being notified about.
+  // null means "unknown — skip time-control filtering".
+  gameTimeControl: "classical" | "rapid" | "blitz" | null = null,
 ) {
   const ids = Array.from(allUserIds);
   if (ids.length === 0) return allUserIds;
@@ -1313,7 +1205,10 @@ async function applyPreferences(
   const { data } = await supabase
     .from("user_notification_preferences")
     .select(
-      "user_id,push_enabled,favorite_event_alerts,favorite_player_alerts,live_game_updates,daily_digest,call_to_action_alerts",
+      "user_id,push_enabled,favorite_event_alerts,favorite_player_alerts," +
+      "live_game_updates,daily_digest,call_to_action_alerts," +
+      "fp_classical,fp_rapid,fp_blitz," +
+      "se_classical,se_rapid,se_blitz",
     )
     .in("user_id", ids);
 
@@ -1327,6 +1222,24 @@ async function applyPreferences(
   for (const userId of ids) {
     const prefs = prefsMap.get(userId);
     if (prefs && prefs.push_enabled === false) continue;
+
+    const isEventFavForTC = eventUserIds.has(userId);
+    const isPlayerFavForTC = playerUserIds.has(userId);
+
+    // Time-control filter: apply category-specific columns.
+    // fp_* governs player-favourite notifications; se_* governs event-starred.
+    // When a user is both, the notification is allowed if either category
+    // permits it (most-permissive wins).
+    // No prefs row → all columns default to true (fail-open).
+    if (gameTimeControl && prefs) {
+      const tc = gameTimeControl;
+      const fpBlocked = prefs[`fp_${tc}`] === false;
+      const seBlocked = prefs[`se_${tc}`] === false;
+
+      if (isPlayerFavForTC && !isEventFavForTC && fpBlocked) continue;
+      if (isEventFavForTC && !isPlayerFavForTC && seBlocked) continue;
+      if (isPlayerFavForTC && isEventFavForTC && fpBlocked && seBlocked) continue;
+    }
 
     const isEventFav = eventUserIds.has(userId);
     const isPlayerFav = playerUserIds.has(userId);
@@ -1342,7 +1255,6 @@ async function applyPreferences(
     }
 
     if (eventType === "live_game_update") {
-      // live_game_updates is opt-in (app default = false).
       if (!prefs || prefs.live_game_updates !== true) continue;
       if (isEventFav || isPlayerFav) {
         filtered.add(userId);
@@ -1368,6 +1280,7 @@ async function applyPreferences(
 async function filterRoundRecipients(
   eventUserIds: Set<string>,
   playerUserIds: Set<string>,
+  gameTimeControl: "classical" | "rapid" | "blitz" | null = null,
 ) {
   const allUserIds = new Set([...eventUserIds, ...playerUserIds]);
   const ids = Array.from(allUserIds);
@@ -1377,7 +1290,11 @@ async function filterRoundRecipients(
 
   const { data } = await supabase
     .from("user_notification_preferences")
-    .select("user_id,push_enabled,favorite_event_alerts,favorite_player_alerts")
+    .select(
+      "user_id,push_enabled,favorite_event_alerts,favorite_player_alerts," +
+      "fp_classical,fp_rapid,fp_blitz," +
+      "se_classical,se_rapid,se_blitz",
+    )
     .in("user_id", ids);
 
   const prefsMap = new Map<string, Record<string, unknown>>();
@@ -1394,10 +1311,25 @@ async function filterRoundRecipients(
 
     const isPlayerFav = playerUserIds.has(userId);
     const isEventFav = eventUserIds.has(userId);
-    // favorite_player_alerts is opt-out (app default = true): allow if no prefs row.
     const playerAllowed = !prefs || prefs.favorite_player_alerts !== false;
-    // favorite_event_alerts is opt-in (app default = false): require explicit opt-in.
-    const eventAllowed = prefs?.favorite_event_alerts === true;
+    const eventAllowed = !prefs || prefs.favorite_event_alerts !== false;
+
+    // Category-specific time-control gate.
+    if (gameTimeControl && prefs) {
+      const tc = gameTimeControl;
+      if (isPlayerFav && playerAllowed && prefs[`fp_${tc}`] === false) {
+        // This player-fav user has blocked this time control — demote to event
+        // recipient only if they also star the event, otherwise skip entirely.
+        if (!isEventFav || !eventAllowed || prefs[`se_${tc}`] === false) continue;
+        // Falls through to event-recipient branch below.
+        eventRecipients.add(userId);
+        continue;
+      }
+      if (isEventFav && eventAllowed && !playerRecipients.has(userId) &&
+          prefs[`se_${tc}`] === false) {
+        continue;
+      }
+    }
 
     if (isPlayerFav && playerAllowed) {
       playerRecipients.add(userId);
@@ -1454,9 +1386,7 @@ async function filterLiveUpdateEnabled(userIds: string[]) {
   for (const id of userIds) {
     const prefs = prefsMap.get(id);
     if (prefs && prefs.push_enabled === false) continue;
-    // live_game_updates is opt-in (app default = false).
-    // No prefs row → treat as disabled.
-    if (!prefs || prefs.live_game_updates !== true) continue;
+    if (prefs && prefs.live_game_updates === false) continue;
     filtered.add(id);
   }
   return filtered;
@@ -1478,6 +1408,48 @@ async function fetchBoardSettings(userIds: string[]) {
     });
   }
   return map;
+}
+
+async function fetchLiveAlertedUsers(gameId: string): Promise<Set<string>> {
+  // Returns user IDs who had an active live subscription for this game.
+  // These users already received a game-end push via sendLiveGameAlert()
+  // in the live_game_update handler, so we exclude them from the
+  // game_finished push to prevent duplicate notifications.
+  //
+  // We look for subscriptions with last_event_at set (meaning they received
+  // at least one live update). Both enabled and recently-disabled rows are
+  // included because the live_game_update handler disables subscriptions
+  // on game over AFTER sending the alert.
+  const { data } = await supabase
+    .from("user_live_game_subscriptions")
+    .select("user_id")
+    .eq("game_id", gameId)
+    .not("last_event_at", "is", null);
+
+  const userIds = new Set<string>();
+  for (const row of data ?? []) {
+    userIds.add(row.user_id as string);
+  }
+  return userIds;
+}
+
+async function fetchUsersWithActiveGameStartWindow(
+  roundId: string,
+  userIds: string[],
+): Promise<Set<string>> {
+  if (userIds.length === 0) return new Set();
+  const { data } = await supabase
+    .from("notification_user_windows")
+    .select("user_id")
+    .eq("round_id", roundId)
+    .eq("family", "game_start")
+    .gt("expires_at", new Date().toISOString())
+    .in("user_id", userIds);
+  const suppressed = new Set<string>();
+  for (const row of data ?? []) {
+    suppressed.add(row.user_id as string);
+  }
+  return suppressed;
 }
 
 async function disableLiveSubscriptions(args: {
@@ -1560,6 +1532,10 @@ async function filterBookUpdateRecipients(
 async function filterHeadsUpRecipients(
   eventUserIds: Set<string>,
   playerUserIds: Set<string>,
+  // The lead time of this specific outbox row (10 or 30 minutes).
+  // Only users whose heads_up_lead_minutes preference matches will be included.
+  leadMinutes: number = 30,
+  gameTimeControl: "classical" | "rapid" | "blitz" | null = null,
 ) {
   const allUserIds = new Set([...eventUserIds, ...playerUserIds]);
   const ids = Array.from(allUserIds);
@@ -1570,7 +1546,10 @@ async function filterHeadsUpRecipients(
   const { data } = await supabase
     .from("user_notification_preferences")
     .select(
-      "user_id,push_enabled,favorite_event_alerts,favorite_player_alerts,heads_up_alerts",
+      "user_id,push_enabled,favorite_event_alerts,favorite_player_alerts," +
+      "heads_up_alerts,heads_up_lead_minutes," +
+      "fp_classical,fp_rapid,fp_blitz," +
+      "se_classical,se_rapid,se_blitz",
     )
     .in("user_id", ids);
 
@@ -1587,12 +1566,31 @@ async function filterHeadsUpRecipients(
     if (prefs && prefs.push_enabled === false) continue;
     if (!prefs || prefs.heads_up_alerts !== true) continue;
 
+    // Lead-time gate: user's preference must match this outbox row's lead time.
+    // No prefs row → default is 30 min (matches the DB column default).
+    const userLeadMinutes = (prefs?.heads_up_lead_minutes as number) ?? 30;
+    if (userLeadMinutes !== leadMinutes) continue;
+
     const isPlayerFav = playerUserIds.has(userId);
     const isEventFav = eventUserIds.has(userId);
-    // favorite_player_alerts is opt-out (app default = true): allow if no prefs row.
     const playerAllowed = !prefs || prefs.favorite_player_alerts !== false;
-    // favorite_event_alerts is opt-in (app default = false): require explicit opt-in.
     const eventAllowed = prefs?.favorite_event_alerts === true;
+
+    // Category-specific time-control gate for heads-up notifications.
+    if (gameTimeControl && prefs) {
+      const tc = gameTimeControl;
+      const fpBlocked = prefs[`fp_${tc}`] === false;
+      const seBlocked = prefs[`se_${tc}`] === false;
+
+      if (isPlayerFav && playerAllowed && fpBlocked) {
+        // Player-fav blocked by fp_* — promote to event recipient if eligible.
+        if (isEventFav && eventAllowed && !seBlocked) {
+          eventRecipients.add(userId);
+        }
+        continue;
+      }
+      if (isEventFav && eventAllowed && seBlocked) continue;
+    }
 
     if (isPlayerFav && playerAllowed) {
       playerRecipients.add(userId);
@@ -1670,24 +1668,6 @@ const ANDROID_CHANNELS = {
 
 type Template = { title: string; body: string };
 
-const ROUND_STARTED_PLAYER: Template[] = [
-  { title: "{e} — {r}", body: "{p} at the board. Games are live." },
-  { title: "{e} is live", body: "{r}: {p} just started" },
-  { title: "{e} — {r}", body: "{p} playing right now" },
-  { title: "{e}", body: "{r} started. {p} at the board." },
-  { title: "It's on", body: "{p} live in {e} — {r}" },
-  { title: "{e} — {r}", body: "{p} at the board right now" },
-  { title: "{e}", body: "{r}: {p} just sat down. Games are live." },
-  { title: "Your move", body: "{p} live in {e} — {r}. Are you watching?" },
-  { title: "{e} — {r}", body: "{p} on the board. Watch live." },
-  { title: "{e} is live", body: "{r}: {p} already making moves" },
-  { title: "{e} — {r}", body: "The wait is over. {p} live now." },
-  { title: "{e}", body: "{r}: {p} just kicked off" },
-  { title: "{e} — {r}", body: "{p} at the board. Don't miss it." },
-  { title: "{e}", body: "{r}: {p} live now. Get in here." },
-  { title: "{e} — {r}", body: "{p} playing. Follow along." },
-];
-
 const ROUND_STARTED_EVENT: Template[] = [
   { title: "{e} — {r}", body: "Games are live" },
   { title: "{e} is live", body: "{r}: First moves have been played" },
@@ -1732,26 +1712,6 @@ const ROUND_HEADS_UP_EVENT: Template[] = [
   { title: "{e}", body: "{r}: {t} until games begin" },
 ];
 
-const GAME_STARTED_PLAYER: Template[] = [
-  { title: "{e}", body: "{p}'s game is live." },
-  { title: "{e}", body: "{p} just started playing." },
-  { title: "{e}", body: "{p} is at the board." },
-  { title: "{e}", body: "{p} is live right now." },
-  { title: "{e}", body: "{p} just made the first move." },
-  { title: "{e}", body: "{p}'s game just kicked off." },
-  { title: "{e}", body: "{p} is playing. Watch live." },
-  { title: "{e}", body: "{p} at the board. Don't miss it." },
-];
-
-const GAME_FINISHED_PLAYER: Template[] = [
-  { title: "{e}", body: "{p}'s game is over —" },
-  { title: "{e}", body: "{p}'s game just finished —" },
-  { title: "{e}", body: "{p}'s game ended —" },
-  { title: "{e}", body: "Final result for {p}:" },
-  { title: "{e}", body: "{p}'s game wrapped up —" },
-  { title: "{e}", body: "Result is in for {p}:" },
-];
-
 function pickTemplate(templates: Template[], roundId: string): Template {
   let hash = 0;
   for (let i = 0; i < roundId.length; i++) {
@@ -1783,6 +1743,21 @@ function fillTemplate(
   return { title: replace(template.title), body: replace(template.body) };
 }
 
+function formatPlayerName(name: string): string {
+  const trimmed = name.trim();
+  // Already "Last, First" format
+  if (trimmed.includes(",")) return trimmed;
+  const parts = trimmed.split(/\s+/);
+  if (parts.length <= 1) return trimmed;
+  // "Gukesh D" — single-char last token is ambiguous, keep as-is
+  if (parts[parts.length - 1].length <= 2 && parts.length >= 2) {
+    return trimmed;
+  }
+  const last = parts[parts.length - 1];
+  const first = parts.slice(0, -1).join(" ");
+  return `${last}, ${first}`;
+}
+
 function extractLastName(name: string): string {
   const trimmed = name.trim();
   // "Carlsen, Magnus" or "GM Carlsen, Magnus" → "Carlsen"
@@ -1801,40 +1776,21 @@ function extractLastName(name: string): string {
   return parts[parts.length - 1];
 }
 
+// Normalise all result strings to the three standard chess symbols.
 function formatResultSymbol(status: string): string {
-  const s = status.trim();
-  if (s === "1-0") return "1-0";
-  if (s === "0-1") return "0-1";
-  if (s === "1/2-1/2" || s === "½-½") return "½-½";
-  if (s === "W") return "1-0";
-  if (s === "B") return "0-1";
-  if (s === "D" || s.toUpperCase() === "DRAW") return "½-½";
+  const s = (status ?? "").trim();
+  if (s === "1-0" || s === "W") return "1-0";
+  if (s === "0-1" || s === "B") return "0-1";
+  if (s === "1/2-1/2" || s === "½-½" || s === "D" || s.toUpperCase() === "DRAW") return "½-½";
   return s || "*";
 }
 
-function buildPairingsBody(pairings: RoundPairing[]): string {
-  // Sort by board number ascending, fallback by avgRating descending.
-  const sorted = [...pairings].sort((a, b) => {
-    if (a.boardNr !== null && b.boardNr !== null) return a.boardNr - b.boardNr;
-    if (a.boardNr !== null) return -1;
-    if (b.boardNr !== null) return 1;
-    return b.avgRating - a.avgRating;
-  });
-
-  const MAX_SHOWN = 3;
-  const shown = sorted.slice(0, MAX_SHOWN);
-  const rest = sorted.length - MAX_SHOWN;
-
-  const parts = shown.map(
-    (p) => `${extractLastName(p.white)}–${extractLastName(p.black)}`,
-  );
-  let body = parts.join(" · ");
-  if (rest > 0) body += ` +${rest} more`;
-  return body;
-}
-
-function buildResultsBody(results: RoundResult[]): string {
-  // Sort by board number ascending.
+// Builds a compact results digest body for a round_finished notification.
+// Shows up to 3 boards sorted by board number, then "+N more" for the rest.
+// Example: "Carlsen 1-0 Nepo · Caruana ½-½ Giri · Nakamura 1-0 Duda +4 more"
+function buildResultsBody(
+  results: Array<{ white: string; black: string; status: string; boardNr: number | null }>,
+): string {
   const sorted = [...results].sort((a, b) => {
     if (a.boardNr !== null && b.boardNr !== null) return a.boardNr - b.boardNr;
     if (a.boardNr !== null) return -1;
@@ -1846,12 +1802,15 @@ function buildResultsBody(results: RoundResult[]): string {
   const shown = sorted.slice(0, MAX_SHOWN);
   const rest = sorted.length - MAX_SHOWN;
 
-  const parts = shown.map(
-    (r) =>
-      `${extractLastName(r.white)} ${formatResultSymbol(r.status)} ${extractLastName(r.black)}`,
-  );
+  const parts = shown.map((r) => {
+    const w = extractLastName(r.white);
+    const b = extractLastName(r.black);
+    const sym = formatResultSymbol(r.status);
+    return `${w} ${sym} ${b}`;
+  });
+
   let body = parts.join(" · ");
-  if (rest > 0) body += ` +${rest}`;
+  if (rest > 0) body += ` +${rest} more`;
   return body;
 }
 
@@ -1876,11 +1835,15 @@ async function resolvePlayerFavoriteMap(
   const fideIdToName = new Map<string, string>();
 
   for (const g of games as RoundGameRow[]) {
-    if (g.player_white) roundPlayerNames.add(g.player_white);
-    if (g.player_black) roundPlayerNames.add(g.player_black);
-    // Use players JSONB for deterministic fideId→name mapping.
-    // player_fide_ids uses array_agg(DISTINCT) with no ORDER BY, so positional
-    // indexing ([0]=white, [1]=black) is non-deterministic.
+    if (g.player_white) {
+      roundPlayerNames.add(g.player_white);
+    }
+    if (g.player_black) {
+      roundPlayerNames.add(g.player_black);
+    }
+    // Use players JSONB array for deterministic fideId→name mapping.
+    // player_fide_ids uses array_agg(DISTINCT) which has non-deterministic
+    // order, so positional indexing ([0]=white, [1]=black) is unreliable.
     for (const p of g.players ?? []) {
       const fideId = (p as Record<string, unknown>)["fideId"];
       const name = (p as Record<string, unknown>)["name"];
@@ -1927,93 +1890,6 @@ async function resolvePlayerFavoriteMap(
       if (!result.has(userId)) result.set(userId, []);
       const existing = result.get(userId)!;
       // Deduplicate: don't add if last name already present from fide_id match
-      const lastNameLower = extractLastName(name).toLowerCase();
-      const alreadyHas = existing.some(
-        (n) => extractLastName(n).toLowerCase() === lastNameLower,
-      );
-      if (!alreadyHas) {
-        existing.push(name);
-      }
-    }
-  }
-
-  return result;
-}
-
-async function resolveGamePlayerFavoriteMap(
-  game: GameRow | null,
-  payload: Record<string, unknown>,
-  playerUserIds: Set<string>,
-): Promise<Map<string, string[]>> {
-  // For a single game, resolve which of the two players each user has favorited.
-  const result = new Map<string, string[]>();
-  if (playerUserIds.size === 0) return result;
-
-  const white = (payload?.player_white as string) ?? game?.player_white ?? null;
-  const black = (payload?.player_black as string) ?? game?.player_black ?? null;
-  const fideIds = game?.player_fide_ids ?? [];
-
-  const gameFideIds = new Set<string>();
-  const fideIdToName = new Map<string, string>();
-  const gamePlayerNames = new Set<string>();
-
-  if (white) gamePlayerNames.add(white);
-  if (black) gamePlayerNames.add(black);
-
-  // Use players JSONB for deterministic fideId→name mapping.
-  // player_fide_ids uses array_agg(DISTINCT) with no ORDER BY, so positional
-  // indexing ([0]=white, [1]=black) is non-deterministic.
-  const playersData: Record<string, unknown>[] = game?.players ??
-    (payload?.players as Record<string, unknown>[] | null) ?? [];
-  for (const p of playersData) {
-    const fideId = (p as Record<string, unknown>)["fideId"];
-    const name = (p as Record<string, unknown>)["name"];
-    if (fideId != null && name) {
-      const fid = String(fideId);
-      gameFideIds.add(fid);
-      fideIdToName.set(fid, name as string);
-    }
-  }
-  // Fallback: include raw fide IDs not covered by players JSONB
-  for (const id of fideIds) {
-    const fid = id.toString();
-    if (!gameFideIds.has(fid)) gameFideIds.add(fid);
-  }
-
-  const userIds = Array.from(playerUserIds);
-
-  // Match by fide_id
-  if (gameFideIds.size > 0) {
-    const { data: faveByFide } = await supabase
-      .from("user_favorite_players")
-      .select("user_id,fide_id")
-      .in("user_id", userIds)
-      .in("fide_id", Array.from(gameFideIds));
-
-    for (const row of faveByFide ?? []) {
-      const userId = row.user_id as string;
-      const fideId = String(row.fide_id);
-      const name = fideIdToName.get(fideId);
-      if (name) {
-        if (!result.has(userId)) result.set(userId, []);
-        result.get(userId)!.push(name);
-      }
-    }
-  }
-
-  // Match by player_name (fallback)
-  if (gamePlayerNames.size > 0) {
-    const { data: faveByName } = await supabase
-      .from("user_favorite_players")
-      .select("user_id,player_name")
-      .in("user_id", userIds)
-      .in("player_name", Array.from(gamePlayerNames));
-
-    for (const row of faveByName ?? []) {
-      const userId = row.user_id as string;
-      const name = row.player_name as string;
-      if (!result.has(userId)) result.set(userId, []);
-      const existing = result.get(userId)!;
       const lastNameLower = extractLastName(name).toLowerCase();
       const alreadyHas = existing.some(
         (n) => extractLastName(n).toLowerCase() === lastNameLower,
@@ -2083,7 +1959,6 @@ function channelForEvent(eventType: string) {
     case "call_to_action":
       return ANDROID_CHANNELS.callToAction;
     case "book_game_added":
-    case "book_game_updated":
       return ANDROID_CHANNELS.general;
     default:
       return ANDROID_CHANNELS.general;
@@ -2105,19 +1980,16 @@ function buildNotification(
   const black = (payload.player_black as string) ?? context.game?.player_black ??
     "Black";
   const status = (payload.status as string) ?? context.game?.status ?? "";
-  const boardNr = (payload.board_nr as number | null) ?? context.game?.board_nr ?? null;
   const androidChannelId = channelForEvent(item.event_type);
 
   if (item.event_type === "game_started") {
     const eventHeader = buildEventHeader(context.eventName, context.round?.name);
-    const boardTag = boardNr ? ` (Board ${boardNr})` : "";
+    const playerLine = `${formatPlayerName(white)} vs ${formatPlayerName(black)} is live.`;
     return {
-      title: eventHeader ?? `${white} vs ${black}`,
-      body: eventHeader
-        ? `${white} vs ${black}${boardTag} is live.`
-        : `A favorite game just went live.${boardTag}`,
+      title: eventHeader ?? `${formatPlayerName(white)} vs ${formatPlayerName(black)}`,
+      body: playerLine,
       url: null,
-      data: { type: "game_started", game_id: item.game_id, board_nr: boardNr },
+      data: { type: "game_started", game_id: item.game_id },
       androidChannelId,
     };
   }
@@ -2125,14 +1997,13 @@ function buildNotification(
   if (item.event_type === "game_finished") {
     const eventHeader = buildEventHeader(context.eventName, context.round?.name);
     const resultStr = status || "Game over";
-    const boardTag = boardNr ? ` (Board ${boardNr})` : "";
     return {
       title: eventHeader ?? `${white} vs ${black}`,
       body: eventHeader
-        ? `${white} vs ${black}${boardTag}: ${resultStr}`
-        : `Result: ${resultStr}${boardTag}`,
+        ? `${white} vs ${black}: ${resultStr}`
+        : `Result: ${resultStr}`,
       url: null,
-      data: { type: "game_finished", game_id: item.game_id, board_nr: boardNr },
+      data: { type: "game_finished", game_id: item.game_id },
       androidChannelId,
     };
   }
@@ -2864,9 +2735,7 @@ async function sendLiveActivityUpdate(
   return { ok: true, notFound: false };
 }
 
-async function sendLiveActivityEnd(
-  activityId: string,
-): Promise<{ ok: boolean; notFound: boolean }> {
+async function sendLiveActivityEnd(activityId: string): Promise<{ ok: boolean }> {
   const payload = {
     event: "end",
     name: `live_game_update:${activityId}`,
@@ -2884,15 +2753,7 @@ async function sendLiveActivityEnd(
     },
   );
 
-  if (!res.ok) {
-    const text = await res.text();
-    const lower = text.toLowerCase();
-    const notFound = res.status === 404 || res.status === 410 ||
-      lower.includes("not found");
-    return { ok: false, notFound };
-  }
-
-  return { ok: true, notFound: false };
+  return { ok: res.ok };
 }
 
 async function sendAndroidLiveNotification(args: {
@@ -2987,9 +2848,8 @@ async function sendLiveGameAlert(
     payload.last_move ?? "";
   const body = reason === "check"
     ? `${payload.player_white} vs ${payload.player_black} — ${move}`
-    : `${payload.player_white} vs ${payload.player_black} — ${
-        payload.status ?? "Result"
-      }`;
+    : `${payload.player_white} vs ${payload.player_black} — ${payload.status ?? "Result"
+    }`;
 
   const notification: NotificationPayload = {
     title,
@@ -3030,9 +2890,8 @@ async function sendOneSignal(
       payload.url = notification.url;
     }
 
-    if (notification.androidChannelId) {
-      payload.android_channel_id = notification.androidChannelId;
-    }
+    // NOTE: android_channel_id omitted — channels are not registered in
+    // OneSignal yet.  Notifications use the default channel instead.
 
     if (notification.iosSound) {
       payload.ios_sound = notification.iosSound;
@@ -3051,39 +2910,4 @@ function chunk<T>(list: T[], size: number) {
     chunks.push(list.slice(i, i + size));
   }
   return chunks;
-}
-
-// --- Start-family cooldown helpers ---
-
-async function recordGameStartWindow(
-  userIds: string[],
-  roundId: string,
-): Promise<void> {
-  if (userIds.length === 0 || !roundId) return;
-  await supabase.rpc("record_game_start_window", {
-    p_user_ids: userIds,
-    p_round_id: roundId,
-    p_cooldown_seconds: 900,
-  });
-}
-
-async function fetchCooledDownUsers(
-  userIds: string[],
-  roundId: string,
-): Promise<Set<string>> {
-  if (userIds.length === 0 || !roundId) return new Set();
-
-  const { data } = await supabase
-    .from("notification_user_windows")
-    .select("user_id")
-    .in("user_id", userIds)
-    .eq("round_id", roundId)
-    .eq("family", "game_start")
-    .gt("expires_at", new Date().toISOString());
-
-  const set = new Set<string>();
-  for (const row of data ?? []) {
-    set.add(row.user_id as string);
-  }
-  return set;
 }
