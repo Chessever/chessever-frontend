@@ -234,6 +234,46 @@ class ChessBoardScreenNotifierNew
       final nextValue = next.value;
 
       if (prevValue != nextValue && nextValue != null) {
+    // GUARD: Skip re-eval if ONLY showEngineAnalysis changed.
+    // toggleEngineVisibility() already handles its own eval trigger,
+    // so firing again here causes duplicate 5000ms Stockfish jobs.
+    if (prevValue != null) {
+      final nothingChanged =
+        prevValue.searchTimeIndex == nextValue.searchTimeIndex &&
+        prevValue.principalVariationIndex == nextValue.principalVariationIndex &&
+        prevValue.showEngineGauge == nextValue.showEngineGauge &&
+        prevValue.showPvArrows == nextValue.showPvArrows &&
+        prevValue.showDepthOverlay == nextValue.showDepthOverlay &&
+        prevValue.maxArrowsOnBoard == nextValue.maxArrowsOnBoard &&
+        prevValue.showEngineAnalysis == nextValue.showEngineAnalysis; // ← same value
+
+    // Skip if only visibility changed (toggle handles its own eval)
+      final onlyVisibilityChanged =
+          prevValue.searchTimeIndex == nextValue.searchTimeIndex &&
+          prevValue.principalVariationIndex == nextValue.principalVariationIndex &&
+          prevValue.showEngineGauge == nextValue.showEngineGauge &&
+          prevValue.showPvArrows == nextValue.showPvArrows &&
+          prevValue.showDepthOverlay == nextValue.showDepthOverlay &&
+          prevValue.maxArrowsOnBoard == nextValue.maxArrowsOnBoard &&
+          prevValue.showEngineAnalysis != nextValue.showEngineAnalysis;
+
+      if (nothingChanged || onlyVisibilityChanged) {
+        debugPrint('⏭️ [SETTINGS] skipped re-eval '
+            '(${nothingChanged ? "no change" : "visibility-only change"})');
+        // Still sync visibility state if needed
+        final currentState = state.valueOrNull;
+        if (currentState != null &&
+            currentState.showEngineAnalysis != nextValue.showEngineAnalysis) {
+          state = AsyncValue.data(
+            currentState.copyWith(
+              showEngineAnalysis: nextValue.showEngineAnalysis,
+              showPrincipalVariations: nextValue.showEngineAnalysis,
+            ),
+          );
+        }
+        return;
+      }
+    }
         _releaseLog('');
         _releaseLog('🔄 ═══ ENGINE SETTINGS CHANGED ═══');
         _releaseLog('   Previous:');
@@ -3826,37 +3866,34 @@ class ChessBoardScreenNotifierNew
             );
     state = AsyncValue.data(currentState.copyWith(game: updatedGame));
   }
+  bool _isFirstEvalAfterToggle = false;
+ void toggleEngineVisibility() {
+  
+  final currentState = state.value;
+  if (currentState == null) return;
 
-  void toggleEngineVisibility() {
-    final currentState = state.value;
-    if (currentState == null) return;
+  final newValue = !currentState.showEngineAnalysis;
+  debugPrint('⏱️ [TOGGLE] engine ON=$newValue at ${DateTime.now().millisecondsSinceEpoch}');
 
-    final newValue = !currentState.showEngineAnalysis;
+  state = AsyncValue.data(
+    currentState.copyWith(
+      showEngineAnalysis: newValue,
+      showPrincipalVariations: newValue,
+    ),
+  );
 
-    debugPrint(
-      '🎯 ChessBoard[$index]: Toggling engine visibility: ${currentState.showEngineAnalysis} → $newValue',
-    );
+  unawaited(
+    ref.read(engineSettingsProviderNew.notifier)
+        .toggleEngineAnalysis(newValue),
+  );
 
-    // Update local state immediately for responsive UI
-    state = AsyncValue.data(
-      currentState.copyWith(
-        showEngineAnalysis: newValue,
-        showPrincipalVariations: newValue, // Keep in sync
-      ),
-    );
-
-    // Persist to settings in background (unawaited, fire-and-forget)
-    debugPrint(
-      '🎯 ChessBoard[$index]: Persisting engine visibility to settings: $newValue',
-    );
-    // Use unawaited to truly fire-and-forget without blocking UI
-    unawaited(
-      ref
-          .read(engineSettingsProviderNew.notifier)
-          .toggleEngineAnalysis(newValue),
-    );
+  // When turning ON, cancel stale jobs and trigger fresh eval
+  if (newValue) {
+    _isFirstEvalAfterToggle = true;
+    StockfishSingleton().cancelEvaluationsForOwner(_stockfishOwnerId);
+    _updateEvaluation(force: true);
   }
-
+}
   void togglePlayPause() {
     final currentState = state.value;
     if (currentState == null) return;
@@ -5160,12 +5197,18 @@ class ChessBoardScreenNotifierNew
       final multiPV = configuredMultiPV;
       final isCurrentlyVisible = currentVisiblePage == index;
       EngineSearchProgress? pendingProgress;
+      final effectiveSearchDuration = _isFirstEvalAfterToggle
+    ? const Duration(milliseconds: 800)
+    : combinedSearchDuration;
+_isFirstEvalAfterToggle = false;
+debugPrint('⏱️ [EVAL] searchDuration=${effectiveSearchDuration?.inMilliseconds}ms '
+    'at ${DateTime.now().millisecondsSinceEpoch}');
       final stockfishFuture = StockfishSingleton().evaluatePosition(
         fenToAnalyze,
         depth: combinedMaxDepth,
         multiPV: multiPV,
         isCurrentPosition: isCurrentlyVisible,
-        searchDuration: combinedSearchDuration,
+        searchDuration: effectiveSearchDuration,
         maxDepth: combinedMaxDepth,
         allowCache: false,
         ownerId: _stockfishOwnerId, // Tag job with this provider's owner ID
