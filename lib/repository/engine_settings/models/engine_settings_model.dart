@@ -41,7 +41,7 @@ class EngineSettingsModel with EngineSettingsModelMappable {
       showDepthOverlay: json['show_depth_overlay'] as bool? ?? true,
       showPvArrows: json['show_pv_arrows'] as bool? ?? true,
       showEngineAnalysis: json['show_engine_analysis'] as bool? ?? true,
-      searchTimeIndex: json['search_time_index'] as int? ?? 5,
+      searchTimeIndex: json['search_time_index'] as int? ?? 0,
       principalVariationIndex: json['principal_variation_index'] as int? ?? 4,
       maxArrowsOnBoard: json['max_arrows_on_board'] as int? ?? 2,
       createdAt: DateTime.parse(json['created_at'] as String),
@@ -89,7 +89,7 @@ class EngineSettingsModel with EngineSettingsModelMappable {
       showDepthOverlay: true,
       showPvArrows: true,
       showEngineAnalysis: true, // Engine visibility enabled by default
-      searchTimeIndex: 5, // Infinite default
+      searchTimeIndex: 0, // 5 seconds default
       principalVariationIndex: 4, // Default to 5 lines (index 4)
       maxArrowsOnBoard: 2, // Default to 3 arrows (index 2)
       createdAt: DateTime.now(),
