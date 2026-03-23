@@ -250,9 +250,10 @@ class DeepLinkService {
 
       debugPrint('DeepLinkService: Fetching game: $gameId');
 
-      // Fetch the tapped game from Supabase
+      // Fetch the tapped game from Supabase.
+      // getGameByAnyId handles both Supabase UUIDs and Lichess short IDs.
       final gameRepo = ref.read(gameRepositoryProvider);
-      final game = await gameRepo.getGameById(gameId).timeout(_fetchTimeout);
+      final game = await gameRepo.getGameByAnyId(gameId).timeout(_fetchTimeout);
       final gameTourModel = GamesTourModel.fromGame(game);
       List<GamesTourModel> gameList = <GamesTourModel>[gameTourModel];
       var openIndex = 0;
@@ -580,71 +581,6 @@ class DeepLinkService {
       tourId: resolvedTourId,
       roundId: resolvedRoundId,
     );
-  }
-
-  // ---------------------------------------------------------------------------
-  // Sort helpers — same logic as game_card_wrapper_provider.dart
-  // ---------------------------------------------------------------------------
-
-  /// Sorts games to match tour detail screen ordering.
-  /// Order: round descending -> game number descending -> board number ascending
-  List<Games> _sortGamesForNavigation(List<Games> games) {
-    if (games.isEmpty) return games;
-
-    final gameInfo = <String, (int, int)>{};
-    for (final game in games) {
-      gameInfo[game.id] = (
-        _extractRoundNumber(game.roundSlug),
-        _extractGameNumber(game.roundSlug),
-      );
-    }
-
-    final sortedGames = List<Games>.from(games);
-    sortedGames.sort((a, b) {
-      final (roundA, gameA) = gameInfo[a.id] ?? (0, 0);
-      final (roundB, gameB) = gameInfo[b.id] ?? (0, 0);
-
-      if (roundA != roundB) return roundB.compareTo(roundA);
-      if (gameA != gameB) return gameB.compareTo(gameA);
-
-      final aBoard = a.boardNr, bBoard = b.boardNr;
-      if (aBoard != null && bBoard != null) return aBoard.compareTo(bBoard);
-      if (aBoard != null) return -1;
-      if (bBoard != null) return 1;
-      return 0;
-    });
-
-    return sortedGames;
-  }
-
-  /// Extracts round number from round slug (e.g., "round-5" -> 5).
-  /// Named knockout stages get high numbers so they sort after numbered rounds.
-  int _extractRoundNumber(String roundSlug) {
-    final slug = roundSlug.toLowerCase();
-    if (slug.contains('final') &&
-        !slug.contains('quarter') &&
-        !slug.contains('semi')) {
-      return 10000;
-    }
-    if (slug.contains('semifinal') || slug.contains('semi-final')) {
-      return 9000;
-    }
-    if (slug.contains('quarterfinal') || slug.contains('quarter-final')) {
-      return 8000;
-    }
-    final match =
-        RegExp(r'round-?(\d+)', caseSensitive: false).firstMatch(roundSlug) ??
-        RegExp(r'(\d+)').firstMatch(roundSlug);
-    return int.tryParse(match?.group(1) ?? '0') ?? 0;
-  }
-
-  /// Extracts game number from round slug (e.g., "round-6--game-2" -> 2).
-  int _extractGameNumber(String roundSlug) {
-    final match = RegExp(
-      r'game-?(\d+)',
-      caseSensitive: false,
-    ).firstMatch(roundSlug);
-    return int.tryParse(match?.group(1) ?? '0') ?? 0;
   }
 
   /// Dispose of resources
