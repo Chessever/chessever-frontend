@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'dart:ui';
 import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/providers/for_you_games_provider.dart';
+import 'package:chessever2/screens/chessboard/provider/stockfish_singleton.dart';
 import 'package:chessever2/screens/standings/score_card_screen.dart';
 import 'package:skeletonizer/skeletonizer.dart';
 import 'package:chessever2/providers/board_settings_provider_new.dart';
@@ -1030,7 +1031,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
         if (widget.disableGamebaseOverlayByDefault) {
           ref.read(gamebaseOverlayEnabledProvider.notifier).setEnabled(false);
         }
-
+        StockfishSingleton().warmUp();
         // Analysis mode is already enabled by default in the provider initialization
         // No need to toggle it here
         try {
