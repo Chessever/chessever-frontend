@@ -14,17 +14,24 @@ const Color kWhiteColor70 = Color(
 const Color kDividerColor = Color(0xFF2C2C2E);
 const Color kBlack2Color = Color(0xFF1A1A1C); // BLACK#2
 const Color kBlack3Color = Color(0xFF252527); // BLACK#3
-const Color kDarkGreyColor = Color(0xFF333333);
+const Color kGreyColor = Color(0xFF666666); // BLACK#3
+const Color kLightGreyColor = Color(0xFF666666);
+const Color kDarkGreyColor = Color(0xFF262626);
 const Color kGrey900 = Color.fromRGBO(33, 33, 33, 1);
 const Color kLightBlack = Color(0xFF222222);
 const Color kGreenColor = Color(0xFF009C42); // GREEN
 const Color kGreenColor2 = Color(0xFF45C86E); // GREEN
 const Color kRedColor = Color(0xFFF5453A); // RED
+const Color kDarkRedColor = Color.fromRGBO(255, 100, 103, 0.7); // DARKRED
 
 // Move statistics bar segment colors (Lichess-style: white / grey / black)
 const Color kMoveStatWhiteColor = Color(0xFFF0F0F0); // White wins segment
-const Color kMoveStatDrawColor = Color(0xFF40404E); // Draw segment (dark slate grey)
-const Color kMoveStatBlackColor = Color(0xFF0A0A0A); // Black wins segment (near-black)
+const Color kMoveStatDrawColor = Color(
+  0xFF40404E,
+); // Draw segment (dark slate grey)
+const Color kMoveStatBlackColor = Color(
+  0xFF0A0A0A,
+); // Black wins segment (near-black)
 const Color kChessBlackMoveColor = Color(
   0xFFFF8A65,
 ); // Warm coral-orange for black moves

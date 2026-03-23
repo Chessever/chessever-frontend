@@ -1,5 +1,6 @@
 import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/providers/app_version_provider.dart';
+import 'package:chessever2/providers/auth_state_provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/theme/app_theme.dart';
@@ -8,13 +9,12 @@ import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/hamburger_menu/hamburger_menu_dialogs.dart';
-import 'package:chessever2/widgets/paywall/premium_celebration_overlay.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
+import 'package:chessever2/widgets/user_avatar.dart';
 import 'package:chessever2/services/review_prompt_service.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 
@@ -37,16 +37,40 @@ class HamburgerMenuCallbacks {
   });
 }
 
-class HamburgerMenu extends StatelessWidget {
+Future<void> _launchEmail() async {
+  final Uri emailUri = Uri(scheme: 'mailto', path: 'info@chessever.com');
+  if (await canLaunchUrl(emailUri)) {
+    await launchUrl(emailUri);
+  }
+}
+
+Future<void> _launchPrivacyPolicy() async {
+  final Uri privacyPolicyUri = Uri.parse(
+    'https://chessever.com/privacy-policy',
+  );
+  if (await canLaunchUrl(privacyPolicyUri)) {
+    await launchUrl(privacyPolicyUri, mode: LaunchMode.externalApplication);
+  }
+}
+
+void _showAboutDialog(BuildContext context, String version) {
+  showDialog(
+    context: context,
+    builder: (context) => _AboutDialog(version: version),
+  );
+}
+
+class HamburgerMenu extends ConsumerWidget {
   final HamburgerMenuCallbacks callbacks;
 
   const HamburgerMenu({super.key, required this.callbacks});
 
   @override
-  Widget build(BuildContext context) {
-    // Use wider drawer on tablet for better readability
+  Widget build(BuildContext context, WidgetRef ref) {
     final isTablet = ResponsiveHelper.isTablet;
     final drawerWidth = isTablet ? 320.0 : 260.w;
+    final version = ref.watch(appVersionProvider);
+    final versionString = version.valueOrNull ?? '';
 
     return SizedBox(
       width: drawerWidth,
@@ -54,7 +78,6 @@ class HamburgerMenu extends StatelessWidget {
         key: e2eKey(E2eIds.homeDrawer),
         backgroundColor: kBackgroundColor,
         child: SafeArea(
-          // Ensure bottom safe area is respected on all devices
           bottom: true,
           child: Column(
             children: [
@@ -95,36 +118,48 @@ class HamburgerMenu extends StatelessWidget {
                       )
                     else
                       SizedBox(height: 16.h),
-                    // Subscription tier header
-                    const _SubscriptionTierHeader(),
-                    SizedBox(height: 16.h),
-                    _MenuItem(
-                      key: e2eKey(E2eIds.drawerSettings),
-                      icon: Icons.settings,
-                      customIcon: SvgWidget(
-                        SvgAsset.settingsIcon,
-                        semanticsLabel: 'Settings Icon',
-                        height: 24.h,
-                        width: 24.w,
-                      ),
-                      title: 'Settings',
-                      onPressed: () => showSettingsDialog(context),
-                      showChevron: true,
-                    ),
+
+                    // User profile header (avatar + name + PRO badge)
+                    const _UserProfileHeader(),
+                    SizedBox(height: 8.h),
+
+                    // Menu items
                     _MenuItem(
                       key: e2eKey(E2eIds.drawerOpeningExplorer),
+                      customIcon: SvgWidget(
+                        SvgAsset.openingExplorer,
+                        semanticsLabel: 'Opening Explorer Icon',
+                        height: 20.h,
+                        width: 20.w,
+                      ),
                       icon: Icons.explore_outlined,
                       title: 'Opening Explorer',
+                      textStyle: AppTypography.textSmMedium.copyWith(
+                        color: kWhiteColor,
+                        height: 1.0,
+                        letterSpacing: -0.14,
+                      ),
                       onPressed: () {
                         Navigator.of(context).pop();
                         callbacks.onOpeningExplorerPressed();
                       },
                       showChevron: true,
+                      showBorder: true,
                     ),
                     _MenuItem(
                       key: e2eKey(E2eIds.drawerAnalysisBoard),
+                      customIcon: SvgWidget(
+                        SvgAsset.analysisBoard,
+                        semanticsLabel: 'Analysis Board Icon',
+                        height: 20.h,
+                        width: 20.w,
+                      ),
                       icon: Icons.grid_view_rounded,
                       title: 'Analysis Board',
+                      textStyle: AppTypography.textSmRegular.copyWith(
+                        color: kWhiteColor,
+                        height: 20.h / 14.h,
+                      ),
                       onPressed: () {
                         Navigator.of(context).pop();
                         callbacks.onAnalysisBoardPressed();
@@ -132,8 +167,34 @@ class HamburgerMenu extends StatelessWidget {
                       showChevron: true,
                     ),
                     _MenuItem(
+                      key: e2eKey(E2eIds.drawerSettings),
+                      customIcon: SvgWidget(
+                        SvgAsset.settings,
+                        semanticsLabel: 'Settings Icon',
+                        height: 20.h,
+                        width: 20.w,
+                      ),
+                      title: 'Settings',
+                      textStyle: AppTypography.textSmRegular.copyWith(
+                        color: kWhiteColor,
+                        height: 20.h / 14.h,
+                      ),
+                      onPressed: () => showSettingsDialog(context),
+                      showChevron: true,
+                    ),
+                    _MenuItem(
+                      customIcon: SvgWidget(
+                        SvgAsset.leaveFeedback,
+                        semanticsLabel: 'Leave Feedback Icon',
+                        height: 20.h,
+                        width: 20.w,
+                      ),
                       icon: Icons.rate_review_outlined,
-                      title: 'Leave feedback',
+                      title: 'Leave Feedback',
+                      textStyle: AppTypography.textSmRegular.copyWith(
+                        color: kWhiteColor,
+                        height: 20.h / 14.h,
+                      ),
                       onPressed: () {
                         Navigator.of(context).pop();
                         ReviewPromptService.instance.maybePrompt(
@@ -144,11 +205,71 @@ class HamburgerMenu extends StatelessWidget {
                       },
                       showChevron: true,
                     ),
+                    _MenuItem(
+                      customIcon: SvgWidget(
+                        SvgAsset.privacyPolicy,
+                        semanticsLabel: 'Privacy Policy Icon',
+                        height: 20.h,
+                        width: 20.w,
+                      ),
+                      icon: Icons.lock_outline,
+                      title: 'Privacy Policy',
+                      textStyle: AppTypography.textSmRegular.copyWith(
+                        color: kWhiteColor,
+                        height: 20.h / 14.h,
+                      ),
+                      onPressed: () {
+                        HapticFeedbackService.buttonPress();
+                        _launchPrivacyPolicy();
+                      },
+                      showChevron: true,
+                    ),
+                    _MenuItem(
+                      customIcon: SvgWidget(
+                        SvgAsset.email,
+                        semanticsLabel: 'Email Icon',
+                        height: 20.h,
+                        width: 20.w,
+                      ),
+                      icon: Icons.email_outlined,
+                      title: 'info@chessever.com',
+                      textStyle: AppTypography.textSmRegular.copyWith(
+                        color: kWhiteColor,
+                        decoration: TextDecoration.underline,
+                        decorationColor: kWhiteColor.withValues(alpha: 0.5),
+                      ),
+                      onPressed: () {
+                        HapticFeedbackService.buttonPress();
+                        _launchEmail();
+                      },
+                      showChevron: true,
+                    ),
+                    _MenuItem(
+                      customIcon: SvgWidget(
+                        SvgAsset.versionIcon,
+                        semanticsLabel: 'Info Icon',
+                        height: 20.h,
+                        width: 20.w,
+                      ),
+                      title:
+                          versionString.isNotEmpty
+                              ? 'Version $versionString'
+                              : 'Version',
+                      textStyle: AppTypography.textSmRegular.copyWith(
+                        color: kWhiteColor,
+                        height: 20.h / 14.h,
+                      ),
+                      onPressed: () {
+                        HapticFeedbackService.buttonPress();
+                        _showAboutDialog(context, versionString);
+                      },
+                      showChevron: true,
+                    ),
                   ],
                 ),
               ),
-              // Wrap footer items in a container with minimum constraints
-              // to prevent cutoff on tablet
+
+              // Footer: Get Premium card + Restore Purchases + Divider + Log Out
               ConstrainedBox(
                 constraints: BoxConstraints(
                   minHeight: ResponsiveHelper.isTablet ? 280.0 : 0,
@@ -156,14 +277,25 @@ class HamburgerMenu extends StatelessWidget {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    _VersionFooter(),
+                    // "Get Premium" card — shown only for non-premium users
+                    _GetPremiumCard(),
+
+                    // Restore Purchases
+                    _RestorePurchasesRow(),
+
+                    // Divider
+                    Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 16.sp),
+                      child: Container(height: 1, color: kDividerColor),
+                    ),
+
                     _LogOutButton(
                       key: e2eKey(E2eIds.drawerLogout),
                       onLogoutPressed: () {
                         callbacks.onLogoutPressed();
                       },
                     ),
-                    // Add extra bottom padding on tablet
+
                     if (ResponsiveHelper.isTablet) SizedBox(height: 16.0),
                   ],
                 ),
@@ -176,138 +308,225 @@ class HamburgerMenu extends StatelessWidget {
   }
 }
 
-/// Subscription tier header - premium feel with subtle styling
-class _SubscriptionTierHeader extends ConsumerWidget {
-  const _SubscriptionTierHeader();
-
-  String _formatExpirationDate(DateTime? date) {
-    if (date == null) return '';
-    return DateFormat('MMM d, yyyy').format(date);
-  }
-
-  Future<void> _handleTap(
-    BuildContext context,
-    WidgetRef ref,
-    bool isPremium,
-  ) async {
-    HapticFeedbackService.buttonPress();
-
-    if (isPremium) {
-      final managementUrl = ref.read(subscriptionProvider).managementUrl;
-      await showPremiumCelebration(context, managementUrl: managementUrl);
-    } else {
-      await requirePremiumGuard(context, ref);
-    }
-  }
-
-  String _getSubscriptionStatusText(DateTime? expirationDate, bool willRenew) {
-    if (expirationDate == null) {
-      return 'Active subscription';
-    }
-
-    final formattedDate = _formatExpirationDate(expirationDate);
-
-    // If subscription will auto-renew, show "Renews"
-    // Otherwise user has cancelled, show "Expires"
-    return willRenew ? 'Renews $formattedDate' : 'Expires $formattedDate';
-  }
+/// User profile header — displays avatar, display name, and PRO badge (if subscribed)
+class _UserProfileHeader extends ConsumerWidget {
+  const _UserProfileHeader();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final subscriptionState = ref.watch(subscriptionProvider);
-    final isPremium = subscriptionState.isSubscribed;
-    final expirationDate = subscriptionState.expirationDate;
-    final willRenew = subscriptionState.willRenew;
+    final user = ref.watch(currentUserProvider);
+    final isPremium = ref.watch(subscriptionProvider).isSubscribed;
+    final displayName = user?.displayName ?? 'Anonymous';
 
     return Padding(
-      padding: EdgeInsets.symmetric(horizontal: 12.sp),
-      child: Column(
+      padding: EdgeInsets.symmetric(horizontal: 16.sp, vertical: 12.sp),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          InkWell(
-            onTap: () => _handleTap(context, ref, isPremium),
-            borderRadius: BorderRadius.circular(10.br),
-            child: Container(
-              padding: EdgeInsets.all(12.sp),
-              decoration: BoxDecoration(
-                color: kWhiteColor.withValues(alpha: 0.04),
-                borderRadius: BorderRadius.circular(10.br),
-                border: Border.all(
-                  color:
-                      isPremium
-                          ? kPrimaryColor.withValues(alpha: 0.25)
-                          : kWhiteColor.withValues(alpha: 0.08),
-                  width: 1,
+          UserAvatar(size: 40, showPremiumBorder: true),
+          SizedBox(width: 12.w),
+          Expanded(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Flexible(
+                  child: Text(
+                    displayName,
+                    style: AppTypography.textSmSemiBold.copyWith(
+                      color: kWhiteColor,
+                      height: 20.h / 14.h,
+                      letterSpacing: -0.14,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 1,
+                  ),
                 ),
-              ),
-              child: Row(
-                children: [
-                  // Icon
-                  Container(
-                    width: 36.w,
-                    height: 36.h,
-                    decoration: BoxDecoration(
-                      color:
-                          isPremium
-                              ? kPrimaryColor.withValues(alpha: 0.15)
-                              : kWhiteColor.withValues(alpha: 0.08),
-                      borderRadius: BorderRadius.circular(8.br),
-                    ),
-                    child: Icon(
-                      isPremium
-                          ? Icons.workspace_premium_rounded
-                          : Icons.diamond_outlined,
-                      color: isPremium ? kPrimaryColor : kWhiteColor,
-                      size: 20.ic,
-                    ),
-                  ),
-                  SizedBox(width: 12.w),
-                  // Text content
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          isPremium ? 'Premium' : 'Get Premium',
-                          style: AppTypography.textMdMedium.copyWith(
-                            color: isPremium ? kPrimaryColor : kWhiteColor,
-                          ),
-                        ),
-                        SizedBox(height: 2.h),
-                        Text(
-                          isPremium
-                              ? _getSubscriptionStatusText(
-                                expirationDate,
-                                willRenew,
-                              )
-                              : 'Unlock all features',
-                          style: AppTypography.textXsRegular.copyWith(
-                            color: kWhiteColor.withValues(alpha: 0.5),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  // Action indicator
-                  if (!isPremium)
-                    Icon(
-                      Icons.arrow_forward_ios_rounded,
-                      color: kWhiteColor.withValues(alpha: 0.7),
-                      size: 16.ic,
-                    )
-                  else
-                    Icon(
-                      Icons.chevron_right_rounded,
-                      color: kWhiteColor.withValues(alpha: 0.4),
-                      size: 20.ic,
-                    ),
-                ],
-              ),
+                if (isPremium) ...[SizedBox(width: 8.w), _ProBadge()],
+              ],
             ),
           ),
-          SizedBox(height: 12.h),
         ],
       ),
     ).animate().fadeIn(duration: 300.ms).slideX(begin: -0.1, end: 0);
+  }
+}
+
+/// Small "PRO" pill badge shown next to the user's name for premium subscribers
+class _ProBadge extends StatelessWidget {
+  const _ProBadge();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 4.sp, vertical: 2.sp),
+      decoration: BoxDecoration(
+        color: kLightGreyColor,
+        borderRadius: BorderRadius.circular(16.br),
+        border: Border.all(color: kWhiteColor.withOpacity(0.25), width: 1),
+      ),
+      child: Text(
+        'PRO',
+        style: AppTypography.textXsRegular.copyWith(
+          color: kWhiteColor,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.5,
+        ),
+      ),
+    );
+  }
+}
+
+/// Dismissible "Get Premium" card shown at the bottom for non-premium users.
+/// Dismissed state is session-only (resets on app restart).
+class _GetPremiumCard extends ConsumerStatefulWidget {
+  const _GetPremiumCard();
+
+  @override
+  ConsumerState<_GetPremiumCard> createState() => _GetPremiumCardState();
+}
+
+class _GetPremiumCardState extends ConsumerState<_GetPremiumCard> {
+  bool _dismissed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final isPremium = ref.watch(subscriptionProvider).isSubscribed;
+
+    if (isPremium || _dismissed) return const SizedBox.shrink();
+
+    return Padding(
+      padding: EdgeInsets.fromLTRB(16.sp, 0.sp, 16.sp, 12.sp),
+      child: Container(
+        decoration: BoxDecoration(
+          color: kBlack3Color,
+          borderRadius: BorderRadius.circular(16.br),
+          border: Border.all(color: kWhiteColor.withOpacity(0.08), width: 1),
+        ),
+        padding: EdgeInsets.only(left: 12.sp, top: 4.sp, bottom: 12.sp),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Title row with X button
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Expanded(
+                  child: Text(
+                    'Get Premium',
+                    style: AppTypography.textSmSemiBold.copyWith(
+                      color: kWhiteColor,
+                      height: 17.5.h / 14.h,
+                    ),
+                  ),
+                ),
+
+                IconButton(
+                  style: ButtonStyle(
+                    backgroundColor: WidgetStatePropertyAll(kBlackColor),
+                    foregroundColor: WidgetStatePropertyAll(kWhiteColor),
+                    shape: WidgetStatePropertyAll(CircleBorder()),
+                  ),
+                  onPressed: () {
+                    HapticFeedbackService.buttonPress();
+                    setState(() => _dismissed = true);
+                  },
+                  icon: Icon(
+                    Icons.close,
+                    color: kWhiteColor.withOpacity(0.6),
+                    size: 14.ic,
+                  ),
+                  padding: EdgeInsets.zero,
+                  constraints: BoxConstraints(minWidth: 20.w, minHeight: 20.h),
+                ),
+              ],
+            ),
+            SizedBox(height: 4.h),
+            Text(
+              'Unlock all premium features to improve your chess game!',
+              style: AppTypography.textXsRegular.copyWith(
+                color: kWhiteColor,
+                height: 19.5.h / 12.h,
+              ),
+            ),
+            SizedBox(height: 12.h),
+            Container(
+              padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 8.sp),
+              decoration: BoxDecoration(
+                color: kLightGreyColor,
+                borderRadius: BorderRadius.circular(69.br),
+              ),
+              child: InkWell(
+                onTap: () async {
+                  HapticFeedbackService.buttonPress();
+                  await requirePremiumGuard(context, ref);
+                },
+                child: Text(
+                  'Upgrade to Premium',
+                  style: AppTypography.textXsMedium.copyWith(
+                    color: kWhiteColor,
+                    height: 16.h / 12.h,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Restore Purchases row — kept for App Store compliance
+class _RestorePurchasesRow extends ConsumerWidget {
+  const _RestorePurchasesRow();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return InkWell(
+      onTap: () async {
+        HapticFeedbackService.buttonPress();
+        final success =
+            await ref.read(subscriptionProvider.notifier).restorePurchases();
+
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                success
+                    ? 'Purchases restored successfully!'
+                    : 'No purchases found to restore',
+              ),
+              backgroundColor: success ? kGreenColor : kDarkGreyColor,
+            ),
+          );
+        }
+      },
+      child: Container(
+        padding: EdgeInsets.only(
+          left: 16.sp,
+          top: 10.sp,
+          bottom: 10.sp,
+          right: 8.sp,
+        ),
+        child: Row(
+          children: [
+            Icon(
+              Icons.restore_rounded,
+              size: 24.ic,
+              color: kWhiteColor.withOpacity(0.5),
+            ),
+            SizedBox(width: 12.w),
+            Text(
+              'Restore Purchases',
+              style: AppTypography.textSmRegular.copyWith(
+                color: kWhiteColor.withOpacity(0.5),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 
@@ -330,19 +549,22 @@ class _LogOutButton extends StatelessWidget {
               }
               : null,
       child: Container(
-        padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 12.sp),
-        height: 48.h,
+        padding: EdgeInsets.symmetric(horizontal: 16.sp, vertical: 12.sp),
+        height: 65.h,
         child: Row(
           children: [
             Icon(
               isAnonymous ? Icons.person_add_outlined : Icons.logout,
-              color: Colors.white,
+              color: isAnonymous ? null : kDarkRedColor,
               size: 24.ic,
             ),
             SizedBox(width: 12.w),
             Text(
               isAnonymous ? 'Sign up' : 'Log out',
-              style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+              style: AppTypography.textSmMedium.copyWith(
+                color: isAnonymous ? null : kDarkRedColor,
+                height: 20.h / 14.h,
+              ),
             ),
           ],
         ),
@@ -358,286 +580,112 @@ class _MenuItem extends StatelessWidget {
     required this.title,
     this.showChevron = false,
     this.onPressed,
-    this.color,
-    this.textColors,
+    this.textStyle,
+    this.showBorder = false,
+    this.maxLines,
     super.key,
   });
 
+  final bool? showBorder;
+  final int? maxLines;
   final IconData? icon;
   final Widget? customIcon;
   final String title;
   final bool showChevron;
-  final Color? textColors;
   final VoidCallback? onPressed;
-  final Color? color;
+  final TextStyle? textStyle;
+
+  VoidCallback? get _onTap =>
+      onPressed != null
+          ? () {
+            HapticFeedbackService.navigation();
+            onPressed!();
+          }
+          : null;
+
+  Widget _buildRowContent() {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        customIcon ??
+            Icon(icon, color: kWhiteColor.withValues(alpha: 0.8), size: 22.ic),
+        SizedBox(width: 12.w),
+        Expanded(
+          child: Text(
+            title,
+            maxLines: maxLines,
+            style:
+                textStyle ??
+                AppTypography.textSmRegular.copyWith(
+                  color: kWhiteColor,
+                  height: 20.h / 14.h,
+                ),
+          ),
+        ),
+        if (showChevron)
+          Icon(
+            Icons.chevron_right_outlined,
+            color: kWhiteColor.withValues(alpha: 0.4),
+            size: 22.ic,
+          ),
+      ],
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap:
-          onPressed != null
-              ? () {
-                HapticFeedbackService.navigation();
-                onPressed!();
-              }
-              : null,
-      child: Container(
-        color: color,
-        padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 8.sp),
-        constraints: BoxConstraints(minHeight: 40.h),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            customIcon ?? Icon(icon, color: kWhiteColor, size: 22.ic),
-            SizedBox(width: 4.w),
-            Expanded(
-              child: Text(
-                title,
-                style: AppTypography.textMdMedium.copyWith(
-                  color: textColors ?? kWhiteColor,
-                ),
+    // Opening Explorer (showBorder = true): keep existing structure unchanged
+    if (showBorder ?? false) {
+      return Padding(
+        padding: EdgeInsets.only(
+          left: 16.sp,
+          right: 8.sp,
+          top: 4.sp,
+          bottom: 4.sp,
+        ),
+        child: Container(
+          decoration: BoxDecoration(
+            color: kDarkGreyColor,
+            borderRadius: BorderRadius.circular(120.br),
+          ),
+          child: InkWell(
+            onTap: _onTap,
+            borderRadius: BorderRadius.circular(1000.br),
+            child: Container(
+              height: 44.h,
+              padding: EdgeInsets.symmetric(horizontal: 12.sp),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(1000.br),
               ),
+              child: _buildRowContent(),
             ),
-            showChevron
-                ? Padding(
-                  padding: EdgeInsets.only(right: 12.sp),
-                  child: Icon(
-                    Icons.chevron_right_outlined,
-                    color: kWhiteColor,
-                    size: 24.ic,
-                  ),
-                )
-                : SizedBox.shrink(),
-          ],
+          ),
+        ),
+      );
+    }
+
+    // All other items: InkWell wraps the full Padding so the 4 sp vertical
+    // gaps above/below are part of the tap surface (larger hit area, same UI).
+    return InkWell(
+      onTap: _onTap,
+      customBorder: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(1000),
+      ),
+      child: Padding(
+        padding: EdgeInsets.only(
+          left: 16.sp,
+          right: 8.sp,
+          top: 4.sp,
+          bottom: 4.sp,
+        ),
+        child: SizedBox(
+          height: 44.h,
+          child: Padding(
+            padding: EdgeInsets.symmetric(horizontal: 12.sp),
+            child: _buildRowContent(),
+          ),
         ),
       ),
-    );
-  }
-}
-
-class _VersionFooter extends ConsumerWidget {
-  const _VersionFooter({super.key});
-
-  Future<void> _launchEmail() async {
-    final Uri emailUri = Uri(scheme: 'mailto', path: 'info@chessever.com');
-    if (await canLaunchUrl(emailUri)) {
-      await launchUrl(emailUri);
-    }
-  }
-
-  static Future<void> _launchPrivacyPolicy() async {
-    final Uri privacyPolicyUri = Uri.parse(
-      'https://chessever.com/privacy-policy',
-    );
-    if (await canLaunchUrl(privacyPolicyUri)) {
-      await launchUrl(privacyPolicyUri, mode: LaunchMode.externalApplication);
-    }
-  }
-
-  void _showAboutDialog(BuildContext context, String version) {
-    showDialog(
-      context: context,
-      builder: (context) => _AboutDialog(version: version),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final version = ref.watch(appVersionProvider);
-    return version.when(
-      data: (versionString) {
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Divider
-            Padding(
-              padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 12.sp),
-              child: Container(height: 1, color: kWhiteColor.withOpacity(0.1)),
-            ).animate().fadeIn(duration: 400.ms).slideX(begin: -0.2, end: 0),
-
-            // Email - Now tappable
-            InkWell(
-                  onTap: () {
-                    HapticFeedbackService.buttonPress();
-                    _launchEmail();
-                  },
-                  child: Container(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: 12.sp,
-                      vertical: 8.sp,
-                    ),
-                    height: 40.h,
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.email_outlined,
-                          size: 18.ic,
-                          color: kWhiteColor.withOpacity(0.7),
-                        ),
-                        SizedBox(width: 8.w),
-                        Text(
-                          'info@chessever.com',
-                          style: AppTypography.textSmRegular.copyWith(
-                            color: kWhiteColor.withOpacity(0.7),
-                            decoration: TextDecoration.underline,
-                            decorationColor: kWhiteColor.withOpacity(0.3),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                )
-                .animate()
-                .fadeIn(delay: 100.ms, duration: 400.ms)
-                .slideX(begin: -0.2, end: 0),
-
-            // Version - Now tappable
-            InkWell(
-                  onTap: () {
-                    HapticFeedbackService.buttonPress();
-                    _showAboutDialog(context, versionString);
-                  },
-                  child: Container(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: 12.sp,
-                      vertical: 8.sp,
-                    ),
-                    height: 40.h,
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.info_outline,
-                          size: 18.ic,
-                          color: kWhiteColor.withOpacity(0.5),
-                        ),
-                        SizedBox(width: 8.w),
-                        Text(
-                          'Version $versionString',
-                          style: AppTypography.textSmRegular.copyWith(
-                            color: kWhiteColor.withOpacity(0.5),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                )
-                .animate()
-                .fadeIn(delay: 200.ms, duration: 400.ms)
-                .slideX(begin: -0.2, end: 0),
-
-            // Privacy Policy Button
-            InkWell(
-                  onTap: () {
-                    HapticFeedbackService.buttonPress();
-                    _launchPrivacyPolicy();
-                  },
-                  child: Container(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: 12.sp,
-                      vertical: 8.sp,
-                    ),
-                    height: 40.h,
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 20.w,
-                          height: 20.h,
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              colors: [
-                                kGreenColor.withOpacity(0.6),
-                                kGreenColor.withOpacity(0.4),
-                              ],
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                            ),
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          child: Icon(
-                            Icons.privacy_tip_outlined,
-                            size: 14.ic,
-                            color: kWhiteColor,
-                          ),
-                        ),
-                        SizedBox(width: 8.w),
-                        Text(
-                          'Privacy Policy',
-                          style: AppTypography.textSmRegular.copyWith(
-                            color: kWhiteColor.withOpacity(0.7),
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                        Spacer(),
-                        Icon(
-                          Icons.open_in_new,
-                          size: 14.ic,
-                          color: kWhiteColor.withOpacity(0.4),
-                        ),
-                      ],
-                    ),
-                  ),
-                )
-                .animate()
-                .fadeIn(delay: 300.ms, duration: 400.ms)
-                .slideX(begin: -0.2, end: 0),
-
-            // Restore Purchases Button
-            InkWell(
-                  onTap: () async {
-                    HapticFeedbackService.buttonPress();
-                    final success =
-                        await ref
-                            .read(subscriptionProvider.notifier)
-                            .restorePurchases();
-
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            success
-                                ? 'Purchases restored successfully!'
-                                : 'No purchases found to restore',
-                          ),
-                          backgroundColor:
-                              success ? kGreenColor : kDarkGreyColor,
-                        ),
-                      );
-                    }
-                  },
-                  child: Container(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: 12.sp,
-                      vertical: 8.sp,
-                    ),
-                    height: 40.h,
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.restore_rounded,
-                          size: 18.ic,
-                          color: kWhiteColor.withValues(alpha: 0.7),
-                        ),
-                        SizedBox(width: 8.w),
-                        Text(
-                          'Restore Purchases',
-                          style: AppTypography.textSmRegular.copyWith(
-                            color: kWhiteColor.withValues(alpha: 0.7),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                )
-                .animate()
-                .fadeIn(delay: 350.ms, duration: 400.ms)
-                .slideX(begin: -0.2, end: 0),
-
-            SizedBox(height: 8.h),
-          ],
-        );
-      },
-      error: (_, __) => SizedBox.shrink(),
-      loading: () => SizedBox.shrink(),
     );
   }
 }
@@ -669,14 +717,14 @@ class _AboutDialog extends StatelessWidget {
                 BoxShadow(
                   color: Colors.black.withOpacity(0.3),
                   blurRadius: 24,
-                  offset: Offset(0, 12),
+                  offset: const Offset(0, 12),
                 ),
               ],
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // Header with chess piece accent
+                // Header
                 Container(
                   width: double.infinity,
                   padding: EdgeInsets.all(24.sp),
@@ -689,14 +737,13 @@ class _AboutDialog extends StatelessWidget {
                         kWhiteColor.withOpacity(0.02),
                       ],
                     ),
-                    borderRadius: BorderRadius.only(
+                    borderRadius: const BorderRadius.only(
                       topLeft: Radius.circular(24),
                       topRight: Radius.circular(24),
                     ),
                   ),
                   child: Column(
                     children: [
-                      // App icon
                       Container(
                             width: 56.w,
                             height: 56.h,
@@ -752,7 +799,6 @@ class _AboutDialog extends StatelessWidget {
                   padding: EdgeInsets.all(20.sp),
                   child: Column(
                     children: [
-                      // Social Media Link
                       _LinkButton(
                         icon: Icons.language,
                         label: 'Follow us on X',
@@ -764,8 +810,6 @@ class _AboutDialog extends StatelessWidget {
                         delay: 400,
                       ),
                       SizedBox(height: 12.h),
-
-                      // Privacy Policy Link
                       _LinkButton(
                         icon: Icons.privacy_tip_outlined,
                         label: 'Privacy Policy',
@@ -818,7 +862,7 @@ class _AboutDialog extends StatelessWidget {
           )
           .animate()
           .scale(
-            begin: Offset(0.8, 0.8),
+            begin: const Offset(0.8, 0.8),
             duration: 300.ms,
             curve: Curves.easeOutBack,
           )
