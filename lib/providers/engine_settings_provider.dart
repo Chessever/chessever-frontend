@@ -173,7 +173,7 @@ class EngineSettings {
     this.showDepthOverlay = true,
     this.showPvArrows = true,
     this.showEngineAnalysis = true,
-    this.searchTimeIndex = 5,
+    this.searchTimeIndex = 0,
     int principalVariationIndex = 4, // Default to 5 lines (index 4)
     int maxArrowsOnBoard = 2, // Default to 3 arrows (index 2)
   }) : principalVariationIndex =
@@ -378,8 +378,6 @@ final engineSettingsProviderNew =
 
 class EngineSettingsNotifierNew extends AsyncNotifier<EngineSettings> {
   static const String _cacheKey = 'cached_engine_settings';
-  static const String _legacySearchTimeMigrationKey =
-      'legacy_search_time_migrated_v1';
 
   SupabaseClient get _supabase => Supabase.instance.client;
 
@@ -431,15 +429,11 @@ class EngineSettingsNotifierNew extends AsyncNotifier<EngineSettings> {
         maxArrowsOnBoard: model.maxArrowsOnBoard,
       );
 
-      // One-time legacy migration (search_time_index 0 → 5)
-      final migrated =
-          await _migrateLegacySearchTimeIfNeeded(settings, userId);
-
       // Cache locally
-      await _cacheSettings(migrated);
+      await _cacheSettings(settings);
 
       debugPrint('[EngineSettings] Fetched settings from Supabase');
-      return migrated;
+      return settings;
     } catch (e, st) {
       debugPrint('[EngineSettings] Error fetching from Supabase: $e');
       debugPrint('[EngineSettings] Stack: $st');
@@ -679,35 +673,6 @@ class EngineSettingsNotifierNew extends AsyncNotifier<EngineSettings> {
       debugPrint('[EngineSettings] Error getting cached settings: $e');
       return const EngineSettings();
     }
-  }
-
-  /// One-time migration: if the user has search_time_index=0 and hasn't been
-  /// migrated yet, rewrite to 5 (unlimited). Sets a per-user flag in SQLite
-  /// so later manual choices of 5s are preserved.
-  Future<EngineSettings> _migrateLegacySearchTimeIfNeeded(
-    EngineSettings settings,
-    String userId,
-  ) async {
-    final db = AppDatabase.instance;
-    final flagKey = '${_legacySearchTimeMigrationKey}_$userId';
-    final alreadyMigrated = await db.getBool(flagKey) ?? false;
-
-    if (alreadyMigrated) return settings;
-
-    if (settings.searchTimeIndex == 0) {
-      final migrated = settings.copyWith(searchTimeIndex: 5);
-      debugPrint(
-        '[EngineSettings] Migrating legacy searchTimeIndex 0 → 5',
-      );
-      await _saveToSupabase(migrated, userId);
-      // Flag set ONLY after Supabase write succeeds — retry on next load if it fails
-      await db.setBool(flagKey, true);
-      return migrated;
-    }
-
-    // Non-zero value, no rewrite needed — just set the flag
-    await db.setBool(flagKey, true);
-    return settings;
   }
 
   /// Clear cache (useful on sign out)
