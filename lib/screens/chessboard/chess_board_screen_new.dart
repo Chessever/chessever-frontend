@@ -2669,22 +2669,52 @@ class _AppBarState extends ConsumerState<_AppBar> {
   }
 
   void copyPgnBtnClicked() async {
-    String? pgn;
-    final params = ChessBoardProviderParams(
-      game: widget.game,
-      index: widget.currentGameIndex,
-    );
-    final boardState = ref.read(chessBoardScreenProviderNew(params));
-    final analysisGame = boardState.valueOrNull?.analysisState.game;
-    if (analysisGame != null) {
-      pgn = exportGameToPgn(analysisGame);
+    try {
+      String? pgn;
+      final params = ChessBoardProviderParams(
+        game: widget.game,
+        index: widget.currentGameIndex,
+      );
+      final boardState = ref.read(chessBoardScreenProviderNew(params));
+      final analysisGame = boardState.valueOrNull?.analysisState.game;
+      if (analysisGame != null) {
+        pgn = exportGameToPgn(analysisGame);
+      }
+      pgn ??=
+          (await ref
+              .read(gameRepositoryProvider)
+              .getGameById(widget.game.gameId)).pgn ??
+          '';
+      await Clipboard.setData(ClipboardData(text: pgn));
+      HapticFeedback.lightImpact();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'PGN copied to clipboard',
+              style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+            ),
+            backgroundColor: kBlack2Color.withValues(alpha: 0.95),
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Failed to copy PGN',
+              style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+            ),
+            backgroundColor: kBlack2Color.withValues(alpha: 0.95),
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
     }
-    pgn ??=
-        (await ref
-            .read(gameRepositoryProvider)
-            .getGameById(widget.game.gameId)).pgn ??
-        '';
-    Clipboard.setData(ClipboardData(text: pgn));
   }
 
   void shareGameBtnClicked() async {
@@ -2698,19 +2728,39 @@ class _AppBarState extends ConsumerState<_AppBar> {
     // Only proceed if we have a valid state
     if (!boardState.hasValue || boardState.value == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please wait for the game to load'),
-          backgroundColor: Colors.orange,
+        SnackBar(
+          content: Text(
+            'Please wait for the game to load',
+            style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+          ),
+          backgroundColor: kBlack2Color.withValues(alpha: 0.95),
+          behavior: SnackBarBehavior.floating,
         ),
       );
       return;
     }
 
     final state = boardState.value!;
-    final gameWithPgn = await ref
-        .read(gameRepositoryProvider)
-        .getGameById(widget.game.gameId);
-    final pgn = gameWithPgn.pgn ?? "";
+
+    // Prefer PGN from the already-loaded analysis state (works for all game
+    // sources: TWIC, opening explorer, player's database, analysis board).
+    // Fall back to a Supabase fetch only when the analysis game is unavailable.
+    String pgn = '';
+    final analysisGame = state.analysisState.game;
+    if (analysisGame != null) {
+      pgn = exportGameToPgn(analysisGame);
+    }
+    if (pgn.isEmpty) {
+      try {
+        final gameWithPgn = await ref
+            .read(gameRepositoryProvider)
+            .getGameById(widget.game.gameId);
+        pgn = gameWithPgn.pgn ?? '';
+      } catch (_) {
+        // Game may not exist in Supabase (e.g. gamebase / TWIC source) — proceed
+        // with whatever PGN we already have.
+      }
+    }
 
     // Show share overlay - we'll navigate to a full screen overlay
     if (context.mounted) {
@@ -7662,8 +7712,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       }
 
       moveSpans = [
-        if (prefix.isNotEmpty)
-          TextSpan(text: prefix, style: numberStyle),
+        if (prefix.isNotEmpty) TextSpan(text: prefix, style: numberStyle),
         TextSpan(text: body, style: textStyle),
       ];
     }

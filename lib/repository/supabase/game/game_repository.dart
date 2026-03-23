@@ -128,15 +128,48 @@ class GameRepository extends BaseRepository {
     });
   }
 
-  // Fetch game by ID
+  // Fetch game by its Supabase UUID (games.id column).
   Future<Games> getGameById(String id) async {
-    print('Fetching game by ID: $id');
+    debugPrint('Fetching game by ID: $id');
     return handleApiCall(() async {
-      final response =
-          await supabase.from('games').select().eq('id', id).single();
+      final response = await supabase
+          .from('games')
+          .select(_gameListSelectColumns)
+          .eq('id', id)
+          .single();
 
       return Games.fromJson(response);
     });
+  }
+
+  // Fetch game by Lichess short ID (games.lichess_id column).
+  Future<Games> getGameByLichessId(String lichessId) async {
+    debugPrint('Fetching game by Lichess ID: $lichessId');
+    return handleApiCall(() async {
+      final response = await supabase
+          .from('games')
+          .select(_gameListSelectColumns)
+          .eq('lichess_id', lichessId)
+          .single();
+
+      return Games.fromJson(response);
+    });
+  }
+
+  static final _uuidPattern = RegExp(
+    r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
+    caseSensitive: false,
+  );
+
+  /// Resolves a game from either a Supabase UUID or a Lichess short ID.
+  /// UUID  → queries games.id
+  /// Other → queries games.lichess_id (e.g. "4uVwSr9q")
+  Future<Games> getGameByAnyId(String id) async {
+    final trimmed = id.trim();
+    if (_uuidPattern.hasMatch(trimmed)) {
+      return getGameById(trimmed);
+    }
+    return getGameByLichessId(trimmed);
   }
 
   // Get all games for a specific player by fideId
