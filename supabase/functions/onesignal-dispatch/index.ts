@@ -1574,7 +1574,7 @@ async function filterHeadsUpRecipients(
     const isPlayerFav = playerUserIds.has(userId);
     const isEventFav = eventUserIds.has(userId);
     const playerAllowed = !prefs || prefs.favorite_player_alerts !== false;
-    const eventAllowed = prefs?.favorite_event_alerts === true;
+    const eventAllowed = !prefs || prefs.favorite_event_alerts !== false;
 
     // Category-specific time-control gate for heads-up notifications.
     if (gameTimeControl && prefs) {

@@ -79,7 +79,7 @@ class NotificationPreferences {
   }
 
   static const defaults = NotificationPreferences(
-    favoriteEventAlerts: false,
+    favoriteEventAlerts: true,
     favoritePlayerAlerts: true,
     headsUpAlerts: false,
     liveGameUpdates: false,
