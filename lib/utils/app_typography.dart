@@ -170,6 +170,12 @@ class AppTypography {
     fontSize: 14.f,
     height: 22.h / 14.h,
   );
+  static TextStyle textSmSemiBold = TextStyle(
+    fontFamily: _fontFamily,
+    fontWeight: FontWeight.w600,
+    fontSize: 14.f,
+    height: 22.h / 14.h,
+  );
   static TextStyle textSmBold = TextStyle(
     fontFamily: _fontFamily,
     fontWeight: FontWeight.w700,

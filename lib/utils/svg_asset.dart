@@ -1,5 +1,4 @@
 class SvgAsset {
-  static const settingsIcon = 'assets/svgs/settings.svg';
   static const favouriteIcon = 'assets/svgs/favorites.svg';
   static const favouriteIcon2 = 'assets/svgs/heart.svg';
   static const favouriteRedIcon = 'assets/svgs/heart_red.svg';
@@ -58,4 +57,13 @@ class SvgAsset {
   static const check = 'assets/svgs/check.svg';
   static const twemoji_notebook = 'assets/svgs/twemoji_notebook.svg';
   static const folderOutline = 'assets/svgs/folder_outline.svg';
+
+  //Hamburger Icons
+  static const analysisBoard = 'assets/svgs/hamburger/analysis_board.svg';
+  static const email = 'assets/svgs/hamburger/email.svg';
+  static const leaveFeedback = 'assets/svgs/hamburger/leave_feedback.svg';
+  static const openingExplorer = 'assets/svgs/hamburger/opening_explorer.svg';
+  static const privacyPolicy = 'assets/svgs/hamburger/privacy_policy.svg';
+  static const settings = 'assets/svgs/hamburger/settings.svg';
+  static const versionIcon = 'assets/svgs/hamburger/version_icon.svg';
 }
