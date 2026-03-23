@@ -14,7 +14,6 @@ const Color kWhiteColor70 = Color(
 const Color kDividerColor = Color(0xFF2C2C2E);
 const Color kBlack2Color = Color(0xFF1A1A1C); // BLACK#2
 const Color kBlack3Color = Color(0xFF252527); // BLACK#3
-const Color kGreyColor = Color(0xFF666666); // BLACK#3
 const Color kLightGreyColor = Color(0xFF666666);
 const Color kDarkGreyColor = Color(0xFF262626);
 const Color kGrey900 = Color.fromRGBO(33, 33, 33, 1);
