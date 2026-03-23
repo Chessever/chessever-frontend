@@ -157,10 +157,24 @@ class StockfishSingleton {
     }
     final pending = _pendingJobs[jobKey];
     if (pending != null) {
-      debugPrint(
-        '📋 QUEUE: Coalesced with PENDING job for $fen (owner: $ownerId)',
-      );
-      return pending.completer.future;
+      if (pending.fen == fen && isCurrentPosition && 
+          pending.searchDuration != searchDuration) {
+        _pendingJobs.remove(jobKey);
+        _jobQueue.remove(pending);
+        if (!pending.completer.isCompleted) {
+          pending.completer.complete(EnhancedCloudEval(
+            fen: pending.fen,
+            knodes: 0, depth: 0,
+            pvs: [Pv(moves: '', cp: 0, mate: 0)],
+            isCancelled: true,
+            requestedMultiPv: pending.multiPV,
+          ));
+        }
+        debugPrint('🔄 QUEUE: Replaced pending job (duration changed)');
+      } else {
+        debugPrint('📋 QUEUE: Coalesced with PENDING job for $fen (owner: $ownerId)');
+        return pending.completer.future;
+      }
     }
 
     // If this is the active board position, cancel any in-progress job for a
@@ -333,7 +347,23 @@ class StockfishSingleton {
 
     return result;
   }
+/// Pre-warms the Stockfish engine in the background so it's ready
+/// before the user first enables analysis. Call this on screen load.
+/// Safe to call multiple times — no-ops if already initializing or ready.
+Future<void> warmUp() async {
+  if (_engine != null) return;
+  if (_isInitializing) return;
 
+  debugPrint('🔥 STOCKFISH: Pre-warming engine in background...');
+  try {
+    // Only initialize — do NOT call _processQueue or queue any job
+    await _ensureEngineReady();
+    // Leave engine idle at 'readyok', no 'go' command sent
+    debugPrint('✅ STOCKFISH: Pre-warm complete, engine is ready and idle');
+  } catch (e) {
+    debugPrint('⚠️ STOCKFISH: Pre-warm failed (will retry on demand): $e');
+  }
+}
   Future<void> _cancelCurrentEvaluation() async {
     if (_currentJob != null) {
       // Cancel the current subscription
