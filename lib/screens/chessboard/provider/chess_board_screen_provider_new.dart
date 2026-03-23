@@ -150,6 +150,7 @@ class ChessBoardScreenNotifierNew
   ChessGameNavigatorStateManager? _analysisStateManager;
   ProviderSubscription<ChessGameNavigatorState>? _navigatorSubscription;
   bool _isInitialLoad = true;
+
   /// Tracks whether the user is auto-following the latest live move.
   /// Set to false when the user manually navigates backwards, true when they
   /// return to the last move. Prevents race conditions between parseMoves()
@@ -158,6 +159,7 @@ class ChessBoardScreenNotifierNew
   bool _isFollowingLive = true;
   ChessBoardStateNew? _pvPreviewSnapshot;
   Timer? _autoSaveTimer;
+
   /// Snapshot of the game tree at last auto-save for diff detection
   String? _lastAutoSavedGameJson;
   int _parseGeneration = 0;
@@ -214,9 +216,10 @@ class ChessBoardScreenNotifierNew
           variationComments,
         ), // Restore comments
         position: liveFenPosition,
-        analysisState: liveFenPosition != null
-            ? AnalysisBoardState(position: liveFenPosition)
-            : const AnalysisBoardState(),
+        analysisState:
+            liveFenPosition != null
+                ? AnalysisBoardState(position: liveFenPosition)
+                : const AnalysisBoardState(),
       ),
     );
     parseMoves();
@@ -234,46 +237,52 @@ class ChessBoardScreenNotifierNew
       final nextValue = next.value;
 
       if (prevValue != nextValue && nextValue != null) {
-    // GUARD: Skip re-eval if ONLY showEngineAnalysis changed.
-    // toggleEngineVisibility() already handles its own eval trigger,
-    // so firing again here causes duplicate 5000ms Stockfish jobs.
-    if (prevValue != null) {
-      final nothingChanged =
-        prevValue.searchTimeIndex == nextValue.searchTimeIndex &&
-        prevValue.principalVariationIndex == nextValue.principalVariationIndex &&
-        prevValue.showEngineGauge == nextValue.showEngineGauge &&
-        prevValue.showPvArrows == nextValue.showPvArrows &&
-        prevValue.showDepthOverlay == nextValue.showDepthOverlay &&
-        prevValue.maxArrowsOnBoard == nextValue.maxArrowsOnBoard &&
-        prevValue.showEngineAnalysis == nextValue.showEngineAnalysis; // ← same value
+        // GUARD: Skip re-eval if ONLY showEngineAnalysis changed.
+        // toggleEngineVisibility() already handles its own eval trigger,
+        // so firing again here causes duplicate 5000ms Stockfish jobs.
+        if (prevValue != null) {
+          final nothingChanged =
+              prevValue.searchTimeIndex == nextValue.searchTimeIndex &&
+              prevValue.principalVariationIndex ==
+                  nextValue.principalVariationIndex &&
+              prevValue.showEngineGauge == nextValue.showEngineGauge &&
+              prevValue.showPvArrows == nextValue.showPvArrows &&
+              prevValue.showDepthOverlay == nextValue.showDepthOverlay &&
+              prevValue.maxArrowsOnBoard == nextValue.maxArrowsOnBoard &&
+              prevValue.showEngineAnalysis ==
+                  nextValue.showEngineAnalysis; // ← same value
 
-    // Skip if only visibility changed (toggle handles its own eval)
-      final onlyVisibilityChanged =
-          prevValue.searchTimeIndex == nextValue.searchTimeIndex &&
-          prevValue.principalVariationIndex == nextValue.principalVariationIndex &&
-          prevValue.showEngineGauge == nextValue.showEngineGauge &&
-          prevValue.showPvArrows == nextValue.showPvArrows &&
-          prevValue.showDepthOverlay == nextValue.showDepthOverlay &&
-          prevValue.maxArrowsOnBoard == nextValue.maxArrowsOnBoard &&
-          prevValue.showEngineAnalysis != nextValue.showEngineAnalysis;
+          // Skip if only visibility changed (toggle handles its own eval)
+          final onlyVisibilityChanged =
+              prevValue.searchTimeIndex == nextValue.searchTimeIndex &&
+              prevValue.principalVariationIndex ==
+                  nextValue.principalVariationIndex &&
+              prevValue.showEngineGauge == nextValue.showEngineGauge &&
+              prevValue.showPvArrows == nextValue.showPvArrows &&
+              prevValue.showDepthOverlay == nextValue.showDepthOverlay &&
+              prevValue.maxArrowsOnBoard == nextValue.maxArrowsOnBoard &&
+              prevValue.showEngineAnalysis != nextValue.showEngineAnalysis;
 
-      if (nothingChanged || onlyVisibilityChanged) {
-        debugPrint('⏭️ [SETTINGS] skipped re-eval '
-            '(${nothingChanged ? "no change" : "visibility-only change"})');
-        // Still sync visibility state if needed
-        final currentState = state.valueOrNull;
-        if (currentState != null &&
-            currentState.showEngineAnalysis != nextValue.showEngineAnalysis) {
-          state = AsyncValue.data(
-            currentState.copyWith(
-              showEngineAnalysis: nextValue.showEngineAnalysis,
-              showPrincipalVariations: nextValue.showEngineAnalysis,
-            ),
-          );
+          if (nothingChanged || onlyVisibilityChanged) {
+            debugPrint(
+              '⏭️ [SETTINGS] skipped re-eval '
+              '(${nothingChanged ? "no change" : "visibility-only change"})',
+            );
+            // Still sync visibility state if needed
+            final currentState = state.valueOrNull;
+            if (currentState != null &&
+                currentState.showEngineAnalysis !=
+                    nextValue.showEngineAnalysis) {
+              state = AsyncValue.data(
+                currentState.copyWith(
+                  showEngineAnalysis: nextValue.showEngineAnalysis,
+                  showPrincipalVariations: nextValue.showEngineAnalysis,
+                ),
+              );
+            }
+            return;
+          }
         }
-        return;
-      }
-    }
         _releaseLog('');
         _releaseLog('🔄 ═══ ENGINE SETTINGS CHANGED ═══');
         _releaseLog('   Previous:');
@@ -1237,8 +1246,7 @@ class ChessBoardScreenNotifierNew
 
       // Update live-follow flag based on whether user navigated to the last move
       if (game.gameStatus.isOngoing) {
-        final allMoveCount =
-            updatedState.currentLine?.length ?? 0;
+        final allMoveCount = updatedState.currentLine?.length ?? 0;
         _isFollowingLive = moveIndex >= 0 && moveIndex == allMoveCount - 1;
       }
       return;
@@ -3062,7 +3070,13 @@ class ChessBoardScreenNotifierNew
     final currentState = state.valueOrNull;
     savedAnalysisData = SavedAnalysisData(
       analysisId: analysisId,
-      chessGame: currentState?.analysisState.game ?? savedAnalysisData!.chessGame,
+      sourceGameId:
+          savedAnalysisData?.sourceGameId ??
+          (currentState?.game.source == GameSource.savedAnalysis
+              ? null
+              : currentState?.game.gameId),
+      chessGame:
+          currentState?.analysisState.game ?? savedAnalysisData!.chessGame,
       variationComments: currentState?.variationComments ?? const {},
       isBoardFlipped: currentState?.isBoardFlipped ?? false,
       lastViewedPosition: currentState?.analysisState.currentMoveIndex ?? 0,
@@ -3119,8 +3133,11 @@ class ChessBoardScreenNotifierNew
         id: analysisId,
         userId: userId,
         folderId: savedAnalysisData?.folderId,
-        title: savedAnalysisData?.title ?? currentState.game.whitePlayer.name +
-            ' vs ' + currentState.game.blackPlayer.name,
+        title:
+            savedAnalysisData?.title ??
+            currentState.game.whitePlayer.name +
+                ' vs ' +
+                currentState.game.blackPlayer.name,
         chessGame: analysisGame,
         analysisState: analysisStateJson,
         variationComments: currentState.variationComments,
@@ -3203,8 +3220,11 @@ class ChessBoardScreenNotifierNew
         id: analysisId,
         userId: userId,
         folderId: savedAnalysisData?.folderId,
-        title: savedAnalysisData?.title ?? currentState.game.whitePlayer.name +
-            ' vs ' + currentState.game.blackPlayer.name,
+        title:
+            savedAnalysisData?.title ??
+            currentState.game.whitePlayer.name +
+                ' vs ' +
+                currentState.game.blackPlayer.name,
         chessGame: analysisGame,
         analysisState: analysisStateJson,
         variationComments: currentState.variationComments,
@@ -3866,34 +3886,38 @@ class ChessBoardScreenNotifierNew
             );
     state = AsyncValue.data(currentState.copyWith(game: updatedGame));
   }
+
   bool _isFirstEvalAfterToggle = false;
- void toggleEngineVisibility() {
-  
-  final currentState = state.value;
-  if (currentState == null) return;
+  void toggleEngineVisibility() {
+    final currentState = state.value;
+    if (currentState == null) return;
 
-  final newValue = !currentState.showEngineAnalysis;
-  debugPrint('⏱️ [TOGGLE] engine ON=$newValue at ${DateTime.now().millisecondsSinceEpoch}');
+    final newValue = !currentState.showEngineAnalysis;
+    debugPrint(
+      '⏱️ [TOGGLE] engine ON=$newValue at ${DateTime.now().millisecondsSinceEpoch}',
+    );
 
-  state = AsyncValue.data(
-    currentState.copyWith(
-      showEngineAnalysis: newValue,
-      showPrincipalVariations: newValue,
-    ),
-  );
+    state = AsyncValue.data(
+      currentState.copyWith(
+        showEngineAnalysis: newValue,
+        showPrincipalVariations: newValue,
+      ),
+    );
 
-  unawaited(
-    ref.read(engineSettingsProviderNew.notifier)
-        .toggleEngineAnalysis(newValue),
-  );
+    unawaited(
+      ref
+          .read(engineSettingsProviderNew.notifier)
+          .toggleEngineAnalysis(newValue),
+    );
 
-  // When turning ON, cancel stale jobs and trigger fresh eval
-  if (newValue) {
-    _isFirstEvalAfterToggle = true;
-    StockfishSingleton().cancelEvaluationsForOwner(_stockfishOwnerId);
-    _updateEvaluation(force: true);
+    // When turning ON, cancel stale jobs and trigger fresh eval
+    if (newValue) {
+      _isFirstEvalAfterToggle = true;
+      StockfishSingleton().cancelEvaluationsForOwner(_stockfishOwnerId);
+      _updateEvaluation(force: true);
+    }
   }
-}
+
   void togglePlayPause() {
     final currentState = state.value;
     if (currentState == null) return;
@@ -5197,12 +5221,15 @@ class ChessBoardScreenNotifierNew
       final multiPV = configuredMultiPV;
       final isCurrentlyVisible = currentVisiblePage == index;
       EngineSearchProgress? pendingProgress;
-      final effectiveSearchDuration = _isFirstEvalAfterToggle
-    ? const Duration(milliseconds: 800)
-    : combinedSearchDuration;
-_isFirstEvalAfterToggle = false;
-debugPrint('⏱️ [EVAL] searchDuration=${effectiveSearchDuration?.inMilliseconds}ms '
-    'at ${DateTime.now().millisecondsSinceEpoch}');
+      final effectiveSearchDuration =
+          _isFirstEvalAfterToggle
+              ? const Duration(milliseconds: 800)
+              : combinedSearchDuration;
+      _isFirstEvalAfterToggle = false;
+      debugPrint(
+        '⏱️ [EVAL] searchDuration=${effectiveSearchDuration?.inMilliseconds}ms '
+        'at ${DateTime.now().millisecondsSinceEpoch}',
+      );
       final stockfishFuture = StockfishSingleton().evaluatePosition(
         fenToAnalyze,
         depth: combinedMaxDepth,
@@ -6531,6 +6558,9 @@ class SavedAnalysisData {
   /// Null when opening a shared/read-only game (no save-back).
   final String? analysisId;
 
+  /// Original source game ID, if this analysis came from another game.
+  final String? sourceGameId;
+
   /// Pre-built ChessGame with all variations
   final ChessGame chessGame;
 
@@ -6554,6 +6584,7 @@ class SavedAnalysisData {
 
   const SavedAnalysisData({
     this.analysisId,
+    this.sourceGameId,
     required this.chessGame,
     required this.variationComments,
     this.movePointer,

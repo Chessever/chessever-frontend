@@ -254,6 +254,9 @@ class DeepLinkService {
       // getGameByAnyId handles both Supabase UUIDs and Lichess short IDs.
       final gameRepo = ref.read(gameRepositoryProvider);
       final game = await gameRepo.getGameByAnyId(gameId).timeout(_fetchTimeout);
+      // Normalize to Supabase UUID so round-game index lookup works regardless
+      // of whether the deep link contained a Lichess short ID or a UUID.
+      final resolvedGameId = game.id;
       final gameTourModel = GamesTourModel.fromGame(game);
       List<GamesTourModel> gameList = <GamesTourModel>[gameTourModel];
       var openIndex = 0;
@@ -272,7 +275,7 @@ class DeepLinkService {
             if (aBoard != bBoard) return aBoard.compareTo(bBoard);
             return a.gameId.compareTo(b.gameId);
           });
-          final idx = gameList.indexWhere((g) => g.gameId == gameId);
+          final idx = gameList.indexWhere((g) => g.gameId == resolvedGameId);
           openIndex = idx >= 0 ? idx : 0;
         }
       } catch (e) {

@@ -131,6 +131,7 @@ class _BoardEditorScreenState extends ConsumerState<BoardEditorScreen> {
 
     final game = GamesTourModel(
       gameId: 'editor_$timestamp',
+      source: GameSource.boardEditor,
       whitePlayer: whitePlayer,
       blackPlayer: blackPlayer,
       whiteTimeDisplay: '--:--',

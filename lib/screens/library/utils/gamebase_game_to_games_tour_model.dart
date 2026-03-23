@@ -98,6 +98,7 @@ GamesTourModel mapGamebaseGameToGamesTourModel(GamebaseGame game) {
 
   return GamesTourModel(
     gameId: game.id,
+    source: GameSource.gamebase,
     whitePlayer: whitePlayer,
     blackPlayer: blackPlayer,
     whiteTimeDisplay: '--:--',

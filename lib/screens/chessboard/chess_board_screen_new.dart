@@ -76,6 +76,7 @@ import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
 import 'package:chessever2/repository/gamebase/search/gamebase_search_models.dart';
 import 'package:chessever2/screens/gamebase/models/models.dart';
 import 'package:chessever2/screens/gamebase/providers/gamebase_providers.dart';
+import 'package:chessever2/screens/chessboard/utils/game_share_utils.dart';
 import 'package:chessever2/screens/library/utils/gamebase_pgn_builder.dart';
 import 'package:chessever2/screens/library/utils/gamebase_game_to_games_tour_model.dart';
 import 'package:chessever2/screens/player_profile/player_profile_data_source.dart';
@@ -2497,6 +2498,26 @@ class _AppBar extends ConsumerStatefulWidget implements PreferredSizeWidget {
   Size get preferredSize => const Size.fromHeight(kToolbarHeight);
 }
 
+class _ResolvedAppBarShareData {
+  final String pgn;
+  final String? shareUrl;
+  final GameShareSnapshot snapshot;
+  final double? evaluation;
+  final int mate;
+  final bool isFlipped;
+  final bool isAtGameEnd;
+
+  const _ResolvedAppBarShareData({
+    required this.pgn,
+    required this.shareUrl,
+    required this.snapshot,
+    required this.evaluation,
+    required this.mate,
+    required this.isFlipped,
+    required this.isAtGameEnd,
+  });
+}
+
 class _AppBarState extends ConsumerState<_AppBar> {
   Future<void> _showSaveAnalysisDialog() async {
     final allowed = await requireFullAuthGuard(context);
@@ -2668,102 +2689,130 @@ class _AppBarState extends ConsumerState<_AppBar> {
     );
   }
 
-  void copyPgnBtnClicked() async {
+  Future<String?> _fetchGamebaseSharePgn(String gameId) async {
     try {
-      String? pgn;
-      final params = ChessBoardProviderParams(
-        game: widget.game,
-        index: widget.currentGameIndex,
-      );
-      final boardState = ref.read(chessBoardScreenProviderNew(params));
-      final analysisGame = boardState.valueOrNull?.analysisState.game;
-      if (analysisGame != null) {
-        pgn = exportGameToPgn(analysisGame);
+      final gameWithPgn = await ref
+          .read(gamebaseRepositoryProvider)
+          .getGameWithPgn(gameId);
+      if (gameWithPgn == null) return null;
+
+      final built = buildPgnFromGamebaseData(gameWithPgn.data);
+      final raw = gameWithPgn.pgn;
+      for (final candidate in [built, raw]) {
+        final trimmed = candidate?.trim();
+        if (trimmed != null && trimmed.isNotEmpty) {
+          return trimmed;
+        }
       }
-      pgn ??=
-          (await ref
-              .read(gameRepositoryProvider)
-              .getGameById(widget.game.gameId)).pgn ??
-          '';
-      await Clipboard.setData(ClipboardData(text: pgn));
-      HapticFeedback.lightImpact();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'PGN copied to clipboard',
-              style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
-            ),
-            backgroundColor: kBlack2Color.withValues(alpha: 0.95),
-            behavior: SnackBarBehavior.floating,
-            duration: const Duration(seconds: 2),
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Failed to copy PGN',
-              style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
-            ),
-            backgroundColor: kBlack2Color.withValues(alpha: 0.95),
-            behavior: SnackBarBehavior.floating,
-            duration: const Duration(seconds: 2),
-          ),
-        );
-      }
+    } catch (_) {
+      // Best-effort only. The caller falls back to a header-only PGN.
     }
+    return null;
   }
 
-  void shareGameBtnClicked() async {
-    // Get the board provider to access the current state
+  Future<_ResolvedAppBarShareData> _resolveAppBarShareData() async {
     final params = ChessBoardProviderParams(
       game: widget.game,
       index: widget.currentGameIndex,
     );
     final boardState = ref.read(chessBoardScreenProviderNew(params));
+    final state = boardState.valueOrNull;
 
-    // Only proceed if we have a valid state
-    if (!boardState.hasValue || boardState.value == null) {
+    final pgn = await resolveGameSharePgn(
+      game: widget.game,
+      analysisGame: state?.analysisState.game,
+      savedAnalysisData: widget.savedAnalysisData,
+      fetchSupabasePgn: (gameId) async {
+        try {
+          return await ref.read(gameRepositoryProvider).getGamePgn(gameId);
+        } catch (_) {
+          return null;
+        }
+      },
+      fetchGamebasePgn: _fetchGamebaseSharePgn,
+    );
+
+    final snapshot = buildGameShareSnapshot(
+      game: widget.game,
+      pgn: pgn,
+      state: state,
+    );
+
+    final boardReady = state != null && !state.isLoadingMoves;
+    final isAtGameEnd =
+        boardReady
+            ? state.analysisState.isAtEnd &&
+                state.analysisState.movePointer.length == 1
+            : widget.game.gameStatus.isFinished &&
+                snapshot.currentMoveIndex >= 0 &&
+                snapshot.currentMoveIndex == snapshot.moveSans.length - 1;
+
+    return _ResolvedAppBarShareData(
+      pgn: pgn,
+      shareUrl: buildGameShareUrl(
+        game: widget.game,
+        savedAnalysisData: widget.savedAnalysisData,
+      ),
+      snapshot: snapshot,
+      evaluation: boardReady ? state.evaluation : null,
+      mate: boardReady ? state.mate ?? 0 : 0,
+      isFlipped: boardReady ? state.isBoardFlipped : false,
+      isAtGameEnd: isAtGameEnd,
+    );
+  }
+
+  void copyPgnBtnClicked() async {
+    try {
+      final resolved = await _resolveAppBarShareData();
+      if (resolved.pgn.trim().isEmpty) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'No PGN available for this game',
+              style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+            ),
+            backgroundColor: kBlack2Color.withValues(alpha: 0.95),
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+        return;
+      }
+      await Clipboard.setData(ClipboardData(text: resolved.pgn));
+      HapticFeedback.lightImpact();
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Please wait for the game to load',
+            'PGN copied to clipboard',
             style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
           ),
           backgroundColor: kBlack2Color.withValues(alpha: 0.95),
           behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 2),
         ),
       );
-      return;
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Failed to copy PGN',
+            style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+          ),
+          backgroundColor: kBlack2Color.withValues(alpha: 0.95),
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 2),
+        ),
+      );
     }
+  }
 
-    final state = boardState.value!;
-
-    // Prefer PGN from the already-loaded analysis state (works for all game
-    // sources: TWIC, opening explorer, player's database, analysis board).
-    // Fall back to a Supabase fetch only when the analysis game is unavailable.
-    String pgn = '';
-    final analysisGame = state.analysisState.game;
-    if (analysisGame != null) {
-      pgn = exportGameToPgn(analysisGame);
-    }
-    if (pgn.isEmpty) {
-      try {
-        final gameWithPgn = await ref
-            .read(gameRepositoryProvider)
-            .getGameById(widget.game.gameId);
-        pgn = gameWithPgn.pgn ?? '';
-      } catch (_) {
-        // Game may not exist in Supabase (e.g. gamebase / TWIC source) — proceed
-        // with whatever PGN we already have.
-      }
-    }
-
-    // Show share overlay - we'll navigate to a full screen overlay
-    if (context.mounted) {
+  void shareGameBtnClicked() async {
+    try {
+      final resolved = await _resolveAppBarShareData();
+      if (!mounted) return;
       Navigator.of(context).push(
         PageRouteBuilder(
           opaque: false,
@@ -2771,10 +2820,23 @@ class _AppBarState extends ConsumerState<_AppBar> {
           barrierColor: Colors.transparent,
           pageBuilder:
               (context, animation, secondaryAnimation) =>
-                  _ShareGameScreen(game: widget.game, state: state, pgn: pgn),
+                  _ShareGameScreen(game: widget.game, shareData: resolved),
           transitionsBuilder: (context, animation, secondaryAnimation, child) {
             return FadeTransition(opacity: animation, child: child);
           },
+        ),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Failed to prepare game share',
+            style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+          ),
+          backgroundColor: kBlack2Color.withValues(alpha: 0.95),
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 2),
         ),
       );
     }
@@ -5614,6 +5676,7 @@ class _AnalysisGameBody extends ConsumerWidget {
 
                   final resolvedGame = GamesTourModel(
                     gameId: resolvedId.isNotEmpty ? resolvedId : gameId,
+                    source: GameSource.gamebase,
                     whitePlayer: PlayerCard(
                       name: whiteName,
                       federation: '',
@@ -5767,6 +5830,7 @@ class _AnalysisGameBody extends ConsumerWidget {
                               : (op.trim().isNotEmpty ? op : null);
                       return GamesTourModel(
                         gameId: safeId,
+                        source: GameSource.gamebase,
                         whitePlayer: PlayerCard(
                           name: wn.isNotEmpty ? wn : 'White',
                           federation: '',
@@ -10424,14 +10488,9 @@ class _BlinkingRedDotState extends State<_BlinkingRedDot>
 
 class _ShareGameScreen extends ConsumerWidget {
   final GamesTourModel game;
-  final ChessBoardStateNew state;
-  final String pgn;
+  final _ResolvedAppBarShareData shareData;
 
-  const _ShareGameScreen({
-    required this.game,
-    required this.state,
-    required this.pgn,
-  });
+  const _ShareGameScreen({required this.game, required this.shareData});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -10470,17 +10529,17 @@ class _ShareGameScreen extends ConsumerWidget {
     );
 
     // Calculate clock times at current position (same logic as PlayerFirstRowDetailWidget)
-    final effectiveMoveIndex = state.analysisState.currentMoveIndex;
+    final effectiveMoveIndex = shareData.snapshot.currentMoveIndex;
 
     String? whiteTime;
     String? blackTime;
 
-    if (state.moveTimes.isNotEmpty) {
+    if (shareData.snapshot.moveTimes.isNotEmpty) {
       // Find white player's most recent move up to current position
       for (int i = effectiveMoveIndex; i >= 0; i--) {
         final isWhiteMove = i % 2 == 0;
-        if (isWhiteMove && i < state.moveTimes.length) {
-          whiteTime = state.moveTimes[i];
+        if (isWhiteMove && i < shareData.snapshot.moveTimes.length) {
+          whiteTime = shareData.snapshot.moveTimes[i];
           break;
         }
       }
@@ -10488,8 +10547,8 @@ class _ShareGameScreen extends ConsumerWidget {
       // Find black player's most recent move up to current position
       for (int i = effectiveMoveIndex; i >= 0; i--) {
         final isBlackMove = i % 2 == 1;
-        if (isBlackMove && i < state.moveTimes.length) {
-          blackTime = state.moveTimes[i];
+        if (isBlackMove && i < shareData.snapshot.moveTimes.length) {
+          blackTime = shareData.snapshot.moveTimes[i];
           break;
         }
       }
@@ -10509,14 +10568,11 @@ class _ShareGameScreen extends ConsumerWidget {
 
     return ShareGameCardOverlay(
       boardSettings: chessboardSettings,
-      positionFen: state.analysisState.position.fen,
-      lastMove: state.analysisState.lastMove,
-      pgn: pgn,
-      moveSans:
-          state
-              .analysisState
-              .moveSans, // Pass the actual move list from analysis state
-      moveTimes: state.moveTimes, // Pass clock times for GIF animation
+      positionFen: shareData.snapshot.positionFen,
+      lastMove: shareData.snapshot.lastMove,
+      pgn: shareData.pgn,
+      moveSans: shareData.snapshot.moveSans,
+      moveTimes: shareData.snapshot.moveTimes,
       whitePlayerName: game.whitePlayer.name,
       blackPlayerName: game.blackPlayer.name,
       // Use countryCode first (inactive profile games often only populate this),
@@ -10543,17 +10599,16 @@ class _ShareGameScreen extends ConsumerWidget {
       blackPlayerClock: blackTime,
       tournamentName: tournamentName,
       roundInfo: roundInfo,
-      currentMoveIndex: state.analysisState.currentMoveIndex,
-      evaluation: state.evaluation,
-      mate: state.mate ?? 0,
-      isFlipped: state.isBoardFlipped,
+      currentMoveIndex: shareData.snapshot.currentMoveIndex,
+      evaluation: shareData.evaluation,
+      mate: shareData.mate,
+      isFlipped: shareData.isFlipped,
       gameStatus: game.gameStatus,
-      isAtGameEnd:
-          state.analysisState.isAtEnd &&
-          state.analysisState.movePointer.length == 1,
+      isAtGameEnd: shareData.isAtGameEnd,
+      shareUrl: shareData.shareUrl,
       gameId: game.gameId, // Pass game ID for correct eval display
+      startingFen: shareData.snapshot.startingFen,
       onClose: () => Navigator.of(context).pop(),
-      startingFen: state.analysisState.startingPosition?.fen,
     );
   }
 }

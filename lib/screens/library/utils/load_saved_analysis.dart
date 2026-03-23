@@ -136,6 +136,7 @@ SavedAnalysisData createSavedAnalysisData(SavedAnalysis analysis) {
 
   return SavedAnalysisData(
     analysisId: analysis.id,
+    sourceGameId: analysis.sourceGameId,
     chessGame: analysis.chessGame,
     variationComments: analysis.variationComments,
     movePointer: movePointer,
@@ -151,6 +152,7 @@ SavedAnalysisData createSavedAnalysisData(SavedAnalysis analysis) {
 SavedAnalysisData createReadOnlySavedAnalysisData(SavedAnalysis analysis) {
   return SavedAnalysisData(
     analysisId: null,
+    sourceGameId: analysis.sourceGameId,
     chessGame: analysis.chessGame,
     variationComments: analysis.variationComments,
     movePointer: null,
@@ -204,6 +206,7 @@ GamesTourModel convertSavedAnalysisToGame(SavedAnalysis analysis) {
   // The original source game ID is preserved in analysis.sourceGameId
   return GamesTourModel(
     gameId: 'saved_analysis_${analysis.id}',
+    source: GameSource.savedAnalysis,
     whitePlayer: whitePlayer,
     blackPlayer: blackPlayer,
     whiteTimeDisplay: '--:--',

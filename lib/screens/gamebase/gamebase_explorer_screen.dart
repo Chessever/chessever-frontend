@@ -678,6 +678,7 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
 
     final game = GamesTourModel(
       gameId: 'explorer_$timestamp',
+      source: GameSource.openingExplorer,
       whitePlayer: whitePlayer,
       blackPlayer: blackPlayer,
       whiteTimeDisplay: '--:--',
