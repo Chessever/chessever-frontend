@@ -663,7 +663,7 @@ class EngineSettingsNotifierNew extends AsyncNotifier<EngineSettings> {
         showDepthOverlay: map['showDepthOverlay'] as bool? ?? true,
         showPvArrows: map['showPvArrows'] as bool? ?? true,
         showEngineAnalysis: map['showEngineAnalysis'] as bool? ?? true,
-        searchTimeIndex: map['searchTimeIndex'] as int? ?? 5,
+        searchTimeIndex: map['searchTimeIndex'] as int? ?? 0,
         principalVariationIndex: map['principalVariationIndex'] as int? ?? 4,
         maxArrowsOnBoard: map['maxArrowsOnBoard'] as int? ?? 2,
       );
