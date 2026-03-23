@@ -50,8 +50,7 @@ Vault secrets (Supabase DB):
 
 ### Enqueue Triggers & Functions
 
-- `queue_game_notifications` (trigger on `games`): enqueues `game_started` and `game_finished` on game state transitions. Includes `board_nr` in payload. Also piggybacks `round_started` when a game goes live and has a `round_id` (catches rounds missed by cron).
-- `queue_round_finished_notification` (trigger on `games` AFTER UPDATE OF status): enqueues `round_finished` when the last game in a round finishes. Embeds the full results array in the payload; uses dedupe key `round_finished:{round_id}` to handle simultaneous last-game finishes.
+- `queue_game_notifications` (trigger on `games`): enqueues `game_started` and `game_finished` on game state transitions. Includes `board_nr` in payload. Also handles round-level events via its internal `round_started` and `round_finished` branches: it piggybacks `round_started` when a game goes live and has a `round_id` (catches rounds missed by cron), and enqueues `round_finished` when the last game in a round finishes (embeds the full results array in the payload and uses dedupe key `round_finished:{round_id}` to handle simultaneous last-game finishes).
 - `queue_round_start_notifications()` (cron): enqueues `round_started` for rounds within 10-min window.
 - `queue_round_heads_up_notifications()` (cron): enqueues `round_heads_up` for rounds 25-45 min away.
 - `queue_live_game_updates()` (cron/trigger): enqueues `live_game_update` for active games.
@@ -106,17 +105,9 @@ This function:
 8. For `round_finished`: results digest for event-starred users only ("Carlsen 1-0 · Caruana ½-½ +3").
 9. Sends notifications via OneSignal with `android_channel_id` routing.
 10. All round/event data payloads include `tour_id`, `round_id`, and `group_broadcast_id` for deep-link routing.
-11. Per-game notifications include `board_nr` in body text ("Board N") and data payload when available.
-12. Records 900-second bidirectional cooldown windows after sending `game_started` or `round_started` (player channel).
-13. Marks rows as `sent`, `skipped`, or `failed`.
+11. Records 900-second bidirectional cooldown windows after sending `game_started` or `round_started` (player channel).
+12. Marks rows as `sent`, `skipped`, or `failed`.
 
-## Per-Game Board Identity
-
-`game_started` and `game_finished` payloads include `board_nr` (nullable smallint from `games.board_nr`). When present:
-
-- Notification body includes "(Board N)" suffix.
-- `data.board_nr` is included in the OneSignal data payload for client-side routing.
-- When `board_nr` is null, notifications use existing player-vs-player copy without board info.
 
 ## Live Updates (Per-Game)
 
