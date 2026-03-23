@@ -92,7 +92,7 @@ class NotifPushCard extends StatelessWidget {
                     ),
                     SizedBox(height: 4.h),
                     Text(
-                      'Enabled alerts for game starts, finishes, and live updates.',
+                      'Enable alerts for game starts, finishes, and live updates.',
                       style: AppTypography.textSmRegular.copyWith(
                         color: kWhiteColor70,
                         fontSize: 11.f,
@@ -120,49 +120,50 @@ class NotifPushCard extends StatelessWidget {
             duration: const Duration(milliseconds: 250),
             curve: Curves.easeInOut,
             alignment: Alignment.topCenter,
-            child: enabled
-                ? Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      SizedBox(height: 16.h),
+            child:
+                enabled
+                    ? Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        SizedBox(height: 16.h),
 
-                      // Favourite Players
-                      NotifCategoryTile(
-                        label: 'Favorite Players',
-                        enabled: fpEnabled,
-                        onToggle: onFpToggle,
-                        interactive: interactive,
-                        classical: fpClassical,
-                        onClassical: onFpClassical,
-                        rapid: fpRapid,
-                        onRapid: onFpRapid,
-                        blitz: fpBlitz,
-                        onBlitz: onFpBlitz,
-                      ),
+                        // Favourite Players
+                        NotifCategoryTile(
+                          label: 'Favorite Players',
+                          enabled: fpEnabled,
+                          onToggle: onFpToggle,
+                          interactive: interactive,
+                          classical: fpClassical,
+                          onClassical: onFpClassical,
+                          rapid: fpRapid,
+                          onRapid: onFpRapid,
+                          blitz: fpBlitz,
+                          onBlitz: onFpBlitz,
+                        ),
 
-                      SizedBox(height: 14.h),
-                      Divider(
-                        color: kDividerColor.withValues(alpha: 0.3),
-                        height: 1,
-                      ),
-                      SizedBox(height: 14.h),
+                        SizedBox(height: 14.h),
+                        Divider(
+                          color: kDividerColor.withValues(alpha: 0.3),
+                          height: 1,
+                        ),
+                        SizedBox(height: 14.h),
 
-                      // Starred Events
-                      NotifCategoryTile(
-                        label: 'Starred Events',
-                        enabled: seEnabled,
-                        onToggle: onSeToggle,
-                        interactive: interactive,
-                        classical: seClassical,
-                        onClassical: onSeClassical,
-                        rapid: seRapid,
-                        onRapid: onSeRapid,
-                        blitz: seBlitz,
-                        onBlitz: onSeBlitz,
-                      ),
-                    ],
-                  )
-                : const SizedBox.shrink(),
+                        // Starred Events
+                        NotifCategoryTile(
+                          label: 'Starred Events',
+                          enabled: seEnabled,
+                          onToggle: onSeToggle,
+                          interactive: interactive,
+                          classical: seClassical,
+                          onClassical: onSeClassical,
+                          rapid: seRapid,
+                          onRapid: onSeRapid,
+                          blitz: seBlitz,
+                          onBlitz: onSeBlitz,
+                        ),
+                      ],
+                    )
+                    : const SizedBox.shrink(),
           ),
         ],
       ),
