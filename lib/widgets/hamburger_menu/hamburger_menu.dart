@@ -1,6 +1,7 @@
 import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/providers/app_version_provider.dart';
 import 'package:chessever2/providers/auth_state_provider.dart';
+import 'package:chessever2/repository/authentication/model/app_user.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/theme/app_theme.dart';
@@ -9,6 +10,7 @@ import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/hamburger_menu/hamburger_menu_dialogs.dart';
+import 'package:chessever2/widgets/paywall/premium_celebration_overlay.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:chessever2/widgets/user_avatar.dart';
@@ -219,7 +221,6 @@ class HamburgerMenu extends ConsumerWidget {
                         height: 20.h / 14.h,
                       ),
                       onPressed: () {
-                        HapticFeedbackService.buttonPress();
                         _launchPrivacyPolicy();
                       },
                       showChevron: true,
@@ -239,7 +240,6 @@ class HamburgerMenu extends ConsumerWidget {
                         decorationColor: kWhiteColor.withValues(alpha: 0.5),
                       ),
                       onPressed: () {
-                        HapticFeedbackService.buttonPress();
                         _launchEmail();
                       },
                       showChevron: true,
@@ -260,7 +260,6 @@ class HamburgerMenu extends ConsumerWidget {
                         height: 20.h / 14.h,
                       ),
                       onPressed: () {
-                        HapticFeedbackService.buttonPress();
                         _showAboutDialog(context, versionString);
                       },
                       showChevron: true,
@@ -315,39 +314,55 @@ class _UserProfileHeader extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final user = ref.watch(currentUserProvider);
-    final isPremium = ref.watch(subscriptionProvider).isSubscribed;
-    final displayName = user?.displayName ?? 'Anonymous';
+    final subscriptionState = ref.watch(subscriptionProvider);
+    final isPremium = subscriptionState.isSubscribed;
+    final managementUrl = subscriptionState.managementUrl;
+    final name = user?.displayName?.trim();
+    final displayName = (name?.isNotEmpty ?? false) ? name! : 'Anonymous';
 
-    return Padding(
-      padding: EdgeInsets.symmetric(horizontal: 16.sp, vertical: 12.sp),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          UserAvatar(size: 40, showPremiumBorder: true),
-          SizedBox(width: 12.w),
-          Expanded(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                Flexible(
-                  child: Text(
-                    displayName,
-                    style: AppTypography.textSmSemiBold.copyWith(
-                      color: kWhiteColor,
-                      height: 20.h / 14.h,
-                      letterSpacing: -0.14,
+    return GestureDetector(
+      onTap:
+          isPremium
+              ? () async {
+                Navigator.of(context).pop();
+                if (!context.mounted) return;
+                await showPremiumCelebration(
+                  context,
+                  managementUrl: managementUrl,
+                );
+              }
+              : null,
+      child: Padding(
+        padding: EdgeInsets.symmetric(horizontal: 16.sp, vertical: 12.sp),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            UserAvatar(size: 40, showPremiumBorder: true),
+            SizedBox(width: 12.w),
+
+            Expanded(
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      displayName,
+                      style: AppTypography.textSmSemiBold.copyWith(
+                        color: kWhiteColor,
+                        height: 20.h / 14.h,
+                        letterSpacing: -0.14,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
-                    overflow: TextOverflow.ellipsis,
-                    maxLines: 1,
                   ),
-                ),
-                if (isPremium) ...[SizedBox(width: 8.w), _ProBadge()],
-              ],
+                  if (isPremium) ...[SizedBox(width: 8.w), _ProBadge()],
+                ],
+              ),
             ),
-          ),
-        ],
-      ),
-    ).animate().fadeIn(duration: 300.ms).slideX(begin: -0.1, end: 0);
+          ],
+        ),
+      ).animate().fadeIn(duration: 300.ms).slideX(begin: -0.1, end: 0),
+    );
   }
 }
 
@@ -582,7 +597,7 @@ class _MenuItem extends StatelessWidget {
     this.onPressed,
     this.textStyle,
     this.showBorder = false,
-    this.maxLines,
+    this.maxLines = 1,
     super.key,
   });
 
