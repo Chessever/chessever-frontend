@@ -610,7 +610,18 @@ class _FavoritesPlayersTabState extends ConsumerState<FavoritesPlayersTab>
 
       // Check favorite limit before adding
       if (!currentlyFavorite) {
-        final canAdd = await canAddMoreFavorites(context, ref);
+        final currentCount =
+            ref
+                .read(favoritePlayersNotifierProvider)
+                .valueOrNull
+                ?.players
+                .length ??
+            0;
+        final canAdd = await canAddMoreFavorites(
+          context,
+          ref,
+          currentSelectedCount: currentCount,
+        );
         if (!canAdd) return;
       }
 
