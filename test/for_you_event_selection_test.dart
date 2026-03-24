@@ -1,393 +1,766 @@
-import 'package:chessever2/providers/for_you_games_provider.dart';
+import 'package:chessever2/providers/for_you_games_logic.dart';
 import 'package:chessever2/repository/supabase/game/games.dart';
+import 'package:chessever2/repository/supabase/round/round.dart';
+import 'package:chessever2/repository/supabase/tour/tour.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_view_model.dart';
+import 'package:chessever2/screens/tour_detail/provider/tour_selection_logic.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-/// Helper to create a minimal [Games] object for testing.
+TournamentPlayer _tourPlayer({required String name, String? team}) {
+  return TournamentPlayer(name: name, played: 0, team: team);
+}
+
+Tour _makeTour({
+  required String id,
+  required String name,
+  required List<DateTime> dates,
+  String? groupBroadcastId = 'event-1',
+  int? avgElo = 2700,
+  String? format = 'Swiss',
+  List<TournamentPlayer> players = const [],
+}) {
+  return Tour.fromJson({
+    'id': id,
+    'name': name,
+    'slug': id,
+    'info': {
+      'format': format,
+      'tc': '90+30',
+      'players': '',
+      'location': 'Test City',
+    },
+    'created_at': DateTime(2025, 1, 1, 12).toIso8601String(),
+    'url': 'https://example.com/$id',
+    'tier': 1,
+    'dates': dates.map((date) => date.toIso8601String()).toList(),
+    'players': players.map((player) => player.toJson()).toList(),
+    'search': const <String>[],
+    'group_broadcast_id': groupBroadcastId,
+    'avg_elo': avgElo,
+  });
+}
+
+Round _makeRound({
+  required String id,
+  required String tourId,
+  required String name,
+  required DateTime startsAt,
+}) {
+  return Round(
+    id: id,
+    slug: id,
+    tourId: tourId,
+    tourSlug: tourId,
+    name: name,
+    createdAt: startsAt.subtract(const Duration(hours: 1)),
+    startsAt: startsAt,
+    url: 'https://example.com/$id',
+  );
+}
+
+Player _player({required String name, String team = '', int fideId = 1}) {
+  return Player(
+    name: name,
+    title: 'GM',
+    rating: 2700,
+    fideId: fideId,
+    fed: 'USA',
+    clock: 0,
+    team: team,
+  );
+}
+
 Games _makeGame({
   required String id,
   required String roundId,
-  String roundSlug = 'round-1',
-  String tourId = 'tour-1',
-  String tourSlug = 'tour-slug',
-  String? lastMove = 'e2e4',
-  DateTime? lastMoveTime,
-  DateTime? gameDay,
-  DateTime? dateStart,
-  String status = '*',
+  required String roundSlug,
+  required String tourId,
+  required List<Player> players,
   int? boardNr,
-  List<Player>? players,
+  String? status = '*',
+  DateTime? lastMoveTime,
 }) {
   return Games(
     id: id,
     roundId: roundId,
     roundSlug: roundSlug,
     tourId: tourId,
-    tourSlug: tourSlug,
-    lastMove: lastMove,
-    lastMoveTime: lastMoveTime,
-    gameDay: gameDay,
-    dateStart: dateStart,
-    status: status,
+    tourSlug: tourId,
+    players: players,
     boardNr: boardNr,
-    players:
-        players ??
-        [
-          Player(
-            name: 'White $id',
-            title: 'GM',
-            rating: 2700,
-            fideId: 1,
-            fed: 'USA',
-            clock: 0,
-            team: '',
-          ),
-          Player(
-            name: 'Black $id',
-            title: 'GM',
-            rating: 2700,
-            fideId: 2,
-            fed: 'USA',
-            clock: 0,
-            team: '',
-          ),
-        ],
+    status: status,
+    lastMove: 'e2e4',
+    lastMoveTime: lastMoveTime,
   );
 }
 
 void main() {
-  group('selectForYouEventGames', () {
-    test(
-      'latest round has 4+ started games — returns exactly 4 from that round',
-      () {
-        final now = DateTime(2025, 6, 1, 12, 0);
-        final games = List.generate(
-          6,
-          (i) => _makeGame(
-            id: 'game-$i',
-            roundId: 'round-5',
-            roundSlug: 'round-5',
-            lastMoveTime: now,
-            boardNr: i + 1,
-          ),
-        );
+  group('selectDefaultTour', () {
+    test('reuses saved valid selection', () {
+      final now = DateTime.now();
+      final tourA = _makeTour(
+        id: 'tour-a',
+        name: 'Open',
+        dates: [now.subtract(const Duration(days: 1)), now],
+      );
+      final tourB = _makeTour(
+        id: 'tour-b',
+        name: 'Challengers',
+        dates: [now.subtract(const Duration(days: 1)), now],
+        avgElo: 2600,
+      );
 
-        final result = selectForYouEventGames(
-          allStartedGames: games,
-          pinnedIds: [],
-          formatStrings: ['9-round Swiss'],
-        );
+      final selected = selectDefaultTour(
+        tourModels: [
+          TourModel(tour: tourA, roundStatus: RoundStatus.ongoing),
+          TourModel(tour: tourB, roundStatus: RoundStatus.ongoing),
+        ],
+        liveTourIds: const [],
+        savedTourId: 'tour-b',
+      );
 
-        expect(result.length, 4);
-        expect(result.every((g) => g.roundId == 'round-5'), isTrue);
-      },
-    );
+      expect(selected.id, 'tour-b');
+    });
 
-    test('latest round has 2 games — fills from older rounds', () {
-      final now = DateTime(2025, 6, 1, 12, 0);
-      final older = now.subtract(const Duration(hours: 2));
+    test('ignores upcoming saved selection when a started tour exists', () {
+      final now = DateTime.now();
+      final liveTour = _makeTour(
+        id: 'tour-live',
+        name: 'Live Section',
+        dates: [now.subtract(const Duration(hours: 2)), now],
+      );
+      final upcomingTour = _makeTour(
+        id: 'tour-upcoming',
+        name: 'Future Section',
+        dates: [
+          now.add(const Duration(days: 1)),
+          now.add(const Duration(days: 2)),
+        ],
+      );
 
+      final selected = selectDefaultTour(
+        tourModels: [
+          TourModel(tour: liveTour, roundStatus: RoundStatus.live),
+          TourModel(tour: upcomingTour, roundStatus: RoundStatus.upcoming),
+        ],
+        liveTourIds: const ['tour-live'],
+        savedTourId: 'tour-upcoming',
+      );
+
+      expect(selected.id, 'tour-live');
+    });
+
+    test('falls back to activity tour when other signals are absent', () {
+      final now = DateTime.now();
+      final tourA = _makeTour(
+        id: 'tour-a',
+        name: 'Older',
+        dates: [
+          now.subtract(const Duration(days: 4)),
+          now.subtract(const Duration(days: 3)),
+        ],
+        avgElo: null,
+      );
+      final tourB = _makeTour(
+        id: 'tour-b',
+        name: 'Recent Activity',
+        dates: [
+          now.subtract(const Duration(days: 4)),
+          now.subtract(const Duration(days: 3)),
+        ],
+        avgElo: null,
+      );
+
+      final selected = selectDefaultTour(
+        tourModels: [
+          TourModel(tour: tourA, roundStatus: RoundStatus.completed),
+          TourModel(tour: tourB, roundStatus: RoundStatus.completed),
+        ],
+        liveTourIds: const [],
+        activityTourId: 'tour-b',
+      );
+
+      expect(selected.id, 'tour-b');
+    });
+  });
+
+  group('buildForYouEventGamesSnapshot', () {
+    test('regular event returns Games-tab visible order', () {
+      final now = DateTime.now();
+      final tour = _makeTour(
+        id: 'tour-1',
+        name: 'Masters',
+        dates: [now.subtract(const Duration(days: 1)), now],
+      );
+      final rounds = [
+        _makeRound(
+          id: 'round-2',
+          tourId: 'tour-1',
+          name: 'Round 2',
+          startsAt: now.subtract(const Duration(hours: 2)),
+        ),
+        _makeRound(
+          id: 'round-1',
+          tourId: 'tour-1',
+          name: 'Round 1',
+          startsAt: now.subtract(const Duration(days: 1)),
+        ),
+      ];
       final games = [
-        // 2 games in latest round
         _makeGame(
           id: 'g1',
-          roundId: 'r2',
+          roundId: 'round-2',
           roundSlug: 'round-2',
-          lastMoveTime: now,
+          tourId: 'tour-1',
           boardNr: 1,
+          lastMoveTime: now,
+          players: [_player(name: 'A'), _player(name: 'B', fideId: 2)],
         ),
         _makeGame(
           id: 'g2',
-          roundId: 'r2',
+          roundId: 'round-2',
           roundSlug: 'round-2',
-          lastMoveTime: now,
+          tourId: 'tour-1',
           boardNr: 2,
+          lastMoveTime: now,
+          players: [
+            _player(name: 'C', fideId: 3),
+            _player(name: 'D', fideId: 4),
+          ],
         ),
-        // 3 games in older round
         _makeGame(
           id: 'g3',
-          roundId: 'r1',
+          roundId: 'round-1',
           roundSlug: 'round-1',
-          lastMoveTime: older,
+          tourId: 'tour-1',
           boardNr: 1,
+          lastMoveTime: now.subtract(const Duration(hours: 5)),
+          players: [
+            _player(name: 'E', fideId: 5),
+            _player(name: 'F', fideId: 6),
+          ],
         ),
         _makeGame(
           id: 'g4',
-          roundId: 'r1',
+          roundId: 'round-1',
           roundSlug: 'round-1',
-          lastMoveTime: older,
+          tourId: 'tour-1',
           boardNr: 2,
+          lastMoveTime: now.subtract(const Duration(hours: 5)),
+          players: [
+            _player(name: 'G', fideId: 7),
+            _player(name: 'H', fideId: 8),
+          ],
         ),
         _makeGame(
           id: 'g5',
-          roundId: 'r1',
+          roundId: 'round-1',
           roundSlug: 'round-1',
-          lastMoveTime: older,
+          tourId: 'tour-1',
           boardNr: 3,
+          lastMoveTime: now.subtract(const Duration(hours: 5)),
+          players: [
+            _player(name: 'I', fideId: 9),
+            _player(name: 'J', fideId: 10),
+          ],
         ),
       ];
 
-      final result = selectForYouEventGames(
-        allStartedGames: games,
-        pinnedIds: [],
-        formatStrings: ['9-round Swiss'],
+      final snapshot = buildForYouEventGamesSnapshot(
+        eventId: 'event-1',
+        selectedTour: tour,
+        eventTours: [tour],
+        selectedTourRounds: rounds,
+        roundsByTourId: {'tour-1': rounds},
+        selectedTourGames: games,
+        gamesByTourId: {'tour-1': games},
+        liveRoundIds: const [],
+        pinnedIds: const [],
       );
 
-      expect(result.length, 4);
-      // First 2 from latest round
-      expect(result[0].roundId, 'r2');
-      expect(result[1].roundId, 'r2');
-      // Next 2 filled from older round
-      expect(result[2].roundId, 'r1');
-      expect(result[3].roundId, 'r1');
+      expect(snapshot.visibleGames.map((game) => game.gameId).take(4), [
+        'g1',
+        'g2',
+        'g3',
+        'g4',
+      ]);
     });
 
-    test('multi-tour event: games from different tours fill to 4', () {
-      final now = DateTime(2025, 6, 1, 12, 0);
-
-      final games = [
-        // Tour A, round 3 (latest)
-        _makeGame(
-          id: 'a1',
-          roundId: 'r3a',
-          roundSlug: 'round-3',
-          tourId: 'tour-a',
-          lastMoveTime: now,
-          boardNr: 1,
-        ),
-        _makeGame(
-          id: 'a2',
-          roundId: 'r3a',
-          roundSlug: 'round-3',
-          tourId: 'tour-a',
-          lastMoveTime: now,
-          boardNr: 2,
-        ),
-        // Tour B, round 2 (slightly older)
-        _makeGame(
-          id: 'b1',
-          roundId: 'r2b',
-          roundSlug: 'round-2',
-          tourId: 'tour-b',
-          lastMoveTime: now.subtract(const Duration(minutes: 30)),
-          boardNr: 1,
-        ),
-        _makeGame(
-          id: 'b2',
-          roundId: 'r2b',
-          roundSlug: 'round-2',
-          tourId: 'tour-b',
-          lastMoveTime: now.subtract(const Duration(minutes: 30)),
-          boardNr: 2,
-        ),
-      ];
-
-      final result = selectForYouEventGames(
-        allStartedGames: games,
-        pinnedIds: [],
-        formatStrings: ['9-round Swiss', '6-round Swiss'],
-      );
-
-      expect(result.length, 4);
-      // Primary round from tour A first
-      expect(result.where((g) => g.tourId == 'tour-a').length, 2);
-      // Filled from tour B
-      expect(result.where((g) => g.tourId == 'tour-b').length, 2);
-    });
-
-    test('null-timestamp rounds remain eligible for backfill', () {
-      final now = DateTime(2025, 6, 1, 12, 0);
-
-      final games = [
-        _makeGame(
-          id: 'recent-1',
-          roundId: 'r2',
-          roundSlug: 'round-2',
-          lastMoveTime: now,
-          boardNr: 1,
-        ),
-        _makeGame(
-          id: 'recent-2',
-          roundId: 'r2',
-          roundSlug: 'round-2',
-          lastMoveTime: now,
-          boardNr: 2,
-        ),
-        _makeGame(
-          id: 'unknown-1',
-          roundId: 'r1',
-          roundSlug: 'round-1',
-          lastMoveTime: null,
-          gameDay: null,
-          dateStart: null,
-          boardNr: 1,
-        ),
-        _makeGame(
-          id: 'unknown-2',
-          roundId: 'r1',
-          roundSlug: 'round-1',
-          lastMoveTime: null,
-          gameDay: null,
-          dateStart: null,
-          boardNr: 2,
-        ),
-      ];
-
-      final result = selectForYouEventGames(
-        allStartedGames: games,
-        pinnedIds: [],
-        formatStrings: ['9-round Swiss'],
-      );
-
-      expect(result.length, 4);
-      expect(result[0].roundId, 'r2');
-      expect(result[1].roundId, 'r2');
-      expect(result[2].roundId, 'r1');
-      expect(result[3].roundId, 'r1');
-    });
-
-    test('match format: returns latest 4 across entire match', () {
-      final now = DateTime(2025, 6, 1, 12, 0);
-      final matchPlayers = [
-        Player(
-          name: 'Carlsen',
-          title: 'GM',
-          rating: 2830,
-          fideId: 1,
-          fed: 'NOR',
-          clock: 0,
-          team: '',
-        ),
-        Player(
-          name: 'Nepo',
-          title: 'GM',
-          rating: 2790,
-          fideId: 2,
-          fed: 'RUS',
-          clock: 0,
-          team: '',
-        ),
-      ];
-
-      // 6 games across 6 different rounds (game-1 through game-6)
-      final games = List.generate(
-        6,
-        (i) => _makeGame(
-          id: 'match-$i',
-          roundId: 'game-${i + 1}',
-          roundSlug: 'game-${i + 1}',
-          lastMoveTime: now.subtract(Duration(days: 5 - i)),
-          players: matchPlayers,
-          status: i < 5 ? '1/2-1/2' : '*',
-        ),
-      );
-
-      final result = selectForYouEventGames(
-        allStartedGames: games,
-        pinnedIds: [],
-        formatStrings: ['12-game Match'],
-      );
-
-      expect(result.length, 4);
-      // Should not be restricted to a single round
-      final roundIds = result.map((g) => g.roundId).toSet();
-      expect(roundIds.length, greaterThan(1));
-    });
-
-    test('event with fewer than 4 started games returns only available', () {
-      final now = DateTime(2025, 6, 1, 12, 0);
-
-      // 0 games
-      expect(
-        selectForYouEventGames(
-          allStartedGames: [],
-          pinnedIds: [],
-          formatStrings: [],
-        ),
-        isEmpty,
-      );
-
-      // 1 game
-      final result1 = selectForYouEventGames(
-        allStartedGames: [
-          _makeGame(id: 'g1', roundId: 'r1', lastMoveTime: now),
+    test('group event flattens matchup cards without round headers', () {
+      final now = DateTime.now();
+      final tour = _makeTour(
+        id: 'team-tour',
+        name: 'Team Championship',
+        dates: [now.subtract(const Duration(days: 1)), now],
+        players: [
+          _tourPlayer(name: 'A1', team: 'Team A'),
+          _tourPlayer(name: 'B1', team: 'Team B'),
         ],
-        pinnedIds: [],
-        formatStrings: ['Swiss'],
       );
-      expect(result1.length, 1);
-
-      // 3 games
-      final result3 = selectForYouEventGames(
-        allStartedGames: List.generate(
-          3,
-          (i) => _makeGame(
-            id: 'g-$i',
-            roundId: 'r1',
-            roundSlug: 'round-1',
-            lastMoveTime: now,
-            boardNr: i,
-          ),
+      final rounds = [
+        _makeRound(
+          id: 'round-1',
+          tourId: 'team-tour',
+          name: 'Round 1',
+          startsAt: now.subtract(const Duration(hours: 2)),
         ),
-        pinnedIds: [],
-        formatStrings: ['Swiss'],
-      );
-      expect(result3.length, 3);
-    });
-
-    test('pinned game from non-primary round gets priority', () {
-      final now = DateTime(2025, 6, 1, 12, 0);
-      final older = now.subtract(const Duration(hours: 2));
-
+      ];
       final games = [
-        // 3 games in latest round
         _makeGame(
-          id: 'new1',
-          roundId: 'r2',
-          roundSlug: 'round-2',
-          lastMoveTime: now,
+          id: 'match-a-1',
+          roundId: 'round-1',
+          roundSlug: 'round-1',
+          tourId: 'team-tour',
           boardNr: 1,
+          lastMoveTime: now,
+          players: [
+            _player(name: 'A1', team: 'Team A', fideId: 1),
+            _player(name: 'B1', team: 'Team B', fideId: 2),
+          ],
         ),
         _makeGame(
-          id: 'new2',
-          roundId: 'r2',
-          roundSlug: 'round-2',
-          lastMoveTime: now,
+          id: 'match-c-1',
+          roundId: 'round-1',
+          roundSlug: 'round-1',
+          tourId: 'team-tour',
           boardNr: 2,
+          lastMoveTime: now,
+          players: [
+            _player(name: 'C1', team: 'Team C', fideId: 3),
+            _player(name: 'D1', team: 'Team D', fideId: 4),
+          ],
         ),
         _makeGame(
-          id: 'new3',
-          roundId: 'r2',
-          roundSlug: 'round-2',
-          lastMoveTime: now,
+          id: 'match-a-2',
+          roundId: 'round-1',
+          roundSlug: 'round-1',
+          tourId: 'team-tour',
           boardNr: 3,
-        ),
-        // 2 games in older round, one is pinned
-        _makeGame(
-          id: 'old-pinned',
-          roundId: 'r1',
-          roundSlug: 'round-1',
-          lastMoveTime: older,
-          boardNr: 1,
-        ),
-        _makeGame(
-          id: 'old2',
-          roundId: 'r1',
-          roundSlug: 'round-1',
-          lastMoveTime: older,
-          boardNr: 2,
+          lastMoveTime: now,
+          players: [
+            _player(name: 'A2', team: 'Team A', fideId: 5),
+            _player(name: 'B2', team: 'Team B', fideId: 6),
+          ],
         ),
       ];
 
-      final result = selectForYouEventGames(
-        allStartedGames: games,
-        pinnedIds: ['old-pinned'],
-        formatStrings: ['9-round Swiss'],
+      final snapshot = buildForYouEventGamesSnapshot(
+        eventId: 'event-1',
+        selectedTour: tour,
+        eventTours: [tour],
+        selectedTourRounds: rounds,
+        roundsByTourId: {'team-tour': rounds},
+        selectedTourGames: games,
+        gamesByTourId: {'team-tour': games},
+        liveRoundIds: const [],
+        pinnedIds: const [],
       );
 
-      expect(result.length, 4);
-      // Primary round (r2) contributes 3 games; the pinned game from r1 fills
-      // the 4th slot. The pinned game should be present in the result.
-      expect(result.any((g) => g.id == 'old-pinned'), isTrue);
+      expect(snapshot.visibleGames.map((game) => game.gameId), [
+        'match-a-1',
+        'match-a-2',
+        'match-c-1',
+      ]);
+    });
+
+    test('group event keeps matchup grouping when team name contains vs', () {
+      final now = DateTime.now();
+      final tour = _makeTour(
+        id: 'team-tour',
+        name: 'Team Championship',
+        dates: [now.subtract(const Duration(days: 1)), now],
+        players: [
+          _tourPlayer(name: 'P1', team: 'Team vs Shadows'),
+          _tourPlayer(name: 'P2', team: 'Rivals Club'),
+        ],
+      );
+      final rounds = [
+        _makeRound(
+          id: 'round-1',
+          tourId: 'team-tour',
+          name: 'Round 1',
+          startsAt: now.subtract(const Duration(hours: 2)),
+        ),
+      ];
+      final games = [
+        _makeGame(
+          id: 'match-1-board-1',
+          roundId: 'round-1',
+          roundSlug: 'round-1',
+          tourId: 'team-tour',
+          boardNr: 1,
+          lastMoveTime: now,
+          players: [
+            _player(name: 'A1', team: 'Team vs Shadows', fideId: 1),
+            _player(name: 'B1', team: 'Rivals Club', fideId: 2),
+          ],
+        ),
+        _makeGame(
+          id: 'other-match',
+          roundId: 'round-1',
+          roundSlug: 'round-1',
+          tourId: 'team-tour',
+          boardNr: 2,
+          lastMoveTime: now,
+          players: [
+            _player(name: 'C1', team: 'Knights', fideId: 3),
+            _player(name: 'D1', team: 'Bishops', fideId: 4),
+          ],
+        ),
+        _makeGame(
+          id: 'match-1-board-2',
+          roundId: 'round-1',
+          roundSlug: 'round-1',
+          tourId: 'team-tour',
+          boardNr: 3,
+          lastMoveTime: now,
+          players: [
+            _player(name: 'B2', team: 'Rivals Club', fideId: 5),
+            _player(name: 'A2', team: 'Team vs Shadows', fideId: 6),
+          ],
+        ),
+      ];
+
+      final snapshot = buildForYouEventGamesSnapshot(
+        eventId: 'event-1',
+        selectedTour: tour,
+        eventTours: [tour],
+        selectedTourRounds: rounds,
+        roundsByTourId: {'team-tour': rounds},
+        selectedTourGames: games,
+        gamesByTourId: {'team-tour': games},
+        liveRoundIds: const [],
+        pinnedIds: const [],
+      );
+
+      expect(snapshot.visibleGames.map((game) => game.gameId), [
+        'match-1-board-1',
+        'match-1-board-2',
+        'other-match',
+      ]);
+    });
+
+    test('multi-stage knockout includes sibling stages in Games-tab order', () {
+      final now = DateTime.now();
+      final stage1 = _makeTour(
+        id: 'stage-1',
+        name: 'World Cup | Round 1',
+        dates: [
+          now.subtract(const Duration(days: 2)),
+          now.subtract(const Duration(days: 1)),
+        ],
+        format: 'Knockout',
+      );
+      final stage2 = _makeTour(
+        id: 'stage-2',
+        name: 'World Cup | Round 2',
+        dates: [now.subtract(const Duration(hours: 8)), now],
+        format: 'Knockout',
+      );
+      final stage1Rounds = [
+        _makeRound(
+          id: 'stage-1-round',
+          tourId: 'stage-1',
+          name: 'Stage 1',
+          startsAt: now.subtract(const Duration(days: 2)),
+        ),
+      ];
+      final stage2Rounds = [
+        _makeRound(
+          id: 'stage-2-round',
+          tourId: 'stage-2',
+          name: 'Stage 2',
+          startsAt: now.subtract(const Duration(hours: 8)),
+        ),
+      ];
+      final stage1Games = [
+        _makeGame(
+          id: 's1-g1',
+          roundId: 'stage-1-round',
+          roundSlug: 'game-1',
+          tourId: 'stage-1',
+          boardNr: 1,
+          lastMoveTime: now.subtract(const Duration(days: 1)),
+          players: [_player(name: 'A'), _player(name: 'B', fideId: 2)],
+        ),
+        _makeGame(
+          id: 's1-g2',
+          roundId: 'stage-1-round',
+          roundSlug: 'game-2',
+          tourId: 'stage-1',
+          boardNr: 1,
+          lastMoveTime: now.subtract(const Duration(days: 1)),
+          players: [_player(name: 'A'), _player(name: 'B', fideId: 2)],
+        ),
+      ];
+      final stage2Games = [
+        _makeGame(
+          id: 's2-g1',
+          roundId: 'stage-2-round',
+          roundSlug: 'game-1',
+          tourId: 'stage-2',
+          boardNr: 1,
+          lastMoveTime: now.subtract(const Duration(hours: 2)),
+          players: [
+            _player(name: 'C', fideId: 3),
+            _player(name: 'D', fideId: 4),
+          ],
+        ),
+        _makeGame(
+          id: 's2-g2',
+          roundId: 'stage-2-round',
+          roundSlug: 'game-2',
+          tourId: 'stage-2',
+          boardNr: 1,
+          lastMoveTime: now.subtract(const Duration(hours: 1)),
+          players: [
+            _player(name: 'C', fideId: 3),
+            _player(name: 'D', fideId: 4),
+          ],
+        ),
+      ];
+
+      final snapshot = buildForYouEventGamesSnapshot(
+        eventId: 'event-1',
+        selectedTour: stage2,
+        eventTours: [stage1, stage2],
+        selectedTourRounds: stage2Rounds,
+        roundsByTourId: {'stage-1': stage1Rounds, 'stage-2': stage2Rounds},
+        selectedTourGames: stage2Games,
+        gamesByTourId: {'stage-1': stage1Games, 'stage-2': stage2Games},
+        liveRoundIds: const [],
+        pinnedIds: const [],
+      );
+
+      expect(snapshot.visibleGames.map((game) => game.gameId).take(4), [
+        's2-g1',
+        's2-g2',
+        's1-g1',
+        's1-g2',
+      ]);
+    });
+
+    test('multi-stage knockout keeps sibling-stage pins in snapshot', () {
+      final now = DateTime.now();
+      final stage1 = _makeTour(
+        id: 'stage-1',
+        name: 'World Cup | Round 1',
+        dates: [
+          now.subtract(const Duration(days: 2)),
+          now.subtract(const Duration(days: 1)),
+        ],
+        format: 'Knockout',
+      );
+      final stage2 = _makeTour(
+        id: 'stage-2',
+        name: 'World Cup | Round 2',
+        dates: [now.subtract(const Duration(hours: 8)), now],
+        format: 'Knockout',
+      );
+      final stage1Rounds = [
+        _makeRound(
+          id: 'stage-1-round',
+          tourId: 'stage-1',
+          name: 'Stage 1',
+          startsAt: now.subtract(const Duration(days: 2)),
+        ),
+      ];
+      final stage2Rounds = [
+        _makeRound(
+          id: 'stage-2-round',
+          tourId: 'stage-2',
+          name: 'Stage 2',
+          startsAt: now.subtract(const Duration(hours: 8)),
+        ),
+      ];
+      final stage1Games = [
+        _makeGame(
+          id: 's1-g1',
+          roundId: 'stage-1-round',
+          roundSlug: 'game-1',
+          tourId: 'stage-1',
+          boardNr: 1,
+          lastMoveTime: now.subtract(const Duration(days: 1)),
+          players: [_player(name: 'A'), _player(name: 'B', fideId: 2)],
+        ),
+        _makeGame(
+          id: 's1-g2',
+          roundId: 'stage-1-round',
+          roundSlug: 'game-2',
+          tourId: 'stage-1',
+          boardNr: 1,
+          lastMoveTime: now.subtract(const Duration(days: 1)),
+          players: [_player(name: 'A'), _player(name: 'B', fideId: 2)],
+        ),
+      ];
+      final stage2Games = [
+        _makeGame(
+          id: 's2-g1',
+          roundId: 'stage-2-round',
+          roundSlug: 'game-1',
+          tourId: 'stage-2',
+          boardNr: 1,
+          lastMoveTime: now.subtract(const Duration(hours: 2)),
+          players: [
+            _player(name: 'C', fideId: 3),
+            _player(name: 'D', fideId: 4),
+          ],
+        ),
+        _makeGame(
+          id: 's2-g2',
+          roundId: 'stage-2-round',
+          roundSlug: 'game-2',
+          tourId: 'stage-2',
+          boardNr: 1,
+          lastMoveTime: now.subtract(const Duration(hours: 1)),
+          players: [
+            _player(name: 'C', fideId: 3),
+            _player(name: 'D', fideId: 4),
+          ],
+        ),
+      ];
+
+      final snapshot = buildForYouEventGamesSnapshot(
+        eventId: 'event-1',
+        selectedTour: stage2,
+        eventTours: [stage1, stage2],
+        selectedTourRounds: stage2Rounds,
+        roundsByTourId: {'stage-1': stage1Rounds, 'stage-2': stage2Rounds},
+        selectedTourGames: stage2Games,
+        gamesByTourId: {'stage-1': stage1Games, 'stage-2': stage2Games},
+        liveRoundIds: const [],
+        pinnedIds: const ['s1-g2'],
+      );
+
+      expect(snapshot.pinnedIds, ['s1-g2']);
+      expect(
+        snapshot.visibleGames.map((game) => game.gameId).take(4),
+        containsAll(['s2-g1', 's2-g2', 's1-g1', 's1-g2']),
+      );
+    });
+
+    test(
+      'pins are applied with Games-tab priority inside the selected tour',
+      () {
+        final now = DateTime.now();
+        final tour = _makeTour(
+          id: 'tour-1',
+          name: 'Pinned Event',
+          dates: [now.subtract(const Duration(days: 1)), now],
+        );
+        final rounds = [
+          _makeRound(
+            id: 'round-1',
+            tourId: 'tour-1',
+            name: 'Round 1',
+            startsAt: now.subtract(const Duration(hours: 2)),
+          ),
+        ];
+        final games = [
+          _makeGame(
+            id: 'g1',
+            roundId: 'round-1',
+            roundSlug: 'round-1',
+            tourId: 'tour-1',
+            boardNr: 1,
+            lastMoveTime: now,
+            players: [_player(name: 'A'), _player(name: 'B', fideId: 2)],
+          ),
+          _makeGame(
+            id: 'g2',
+            roundId: 'round-1',
+            roundSlug: 'round-1',
+            tourId: 'tour-1',
+            boardNr: 2,
+            lastMoveTime: now,
+            players: [
+              _player(name: 'C', fideId: 3),
+              _player(name: 'D', fideId: 4),
+            ],
+          ),
+          _makeGame(
+            id: 'g3',
+            roundId: 'round-1',
+            roundSlug: 'round-1',
+            tourId: 'tour-1',
+            boardNr: 3,
+            lastMoveTime: now,
+            players: [
+              _player(name: 'E', fideId: 5),
+              _player(name: 'F', fideId: 6),
+            ],
+          ),
+        ];
+
+        final snapshot = buildForYouEventGamesSnapshot(
+          eventId: 'event-1',
+          selectedTour: tour,
+          eventTours: [tour],
+          selectedTourRounds: rounds,
+          roundsByTourId: {'tour-1': rounds},
+          selectedTourGames: games,
+          gamesByTourId: {'tour-1': games},
+          liveRoundIds: const [],
+          pinnedIds: const ['g3'],
+        );
+
+        expect(snapshot.visibleGames.first.gameId, 'g3');
+        expect(snapshot.pinnedIds, ['g3']);
+      },
+    );
+
+    test('returns only available visible games when fewer than four exist', () {
+      final now = DateTime.now();
+      final tour = _makeTour(
+        id: 'tour-1',
+        name: 'Small Event',
+        dates: [now.subtract(const Duration(days: 1)), now],
+      );
+      final rounds = [
+        _makeRound(
+          id: 'round-1',
+          tourId: 'tour-1',
+          name: 'Round 1',
+          startsAt: now.subtract(const Duration(hours: 2)),
+        ),
+      ];
+      final games = [
+        _makeGame(
+          id: 'g1',
+          roundId: 'round-1',
+          roundSlug: 'round-1',
+          tourId: 'tour-1',
+          boardNr: 1,
+          lastMoveTime: now,
+          players: [_player(name: 'A'), _player(name: 'B', fideId: 2)],
+        ),
+        _makeGame(
+          id: 'g2',
+          roundId: 'round-1',
+          roundSlug: 'round-1',
+          tourId: 'tour-1',
+          boardNr: 2,
+          lastMoveTime: now,
+          players: [
+            _player(name: 'C', fideId: 3),
+            _player(name: 'D', fideId: 4),
+          ],
+        ),
+      ];
+
+      final snapshot = buildForYouEventGamesSnapshot(
+        eventId: 'event-1',
+        selectedTour: tour,
+        eventTours: [tour],
+        selectedTourRounds: rounds,
+        roundsByTourId: {'tour-1': rounds},
+        selectedTourGames: games,
+        gamesByTourId: {'tour-1': games},
+        liveRoundIds: const [],
+        pinnedIds: const [],
+      );
+
+      expect(snapshot.visibleGames, hasLength(2));
     });
   });
 }

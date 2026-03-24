@@ -1,4 +1,5 @@
 import 'package:chessever2/repository/local_storage/tournament/games/games_local_storage.dart';
+import 'package:chessever2/providers/event_pin_refresh_provider.dart';
 import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/screens/group_event/model/about_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_view_model.dart';
@@ -8,6 +9,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/games_pin_pr
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/knockout_tournament_state_provider.dart';
+import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
 import 'package:chessever2/widgets/search/gameSearch/enhanced_game_search.dart';
 import 'package:flutter/foundation.dart';
@@ -385,10 +387,11 @@ class GamesTourScreenProvider
     }
   }
 
-  Future<void> togglePinGame(String gameId) async {
+  Future<void> togglePinGame(String gameId, {required String sourceTourId}) async {
     await ref
         .read(gamesPinprovider(aboutTourModel!.id).notifier)
-        .togglePin(gameId);
+        .togglePin(gameId: gameId, sourceTourId: sourceTourId);
+    bumpEventPinRefreshSignal(ref, ref.read(selectedBroadcastModelProvider)?.id);
   }
 
   void clearSearch() {
