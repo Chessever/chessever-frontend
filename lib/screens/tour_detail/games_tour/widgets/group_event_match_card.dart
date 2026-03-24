@@ -319,7 +319,10 @@ class GroupEventMatchCard extends ConsumerWidget {
       onPinToggle:
           (_) async => await ref
               .read(gamesTourScreenProvider.notifier)
-              .togglePinGame(matchWithComparison.game.gameId),
+              .togglePinGame(
+                matchWithComparison.game.gameId,
+                sourceTourId: matchWithComparison.game.tourId,
+              ),
     );
   }
 }

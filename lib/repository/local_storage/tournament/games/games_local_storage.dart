@@ -19,7 +19,7 @@ final gamesLocalStorage = AutoDisposeProvider<GamesLocalStorage>((ref) {
 /// Marker prefix for gzip-compressed cache entries.
 const _gzipPrefix = 'gz:';
 
-/// Isolate worker: List<Games> → compressed string ready for SQLite storage.
+/// Isolate worker: `List<Games>` -> compressed string ready for SQLite storage.
 /// Gzip + base64 keeps the row well under Android's 2 MB CursorWindow limit.
 String _encodeAndCompress(List<Games> games) {
   final jsonStrings = games.map((g) => json.encode(g.toJson())).toList();
@@ -28,7 +28,7 @@ String _encodeAndCompress(List<Games> games) {
   return '$_gzipPrefix${base64.encode(compressed)}';
 }
 
-/// Isolate worker: compressed (or legacy raw) cache string → List<Games>.
+/// Isolate worker: compressed (or legacy raw) cache string -> `List<Games>`.
 /// Skips individual corrupted entries instead of throwing away the whole cache.
 List<Games> _decompressAndDecode(String cached) {
   String jsonString;
@@ -99,6 +99,17 @@ class GamesLocalStorage {
 
   String _getCacheKey(String tourId) => 'games_$tourId';
 
+  Future<({bool found, List<Games> games})> _readCachedGames(String tourId) async {
+    final db = ref.read(appDatabaseProvider);
+    final entry = await db.getCache(key: _getCacheKey(tourId));
+    if (entry == null) {
+      return (found: false, games: <Games>[]);
+    }
+
+    final games = await compute(_decompressAndDecode, entry.value);
+    return (found: true, games: games);
+  }
+
   /// Fetch games from Supabase, return immediately, compress+cache in background.
   Future<List<Games>> fetchAndSaveGames(String tourId) async {
     try {
@@ -130,12 +141,9 @@ class GamesLocalStorage {
   /// Read games from cache. Falls through to network fetch on any failure.
   Future<List<Games>> getGames(String tourId) async {
     try {
-      final db = ref.read(appDatabaseProvider);
-      final entry = await db.getCache(key: _getCacheKey(tourId));
-
-      if (entry != null) {
-        // Decompress + decode entirely in a background isolate
-        return await compute(_decompressAndDecode, entry.value);
+      final cachedGames = await _readCachedGames(tourId);
+      if (cachedGames.found) {
+        return cachedGames.games;
       }
       return await fetchAndSaveGames(tourId);
     } catch (error, _) {
@@ -147,6 +155,15 @@ class GamesLocalStorage {
       } catch (_) {
         return <Games>[];
       }
+    }
+  }
+
+  /// Read only cached games. Never falls through to the network.
+  Future<List<Games>> getCachedGames(String tourId) async {
+    try {
+      return (await _readCachedGames(tourId)).games;
+    } catch (error, _) {
+      return <Games>[];
     }
   }
 
