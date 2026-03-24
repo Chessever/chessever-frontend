@@ -1733,8 +1733,28 @@ class _ViewModeSelector extends StatelessWidget {
           duration: const Duration(milliseconds: 200),
           padding: EdgeInsets.symmetric(vertical: 8.sp),
           decoration: BoxDecoration(
-            color: isSelected ? kPrimaryColor : Colors.transparent,
+            color:
+                isSelected
+                    ? kPrimaryColor.withValues(alpha: 0.08)
+                    : Colors.transparent,
             borderRadius: BorderRadius.circular(8.br),
+            border: Border.all(
+              color:
+                  isSelected
+                      ? kPrimaryColor
+                      : Colors.transparent,
+              width: isSelected ? 1.5 : 1.0,
+            ),
+            boxShadow:
+                isSelected
+                    ? [
+                      BoxShadow(
+                        color: kPrimaryColor.withValues(alpha: 0.18),
+                        blurRadius: 8,
+                        spreadRadius: 0,
+                      ),
+                    ]
+                    : null,
           ),
           child: Column(
             children: [
