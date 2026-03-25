@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:chessever2/providers/for_you_games_provider.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
+import 'package:chessever2/screens/group_event/group_event_screen.dart';
 import 'package:chessever2/screens/group_event/providers/group_event_screen_provider.dart';
 import 'package:chessever2/screens/group_event/widget/premium_collection_cards.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
@@ -39,7 +40,10 @@ class ForYouGamesWidget extends ConsumerStatefulWidget {
 }
 
 class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
-    with WidgetsBindingObserver {
+    with WidgetsBindingObserver, AutomaticKeepAliveClientMixin {
+  final Set<String> _animatedEventIds = <String>{};
+  final Set<String> _animatedGameIds = <String>{};
+
   @override
   void initState() {
     super.initState();
@@ -49,6 +53,8 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
 
   @override
   void dispose() {
+    _animatedEventIds.clear();
+    _animatedGameIds.clear();
     widget.scrollController.removeListener(_onScroll);
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
@@ -58,7 +64,14 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
     if (state == AppLifecycleState.resumed) {
-      unawaited(ref.read(forYouEventsProvider.notifier).refreshIfStale());
+      // Only refresh when For You is the active category. The widget stays
+      // alive offscreen via AutomaticKeepAliveClientMixin, so without this
+      // guard it would trigger background refreshes while the user is on
+      // Current/Past.
+      final selected = ref.read(selectedGroupCategoryProvider);
+      if (selected == GroupEventCategory.forYou) {
+        unawaited(ref.read(forYouEventsProvider.notifier).refreshIfStale());
+      }
     }
   }
 
@@ -72,8 +85,24 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
   }
 
   @override
+  bool get wantKeepAlive => true;
+
+  @override
   Widget build(BuildContext context) {
+    super.build(context); // required by AutomaticKeepAliveClientMixin
+
+    // When For You is not the active category, drop all expensive provider
+    // subscriptions by returning early. Riverpod automatically unsubscribes
+    // from providers that were watched in a previous build but not in the
+    // current one — so switching away tears down event snapshot watchers and
+    // live-game stream subscriptions without disposing the widget State.
+    final selectedCategory = ref.watch(selectedGroupCategoryProvider);
+    if (selectedCategory != GroupEventCategory.forYou) {
+      return const SizedBox.shrink();
+    }
+
     final state = ref.watch(forYouEventsProvider);
+    final visibleEvents = ref.watch(forYouVisibleEventsProvider);
 
     if (state.isLoading && state.events.isEmpty) {
       return _buildLoadingState();
@@ -84,7 +113,7 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
       return const GenericErrorWidget();
     }
 
-    if (state.events.isEmpty) {
+    if (visibleEvents.isEmpty) {
       return _buildEmptyState();
     }
 
@@ -95,7 +124,7 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
       color: kPrimaryColor,
       backgroundColor: kBlack2Color,
       child: _buildEventsList(
-        state.events,
+        visibleEvents,
         showLoadingMore: state.hasMore && !state.isLoading,
       ),
     );
@@ -204,6 +233,8 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
           key: ValueKey('event_${event.id}'),
           event: event,
           isFirst: index == 1,
+          animatedEventIds: _animatedEventIds,
+          animatedGameIds: _animatedGameIds,
         );
       },
     );
@@ -278,6 +309,8 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
                 child: _ForYouTabletEventColumn(
                   key: ValueKey('tablet_col_${event1.id}'),
                   event: event1,
+                  animatedEventIds: _animatedEventIds,
+                  animatedGameIds: _animatedGameIds,
                 ),
               ),
               SizedBox(width: columnSpacing),
@@ -288,6 +321,8 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
                         ? _ForYouTabletEventColumn(
                           key: ValueKey('tablet_col_${event2.id}'),
                           event: event2,
+                          animatedEventIds: _animatedEventIds,
+                          animatedGameIds: _animatedGameIds,
                         )
                         : const SizedBox.shrink(),
               ),
@@ -390,10 +425,14 @@ class _ForYouEventSection extends ConsumerWidget {
     super.key,
     required this.event,
     required this.isFirst,
+    required this.animatedEventIds,
+    required this.animatedGameIds,
   });
 
   final GroupEventCardModel event;
   final bool isFirst;
+  final Set<String> animatedEventIds;
+  final Set<String> animatedGameIds;
 
   /// Builds the EventCard with proper constraints for tablet
   /// Tablet uses image-as-background layout which needs bounded height
@@ -423,26 +462,9 @@ class _ForYouEventSection extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final gamesAsync = ref.watch(
-      forYouEventGamesWithAutoRefreshProvider(event.id),
-    );
-    final hasNoAvailableGames = gamesAsync.when(
-      data: (games) => games.isEmpty,
-      loading: () => false,
-      error: (_, __) => false,
-    );
-
-    if (hasNoAvailableGames) {
-      // Remove event from list so it no longer appears in For You.
-      Future.microtask(() {
-        ref.read(forYouEventsProvider.notifier).removeEvent(event.id);
-      });
-      return const SizedBox.shrink();
-    }
-
-    final shouldAnimate = !forYouAnimatedEventIds.contains(event.id);
+    final shouldAnimate = !animatedEventIds.contains(event.id);
     if (shouldAnimate) {
-      forYouAnimatedEventIds.add(event.id);
+      animatedEventIds.add(event.id);
     }
 
     final section = Column(
@@ -455,7 +477,7 @@ class _ForYouEventSection extends ConsumerWidget {
         ),
 
         // Games for this event (lazy loaded with shimmer)
-        _ForYouEventGames(eventId: event.id),
+        _ForYouEventGames(eventId: event.id, animatedGameIds: animatedGameIds),
       ],
     );
 
@@ -473,32 +495,22 @@ class _ForYouEventSection extends ConsumerWidget {
 /// Single column in the 2-column tablet grid
 /// Contains: event card on top + games stacked below (1 game per row within column)
 class _ForYouTabletEventColumn extends ConsumerWidget {
-  const _ForYouTabletEventColumn({super.key, required this.event});
+  const _ForYouTabletEventColumn({
+    super.key,
+    required this.event,
+    required this.animatedEventIds,
+    required this.animatedGameIds,
+  });
 
   final GroupEventCardModel event;
+  final Set<String> animatedEventIds;
+  final Set<String> animatedGameIds;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final gamesAsync = ref.watch(
-      forYouEventGamesWithAutoRefreshProvider(event.id),
-    );
-    final hasNoAvailableGames = gamesAsync.when(
-      data: (games) => games.isEmpty,
-      loading: () => false,
-      error: (_, __) => false,
-    );
-
-    if (hasNoAvailableGames) {
-      // Remove event from list so tablet rows compact without this event.
-      Future.microtask(() {
-        ref.read(forYouEventsProvider.notifier).removeEvent(event.id);
-      });
-      return const SizedBox.shrink();
-    }
-
-    final shouldAnimate = !forYouAnimatedEventIds.contains(event.id);
+    final shouldAnimate = !animatedEventIds.contains(event.id);
     if (shouldAnimate) {
-      forYouAnimatedEventIds.add(event.id);
+      animatedEventIds.add(event.id);
     }
 
     // Aspect ratio for event card in column layout
@@ -526,7 +538,10 @@ class _ForYouTabletEventColumn extends ConsumerWidget {
         ),
         SizedBox(height: 10.sp),
         // Games for this event (stacked vertically, 1 per row in this column)
-        _ForYouTabletColumnGames(eventId: event.id),
+        _ForYouTabletColumnGames(
+          eventId: event.id,
+          animatedGameIds: animatedGameIds,
+        ),
       ],
     );
 
@@ -544,9 +559,13 @@ class _ForYouTabletEventColumn extends ConsumerWidget {
 /// Games for a single column - shows games in 2-column grid (2 per row)
 /// Uses auto-refresh provider that watches live games and re-fetches when they finish
 class _ForYouTabletColumnGames extends ConsumerWidget {
-  const _ForYouTabletColumnGames({required this.eventId});
+  const _ForYouTabletColumnGames({
+    required this.eventId,
+    required this.animatedGameIds,
+  });
 
   final String eventId;
+  final Set<String> animatedGameIds;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -556,24 +575,18 @@ class _ForYouTabletColumnGames extends ConsumerWidget {
     );
 
     return gamesAsync.when(
-      data: (games) {
-        if (games.isEmpty) {
+      skipLoadingOnRefresh: true,
+      skipLoadingOnReload: true,
+      data: (snapshot) {
+        final orderedGames = snapshot.visibleGames;
+        if (orderedGames.isEmpty) {
           return const SizedBox.shrink();
         }
 
-        // Convert to GamesTourModel - limit to 4 games (2 rows of 2)
-        final allGameModels =
-            games
-                .where((g) => g.players != null && g.players!.length >= 2)
-                .map((g) => GamesTourModel.fromGame(g))
-                .toList();
-
-        if (allGameModels.isEmpty) {
+        final gameModels = orderedGames.take(kGamesPerEvent).toList();
+        if (gameModels.isEmpty) {
           return const SizedBox.shrink();
         }
-
-        // Take only first kGamesPerEvent games for tablet column view
-        final gameModels = allGameModels.take(kGamesPerEvent).toList();
 
         // Build 2-column grid of games (2 per row, max 2 rows = 4 games)
         // Wrap with animated slots for smooth transitions when games change
@@ -594,8 +607,10 @@ class _ForYouTabletColumnGames extends ConsumerWidget {
                       gameId: game1.gameId,
                       child: _TabletGameCard(
                         game: game1,
-                        games: gameModels,
+                        orderedGames: orderedGames,
                         index: i,
+                        eventId: eventId,
+                        pinnedIds: snapshot.pinnedIds,
                       ),
                     ),
                   ),
@@ -608,8 +623,10 @@ class _ForYouTabletColumnGames extends ConsumerWidget {
                               gameId: game2.gameId,
                               child: _TabletGameCard(
                                 game: game2,
-                                games: gameModels,
+                                orderedGames: orderedGames,
                                 index: i + 1,
+                                eventId: eventId,
+                                pinnedIds: snapshot.pinnedIds,
                               ),
                             )
                             : const SizedBox.shrink(),
@@ -683,20 +700,24 @@ class _ForYouTabletColumnGames extends ConsumerWidget {
 class _TabletGameCard extends ConsumerWidget {
   const _TabletGameCard({
     required this.game,
-    required this.games,
+    required this.orderedGames,
     required this.index,
+    required this.eventId,
+    required this.pinnedIds,
   });
 
   final GamesTourModel game;
-  final List<GamesTourModel> games;
+  final List<GamesTourModel> orderedGames;
   final int index;
+  final String eventId;
+  final List<String> pinnedIds;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return GridGameCardWrapperWidget(
       key: ValueKey('tablet_grid_game_${game.gameId}'),
       game: game,
-      orderedGames: games,
+      orderedGames: orderedGames,
       gameIndex: index,
       onChangedWithLiveGames:
           (updatedGames) => ref
@@ -708,8 +729,15 @@ class _TabletGameCard extends ConsumerWidget {
                 onReturnFromChessboard: (_) {},
                 viewSource: ChessboardView.forYou,
               ),
-      pinnedIds: const [],
-      onPinToggle: (_) {},
+      pinnedIds: pinnedIds,
+      onPinToggle:
+          (_) => ref
+              .read(forYouPinActionProvider)
+              .togglePin(
+                eventId: eventId,
+                gameId: game.gameId,
+                tourId: game.tourId,
+              ),
     );
   }
 }
@@ -717,9 +745,13 @@ class _TabletGameCard extends ConsumerWidget {
 /// Games section for one event - loads lazily with shimmer
 /// Uses auto-refresh provider that watches live games and re-fetches when they finish
 class _ForYouEventGames extends ConsumerWidget {
-  const _ForYouEventGames({required this.eventId});
+  const _ForYouEventGames({
+    required this.eventId,
+    required this.animatedGameIds,
+  });
 
   final String eventId;
+  final Set<String> animatedGameIds;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -730,36 +762,39 @@ class _ForYouEventGames extends ConsumerWidget {
     final viewMode = ref.watch(gamesListViewModeProvider);
 
     return gamesAsync.when(
-      data: (games) {
-        if (games.isEmpty) {
+      skipLoadingOnRefresh: true,
+      skipLoadingOnReload: true,
+      data: (snapshot) {
+        final orderedGames = snapshot.visibleGames;
+        if (orderedGames.isEmpty) {
           return const SizedBox.shrink();
         }
 
-        // Convert to GamesTourModel
-        final gameModels =
-            games
-                .where((g) => g.players != null && g.players!.length >= 2)
-                .map((g) => GamesTourModel.fromGame(g))
-                .toList();
-
-        if (gameModels.isEmpty) {
+        final displayedGames = orderedGames.take(kGamesPerEvent).toList();
+        if (displayedGames.isEmpty) {
           return const SizedBox.shrink();
         }
 
         final gamesData = GamesScreenModel(
-          gamesTourModels: gameModels,
-          pinnedGamedIs: const [],
+          gamesTourModels: orderedGames,
+          pinnedGamedIs: snapshot.pinnedIds,
         );
 
         // Grid mode: 2 games per row
         if (viewMode == GamesListViewMode.chessBoardGrid) {
-          return _buildGridGames(context, ref, gameModels);
+          return _buildGridGames(
+            context,
+            ref,
+            displayedGames,
+            orderedGames,
+            snapshot.pinnedIds,
+          );
         }
 
         // List mode: one game per row with smooth transition animation
         return Column(
-          children: List.generate(gameModels.length, (index) {
-            final game = gameModels[index];
+          children: List.generate(displayedGames.length, (index) {
+            final game = displayedGames[index];
             return _AnimatedGameCardSlot(
               key: ValueKey('slot_$index'),
               gameId: game.gameId,
@@ -768,7 +803,8 @@ class _ForYouEventGames extends ConsumerWidget {
                 game: game,
                 gamesData: gamesData,
                 gameIndex: index,
-                allGames: gameModels,
+                eventId: eventId,
+                animatedGameIds: animatedGameIds,
                 viewMode: viewMode,
               ),
             );
@@ -794,13 +830,16 @@ class _ForYouEventGames extends ConsumerWidget {
   Widget _buildGridGames(
     BuildContext context,
     WidgetRef ref,
-    List<GamesTourModel> games,
+    List<GamesTourModel> displayedGames,
+    List<GamesTourModel> orderedGames,
+    List<String> pinnedIds,
   ) {
     final rows = <Widget>[];
 
-    for (int i = 0; i < games.length; i += 2) {
-      final game1 = games[i];
-      final game2 = i + 1 < games.length ? games[i + 1] : null;
+    for (int i = 0; i < displayedGames.length; i += 2) {
+      final game1 = displayedGames[i];
+      final game2 =
+          i + 1 < displayedGames.length ? displayedGames[i + 1] : null;
 
       rows.add(
         Padding(
@@ -814,7 +853,7 @@ class _ForYouEventGames extends ConsumerWidget {
                   child: GridGameCardWrapperWidget(
                     key: ValueKey('grid_game_${game1.gameId}'),
                     game: game1,
-                    orderedGames: games,
+                    orderedGames: orderedGames,
                     gameIndex: i,
                     onChangedWithLiveGames:
                         (updatedGames) => ref
@@ -826,8 +865,15 @@ class _ForYouEventGames extends ConsumerWidget {
                               onReturnFromChessboard: (_) {},
                               viewSource: ChessboardView.forYou,
                             ),
-                    pinnedIds: const [],
-                    onPinToggle: (_) {},
+                    pinnedIds: pinnedIds,
+                    onPinToggle:
+                        (_) => ref
+                            .read(forYouPinActionProvider)
+                            .togglePin(
+                              eventId: eventId,
+                              gameId: game1.gameId,
+                              tourId: game1.tourId,
+                            ),
                   ),
                 ),
               ),
@@ -841,7 +887,7 @@ class _ForYouEventGames extends ConsumerWidget {
                           child: GridGameCardWrapperWidget(
                             key: ValueKey('grid_game_${game2.gameId}'),
                             game: game2,
-                            orderedGames: games,
+                            orderedGames: orderedGames,
                             gameIndex: i + 1,
                             onChangedWithLiveGames:
                                 (updatedGames) => ref
@@ -853,8 +899,15 @@ class _ForYouEventGames extends ConsumerWidget {
                                       onReturnFromChessboard: (_) {},
                                       viewSource: ChessboardView.forYou,
                                     ),
-                            pinnedIds: const [],
-                            onPinToggle: (_) {},
+                            pinnedIds: pinnedIds,
+                            onPinToggle:
+                                (_) => ref
+                                    .read(forYouPinActionProvider)
+                                    .togglePin(
+                                      eventId: eventId,
+                                      gameId: game2.gameId,
+                                      tourId: game2.tourId,
+                                    ),
                           ),
                         )
                         : const SizedBox.shrink(),
@@ -952,23 +1005,25 @@ class _ForYouGameCard extends ConsumerWidget {
     required this.game,
     required this.gamesData,
     required this.gameIndex,
-    required this.allGames,
+    required this.eventId,
+    required this.animatedGameIds,
     required this.viewMode,
   });
 
   final GamesTourModel game;
   final GamesScreenModel gamesData;
   final int gameIndex;
-  final List<GamesTourModel> allGames;
+  final String eventId;
+  final Set<String> animatedGameIds;
   final GamesListViewMode viewMode;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final isChessBoardVisible = viewMode == GamesListViewMode.chessBoard;
-    final shouldAnimate = !forYouAnimatedGameIds.contains(game.gameId);
+    final shouldAnimate = !animatedGameIds.contains(game.gameId);
 
     if (shouldAnimate) {
-      forYouAnimatedGameIds.add(game.gameId);
+      animatedGameIds.add(game.gameId);
     }
 
     final card = Padding(
@@ -979,6 +1034,14 @@ class _ForYouGameCard extends ConsumerWidget {
         gameIndex: gameIndex,
         isChessBoardVisible: isChessBoardVisible,
         viewSource: ChessboardView.forYou,
+        onPinToggle:
+            (_) => ref
+                .read(forYouPinActionProvider)
+                .togglePin(
+                  eventId: eventId,
+                  gameId: game.gameId,
+                  tourId: game.tourId,
+                ),
         onReturnFromChessboard: (_) {},
       ),
     );

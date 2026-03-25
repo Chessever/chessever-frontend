@@ -349,7 +349,7 @@ class GamesListView extends ConsumerWidget {
       onPinToggle:
           (_) async => await ref
               .read(gamesTourScreenProvider.notifier)
-              .togglePinGame(game.gameId),
+              .togglePinGame(game.gameId, sourceTourId: game.tourId),
     );
   }
 
