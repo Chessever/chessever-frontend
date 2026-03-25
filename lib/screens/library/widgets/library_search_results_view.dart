@@ -218,6 +218,7 @@ class _LibrarySearchResultsViewState
 
     return GamesTourModel(
       gameId: id,
+      source: GameSource.gamebase,
       whitePlayer: whitePlayer,
       blackPlayer: blackPlayer,
       whiteTimeDisplay: '--:--',

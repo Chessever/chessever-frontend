@@ -252,10 +252,9 @@ class _PositionGamesSheetState extends ConsumerState<PositionGamesSheet> {
   }
 
   Future<void> _addSelectedToLibrary() async {
-    final selectedGames =
-        _games
-            .where((g) => _selectedGameIds.contains(g.gameId))
-            .toList(growable: false);
+    final selectedGames = _games
+        .where((g) => _selectedGameIds.contains(g.gameId))
+        .toList(growable: false);
     if (selectedGames.isEmpty) return;
 
     await showBulkAddToFolderSheet(
@@ -274,8 +273,7 @@ class _PositionGamesSheetState extends ConsumerState<PositionGamesSheet> {
           (ctx) => Container(
             decoration: BoxDecoration(
               color: kBlack3Color,
-              borderRadius:
-                  BorderRadius.vertical(top: Radius.circular(16.br)),
+              borderRadius: BorderRadius.vertical(top: Radius.circular(16.br)),
             ),
             padding: EdgeInsets.fromLTRB(
               16.w,
@@ -346,8 +344,7 @@ class _PositionGamesSheetState extends ConsumerState<PositionGamesSheet> {
             child: Padding(
               padding: EdgeInsets.fromLTRB(12.w, 8.h, 12.w, 8.h),
               child: Container(
-                padding:
-                    EdgeInsets.symmetric(horizontal: 14.w, vertical: 12.h),
+                padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 12.h),
                 decoration: BoxDecoration(
                   color: kBlack2Color,
                   borderRadius: BorderRadius.circular(16.br),
@@ -446,10 +443,7 @@ class _PositionGamesSheetState extends ConsumerState<PositionGamesSheet> {
     );
   }
 
-  Widget _buildSelectableCardWrapper(
-    Widget child, {
-    required bool isSelected,
-  }) {
+  Widget _buildSelectableCardWrapper(Widget child, {required bool isSelected}) {
     return Stack(
       clipBehavior: Clip.none,
       children: [
@@ -538,7 +532,9 @@ class _PositionGamesSheetState extends ConsumerState<PositionGamesSheet> {
             _Header(
               title: widget.title,
               onSaveToLibrary:
-                  _games.isNotEmpty && !_isSelectionMode && !_isLoadingAllForSave
+                  _games.isNotEmpty &&
+                          !_isSelectionMode &&
+                          !_isLoadingAllForSave
                       ? _showSaveToLibraryOptions
                       : null,
             ),
@@ -594,8 +590,7 @@ class _PositionGamesSheetState extends ConsumerState<PositionGamesSheet> {
                             showRound: true,
                             onTap:
                                 _isSelectionMode
-                                    ? () =>
-                                        _toggleGameSelection(game.gameId)
+                                    ? () => _toggleGameSelection(game.gameId)
                                     : () => _openGame(
                                       context,
                                       ref,
@@ -660,6 +655,7 @@ class _PositionGamesSheetState extends ConsumerState<PositionGamesSheet> {
 
     return GamesTourModel(
       gameId: safeId,
+      source: GameSource.gamebase,
       whitePlayer: PlayerCard(
         name: whiteName.isNotEmpty ? whiteName : 'White',
         federation: '',

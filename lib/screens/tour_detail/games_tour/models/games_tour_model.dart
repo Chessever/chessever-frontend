@@ -3,6 +3,16 @@ import 'package:dartchess/dartchess.dart';
 
 enum GameDisplayMode { all, hideFinishedGames, showfinishedGame }
 
+enum GameSource {
+  supabase,
+  gamebase,
+  twic,
+  openingExplorer,
+  boardEditor,
+  savedAnalysis,
+  localAnalysis,
+}
+
 class GamesScreenModel {
   GamesScreenModel({
     required this.gamesTourModels,
@@ -48,6 +58,7 @@ class GamesScreenModel {
 
 class GamesTourModel {
   final String gameId;
+  final GameSource source;
   final PlayerCard whitePlayer;
   final PlayerCard blackPlayer;
   final String whiteTimeDisplay;
@@ -73,6 +84,7 @@ class GamesTourModel {
 
   GamesTourModel({
     required this.gameId,
+    this.source = GameSource.supabase,
     required this.whitePlayer,
     required this.blackPlayer,
     required this.whiteTimeDisplay,
@@ -98,6 +110,7 @@ class GamesTourModel {
 
   GamesTourModel copyWith({
     String? gameId,
+    GameSource? source,
     PlayerCard? whitePlayer,
     PlayerCard? blackPlayer,
     String? whiteTimeDisplay,
@@ -122,6 +135,7 @@ class GamesTourModel {
   }) {
     return GamesTourModel(
       gameId: gameId ?? this.gameId,
+      source: source ?? this.source,
       whitePlayer: whitePlayer ?? this.whitePlayer,
       blackPlayer: blackPlayer ?? this.blackPlayer,
       whiteTimeDisplay: whiteTimeDisplay ?? this.whiteTimeDisplay,
@@ -252,6 +266,7 @@ class GamesTourModel {
 
       return GamesTourModel(
         gameId: game.id,
+        source: GameSource.supabase,
         whitePlayer: PlayerCard.fromPlayer(white),
         blackPlayer: PlayerCard.fromPlayer(black),
         whiteTimeDisplay: whiteTimeDisplay,
@@ -551,6 +566,7 @@ class GamesTourModel {
     if (identical(this, other)) return true;
     return other is GamesTourModel &&
         other.gameId == gameId &&
+        other.source == source &&
         other.whitePlayer == whitePlayer &&
         other.blackPlayer == blackPlayer &&
         other.whiteTimeDisplay == whiteTimeDisplay &&
@@ -573,6 +589,7 @@ class GamesTourModel {
   @override
   int get hashCode {
     return gameId.hashCode ^
+        source.hashCode ^
         whitePlayer.hashCode ^
         blackPlayer.hashCode ^
         whiteTimeDisplay.hashCode ^

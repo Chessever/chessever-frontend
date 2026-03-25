@@ -63,6 +63,7 @@ class ShareGameCardOverlay extends StatefulWidget {
   final bool
   isAtGameEnd; // Whether viewing the actual final position of the game
   final VoidCallback onClose;
+  final String? shareUrl;
   final String gameId; // CRITICAL: Include game ID for correct eval caching
   final String? startingFen; // null = standard initial position
 
@@ -93,6 +94,7 @@ class ShareGameCardOverlay extends StatefulWidget {
     required this.gameStatus,
     this.isAtGameEnd = false,
     required this.onClose,
+    this.shareUrl,
     required this.gameId, // REQUIRED for correct eval caching
     this.startingFen, // null = standard initial position
   });
@@ -226,7 +228,19 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
     }
   }
 
-  String get _gameUrl => 'https://chessever.com/games/${widget.gameId}';
+  Future<void> _shareFiles(List<XFile> files) {
+    if (widget.shareUrl != null) {
+      return Share.shareXFiles(
+        files,
+        text: widget.shareUrl,
+        sharePositionOrigin: const Rect.fromLTWH(0, 0, 1, 1),
+      );
+    }
+    return Share.shareXFiles(
+      files,
+      sharePositionOrigin: const Rect.fromLTWH(0, 0, 1, 1),
+    );
+  }
 
   Future<void> _shareImage() async {
     final imageBytes = await _captureCard();
@@ -240,13 +254,7 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
       final file = io.File('${tempDir.path}/chessever_share.png');
       await file.writeAsBytes(imageBytes);
 
-      // Fix for iOS 16+ share dialog bug
-      // Use minimal rect instead of calculating from context
-      await Share.shareXFiles(
-        [XFile(file.path)],
-        text: _gameUrl,
-        sharePositionOrigin: const Rect.fromLTWH(0, 0, 1, 1),
-      );
+      await _shareFiles([XFile(file.path)]);
     } catch (e) {
       debugPrint('Error sharing: $e');
       _showMessage('Failed to share image', isError: true);
@@ -254,8 +262,10 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
   }
 
   void _updateGifProgress(int captured, int accepted, int total) {
-    final progress =
-        (captured / total * 0.6 + accepted / total * 0.4).clamp(0.0, 0.95);
+    final progress = (captured / total * 0.6 + accepted / total * 0.4).clamp(
+      0.0,
+      0.95,
+    );
     // Only rebuild if progress moved by ≥2% to avoid rebuild storms
     if (mounted && (progress - _gifProgress).abs() >= 0.02) {
       setState(() => _gifProgress = progress);
@@ -269,7 +279,8 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
     List<String> movesToAnimate,
     int globalMoveOffset,
     String? captureStartFen,
-  })? _computeExportWindow() {
+  })?
+  _computeExportWindow() {
     if (widget.moveSans.isEmpty) return null;
 
     if (widget.currentMoveIndex >= 0) {
@@ -288,9 +299,10 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
     if (offset > 0) {
       // Pre-play prefix moves to compute the starting FEN for the window
       try {
-        Position pos = widget.startingFen != null
-            ? Chess.fromSetup(Setup.parseFen(widget.startingFen!))
-            : Chess.initial;
+        Position pos =
+            widget.startingFen != null
+                ? Chess.fromSetup(Setup.parseFen(widget.startingFen!))
+                : Chess.initial;
         for (int i = 0; i < offset; i++) {
           final move = pos.parseSan(widget.moveSans[i]);
           if (move == null) throw StateError('Prefix move $i unparseable');
@@ -371,8 +383,9 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
           }
         });
 
-        workerSendPort = await readyCompleter.future
-            .timeout(const Duration(seconds: 5));
+        workerSendPort = await readyCompleter.future.timeout(
+          const Duration(seconds: 5),
+        );
         await readySub.cancel();
       } catch (e) {
         debugPrint('GIF: Isolate startup failed: $e, using fallback');
@@ -489,13 +502,15 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
         }
         if (workerFailed) return false;
         final transferable = TransferableTypedData.fromList([rgba]);
-        workerSendPort.send(GifWorkerFrameData(
-          rgba: transferable,
-          width: width,
-          height: height,
-          durationCs: durationCs,
-          frameIndex: outputIndex,
-        ));
+        workerSendPort.send(
+          GifWorkerFrameData(
+            rgba: transferable,
+            width: width,
+            height: height,
+            durationCs: durationCs,
+            frameIndex: outputIndex,
+          ),
+        );
         inFlight++;
         framesCaptured++;
         _updateGifProgress(framesCaptured, framesAccepted, totalOutputFrames);
@@ -561,9 +576,11 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
           lastMoveForDisplay = NormalMove(from: move.from, to: move.to);
         }
 
-        final (whiteClock, blackClock) =
-            _getClocksAtMoveIndex(i + globalMoveOffset);
-        final isGameEnd = widget.isAtGameEnd &&
+        final (whiteClock, blackClock) = _getClocksAtMoveIndex(
+          i + globalMoveOffset,
+        );
+        final isGameEnd =
+            widget.isAtGameEnd &&
             i + globalMoveOffset == widget.moveSans.length - 1;
 
         if (!mounted) return;
@@ -579,8 +596,10 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
         final frame = await _captureRawFrame(profile.pixelRatio);
         if (frame == null) {
           // Abort: broken alignment would produce a corrupted GIF
-          _showMessage('Failed to capture frame at move ${i + 1}',
-              isError: true);
+          _showMessage(
+            'Failed to capture frame at move ${i + 1}',
+            isError: true,
+          );
           return;
         }
         final frameSent = await sendFrame(
@@ -598,8 +617,9 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
       workerSendPort.send(GifWorkerFinish());
 
       // Wait for the encoded result with timeout
-      final gifBytes = await doneCompleter.future
-          .timeout(const Duration(seconds: 30));
+      final gifBytes = await doneCompleter.future.timeout(
+        const Duration(seconds: 30),
+      );
 
       // Save and share
       if (mounted) setState(() => _gifProgress = 0.95);
@@ -607,11 +627,7 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
       final file = io.File('${tempDir.path}/chessever_game.gif');
       await file.writeAsBytes(gifBytes);
 
-      await Share.shareXFiles(
-        [XFile(file.path)],
-        text: _gameUrl,
-        sharePositionOrigin: const Rect.fromLTWH(0, 0, 1, 1),
-      );
+      await _shareFiles([XFile(file.path)]);
     } finally {
       await subscription.cancel();
       mainPort.close();
@@ -679,9 +695,11 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
         lastMoveForDisplay = NormalMove(from: move.from, to: move.to);
       }
 
-      final (whiteClock, blackClock) =
-          _getClocksAtMoveIndex(i + globalMoveOffset);
-      final isGameEnd = widget.isAtGameEnd &&
+      final (whiteClock, blackClock) = _getClocksAtMoveIndex(
+        i + globalMoveOffset,
+      );
+      final isGameEnd =
+          widget.isAtGameEnd &&
           i + globalMoveOffset == widget.moveSans.length - 1;
 
       if (!mounted) return;
@@ -704,8 +722,7 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
 
       final frame = await _captureRawFrame(profile.pixelRatio);
       if (frame == null) {
-        _showMessage('Failed to capture frame at move ${i + 1}',
-            isError: true);
+        _showMessage('Failed to capture frame at move ${i + 1}', isError: true);
         return;
       }
       rawFrames.add(frame);
@@ -737,11 +754,7 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
     final file = io.File('${tempDir.path}/chessever_game.gif');
     await file.writeAsBytes(gifBytes);
 
-    await Share.shareXFiles(
-      [XFile(file.path)],
-      text: _gameUrl,
-      sharePositionOrigin: const Rect.fromLTWH(0, 0, 1, 1),
-    );
+    await _shareFiles([XFile(file.path)]);
   }
 
   Future<void> _copyPgn() async {
@@ -844,29 +857,23 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
     bool enabled = true,
     String? disabledMessage,
   }) {
-    final effectiveOnTap = enabled
-        ? onTap
-        : () => _showMessage(
-              disabledMessage ?? 'Not available',
-              isError: true,
-            );
+    final effectiveOnTap =
+        enabled
+            ? onTap
+            : () =>
+                _showMessage(disabledMessage ?? 'Not available', isError: true);
 
     final content = Container(
       padding: EdgeInsets.symmetric(vertical: 12.h),
       decoration: BoxDecoration(
         color: isPrimary ? kPrimaryColor : kBlack3Color,
         borderRadius: BorderRadius.circular(8.br),
-        border:
-            isPrimary ? null : Border.all(color: kDividerColor, width: 1),
+        border: isPrimary ? null : Border.all(color: kDividerColor, width: 1),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(
-            icon,
-            size: 18.sp,
-            color: isPrimary ? kWhiteColor : kWhiteColor,
-          ),
+          Icon(icon, size: 18.sp, color: isPrimary ? kWhiteColor : kWhiteColor),
           SizedBox(width: 8.w),
           Text(
             label,

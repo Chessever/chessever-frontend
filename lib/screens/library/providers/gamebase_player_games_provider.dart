@@ -272,6 +272,7 @@ class GamebasePlayerGamesNotifier
 
           return GamesTourModel(
             gameId: id,
+            source: GameSource.gamebase,
             whitePlayer: whiteCard,
             blackPlayer: blackCard,
             whiteTimeDisplay: '--:--',

@@ -4,6 +4,7 @@ import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/providers/live_game_subscription_provider.dart';
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
+import 'package:chessever2/screens/chessboard/utils/game_share_utils.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new_worker.dart';
 import 'package:chessever2/screens/library/utils/gamebase_pgn_builder.dart';
 import 'package:chessever2/screens/chessboard/widgets/evaluation_bar_widget.dart';
@@ -110,9 +111,11 @@ Future<void> _showShareOverlay(
   final candidates = <(String source, String pgn)>[];
 
   // Tier 1: game.pgn (already available on the model)
-  debugPrint('GIF share [${game.gameId}]: Tier 1 game.pgn '
-      '${game.pgn == null ? "null" : "(${game.pgn!.length} chars)"} '
-      'hasMoves=${pgnHasMoves(game.pgn)}');
+  debugPrint(
+    'GIF share [${game.gameId}]: Tier 1 game.pgn '
+    '${game.pgn == null ? "null" : "(${game.pgn!.length} chars)"} '
+    'hasMoves=${pgnHasMoves(game.pgn)}',
+  );
   try {
     if (pgnHasMoves(game.pgn)) {
       candidates.add(('game.pgn', game.pgn!.trim()));
@@ -123,11 +126,14 @@ Future<void> _showShareOverlay(
 
   // Tier 2: Supabase getGamePgn
   try {
-    final fetched =
-        await ref.read(gameRepositoryProvider).getGamePgn(game.gameId);
-    debugPrint('GIF share [${game.gameId}]: Tier 2 Supabase '
-        '${fetched == null ? "null" : "(${fetched.length} chars)"} '
-        'hasMoves=${pgnHasMoves(fetched)}');
+    final fetched = await ref
+        .read(gameRepositoryProvider)
+        .getGamePgn(game.gameId);
+    debugPrint(
+      'GIF share [${game.gameId}]: Tier 2 Supabase '
+      '${fetched == null ? "null" : "(${fetched.length} chars)"} '
+      'hasMoves=${pgnHasMoves(fetched)}',
+    );
     if (pgnHasMoves(fetched)) {
       candidates.add(('Supabase', fetched!.trim()));
     }
@@ -140,8 +146,9 @@ Future<void> _showShareOverlay(
   if (_isGamebasePreviewGame(game)) {
     debugPrint('GIF share [${game.gameId}]: Tier 3 Gamebase attempted');
     try {
-      final gameWithPgn =
-          await ref.read(gamebaseRepositoryProvider).getGameWithPgn(game.gameId);
+      final gameWithPgn = await ref
+          .read(gamebaseRepositoryProvider)
+          .getGameWithPgn(game.gameId);
       if (gameWithPgn != null) {
         if (pgnHasMoves(gameWithPgn.pgn)) {
           candidates.add(('Gamebase.pgn', gameWithPgn.pgn!.trim()));
@@ -168,8 +175,10 @@ Future<void> _showShareOverlay(
     }
   }
 
-  debugPrint('GIF share [${game.gameId}]: ${uniqueCandidates.length} '
-      'candidate(s) after dedup');
+  debugPrint(
+    'GIF share [${game.gameId}]: ${uniqueCandidates.length} '
+    'candidate(s) after dedup',
+  );
 
   // Parse-and-accept: accept the first candidate that yields non-empty moveSans
   for (final (source, pgn) in uniqueCandidates) {
@@ -186,20 +195,26 @@ Future<void> _showShareOverlay(
             'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1') {
           startingFen = startFen;
         }
-        debugPrint('GIF share [${game.gameId}]: accepted PGN from $source '
-            '(${moveSans.length} moves)');
+        debugPrint(
+          'GIF share [${game.gameId}]: accepted PGN from $source '
+          '(${moveSans.length} moves)',
+        );
         break;
       } else {
-        debugPrint('GIF share [${game.gameId}]: $source PGN parsed '
-            'but yielded 0 moves');
+        debugPrint(
+          'GIF share [${game.gameId}]: $source PGN parsed '
+          'but yielded 0 moves',
+        );
       }
     } catch (e) {
       debugPrint('GIF share [${game.gameId}]: $source PGN parse failed: $e');
     }
   }
 
-  debugPrint('GIF share [${game.gameId}]: '
-      '${moveSans.isNotEmpty ? "resolved ${moveSans.length} moves" : "NO MOVES RESOLVED"}');
+  debugPrint(
+    'GIF share [${game.gameId}]: '
+    '${moveSans.isNotEmpty ? "resolved ${moveSans.length} moves" : "NO MOVES RESOLVED"}',
+  );
   // On total failure: all remain empty/default — overlay opens but GIF
   // is unavailable. resolvedPgn stays '' (non-null String).
 
@@ -249,6 +264,7 @@ Future<void> _showShareOverlay(
       game.roundSlug != null
           ? StringUtils.formatRoundLabel(game.roundSlug)
           : null;
+  final shareUrl = buildGameShareUrl(game: game);
 
   final positionFen = _resolveFen(game.fen);
   final lastMove = _uciToMove(game.lastMove ?? '');
@@ -287,6 +303,7 @@ Future<void> _showShareOverlay(
                 game.gameStatus != GameStatus.ongoing &&
                 game.gameStatus != GameStatus.unknown,
             onClose: () => Navigator.of(context).pop(),
+            shareUrl: shareUrl,
             gameId: game.gameId,
             startingFen: startingFen,
           ),

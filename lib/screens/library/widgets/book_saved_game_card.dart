@@ -46,6 +46,7 @@ class BookSavedGameCard extends StatelessWidget {
 
     return GamesTourModel(
       gameId: analysis.id,
+      source: GameSource.savedAnalysis,
       whitePlayer: PlayerCard(
         name: whiteName,
         federation: '',
