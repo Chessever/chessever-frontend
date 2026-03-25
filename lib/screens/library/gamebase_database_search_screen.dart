@@ -452,6 +452,7 @@ class _GamesList extends ConsumerWidget {
 
           return GamesTourModel(
             gameId: safeId,
+            source: GameSource.gamebase,
             whitePlayer: whiteCard,
             blackPlayer: blackCard,
             whiteTimeDisplay: '--:--',

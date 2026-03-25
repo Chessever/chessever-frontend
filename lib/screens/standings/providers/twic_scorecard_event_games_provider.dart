@@ -212,6 +212,7 @@ GamesTourModel _mapPlayerGameRowToModel(
 
   return GamesTourModel(
     gameId: gameId,
+    source: GameSource.twic,
     whitePlayer: whiteCard,
     blackPlayer: blackCard,
     whiteTimeDisplay: '--:--',

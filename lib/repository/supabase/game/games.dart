@@ -138,7 +138,10 @@ class Games {
                 : null,
         status: json['status'] as String?,
         pgn: json['pgn'] as String?,
-        search: (json['search'] as List).map((e) => e as String).toList(),
+        search:
+            json['search'] != null
+                ? (json['search'] as List).map((e) => e as String).toList()
+                : null,
         boardNr:
             json['board_nr'] != null ? (json['board_nr'] as num).toInt() : null,
         lastMoveTime:

@@ -343,6 +343,7 @@ class DatabaseGamesPaginationNotifier
 
           return GamesTourModel(
             gameId: safeId,
+            source: GameSource.gamebase,
             whitePlayer: whiteCard,
             blackPlayer: blackCard,
             whiteTimeDisplay: '--:--',
@@ -363,7 +364,11 @@ class DatabaseGamesPaginationNotifier
         .where(
           (game) =>
               !useClientSideAverageRating ||
-              _matchesAverageRatingRange(game, _filter.minRating, _filter.maxRating),
+              _matchesAverageRatingRange(
+                game,
+                _filter.minRating,
+                _filter.maxRating,
+              ),
         )
         .toList(growable: false);
 
@@ -674,6 +679,7 @@ final gamebaseDatabaseGamesProvider = FutureProvider.autoDispose<
 
           return GamesTourModel(
             gameId: safeId,
+            source: GameSource.gamebase,
             whitePlayer: whiteCard,
             blackPlayer: blackCard,
             whiteTimeDisplay: '--:--',
@@ -694,7 +700,11 @@ final gamebaseDatabaseGamesProvider = FutureProvider.autoDispose<
         .where(
           (game) =>
               !useClientSideAverageRating ||
-              _matchesAverageRatingRange(game, filter.minRating, filter.maxRating),
+              _matchesAverageRatingRange(
+                game,
+                filter.minRating,
+                filter.maxRating,
+              ),
         )
         .toList(growable: false);
   } catch (e, st) {
@@ -706,7 +716,11 @@ final gamebaseDatabaseGamesProvider = FutureProvider.autoDispose<
   }
 });
 
-bool _matchesAverageRatingRange(GamesTourModel game, int minRating, int maxRating) {
+bool _matchesAverageRatingRange(
+  GamesTourModel game,
+  int minRating,
+  int maxRating,
+) {
   final white = game.whitePlayer.rating;
   final black = game.blackPlayer.rating;
   if (white <= 0 || black <= 0) return false;

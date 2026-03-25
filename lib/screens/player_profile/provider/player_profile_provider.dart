@@ -583,6 +583,7 @@ Future<List<GamesTourModel>> _getTwicGamesViaPlayerEndpoint(
 
         return GamesTourModel(
           gameId: safeId,
+          source: GameSource.twic,
           whitePlayer: whiteCard,
           blackPlayer: blackCard,
           whiteTimeDisplay: '--:--',
@@ -768,6 +769,7 @@ Future<List<GamesTourModel>> _getTwicGamesFromGamebase(
 
         return GamesTourModel(
           gameId: safeId,
+          source: GameSource.twic,
           whitePlayer: whiteCard,
           blackPlayer: blackCard,
           whiteTimeDisplay: '--:--',
@@ -2889,6 +2891,7 @@ class PlayerProfileGamesNotifier
 
     return GamesTourModel(
       gameId: safeId,
+      source: GameSource.twic,
       whitePlayer: whiteCard,
       blackPlayer: blackCard,
       whiteTimeDisplay: '--:--',

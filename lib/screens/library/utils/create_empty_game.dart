@@ -42,6 +42,7 @@ GamesTourModel createEmptyGame() {
 
   return GamesTourModel(
     gameId: 'empty_game_$timestamp',
+    source: GameSource.localAnalysis,
     whitePlayer: whitePlayer,
     blackPlayer: blackPlayer,
     whiteTimeDisplay: '--:--',
