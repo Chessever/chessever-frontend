@@ -12,13 +12,16 @@ import 'package:chessever2/providers/engine_settings_provider.dart';
 /// engine isn't in [StockfishState.ready].
 void _rawStockfishStdin(String command) {
   try {
-    final lib = Platform.isAndroid
-        ? DynamicLibrary.open('libstockfish.so')
-        : DynamicLibrary.process();
-    final write = lib
-        .lookup<NativeFunction<IntPtr Function(Pointer<Utf8>)>>(
-            'stockfish_stdin_write')
-        .asFunction<int Function(Pointer<Utf8>)>();
+    final lib =
+        Platform.isAndroid
+            ? DynamicLibrary.open('libstockfish.so')
+            : DynamicLibrary.process();
+    final write =
+        lib
+            .lookup<NativeFunction<IntPtr Function(Pointer<Utf8>)>>(
+              'stockfish_stdin_write',
+            )
+            .asFunction<int Function(Pointer<Utf8>)>();
     final ptr = '$command\n'.toNativeUtf8();
     write(ptr);
     calloc.free(ptr);
@@ -157,22 +160,28 @@ class StockfishSingleton {
     }
     final pending = _pendingJobs[jobKey];
     if (pending != null) {
-      if (pending.fen == fen && isCurrentPosition && 
+      if (pending.fen == fen &&
+          isCurrentPosition &&
           pending.searchDuration != searchDuration) {
         _pendingJobs.remove(jobKey);
         _jobQueue.remove(pending);
         if (!pending.completer.isCompleted) {
-          pending.completer.complete(EnhancedCloudEval(
-            fen: pending.fen,
-            knodes: 0, depth: 0,
-            pvs: [Pv(moves: '', cp: 0, mate: 0)],
-            isCancelled: true,
-            requestedMultiPv: pending.multiPV,
-          ));
+          pending.completer.complete(
+            EnhancedCloudEval(
+              fen: pending.fen,
+              knodes: 0,
+              depth: 0,
+              pvs: [Pv(moves: '', cp: 0, mate: 0)],
+              isCancelled: true,
+              requestedMultiPv: pending.multiPV,
+            ),
+          );
         }
         debugPrint('🔄 QUEUE: Replaced pending job (duration changed)');
       } else {
-        debugPrint('📋 QUEUE: Coalesced with PENDING job for $fen (owner: $ownerId)');
+        debugPrint(
+          '📋 QUEUE: Coalesced with PENDING job for $fen (owner: $ownerId)',
+        );
         return pending.completer.future;
       }
     }
@@ -192,9 +201,7 @@ class StockfishSingleton {
         _currentJob!.fen != fen &&
         !_currentJob!.completer.isCompleted &&
         (!_currentJob!.isCurrentPosition ||
-            (ownerId == null
-                ? _currentJob!.ownerId == null
-                : true));
+            (ownerId == null ? _currentJob!.ownerId == null : true));
     if (isCurrentPosition && canPreemptCurrent) {
       debugPrint(
         '🛑 QUEUE: Cancelling in-flight evaluation for ${_currentJob!.fen} → new position $fen',
@@ -347,23 +354,25 @@ class StockfishSingleton {
 
     return result;
   }
-/// Pre-warms the Stockfish engine in the background so it's ready
-/// before the user first enables analysis. Call this on screen load.
-/// Safe to call multiple times — no-ops if already initializing or ready.
-Future<void> warmUp() async {
-  if (_engine != null) return;
-  if (_isInitializing) return;
 
-  debugPrint('🔥 STOCKFISH: Pre-warming engine in background...');
-  try {
-    // Only initialize — do NOT call _processQueue or queue any job
-    await _ensureEngineReady();
-    // Leave engine idle at 'readyok', no 'go' command sent
-    debugPrint('✅ STOCKFISH: Pre-warm complete, engine is ready and idle');
-  } catch (e) {
-    debugPrint('⚠️ STOCKFISH: Pre-warm failed (will retry on demand): $e');
+  /// Pre-warms the Stockfish engine in the background so it's ready
+  /// before the user first enables analysis. Call this on screen load.
+  /// Safe to call multiple times — no-ops if already initializing or ready.
+  Future<void> warmUp() async {
+    if (_engine != null) return;
+    if (_isInitializing) return;
+
+    debugPrint('🔥 STOCKFISH: Pre-warming engine in background...');
+    try {
+      // Only initialize — do NOT call _processQueue or queue any job
+      await _ensureEngineReady();
+      // Leave engine idle at 'readyok', no 'go' command sent
+      debugPrint('✅ STOCKFISH: Pre-warm complete, engine is ready and idle');
+    } catch (e) {
+      debugPrint('⚠️ STOCKFISH: Pre-warm failed (will retry on demand): $e');
+    }
   }
-}
+
   Future<void> _cancelCurrentEvaluation() async {
     if (_currentJob != null) {
       // Cancel the current subscription
@@ -914,20 +923,21 @@ Future<void> warmUp() async {
   }
 
   List<Pv> _normalizeToWhitePerspective(List<Pv> pvs, String fen) {
-  if (pvs.isEmpty) return pvs;
+    if (pvs.isEmpty) return pvs;
 
-  return pvs
-      .map(
-        (pv) => Pv(
-          moves: pv.moves,
-          cp: pv.cp,
-          isMate: pv.isMate,
-          mate: pv.mate,
-          whitePerspective: false,
-        ),
-      )
-      .toList(growable: false);
-}
+    return pvs
+        .map(
+          (pv) => Pv(
+            moves: pv.moves,
+            cp: pv.cp,
+            isMate: pv.isMate,
+            mate: pv.mate,
+            whitePerspective: false,
+          ),
+        )
+        .toList(growable: false);
+  }
+
   Future<void> _waitUntilReady({
     Duration timeout = const Duration(
       seconds: 3,
@@ -1030,9 +1040,9 @@ Future<void> warmUp() async {
   Future<void> _safeDisposeEngine() async {
     if (_engine == null) return;
 
-    debugPrint(
-      '🧹 STOCKFISH: Disposing engine (state: ${_engine!.state.value})',
-    );
+    final engine = _engine!;
+
+    debugPrint('🧹 STOCKFISH: Disposing engine (state: ${engine.state.value})');
 
     // Cancel any active subscription first
     try {
@@ -1040,27 +1050,44 @@ Future<void> warmUp() async {
     } catch (_) {}
     _currentSubscription = null;
 
-    // Send stop command if engine is responsive
-    if (_engine!.state.value == StockfishState.ready) {
+    // Send stop/quit to the engine regardless of its state so the native
+    // process has a chance to exit cleanly.  On Android the native library
+    // holds a global lock even while still starting up, so we must signal
+    // quit even if the engine is not yet in the "ready" state.
+    try {
+      engine.stdin = 'stop';
+      engine.stdin = 'quit';
+      // Give engine time to process quit command
+      await Future.delayed(const Duration(milliseconds: 100));
+    } catch (e) {
+      // If stdin throws (engine not accepting commands yet), fall back to FFI
       try {
-        _engine!.stdin = 'stop';
-        _engine!.stdin = 'quit';
-        // Give engine time to process quit command
-        await Future.delayed(const Duration(milliseconds: 50));
-      } catch (e) {
-        debugPrint('⚠️ STOCKFISH: Could not send quit: $e');
-      }
+        _rawStockfishStdin('stop');
+        _rawStockfishStdin('quit');
+        await Future.delayed(const Duration(milliseconds: 100));
+      } catch (_) {}
+      debugPrint('⚠️ STOCKFISH: Could not send quit via stdin: $e');
     }
 
     // Dispose the engine
     try {
-      _engine!.dispose();
+      engine.dispose();
     } catch (e) {
       debugPrint(
         '⚠️ STOCKFISH: Dispose error (expected on some platforms): $e',
       );
     }
-    _engine = null;
+
+    final terminated = await _waitForEngineTermination(engine);
+    debugPrint(
+      terminated
+          ? '✅ STOCKFISH: Engine termination confirmed'
+          : '⚠️ STOCKFISH: Engine termination not confirmed; proceeding with Dart-side teardown',
+    );
+
+    if (identical(_engine, engine)) {
+      _engine = null;
+    }
     _lastDisposeTime = DateTime.now();
 
     // CRITICAL: Wait for native cleanup based on platform
@@ -1072,6 +1099,47 @@ Future<void> warmUp() async {
     await Future.delayed(waitTime);
 
     debugPrint('✅ STOCKFISH: Engine disposed and cleanup complete');
+  }
+
+  Future<bool> _waitForEngineTermination(Stockfish engine) async {
+    final currentState = engine.state.value;
+    if (currentState == StockfishState.disposed ||
+        currentState == StockfishState.error) {
+      return true;
+    }
+
+    final completer = Completer<bool>();
+    late VoidCallback listener;
+    late final Timer timer;
+
+    listener = () {
+      final nextState = engine.state.value;
+      if (nextState == StockfishState.disposed ||
+          nextState == StockfishState.error) {
+        if (!completer.isCompleted) {
+          completer.complete(true);
+        }
+      }
+    };
+
+    engine.state.addListener(listener);
+    timer = Timer(
+      _isAndroid ? const Duration(seconds: 3) : const Duration(seconds: 2),
+      () {
+        if (!completer.isCompleted) {
+          completer.complete(false);
+        }
+      },
+    );
+
+    try {
+      return await completer.future;
+    } finally {
+      timer.cancel();
+      try {
+        engine.state.removeListener(listener);
+      } catch (_) {}
+    }
   }
 
   /// Creates a new engine instance with proper timing.
@@ -1123,7 +1191,7 @@ Future<void> warmUp() async {
     final releaseLock = await _acquireInstanceLock();
 
     int attempt = 0;
-    final maxAttempts = _isAndroid ? 5 : 3; // More retries on Android
+    final maxAttempts = _isAndroid ? 7 : 3;
 
     try {
       while (true) {
@@ -1161,16 +1229,30 @@ Future<void> warmUp() async {
 
           if (isMultipleInstanceError) {
             debugPrint(
-              '🔄 STOCKFISH: Multiple instance error detected on Android',
+              '🔄 STOCKFISH: Multiple instance error detected, forcing native quit',
             );
-            // Force null without calling dispose (it's already in bad state)
-            _engine = null;
+            // The native engine is still alive (Dart reference may be null).
+            // Send "quit" directly via FFI so the native process can shut down
+            // before we attempt to create a fresh instance.
+            try {
+              _rawStockfishStdin('stop');
+              _rawStockfishStdin('quit');
+            } catch (_) {}
+
+            if (_engine != null) {
+              final existingEngine = _engine!;
+              final terminated = await _waitForEngineTermination(
+                existingEngine,
+              );
+              if (terminated && identical(_engine, existingEngine)) {
+                _engine = null;
+              }
+            }
             _lastDisposeTime = DateTime.now();
 
-            // Aggressive backoff for Android multiple instance errors
-            // Each retry waits longer: 800ms, 1200ms, 1600ms, 2000ms, 2400ms
-            final waitMs =
-                _isAndroid ? 800 + (attempt * 400) : 300 + (attempt * 200);
+            // Aggressive back-off: give the native layer enough time to exit.
+            // Waits: 1200 ms, 1600 ms, 2000 ms, 2400 ms, 2800 ms, 3200 ms, …
+            final waitMs = 1200 + (attempt * 400);
             debugPrint('⏳ STOCKFISH: Waiting ${waitMs}ms before retry...');
             await Future.delayed(Duration(milliseconds: waitMs));
           } else {
