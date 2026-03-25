@@ -5,6 +5,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_s
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/match_expansion_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/round_expansion_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/round_ordering.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/utils/knockout_match_detector.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_tour_content_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/knockout_tournament_state_provider.dart';
@@ -162,6 +163,20 @@ class _GamesAppBarNotifier
     final isMultiStageKnockout = allRounds.any(
       (r) => r.id.startsWith('$kKnockoutStagePrefix-'),
     );
+    final isPreConfigured = allRounds.every(_hasConfiguredStartTime);
+    final hasLiveOrOngoing = allRounds.any(
+      (r) =>
+          r.roundStatus == RoundStatus.live ||
+          r.roundStatus == RoundStatus.ongoing,
+    );
+    final hasCompleted = allRounds.any(
+      (r) => r.roundStatus == RoundStatus.completed,
+    );
+    final allAreUpcoming = allRounds.every(
+      (r) =>
+          r.roundStatus == RoundStatus.upcoming ||
+          (gamesByRound[r.id] ?? 0) == 0,
+    );
 
     final visibleRounds =
         allRounds.where((round) {
@@ -173,22 +188,7 @@ class _GamesAppBarNotifier
             return true;
           }
 
-          // Regular tournament filtering logic below
-          final hasLiveOrOngoing = allRounds.any(
-            (r) =>
-                r.roundStatus == RoundStatus.live ||
-                r.roundStatus == RoundStatus.ongoing,
-          );
-
-          final hasCompleted = allRounds.any(
-            (r) => r.roundStatus == RoundStatus.completed,
-          );
-
-          final allAreUpcoming = allRounds.every(
-            (r) =>
-                r.roundStatus == RoundStatus.upcoming ||
-                (gamesByRound[r.id] ?? 0) == 0,
-          );
+          if (isPreConfigured) return true;
 
           // Always include explicitly user-selected round
           if (userSelected && selectedId == round.id) return true;
@@ -355,6 +355,20 @@ class _GamesAppBarNotifier
     final isMultiStageKnockout = allRounds.any(
       (r) => r.id.startsWith('$kKnockoutStagePrefix-'),
     );
+    final isPreConfigured = allRounds.every(_hasConfiguredStartTime);
+    final hasLiveOrOngoing = allRounds.any(
+      (r) =>
+          r.roundStatus == RoundStatus.live ||
+          r.roundStatus == RoundStatus.ongoing,
+    );
+    final hasCompleted = allRounds.any(
+      (r) => r.roundStatus == RoundStatus.completed,
+    );
+    final allAreUpcoming = allRounds.every(
+      (r) =>
+          r.roundStatus == RoundStatus.upcoming ||
+          (gamesByRound[r.id] ?? 0) == 0,
+    );
 
     final rounds =
         allRounds.where((round) {
@@ -367,22 +381,7 @@ class _GamesAppBarNotifier
             return true;
           }
 
-          // Regular tournament filtering logic below
-          final hasLiveOrOngoing = allRounds.any(
-            (r) =>
-                r.roundStatus == RoundStatus.live ||
-                r.roundStatus == RoundStatus.ongoing,
-          );
-
-          final hasCompleted = allRounds.any(
-            (r) => r.roundStatus == RoundStatus.completed,
-          );
-
-          final allAreUpcoming = allRounds.every(
-            (r) =>
-                r.roundStatus == RoundStatus.upcoming ||
-                (gamesByRound[r.id] ?? 0) == 0,
-          );
+          if (isPreConfigured) return true;
 
           if (userSelected && selectedId == round.id) return true;
 
@@ -1116,49 +1115,30 @@ class _GamesAppBarNotifier
     return meta?.startsAt ?? model.startsAt ?? meta?.createdAt;
   }
 
+  bool _hasConfiguredStartTime(GamesAppBarModel model) {
+    final meta = _roundSortMeta[model.id];
+    return meta?.startsAt != null || model.startsAt != null;
+  }
+
   GamesAppBarModel? _selectAutoRound(
     List<GamesAppBarModel> models,
     Map<String, int> counts,
   ) {
-    for (final status in const [
-      RoundStatus.live,
-      RoundStatus.ongoing,
-      RoundStatus.completed,
-      RoundStatus.upcoming,
-    ]) {
-      final pick = _pickRoundModelByStatus(models, counts, status);
-      if (pick != null) {
-        return pick;
-      }
-    }
-
-    for (final model in models) {
-      if (_hasGames(model.id, counts)) {
-        return model;
-      }
-    }
-
-    return null;
+    return pickPreferredRoundForSelection(
+      models,
+      resolveDate: _roundEventDateTime,
+      hasGames: (model) => _hasGames(model.id, counts),
+    );
   }
 
   void _sortRounds(List<GamesAppBarModel> models) {
-    // Sort strictly by round event datetime descending (latest first).
-    // If a start time is unavailable, use createdAt as a date fallback.
-    models.sort((a, b) {
-      final aStarts = _roundEventDateTime(a);
-      final bStarts = _roundEventDateTime(b);
-      if (aStarts != null && bStarts != null) {
-        final startCompare = bStarts.compareTo(aStarts);
-        if (startCompare != 0) return startCompare;
-      } else if (aStarts != null) {
-        return -1;
-      } else if (bStarts != null) {
-        return 1;
-      }
-
-      // Final fallback: name alphabetically for deterministic ordering.
-      return a.name.compareTo(b.name);
-    });
+    final sorted = sortRoundsForDisplay(
+      models,
+      resolveDate: _roundEventDateTime,
+    );
+    models
+      ..clear()
+      ..addAll(sorted);
   }
 
   /// Recompute statuses on live-rounds change, update selection only if the user
@@ -1275,6 +1255,28 @@ class _GamesAppBarNotifier
       );
       _scrollToRound(liveModel.id);
       return;
+    }
+
+    final allHaveStartTimes = models.every(
+      (m) => _roundEventDateTime(m) != null,
+    );
+    if (allHaveStartTimes) {
+      final preconfiguredFocus = pickPreferredRoundForSelection(
+        models,
+        resolveDate: _roundEventDateTime,
+        hasGames: (model) => _hasGames(model.id, counts),
+      );
+      if (preconfiguredFocus != null) {
+        state = AsyncValue.data(
+          GamesAppBarViewModel(
+            gamesAppBarModels: models,
+            selectedId: preconfiguredFocus.id,
+            userSelectedId: false,
+          ),
+        );
+        _scrollToRound(preconfiguredFocus.id);
+        return;
+      }
     }
 
     // 3) Try to get the latest round by last move activity

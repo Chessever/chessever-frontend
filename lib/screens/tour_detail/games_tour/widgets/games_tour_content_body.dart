@@ -341,6 +341,21 @@ class GamesTourContentBody extends ConsumerWidget {
       }
     }
 
+    final isPreConfigured = sourceRounds.every((r) => r.startsAt != null);
+    final hasLiveOrOngoing = sourceRounds.any(
+      (r) =>
+          r.roundStatus == RoundStatus.live ||
+          r.roundStatus == RoundStatus.ongoing,
+    );
+    final hasCompleted = sourceRounds.any(
+      (r) => r.roundStatus == RoundStatus.completed,
+    );
+    final allAreUpcoming = sourceRounds.every(
+      (r) =>
+          r.roundStatus == RoundStatus.upcoming ||
+          gamesByRound[r.id]?.isEmpty == true,
+    );
+
     final visibleRounds =
         sourceRounds.where((round) {
           final roundGames = gamesByRound[round.id] ?? [];
@@ -358,22 +373,7 @@ class GamesTourContentBody extends ConsumerWidget {
             return true;
           }
 
-          // Regular tournament filtering logic below
-          final hasLiveOrOngoing = sourceRounds.any(
-            (r) =>
-                r.roundStatus == RoundStatus.live ||
-                r.roundStatus == RoundStatus.ongoing,
-          );
-
-          final hasCompleted = sourceRounds.any(
-            (r) => r.roundStatus == RoundStatus.completed,
-          );
-
-          final allAreUpcoming = sourceRounds.every(
-            (r) =>
-                r.roundStatus == RoundStatus.upcoming ||
-                gamesByRound[r.id]?.isEmpty == true,
-          );
+          if (isPreConfigured) return true;
 
           // Always include explicitly user-selected round
           if (userSelected && round.id == selectedRoundId) {
