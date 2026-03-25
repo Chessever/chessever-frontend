@@ -110,7 +110,11 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
 
     if (state.error != null && state.events.isEmpty) {
       debugPrint('[ForYouGamesWidget] Error: ${state.error}');
-      return const GenericErrorWidget();
+      final message = state.error?.trim();
+      return GenericErrorWidget(
+        message: message != null && message.isNotEmpty ? message : null,
+        onRetry: () => ref.read(forYouEventsProvider.notifier).refresh(),
+      );
     }
 
     if (visibleEvents.isEmpty) {
