@@ -146,7 +146,6 @@ class HamburgerMenu extends ConsumerWidget {
                         callbacks.onOpeningExplorerPressed();
                       },
                       showChevron: true,
-                      showBorder: true,
                     ),
                     _MenuItem(
                       key: e2eKey(E2eIds.drawerAnalysisBoard),
@@ -596,12 +595,10 @@ class _MenuItem extends StatelessWidget {
     this.showChevron = false,
     this.onPressed,
     this.textStyle,
-    this.showBorder = false,
     this.maxLines = 1,
     super.key,
   });
 
-  final bool? showBorder;
   final int? maxLines;
   final IconData? icon;
   final Widget? customIcon;
@@ -649,38 +646,8 @@ class _MenuItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Opening Explorer (showBorder = true): keep existing structure unchanged
-    if (showBorder ?? false) {
-      return Padding(
-        padding: EdgeInsets.only(
-          left: 16.sp,
-          right: 8.sp,
-          top: 4.sp,
-          bottom: 4.sp,
-        ),
-        child: Container(
-          decoration: BoxDecoration(
-            color: kDarkGreyColor,
-            borderRadius: BorderRadius.circular(120.br),
-          ),
-          child: InkWell(
-            onTap: _onTap,
-            borderRadius: BorderRadius.circular(1000.br),
-            child: Container(
-              height: 44.h,
-              padding: EdgeInsets.symmetric(horizontal: 12.sp),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(1000.br),
-              ),
-              child: _buildRowContent(),
-            ),
-          ),
-        ),
-      );
-    }
-
-    // All other items: InkWell wraps the full Padding so the 4 sp vertical
-    // gaps above/below are part of the tap surface (larger hit area, same UI).
+    // Menu items: InkWell wraps the full Padding so the 4 sp vertical gaps
+    // above/below are part of the tap surface (larger hit area, same UI).
     return InkWell(
       onTap: _onTap,
       customBorder: RoundedRectangleBorder(
