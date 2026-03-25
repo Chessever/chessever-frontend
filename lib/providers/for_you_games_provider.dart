@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:chessever2/providers/event_favorite_players_provider.dart';
+import 'package:chessever2/providers/error_logger_provider.dart';
 import 'package:chessever2/providers/favorite_events_provider.dart';
 import 'package:chessever2/providers/event_pin_refresh_provider.dart';
 import 'package:chessever2/providers/for_you_games_logic.dart';
@@ -165,9 +166,9 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
       // Query Supabase with filters
       final repo = ref.read(groupBroadcastRepositoryProvider);
 
-      // Get live IDs for status filtering — await the stream so we never
-      // filter against an empty list before the first value arrives.
-      final liveIds = await ref.read(liveGroupBroadcastIdsProvider.future);
+      // Prefer cached live IDs so For You can render after app resume even
+      // while the realtime settings stream is reconnecting.
+      final liveIds = await _getLiveIdsSnapshot();
 
       // Fetch pages from DB. When status filters are active, a single page
       // may yield zero matches (e.g. no live events in the first 20 results).
@@ -247,9 +248,30 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
     } catch (e, stack) {
       debugPrint('[ForYou] Error: $e');
       debugPrint('[ForYou] Stack: $stack');
+      _logErrorToSentry(e, stack);
       state = state.copyWith(isLoading: false, error: e.toString());
     } finally {
       _isFetching = false;
+    }
+  }
+
+  void _logErrorToSentry(dynamic error, StackTrace stackTrace) {
+    unawaited(ref.read(errorLoggerProvider).logError(error, stackTrace));
+  }
+
+  Future<List<String>> _getLiveIdsSnapshot() async {
+    final cached = ref.read(liveGroupBroadcastIdsProvider).valueOrNull;
+    if (cached != null) return cached;
+
+    try {
+      return await ref.read(liveGroupBroadcastIdsProvider.future);
+    } catch (e, stack) {
+      debugPrint(
+        '[ForYou] liveGroupBroadcastIdsProvider failed, falling back to empty list: $e',
+      );
+      debugPrint('[ForYou] Live IDs stack: $stack');
+      _logErrorToSentry(e, stack);
+      return const <String>[];
     }
   }
 
