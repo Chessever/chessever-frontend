@@ -228,16 +228,31 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
     }
   }
 
-  Future<void> _shareFiles(List<XFile> files) {
-    if (widget.shareUrl != null) {
-      return Share.shareXFiles(
-        files,
-        text: widget.shareUrl,
-        sharePositionOrigin: const Rect.fromLTWH(0, 0, 1, 1),
-      );
+  String? get _effectiveShareUrl {
+    final explicit = widget.shareUrl?.trim();
+    if (explicit == null || explicit.isEmpty) return null;
+    return explicit;
+  }
+
+  String get _shareSubject {
+    final tournamentName = widget.tournamentName?.trim();
+    final roundInfo = widget.roundInfo?.trim();
+
+    if (tournamentName != null && tournamentName.isNotEmpty) {
+      if (roundInfo != null && roundInfo.isNotEmpty) {
+        return '$tournamentName • $roundInfo';
+      }
+      return tournamentName;
     }
+
+    return 'Chessever Game';
+  }
+
+  Future<void> _shareFiles(List<XFile> files) {
     return Share.shareXFiles(
       files,
+      subject: _shareSubject,
+      text: _effectiveShareUrl,
       sharePositionOrigin: const Rect.fromLTWH(0, 0, 1, 1),
     );
   }
@@ -768,6 +783,20 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
     }
   }
 
+  Future<void> _copyShareUrl() async {
+    final shareUrl = _effectiveShareUrl;
+    if (shareUrl == null || shareUrl.isEmpty) return;
+
+    try {
+      await Clipboard.setData(ClipboardData(text: shareUrl));
+      HapticFeedback.lightImpact();
+      _showMessage('Copied to clipboard', isError: false);
+    } catch (e) {
+      debugPrint('Error copying share URL: $e');
+      _showMessage('Failed to copy link', isError: true);
+    }
+  }
+
   void _showMessage(String message, {required bool isError}) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -979,6 +1008,62 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
     );
   }
 
+  Widget _buildShareLinkBar() {
+    final shareUrl = _effectiveShareUrl;
+    if (shareUrl == null || shareUrl.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: () => _copyShareUrl(),
+        child: Container(
+          width: 370.w,
+          padding: EdgeInsets.symmetric(horizontal: 18.w, vertical: 14.h),
+          decoration: BoxDecoration(
+            color: const Color(0xFF141A20),
+            borderRadius: BorderRadius.circular(22.br),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  shareUrl,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: kWhiteColor,
+                    fontSize: 15.sp,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+              SizedBox(width: 12.w),
+              SizedBox(
+                width: 28.w,
+                height: 28.w,
+                child: CustomPaint(
+                  painter: _ShareLinkBadgePainter(),
+                  child: Center(
+                    child: Text(
+                      '1',
+                      style: TextStyle(
+                        color: kWhiteColor,
+                        fontSize: 13.sp,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Material(
@@ -1065,6 +1150,12 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
                     duration: 300.ms,
                   ),
                   SizedBox(height: 16.h),
+                  _buildShareLinkBar().animate().fadeIn(
+                    delay: 180.ms,
+                    duration: 300.ms,
+                  ),
+                  if ((_effectiveShareUrl ?? '').isNotEmpty)
+                    SizedBox(height: 16.h),
                   // Action buttons or progress
                   if (_isGenerating)
                     CircularProgressIndicator(
@@ -1088,34 +1179,47 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
               top: -10000,
               child: Screenshot(
                 controller: _fullScreenshotController,
-                child: _ShareCard(
-                  boardSettings: widget.boardSettings,
-                  positionFen: widget.positionFen,
-                  lastMove: widget.lastMove,
-                  onClose: null,
-                  pgn: widget.pgn,
-                  moveSans: widget.moveSans,
-                  whitePlayerName: widget.whitePlayerName,
-                  blackPlayerName: widget.blackPlayerName,
-                  whitePlayerCountry: widget.whitePlayerCountry,
-                  blackPlayerCountry: widget.blackPlayerCountry,
-                  whitePlayerElo: widget.whitePlayerElo,
-                  blackPlayerElo: widget.blackPlayerElo,
-                  whitePlayerTitle: widget.whitePlayerTitle,
-                  blackPlayerTitle: widget.blackPlayerTitle,
-                  whitePlayerClock: widget.whitePlayerClock,
-                  blackPlayerClock: widget.blackPlayerClock,
-                  tournamentName: widget.tournamentName,
-                  roundInfo: widget.roundInfo,
-                  currentMoveIndex: widget.currentMoveIndex,
-                  evaluation: widget.evaluation,
-                  mate: widget.mate,
-                  isFlipped: widget.isFlipped,
-                  gameStatus: widget.gameStatus,
-                  isAtGameEnd: widget.isAtGameEnd,
-                  isPreview: false,
-                  showEvalBar: _showEvalBar,
-                  gameId: widget.gameId,
+                child: Container(
+                  color: kBackgroundColor,
+                  padding: EdgeInsets.all(16.w),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _ShareCard(
+                        boardSettings: widget.boardSettings,
+                        positionFen: widget.positionFen,
+                        lastMove: widget.lastMove,
+                        onClose: null,
+                        pgn: widget.pgn,
+                        moveSans: widget.moveSans,
+                        whitePlayerName: widget.whitePlayerName,
+                        blackPlayerName: widget.blackPlayerName,
+                        whitePlayerCountry: widget.whitePlayerCountry,
+                        blackPlayerCountry: widget.blackPlayerCountry,
+                        whitePlayerElo: widget.whitePlayerElo,
+                        blackPlayerElo: widget.blackPlayerElo,
+                        whitePlayerTitle: widget.whitePlayerTitle,
+                        blackPlayerTitle: widget.blackPlayerTitle,
+                        whitePlayerClock: widget.whitePlayerClock,
+                        blackPlayerClock: widget.blackPlayerClock,
+                        tournamentName: widget.tournamentName,
+                        roundInfo: widget.roundInfo,
+                        currentMoveIndex: widget.currentMoveIndex,
+                        evaluation: widget.evaluation,
+                        mate: widget.mate,
+                        isFlipped: widget.isFlipped,
+                        gameStatus: widget.gameStatus,
+                        isAtGameEnd: widget.isAtGameEnd,
+                        isPreview: false,
+                        showEvalBar: _showEvalBar,
+                        gameId: widget.gameId,
+                      ),
+                      if ((_effectiveShareUrl ?? '').isNotEmpty) ...[
+                        SizedBox(height: 16.h),
+                        _buildShareLinkBar(),
+                      ],
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -1735,6 +1839,44 @@ class _ShareGameEndingData {
     required this.loserKingSquare,
     required this.loserSide,
   });
+}
+
+class _ShareLinkBadgePainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final strokeWidth = math.max(1.8, size.width * 0.08);
+    final radius = (math.min(size.width, size.height) - strokeWidth) / 2;
+    final center = Offset(size.width / 2, size.height / 2);
+    final rect = Rect.fromCircle(center: center, radius: radius);
+
+    final solidPaint =
+        Paint()
+          ..color = kWhiteColor
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = strokeWidth
+          ..strokeCap = StrokeCap.round;
+
+    final dottedPaint =
+        Paint()
+          ..color = kWhiteColor
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = strokeWidth
+          ..strokeCap = StrokeCap.round;
+
+    canvas.drawArc(rect, math.pi / 2, math.pi, false, solidPaint);
+
+    const dotCount = 7;
+    final step = math.pi / dotCount;
+    final dashSweep = step * 0.28;
+    var start = -math.pi / 2;
+    for (int i = 0; i < dotCount; i++) {
+      canvas.drawArc(rect, start, dashSweep, false, dottedPaint);
+      start += step;
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
 /// Calculate game ending visual data for share card
