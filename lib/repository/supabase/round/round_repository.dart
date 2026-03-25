@@ -1,6 +1,7 @@
 // repositories/round_repository.dart
 import 'package:chessever2/repository/supabase/base_repository.dart';
 import 'package:chessever2/repository/supabase/round/round.dart';
+import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 final roundRepositoryProvider = AutoDisposeProvider<RoundRepository>((ref) {
@@ -18,6 +19,27 @@ class RoundRepository extends BaseRepository {
           .order('created_at', ascending: true);
 
       return (response as List).map((json) => Round.fromJson(json)).toList();
+    });
+  }
+
+  Future<Map<String, List<Round>>> getRoundsByTourIds(
+    List<String> tourIds,
+  ) async {
+    if (tourIds.isEmpty) return <String, List<Round>>{};
+
+    return handleApiCall(() async {
+      final response = await supabase
+          .from('rounds')
+          .select()
+          .inFilter('tour_id', tourIds)
+          .order('created_at', ascending: true);
+
+      final rounds =
+          (response as List).map((json) => Round.fromJson(json)).toList();
+      return groupRoundsByTourIdPreservingOrder(
+        rounds: rounds,
+        tourIds: tourIds,
+      );
     });
   }
 
@@ -197,4 +219,24 @@ class RoundRepository extends BaseRepository {
     }
     return null;
   }
+}
+
+@visibleForTesting
+Map<String, List<Round>> groupRoundsByTourIdPreservingOrder({
+  required List<Round> rounds,
+  required Iterable<String> tourIds,
+}) {
+  final grouped = <String, List<Round>>{
+    for (final tourId in tourIds) tourId: <Round>[],
+  };
+
+  for (final round in rounds) {
+    grouped.putIfAbsent(round.tourId, () => <Round>[]).add(round);
+  }
+
+  for (final groupedRounds in grouped.values) {
+    groupedRounds.sort((a, b) => a.createdAt.compareTo(b.createdAt));
+  }
+
+  return grouped;
 }

@@ -11,6 +11,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/live_tour_id
 import 'package:chessever2/screens/tour_detail/provider/interface/itour_detail_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_repo_provider.dart';
+import 'package:chessever2/screens/tour_detail/provider/tour_selection_logic.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -310,16 +311,13 @@ class _TourDetailScreenNotifier
     DateTime endDate,
     List<String> liveTourIds,
   ) {
-    // Never treat future tours as live, even if settings contain stale IDs.
-    if (now.isBefore(startDate)) {
-      return RoundStatus.upcoming;
-    } else if (now.isAfter(endDate)) {
-      return RoundStatus.completed;
-    } else if (liveTourIds.contains(tourId)) {
-      return RoundStatus.live;
-    } else {
-      return RoundStatus.ongoing;
-    }
+    return calculateTourRoundStatus(
+      tourId: tourId,
+      now: now,
+      startDate: startDate,
+      endDate: endDate,
+      liveTourIds: liveTourIds,
+    );
   }
 
   @override
@@ -328,26 +326,8 @@ class _TourDetailScreenNotifier
     TourDetailViewModel? currentState,
     List<String> liveTourIds,
   ) async {
-    final hasStartedTours = tourModels.any(
-      (model) => model.roundStatus != RoundStatus.upcoming,
-    );
-
-    bool canUseSelection(TourModel model) {
-      // If we already have started tours in this event, never lock into a purely upcoming tour.
-      if (!hasStartedTours) return true;
-      return model.roundStatus != RoundStatus.upcoming;
-    }
-
-    // 1️⃣ If user already selected a tour during this session, keep it.
     final currentSelectedId = currentState?.aboutTourModel.id;
-    if (currentSelectedId != null && currentSelectedId.isNotEmpty) {
-      final currentModel = findTourModel(tourModels, currentSelectedId);
-      if (currentModel != null && canUseSelection(currentModel)) {
-        return currentModel.tour;
-      }
-    }
 
-    // 2️⃣ If user previously selected a tour, respect that choice.
     String? savedTourId;
     try {
       savedTourId = await ref
@@ -357,157 +337,22 @@ class _TourDetailScreenNotifier
       savedTourId = null;
     }
 
-    if (savedTourId != null) {
-      final savedModel = findTourModel(tourModels, savedTourId);
-      if (savedModel != null && canUseSelection(savedModel)) {
-        return savedModel.tour;
-      }
-    }
-
-    // 3️⃣ Prefer live tours — a tour with active games always takes priority
-    final liveModels =
-        tourModels
-            .where((model) => model.roundStatus == RoundStatus.live)
-            .toList();
-
-    if (liveModels.isNotEmpty) {
-      // If multiple are live, pick the one that started most recently
-      if (liveModels.length > 1) {
-        liveModels.sort((a, b) {
-          final aDate =
-              a.tour.dates.isNotEmpty ? a.tour.dates.first : DateTime(1970);
-          final bDate =
-              b.tour.dates.isNotEmpty ? b.tour.dates.first : DateTime(1970);
-          return bDate.compareTo(aDate);
-        });
-      }
-      return liveModels.first.tour;
-    }
-
-    // 4️⃣ Default selection based on start times:
-    //    Same start time → highest average rating
-    //    Different start times → latest starting event
-    final selectableModels =
-        hasStartedTours
-            ? tourModels
-                .where((m) => m.roundStatus != RoundStatus.upcoming)
-                .toList()
-            : tourModels;
-
-    if (selectableModels.isNotEmpty) {
-      final toursWithDates =
-          selectableModels.where((m) => m.tour.dates.isNotEmpty).toList();
-
-      if (toursWithDates.isNotEmpty) {
-        // Check if all tours share the same start date
-        final firstStart = toursWithDates.first.tour.dates.first;
-        final allSameStart = toursWithDates.every(
-          (m) =>
-              m.tour.dates.first.year == firstStart.year &&
-              m.tour.dates.first.month == firstStart.month &&
-              m.tour.dates.first.day == firstStart.day,
-        );
-
-        if (allSameStart) {
-          // Same start → pick highest avgElo
-          final withElo =
-              toursWithDates.where((m) => m.tour.avgElo != null).toList();
-          if (withElo.isNotEmpty) {
-            withElo.sort(
-              (a, b) => b.tour.avgElo!.compareTo(a.tour.avgElo!),
-            );
-            return withElo.first.tour;
-          }
-        } else {
-          // Different start times → pick latest starting event, tiebreak by avgElo
-          toursWithDates.sort((a, b) {
-            final dateCompare =
-                b.tour.dates.first.compareTo(a.tour.dates.first);
-            if (dateCompare != 0) return dateCompare;
-            final aElo = a.tour.avgElo ?? 0;
-            final bElo = b.tour.avgElo ?? 0;
-            return bElo.compareTo(aElo);
-          });
-          return toursWithDates.first.tour;
-        }
-      }
-
-      // Fallback when date-based selection didn't apply: pick highest avgElo from selectableModels
-      final withElo =
-          selectableModels.where((m) => m.tour.avgElo != null).toList();
-      if (withElo.isNotEmpty) {
-        withElo.sort((a, b) => b.tour.avgElo!.compareTo(a.tour.avgElo!));
-        return withElo.first.tour;
-      }
-    }
-
-    // 5️⃣ Fallback — choose by actual game activity across all tours.
-    // This avoids opening future categories with no played games.
+    String? activityTourId;
     try {
-      final activityTourId = await ref
+      activityTourId = await ref
           .read(gameRepositoryProvider)
           .getMostRelevantTourId(
             tourIds: tourModels.map((m) => m.tour.id).toList(),
           );
-      if (activityTourId != null) {
-        final activityModel = findTourModel(tourModels, activityTourId);
-        if (activityModel != null && canUseSelection(activityModel)) {
-          return activityModel.tour;
-        }
-      }
     } catch (_) {}
 
-    // 6️⃣ If no ELO signal, prefer started tours (ongoing first, then completed).
-    final ongoingTours =
-        tourModels
-            .where((model) => model.roundStatus == RoundStatus.ongoing)
-            .toList()
-          ..sort((a, b) {
-            final aDate =
-                a.tour.dates.isNotEmpty ? a.tour.dates.first : DateTime(1970);
-            final bDate =
-                b.tour.dates.isNotEmpty ? b.tour.dates.first : DateTime(1970);
-            return bDate.compareTo(aDate);
-          });
-    if (ongoingTours.isNotEmpty) {
-      return ongoingTours.first.tour;
-    }
-
-    final completedTours =
-        tourModels
-            .where((model) => model.roundStatus == RoundStatus.completed)
-            .toList()
-          ..sort((a, b) {
-            // Handle tours with empty dates (use epoch as fallback)
-            final aDate =
-                a.tour.dates.isNotEmpty ? a.tour.dates.last : DateTime(1970);
-            final bDate =
-                b.tour.dates.isNotEmpty ? b.tour.dates.last : DateTime(1970);
-            return bDate.compareTo(aDate);
-          });
-
-    if (completedTours.isNotEmpty) {
-      return completedTours.first.tour;
-    }
-
-    // 7️⃣ If everything is upcoming, prefer the nearest one.
-    final upcomingTours =
-        tourModels
-            .where((model) => model.roundStatus == RoundStatus.upcoming)
-            .toList()
-          ..sort((a, b) {
-            final aDate =
-                a.tour.dates.isNotEmpty ? a.tour.dates.first : DateTime(1970);
-            final bDate =
-                b.tour.dates.isNotEmpty ? b.tour.dates.first : DateTime(1970);
-            return aDate.compareTo(bDate);
-          });
-    if (upcomingTours.isNotEmpty) {
-      return upcomingTours.first.tour;
-    }
-
-    // 8️⃣ Fallback: first tour
-    return tourModels.first.tour;
+    return selectDefaultTour(
+      tourModels: tourModels,
+      liveTourIds: liveTourIds,
+      currentSelectedId: currentSelectedId,
+      savedTourId: savedTourId,
+      activityTourId: activityTourId,
+    );
   }
 
   @override
@@ -530,7 +375,11 @@ class _TourDetailScreenNotifier
 
   @override
   TourModel? findTourModel(List<TourModel> tourModels, String tourId) {
-    return tourModels.where((model) => model.tour.id == tourId).firstOrNull;
+    final tour = findTourById(tourModels, tourId);
+    if (tour == null) {
+      return null;
+    }
+    return tourModels.where((model) => model.tour.id == tour.id).firstOrNull;
   }
 
   @override

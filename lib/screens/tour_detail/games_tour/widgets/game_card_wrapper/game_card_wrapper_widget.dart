@@ -14,6 +14,7 @@ class GameCardWrapperWidget extends ConsumerWidget {
   final GamesScreenModel gamesData;
   final int gameIndex;
   final bool isChessBoardVisible;
+  final Future<void> Function(GamesTourModel game)? onPinToggle;
   final void Function(int)? onReturnFromChessboard;
   final ChessboardView viewSource;
 
@@ -23,6 +24,7 @@ class GameCardWrapperWidget extends ConsumerWidget {
     required this.gamesData,
     required this.gameIndex,
     required this.isChessBoardVisible,
+    this.onPinToggle,
     this.onReturnFromChessboard,
     this.viewSource = ChessboardView.tour,
   });
@@ -43,6 +45,17 @@ class GameCardWrapperWidget extends ConsumerWidget {
       return games;
     }
 
+    Future<void> handlePinToggle(GamesTourModel game) async {
+      if (onPinToggle != null) {
+        await onPinToggle!(game);
+        return;
+      }
+
+      await ref
+          .read(gamesTourScreenProvider.notifier)
+          .togglePinGame(game.gameId, sourceTourId: game.tourId);
+    }
+
     return isChessBoardVisible
         ? ChessBoardFromFENNew(
           key: ValueKey(keyValue),
@@ -58,10 +71,7 @@ class GameCardWrapperWidget extends ConsumerWidget {
                     viewSource: viewSource,
                   ),
           pinnedIds: gamesData.pinnedGamedIs,
-          onPinToggle:
-              (_) async => await ref
-                  .read(gamesTourScreenProvider.notifier)
-                  .togglePinGame(liveGame.gameId),
+          onPinToggle: handlePinToggle,
         )
         : GameCard(
           key: ValueKey(keyValue),
@@ -70,10 +80,7 @@ class GameCardWrapperWidget extends ConsumerWidget {
             comparison: MatchComparison.sameOrder,
           ),
           pinnedIds: gamesData.pinnedGamedIs,
-          onPinToggle:
-              (_) async => await ref
-                  .read(gamesTourScreenProvider.notifier)
-                  .togglePinGame(liveGame.gameId),
+          onPinToggle: handlePinToggle,
           onTap:
               () => ref
                   .read(gameCardWrapperProvider)

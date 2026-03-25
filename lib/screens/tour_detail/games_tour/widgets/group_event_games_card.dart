@@ -48,7 +48,7 @@ class _GroupEventGamesCardState extends ConsumerState<GroupEventGamesCard> {
           onPinToggle: (game) async {
             await ref
                 .read(gamesTourScreenProvider.notifier)
-                .togglePinGame(game.gameId);
+                .togglePinGame(game.gameId, sourceTourId: game.tourId);
           },
           pinnedIds: widget.gamesData.pinnedGamedIs,
           onTap: () {
