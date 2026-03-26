@@ -3,10 +3,8 @@ import 'dart:async';
 import 'package:app_links/app_links.dart';
 import 'package:chessever2/repository/authentication/auth_repository.dart';
 import 'package:chessever2/repository/authentication/model/auth_state.dart';
-import 'package:chessever2/repository/local_storage/tournament/games/games_local_storage.dart';
 import 'package:chessever2/repository/sqlite/app_database.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
-import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
 import 'package:chessever2/repository/supabase/round/round_repository.dart';
 import 'package:chessever2/repository/supabase/tour/tour_repository.dart';
@@ -21,6 +19,7 @@ import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provide
 import 'package:chessever2/services/live_updates_service.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Service to handle deep links and notification tap routing.
 /// Handles URLs like: `https://chessever.com/games/{id}`
@@ -227,19 +226,10 @@ class DeepLinkService {
         );
       }
 
-      // Check auth state - wait for loading to resolve so Universal Links stay in-app.
-      AppAuthState? resolvedState = ref.read(authStateProvider).value;
-      if (resolvedState == null) {
-        try {
-          resolvedState = await ref.read(authStateProvider.future);
-        } catch (_) {
-          resolvedState = null;
-        }
-      }
-
-      if (resolvedState?.status != AppAuthStatus.authenticated) {
+      final isAuthenticated = await _waitForAuthenticatedSession(ref);
+      if (!isAuthenticated) {
         debugPrint(
-          'DeepLinkService: User not authenticated yet, routing to home',
+          'DeepLinkService: No authenticated session available for game link, routing to home',
         );
         navigatorKey.currentState?.pushNamedAndRemoveUntil(
           '/home_screen',
@@ -312,6 +302,34 @@ class DeepLinkService {
     } finally {
       _isNavigating = false;
     }
+  }
+
+  Future<bool> _waitForAuthenticatedSession(WidgetRef ref) async {
+    final deadline = DateTime.now().add(kAuthRestoreTimeout);
+
+    while (DateTime.now().isBefore(deadline)) {
+      final state = ref.read(authStateProvider).valueOrNull;
+      if (state?.status == AppAuthStatus.authenticated) {
+        return true;
+      }
+
+      final session = Supabase.instance.client.auth.currentSession;
+      final user = Supabase.instance.client.auth.currentUser;
+      if (session != null && user != null && !session.isExpired) {
+        return true;
+      }
+
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+    }
+
+    final state = ref.read(authStateProvider).valueOrNull;
+    if (state?.status == AppAuthStatus.authenticated) {
+      return true;
+    }
+
+    final session = Supabase.instance.client.auth.currentSession;
+    final user = Supabase.instance.client.auth.currentUser;
+    return session != null && user != null && !session.isExpired;
   }
 
   /// Route based on OneSignal notification data payload.
