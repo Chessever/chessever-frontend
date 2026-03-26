@@ -37,6 +37,8 @@ final authStateProvider =
       AuthController.new,
     );
 
+const kAuthRestoreTimeout = Duration(seconds: 8);
+
 class AuthController extends AutoDisposeAsyncNotifier<AppAuthState> {
   AuthController();
 
@@ -66,7 +68,7 @@ class AuthController extends AutoDisposeAsyncNotifier<AppAuthState> {
     // Session may be expired or absent — let isLoggedIn() attempt a refresh.
     // The SessionManager no longer calls signOut on failure, so this is safe.
     final loggedIn = await _sessionManager.isLoggedIn().timeout(
-      const Duration(seconds: 8),
+      kAuthRestoreTimeout,
       onTimeout: () => false,
     );
 
