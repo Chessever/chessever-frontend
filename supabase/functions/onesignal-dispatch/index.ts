@@ -1042,8 +1042,7 @@ async function buildContext(item: OutboxItem) {
 
   if (
     (item.event_type === "round_started" ||
-      item.event_type === "round_heads_up" ||
-      item.event_type === "game_started") &&
+      item.event_type === "round_heads_up") &&
     item.round_id
   ) {
     const roundPlayers = await fetchRoundPlayers(item.round_id);
