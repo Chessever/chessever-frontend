@@ -24,6 +24,27 @@ import app_links
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 
+  override func application(
+    _ application: UIApplication,
+    continue userActivity: NSUserActivity,
+    restorationHandler: @escaping ([UIUserActivityRestoring]?) -> Void
+  ) -> Bool {
+    let isBrowsingWeb = userActivity.activityType == NSUserActivityTypeBrowsingWeb
+    let hasWebpageURL = userActivity.webpageURL != nil
+
+    if isBrowsingWeb,
+       let url = userActivity.webpageURL {
+      AppLinks.shared.handleLink(url: url)
+    }
+
+    let superResult = super.application(
+      application,
+      continue: userActivity,
+      restorationHandler: restorationHandler
+    )
+    return superResult || (isBrowsingWeb && hasWebpageURL)
+  }
+
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
     setupAudioSessionChannel(binaryMessenger: engineBridge.applicationRegistrar.messenger())
