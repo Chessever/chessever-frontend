@@ -19,6 +19,7 @@ import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provide
 import 'package:chessever2/services/live_updates_service.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:sentry_flutter/sentry_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Service to handle deep links and notification tap routing.
@@ -67,17 +68,38 @@ class DeepLinkService {
     try {
       final initialLink = await _appLinks.getInitialLink();
       if (initialLink != null) {
+        _addBreadcrumb(
+          'cold-start link received',
+          data: _sanitizedUriData(initialLink),
+        );
         _handleDeepLink(initialLink, navigatorKey, ref);
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
       debugPrint('DeepLinkService: Error getting initial link: $e');
+      _captureDeepLinkException(
+        e,
+        stackTrace,
+        stage: 'get_initial_link',
+      );
     }
 
     // Listen for links while app is running (warm start / already open)
     _subscription = _appLinks.uriLinkStream.listen(
-      (uri) => _handleDeepLink(uri, navigatorKey, ref),
-      onError:
-          (e) => debugPrint('DeepLinkService: Error listening to links: $e'),
+      (uri) {
+        _addBreadcrumb(
+          'warm-start link received',
+          data: _sanitizedUriData(uri),
+        );
+        _handleDeepLink(uri, navigatorKey, ref);
+      },
+      onError: (Object error, StackTrace stackTrace) {
+        debugPrint('DeepLinkService: Error listening to links: $error');
+        _captureDeepLinkException(
+          error,
+          stackTrace,
+          stage: 'uri_link_stream',
+        );
+      },
     );
   }
 
@@ -89,38 +111,72 @@ class DeepLinkService {
   ) {
     debugPrint('DeepLinkService: Received link: $uri');
 
-    String? gameId;
-    String? bookShareToken;
+    try {
+      String? gameId;
+      String? bookShareToken;
 
-    // Universal link: https://chessever.com/games/<id>
-    if (uri.pathSegments.length >= 2 && uri.pathSegments[0] == 'games') {
-      gameId = uri.pathSegments[1];
-    }
-
-    // Universal link: https://chessever.com/books/<shareToken>
-    if (uri.pathSegments.length >= 2 && uri.pathSegments[0] == 'books') {
-      bookShareToken = uri.pathSegments[1];
-    }
-
-    // Custom scheme: com.chessever.app://games/<id>
-    if (gameId == null && uri.host == 'games' && uri.pathSegments.isNotEmpty) {
-      gameId = uri.pathSegments[0];
-    }
-
-    // Custom scheme: com.chessever.app://books/<shareToken>
-    if (bookShareToken == null &&
-        uri.host == 'books' &&
-        uri.pathSegments.isNotEmpty) {
-      bookShareToken = uri.pathSegments[0];
-    }
-
-    if (gameId != null && gameId.isNotEmpty) {
-      if (uri.queryParameters['stop_live'] == '1') {
-        _stopLiveUpdates(gameId, ref);
+      // Universal link: https://chessever.com/games/<id>
+      if (uri.pathSegments.length >= 2 && uri.pathSegments[0] == 'games') {
+        gameId = uri.pathSegments[1];
       }
-      _navigateToGame(gameId, navigatorKey, ref);
-    } else if (bookShareToken != null && bookShareToken.isNotEmpty) {
-      _navigateToBookPreview(bookShareToken, navigatorKey, ref);
+
+      // Universal link: https://chessever.com/books/<shareToken>
+      if (uri.pathSegments.length >= 2 && uri.pathSegments[0] == 'books') {
+        bookShareToken = uri.pathSegments[1];
+      }
+
+      // Custom scheme: com.chessever.app://games/<id>
+      if (gameId == null &&
+          uri.host == 'games' &&
+          uri.pathSegments.isNotEmpty) {
+        gameId = uri.pathSegments[0];
+      }
+
+      // Custom scheme: com.chessever.app://books/<shareToken>
+      if (bookShareToken == null &&
+          uri.host == 'books' &&
+          uri.pathSegments.isNotEmpty) {
+        bookShareToken = uri.pathSegments[0];
+      }
+
+      _addBreadcrumb(
+        'deep link parsed',
+        data: {
+          ..._sanitizedUriData(uri),
+          'gameId': _maskedValue(gameId),
+          'bookShareToken': _maskedValue(bookShareToken),
+        },
+      );
+
+      if (gameId != null && gameId.isNotEmpty) {
+        if (uri.queryParameters['stop_live'] == '1') {
+          _stopLiveUpdates(gameId, ref);
+        }
+        _addBreadcrumb('routing to game', data: {'gameId': gameId});
+        _navigateToGame(gameId, navigatorKey, ref);
+      } else if (bookShareToken != null && bookShareToken.isNotEmpty) {
+        _addBreadcrumb(
+          'routing to shared book',
+          data: {'shareToken': _maskedValue(bookShareToken)},
+        );
+        _navigateToBookPreview(bookShareToken, navigatorKey, ref);
+      } else {
+        _addBreadcrumb(
+          'deep link ignored',
+          data: {
+            'reason': 'unsupported path',
+            ..._sanitizedUriData(uri),
+          },
+        );
+      }
+    } catch (e, stackTrace) {
+      debugPrint('DeepLinkService: Failed parsing deep link: $e');
+      _captureDeepLinkException(
+        e,
+        stackTrace,
+        stage: 'parse_handle_deep_link',
+        extras: _sanitizedUriData(uri),
+      );
     }
   }
 
@@ -239,6 +295,7 @@ class DeepLinkService {
       }
 
       debugPrint('DeepLinkService: Fetching game: $gameId');
+      _addBreadcrumb('fetching game', data: {'gameId': gameId});
 
       // Fetch the tapped game from Supabase.
       // getGameByAnyId handles both Supabase UUIDs and Lichess short IDs.
@@ -268,13 +325,30 @@ class DeepLinkService {
           final idx = gameList.indexWhere((g) => g.gameId == resolvedGameId);
           openIndex = idx >= 0 ? idx : 0;
         }
-      } catch (e) {
+      } catch (e, stackTrace) {
         debugPrint(
           'DeepLinkService: Failed to load round games for swipe context: $e',
+        );
+        _captureDeepLinkException(
+          e,
+          stackTrace,
+          stage: 'load_round_games_for_swipe_context',
+          extras: {'gameId': gameId, 'roundId': game.roundId},
+          captureAsException: false,
         );
       }
 
       debugPrint('DeepLinkService: Game loaded, navigating to chess board');
+      _addBreadcrumb(
+        'navigating to chess board',
+        data: {
+          'gameId': gameId,
+          'resolvedGameId': resolvedGameId,
+          'roundId': game.roundId,
+          'openIndex': openIndex,
+          'gameListLength': gameList.length,
+        },
+      );
       ref.read(chessboardViewFromProviderNew.notifier).state =
           ChessboardView.forYou;
       ref.read(shouldStreamProvider.notifier).state = false;
@@ -292,9 +366,18 @@ class DeepLinkService {
           (route) => route.isFirst,
         );
       }
-    } catch (e) {
-      // On error, navigate to home screen silently
+    } catch (e, stackTrace) {
       debugPrint('DeepLinkService: Failed to load game: $e');
+      _captureDeepLinkException(
+        e,
+        stackTrace,
+        stage: 'navigate_to_game',
+        extras: {'gameId': gameId},
+      );
+      _addBreadcrumb(
+        'game deep link failed; routing home',
+        data: {'gameId': gameId},
+      );
       navigatorKey.currentState?.pushNamedAndRemoveUntil(
         '/home_screen',
         (route) => false,
@@ -613,6 +696,90 @@ class DeepLinkService {
     _lastHandledGameId = null;
     _lastHandledTime = null;
     _appReadyCompleter = Completer<void>();
+  }
+
+  void _addBreadcrumb(String message, {Map<String, dynamic>? data}) {
+    Sentry.addBreadcrumb(
+      Breadcrumb(
+        category: 'deep_link',
+        message: message,
+        type: 'navigation',
+        data: data,
+        level: SentryLevel.info,
+      ),
+    );
+  }
+
+  Map<String, dynamic> _sanitizedUriData(Uri uri) {
+    return {
+      'scheme': uri.scheme,
+      'host': uri.host,
+      'path': uri.path,
+      'routeKind': _routeKindFromUri(uri),
+      if (uri.queryParameters.isNotEmpty)
+        'queryParameters': _whitelistedQueryParameters(uri),
+    };
+  }
+
+  String _routeKindFromUri(Uri uri) {
+    if (uri.pathSegments.isNotEmpty) {
+      return uri.pathSegments.first;
+    }
+    return uri.host;
+  }
+
+  Map<String, String> _whitelistedQueryParameters(Uri uri) {
+    final allowed = <String>{'stop_live'};
+    final safe = <String, String>{};
+    for (final entry in uri.queryParameters.entries) {
+      if (allowed.contains(entry.key)) {
+        safe[entry.key] = entry.value;
+      }
+    }
+    return safe;
+  }
+
+  String? _maskedValue(String? value) {
+    if (value == null || value.isEmpty) return null;
+    if (value.length <= 6) return '***';
+    return '${value.substring(0, 3)}***${value.substring(value.length - 2)}';
+  }
+
+  Future<void> _captureDeepLinkException(
+    dynamic error,
+    StackTrace stackTrace, {
+    required String stage,
+    Map<String, dynamic>? extras,
+    bool captureAsException = true,
+  }) async {
+    try {
+      final mergedExtras = <String, dynamic>{'stage': stage, ...?extras};
+      final sentryExtras = mergedExtras.map(
+        (key, value) => MapEntry(key, value?.toString()),
+      );
+      if (!captureAsException) {
+        _addBreadcrumb(
+          'deep link warning',
+          data: {'stage': stage, ...?extras, 'error': error.toString()},
+        );
+        return;
+      }
+
+      await Sentry.captureException(
+        error,
+        stackTrace: stackTrace,
+        withScope: (scope) {
+          scope.setTag('area', 'deep_link');
+          scope.setTag('stage', stage);
+          scope.setContexts('deep_link', sentryExtras);
+        },
+      ).timeout(const Duration(seconds: 2));
+    } catch (telemetryError, telemetryStackTrace) {
+      debugPrint(
+        'DeepLinkService: Sentry logging failed at $stage: $telemetryError',
+      );
+      debugPrint('$telemetryStackTrace');
+    }
   }
 }
 
