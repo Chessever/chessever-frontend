@@ -4,6 +4,7 @@ import 'package:chessever2/repository/supabase/tour/tour.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_view_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/knockout_tournament_state_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/round_ordering.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/utils/knockout_match_detector.dart';
 import 'package:collection/collection.dart';
 
@@ -573,6 +574,23 @@ List<GamesAppBarModel> _visibleRounds({
     (round) => round.id.startsWith('$kKnockoutStagePrefix-'),
   );
 
+  final isPreConfigured = rounds.every(
+    (round) => _hasConfiguredStartTime(round, roundSortMeta),
+  );
+  final hasLiveOrOngoing = rounds.any(
+    (candidate) =>
+        candidate.roundStatus == RoundStatus.live ||
+        candidate.roundStatus == RoundStatus.ongoing,
+  );
+  final hasCompleted = rounds.any(
+    (candidate) => candidate.roundStatus == RoundStatus.completed,
+  );
+  final allAreUpcoming = rounds.every(
+    (candidate) =>
+        candidate.roundStatus == RoundStatus.upcoming ||
+        (gamesByRound[candidate.id]?.isEmpty ?? true),
+  );
+
   final visibleRounds = <GamesAppBarModel>[];
   for (final round in rounds) {
     final roundGames = gamesByRound[round.id] ?? const <GamesTourModel>[];
@@ -585,19 +603,10 @@ List<GamesAppBarModel> _visibleRounds({
       continue;
     }
 
-    final hasLiveOrOngoing = rounds.any(
-      (candidate) =>
-          candidate.roundStatus == RoundStatus.live ||
-          candidate.roundStatus == RoundStatus.ongoing,
-    );
-    final hasCompleted = rounds.any(
-      (candidate) => candidate.roundStatus == RoundStatus.completed,
-    );
-    final allAreUpcoming = rounds.every(
-      (candidate) =>
-          candidate.roundStatus == RoundStatus.upcoming ||
-          (gamesByRound[candidate.id]?.isEmpty ?? true),
-    );
+    if (isPreConfigured) {
+      visibleRounds.add(round);
+      continue;
+    }
 
     if (allAreUpcoming) {
       visibleRounds.add(round);
@@ -780,22 +789,21 @@ void _sortRounds(
   List<GamesAppBarModel> rounds,
   Map<String, _RoundSortMeta> roundSortMeta,
 ) {
-  rounds.sort((a, b) {
-    final aStart = _roundEventDateTime(a, roundSortMeta);
-    final bStart = _roundEventDateTime(b, roundSortMeta);
-    if (aStart != null && bStart != null) {
-      final compare = bStart.compareTo(aStart);
-      if (compare != 0) {
-        return compare;
-      }
-    } else if (aStart != null) {
-      return -1;
-    } else if (bStart != null) {
-      return 1;
-    }
+  final ordered = sortRoundsForDisplay(
+    rounds,
+    resolveDate: (round) => _roundEventDateTime(round, roundSortMeta),
+  );
+  rounds
+    ..clear()
+    ..addAll(ordered);
+}
 
-    return a.name.compareTo(b.name);
-  });
+bool _hasConfiguredStartTime(
+  GamesAppBarModel round,
+  Map<String, _RoundSortMeta> roundSortMeta,
+) {
+  final meta = roundSortMeta[round.id];
+  return meta?.startsAt != null || round.startsAt != null;
 }
 
 int _compareByStart(
