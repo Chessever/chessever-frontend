@@ -121,12 +121,13 @@ class _EvaluationBarWidgetState extends State<EvaluationBarWidget> {
 
   double _whiteRatio(double eval) => _normalizedEvalToRatio(eval);
 
-  double _effectiveEval(double? eval, int? mate) {
-    if (mate != null && mate != 0) {
-      return mate > 0 ? 10.0 : -10.0;
-    }
-    return eval ?? 0.0;
+ double _effectiveEval(double? eval, int? mate) {
+  final effectiveMate = mate ?? _lastMate;
+  if (effectiveMate != null && effectiveMate != 0) {
+    return effectiveMate > 0 ? 10.0 : -10.0;
   }
+  return eval ?? 0.0;
+}
 
   @override
   Widget build(BuildContext context) {
@@ -194,7 +195,7 @@ class _EvaluationBarWidgetState extends State<EvaluationBarWidget> {
                     child: Text(
                       showLoading
                           ? '...'
-                          : (displayEval.abs() >= 10.0 && displayMate != 0)
+                          : (displayMate != 0)
                           ? '#${displayMate.abs()}'
                           : displayEval.abs().toStringAsFixed(1),
                       maxLines: 1,
