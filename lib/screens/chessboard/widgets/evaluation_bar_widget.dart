@@ -120,13 +120,13 @@ class _EvaluationBarWidgetState extends State<EvaluationBarWidget> {
 
   double _whiteRatio(double eval) => _normalizedEvalToRatio(eval);
 
- double _effectiveEval(double? eval, int? mate) {
-  final effectiveMate = mate ?? _lastMate;
-  if (effectiveMate != null && effectiveMate != 0) {
-    return effectiveMate > 0 ? 10.0 : -10.0;
+  double _effectiveEval(double? eval, int? mate) {
+    final effectiveMate = mate ?? _lastMate;
+    if (effectiveMate != null && effectiveMate != 0) {
+      return effectiveMate > 0 ? 10.0 : -10.0;
+    }
+    return eval ?? 0.0;
   }
-  return eval ?? 0.0;
-}
 
   @override
   Widget build(BuildContext context) {
@@ -194,9 +194,9 @@ class _EvaluationBarWidgetState extends State<EvaluationBarWidget> {
                     child: Text(
                       showLoading
                           ? '...'
-                          : (displayMate != 0)
-                          ? '#${displayMate.abs()}'
-                          : displayEval.abs().toStringAsFixed(1),
+                          : (displayEval.abs() >= 10.0 && displayMate != 0)
+                          ? '#$displayMate'
+                          : _formatSignedEval(displayEval),
                       maxLines: 1,
                       textAlign: TextAlign.center,
                       style: AppTypography.textSmRegular.copyWith(
@@ -260,25 +260,27 @@ class EvaluationBarWidgetForGames extends ConsumerWidget {
     return ref
         .watch(gameCardEvalWithStockfishFallbackProvider(fen))
         .when(
-          loading: () => _Bars(
-            width: width,
-            height: height,
-            whiteHeight: height * 0.5,
-            blackHeight: height * 0.5,
-            evaluation: 0.0,
-            isEvaluating: true,
-            playerView: playerView,
-            isFlipped: false,
-          ),
-          error: (_, __) => _Bars(
-            width: width,
-            height: height,
-            whiteHeight: height * 0.5,
-            blackHeight: height * 0.5,
-            evaluation: 0.0,
-            playerView: playerView,
-            isFlipped: false,
-          ),
+          loading:
+              () => _Bars(
+                width: width,
+                height: height,
+                whiteHeight: height * 0.5,
+                blackHeight: height * 0.5,
+                evaluation: 0.0,
+                isEvaluating: true,
+                playerView: playerView,
+                isFlipped: false,
+              ),
+          error:
+              (_, __) => _Bars(
+                width: width,
+                height: height,
+                whiteHeight: height * 0.5,
+                blackHeight: height * 0.5,
+                evaluation: 0.0,
+                playerView: playerView,
+                isFlipped: false,
+              ),
           data: (cloud) {
             final pv = cloud.pvs.firstOrNull;
             if (pv == null) {
@@ -414,8 +416,8 @@ class _Bars extends StatelessWidget {
                       : isCheckmate
                       ? '#'
                       : (isMate && mate != 0)
-                      ? '#${mate.abs()}'
-                      : evaluation.abs().toStringAsFixed(1),
+                      ? '#$mate'
+                      : _formatSignedEval(evaluation),
                   maxLines: 1,
                   textAlign: TextAlign.center,
                   style: AppTypography.textSmRegular.copyWith(
@@ -443,6 +445,15 @@ class _Bars extends StatelessWidget {
   final normalizedMate = (pv.mate ?? 0) * sign;
   final normalizedEval = (pv.cp * sign) / 100.0;
   return (eval: normalizedEval, isMate: isMate, mate: normalizedMate);
+}
+
+String _formatSignedEval(double evaluation) {
+  final value = evaluation.abs() < 0.05 ? 0.0 : evaluation;
+  if (value == 0.0) {
+    return '0.0';
+  }
+  final formatted = value.toStringAsFixed(1);
+  return value > 0 ? '+$formatted' : formatted;
 }
 
 double _normalizedEvalToRatio(double eval) {

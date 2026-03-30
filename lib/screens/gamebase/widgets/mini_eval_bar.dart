@@ -41,8 +41,8 @@ class MiniEvalBar extends ConsumerWidget {
 
         final evalText =
             isMate && mate != 0
-                ? (mate > 0 ? '#${mate.abs()}' : '#-${mate.abs()}')
-                : '${eval >= 0 ? '+' : ''}${eval.toStringAsFixed(1)}';
+                ? '#$mate'
+                : _formatSignedEval(eval);
 
         return SizedBox(
           height: 16.h,
@@ -115,4 +115,13 @@ double _normalizedEvalToRatio(double eval) {
   final normalizedMate = ((pv.mate ?? 0) * sign);
   final normalizedEval = (pv.cp * sign) / 100.0;
   return (eval: normalizedEval, isMate: isMate, mate: normalizedMate);
+}
+
+String _formatSignedEval(double evaluation) {
+  final value = evaluation.abs() < 0.05 ? 0.0 : evaluation;
+  if (value == 0.0) {
+    return '0.0';
+  }
+  final formatted = value.toStringAsFixed(1);
+  return value > 0 ? '+$formatted' : formatted;
 }
