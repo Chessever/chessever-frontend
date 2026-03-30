@@ -1,7 +1,6 @@
 import 'package:chessever2/screens/chessboard/widgets/context_pop_up_menu.dart';
 import 'package:chessever2/providers/board_settings_provider_new.dart';
 import 'package:chessever2/providers/engine_settings_provider.dart';
-import 'package:chessever2/providers/live_game_subscription_provider.dart';
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/screens/chessboard/utils/game_share_utils.dart';
@@ -359,13 +358,6 @@ class ChessBoardFromFENNew extends ConsumerWidget {
             showAbove
                 ? boardPosition.dy - popupHeight - 8.sp
                 : boardPosition.dy + boardSize.height + 8.sp;
-        final liveState = ref.read(
-          liveGameSubscriptionProvider(gamesTourModel.gameId),
-        );
-        final liveEnabled = liveState.maybeWhen(
-          data: (value) => value,
-          orElse: () => false,
-        );
         return Material(
           color: Colors.transparent,
           child: GestureDetector(
@@ -402,22 +394,6 @@ class ChessBoardFromFENNew extends ConsumerWidget {
                     onShare: () {
                       Navigator.pop(buildContext);
                       _showShareOverlay(context, ref, gamesTourModel);
-                    },
-                    isLiveEnabled: liveEnabled,
-                    onLiveToggle: () {
-                      ref
-                          .read(
-                            liveGameSubscriptionProvider(
-                              gamesTourModel.gameId,
-                            ).notifier,
-                          )
-                          .setEnabled(
-                            enabled: !liveEnabled,
-                            game: gamesTourModel,
-                          );
-                      Future.microtask(() {
-                        Navigator.pop(buildContext);
-                      });
                     },
                   ),
                 ),
@@ -514,13 +490,6 @@ class GridChessBoardFromFENNew extends ConsumerWidget {
         Animation<double> animation,
         Animation<double> secondaryAnimation,
       ) {
-        final liveState = ref.read(
-          liveGameSubscriptionProvider(gamesTourModel.gameId),
-        );
-        final liveEnabled = liveState.maybeWhen(
-          data: (value) => value,
-          orElse: () => false,
-        );
         return Material(
           color: Colors.transparent,
           child: GestureDetector(
@@ -554,22 +523,6 @@ class GridChessBoardFromFENNew extends ConsumerWidget {
                             onShare: () {
                               Navigator.pop(buildContext);
                               _showShareOverlay(context, ref, gamesTourModel);
-                            },
-                            isLiveEnabled: liveEnabled,
-                            onLiveToggle: () {
-                              ref
-                                  .read(
-                                    liveGameSubscriptionProvider(
-                                      gamesTourModel.gameId,
-                                    ).notifier,
-                                  )
-                                  .setEnabled(
-                                    enabled: !liveEnabled,
-                                    game: gamesTourModel,
-                                  );
-                              Future.microtask(() {
-                                Navigator.pop(buildContext);
-                              });
                             },
                           ),
                         ),
@@ -619,22 +572,6 @@ class GridChessBoardFromFENNew extends ConsumerWidget {
                             onShare: () {
                               Navigator.pop(buildContext);
                               _showShareOverlay(context, ref, gamesTourModel);
-                            },
-                            isLiveEnabled: liveEnabled,
-                            onLiveToggle: () {
-                              ref
-                                  .read(
-                                    liveGameSubscriptionProvider(
-                                      gamesTourModel.gameId,
-                                    ).notifier,
-                                  )
-                                  .setEnabled(
-                                    enabled: !liveEnabled,
-                                    game: gamesTourModel,
-                                  );
-                              Future.microtask(() {
-                                Navigator.pop(buildContext);
-                              });
                             },
                           ),
                         ),
