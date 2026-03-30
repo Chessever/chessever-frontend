@@ -32,7 +32,7 @@ class BoardSettingsNew {
     this.pieceStyleIndex = 0, // Now used for chessground PieceSet
     this.gamesListViewModeIndex = 0,
     this.useFigurine =
-        false, // Use chess piece symbols (♔♕♖♗♘) instead of letters
+        true, // Use chess piece symbols (♔♕♖♗♘) instead of letters
   });
 
   /// DEPRECATED: Kept for backwards compatibility migration only
@@ -439,7 +439,7 @@ class BoardSettingsNotifierNew extends AsyncNotifier<BoardSettingsNew> {
         chatEnabled: map['chatEnabled'] as bool? ?? true,
         pieceStyleIndex: map['pieceStyleIndex'] as int? ?? 0,
         gamesListViewModeIndex: map['gamesListViewModeIndex'] as int? ?? 0,
-        useFigurine: map['useFigurine'] as bool? ?? false,
+        useFigurine: map['useFigurine'] as bool? ?? true,
       );
       debugPrint('[BoardSettings] Loaded settings from cache');
       return settings;

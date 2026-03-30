@@ -49,7 +49,7 @@ class BoardSettingsModel with BoardSettingsModelMappable {
       gamesListViewModeIndex:
           json['games_list_view_mode_index'] as int? ??
           1, // Default to chessBoardGrid
-      useFigurine: json['use_figurine'] as bool? ?? false,
+      useFigurine: json['use_figurine'] as bool? ?? true,
       createdAt: DateTime.parse(json['created_at'] as String),
       updatedAt: DateTime.parse(json['updated_at'] as String),
     );
@@ -100,7 +100,7 @@ class BoardSettingsModel with BoardSettingsModelMappable {
       chatEnabled: true,
       pieceStyleIndex: 0, // cburnett (default)
       gamesListViewModeIndex: 1, // chessBoardGrid view (default)
-      useFigurine: false, // Use letters by default
+      useFigurine: true, // Use figurine notation by default
       createdAt: DateTime.now(),
       updatedAt: DateTime.now(),
     );
