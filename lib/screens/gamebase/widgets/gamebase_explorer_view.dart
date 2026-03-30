@@ -186,7 +186,7 @@ class _HorizontalPvLines extends ConsumerWidget {
 
     final useFigurine = ref.watch(
       boardSettingsProviderNew.select(
-        (s) => s.valueOrNull?.useFigurine ?? false,
+        (s) => s.valueOrNull?.useFigurine ?? const BoardSettingsNew().useFigurine,
       ),
     );
     final pieceAssets = ref.watch(
@@ -520,7 +520,7 @@ class _MoveRow extends ConsumerWidget {
 
     final useFigurine = ref.watch(
       boardSettingsProviderNew.select(
-        (s) => s.valueOrNull?.useFigurine ?? false,
+        (s) => s.valueOrNull?.useFigurine ?? const BoardSettingsNew().useFigurine,
       ),
     );
     final pieceAssets = ref.watch(
