@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:chessever2/providers/for_you_games_logic.dart';
 import 'package:chessever2/providers/for_you_games_provider.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
@@ -102,13 +103,13 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
     }
 
     final state = ref.watch(forYouEventsProvider);
-    final visibleEvents = ref.watch(forYouVisibleEventsProvider);
+    final events = state.events;
 
-    if (state.isLoading && state.events.isEmpty) {
+    if (state.isLoading && events.isEmpty) {
       return _buildLoadingState();
     }
 
-    if (state.error != null && state.events.isEmpty) {
+    if (state.error != null && events.isEmpty) {
       debugPrint('[ForYouGamesWidget] Error: ${state.error}');
       final message = state.error?.trim();
       return GenericErrorWidget(
@@ -117,7 +118,7 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
       );
     }
 
-    if (visibleEvents.isEmpty) {
+    if (events.isEmpty) {
       return _buildEmptyState();
     }
 
@@ -128,7 +129,7 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
       color: kPrimaryColor,
       backgroundColor: kBlack2Color,
       child: _buildEventsList(
-        visibleEvents,
+        events,
         showLoadingMore: state.hasMore && !state.isLoading,
       ),
     );
@@ -423,7 +424,9 @@ class _TabletColumnSkeleton extends StatelessWidget {
   }
 }
 
-/// Section for one event: event card + 4 game cards
+/// Section for one event: event card + 4 game cards.
+/// Owns a single shared snapshot for both visibility and content —
+/// hides itself only after the snapshot resolves empty.
 class _ForYouEventSection extends ConsumerWidget {
   const _ForYouEventSection({
     super.key,
@@ -466,6 +469,32 @@ class _ForYouEventSection extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // Single shared snapshot drives both visibility and content.
+    final snapshotAsync = ref.watch(
+      forYouEventGamesWithAutoRefreshProvider(event.id),
+    );
+
+    // Hide section after snapshot resolves with no games.
+    final shouldHide = snapshotAsync.maybeWhen(
+      data: (snapshot) => !snapshot.hasGames,
+      orElse: () => false,
+    );
+
+    // AnimatedSize smoothly collapses the section when it resolves empty,
+    // avoiding visual jumps when multiple sections disappear in sequence.
+    return AnimatedSize(
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeInOut,
+      alignment: Alignment.topCenter,
+      child: shouldHide ? const SizedBox.shrink() : _buildContent(context, ref, snapshotAsync),
+    );
+  }
+
+  Widget _buildContent(
+    BuildContext context,
+    WidgetRef ref,
+    AsyncValue<ForYouEventGamesSnapshot> snapshotAsync,
+  ) {
     final shouldAnimate = !animatedEventIds.contains(event.id);
     if (shouldAnimate) {
       animatedEventIds.add(event.id);
@@ -480,8 +509,12 @@ class _ForYouEventSection extends ConsumerWidget {
           child: _buildEventCard(context, ref),
         ),
 
-        // Games for this event (lazy loaded with shimmer)
-        _ForYouEventGames(eventId: event.id, animatedGameIds: animatedGameIds),
+        // Games for this event (uses same snapshot, no duplicate fetch)
+        _ForYouEventGames(
+          eventId: event.id,
+          snapshotAsync: snapshotAsync,
+          animatedGameIds: animatedGameIds,
+        ),
       ],
     );
 
@@ -496,8 +529,8 @@ class _ForYouEventSection extends ConsumerWidget {
   }
 }
 
-/// Single column in the 2-column tablet grid
-/// Contains: event card on top + games stacked below (1 game per row within column)
+/// Single column in the 2-column tablet grid.
+/// Owns a single shared snapshot for visibility and content.
 class _ForYouTabletEventColumn extends ConsumerWidget {
   const _ForYouTabletEventColumn({
     super.key,
@@ -512,6 +545,30 @@ class _ForYouTabletEventColumn extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // Single shared snapshot drives both visibility and content.
+    final snapshotAsync = ref.watch(
+      forYouEventGamesWithAutoRefreshProvider(event.id),
+    );
+
+    // Hide column after snapshot resolves with no games.
+    final shouldHide = snapshotAsync.maybeWhen(
+      data: (snapshot) => !snapshot.hasGames,
+      orElse: () => false,
+    );
+
+    return AnimatedSize(
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeInOut,
+      alignment: Alignment.topCenter,
+      child: shouldHide ? const SizedBox.shrink() : _buildContent(context, ref, snapshotAsync),
+    );
+  }
+
+  Widget _buildContent(
+    BuildContext context,
+    WidgetRef ref,
+    AsyncValue<ForYouEventGamesSnapshot> snapshotAsync,
+  ) {
     final shouldAnimate = !animatedEventIds.contains(event.id);
     if (shouldAnimate) {
       animatedEventIds.add(event.id);
@@ -541,9 +598,10 @@ class _ForYouTabletEventColumn extends ConsumerWidget {
           ),
         ),
         SizedBox(height: 10.sp),
-        // Games for this event (stacked vertically, 1 per row in this column)
+        // Games for this event (uses same snapshot, no duplicate fetch)
         _ForYouTabletColumnGames(
           eventId: event.id,
+          snapshotAsync: snapshotAsync,
           animatedGameIds: animatedGameIds,
         ),
       ],
@@ -561,24 +619,21 @@ class _ForYouTabletEventColumn extends ConsumerWidget {
 }
 
 /// Games for a single column - shows games in 2-column grid (2 per row)
-/// Uses auto-refresh provider that watches live games and re-fetches when they finish
-class _ForYouTabletColumnGames extends ConsumerWidget {
+/// Receives the shared snapshot from the parent column widget.
+class _ForYouTabletColumnGames extends StatelessWidget {
   const _ForYouTabletColumnGames({
     required this.eventId,
+    required this.snapshotAsync,
     required this.animatedGameIds,
   });
 
   final String eventId;
+  final AsyncValue<ForYouEventGamesSnapshot> snapshotAsync;
   final Set<String> animatedGameIds;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    // Use auto-refresh provider that watches live game status
-    final gamesAsync = ref.watch(
-      forYouEventGamesWithAutoRefreshProvider(eventId),
-    );
-
-    return gamesAsync.when(
+  Widget build(BuildContext context) {
+    return snapshotAsync.when(
       skipLoadingOnRefresh: true,
       skipLoadingOnReload: true,
       data: (snapshot) {
@@ -746,26 +801,24 @@ class _TabletGameCard extends ConsumerWidget {
   }
 }
 
-/// Games section for one event - loads lazily with shimmer
-/// Uses auto-refresh provider that watches live games and re-fetches when they finish
+/// Games section for one event - loads lazily with shimmer.
+/// Receives the shared snapshot from the parent section widget.
 class _ForYouEventGames extends ConsumerWidget {
   const _ForYouEventGames({
     required this.eventId,
+    required this.snapshotAsync,
     required this.animatedGameIds,
   });
 
   final String eventId;
+  final AsyncValue<ForYouEventGamesSnapshot> snapshotAsync;
   final Set<String> animatedGameIds;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // Use auto-refresh provider that watches live game status
-    final gamesAsync = ref.watch(
-      forYouEventGamesWithAutoRefreshProvider(eventId),
-    );
     final viewMode = ref.watch(gamesListViewModeProvider);
 
-    return gamesAsync.when(
+    return snapshotAsync.when(
       skipLoadingOnRefresh: true,
       skipLoadingOnReload: true,
       data: (snapshot) {
