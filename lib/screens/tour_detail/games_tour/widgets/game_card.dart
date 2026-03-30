@@ -1,5 +1,4 @@
 import 'package:chessever2/providers/engine_settings_provider.dart';
-import 'package:chessever2/providers/live_game_subscription_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/chess_progress_bar.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_tour_content_provider.dart';
@@ -69,7 +68,7 @@ class GameCard extends ConsumerWidget {
     final Size cardSize = cardRenderBox.size;
 
     final double screenHeight = MediaQuery.of(context).size.height;
-    const double popupHeight = 100;
+    final double popupHeight = 81.h;
     final double spaceBelow =
         screenHeight - (cardPosition.dy + cardSize.height);
 
@@ -90,13 +89,6 @@ class GameCard extends ConsumerWidget {
             showAbove
                 ? cardPosition.dy - popupHeight - 8.sp
                 : cardPosition.dy + cardSize.height + 8.sp;
-        final liveState = ref.read(
-          liveGameSubscriptionProvider(matchComparison.game.gameId),
-        );
-        final liveEnabled = liveState.maybeWhen(
-          data: (value) => value,
-          orElse: () => false,
-        );
         return _MotorPopupWrapper(
           cardPosition: cardPosition,
           cardSize: cardSize,
@@ -113,19 +105,6 @@ class GameCard extends ConsumerWidget {
           onShare: () {
             Navigator.pop(buildContext);
           },
-          onLiveToggle: () {
-            ref
-                .read(
-                  liveGameSubscriptionProvider(
-                    matchComparison.game.gameId,
-                  ).notifier,
-                )
-                .setEnabled(enabled: !liveEnabled, game: matchComparison.game);
-            Future.microtask(() {
-              Navigator.pop(buildContext);
-            });
-          },
-          isLiveEnabled: liveEnabled,
         );
       },
     );
@@ -732,8 +711,6 @@ class _MotorPopupWrapper extends StatefulWidget {
     required this.onDismiss,
     required this.onPinToggle,
     required this.onShare,
-    required this.isLiveEnabled,
-    required this.onLiveToggle,
   });
 
   final Offset cardPosition;
@@ -744,8 +721,6 @@ class _MotorPopupWrapper extends StatefulWidget {
   final VoidCallback onDismiss;
   final VoidCallback onPinToggle;
   final VoidCallback onShare;
-  final bool isLiveEnabled;
-  final VoidCallback onLiveToggle;
 
   @override
   State<_MotorPopupWrapper> createState() => _MotorPopupWrapperState();
@@ -822,8 +797,6 @@ class _MotorPopupWrapperState extends State<_MotorPopupWrapper> {
                         isPinned: widget.isPinned,
                         onPinToggle: widget.onPinToggle,
                         onShare: widget.onShare,
-                        isLiveEnabled: widget.isLiveEnabled,
-                        onLiveToggle: widget.onLiveToggle,
                       ),
                     ),
                   ),
