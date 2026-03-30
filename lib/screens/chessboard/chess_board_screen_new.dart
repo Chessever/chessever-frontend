@@ -7303,7 +7303,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     // Get figurine notation setting and piece assets for rendering
     final useFigurine = ref.watch(
       boardSettingsProviderNew.select(
-        (s) => s.valueOrNull?.useFigurine ?? false,
+        (s) => s.valueOrNull?.useFigurine ?? const BoardSettingsNew().useFigurine,
       ),
     );
     final pieceAssets = ref.watch(
@@ -7724,7 +7724,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     String? currentPointerId,
     String? tailPointerId,
     Map<int, LichessMoveAnnotation> lichessAnnotations, {
-    bool useFigurine = false,
+    bool useFigurine = true,
     PieceAssets? pieceAssets,
   }) {
     final pointerId = token.pointerId;
@@ -9399,7 +9399,7 @@ class _PrincipalVariationListState
     // Get figurine notation setting and piece assets for PV card rendering
     final useFigurine = ref.watch(
       boardSettingsProviderNew.select(
-        (s) => s.valueOrNull?.useFigurine ?? false,
+        (s) => s.valueOrNull?.useFigurine ?? const BoardSettingsNew().useFigurine,
       ),
     );
     final pieceAssets = ref.watch(
@@ -10158,7 +10158,7 @@ class _PrincipalVariationListState
     required int variantIndex,
     required Color variantColor,
     int? previewMoveIndex,
-    bool useFigurine = false,
+    bool useFigurine = true,
     PieceAssets? pieceAssets,
   }) {
     final spans = <InlineSpan>[];
