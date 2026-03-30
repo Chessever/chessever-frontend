@@ -2,7 +2,9 @@ import 'dart:async';
 
 import 'package:chessever2/providers/country_dropdown_provider.dart';
 import 'package:chessever2/repository/supabase/chess_player/chess_player_repository.dart';
-import 'package:chessever2/screens/favorites/favorite_players_provider.dart';
+import 'package:chessever2/providers/favorite_players_provider.dart';
+import 'package:chessever2/utils/favorite_constants.dart';
+import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/screens/player_profile/player_profile_screen.dart';
 import 'package:chessever2/theme/app_theme.dart';
@@ -261,11 +263,11 @@ class _CountrymenPlayersTabState extends ConsumerState<CountrymenPlayersTab>
     super.build(context);
 
     final state = ref.watch(countrymenPlayersProvider);
-    // Watch favoritePlayersNotifierProvider for optimistic updates
-    final favoritesAsync = ref.watch(favoritePlayersNotifierProvider);
+    // Watch favoritePlayersProviderNew for up-to-date state
+    final favoritesAsync = ref.watch(favoritePlayersProviderNew);
     final favoriteIds =
-        favoritesAsync.valueOrNull?.players
-            .map((p) => p.fideId)
+        favoritesAsync.valueOrNull
+            ?.map((p) => int.tryParse(p.fideId ?? ''))
             .where((id) => id != null)
             .cast<int>()
             .toSet() ??
@@ -478,19 +480,28 @@ class _CountrymenPlayersTabState extends ConsumerState<CountrymenPlayersTab>
 
       HapticFeedback.mediumImpact();
 
-      // Fire and forget - provider handles optimistic updates internally
-      if (currentlyFavorite) {
-        unawaited(
-          ref
-              .read(favoritePlayersNotifierProvider.notifier)
-              .removeFavorite(player),
-        );
-      } else {
-        unawaited(
-          ref
-              .read(favoritePlayersNotifierProvider.notifier)
-              .addFavorite(player),
-        );
+      try {
+        if (currentlyFavorite) {
+          await ref
+              .read(favoritePlayersProviderNew.notifier)
+              .removeFavorite(player.name);
+        } else {
+          await ref
+              .read(favoritePlayersProviderNew.notifier)
+              .addFavorite(
+                fideId: player.fideId?.toString(),
+                playerName: player.name,
+                countryCode: player.countryCode,
+                rating: player.score,
+                title: player.title,
+              );
+        }
+      } on FavoriteLimitExceededException {
+        if (mounted) {
+          await showPremiumPaywallSheet(context: context);
+        }
+      } catch (e) {
+        debugPrint('Error toggling favorite: $e');
       }
     });
   }

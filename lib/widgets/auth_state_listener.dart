@@ -164,6 +164,12 @@ class AuthStateListener extends ConsumerWidget {
                   // Step 1: Migrate old SharedPreferences favorites (runs only once per user)
                   await FavoritesMigration.migrateIfNeeded();
 
+                  // Step 1.5: Merge anonymous favorites into the new account
+                  // (must run before flush/sync so the merged data is visible)
+                  await ref
+                      .read(authStateProvider.notifier)
+                      .mergeAnonymousFavorites(currentUserId);
+
                   // Steps 1a+1b and step 2 are independent (different Supabase tables)
                   // so run them in parallel to shave ~200-400ms off the sync chain.
                   await Future.wait([

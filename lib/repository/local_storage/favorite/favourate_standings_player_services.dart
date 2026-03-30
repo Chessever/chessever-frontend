@@ -131,15 +131,13 @@ class FavoriteStandingsPlayerService {
         );
       } else {
         // Enforce favorite limit for free users before adding
-        if (!kDebugMode) {
-          if (favorites.length >= kFreeFavoriteLimit) {
-            final isSubscribed = await RevenueCatService().isSubscribed();
-            if (!isSubscribed) {
-              debugPrint(
-                '[FavoriteStandings] Free user at limit ($kFreeFavoriteLimit), blocking add',
-              );
-              return;
-            }
+        if (favorites.length >= kFreeFavoriteLimit) {
+          final isSubscribed = await RevenueCatService().isSubscribed();
+          if (!isSubscribed) {
+            debugPrint(
+              '[FavoriteStandings] Free user at limit ($kFreeFavoriteLimit), blocking add',
+            );
+            throw FavoriteLimitExceededException(kFreeFavoriteLimit);
           }
         }
 

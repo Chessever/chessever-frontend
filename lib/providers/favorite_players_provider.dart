@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:chessever2/repository/favorites/models/favorite_player.dart';
 import 'package:chessever2/repository/sqlite/app_database.dart';
+import 'package:chessever2/screens/favorites/favorite_players_provider.dart';
 import 'package:chessever2/services/analytics/analytics_service.dart';
 import 'package:chessever2/revenue_cat_service/revenue_cat_service.dart';
 import 'package:chessever2/utils/favorite_constants.dart';
@@ -148,16 +149,14 @@ class FavoritePlayersNotifierNew extends AsyncNotifier<List<FavoritePlayer>> {
   }) async {
     try {
       // Enforce favorite limit for free users
-      if (!kDebugMode) {
-        final currentCount = state.valueOrNull?.length ?? 0;
-        if (currentCount >= kFreeFavoriteLimit) {
-          final isSubscribed = await RevenueCatService().isSubscribed();
-          if (!isSubscribed) {
-            debugPrint(
-              '[FavoritePlayers] Free user at limit ($kFreeFavoriteLimit), blocking add',
-            );
-            return;
-          }
+      final currentCount = state.valueOrNull?.length ?? 0;
+      if (currentCount >= kFreeFavoriteLimit) {
+        final isSubscribed = await RevenueCatService().isSubscribed();
+        if (!isSubscribed) {
+          debugPrint(
+            '[FavoritePlayers] Free user at limit ($kFreeFavoriteLimit), blocking add',
+          );
+          throw FavoriteLimitExceededException(kFreeFavoriteLimit);
         }
       }
 
@@ -208,6 +207,8 @@ class FavoritePlayersNotifierNew extends AsyncNotifier<List<FavoritePlayer>> {
 
       // Refresh state
       await refresh();
+      // Keep legacy provider in sync for remaining consumers
+      ref.invalidate(favoritePlayersNotifierProvider);
       _syncFavoritePlayerCountAnalytics(state.valueOrNull?.length ?? 0);
     } catch (e, st) {
       debugPrint('[FavoritePlayers] Error adding player: $e');
@@ -235,6 +236,8 @@ class FavoritePlayersNotifierNew extends AsyncNotifier<List<FavoritePlayer>> {
 
       // Refresh state
       await refresh();
+      // Keep legacy provider in sync for remaining consumers
+      ref.invalidate(favoritePlayersNotifierProvider);
       _syncFavoritePlayerCountAnalytics(state.valueOrNull?.length ?? 0);
     } catch (e, st) {
       debugPrint('[FavoritePlayers] Error removing player: $e');

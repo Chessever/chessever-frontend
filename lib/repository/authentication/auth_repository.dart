@@ -603,6 +603,76 @@ class AuthController extends AutoDisposeAsyncNotifier<AppAuthState> {
     }
   }
 
+  /// Snapshot of anonymous user's favorites captured before auth upgrade.
+  /// Used by [mergeAnonymousFavorites] to carry them forward.
+  List<Map<String, dynamic>>? _anonymousFavoritesSnapshot;
+
+  /// Captures all favorite players for the given anonymous user so they can
+  /// be merged into the new authenticated account after [signInWithIdToken].
+  Future<List<Map<String, dynamic>>> _snapshotAnonymousFavorites(
+    String anonUserId,
+  ) async {
+    try {
+      final rows = await _supabase
+          .from('user_favorite_players')
+          .select()
+          .eq('user_id', anonUserId);
+      debugPrint(
+        '[Auth] Captured ${rows.length} anonymous favorites for migration',
+      );
+      return List<Map<String, dynamic>>.from(rows);
+    } catch (e) {
+      debugPrint('[Auth] Failed to snapshot anonymous favorites: $e');
+      return [];
+    }
+  }
+
+  /// Merges the previously captured anonymous favorites into [newUserId].
+  /// Deduplicates by fide_id first, then player_name as fallback.
+  /// Clears the snapshot only after a successful merge.
+  Future<void> mergeAnonymousFavorites(String newUserId) async {
+    final snapshot = _anonymousFavoritesSnapshot;
+    if (snapshot == null || snapshot.isEmpty) return;
+
+    try {
+      for (final row in snapshot) {
+        final fideId = row['fide_id']?.toString() ?? '';
+        final playerName = row['player_name']?.toString() ?? '';
+
+        // Deduplicate by fide_id
+        if (fideId.isNotEmpty) {
+          final existing = await _supabase
+              .from('user_favorite_players')
+              .select('id')
+              .eq('user_id', newUserId)
+              .eq('fide_id', fideId)
+              .maybeSingle();
+          if (existing != null) continue;
+        }
+
+        // Upsert with player_name conflict resolution as fallback
+        await _supabase.from('user_favorite_players').upsert(
+          {
+            'user_id': newUserId,
+            'fide_id': fideId.isNotEmpty ? fideId : null,
+            'player_name': playerName,
+            'metadata': row['metadata'],
+          },
+          onConflict: 'user_id,player_name',
+          ignoreDuplicates: true,
+        );
+      }
+
+      debugPrint(
+        '[Auth] Merged ${snapshot.length} anonymous favorites into $newUserId',
+      );
+      _anonymousFavoritesSnapshot = null;
+    } catch (e) {
+      debugPrint('[Auth] Failed to merge anonymous favorites: $e');
+      // Keep the snapshot so it can be retried on next sync
+    }
+  }
+
   Future<AppUser> _linkProviderForAnonymous(
     OAuthProvider provider, {
     String? scopes,
@@ -611,6 +681,12 @@ class AuthController extends AutoDisposeAsyncNotifier<AppAuthState> {
     if (currentUser == null || currentUser.isAnonymous != true) {
       throw Exception('No anonymous session to upgrade.');
     }
+
+    // Capture anonymous favorites before switching user —
+    // signInWithIdToken may switch to a different user_id,
+    // orphaning the anonymous user's data.
+    _anonymousFavoritesSnapshot =
+        await _snapshotAnonymousFavorites(currentUser.id);
 
     // For Google, we use the native flow to avoid stuck webviews
     if (provider == OAuthProvider.google) {

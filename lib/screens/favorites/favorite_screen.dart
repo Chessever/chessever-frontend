@@ -1,3 +1,4 @@
+import 'package:chessever2/providers/favorite_players_provider.dart';
 import 'package:chessever2/screens/favorites/favorite_players_provider.dart';
 import 'package:chessever2/screens/player_profile/player_profile_data_source.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
@@ -345,8 +346,8 @@ class _FavoriteScreenState extends ConsumerState<FavoriteScreen> {
     if (!allowed) return;
 
     await ref
-        .read(favoritePlayersNotifierProvider.notifier)
-        .removeFavorite(player);
+        .read(favoritePlayersProviderNew.notifier)
+        .removeFavorite(player.name);
   }
 
   Future<void> _showContextMenu(
