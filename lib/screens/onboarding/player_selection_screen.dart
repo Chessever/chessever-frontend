@@ -47,7 +47,7 @@ class PlayerSelectionScreen extends HookConsumerWidget {
         backgroundColor: kBackgroundColor,
         body: SafeArea(
           child: PlayerSelectionContent(
-            title: 'Follow at least 3 players to get started',
+            title: 'Follow 3 players to get started',
             subtitle: 'Follow 3+ players to personalize your feed.',
             actionLabel: 'Next',
             onComplete: () => _completeOnboarding(context, ref),

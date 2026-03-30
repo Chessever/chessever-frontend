@@ -149,7 +149,7 @@ class OnboardingFlowScreen extends HookConsumerWidget {
                       right: ResponsiveHelper.isTablet ? 16.w : 0,
                     ),
                     child: PlayerSelectionContent(
-                      title: 'Follow at least 3 players to get started',
+                      title: 'Follow 3 players to get started',
                       subtitle: 'Follow 3+ players to personalize your feed.',
                       actionLabel: 'Continue',
                       badgeLabel: null,
