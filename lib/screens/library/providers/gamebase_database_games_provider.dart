@@ -1,4 +1,5 @@
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
+import 'package:chessever2/repository/gamebase/search/gamebase_search_models_extra.dart';
 import 'package:chessever2/repository/supabase/chess_player/chess_player_repository.dart';
 import 'package:chessever2/screens/gamebase/models/models.dart';
 import 'package:chessever2/screens/library/providers/gamebase_filter_provider.dart';
@@ -59,6 +60,113 @@ class DatabaseGamesPaginationState {
 }
 
 /// Notifier for paginated database games
+bool _hasYearFilter(GamebaseFilter filter) =>
+    filter.minYear != 1800 || filter.maxYear != DateTime.now().year;
+
+bool _matchesYearFilter(Map<String, dynamic> row, GamebaseFilter filter) {
+  if (!_hasYearFilter(filter)) return true;
+  final raw = row['date'];
+  if (raw == null) return false;
+  final date = DateTime.tryParse(raw.toString());
+  if (date == null) return false;
+  return date.year >= filter.minYear && date.year <= filter.maxYear;
+}
+
+List<String> _libraryExactGameSelectColumns() => const [
+  'id',
+  'date',
+  'result',
+  'timeControl',
+  'white',
+  'black',
+  'whitePlayerId',
+  'blackPlayerId',
+  'whiteFideId',
+  'blackFideId',
+  'whiteTitle',
+  'blackTitle',
+  'whiteFed',
+  'blackFed',
+  'whiteElo',
+  'blackElo',
+  'eco',
+  'opening',
+  'variation',
+  'event',
+  'site',
+  'fen',
+  'finalFen',
+  'positionFen',
+  'lastMove',
+];
+
+Map<String, dynamic>? _buildLibraryExactWhere(
+  GamebaseFilter filter, {
+  String? selectedEvent,
+}) {
+  final expressions = <Map<String, dynamic>>[];
+
+  if (selectedEvent != null && selectedEvent.isNotEmpty) {
+    expressions.add({'field': 'event', 'op': 'eq', 'value': selectedEvent});
+  }
+  if (filter.resultApiValue != null) {
+    expressions.add({
+      'field': 'result',
+      'op': 'eq',
+      'value': filter.resultApiValue,
+    });
+  }
+  if (filter.timeControlApiValue != null) {
+    expressions.add({
+      'field': 'timeControl',
+      'op': 'eq',
+      'value': filter.timeControlApiValue,
+    });
+  }
+  if (_hasYearFilter(filter)) {
+    expressions.add({
+      'field': 'date',
+      'op': 'between',
+      'values': [
+        '${filter.minYear.toString().padLeft(4, '0')}-01-01T00:00:00.000Z',
+        '${filter.maxYear.toString().padLeft(4, '0')}-12-31T23:59:59.999Z',
+      ],
+    });
+  }
+
+  if (expressions.isEmpty) return null;
+  if (expressions.length == 1) return expressions.first;
+  return {'and': expressions};
+}
+
+@visibleForTesting
+bool shouldUseExactLibraryGameQuery(String query, GamebaseFilter filter) {
+  if (query.trim().isNotEmpty) return false;
+  if (!_hasYearFilter(filter)) return false;
+  if (filter.colorApiValue != null) return false;
+  return true;
+}
+
+@visibleForTesting
+bool shouldUseClientSideYearFiltering(String query, GamebaseFilter filter) {
+  return query.trim().isNotEmpty && _hasYearFilter(filter);
+}
+
+List<Map<String, dynamic>> _rowsFromGlobalSearchResponse(
+  GamebaseGlobalSearchResponse response,
+) {
+  return response.results
+      .where((r) => r.resource == 'game')
+      .map((r) {
+        final preview = Map<String, dynamic>.from(r.preview ?? const {});
+        final resultId = r.id.toString().trim();
+        final previewId = (preview['id']?.toString() ?? '').trim();
+        final id = resultId.isNotEmpty ? resultId : previewId;
+        return <String, dynamic>{...preview, 'id': id};
+      })
+      .toList(growable: false);
+}
+
 class DatabaseGamesPaginationNotifier
     extends StateNotifier<DatabaseGamesPaginationState> {
   final Ref _ref;
@@ -138,56 +246,92 @@ class DatabaseGamesPaginationNotifier
     final hasRatingFilter = _filter.minRating > 0 || _filter.maxRating < 3500;
     final useClientSideAverageRating =
         _filter.colorApiValue == null && hasRatingFilter;
-
-    // Use GET /api/search (token-based + FTS) because it is indexed and fast.
-    // POST /api/search/query currently can be very slow for free-text search.
-    final response = await repo.globalSearch(
-      query: composedQuery,
-      resources: const ['game'],
-      pageNumber: pageNumber,
-      pageSize: _pageSize,
-      result: _filter.resultApiValue,
-      color: _filter.colorApiValue,
-      timeControl: _filter.timeControlApiValue,
-      yearFrom: _filter.minYear != 1800 ? _filter.minYear : null,
-      yearTo: _filter.maxYear != DateTime.now().year ? _filter.maxYear : null,
-      ratingFrom:
-          !useClientSideAverageRating && _filter.minRating > 0
-              ? _filter.minRating
-              : null,
-      ratingTo:
-          !useClientSideAverageRating && _filter.maxRating < 3500
-              ? _filter.maxRating
-              : null,
+    final useClientSideYearFiltering = shouldUseClientSideYearFiltering(
+      _query,
+      _filter,
     );
+    late final List<Map<String, dynamic>> rawRows;
+    late final int totalCount;
+    late final bool totalCountIsEstimate;
+    late final bool hasMore;
 
-    final gameResults = response.results
-        .where((r) => r.resource == 'game')
-        .toList(growable: false);
+    if (shouldUseExactLibraryGameQuery(_query, _filter)) {
+      final where = _buildLibraryExactWhere(
+        _filter,
+        selectedEvent: selectedEvent,
+      );
+      final response = await repo.queryResource(
+        body: {
+          'resource': 'game',
+          'pageNumber': pageNumber,
+          'pageSize': _pageSize,
+          'includeTotal': true,
+          'countMode': 'auto',
+          if (_query.trim().isNotEmpty) 'q': _query.trim(),
+          'select': _libraryExactGameSelectColumns(),
+          if (where != null) 'where': where,
+        },
+      );
+      rawRows = response.data;
+      totalCount = response.metadata.totalCount ?? rawRows.length;
+      totalCountIsEstimate = response.metadata.totalCountIsEstimate;
+      hasMore = response.metadata.hasMore;
+    } else {
+      // Use GET /api/search (token-based + FTS) because it is indexed and fast.
+      // POST /api/search/query currently can be very slow for free-text search.
+      final response = await repo.globalSearch(
+        query: composedQuery,
+        resources: const ['game'],
+        pageNumber: pageNumber,
+        pageSize: useClientSideYearFiltering ? _pageSize * 5 : _pageSize,
+        result: _filter.resultApiValue,
+        color: _filter.colorApiValue,
+        timeControl: _filter.timeControlApiValue,
+        yearFrom: useClientSideYearFiltering
+            ? null
+            : (_filter.minYear != 1800 ? _filter.minYear : null),
+        yearTo: useClientSideYearFiltering
+            ? null
+            : (_filter.maxYear != DateTime.now().year ? _filter.maxYear : null),
+        ratingFrom:
+            !useClientSideAverageRating && _filter.minRating > 0
+                ? _filter.minRating
+                : null,
+        ratingTo:
+            !useClientSideAverageRating && _filter.maxRating < 3500
+                ? _filter.maxRating
+                : null,
+      );
+      rawRows = _rowsFromGlobalSearchResponse(
+        response,
+      ).where((row) => _matchesYearFilter(row, _filter)).toList(growable: false);
+      totalCount = response.metadata.totalCount ?? 0;
+      totalCountIsEstimate = response.metadata.totalCountIsEstimate;
+      hasMore = response.metadata.hasMore;
+    }
 
-    if (gameResults.isEmpty) {
+    if (rawRows.isEmpty) {
       return _PageResult(
         games: const [],
-        totalCount: response.metadata.totalCount ?? 0,
-        totalCountIsEstimate: response.metadata.totalCountIsEstimate,
-        hasMore: false,
+        totalCount: totalCount,
+        totalCountIsEstimate: totalCountIsEstimate,
+        hasMore: hasMore,
       );
     }
 
     final playerIdsForEnrichment = <String>{};
     final fideIdsForEnrichment = <int>{};
-    for (final result in gameResults) {
-      final preview = result.preview ?? const <String, dynamic>{};
-      final whitePlayerId = preview['whitePlayerId']?.toString().trim();
-      final blackPlayerId = preview['blackPlayerId']?.toString().trim();
+    for (final row in rawRows) {
+      final whitePlayerId = row['whitePlayerId']?.toString().trim();
+      final blackPlayerId = row['blackPlayerId']?.toString().trim();
       if (whitePlayerId != null && whitePlayerId.isNotEmpty) {
         playerIdsForEnrichment.add(whitePlayerId);
       }
       if (blackPlayerId != null && blackPlayerId.isNotEmpty) {
         playerIdsForEnrichment.add(blackPlayerId);
       }
-      final whiteFideId = parseFideIdFromRaw(preview['whiteFideId']);
-      final blackFideId = parseFideIdFromRaw(preview['blackFideId']);
+      final whiteFideId = parseFideIdFromRaw(row['whiteFideId']);
+      final blackFideId = parseFideIdFromRaw(row['blackFideId']);
       if (whiteFideId != null) fideIdsForEnrichment.add(whiteFideId);
       if (blackFideId != null) fideIdsForEnrichment.add(blackFideId);
     }
@@ -226,11 +370,9 @@ class DatabaseGamesPaginationNotifier
       }
     }
 
-    final games = gameResults
-        .map((result) {
-          final preview = result.preview ?? const <String, dynamic>{};
-
-          final id = (preview['id']?.toString() ?? result.id).trim();
+    final games = rawRows
+        .map((preview) {
+          final id = (preview['id']?.toString() ?? '').trim();
           final safeId = id.isNotEmpty ? id : 'unknown';
 
           final timeControl = preview['timeControl']?.toString();
@@ -372,10 +514,6 @@ class DatabaseGamesPaginationNotifier
         )
         .toList(growable: false);
 
-    final totalCount = response.metadata.totalCount ?? 0;
-    final hasMore = response.metadata.hasMore;
-    final totalCountIsEstimate = response.metadata.totalCountIsEstimate;
-
     return _PageResult(
       games: games,
       totalCount: totalCount,
@@ -453,40 +591,62 @@ final gamebaseDatabaseGamesProvider = FutureProvider.autoDispose<
     final hasRatingFilter = filter.minRating > 0 || filter.maxRating < 3500;
     final useClientSideAverageRating =
         filter.colorApiValue == null && hasRatingFilter;
-    // Call globalSearch with filter parameters
-    // Use resources: ['game'] to limit search to games only (faster)
-    final response = await repo.globalSearch(
-      query: query.trim().isEmpty ? '*' : query.trim(),
-      resources: const ['game'],
-      pageNumber: 1,
-      pageSize: 50,
-      result: filter.resultApiValue,
-      color: filter.colorApiValue,
-      timeControl: filter.timeControlApiValue,
-      yearFrom: filter.minYear != 1800 ? filter.minYear : null,
-      yearTo: filter.maxYear != DateTime.now().year ? filter.maxYear : null,
-      ratingFrom:
-          !useClientSideAverageRating && filter.minRating > 0
-              ? filter.minRating
-              : null,
-      ratingTo:
-          !useClientSideAverageRating && filter.maxRating < 3500
-              ? filter.maxRating
-              : null,
+    final useClientSideYearFiltering = shouldUseClientSideYearFiltering(
+      query,
+      filter,
     );
+    late final List<Map<String, dynamic>> rawRows;
+    if (shouldUseExactLibraryGameQuery(query, filter)) {
+      final where = _buildLibraryExactWhere(filter);
+      final response = await repo.queryResource(
+        body: {
+          'resource': 'game',
+          'pageNumber': 1,
+          'pageSize': 50,
+          'includeTotal': true,
+          'countMode': 'auto',
+          if (query.trim().isNotEmpty) 'q': query.trim(),
+          'select': _libraryExactGameSelectColumns(),
+          if (where != null) 'where': where,
+        },
+      );
+      rawRows = response.data;
+    } else {
+      final response = await repo.globalSearch(
+        query: query.trim().isEmpty ? '*' : query.trim(),
+        resources: const ['game'],
+        pageNumber: 1,
+        pageSize: useClientSideYearFiltering ? 250 : 50,
+        result: filter.resultApiValue,
+        color: filter.colorApiValue,
+        timeControl: filter.timeControlApiValue,
+        yearFrom: useClientSideYearFiltering
+            ? null
+            : (filter.minYear != 1800 ? filter.minYear : null),
+        yearTo: useClientSideYearFiltering
+            ? null
+            : (filter.maxYear != DateTime.now().year ? filter.maxYear : null),
+        ratingFrom:
+            !useClientSideAverageRating && filter.minRating > 0
+                ? filter.minRating
+                : null,
+        ratingTo:
+            !useClientSideAverageRating && filter.maxRating < 3500
+                ? filter.maxRating
+                : null,
+      );
+      rawRows = _rowsFromGlobalSearchResponse(
+        response,
+      ).where((row) => _matchesYearFilter(row, filter)).toList(growable: false);
+    }
 
-    // Extract game results
-    final gameResults =
-        response.results.where((r) => r.resource == 'game').toList();
-
-    if (gameResults.isEmpty) {
+    if (rawRows.isEmpty) {
       return const <GamesTourModel>[];
     }
 
     // Collect player IDs for enrichment
     final playerIds = <String>{};
-    for (final result in gameResults) {
-      final preview = result.preview ?? const <String, dynamic>{};
+    for (final preview in rawRows) {
       final w = preview['whitePlayerId']?.toString().trim();
       final b = preview['blackPlayerId']?.toString().trim();
       if (w != null && w.isNotEmpty) playerIds.add(w);
@@ -542,10 +702,9 @@ final gamebaseDatabaseGamesProvider = FutureProvider.autoDispose<
     }
 
     final playerFideIds = <int>{};
-    for (final result in gameResults) {
-      final preview = result.preview ?? const <String, dynamic>{};
-      final whiteFideId = parseFideIdFromRaw(preview['whiteFideId']);
-      final blackFideId = parseFideIdFromRaw(preview['blackFideId']);
+    for (final row in rawRows) {
+      final whiteFideId = parseFideIdFromRaw(row['whiteFideId']);
+      final blackFideId = parseFideIdFromRaw(row['blackFideId']);
       if (whiteFideId != null) playerFideIds.add(whiteFideId);
       if (blackFideId != null) playerFideIds.add(blackFideId);
     }
@@ -562,15 +721,8 @@ final gamebaseDatabaseGamesProvider = FutureProvider.autoDispose<
                 .read(chessPlayerRepositoryProvider)
                 .getPlayersByFideIds(playerFideIds);
 
-    return gameResults
-        .map((result) {
-          final row = <String, dynamic>{
-            'id': result.id,
-            'label': result.label,
-            'snippet': result.snippet,
-            ...?result.preview,
-          };
-
+    return rawRows
+        .map((row) {
           final id = (row['id']?.toString() ?? '').trim();
           final safeId = id.isNotEmpty ? id : 'unknown';
           final timeControl = row['timeControl']?.toString();
