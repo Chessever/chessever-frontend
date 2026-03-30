@@ -394,44 +394,6 @@ final forYouEventsProvider =
       return ForYouNotifier(ref);
     });
 
-final forYouEventListProvider = Provider.autoDispose<List<GroupEventCardModel>>(
-  (ref) {
-    return ref.watch(forYouEventsProvider).events;
-  },
-);
-
-final forYouVisibleEventsProvider =
-    Provider.autoDispose<List<GroupEventCardModel>>((ref) {
-      final events = ref.watch(forYouEventListProvider);
-      final visibleEvents = <GroupEventCardModel>[];
-
-      for (final event in events) {
-        final hasGamesAsync = ref.watch(forYouEventHasGamesProvider(event.id));
-        final shouldHide = hasGamesAsync.maybeWhen(
-          data: (hasGames) => !hasGames,
-          orElse: () => false,
-        );
-        if (!shouldHide) {
-          visibleEvents.add(event);
-        }
-      }
-
-      return visibleEvents;
-    });
-
-final forYouEventHasGamesProvider = FutureProvider.autoDispose
-    .family<bool, String>((ref, eventId) async {
-      ref.watch(forYouEventsRefreshProvider);
-      ref.watch(liveTourIdProvider);
-      ref.watch(liveRoundsIdProvider);
-      ref.watch(currentSelectedTourIdForEventProvider(eventId));
-
-      return _computeForYouEventHasGames(
-        ref: ref,
-        eventId: eventId,
-        loadGames: _safeRefreshGames,
-      );
-    });
 
 abstract class ForYouPinStorage {
   Future<List<String>> getPinnedGameIds(String tourId);
@@ -739,10 +701,18 @@ class _ForYouEventGamesController
         eventId: eventId,
         loadGames: _safeGetGames,
       );
-      final currentSnapshot = state.valueOrNull;
-      if (currentSnapshot == null ||
-          !areEquivalentForYouSnapshots(currentSnapshot, cachedSnapshot)) {
-        state = AsyncValue.data(cachedSnapshot);
+      // On cold start (no previous snapshot), only surface the cache result
+      // when it actually contains renderable games. An empty cache result
+      // would prematurely kill the shimmer while the network refresh below
+      // is still in-flight.
+      if (previousSnapshot == null && !cachedSnapshot.hasGames) {
+        // Stay in loading — the network refresh below will resolve the state.
+      } else {
+        final currentSnapshot = state.valueOrNull;
+        if (currentSnapshot == null ||
+            !areEquivalentForYouSnapshots(currentSnapshot, cachedSnapshot)) {
+          state = AsyncValue.data(cachedSnapshot);
+        }
       }
     } catch (error, stackTrace) {
       loadError = error;
@@ -857,33 +827,6 @@ Future<ForYouEventGamesSnapshot> _computeForYouEventGamesSnapshot({
   return snapshot;
 }
 
-Future<bool> _computeForYouEventHasGames({
-  required Ref ref,
-  required String eventId,
-  required _GamesStorageLoader loadGames,
-}) async {
-  final resolvedEventData = await _loadForYouResolvedEventData(
-    ref: ref,
-    eventId: eventId,
-    loadGames: loadGames,
-  );
-
-  if (resolvedEventData == null) {
-    return false;
-  }
-
-  return buildForYouEventGamesSnapshot(
-    eventId: eventId,
-    selectedTour: resolvedEventData.selectedTour,
-    eventTours: resolvedEventData.eventTours,
-    selectedTourRounds: resolvedEventData.selectedTourRounds,
-    roundsByTourId: resolvedEventData.roundsByTourId,
-    selectedTourGames: resolvedEventData.selectedTourGames,
-    gamesByTourId: resolvedEventData.gamesByTourId,
-    liveRoundIds: resolvedEventData.liveRoundIds,
-    pinnedIds: const [],
-  ).hasGames;
-}
 
 Future<_ForYouResolvedEventData?> _loadForYouResolvedEventData({
   required Ref ref,

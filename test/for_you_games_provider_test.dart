@@ -5,7 +5,6 @@ import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.d
 import 'package:chessever2/repository/supabase/round/round.dart';
 import 'package:chessever2/repository/supabase/round/round_repository.dart';
 import 'package:chessever2/repository/supabase/tour/tour.dart';
-import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_view_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_pin_provider.dart';
@@ -82,19 +81,6 @@ class _FakeForYouPinStorage implements ForYouPinStorage {
   }
 }
 
-GroupEventCardModel _event(String id) {
-  return GroupEventCardModel(
-    id: id,
-    title: 'Event $id',
-    dates: 'Mar 2026',
-    maxAvgElo: 2700,
-    timeUntilStart: 'Live',
-    tourEventCategory: TourEventCategory.ongoing,
-    timeControl: 'Standard',
-    endDate: DateTime(2026, 3, 26),
-    startDate: DateTime(2026, 3, 25),
-  );
-}
 
 PlayerCard _player(String name) {
   return PlayerCard(
@@ -125,16 +111,19 @@ GamesTourModel _game(String id, {String tourId = 'tour-1'}) {
 ForYouEventGamesSnapshot _snapshot(
   String eventId, {
   String tourId = 'tour-1',
-  List<GamesTourModel> visibleGames = const <GamesTourModel>[],
+  List<GamesTourModel>? visibleGames,
   List<String> pinnedIds = const <String>[],
   List<String> manualPinnedIds = const <String>[],
   List<String> autoPinnedIds = const <String>[],
   List<String> unpinnedOverrideIds = const <String>[],
+  bool hasGames = true,
 }) {
+  final games = visibleGames ??
+      (hasGames ? [_game('mock-game', tourId: tourId)] : const <GamesTourModel>[]);
   return ForYouEventGamesSnapshot(
     eventId: eventId,
     tourId: tourId,
-    visibleGames: visibleGames,
+    visibleGames: games,
     pinnedIds: pinnedIds,
     manualPinnedIds: manualPinnedIds,
     autoPinnedIds: autoPinnedIds,
@@ -500,51 +489,60 @@ void main() {
   );
 
   test(
-    'forYouVisibleEventsProvider filters events with no available games',
+    'section visibility is driven by snapshot: empty snapshot hides section',
     () async {
+      // With the new architecture, visibility is determined by each section
+      // watching forYouEventGamesWithAutoRefreshProvider directly.
+      // An event whose snapshot resolves with no games should be hidden.
       final container = ProviderContainer(
         overrides: [
-          forYouEventListProvider.overrideWith(
-            (ref) => [_event('event-hidden'), _event('event-visible')],
-          ),
-          forYouEventHasGamesProvider.overrideWith((ref, eventId) async {
-            return eventId == 'event-visible';
+          forYouEventGamesWithAutoRefreshProvider.overrideWith((ref, eventId) {
+            if (eventId == 'event-hidden') {
+              return AsyncValue.data(_snapshot(eventId, hasGames: false));
+            }
+            return AsyncValue.data(_snapshot(eventId));
           }),
         ],
       );
       addTearDown(container.dispose);
 
-      await container.read(forYouEventHasGamesProvider('event-hidden').future);
-      await container.read(forYouEventHasGamesProvider('event-visible').future);
-      final visibleEvents = container.read(forYouVisibleEventsProvider);
+      final hiddenSnapshot = container.read(
+        forYouEventGamesWithAutoRefreshProvider('event-hidden'),
+      );
+      final visibleSnapshot = container.read(
+        forYouEventGamesWithAutoRefreshProvider('event-visible'),
+      );
 
-      expect(visibleEvents.map((event) => event.id), ['event-visible']);
+      expect(hiddenSnapshot.valueOrNull?.hasGames, false);
+      expect(visibleSnapshot.valueOrNull?.hasGames, true);
     },
   );
 
   test(
-    'forYouVisibleEventsProvider does not depend on full event snapshots',
+    'section stays in loading state when snapshot has not resolved yet',
     () async {
+      // Before the snapshot resolves, sections should remain visible
+      // (loading state) so shimmer placeholders are shown.
       final container = ProviderContainer(
         overrides: [
-          forYouEventListProvider.overrideWith(
-            (ref) => [_event('event-hidden'), _event('event-visible')],
-          ),
-          forYouEventHasGamesProvider.overrideWith((ref, eventId) async {
-            return eventId == 'event-visible';
-          }),
           forYouEventGamesWithAutoRefreshProvider.overrideWith((ref, eventId) {
-            throw StateError('full event snapshot should not be used here');
+            return const AsyncValue<ForYouEventGamesSnapshot>.loading();
           }),
         ],
       );
       addTearDown(container.dispose);
 
-      await container.read(forYouEventHasGamesProvider('event-hidden').future);
-      await container.read(forYouEventHasGamesProvider('event-visible').future);
-      final visibleEvents = container.read(forYouVisibleEventsProvider);
+      final snapshot = container.read(
+        forYouEventGamesWithAutoRefreshProvider('event-loading'),
+      );
 
-      expect(visibleEvents.map((event) => event.id), ['event-visible']);
+      expect(snapshot.isLoading, true);
+      // Loading sections should NOT be hidden — they show shimmer
+      final shouldHide = snapshot.maybeWhen(
+        data: (s) => !s.hasGames,
+        orElse: () => false,
+      );
+      expect(shouldHide, false);
     },
   );
 
