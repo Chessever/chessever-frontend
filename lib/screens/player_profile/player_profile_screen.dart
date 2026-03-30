@@ -271,7 +271,7 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
     final twicLookupKey = PlayerProfileKey(
       fideId: widget.fideId,
       playerName: widget.playerName,
-      source: PlayerProfileDataSource.supabase,
+      source: PlayerProfileDataSource.twic,
       gamebasePlayerId: _currentGamebasePlayerId,
     );
     return ref
@@ -360,7 +360,8 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
       source: _currentDataSource,
       gamebasePlayerId: _currentGamebasePlayerId,
     );
-    final gameFilter = ref.read(playerProfileGamesKeyProvider(playerKey)).filter;
+    final gameFilter =
+        ref.read(playerProfileGamesKeyProvider(playerKey)).filter;
     final GamebaseFilters? explorerFilters =
         gameFilter.hasExplorerMappableFilters
             ? gameFilter.toGamebaseFilters()
@@ -403,8 +404,7 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
     final currentlyFavorited = ref
         .read(favoritePlayersNotifierProvider)
         .maybeWhen(
-          data:
-              (state) => state.players.any((p) => p.fideId == widget.fideId),
+          data: (state) => state.players.any((p) => p.fideId == widget.fideId),
           orElse: () => false,
         );
     if (!currentlyFavorited) {
@@ -505,7 +505,7 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
     final twicLookupKey = PlayerProfileKey(
       fideId: widget.fideId,
       playerName: widget.playerName,
-      source: PlayerProfileDataSource.supabase,
+      source: PlayerProfileDataSource.twic,
       gamebasePlayerId: _currentGamebasePlayerId,
     );
     // Always watch so the source selector stays visible in both modes.
@@ -636,15 +636,14 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
                       isChesseverLoading: supabaseGamesState.isLoading,
                     ),
                     if (hasPlayerExplorer &&
-                        _currentDataSource ==
-                            PlayerProfileDataSource.twic &&
+                        _currentDataSource == PlayerProfileDataSource.twic &&
                         selectedTab == PlayerProfileTab.about)
                       _buildStudyOpeningRow(),
                     if (selectedTab == PlayerProfileTab.games)
                       _buildGamesActionButtons(
-                        showStudyOpening: hasPlayerExplorer &&
-                            _currentDataSource ==
-                                PlayerProfileDataSource.twic,
+                        showStudyOpening:
+                            hasPlayerExplorer &&
+                            _currentDataSource == PlayerProfileDataSource.twic,
                         playerKey: activePlayerKey,
                         hasActiveFilter: hasActiveFilter,
                         knownTotalCount:
@@ -984,8 +983,9 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
                         );
                         ref
                             .read(
-                              playerGamesSelectionModeProvider(playerKey)
-                                  .notifier,
+                              playerGamesSelectionModeProvider(
+                                playerKey,
+                              ).notifier,
                             )
                             .state = true;
                       },
@@ -1039,9 +1039,7 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
     final twicGameCount =
         summary != null ? formatCompactCount(summary.totalGames) : '--';
     final chesseverCount =
-        isChesseverLoading
-            ? null
-            : formatCompactCount(chesseverGameCount);
+        isChesseverLoading ? null : formatCompactCount(chesseverGameCount);
 
     return SingleMotionBuilder(
       motion: const CupertinoMotion.bouncy(),
@@ -1104,8 +1102,7 @@ class _DataSourceBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final canSwitchToTwic =
-        twicEnabled && onSelectTwic != null && !isLoading;
+    final canSwitchToTwic = twicEnabled && onSelectTwic != null && !isLoading;
 
     final chesseverLabel =
         chesseverGameCount != null
@@ -1173,9 +1170,7 @@ class _SourceTabState extends State<_SourceTab> {
 
     return GestureDetector(
       onTapDown:
-          widget.onTap != null
-              ? (_) => setState(() => _pressed = true)
-              : null,
+          widget.onTap != null ? (_) => setState(() => _pressed = true) : null,
       onTapUp:
           widget.onTap != null
               ? (_) {
@@ -1185,9 +1180,7 @@ class _SourceTabState extends State<_SourceTab> {
               }
               : null,
       onTapCancel:
-          widget.onTap != null
-              ? () => setState(() => _pressed = false)
-              : null,
+          widget.onTap != null ? () => setState(() => _pressed = false) : null,
       child: SingleMotionBuilder(
         motion: const CupertinoMotion.snappy(),
         value: _pressed ? 1.0 : 0.0,
@@ -1197,10 +1190,7 @@ class _SourceTabState extends State<_SourceTab> {
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 260),
               curve: Curves.easeOutCubic,
-              padding: EdgeInsets.symmetric(
-                horizontal: 10.w,
-                vertical: 7.h,
-              ),
+              padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 7.h),
               decoration: BoxDecoration(
                 color:
                     widget.isActive
@@ -1245,9 +1235,7 @@ class _SourceTabState extends State<_SourceTab> {
                                     : kWhiteColor.withValues(alpha: 0.95))
                                 : kWhiteColor.withValues(alpha: 0.40),
                         fontWeight:
-                            widget.isActive
-                                ? FontWeight.w600
-                                : FontWeight.w500,
+                            widget.isActive ? FontWeight.w600 : FontWeight.w500,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -1375,24 +1363,29 @@ class _ActionCardState extends State<_ActionCard> {
               value: widget.isHighlighted ? 1.0 : 0.0,
               builder: (context, h, _) {
                 // Idle: solid dark card. Highlighted: red-tinted.
-                final bg = Color.lerp(
-                  const Color(0xFF141414),
-                  _filterRed.withValues(alpha: 0.10),
-                  h,
-                )!;
-                final iconBg = Color.lerp(
-                  kWhiteColor.withValues(alpha: 0.08),
-                  _filterRed.withValues(alpha: 0.18),
-                  h,
-                )!;
-                final iconColor = Color.lerp(
-                  kWhiteColor.withValues(alpha: 0.85),
-                  _filterRed,
-                  h,
-                )!;
+                final bg =
+                    Color.lerp(
+                      const Color(0xFF141414),
+                      _filterRed.withValues(alpha: 0.10),
+                      h,
+                    )!;
+                final iconBg =
+                    Color.lerp(
+                      kWhiteColor.withValues(alpha: 0.08),
+                      _filterRed.withValues(alpha: 0.18),
+                      h,
+                    )!;
+                final iconColor =
+                    Color.lerp(
+                      kWhiteColor.withValues(alpha: 0.85),
+                      _filterRed,
+                      h,
+                    )!;
                 return Container(
-                  padding:
-                      EdgeInsets.symmetric(horizontal: 10.w, vertical: 10.h),
+                  padding: EdgeInsets.symmetric(
+                    horizontal: 10.w,
+                    vertical: 10.h,
+                  ),
                   decoration: BoxDecoration(
                     color: bg,
                     borderRadius: BorderRadius.circular(12.br),

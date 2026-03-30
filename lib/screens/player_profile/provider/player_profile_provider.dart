@@ -381,6 +381,75 @@ bool _gamebaseNameMatches(String candidate, String target) {
   return a.contains(b) || b.contains(a);
 }
 
+int _twicPlayerMatchScore(
+  GamebasePlayer candidate,
+  PlayerProfileKey playerKey,
+) {
+  var score = 0;
+  final candidateFide = candidate.fideId.trim();
+  if (playerKey.hasFideId && candidateFide == playerKey.fideId.toString()) {
+    score += 1000;
+  }
+
+  final candidateName = _normalizeGamebaseName(candidate.name);
+  final targetName = _normalizeGamebaseName(playerKey.playerName);
+  if (candidateName.isNotEmpty && targetName.isNotEmpty) {
+    if (candidateName == targetName) {
+      score += 200;
+    } else if (candidateName.contains(targetName) ||
+        targetName.contains(candidateName)) {
+      score += 50;
+    }
+  }
+
+  final candidateTitle = (candidate.title ?? '').trim();
+  if (candidateTitle.isNotEmpty) score += 5;
+  final highestRating = candidate.highestRating ?? 0;
+  score += highestRating.clamp(0, 4000) ~/ 100;
+  return score;
+}
+
+@visibleForTesting
+GamebasePlayer? pickBestTwicPlayerMatchForProfile(
+  List<GamebasePlayer> players,
+  PlayerProfileKey playerKey,
+) {
+  if (players.isEmpty) return null;
+
+  final ranked = [...players]..sort((a, b) {
+    final byScore = _twicPlayerMatchScore(
+      b,
+      playerKey,
+    ).compareTo(_twicPlayerMatchScore(a, playerKey));
+    if (byScore != 0) return byScore;
+    final byRating = (b.highestRating ?? 0).compareTo(a.highestRating ?? 0);
+    if (byRating != 0) return byRating;
+    return a.name.compareTo(b.name);
+  });
+
+  final best = ranked.first;
+  if (_twicPlayerMatchScore(best, playerKey) <= 0) return null;
+  return best;
+}
+
+bool _gamebasePlayerMatchesKey(
+  GamebasePlayer candidate,
+  PlayerProfileKey playerKey,
+) {
+  if (playerKey.hasFideId &&
+      candidate.fideId.trim() == playerKey.fideId.toString()) {
+    return true;
+  }
+  return _gamebaseNameMatches(candidate.name, playerKey.playerName);
+}
+
+@visibleForTesting
+int? extractTwicPlayerGamesTotalCount(Map<String, dynamic> response) {
+  final metadata = response['metadata'];
+  if (metadata is! Map) return null;
+  return (metadata['totalCount'] as num?)?.toInt();
+}
+
 class TwicProfileSummary {
   const TwicProfileSummary({
     required this.gamebasePlayerId,
@@ -389,28 +458,6 @@ class TwicProfileSummary {
 
   final String gamebasePlayerId;
   final int totalGames;
-}
-
-GamebasePlayer? _pickBestTwicPlayerMatch(
-  List<GamebasePlayer> players,
-  PlayerProfileKey playerKey,
-) {
-  if (players.isEmpty) return null;
-
-  if (playerKey.hasFideId) {
-    final fideStr = playerKey.fideId.toString();
-    for (final candidate in players) {
-      if (candidate.fideId.trim() == fideStr) return candidate;
-    }
-  }
-
-  for (final candidate in players) {
-    if (_gamebaseNameMatches(candidate.name, playerKey.playerName)) {
-      return candidate;
-    }
-  }
-
-  return players.first;
 }
 
 bool _looksLikeUuid(String? raw) {
@@ -431,7 +478,11 @@ Future<String?> _resolveTwicPlayerId(
 
   final providedId = playerKey.gamebasePlayerId?.trim();
   if (preferProvidedId && _looksLikeUuid(providedId)) {
-    return providedId;
+    final providedPlayer = await repo.getPlayerById(providedId!);
+    if (providedPlayer != null &&
+        _gamebasePlayerMatchesKey(providedPlayer, playerKey)) {
+      return providedId;
+    }
   }
 
   if (playerKey.hasFideId) {
@@ -439,7 +490,7 @@ Future<String?> _resolveTwicPlayerId(
     final players = await repo.getPlayers(
       fideId: targetFideId,
       pageNumber: 0,
-      pageSize: 20,
+      pageSize: 100,
     );
     final exactMatch = players
         .where((p) => p.fideId.trim() == targetFideId && _looksLikeUuid(p.id))
@@ -454,9 +505,9 @@ Future<String?> _resolveTwicPlayerId(
   final candidates = await repo.getPlayers(
     name: name,
     pageNumber: 0,
-    pageSize: 20,
+    pageSize: 100,
   );
-  final match = _pickBestTwicPlayerMatch(candidates, playerKey);
+  final match = pickBestTwicPlayerMatchForProfile(candidates, playerKey);
   final matchId = match?.id.trim();
   return _looksLikeUuid(matchId) ? matchId : null;
 }
@@ -479,13 +530,29 @@ final twicProfileSummaryProvider = FutureProvider.family
         );
         if (playerId == null || playerId.isEmpty) return null;
 
-        final response = await repo.getPlayerStats(playerId: playerId);
-        final data = response['data'];
-        if (data is! Map) return null;
-        final totals = Map<String, dynamic>.from(
-          data['totals'] as Map? ?? const {},
-        );
-        final totalGames = (totals['games'] as num?)?.toInt() ?? 0;
+        int? totalGames;
+
+        try {
+          final gamesResponse = await repo.getPlayerGames(
+            playerId: playerId,
+            pageNumber: 0,
+            pageSize: 1,
+          );
+          totalGames = extractTwicPlayerGamesTotalCount(gamesResponse);
+        } catch (_) {
+          // Fall through to stats.
+        }
+
+        if (totalGames == null || totalGames <= 0) {
+          final statsResponse = await repo.getPlayerStats(playerId: playerId);
+          final data = statsResponse['data'];
+          if (data is! Map) return null;
+          final totals = Map<String, dynamic>.from(
+            data['totals'] as Map? ?? const {},
+          );
+          totalGames = (totals['games'] as num?)?.toInt() ?? 0;
+        }
+
         if (totalGames <= 0) return null;
 
         return TwicProfileSummary(
