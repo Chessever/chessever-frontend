@@ -1,9 +1,25 @@
+import 'package:chessever2/repository/lichess/cloud_eval/cloud_eval.dart';
 import 'package:chessever2/screens/chessboard/provider/current_eval_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+
+const int _mateCpSentinel = 100_000;
+
+@visibleForTesting
+double normalizePvToProgressValue(Pv? pv) {
+  if (pv == null) return 0.5;
+
+  final sign = pv.whitePerspective ? 1 : -1;
+  final eval =
+      pv.cp.abs() == _mateCpSentinel
+          ? ((pv.cp * sign) > 0 ? 10.0 : -10.0)
+          : ((pv.cp * sign) / 100.0);
+
+  return (eval.clamp(-5.0, 5.0) + 5.0) / 10.0;
+}
 
 class ChessProgressBar extends ConsumerStatefulWidget {
   const ChessProgressBar({required this.gamesTourModel, super.key})
@@ -36,17 +52,7 @@ class _ChessProgressBarState extends ConsumerState<ChessProgressBar> {
       error: (error, stack) => oldEval,
       data: (cloud) {
         final pv = cloud.pvs.firstOrNull;
-        double eval;
-
-        // Handle mate scores
-        if (pv?.cp.abs() == 100000) {
-          eval = (pv?.cp ?? 0) > 0 ? 10.0 : -10.0;
-        } else {
-          eval = (pv?.cp ?? 0) / 100.0;
-        }
-
-        // Normalize between 0 and 1
-        final normalized = (eval.clamp(-5.0, 5.0) + 5.0) / 10.0;
+        final normalized = normalizePvToProgressValue(pv);
         oldEval = normalized; // save for next frame
         return normalized;
       },

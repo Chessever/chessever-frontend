@@ -6,7 +6,6 @@ import 'package:chessever2/screens/chessboard/widgets/player_first_row_detail_wi
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
-import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -261,46 +260,36 @@ class EvaluationBarWidgetForGames extends ConsumerWidget {
     return ref
         .watch(gameCardEvalWithStockfishFallbackProvider(fen))
         .when(
-          loading: () {
-            return SkeletonWidget(
-              child: _Bars(
-                width: width,
-                height: height,
-                whiteHeight: height * 0.5,
-                blackHeight: height * 0.5,
-                evaluation: 0.0,
-                isEvaluating: true,
-                playerView: playerView,
-                isFlipped: false,
-              ),
-            );
-          },
-          error: (_, __) {
-            return SkeletonWidget(
-              child: _Bars(
-                width: width,
-                height: height,
-                whiteHeight: height * 0.5,
-                blackHeight: height * 0.5,
-                evaluation: 0.0,
-                playerView: playerView,
-                isFlipped: false,
-              ),
-            );
-          },
+          loading: () => _Bars(
+            width: width,
+            height: height,
+            whiteHeight: height * 0.5,
+            blackHeight: height * 0.5,
+            evaluation: 0.0,
+            isEvaluating: true,
+            playerView: playerView,
+            isFlipped: false,
+          ),
+          error: (_, __) => _Bars(
+            width: width,
+            height: height,
+            whiteHeight: height * 0.5,
+            blackHeight: height * 0.5,
+            evaluation: 0.0,
+            playerView: playerView,
+            isFlipped: false,
+          ),
           data: (cloud) {
             final pv = cloud.pvs.firstOrNull;
             if (pv == null) {
-              return SkeletonWidget(
-                child: _Bars(
-                  width: width,
-                  height: height,
-                  whiteHeight: height * 0.5,
-                  blackHeight: height * 0.5,
-                  evaluation: 0.0,
-                  playerView: playerView,
-                  isFlipped: false,
-                ),
+              return _Bars(
+                width: width,
+                height: height,
+                whiteHeight: height * 0.5,
+                blackHeight: height * 0.5,
+                evaluation: 0.0,
+                playerView: playerView,
+                isFlipped: false,
               );
             }
 

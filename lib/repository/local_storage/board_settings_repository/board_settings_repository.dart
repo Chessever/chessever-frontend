@@ -179,7 +179,7 @@ class _BoardSettingsRepository {
 
         return BoardSettings(
           boardColor: getBoardColorFromEnum(boardColorEnum),
-          showEvaluationBar: data['showEvaluationBar'],
+          showEvaluationBar: data['showEvaluationBar'] ?? true,
           soundEnabled: data['soundEnabled'],
           chatEnabled: data['chatEnabled'] ?? true,
           pieceStyle: PieceStyle.values[data['pieceStyle']],

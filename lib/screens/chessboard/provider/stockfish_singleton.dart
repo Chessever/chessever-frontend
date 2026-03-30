@@ -28,6 +28,29 @@ void _rawStockfishStdin(String command) {
   } catch (_) {}
 }
 
+@visibleForTesting
+List<Pv> normalizeStockfishPvsToWhitePerspective(List<Pv> pvs, String fen) {
+  if (pvs.isEmpty) return pvs;
+
+  final fenParts = fen.split(' ');
+  final isWhiteToMove = fenParts.length > 1 ? fenParts[1] == 'w' : true;
+
+  return pvs
+      .map(
+        (pv) => Pv(
+          moves: pv.moves,
+          cp: isWhiteToMove ? pv.cp : -pv.cp,
+          isMate: pv.isMate,
+          mate:
+              pv.mate == null
+                  ? null
+                  : (isWhiteToMove ? pv.mate : -pv.mate!),
+          whitePerspective: true,
+        ),
+      )
+      .toList(growable: false);
+}
+
 // Enhanced CloudEval class with cancellation support
 class EnhancedCloudEval {
   final String fen;
@@ -923,19 +946,7 @@ class StockfishSingleton {
   }
 
   List<Pv> _normalizeToWhitePerspective(List<Pv> pvs, String fen) {
-    if (pvs.isEmpty) return pvs;
-
-    return pvs
-        .map(
-          (pv) => Pv(
-            moves: pv.moves,
-            cp: pv.cp,
-            isMate: pv.isMate,
-            mate: pv.mate,
-            whitePerspective: false,
-          ),
-        )
-        .toList(growable: false);
+    return normalizeStockfishPvsToWhitePerspective(pvs, fen);
   }
 
   Future<void> _waitUntilReady({
