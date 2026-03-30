@@ -1,7 +1,9 @@
 import 'dart:async';
 
 import 'package:chessever2/repository/supabase/chess_player/chess_player_repository.dart';
-import 'package:chessever2/screens/favorites/favorite_players_provider.dart';
+import 'package:chessever2/providers/favorite_players_provider.dart';
+import 'package:chessever2/utils/favorite_constants.dart';
+import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/screens/player_profile/player_profile_screen.dart';
 import 'package:chessever2/services/fide_photo_service.dart';
@@ -413,11 +415,11 @@ class _FavoritesPlayersTabState extends ConsumerState<FavoritesPlayersTab>
     super.build(context);
 
     final state = ref.watch(worldPlayersSearchProvider);
-    // Watch favoritePlayersNotifierProvider for optimistic updates
-    final favoritesAsync = ref.watch(favoritePlayersNotifierProvider);
+    // Watch favoritePlayersProviderNew for up-to-date state
+    final favoritesAsync = ref.watch(favoritePlayersProviderNew);
     final favoriteIds =
-        favoritesAsync.valueOrNull?.players
-            .map((p) => p.fideId)
+        favoritesAsync.valueOrNull
+            ?.map((p) => int.tryParse(p.fideId ?? ''))
             .where((id) => id != null)
             .cast<int>()
             .toSet() ??
@@ -610,36 +612,34 @@ class _FavoritesPlayersTabState extends ConsumerState<FavoritesPlayersTab>
 
       // Check favorite limit before adding
       if (!currentlyFavorite) {
-        final currentCount =
-            ref
-                .read(favoritePlayersNotifierProvider)
-                .valueOrNull
-                ?.players
-                .length ??
-            0;
-        final canAdd = await canAddMoreFavorites(
-          context,
-          ref,
-          currentSelectedCount: currentCount,
-        );
+        final canAdd = await canAddMoreFavorites(context, ref);
         if (!canAdd) return;
       }
 
       HapticFeedback.mediumImpact();
 
-      // Fire and forget - provider handles optimistic updates internally
-      if (currentlyFavorite) {
-        unawaited(
-          ref
-              .read(favoritePlayersNotifierProvider.notifier)
-              .removeFavorite(player),
-        );
-      } else {
-        unawaited(
-          ref
-              .read(favoritePlayersNotifierProvider.notifier)
-              .addFavorite(player),
-        );
+      try {
+        if (currentlyFavorite) {
+          await ref
+              .read(favoritePlayersProviderNew.notifier)
+              .removeFavorite(player.name);
+        } else {
+          await ref
+              .read(favoritePlayersProviderNew.notifier)
+              .addFavorite(
+                fideId: player.fideId?.toString(),
+                playerName: player.name,
+                countryCode: player.countryCode,
+                rating: player.score,
+                title: player.title,
+              );
+        }
+      } on FavoriteLimitExceededException {
+        if (mounted) {
+          await showPremiumPaywallSheet(context: context);
+        }
+      } catch (e) {
+        debugPrint('Error toggling favorite: $e');
       }
     });
   }

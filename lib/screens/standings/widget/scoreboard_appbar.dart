@@ -1,5 +1,6 @@
-import 'package:chessever2/screens/favorites/favorite_players_provider.dart';
+import 'package:chessever2/providers/favorite_players_provider.dart';
 import 'package:chessever2/screens/standings/widget/player_dropdown.dart';
+import 'package:chessever2/utils/favorite_constants.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -9,6 +10,7 @@ import 'package:chessever2/screens/standings/score_card_screen.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/utils/favorite_limit_guard.dart';
 import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
+import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 
 class ScoreboardAppbar extends ConsumerStatefulWidget {
   const ScoreboardAppbar({super.key});
@@ -51,20 +53,17 @@ class _ScoreboardAppbarState extends ConsumerState<ScoreboardAppbar>
     final allowed = await requireFullAuthGuard(context);
     if (!allowed) return;
 
-    final favoritesNotifier = ref.read(
-      favoritePlayersNotifierProvider.notifier,
-    );
     final player = ref.read(selectedPlayerProvider);
 
     if (player != null) {
       try {
         // Check if adding (not removing) and enforce limit
         final currentlyFavorited = ref
-            .read(favoritePlayersNotifierProvider)
+            .read(favoritePlayersProviderNew)
             .maybeWhen(
               data:
-                  (state) =>
-                      state.players.any((p) => p.fideId == player.fideId),
+                  (players) =>
+                      players.any((p) => p.fideId == player.fideId?.toString()),
               orElse: () => false,
             );
         if (!currentlyFavorited) {
@@ -73,13 +72,24 @@ class _ScoreboardAppbarState extends ConsumerState<ScoreboardAppbar>
           if (!canAdd) return;
         }
 
-        // Toggle using old provider with complete PlayerStandingModel
-        final isNowFavorite = await favoritesNotifier.toggleFavorite(player);
+        final isNowFavorite = await ref
+            .read(favoritePlayersProviderNew.notifier)
+            .toggleFavorite(
+              fideId: player.fideId?.toString(),
+              playerName: player.name,
+              countryCode: player.countryCode,
+              rating: player.score,
+              title: player.title,
+            );
 
         if (isNowFavorite) {
           _animationController.forward().then(
             (_) => _animationController.reverse(),
           );
+        }
+      } on FavoriteLimitExceededException {
+        if (mounted) {
+          await showPremiumPaywallSheet(context: context);
         }
       } catch (e) {
         debugPrint('Error toggling favorite: $e');
@@ -103,12 +113,15 @@ class _ScoreboardAppbarState extends ConsumerState<ScoreboardAppbar>
 
     bool isFavorite = false;
     if (isForYouView) {
-      final favoritesAsync = ref.watch(favoritePlayersNotifierProvider);
+      final favoritesAsync = ref.watch(favoritePlayersProviderNew);
       isFavorite =
           player != null &&
           favoritesAsync.maybeWhen(
             data:
-                (state) => state.players.any((p) => p.fideId == player.fideId),
+                (players) =>
+                    players.any(
+                      (p) => p.fideId == player.fideId?.toString(),
+                    ),
             orElse: () => false,
             skipLoadingOnRefresh: true,
             skipLoadingOnReload: true,

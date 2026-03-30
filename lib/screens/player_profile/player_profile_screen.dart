@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/repository/supabase/game/games.dart';
-import 'package:chessever2/screens/favorites/favorite_players_provider.dart';
+import 'package:chessever2/providers/favorite_players_provider.dart';
 import 'package:chessever2/providers/player_backfill_provider.dart';
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
 import 'package:chessever2/screens/gamebase/models/models.dart';
@@ -12,7 +12,6 @@ import 'package:chessever2/screens/player_profile/tabs/player_about_tab.dart';
 import 'package:chessever2/screens/player_profile/widgets/save_to_library_sheet.dart';
 import 'package:chessever2/screens/player_profile/tabs/player_events_tab.dart';
 import 'package:chessever2/screens/player_profile/tabs/player_games_tab.dart';
-import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/country_utils.dart';
@@ -22,6 +21,7 @@ import 'package:chessever2/utils/png_asset.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
+import 'package:chessever2/utils/favorite_constants.dart';
 import 'package:chessever2/utils/favorite_limit_guard.dart';
 import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
@@ -401,10 +401,11 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
     if (!allowed) return;
 
     // Check if adding (not removing) and enforce limit
+    final fideIdStr = widget.fideId?.toString();
     final currentlyFavorited = ref
-        .read(favoritePlayersNotifierProvider)
+        .read(favoritePlayersProviderNew)
         .maybeWhen(
-          data: (state) => state.players.any((p) => p.fideId == widget.fideId),
+          data: (players) => players.any((p) => p.fideId == fideIdStr),
           orElse: () => false,
         );
     if (!currentlyFavorited) {
@@ -415,27 +416,24 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
 
     HapticFeedbackService.buttonPress();
 
-    final favoritesNotifier = ref.read(
-      favoritePlayersNotifierProvider.notifier,
-    );
-
-    // Create a PlayerStandingModel for the favorites system
-    final player = PlayerStandingModel(
-      name: widget.playerName,
-      countryCode: widget.federation ?? '',
-      score: widget.rating ?? 0,
-      scoreChange: 0,
-      matchScore: null,
-      fideId: widget.fideId,
-      title: widget.title,
-    );
-
     try {
-      final isNowFavorite = await favoritesNotifier.toggleFavorite(player);
+      final isNowFavorite = await ref
+          .read(favoritePlayersProviderNew.notifier)
+          .toggleFavorite(
+            fideId: widget.fideId?.toString(),
+            playerName: widget.playerName,
+            countryCode: widget.federation,
+            rating: widget.rating,
+            title: widget.title,
+          );
       if (isNowFavorite) {
         _favoriteAnimationController.forward().then(
           (_) => _favoriteAnimationController.reverse(),
         );
+      }
+    } on FavoriteLimitExceededException {
+      if (mounted) {
+        await showPremiumPaywallSheet(context: context);
       }
     } catch (e) {
       debugPrint('Error toggling favorite: $e');
@@ -514,9 +512,10 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
     );
 
     // Watch favorites to show correct state
-    final favoritesAsync = ref.watch(favoritePlayersNotifierProvider);
+    final favoritesAsync = ref.watch(favoritePlayersProviderNew);
     final isFavorite = favoritesAsync.maybeWhen(
-      data: (state) => state.players.any((p) => p.fideId == widget.fideId),
+      data: (players) =>
+          players.any((p) => p.fideId == widget.fideId?.toString()),
       orElse: () => false,
     );
 

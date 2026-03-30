@@ -27,11 +27,6 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
   static const _periodicSyncInterval = Duration(hours: 1);
 
   SubscriptionNotifier() : super(SubscriptionState()) {
-    if (kDebugMode) {
-      // In debug mode, assume premium — skip all RevenueCat calls
-      state = state.copyWith(isSubscribed: true, isLoading: false);
-      return;
-    }
     _revenueCat.setCustomerInfoListener((customerInfo) {
       _updateStateFromCustomerInfo(customerInfo);
     });
@@ -145,7 +140,6 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
 
   /// Refresh subscription status (call after auth changes)
   Future<void> refresh() async {
-    if (kDebugMode) return;
     state = state.copyWith(isLoading: true, error: null);
 
     try {
@@ -203,7 +197,6 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
   /// Sync purchases with RevenueCat servers and update local state.
   /// Call this on app resume/foreground to catch expired subscriptions.
   Future<void> syncAndRefresh() async {
-    if (kDebugMode) return;
     try {
       final customerInfo = await _revenueCat.syncPurchases();
       if (customerInfo != null) {

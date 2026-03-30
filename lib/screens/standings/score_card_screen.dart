@@ -30,7 +30,9 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_p
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
 import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
-import 'package:chessever2/screens/favorites/favorite_players_provider.dart';
+import 'package:chessever2/providers/favorite_players_provider.dart';
+import 'package:chessever2/utils/favorite_constants.dart';
+import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:chessever2/screens/player_profile/player_profile_data_source.dart';
 import 'package:chessever2/screens/player_profile/player_profile_screen.dart';
 import 'package:chessever2/utils/svg_asset.dart';
@@ -1114,9 +1116,6 @@ class _SliverScoreboardAppBarState
     final allowed = await requireFullAuthGuard(context);
     if (!allowed) return;
 
-    final favoritesNotifier = ref.read(
-      favoritePlayersNotifierProvider.notifier,
-    );
     final selectedPlayer = ref.read(selectedPlayerProvider);
 
     if (selectedPlayer != null) {
@@ -1127,11 +1126,13 @@ class _SliverScoreboardAppBarState
 
         // Check if adding (not removing) and enforce limit
         final currentlyFavorited = ref
-            .read(favoritePlayersNotifierProvider)
+            .read(favoritePlayersProviderNew)
             .maybeWhen(
               data:
-                  (state) =>
-                      state.players.any((p) => p.fideId == player.fideId),
+                  (players) =>
+                      players.any(
+                        (p) => p.fideId == player.fideId?.toString(),
+                      ),
               orElse: () => false,
             );
         if (!currentlyFavorited) {
@@ -1140,11 +1141,23 @@ class _SliverScoreboardAppBarState
           if (!canAdd) return;
         }
 
-        final isNowFavorite = await favoritesNotifier.toggleFavorite(player);
+        final isNowFavorite = await ref
+            .read(favoritePlayersProviderNew.notifier)
+            .toggleFavorite(
+              fideId: player.fideId?.toString(),
+              playerName: player.name,
+              countryCode: player.countryCode,
+              rating: player.score,
+              title: player.title,
+            );
         if (isNowFavorite) {
           _animationController.forward().then(
             (_) => _animationController.reverse(),
           );
+        }
+      } on FavoriteLimitExceededException {
+        if (mounted) {
+          await showPremiumPaywallSheet(context: context);
         }
       } catch (e) {
         debugPrint('Error toggling favorite: $e');
@@ -1201,9 +1214,11 @@ class _SliverScoreboardAppBarState
 
     bool isFavorite = false;
     if (isForYouView) {
-      final favoritesAsync = ref.watch(favoritePlayersNotifierProvider);
+      final favoritesAsync = ref.watch(favoritePlayersProviderNew);
       isFavorite = favoritesAsync.maybeWhen(
-        data: (state) => state.players.any((p) => p.fideId == player.fideId),
+        data:
+            (players) =>
+                players.any((p) => p.fideId == player.fideId?.toString()),
         orElse: () => false,
         skipLoadingOnRefresh: true,
         skipLoadingOnReload: true,
