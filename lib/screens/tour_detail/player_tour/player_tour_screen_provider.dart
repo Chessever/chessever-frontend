@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:chessever2/repository/local_storage/favorite/favourate_standings_player_services.dart';
 import 'package:chessever2/repository/supabase/tour/tour.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
@@ -139,6 +141,8 @@ class PlayerTourScreenNotifier
 
       var calculatedScore = 0.0;
       var gamesPlayed = 0;
+      var totalRatingDiff = 0.0;
+      var hasCalculatedRatingDiff = false;
 
       for (final gameRef in playerGames) {
         final status = gameRef.game.gameStatus;
@@ -160,10 +164,41 @@ class PlayerTourScreenNotifier
           default:
             break;
         }
+
+        final playerRating =
+            _getPlayerRating(
+              gameRef.game,
+              playerCard: gameRef.playerCard,
+              isWhite: gameRef.isWhite,
+            ) ??
+            _positive(updatedPlayer.rating)?.toDouble();
+        final opponentCard =
+            gameRef.isWhite ? gameRef.game.blackPlayer : gameRef.game.whitePlayer;
+        final opponentRating = _getPlayerRating(
+          gameRef.game,
+          playerCard: opponentCard,
+          isWhite: !gameRef.isWhite,
+        );
+
+        if (playerRating != null && opponentRating != null) {
+          totalRatingDiff += _calculateFideRatingChange(
+            playerRating,
+            opponentRating,
+            status,
+            gameRef.isWhite,
+          );
+          hasCalculatedRatingDiff = true;
+        }
       }
 
       enrichedPlayers.add(
-        updatedPlayer.copyWith(score: calculatedScore, played: gamesPlayed),
+        updatedPlayer.copyWith(
+          score: calculatedScore,
+          played: gamesPlayed,
+          ratingDiff:
+              updatedPlayer.ratingDiff ??
+              (hasCalculatedRatingDiff ? totalRatingDiff.round() : null),
+        ),
       );
     }
 
@@ -213,6 +248,86 @@ class PlayerTourScreenNotifier
       (value != null && value.trim().isNotEmpty) ? value : null;
 
   int? _positive(int? value) => (value != null && value > 0) ? value : null;
+
+  double? _extractRatingFromPGN(String? pgn, bool isWhite) {
+    if (pgn == null || pgn.isEmpty) return null;
+
+    final patterns =
+        isWhite
+            ? [
+              RegExp(r'\[WhiteElo "(\d+(?:\.\d+)?)"\]'),
+              RegExp(r'\[WhiteElo (\d+(?:\.\d+)?)\]'),
+              RegExp(r'WhiteElo\s+(\d+(?:\.\d+)?)'),
+            ]
+            : [
+              RegExp(r'\[BlackElo "(\d+(?:\.\d+)?)"\]'),
+              RegExp(r'\[BlackElo (\d+(?:\.\d+)?)\]'),
+              RegExp(r'BlackElo\s+(\d+(?:\.\d+)?)'),
+            ];
+
+    for (final pattern in patterns) {
+      final match = pattern.firstMatch(pgn);
+      if (match != null && match.group(1) != null) {
+        final rating = double.tryParse(match.group(1)!);
+        if (rating != null && rating > 0) {
+          return rating;
+        }
+      }
+    }
+    return null;
+  }
+
+  double? _getPlayerRating(
+    GamesTourModel game, {
+    required PlayerCard playerCard,
+    required bool isWhite,
+  }) {
+    if (playerCard.rating > 0) {
+      return playerCard.rating.toDouble();
+    }
+
+    final pgnRating = _extractRatingFromPGN(game.pgn, isWhite);
+    if (pgnRating != null && pgnRating > 0) {
+      return pgnRating;
+    }
+
+    return null;
+  }
+
+  int _getKFactor(double rating) {
+    if (rating >= 2400) {
+      return 10;
+    }
+    return 20;
+  }
+
+  double _calculateFideRatingChange(
+    double playerRating,
+    double opponentRating,
+    GameStatus gameStatus,
+    bool isWhite,
+  ) {
+    double actualScore;
+
+    switch (gameStatus) {
+      case GameStatus.whiteWins:
+        actualScore = isWhite ? 1.0 : 0.0;
+        break;
+      case GameStatus.blackWins:
+        actualScore = isWhite ? 0.0 : 1.0;
+        break;
+      case GameStatus.draw:
+        actualScore = 0.5;
+        break;
+      default:
+        return 0.0;
+    }
+
+    final ratingDiff = (opponentRating - playerRating).clamp(-400.0, 400.0);
+    final expectedScore = 1 / (1 + math.pow(10, ratingDiff / 400.0));
+    final kFactor = _getKFactor(playerRating);
+    return kFactor * (actualScore - expectedScore);
+  }
 }
 
 class _PlayerGameRef {
