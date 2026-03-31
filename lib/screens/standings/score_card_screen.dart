@@ -637,10 +637,15 @@ class ScoreCardScreen extends ConsumerWidget {
                             performanceRating: performanceRating,
                             score: eventScore,
                             totalGames: eventTotalGames,
-                            // Use calculated sum of rating changes from games instead of standings value
+                            // Prefer server-provided ratingDiff (accounts for FIDE K-factor history);
+                            // fall back to locally calculated sum when server value is unavailable.
                             ratingDiff:
-                                hasEventContext && totalRatingDiff != 0.0
-                                    ? totalRatingDiff.round()
+                                hasEventContext
+                                    ? (player.scoreChange != 0
+                                        ? player.scoreChange
+                                        : (totalRatingDiff != 0.0
+                                            ? totalRatingDiff.round()
+                                            : null))
                                     : null,
                           ),
                         ),
