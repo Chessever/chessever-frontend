@@ -536,7 +536,7 @@ async function processItem(item: OutboxItem, cloudEvalState: CloudEvalState) {
       const roundId = item.round_id ?? context.round?.id ?? "";
       const eventName = context.eventName ?? "Live chess";
       const roundName = context.round?.name ?? "";
-      const leadMinutes = (item.payload?.lead_minutes as number) ?? 30;
+      const leadMinutes = (item.payload?.lead_minutes as number) ?? 5;
       const timeStr = `~${leadMinutes} min`;
 
       // Only send to users whose preferred lead time and time-control filter match.
@@ -1570,9 +1570,9 @@ async function filterBookUpdateRecipients(
 async function filterHeadsUpRecipients(
   eventUserIds: Set<string>,
   playerUserIds: Set<string>,
-  // The lead time of this specific outbox row (10 or 30 minutes).
+  // The lead time of this specific outbox row (5, 10, or 30 minutes).
   // Only users whose heads_up_lead_minutes preference matches will be included.
-  leadMinutes: number = 30,
+  leadMinutes: number = 5,
   gameTimeControl: "classical" | "rapid" | "blitz" | null = null,
 ) {
   const allUserIds = new Set([...eventUserIds, ...playerUserIds]);
@@ -1602,11 +1602,11 @@ async function filterHeadsUpRecipients(
   for (const userId of ids) {
     const prefs = prefsMap.get(userId);
     if (prefs && prefs.push_enabled === false) continue;
-    if (!prefs || prefs.heads_up_alerts !== true) continue;
+    if (prefs?.heads_up_alerts === false) continue;
 
     // Lead-time gate: user's preference must match this outbox row's lead time.
-    // No prefs row → default is 30 min (matches the DB column default).
-    const userLeadMinutes = (prefs?.heads_up_lead_minutes as number) ?? 30;
+    // No prefs row → default is 5 min (matches the DB/app default).
+    const userLeadMinutes = (prefs?.heads_up_lead_minutes as number) ?? 5;
     if (userLeadMinutes !== leadMinutes) continue;
 
     const isPlayerFav = playerUserIds.has(userId);

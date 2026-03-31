@@ -81,18 +81,18 @@ class NotificationPreferences {
   static const defaults = NotificationPreferences(
     favoriteEventAlerts: true,
     favoritePlayerAlerts: true,
-    headsUpAlerts: false,
+    headsUpAlerts: true,
     liveGameUpdates: false,
     dailyDigest: false,
-    callToActionAlerts: false,
-    bookUpdateAlerts: true,
+    callToActionAlerts: true,
+    bookUpdateAlerts: false,
     fpClassical: true,
     fpRapid: true,
     fpBlitz: true,
     seClassical: true,
     seRapid: true,
     seBlitz: true,
-    headsUpLeadMinutes: 30,
+    headsUpLeadMinutes: 5,
   );
 }
 
@@ -305,9 +305,12 @@ class NotificationPreferencesNotifier
   // Setter — heads-up lead time
   // ---------------------------------------------------------------------------
 
-  /// [value] must be either 10 or 30.
+  /// [value] must be either 5, 10, or 30.
   Future<void> setHeadsUpLeadMinutes(int value) async {
-    assert(value == 10 || value == 30, 'headsUpLeadMinutes must be 10 or 30');
+    assert(
+      value == 5 || value == 10 || value == 30,
+      'headsUpLeadMinutes must be 5, 10 or 30',
+    );
     await _updatePreferences(
       (prefs) => prefs.copyWith(headsUpLeadMinutes: value),
     );
