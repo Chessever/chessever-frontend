@@ -1081,6 +1081,7 @@ async function buildContext(item: OutboxItem) {
     round,
     eventName,
     groupBroadcastId,
+    tourId,
     eventUserIds,
     playerUserIds,
     playerFavoriteMap,
@@ -1246,7 +1247,7 @@ async function applyPreferences(
     .from("user_notification_preferences")
     .select(
       "user_id,push_enabled,favorite_event_alerts,favorite_player_alerts," +
-      "live_game_updates,daily_digest,call_to_action_alerts," +
+      "live_game_updates,call_to_action_alerts," +
       "fp_classical,fp_rapid,fp_blitz," +
       "se_classical,se_rapid,se_blitz",
     )
@@ -1263,8 +1264,8 @@ async function applyPreferences(
     const prefs = prefsMap.get(userId);
     if (prefs && prefs.push_enabled === false) continue;
 
-    const isEventFavForTC = eventUserIds.has(userId);
-    const isPlayerFavForTC = playerUserIds.has(userId);
+    const isEventFav = eventUserIds.has(userId);
+    const isPlayerFav = playerUserIds.has(userId);
 
     // Time-control filter: apply category-specific columns.
     // fp_* governs player-favourite notifications; se_* governs event-starred.
@@ -1276,13 +1277,10 @@ async function applyPreferences(
       const fpBlocked = prefs[`fp_${tc}`] === false;
       const seBlocked = prefs[`se_${tc}`] === false;
 
-      if (isPlayerFavForTC && !isEventFavForTC && fpBlocked) continue;
-      if (isEventFavForTC && !isPlayerFavForTC && seBlocked) continue;
-      if (isPlayerFavForTC && isEventFavForTC && fpBlocked && seBlocked) continue;
+      if (isPlayerFav && !isEventFav && fpBlocked) continue;
+      if (isEventFav && !isPlayerFav && seBlocked) continue;
+      if (isPlayerFav && isEventFav && fpBlocked && seBlocked) continue;
     }
-
-    const isEventFav = eventUserIds.has(userId);
-    const isPlayerFav = playerUserIds.has(userId);
 
     if (eventType === "game_started" || eventType === "game_finished") {
       // Only player-favorite users get individual game notifications.
@@ -1425,8 +1423,8 @@ async function filterLiveUpdateEnabled(userIds: string[]) {
   }
   for (const id of userIds) {
     const prefs = prefsMap.get(id);
-    if (prefs && prefs.push_enabled === false) continue;
-    if (prefs && prefs.live_game_updates === false) continue;
+    if (!prefs || prefs.push_enabled === false) continue;
+    if (prefs.live_game_updates !== true) continue;
     filtered.add(id);
   }
   return filtered;
@@ -1943,39 +1941,6 @@ async function resolvePlayerFavoriteMap(
   return result;
 }
 
-function buildPlayerRecipientBatches(
-  playerRecipients: string[],
-  playerFavoriteMap: Map<string, string[]>,
-): { byPlayer: Map<string, string[]>; ungrouped: string[] } {
-  const byPlayer = new Map<string, string[]>();
-  const ungrouped: string[] = [];
-
-  for (const userId of playerRecipients) {
-    const names = playerFavoriteMap.get(userId) ?? [];
-    if (names.length === 0) {
-      ungrouped.push(userId);
-      continue;
-    }
-
-    const seenNames = new Set<string>();
-    for (const name of names) {
-      const trimmed = name.trim();
-      if (!trimmed) continue;
-      const normalized = trimmed.toLowerCase();
-      if (seenNames.has(normalized)) continue;
-      seenNames.add(normalized);
-      if (!byPlayer.has(trimmed)) byPlayer.set(trimmed, []);
-      byPlayer.get(trimmed)!.push(userId);
-    }
-
-    if (seenNames.size === 0) {
-      ungrouped.push(userId);
-    }
-  }
-
-  return { byPlayer, ungrouped };
-}
-
 function buildEventHeader(
   eventName: string | null,
   roundName: string | null | undefined,
@@ -2034,33 +1999,6 @@ function buildNotification(
     };
   }
 
-  if (item.event_type === "game_finished") {
-    const eventHeader = buildEventHeader(context.eventName, context.round?.name);
-    const resultStr = status || "Game over";
-    return {
-      title: eventHeader ?? `${white} vs ${black}`,
-      body: eventHeader
-        ? `${white} vs ${black}: ${resultStr}`
-        : `Result: ${resultStr}`,
-      url: null,
-      data: { type: "game_finished", game_id: item.game_id },
-      androidChannelId,
-    };
-  }
-
-  if (item.event_type === "live_game_update") {
-    const lastMove = (payload.last_move as string) ?? "";
-    return {
-      title: `${white} vs ${black}`,
-      body: lastMove
-        ? `Latest move: ${lastMove}`
-        : "Live game update.",
-      url: null,
-      data: { type: "live_game_update", game_id: item.game_id },
-      androidChannelId,
-    };
-  }
-
   return {
     title: "ChessEver update",
     body: "You have a new update.",
@@ -2069,9 +2007,6 @@ function buildNotification(
     androidChannelId,
   };
 }
-
-// buildRoundNotification and buildHeadsUpNotification replaced by
-// personalized template system in processItem() handlers above.
 
 async function buildLiveUpdatePayload(args: {
   item: OutboxItem;
@@ -2907,7 +2842,6 @@ async function sendLiveGameAlert(
 
   await sendOneSignal(userIds, notification);
 }
-
 
 async function sendOneSignal(
   userIds: string[],

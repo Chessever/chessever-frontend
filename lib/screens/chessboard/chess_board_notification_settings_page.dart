@@ -95,13 +95,6 @@ class _ChessBoardNotificationSettingsPageState
                           .read(notificationsSettingsProvider.notifier)
                           .setEnabled(value),
                     );
-                    if (!value) {
-                      _trackPersist(
-                        ref
-                            .read(notificationPreferencesProvider.notifier)
-                            .disableAll(),
-                      );
-                    }
                   },
                   interactive: interactive,
 
