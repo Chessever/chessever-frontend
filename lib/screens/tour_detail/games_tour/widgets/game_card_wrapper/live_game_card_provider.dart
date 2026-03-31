@@ -90,7 +90,12 @@ final liveGameCardProvider =
 /// Returns the live game data, falling back to the base game if not yet available.
 GamesTourModel watchLiveGame(WidgetRef ref, GamesTourModel game) {
   Future.microtask(() {
-    ref.read(baseGameProvider(game.gameId).notifier).state = game;
+    if (!ref.context.mounted) return;
+    try {
+      ref.read(baseGameProvider(game.gameId).notifier).state = game;
+    } on StateError {
+      // The card can be disposed while navigation is in flight.
+    }
   });
   return ref.watch(liveGameCardProvider(game.gameId)) ?? game;
 }
