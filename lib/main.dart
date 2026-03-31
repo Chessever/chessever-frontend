@@ -537,6 +537,7 @@ void _initializePostStartupServices() {
         await StockfishSingleton().disposeAsync();
       },
       onAppResume: () async {
+
         // Engine was disposed on background — it will lazily reinitialize
         // on the next evaluatePosition() call. Only force recovery if a
         // stale engine reference remains in a broken state.

@@ -36,6 +36,7 @@ type RoundGameRow = {
   player_black: string | null;
   player_fide_ids: number[] | null;
   players: Record<string, unknown>[] | null;
+  status?: string | null;
 };
 
 type RoundRow = {
@@ -89,6 +90,7 @@ const CLOUD_EVAL_MAX_REQUESTS = 5;
 const CHESS_API_MAX_REQUESTS = 10;
 const DEFAULT_DISPATCH_LIMIT = 50;
 const MAX_DISPATCH_LIMIT = 500;
+const GAME_STARTED_BUFFER_MS = 2 * 60 * 1000;
 const cloudEvalCache = new Map<string, EvalSnapshot | null>();
 const chessApiEvalCache = new Map<string, EvalSnapshot | null>();
 const dispatchTokenCache: { token: string | null; expiresAtMs: number } = {
@@ -405,13 +407,13 @@ async function processItem(item: OutboxItem, cloudEvalState: CloudEvalState) {
       const rsTimeControl = await resolveGameTimeControl(
         item.tour_id ?? context.round?.tour_id ?? null,
       );
-      const { playerRecipients, eventRecipients } = await filterRoundRecipients(
+      const { eventRecipients } = await filterRoundRecipients(
         context.eventUserIds,
         context.playerUserIds,
         rsTimeControl,
       );
 
-      if (playerRecipients.length === 0 && eventRecipients.length === 0) {
+      if (eventRecipients.length === 0) {
         await markSkipped(item.id, "no_recipients");
         return { id: item.id, status: "skipped", reason: "no_recipients" };
       }
@@ -419,116 +421,23 @@ async function processItem(item: OutboxItem, cloudEvalState: CloudEvalState) {
       const roundId = item.round_id ?? context.round?.id ?? "";
       const eventName = context.eventName ?? "Live chess";
       const roundName = context.round?.name ?? "";
-      const title = buildEventHeader(eventName, roundName) ?? eventName;
-
-      // Exclude player-favorite users who already received a game_started
-      // push for this round (recorded by the game_started handler).
-      const suppressedByWindow = await fetchUsersWithActiveGameStartWindow(
-        roundId,
-        playerRecipients,
-      );
-      const dedupedPlayerRecipients = playerRecipients.filter(
-        (uid) => !suppressedByWindow.has(uid),
-      );
-
-      // Per-user personalized notifications for player-favorite users.
-      // Batch users with identical messages into a single sendOneSignal() call.
-      if (dedupedPlayerRecipients.length > 0) {
-        const messageBatches = new Map<string, string[]>();
-        const unresolved: string[] = []; // favorites not resolved → event fallback
-
-        for (const userId of dedupedPlayerRecipients) {
-          const favNames = context.playerFavoriteMap.get(userId) ?? [];
-          if (favNames.length === 0) {
-            unresolved.push(userId);
-            continue;
-          }
-
-          // Sort favorites by rating DESC
-          const sorted = [...favNames].sort((a, b) => {
-            const ra = context.playerRatingMap.get(a) ?? 0;
-            const rb = context.playerRatingMap.get(b) ?? 0;
-            return rb - ra;
-          });
-
-          let body: string;
-          if (sorted.length === 1) {
-            const fav = formatPlayerName(sorted[0]);
-            const oppName = context.playerOpponentMap.get(sorted[0]) ?? "Opponent";
-            const opp = formatPlayerName(oppName);
-            body = `${fav} vs ${opp} is live.`;
-          } else if (sorted.length === 2) {
-            const p1 = formatPlayerName(sorted[0]);
-            const p2 = formatPlayerName(sorted[1]);
-            body = `${p1} and ${p2} are live.`;
-          } else {
-            const p1 = formatPlayerName(sorted[0]);
-            const p2 = formatPlayerName(sorted[1]);
-            body = `${p1}, ${p2}, and others are live.`;
-          }
-
-          const key = body;
-          if (!messageBatches.has(key)) messageBatches.set(key, []);
-          messageBatches.get(key)!.push(userId);
-        }
-
-        for (const [body, userIds] of messageBatches) {
-          await sendOneSignal(userIds, {
-            title,
-            body,
-            url: null,
-            data: { type: "round_started", round_id: roundId, group_broadcast_id: context.groupBroadcastId ?? null },
-            androidChannelId: channelForEvent("round_started"),
-          });
-        }
-
-        // Fallback for player-favorite users whose specific favorites
-        // couldn't be resolved to a name — send the event-level template.
-        if (unresolved.length > 0) {
-          const template = pickTemplate(ROUND_STARTED_EVENT, roundId);
-          const filled = fillTemplate(template, { e: eventName, r: roundName });
-          await sendOneSignal(unresolved, {
-            title: filled.title,
-            body: filled.body,
-            url: null,
-            data: { type: "round_started", round_id: roundId, group_broadcast_id: context.groupBroadcastId ?? null },
-            androidChannelId: channelForEvent("round_started"),
-          });
-        }
-      }
-
-      // Record game_start windows for every player recipient who just
-      // received this round_started notification.  This prevents
-      // game_started (which fires later, when the first move is played)
-      // from sending a duplicate push to the same users.
-      // TTL = 15 min — comfortably covers the gap between round start
-      // and first moves in any standard tournament format.
-      if (dedupedPlayerRecipients.length > 0) {
-        await supabase.rpc("record_game_start_window", {
-          p_user_ids: dedupedPlayerRecipients,
-          p_round_id: roundId,
-          p_cooldown_seconds: 900,
-        });
-      }
 
       // Event-only recipients (starred event, no favorites playing)
-      if (eventRecipients.length > 0) {
-        const template = pickTemplate(ROUND_STARTED_EVENT, roundId);
-        const filled = fillTemplate(template, { e: eventName, r: roundName });
-        await sendOneSignal(eventRecipients, {
-          title: filled.title,
-          body: filled.body,
-          url: null,
-          data: { type: "round_started", round_id: roundId, group_broadcast_id: context.groupBroadcastId ?? null },
-          androidChannelId: channelForEvent("round_started"),
-        });
-      }
+      const template = pickTemplate(ROUND_STARTED_EVENT, roundId);
+      const filled = fillTemplate(template, { e: eventName, r: roundName });
+      await sendOneSignal(eventRecipients, {
+        title: filled.title,
+        body: filled.body,
+        url: null,
+        data: { type: "round_started", round_id: roundId, group_broadcast_id: context.groupBroadcastId ?? null },
+        androidChannelId: channelForEvent("round_started"),
+      });
 
       await markSent(item.id);
       return {
         id: item.id,
         status: "sent",
-        recipients: dedupedPlayerRecipients.length + eventRecipients.length,
+        recipients: eventRecipients.length,
       };
     }
 
@@ -871,6 +780,143 @@ async function processItem(item: OutboxItem, cloudEvalState: CloudEvalState) {
       return { id: item.id, status: "skipped", reason: "game_already_finished" };
     }
 
+    if (item.event_type === "game_started" && item.round_id) {
+      const currentStatus = await fetchOutboxStatus(item.id);
+      if (currentStatus !== "processing") {
+        return { id: item.id, status: currentStatus ?? "skipped", reason: "already_handled" };
+      }
+
+      const groupedItems = await fetchBufferedGameStartedItems(item.round_id);
+      if (groupedItems.length === 0) {
+        await markSkipped(item.id, "no_buffered_group");
+        return { id: item.id, status: "skipped", reason: "no_buffered_group" };
+      }
+
+      const roundLeaderId =
+        groupedItems.find((row) => row.status === "processing")?.id ?? null;
+      if (!roundLeaderId) {
+        await markSkipped(item.id, "no_round_group_leader");
+        return { id: item.id, status: "skipped", reason: "no_round_group_leader" };
+      }
+      if (item.id !== roundLeaderId) {
+        return { id: item.id, status: "processing", reason: "round_grouped_elsewhere" };
+      }
+
+      const groupedIds = groupedItems.map((row) => row.id);
+      if (!groupedIds.includes(item.id)) {
+        await markSkipped(item.id, "already_grouped");
+        return { id: item.id, status: "skipped", reason: "already_grouped" };
+      }
+
+      const groupedGames = await fetchGameStartedGames(
+        groupedItems.flatMap((row) => row.game_id ? [row.game_id] : []),
+      );
+      const liveSnapshot = buildLiveRoundSnapshot(groupedGames);
+      if (liveSnapshot.liveNames.size === 0) {
+        await markSkippedMany(groupedIds, "no_live_games");
+        return { id: item.id, status: "skipped", reason: "no_live_games" };
+      }
+
+      const allUserIds = new Set([
+        ...context.eventUserIds,
+        ...context.playerUserIds,
+      ]);
+      const gsTimeControl = await resolveGameTimeControl(
+        context.game?.tour_id ?? item.tour_id,
+      );
+      const filteredUserIds = await applyPreferences(
+        item.event_type,
+        allUserIds,
+        context.eventUserIds,
+        context.playerUserIds,
+        gsTimeControl,
+      );
+
+      if (filteredUserIds.size === 0) {
+        await markSkippedMany(groupedIds, "no_recipients");
+        return { id: item.id, status: "skipped", reason: "no_recipients" };
+      }
+
+      const roundId = item.round_id;
+      const alreadyCovered = await fetchUsersWithActiveNotificationWindow(
+        roundId,
+        Array.from(filteredUserIds),
+        "favorite_live_round",
+      );
+
+      const roundName = context.round?.name ?? "this round";
+      const title = buildEventHeader(
+        context.eventName ?? "Live chess",
+        context.round?.name,
+      ) ?? (context.eventName ?? "Live chess");
+      const messageBatches = new Map<string, string[]>();
+      const recipientsToRecord: string[] = [];
+
+      for (const userId of Array.from(filteredUserIds)) {
+        if (alreadyCovered.has(userId)) continue;
+
+        const favNames = (context.playerFavoriteMap.get(userId) ?? []).filter(
+          (name) => liveSnapshot.liveNameLookup.has(name.trim().toLowerCase()),
+        );
+        if (favNames.length === 0) continue;
+
+        const sorted = [...favNames].sort((a, b) => {
+          const ra = liveSnapshot.playerRatingMap.get(a) ?? 0;
+          const rb = liveSnapshot.playerRatingMap.get(b) ?? 0;
+          return rb - ra;
+        });
+
+        let body: string;
+        if (sorted.length === 1) {
+          const fav = formatPlayerName(sorted[0]);
+          const oppName = liveSnapshot.playerOpponentMap.get(sorted[0]) ?? "Opponent";
+          body = `${fav} vs ${formatPlayerName(oppName)} is live.`;
+        } else if (sorted.length === 2) {
+          body = `${formatPlayerName(sorted[0])} and ${formatPlayerName(sorted[1])} are live in ${roundName}.`;
+        } else {
+          body = `${formatPlayerName(sorted[0])}, ${formatPlayerName(sorted[1])}, and others are live in ${roundName}.`;
+        }
+
+        if (!messageBatches.has(body)) messageBatches.set(body, []);
+        messageBatches.get(body)!.push(userId);
+        recipientsToRecord.push(userId);
+      }
+
+      if (recipientsToRecord.length === 0) {
+        await markSentMany(groupedIds);
+        return { id: item.id, status: "sent", recipients: 0 };
+      }
+
+      for (const [body, userIds] of messageBatches) {
+        await sendOneSignal(userIds, {
+          title,
+          body,
+          url: null,
+          data: {
+            type: "game_started",
+            round_id: roundId,
+            group_broadcast_id: context.groupBroadcastId ?? null,
+            game_ids: groupedItems.flatMap((row) => row.game_id ? [row.game_id] : []),
+          },
+          androidChannelId: channelForEvent("game_started"),
+        });
+      }
+
+      await recordNotificationWindow(
+        Array.from(new Set(recipientsToRecord)),
+        roundId,
+        "favorite_live_round",
+        900,
+      );
+      await markSentMany(groupedIds);
+
+      return {
+        id: item.id,
+        status: "sent",
+        recipients: recipientsToRecord.length,
+      };
+    }
+
     const allUserIds = new Set([
       ...context.eventUserIds,
       ...context.playerUserIds,
@@ -891,54 +937,8 @@ async function processItem(item: OutboxItem, cloudEvalState: CloudEvalState) {
       return { id: item.id, status: "skipped", reason: "no_recipients" };
     }
 
-    // For game_started: exclude users with 2+ favorites playing in the round.
-
-    // Per spec (Scenarios B/C), those users must receive ONE combined notification
-    // from round_started — not individual per-game pushes.
-    // Only single-favorite users (Scenario A) are handled here.
-    if (item.event_type === "game_started" && item.round_id) {
-      for (const uid of Array.from(filteredUserIds)) {
-        const favCount = (context.playerFavoriteMap.get(uid) ?? []).length;
-        if (favCount !== 1) filteredUserIds.delete(uid);
-      }
-
-      // Also skip users who already received a round_started notification
-      // for this round (window recorded by the round_started handler when
-      // cron fires before the first move arrives).  This prevents the
-      // second push when the game_started trigger fires later.
-      if (filteredUserIds.size > 0) {
-        const alreadyCovered = await fetchUsersWithActiveGameStartWindow(
-          item.round_id,
-          Array.from(filteredUserIds),
-        );
-        for (const uid of alreadyCovered) {
-          filteredUserIds.delete(uid);
-        }
-      }
-    }
-
-    if (filteredUserIds.size === 0) {
-      await markSent(item.id);
-      return { id: item.id, status: "sent", recipients: 0 };
-    }
-
     const notification = buildNotification(context, item);
     await sendOneSignal(Array.from(filteredUserIds), notification);
-
-    // Record a cooldown window so that round_started skips these users.
-    // Only record for the users who actually received this push (1-favorite users).
-    if (item.event_type === "game_started" && item.round_id) {
-      const playerRecipients = Array.from(filteredUserIds).filter(
-        (uid) => context.playerUserIds.has(uid),
-      );
-      if (playerRecipients.length > 0) {
-        await supabase.rpc("record_game_start_window", {
-          p_user_ids: playerRecipients,
-          p_round_id: item.round_id,
-          p_cooldown_seconds: 900, // 15 min covers delay until round_started cron runs
-        });
-      }
-    }
 
     await markSent(item.id);
 
@@ -960,11 +960,27 @@ async function markSent(id: string) {
     .eq("id", id);
 }
 
+async function markSentMany(ids: string[]) {
+  if (ids.length === 0) return;
+  await supabase
+    .from("notification_outbox")
+    .update({ status: "sent" })
+    .in("id", ids);
+}
+
 async function markSkipped(id: string, reason: string) {
   await supabase
     .from("notification_outbox")
     .update({ status: "skipped", last_error: reason })
     .eq("id", id);
+}
+
+async function markSkippedMany(ids: string[], reason: string) {
+  if (ids.length === 0) return;
+  await supabase
+    .from("notification_outbox")
+    .update({ status: "skipped", last_error: reason })
+    .in("id", ids);
 }
 
 async function markFailed(id: string, attempts: number, error: string) {
@@ -1042,7 +1058,8 @@ async function buildContext(item: OutboxItem) {
 
   if (
     (item.event_type === "round_started" ||
-      item.event_type === "round_heads_up") &&
+      item.event_type === "round_heads_up" ||
+      item.event_type === "game_started") &&
     item.round_id
   ) {
     const roundPlayers = await fetchRoundPlayers(item.round_id);
@@ -1475,12 +1492,20 @@ async function fetchUsersWithActiveGameStartWindow(
   roundId: string,
   userIds: string[],
 ): Promise<Set<string>> {
+  return fetchUsersWithActiveNotificationWindow(roundId, userIds, "game_start");
+}
+
+async function fetchUsersWithActiveNotificationWindow(
+  roundId: string,
+  userIds: string[],
+  family: string,
+): Promise<Set<string>> {
   if (userIds.length === 0) return new Set();
   const { data } = await supabase
     .from("notification_user_windows")
     .select("user_id")
     .eq("round_id", roundId)
-    .eq("family", "game_start")
+    .eq("family", family)
     .gt("expires_at", new Date().toISOString())
     .in("user_id", userIds);
   const suppressed = new Set<string>();
@@ -1488,6 +1513,110 @@ async function fetchUsersWithActiveGameStartWindow(
     suppressed.add(row.user_id as string);
   }
   return suppressed;
+}
+
+async function recordNotificationWindow(
+  userIds: string[],
+  roundId: string,
+  family: string,
+  cooldownSeconds: number,
+) {
+  if (userIds.length === 0) return;
+  const expiresAt = new Date(Date.now() + cooldownSeconds * 1000).toISOString();
+  const rows = userIds.map((userId) => ({
+    user_id: userId,
+    round_id: roundId,
+    family,
+    expires_at: expiresAt,
+  }));
+
+  await supabase
+    .from("notification_user_windows")
+    .upsert(rows, { onConflict: "user_id,round_id,family" });
+}
+
+async function fetchOutboxStatus(id: string): Promise<string | null> {
+  const { data } = await supabase
+    .from("notification_outbox")
+    .select("status")
+    .eq("id", id)
+    .maybeSingle();
+  return (data?.status as string | undefined) ?? null;
+}
+
+async function fetchBufferedGameStartedItems(
+  roundId: string,
+): Promise<OutboxItem[]> {
+  const { data } = await supabase
+    .from("notification_outbox")
+    .select("*")
+    .eq("event_type", "game_started")
+    .eq("round_id", roundId)
+    .in("status", ["pending", "processing"])
+    .order("created_at", { ascending: true });
+
+  const rows = (data ?? []) as OutboxItem[];
+  if (rows.length === 0) return [];
+
+  const anchorMs = new Date(rows[0].created_at).getTime();
+  return rows.filter((row) =>
+    new Date(row.created_at).getTime() <= anchorMs + GAME_STARTED_BUFFER_MS
+  );
+}
+
+type StartedGameSnapshot = {
+  liveNameLookup: Set<string>;
+  playerRatingMap: Map<string, number>;
+  playerOpponentMap: Map<string, string>;
+  liveNames: Set<string>;
+};
+
+async function fetchGameStartedGames(gameIds: string[]): Promise<RoundGameRow[]> {
+  if (gameIds.length === 0) return [];
+  const { data } = await supabase
+    .from("games")
+    .select("player_white,player_black,player_fide_ids,players,status")
+    .in("id", gameIds);
+  return (data ?? []) as RoundGameRow[];
+}
+
+function buildLiveRoundSnapshot(games: RoundGameRow[]): StartedGameSnapshot {
+  const liveNameLookup = new Set<string>();
+  const liveNames = new Set<string>();
+  const playerRatingMap = new Map<string, number>();
+  const playerOpponentMap = new Map<string, string>();
+
+  for (const row of games) {
+    if (isGameOverStatus(row.status ?? null)) continue;
+
+    if (row.player_white) {
+      liveNames.add(row.player_white);
+      liveNameLookup.add(row.player_white.trim().toLowerCase());
+    }
+    if (row.player_black) {
+      liveNames.add(row.player_black);
+      liveNameLookup.add(row.player_black.trim().toLowerCase());
+    }
+    if (row.player_white && row.player_black) {
+      playerOpponentMap.set(row.player_white, row.player_black);
+      playerOpponentMap.set(row.player_black, row.player_white);
+    }
+
+    for (const p of row.players ?? []) {
+      const name = (p?.name as string | undefined) ?? null;
+      const rating = p?.rating as number | undefined;
+      if (name && typeof rating === "number" && rating > 0) {
+        playerRatingMap.set(name, rating);
+      }
+    }
+  }
+
+  return {
+    liveNameLookup,
+    playerRatingMap,
+    playerOpponentMap,
+    liveNames,
+  };
 }
 
 async function disableLiveSubscriptions(args: {
