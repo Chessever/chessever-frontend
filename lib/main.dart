@@ -537,6 +537,21 @@ void _initializePostStartupServices() {
         await StockfishSingleton().disposeAsync();
       },
       onAppResume: () async {
+        if (kDebugMode) {
+          unawaited(
+            Sentry.captureMessage(
+              'app resumed while debugging share/deep link flow',
+              level: SentryLevel.info,
+              withScope: (scope) {
+                scope.setTag('area', 'deep_link');
+                scope.setTag('stage', 'app_resume');
+                scope.setContexts('deep_link', {
+                  'source': 'lifecycle_event_handler',
+                });
+              },
+            ),
+          );
+        }
         // Engine was disposed on background — it will lazily reinitialize
         // on the next evaluatePosition() call. Only force recovery if a
         // stale engine reference remains in a broken state.
