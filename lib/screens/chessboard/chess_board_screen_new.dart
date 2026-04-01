@@ -6710,9 +6710,10 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard> {
       ),
     );
 
-    // Check if game has ended and we're at the final position of the mainline
+    // Cross-check analysisState and navigatorState to avoid stale props.
     final gameStatus = widget.game.gameStatus;
-    final isAtGameEnd = _isAtGameEnd(widget.chessBoardState.analysisState);
+    final isAtGameEnd = _isAtGameEnd(widget.chessBoardState.analysisState) &&
+        (navigatorState == null || navigatorState.movePointer.length == 1);
     final isGameOver =
         gameStatus != GameStatus.ongoing && gameStatus != GameStatus.unknown;
 
@@ -6742,18 +6743,14 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard> {
               lichessAnnotationsAsync.valueOrNull ??
               const <int, LichessMoveAnnotation>{};
           if (lichessAnnotations.isEmpty) return null;
-          // Only show board annotations when on the mainline, not in variations.
-          // Annotation indices are keyed by mainline ply, so showing them for
-          // variation moves (which share the same move-number/ply as mainline
-          // moves) would incorrectly apply a mainline annotation to a random
-          // user move.  A mainline pointer has length 0 (start) or 1 ([index]).
-          final currentMovePointer =
-              widget.chessBoardState.analysisState.movePointer;
+          // Only show annotations on mainline, not variations.
+          // Use navigatorState.movePointer to avoid stale widget props.
+          final currentMovePointer = navigatorState.movePointer;
           final isOnMainline =
               currentMovePointer.isEmpty || currentMovePointer.length == 1;
           if (!isOnMainline) return null;
           final currentMoveIndex =
-              widget.chessBoardState.analysisState.currentMoveIndex;
+              currentMovePointer.isEmpty ? -1 : currentMovePointer[0];
           if (currentMoveIndex < 0) return null;
           return lichessAnnotations[currentMoveIndex];
         })();
