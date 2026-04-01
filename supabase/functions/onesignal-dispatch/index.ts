@@ -2660,11 +2660,11 @@ async function storeEvalSnapshot(positionId: number, snapshot: EvalSnapshot) {
 }
 
 async function sendOneSignalPayload(payload: Record<string, unknown>) {
-  const res = await fetch("https://onesignal.com/api/v1/notifications", {
+  const res = await fetch("https://api.onesignal.com/notifications", {
     method: "POST",
     headers: {
       ...jsonHeaders,
-      Authorization: `Basic ${ONESIGNAL_REST_API_KEY}`,
+      Authorization: `Key ${ONESIGNAL_REST_API_KEY}`,
     },
     body: JSON.stringify(payload),
   });
@@ -2779,7 +2779,8 @@ async function sendAndroidLiveNotification(args: {
 
   const payload: Record<string, unknown> = {
     app_id: ONESIGNAL_APP_ID,
-    include_player_ids: args.subscriptionIds,
+    include_subscription_ids: args.subscriptionIds,
+    target_channel: "push",
     headings: { en: `${args.livePayload.player_white} vs ${args.livePayload.player_black}` },
     contents: {
       en: args.livePayload.last_move_numbered ??
@@ -2854,7 +2855,8 @@ async function sendOneSignal(
   for (const batch of chunks) {
     const payload: Record<string, unknown> = {
       app_id: ONESIGNAL_APP_ID,
-      include_external_user_ids: batch,
+      include_aliases: { external_id: batch },
+      target_channel: "push",
       headings: { en: notification.title },
       contents: { en: notification.body },
       data: notification.data,
