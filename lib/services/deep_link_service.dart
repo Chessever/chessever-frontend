@@ -4,6 +4,7 @@ import 'package:app_links/app_links.dart';
 import 'package:chessever2/repository/authentication/auth_repository.dart';
 import 'package:chessever2/repository/authentication/model/auth_state.dart';
 import 'package:chessever2/repository/sqlite/app_database.dart';
+import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
 import 'package:chessever2/repository/supabase/round/round_repository.dart';
@@ -21,6 +22,18 @@ import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+
+List<GamesTourModel> _buildSortedRoundGameModels(List<Games> roundGames) {
+  final gameList =
+      roundGames.map(GamesTourModel.fromGame).toList(growable: false);
+  gameList.sort((a, b) {
+    final aBoard = a.boardNr ?? 1 << 30;
+    final bBoard = b.boardNr ?? 1 << 30;
+    if (aBoard != bBoard) return aBoard.compareTo(bBoard);
+    return a.gameId.compareTo(b.gameId);
+  });
+  return gameList;
+}
 
 /// Service to handle deep links and notification tap routing.
 /// Handles URLs like: `https://chessever.com/games/{id}`
@@ -292,17 +305,23 @@ class DeepLinkService {
     _isNavigating = true;
 
     try {
-      // Wait for the app to be past the splash screen before navigating.
-      // On warm start this resolves immediately since splash already completed.
-      try {
-        await _appReadyCompleter.future.timeout(const Duration(seconds: 30));
-      } catch (_) {
+      // Keep only auth restore and splash completion on the critical path.
+      // Round-game context is useful for swiping, but it should never delay
+      // opening the tapped game from a shared link.
+      debugPrint('DeepLinkService: Fetching game: $gameId');
+      _addBreadcrumb('fetching game', data: {'gameId': gameId});
+
+      final authFuture = _waitForAuthenticatedSession(ref);
+      final appReadyFuture =
+          _appReadyCompleter.future.timeout(const Duration(seconds: 30),
+              onTimeout: () {
         debugPrint(
           'DeepLinkService: Timed out waiting for app ready, proceeding',
         );
-      }
+      });
 
-      final isAuthenticated = await _waitForAuthenticatedSession(ref);
+      // Auth is required before we can proceed.
+      final isAuthenticated = await authFuture;
       if (!isAuthenticated) {
         debugPrint(
           'DeepLinkService: No authenticated session available for game link, routing to home',
@@ -316,6 +335,7 @@ class DeepLinkService {
           extras: {'gameId': gameId},
           captureAsException: false,
         );
+        await appReadyFuture;
         navigatorKey.currentState?.pushNamedAndRemoveUntil(
           '/home_screen',
           (route) => false,
@@ -323,49 +343,16 @@ class DeepLinkService {
         return;
       }
 
-      debugPrint('DeepLinkService: Fetching game: $gameId');
-      _addBreadcrumb('fetching game', data: {'gameId': gameId});
-
-      // Fetch the tapped game from Supabase.
-      // getGameByAnyId handles both Supabase UUIDs and Lichess short IDs.
       final gameRepo = ref.read(gameRepositoryProvider);
       final game = await gameRepo.getGameByAnyId(gameId).timeout(_fetchTimeout);
-      // Normalize to Supabase UUID so round-game index lookup works regardless
-      // of whether the deep link contained a Lichess short ID or a UUID.
       final resolvedGameId = game.id;
       final gameTourModel = GamesTourModel.fromGame(game);
-      List<GamesTourModel> gameList = <GamesTourModel>[gameTourModel];
-      var openIndex = 0;
-      try {
-        final roundGames = await gameRepo
-            .getGamesByRoundId(game.roundId)
-            .timeout(_fetchTimeout);
-        if (roundGames.isNotEmpty) {
-          gameList = roundGames
-              .map(GamesTourModel.fromGame)
-              .toList(growable: false);
-          // Keep board order stable for swipe navigation.
-          gameList.sort((a, b) {
-            final aBoard = a.boardNr ?? 1 << 30;
-            final bBoard = b.boardNr ?? 1 << 30;
-            if (aBoard != bBoard) return aBoard.compareTo(bBoard);
-            return a.gameId.compareTo(b.gameId);
-          });
-          final idx = gameList.indexWhere((g) => g.gameId == resolvedGameId);
-          openIndex = idx >= 0 ? idx : 0;
-        }
-      } catch (e, stackTrace) {
-        debugPrint(
-          'DeepLinkService: Failed to load round games for swipe context: $e',
-        );
-        _captureDeepLinkException(
-          e,
-          stackTrace,
-          stage: 'load_round_games_for_swipe_context',
-          extras: {'gameId': gameId, 'roundId': game.roundId},
-          captureAsException: false,
-        );
-      }
+
+      await appReadyFuture;
+
+      final roundGamesFuture = gameRepo.getGamesByRoundId(game.roundId).timeout(
+        _fetchTimeout,
+      );
 
       debugPrint('DeepLinkService: Game loaded, navigating to chess board');
       _addBreadcrumb(
@@ -374,8 +361,8 @@ class DeepLinkService {
           'gameId': gameId,
           'resolvedGameId': resolvedGameId,
           'roundId': game.roundId,
-          'openIndex': openIndex,
-          'gameListLength': gameList.length,
+          'openIndex': 0,
+          'gameListLength': 1,
         },
       );
       unawaited(
@@ -386,8 +373,8 @@ class DeepLinkService {
             'gameId': gameId,
             'resolvedGameId': resolvedGameId,
             'roundId': game.roundId,
-            'openIndex': openIndex,
-            'gameListLength': gameList.length,
+            'openIndex': 0,
+            'gameListLength': 1,
           },
         ),
       );
@@ -400,9 +387,22 @@ class DeepLinkService {
         navigator.pushAndRemoveUntil(
           MaterialPageRoute(
             builder:
-                (_) => ChessBoardScreenNew(
-                  games: gameList,
-                  currentIndex: openIndex,
+                (_) => _DeepLinkedChessBoardRoute(
+                  initialGame: gameTourModel,
+                  initialGameId: resolvedGameId,
+                  roundGamesFuture: roundGamesFuture,
+                  onRoundGamesError: (error, stackTrace) {
+                    debugPrint(
+                      'DeepLinkService: Failed to load round games for swipe context: $error',
+                    );
+                    _captureDeepLinkException(
+                      error,
+                      stackTrace,
+                      stage: 'load_round_games_for_swipe_context',
+                      extras: {'gameId': gameId, 'roundId': game.roundId},
+                      captureAsException: false,
+                    );
+                  },
                 ),
           ),
           (route) => route.isFirst,
@@ -881,6 +881,64 @@ class DeepLinkService {
       );
       debugPrint('$telemetryStackTrace');
     }
+  }
+}
+
+class _DeepLinkedChessBoardRoute extends StatefulWidget {
+  const _DeepLinkedChessBoardRoute({
+    required this.initialGame,
+    required this.initialGameId,
+    required this.roundGamesFuture,
+    required this.onRoundGamesError,
+  });
+
+  final GamesTourModel initialGame;
+  final String initialGameId;
+  final Future<List<Games>> roundGamesFuture;
+  final void Function(Object error, StackTrace stackTrace) onRoundGamesError;
+
+  @override
+  State<_DeepLinkedChessBoardRoute> createState() =>
+      _DeepLinkedChessBoardRouteState();
+}
+
+class _DeepLinkedChessBoardRouteState extends State<_DeepLinkedChessBoardRoute> {
+  late List<GamesTourModel> _games;
+  late int _currentIndex;
+
+  @override
+  void initState() {
+    super.initState();
+    _games = <GamesTourModel>[widget.initialGame];
+    _currentIndex = 0;
+    _hydrateRoundGames();
+  }
+
+  Future<void> _hydrateRoundGames() async {
+    try {
+      final roundGames = await widget.roundGamesFuture;
+      if (!mounted || roundGames.isEmpty) return;
+
+      final gameList = _buildSortedRoundGameModels(roundGames);
+      final index = gameList.indexWhere((g) => g.gameId == widget.initialGameId);
+      if (index < 0) return;
+
+      setState(() {
+        _games = gameList;
+        _currentIndex = index;
+      });
+    } catch (error, stackTrace) {
+      widget.onRoundGamesError(error, stackTrace);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ChessBoardScreenNew(
+      key: ValueKey('deep-link-${widget.initialGameId}-${_games.length}'),
+      games: _games,
+      currentIndex: _currentIndex,
+    );
   }
 }
 
