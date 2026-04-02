@@ -18,6 +18,7 @@
 		5D4403C92333E225545DF29A /* ChessEverLiveActivityWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB274B8A3127F9D5D4046021 /* ChessEverLiveActivityWidget.swift */; };
 		6A89354FA57ECEF3655C755D /* Pods_Runner_RunnerUITests.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4AD3E4BFDEED755B878747D8 /* Pods_Runner_RunnerUITests.framework */; };
 		74858FAF1ED2DC5600515810 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74858FAE1ED2DC5600515810 /* AppDelegate.swift */; };
+		9D4E7F0A2C3B4D5E6F708192 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D4E7F092C3B4D5E6F708192 /* SceneDelegate.swift */; };
 		8F2C9E9A1D3B4A5C6E7F8091 /* Pieces in Resources */ = {isa = PBXBuildFile; fileRef = 7A6B5C4D3E2F1A0B9C8D7E6F /* Pieces */; };
 		96C6E885786469486006F830 /* Pods_Runner.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 213BF253FCC819853BED5268 /* Pods_Runner.framework */; };
 		97C146FC1CF9000F007C117D /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FA1CF9000F007C117D /* Main.storyboard */; };
@@ -98,6 +99,7 @@
 		73DD5A9C263CD755D22310F5 /* Pods-Runner.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Runner.release.xcconfig"; path = "Target Support Files/Pods-Runner/Pods-Runner.release.xcconfig"; sourceTree = "<group>"; };
 		74858FAD1ED2DC5600515810 /* Runner-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "Runner-Bridging-Header.h"; sourceTree = "<group>"; };
 		74858FAE1ED2DC5600515810 /* AppDelegate.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		9D4E7F092C3B4D5E6F708192 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
 		7A6B5C4D3E2F1A0B9C8D7E6F /* Pieces */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Pieces; sourceTree = "<group>"; };
 		7AFA3C8E1D35360C0083082E /* Release.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = Release.xcconfig; path = Flutter/Release.xcconfig; sourceTree = "<group>"; };
 		81968B7DC05EC1E3E3B9A597 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
@@ -251,6 +253,7 @@
 				1498D2321E8E86230040F4C2 /* GeneratedPluginRegistrant.h */,
 				1498D2331E8E89220040F4C2 /* GeneratedPluginRegistrant.m */,
 				74858FAE1ED2DC5600515810 /* AppDelegate.swift */,
+				9D4E7F092C3B4D5E6F708192 /* SceneDelegate.swift */,
 				74858FAD1ED2DC5600515810 /* Runner-Bridging-Header.h */,
 			);
 			path = Runner;
@@ -662,6 +665,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				74858FAF1ED2DC5600515810 /* AppDelegate.swift in Sources */,
+				9D4E7F0A2C3B4D5E6F708192 /* SceneDelegate.swift in Sources */,
 				1498D2341E8E89220040F4C2 /* GeneratedPluginRegistrant.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
