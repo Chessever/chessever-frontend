@@ -20,7 +20,6 @@ import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provide
 import 'package:chessever2/services/live_updates_service.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:sentry_flutter/sentry_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 List<GamesTourModel> _buildSortedRoundGameModels(List<Games> roundGames) {
@@ -81,37 +80,19 @@ class DeepLinkService {
     try {
       final initialLink = await _appLinks.getInitialLink();
       if (initialLink != null) {
-        _addBreadcrumb(
-          'cold-start link received',
-          data: _sanitizedUriData(initialLink),
-        );
         _handleDeepLink(initialLink, navigatorKey, ref);
       }
-    } catch (e, stackTrace) {
+    } catch (e) {
       debugPrint('DeepLinkService: Error getting initial link: $e');
-      _captureDeepLinkException(
-        e,
-        stackTrace,
-        stage: 'get_initial_link',
-      );
     }
 
     // Listen for links while app is running (warm start / already open)
     _subscription = _appLinks.uriLinkStream.listen(
       (uri) {
-        _addBreadcrumb(
-          'warm-start link received',
-          data: _sanitizedUriData(uri),
-        );
         _handleDeepLink(uri, navigatorKey, ref);
       },
-      onError: (Object error, StackTrace stackTrace) {
+      onError: (Object error, StackTrace _) {
         debugPrint('DeepLinkService: Error listening to links: $error');
-        _captureDeepLinkException(
-          error,
-          stackTrace,
-          stage: 'uri_link_stream',
-        );
       },
     );
   }
@@ -152,51 +133,16 @@ class DeepLinkService {
         bookShareToken = uri.pathSegments[0];
       }
 
-      _addBreadcrumb(
-        'deep link parsed',
-        data: {
-          ..._sanitizedUriData(uri),
-          'gameId': _maskedValue(gameId),
-          'bookShareToken': _maskedValue(bookShareToken),
-        },
-      );
-
       if (gameId != null && gameId.isNotEmpty) {
         if (uri.queryParameters['stop_live'] == '1') {
           _stopLiveUpdates(gameId, ref);
         }
-        _addBreadcrumb('routing to game', data: {'gameId': gameId});
-        unawaited(
-          _captureDeepLinkMessage(
-            'deep link routing to game',
-            stage: 'route_to_game',
-            extras: {'gameId': gameId},
-          ),
-        );
         _navigateToGame(gameId, navigatorKey, ref);
       } else if (bookShareToken != null && bookShareToken.isNotEmpty) {
-        _addBreadcrumb(
-          'routing to shared book',
-          data: {'shareToken': _maskedValue(bookShareToken)},
-        );
         _navigateToBookPreview(bookShareToken, navigatorKey, ref);
-      } else {
-        _addBreadcrumb(
-          'deep link ignored',
-          data: {
-            'reason': 'unsupported path',
-            ..._sanitizedUriData(uri),
-          },
-        );
       }
-    } catch (e, stackTrace) {
+    } catch (e) {
       debugPrint('DeepLinkService: Failed parsing deep link: $e');
-      _captureDeepLinkException(
-        e,
-        stackTrace,
-        stage: 'parse_handle_deep_link',
-        extras: _sanitizedUriData(uri),
-      );
     }
   }
 
@@ -235,13 +181,6 @@ class DeepLinkService {
 
       if (resolvedState?.status != AppAuthStatus.authenticated) {
         debugPrint('DeepLinkService: User not authenticated, routing to home');
-        _captureDeepLinkException(
-          Exception('Deep link ignored because user is not authenticated'),
-          StackTrace.current,
-          stage: 'book_preview_requires_auth',
-          extras: {'shareToken': _maskedValue(shareToken)},
-          captureAsException: false,
-        );
         navigatorKey.currentState?.pushNamedAndRemoveUntil(
           '/home_screen',
           (route) => false,
@@ -259,14 +198,8 @@ class DeepLinkService {
           ),
         );
       }
-    } catch (e, stackTrace) {
+    } catch (e) {
       debugPrint('DeepLinkService: Failed to open book preview: $e');
-      _captureDeepLinkException(
-        e,
-        stackTrace,
-        stage: 'navigate_to_book_preview',
-        extras: {'shareToken': _maskedValue(shareToken)},
-      );
       navigatorKey.currentState?.pushNamedAndRemoveUntil(
         '/home_screen',
         (route) => false,
@@ -309,7 +242,6 @@ class DeepLinkService {
       // Round-game context is useful for swiping, but it should never delay
       // opening the tapped game from a shared link.
       debugPrint('DeepLinkService: Fetching game: $gameId');
-      _addBreadcrumb('fetching game', data: {'gameId': gameId});
 
       final authFuture = _waitForAuthenticatedSession(ref);
       final appReadyFuture =
@@ -325,15 +257,6 @@ class DeepLinkService {
       if (!isAuthenticated) {
         debugPrint(
           'DeepLinkService: No authenticated session available for game link, routing to home',
-        );
-        _captureDeepLinkException(
-          Exception(
-            'Deep link ignored because no authenticated session was available',
-          ),
-          StackTrace.current,
-          stage: 'game_link_requires_auth',
-          extras: {'gameId': gameId},
-          captureAsException: false,
         );
         await appReadyFuture;
         navigatorKey.currentState?.pushNamedAndRemoveUntil(
@@ -355,29 +278,6 @@ class DeepLinkService {
       );
 
       debugPrint('DeepLinkService: Game loaded, navigating to chess board');
-      _addBreadcrumb(
-        'navigating to chess board',
-        data: {
-          'gameId': gameId,
-          'resolvedGameId': resolvedGameId,
-          'roundId': game.roundId,
-          'openIndex': 0,
-          'gameListLength': 1,
-        },
-      );
-      unawaited(
-        _captureDeepLinkMessage(
-          'deep link game loaded',
-          stage: 'navigate_to_game_success',
-          extras: {
-            'gameId': gameId,
-            'resolvedGameId': resolvedGameId,
-            'roundId': game.roundId,
-            'openIndex': 0,
-            'gameListLength': 1,
-          },
-        ),
-      );
       ref.read(chessboardViewFromProviderNew.notifier).state =
           ChessboardView.forYou;
       ref.read(shouldStreamProvider.notifier).state = false;
@@ -395,31 +295,14 @@ class DeepLinkService {
                     debugPrint(
                       'DeepLinkService: Failed to load round games for swipe context: $error',
                     );
-                    _captureDeepLinkException(
-                      error,
-                      stackTrace,
-                      stage: 'load_round_games_for_swipe_context',
-                      extras: {'gameId': gameId, 'roundId': game.roundId},
-                      captureAsException: false,
-                    );
                   },
                 ),
           ),
           (route) => route.isFirst,
         );
       }
-    } catch (e, stackTrace) {
+    } catch (e) {
       debugPrint('DeepLinkService: Failed to load game: $e');
-      _captureDeepLinkException(
-        e,
-        stackTrace,
-        stage: 'navigate_to_game',
-        extras: {'gameId': gameId},
-      );
-      _addBreadcrumb(
-        'game deep link failed; routing home',
-        data: {'gameId': gameId},
-      );
       navigatorKey.currentState?.pushNamedAndRemoveUntil(
         '/home_screen',
         (route) => false,
@@ -574,17 +457,6 @@ class DeepLinkService {
 
       if (resolvedState?.status != AppAuthStatus.authenticated) {
         debugPrint('DeepLinkService: User not authenticated, routing to home');
-        _captureDeepLinkException(
-          Exception('Event deep link ignored because user is not authenticated'),
-          StackTrace.current,
-          stage: 'event_link_requires_auth',
-          extras: {
-            'groupBroadcastId': groupBroadcastId,
-            'roundId': roundId,
-            'tourId': tourId,
-          },
-          captureAsException: false,
-        );
         navigatorKey.currentState?.pushNamedAndRemoveUntil(
           '/home_screen',
           (route) => false,
@@ -602,16 +474,6 @@ class DeepLinkService {
         debugPrint(
           'DeepLinkService: Could not resolve event route context from '
           'group_broadcast_id=$groupBroadcastId, round_id=$roundId, tour_id=$tourId',
-        );
-        _captureDeepLinkException(
-          Exception('Failed to resolve event route context for deep link'),
-          StackTrace.current,
-          stage: 'resolve_event_route_context',
-          extras: {
-            'groupBroadcastId': groupBroadcastId,
-            'roundId': roundId,
-            'tourId': tourId,
-          },
         );
         _navigateToHome(navigatorKey);
         return;
@@ -645,18 +507,8 @@ class DeepLinkService {
         '/tournament_detail_screen',
         (route) => route.isFirst,
       );
-    } catch (e, stackTrace) {
+    } catch (e) {
       debugPrint('DeepLinkService: Failed to load event: $e');
-      _captureDeepLinkException(
-        e,
-        stackTrace,
-        stage: 'navigate_to_event',
-        extras: {
-          'groupBroadcastId': groupBroadcastId,
-          'roundId': roundId,
-          'tourId': tourId,
-        },
-      );
       navigatorKey.currentState?.pushNamedAndRemoveUntil(
         '/home_screen',
         (route) => false,
@@ -771,117 +623,6 @@ class DeepLinkService {
     _appReadyCompleter = Completer<void>();
   }
 
-  void _addBreadcrumb(String message, {Map<String, dynamic>? data}) {
-    Sentry.addBreadcrumb(
-      Breadcrumb(
-        category: 'deep_link',
-        message: message,
-        type: 'navigation',
-        data: data,
-        level: SentryLevel.info,
-      ),
-    );
-  }
-
-  Map<String, dynamic> _sanitizedUriData(Uri uri) {
-    return {
-      'scheme': uri.scheme,
-      'host': uri.host,
-      'path': uri.path,
-      'routeKind': _routeKindFromUri(uri),
-      if (uri.queryParameters.isNotEmpty)
-        'queryParameters': _whitelistedQueryParameters(uri),
-    };
-  }
-
-  String _routeKindFromUri(Uri uri) {
-    if (uri.pathSegments.isNotEmpty) {
-      return uri.pathSegments.first;
-    }
-    return uri.host;
-  }
-
-  Map<String, String> _whitelistedQueryParameters(Uri uri) {
-    final allowed = <String>{'stop_live'};
-    final safe = <String, String>{};
-    for (final entry in uri.queryParameters.entries) {
-      if (allowed.contains(entry.key)) {
-        safe[entry.key] = entry.value;
-      }
-    }
-    return safe;
-  }
-
-  String? _maskedValue(String? value) {
-    if (value == null || value.isEmpty) return null;
-    if (value.length <= 6) return '***';
-    return '${value.substring(0, 3)}***${value.substring(value.length - 2)}';
-  }
-
-  Future<void> _captureDeepLinkException(
-    dynamic error,
-    StackTrace stackTrace, {
-    required String stage,
-    Map<String, dynamic>? extras,
-    bool captureAsException = true,
-  }) async {
-    try {
-      final mergedExtras = <String, dynamic>{'stage': stage, ...?extras};
-      final sentryExtras = mergedExtras.map(
-        (key, value) => MapEntry(key, value?.toString()),
-      );
-      if (!captureAsException) {
-        _addBreadcrumb(
-          'deep link warning',
-          data: {'stage': stage, ...?extras, 'error': error.toString()},
-        );
-        return;
-      }
-
-      await Sentry.captureException(
-        error,
-        stackTrace: stackTrace,
-        withScope: (scope) {
-          scope.setTag('area', 'deep_link');
-          scope.setTag('stage', stage);
-          scope.setContexts('deep_link', sentryExtras);
-        },
-      ).timeout(const Duration(seconds: 2));
-    } catch (telemetryError, telemetryStackTrace) {
-      debugPrint(
-        'DeepLinkService: Sentry logging failed at $stage: $telemetryError',
-      );
-      debugPrint('$telemetryStackTrace');
-    }
-  }
-
-  Future<void> _captureDeepLinkMessage(
-    String message, {
-    required String stage,
-    Map<String, dynamic>? extras,
-    SentryLevel level = SentryLevel.info,
-  }) async {
-    try {
-      final mergedExtras = <String, dynamic>{'stage': stage, ...?extras};
-      final sentryExtras = mergedExtras.map(
-        (key, value) => MapEntry(key, value?.toString()),
-      );
-      await Sentry.captureMessage(
-        message,
-        level: level,
-        withScope: (scope) {
-          scope.setTag('area', 'deep_link');
-          scope.setTag('stage', stage);
-          scope.setContexts('deep_link', sentryExtras);
-        },
-      ).timeout(const Duration(seconds: 2));
-    } catch (telemetryError, telemetryStackTrace) {
-      debugPrint(
-        'DeepLinkService: Sentry message logging failed at $stage: $telemetryError',
-      );
-      debugPrint('$telemetryStackTrace');
-    }
-  }
 }
 
 class _DeepLinkedChessBoardRoute extends StatefulWidget {

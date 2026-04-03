@@ -11,7 +11,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:screenshot/screenshot.dart';
-import 'package:sentry_flutter/sentry_flutter.dart';
 import 'package:share_plus/share_plus.dart';
 
 import 'gif_export_worker.dart';
@@ -126,59 +125,6 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
   void dispose() {
     _cancelled = true;
     super.dispose();
-  }
-
-  Future<void> _captureShareMessage(
-    String message, {
-    required String stage,
-    Map<String, dynamic>? extras,
-  }) async {
-    try {
-      const shareUrlKey = 'shareUrl';
-      final resolvedShareUrl =
-          (extras?[shareUrlKey] as String?) ?? _effectiveShareUrl;
-      await Sentry.captureMessage(
-        message,
-        level: SentryLevel.info,
-        withScope: (scope) {
-          scope.setTag('area', 'share_game');
-          scope.setTag('stage', stage);
-          scope.setContexts('share_game', {
-            'gameId': widget.gameId,
-            'shareUrl': resolvedShareUrl,
-            'hasShareUrl': resolvedShareUrl?.isNotEmpty == true,
-            ...?extras,
-          }.map((key, value) => MapEntry(key, value?.toString())));
-        },
-      ).timeout(const Duration(seconds: 2));
-    } catch (_) {}
-  }
-
-  Future<void> _captureShareException(
-    Object error,
-    StackTrace stackTrace, {
-    required String stage,
-    Map<String, dynamic>? extras,
-  }) async {
-    try {
-      const shareUrlKey = 'shareUrl';
-      final resolvedShareUrl =
-          (extras?[shareUrlKey] as String?) ?? _effectiveShareUrl;
-      await Sentry.captureException(
-        error,
-        stackTrace: stackTrace,
-        withScope: (scope) {
-          scope.setTag('area', 'share_game');
-          scope.setTag('stage', stage);
-          scope.setContexts('share_game', {
-            'gameId': widget.gameId,
-            'shareUrl': resolvedShareUrl,
-            'hasShareUrl': resolvedShareUrl?.isNotEmpty == true,
-            ...?extras,
-          }.map((key, value) => MapEntry(key, value?.toString())));
-        },
-      ).timeout(const Duration(seconds: 2));
-    } catch (_) {}
   }
 
   // Board settings with animations disabled for instant frame capture
@@ -303,17 +249,6 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
   }
 
   Future<void> _shareFiles(List<XFile> files) {
-    unawaited(
-      _captureShareMessage(
-        'share game files invoked',
-        stage: 'share_files',
-        extras: {
-          'fileCount': files.length,
-          'subject': _shareSubject,
-          'shareUrl': _effectiveShareUrl,
-        },
-      ),
-    );
     return Share.shareXFiles(
       files,
       subject: _shareSubject,
@@ -323,12 +258,6 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
   }
 
   Future<void> _shareImage() async {
-    unawaited(
-      _captureShareMessage(
-        'share image started',
-        stage: 'share_image_started',
-      ),
-    );
     final imageBytes = await _captureCard();
     if (imageBytes == null) {
       _showMessage('Failed to generate image', isError: true);
@@ -341,28 +270,9 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
       await file.writeAsBytes(imageBytes);
 
       await _shareFiles([XFile(file.path)]);
-      unawaited(
-        _captureShareMessage(
-          'share image completed',
-          stage: 'share_image_completed',
-          extras: {
-            'imageSize': imageBytes.length,
-            'shareUrl': _effectiveShareUrl,
-          },
-        ),
-      );
-    } catch (e, stackTrace) {
+    } catch (e, st) {
       debugPrint('Error sharing: $e');
-      unawaited(
-        _captureShareException(
-          e,
-          stackTrace,
-          stage: 'share_image',
-          extras: {
-            'imageSize': imageBytes.length,
-          },
-        ),
-      );
+      debugPrint('Stack trace: $st');
       _showMessage('Failed to share image', isError: true);
     }
   }
