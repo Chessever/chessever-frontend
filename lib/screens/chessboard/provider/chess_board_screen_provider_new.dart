@@ -4067,6 +4067,7 @@ class ChessBoardScreenNotifierNew
   Future<List<AnalysisLine>> _buildPrincipalVariations(
     String fen,
     List<Pv> pvs,
+    {bool alreadyNormalized = false}
   ) async {
     if (pvs.isEmpty) {
       _releaseLog('⚠️ BUILD PV: Empty PVs list provided');
@@ -4145,18 +4146,12 @@ class ChessBoardScreenNotifierNew
       int? mate;
 
       if (isMate) {
-        mate =
-            mateValue is int
-                ? mateValue
-                : int.tryParse(mateValue?.toString() ?? '');
-        mate = _getConsistentMate(mate, fen);
-      } else {
-        final cp =
-            cpValue is int
-                ? cpValue
-                : int.tryParse(cpValue?.toString() ?? '0') ?? 0;
-        evaluation = _getConsistentEvaluation(cp / 100.0, fen);
-      }
+  mate = mateValue is int ? mateValue : int.tryParse(mateValue?.toString() ?? '');
+  if (!alreadyNormalized) mate = _getConsistentMate(mate, fen);
+} else {
+  final cp = cpValue is int ? cpValue : int.tryParse(cpValue?.toString() ?? '0') ?? 0;
+  evaluation = alreadyNormalized ? cp / 100.0 : _getConsistentEvaluation(cp / 100.0, fen);
+}
 
       lines.add(
         AnalysisLine(
@@ -5286,8 +5281,8 @@ class ChessBoardScreenNotifierNew
             if (currentFenBase != targetFenBase) return;
 
             final cp = pvs.first.cp;
-            final newEval = _getConsistentEvaluation(cp / 100.0, fenToAnalyze);
-            final mateScore = _getConsistentMate(pvs.first.mate, fenToAnalyze);
+            final newEval = pvs.first.cp / 100.0;
+            final mateScore =  pvs.first.mate; 
             evaluation = newEval;
 
             var workingState = currentState.copyWith(
@@ -5316,7 +5311,7 @@ class ChessBoardScreenNotifierNew
                 final visiblePage = ref.read(currentlyVisiblePageIndexProvider);
                 if (visiblePage != index) return;
 
-                var lines = await _buildPrincipalVariations(fenToAnalyze, pvs);
+                var lines = await _buildPrincipalVariations(fenToAnalyze, pvs, alreadyNormalized: true);
                 if (lines.isEmpty) return;
                 if (lines.length > multiPV) {
                   lines = lines.take(multiPV).toList(growable: false);
@@ -5481,6 +5476,7 @@ class ChessBoardScreenNotifierNew
             var finalLines = await _buildPrincipalVariations(
               fenToAnalyze,
               stockfishResult.pvs,
+              alreadyNormalized: true
             );
             if (finalLines.isNotEmpty && mounted) {
               if (finalLines.length > configuredMultiPV) {
@@ -5496,14 +5492,8 @@ class ChessBoardScreenNotifierNew
                         ? currentState.analysisState.movePointer
                         : null;
                 final updatedState = currentState.copyWith(
-                  evaluation: _getConsistentEvaluation(
-                    stockfishResult.pvs.first.cp / 100.0,
-                    fenToAnalyze,
-                  ),
-                  mate: _getConsistentMate(
-                    stockfishResult.pvs.first.mate,
-                    fenToAnalyze,
-                  ),
+                  evaluation: stockfishResult.pvs.first.cp / 100.0,
+                  mate: stockfishResult.pvs.first.mate,
                   isEvaluating: false,
                   principalVariations: pvLines,
                   principalVariationsBaseFen: fen,
@@ -5561,10 +5551,7 @@ class ChessBoardScreenNotifierNew
       }
 
       if (evaluation == null && (primaryEval?.pvs.isNotEmpty ?? false)) {
-        evaluation = _getConsistentEvaluation(
-          primaryEval!.pvs.first.cp / 100.0,
-          fenToAnalyze,
-        );
+        evaluation =  primaryEval!.pvs.first.cp / 100.0;
       }
 
       // CRITICAL FIX: Show evaluation even if PVs fail to convert
@@ -5587,10 +5574,7 @@ class ChessBoardScreenNotifierNew
         return;
       }
 
-      evaluation ??= _getConsistentEvaluation(
-        primaryEval!.pvs.first.cp / 100.0,
-        fenToAnalyze,
-      );
+      evaluation ??=  primaryEval!.pvs.first.cp / 100.0;
 
       // CRITICAL: Always show evaluation even if PVs fail
       // Show eval bar immediately, PV cards can come later via retry
@@ -5656,6 +5640,7 @@ class ChessBoardScreenNotifierNew
             final retryPvLines = await _buildPrincipalVariations(
               fenToAnalyze,
               evalForRetry.pvs,
+              alreadyNormalized: true,
             );
 
             if (retryPvLines.isNotEmpty && mounted) {
