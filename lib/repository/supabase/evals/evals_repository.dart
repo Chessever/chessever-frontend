@@ -12,20 +12,40 @@ final evalsRepositoryProvider = AutoDisposeProvider<EvalRepository>(
 class EvalRepository extends BaseRepository {
   EvalRepository(this.ref);
 
-  final ref;
+  final Ref ref;
 
   Future<Evals> upsert(Evals eval) => handleApiCall(() async {
-    final existingRecord =
-        await supabase
-            .from('evals')
-            .select()
-            .eq('position_id', eval.positionId)
-            .eq('depth', eval.depth)
-            .maybeSingle();
+    final existingRows = await supabase
+        .from('evals')
+        .select()
+        .eq('position_id', eval.positionId)
+        .eq('depth', eval.depth);
+
+    Map<String, dynamic>? existingRecord;
+    if (existingRows.isNotEmpty) {
+      existingRows.sort((a, b) {
+        final aMulti = ((a['multi_pv'] as int?) ?? (a['pvs'] as List).length);
+        final bMulti = ((b['multi_pv'] as int?) ?? (b['pvs'] as List).length);
+        if (bMulti != aMulti) return bMulti.compareTo(aMulti);
+        final aId = (a['id'] as int?) ?? 0;
+        final bId = (b['id'] as int?) ?? 0;
+        return bId.compareTo(aId);
+      });
+      existingRecord = Map<String, dynamic>.from(existingRows.first);
+    }
 
     if (existingRecord != null) {
       final id = existingRecord['id'] as int?;
       if (id != null) {
+        final incomingMulti = eval.multiPv ?? eval.pvs.length;
+        final existingMulti =
+            (existingRecord['multi_pv'] as int?) ??
+            ((existingRecord['pvs'] as List?)?.length ?? 0);
+
+        if (incomingMulti < existingMulti) {
+          return Evals.fromJson(existingRecord);
+        }
+
         final updatePayload = {
           'knodes': eval.knodes,
           'depth': eval.depth,
@@ -96,16 +116,21 @@ class EvalRepository extends BaseRepository {
     }
   }
 
-  Future<Evals?> fetchFromSupabase(String fen, {int? desiredMultiPv}) async {
+  Future<Evals?> fetchFromSupabase(
+    String fen, {
+    int? desiredMultiPv,
+    int minDepth = 0,
+  }) async {
     final posRepo = ref.read(positionRepositoryProvider);
 
     final pos = await posRepo.getByFen(fen);
     if (pos == null) return null;
 
     final evals =
-        (await getByPositionId(
-          pos.id,
-        )).where((e) => _isEvalLegalForFen(fen, e)).toList();
+        (await getByPositionId(pos.id))
+            .where((e) => e.depth >= minDepth)
+            .where((e) => _isEvalLegalForFen(fen, e))
+            .toList();
     if (evals.isEmpty) return null;
 
     Evals? selectBestMatch(Iterable<Evals> candidates) {
@@ -114,10 +139,12 @@ class EvalRepository extends BaseRepository {
           candidates.toList()..sort((a, b) {
             final multiA = (a.multiPv ?? a.pvs.length);
             final multiB = (b.multiPv ?? b.pvs.length);
-            if (multiB != multiA)
-              return multiB.compareTo(multiA); // prefer higher PV count
-            if (b.depth != a.depth)
-              return b.depth.compareTo(a.depth); // then deeper depth
+            if (b.depth != a.depth) {
+              return b.depth.compareTo(a.depth); // prefer deeper depth
+            }
+            if (multiB != multiA) {
+              return multiB.compareTo(multiA); // then prefer higher PV count
+            }
             return 0;
           });
       return sorted.first;
@@ -196,8 +223,8 @@ class EvalRepository extends BaseRepository {
         final candidateMulti = eval.multiPv ?? eval.pvs.length;
 
         final shouldReplace =
-            candidateMulti > existingMulti ||
-            (candidateMulti == existingMulti && eval.depth > existing.depth);
+            eval.depth > existing.depth ||
+            (eval.depth == existing.depth && candidateMulti > existingMulti);
         if (shouldReplace) {
           evalsByPositionId[posId] = eval;
         }
