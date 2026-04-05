@@ -606,6 +606,41 @@ class ChessBoardScreenNotifierNew
     return isWhiteToMove ? mate : -mate;
   }
 
+  double _normalizeEvaluationForPerspective(
+    double evaluation,
+    String fen, {
+    required bool whitePerspective,
+  }) {
+    return whitePerspective
+        ? evaluation
+        : _getConsistentEvaluation(evaluation, fen);
+  }
+
+  int? _normalizeMateForPerspective(
+    int? mate,
+    String fen, {
+    required bool whitePerspective,
+  }) {
+    if (mate == null || mate == 0) return mate;
+    return whitePerspective ? mate : _getConsistentMate(mate, fen);
+  }
+
+  double _evaluationFromPv(Pv pv, String fen) {
+    return _normalizeEvaluationForPerspective(
+      pv.cp / 100.0,
+      fen,
+      whitePerspective: pv.whitePerspective,
+    );
+  }
+
+  int? _mateFromPv(Pv pv, String fen) {
+    return _normalizeMateForPerspective(
+      pv.mate,
+      fen,
+      whitePerspective: pv.whitePerspective,
+    );
+  }
+
   String _fenCacheKey(String fen, {int? multiPV}) {
     final parts = fen.split(' ');
     final baseFen =
@@ -4102,6 +4137,7 @@ class ChessBoardScreenNotifierNew
                   'cp': pv.cp,
                   'isMate': pv.isMate,
                   'mate': pv.mate,
+                  'whitePerspective': pv.whitePerspective,
                 },
               )
               .toList(),
@@ -4123,6 +4159,7 @@ class ChessBoardScreenNotifierNew
       final bool isMate = entry['isMate'] == true;
       final mateValue = entry['mate'];
       final cpValue = entry['cp'];
+      final bool whitePerspective = entry['whitePerspective'] == true;
 
       // Parse UCI → Move directly; the worker already validated every move
       // via position.makeSan(), so skip the expensive position.play() loop.
@@ -4149,13 +4186,21 @@ class ChessBoardScreenNotifierNew
             mateValue is int
                 ? mateValue
                 : int.tryParse(mateValue?.toString() ?? '');
-        mate = _getConsistentMate(mate, fen);
+        mate = _normalizeMateForPerspective(
+          mate,
+          fen,
+          whitePerspective: whitePerspective,
+        );
       } else {
         final cp =
             cpValue is int
                 ? cpValue
                 : int.tryParse(cpValue?.toString() ?? '0') ?? 0;
-        evaluation = _getConsistentEvaluation(cp / 100.0, fen);
+        evaluation = _normalizeEvaluationForPerspective(
+          cp / 100.0,
+          fen,
+          whitePerspective: whitePerspective,
+        );
       }
 
       lines.add(
@@ -5079,13 +5124,11 @@ class ChessBoardScreenNotifierNew
             );
         if (cascadeEval.pvs.isNotEmpty) {
           primaryEval = cascadeEval;
-          final rawCp = cascadeEval.pvs.first.cp;
+          final firstCascadePv = cascadeEval.pvs.first;
+          final rawCp = firstCascadePv.cp;
           final rawEval = rawCp / 100.0;
-          evaluation = _getConsistentEvaluation(rawEval, fenToAnalyze);
-          final cascadeMate = _getConsistentMate(
-            cascadeEval.pvs.first.mate,
-            fenToAnalyze,
-          );
+          evaluation = _evaluationFromPv(firstCascadePv, fenToAnalyze);
+          final cascadeMate = _mateFromPv(firstCascadePv, fenToAnalyze);
 
           if (mounted) {
             final previewState = state.value;
@@ -5192,10 +5235,7 @@ class ChessBoardScreenNotifierNew
               pvLines = mergedCascade;
               final updatedCascade = snapshot.copyWith(
                 evaluation: evaluation,
-                mate: _getConsistentMate(
-                  cascadeEval.pvs.first.mate,
-                  fenToAnalyze,
-                ),
+                mate: _mateFromPv(cascadeEval.pvs.first, fenToAnalyze),
                 isEvaluating: true,
                 principalVariations: mergedCascade,
                 principalVariationsBaseFen: fen,
@@ -5294,9 +5334,9 @@ class ChessBoardScreenNotifierNew
             final targetFenBase = fen.split(' ').take(3).join(' ');
             if (currentFenBase != targetFenBase) return;
 
-            final cp = pvs.first.cp;
-            final newEval = _getConsistentEvaluation(cp / 100.0, fenToAnalyze);
-            final mateScore = _getConsistentMate(pvs.first.mate, fenToAnalyze);
+            final firstPv = pvs.first;
+            final newEval = _evaluationFromPv(firstPv, fenToAnalyze);
+            final mateScore = _mateFromPv(firstPv, fenToAnalyze);
             evaluation = newEval;
 
             var workingState = currentState.copyWith(
@@ -5505,12 +5545,12 @@ class ChessBoardScreenNotifierNew
                         ? currentState.analysisState.movePointer
                         : null;
                 final updatedState = currentState.copyWith(
-                  evaluation: _getConsistentEvaluation(
-                    stockfishResult.pvs.first.cp / 100.0,
+                  evaluation: _evaluationFromPv(
+                    stockfishResult.pvs.first,
                     fenToAnalyze,
                   ),
-                  mate: _getConsistentMate(
-                    stockfishResult.pvs.first.mate,
+                  mate: _mateFromPv(
+                    stockfishResult.pvs.first,
                     fenToAnalyze,
                   ),
                   isEvaluating: false,
@@ -5570,10 +5610,7 @@ class ChessBoardScreenNotifierNew
       }
 
       if (evaluation == null && (primaryEval?.pvs.isNotEmpty ?? false)) {
-        evaluation = _getConsistentEvaluation(
-          primaryEval!.pvs.first.cp / 100.0,
-          fenToAnalyze,
-        );
+        evaluation = _evaluationFromPv(primaryEval!.pvs.first, fenToAnalyze);
       }
 
       // CRITICAL FIX: Show evaluation even if PVs fail to convert
@@ -5596,10 +5633,7 @@ class ChessBoardScreenNotifierNew
         return;
       }
 
-      evaluation ??= _getConsistentEvaluation(
-        primaryEval!.pvs.first.cp / 100.0,
-        fenToAnalyze,
-      );
+      evaluation ??= _evaluationFromPv(primaryEval!.pvs.first, fenToAnalyze);
 
       // CRITICAL: Always show evaluation even if PVs fail
       // Show eval bar immediately, PV cards can come later via retry
@@ -5619,10 +5653,7 @@ class ChessBoardScreenNotifierNew
           state = AsyncValue.data(
             currentSnapshot.copyWith(
               evaluation: evaluation,
-              mate: _getConsistentMate(
-                primaryEval!.pvs.first.mate,
-                fenToAnalyze,
-              ),
+              mate: _mateFromPv(primaryEval!.pvs.first, fenToAnalyze),
               isEvaluating: true, // Keep loading state until PVs arrive
               principalVariations: const [],
               principalVariationsBaseFen: null,
