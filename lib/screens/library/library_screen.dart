@@ -17,6 +17,7 @@ import 'package:chessever2/utils/library_utils.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
+import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:chessever2/widgets/screen_wrapper.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:flutter/material.dart';
@@ -271,18 +272,15 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   Widget _buildContent() {
     final ownedFoldersAsync = ref.watch(libraryFoldersStreamProvider);
     final subscribedFoldersAsync = ref.watch(subscribedBooksProvider);
-
-    // Check if we have user folders to show background decoration
-    final ownedFolders =
-        ownedFoldersAsync.valueOrNull ?? const <LibraryFolder>[];
-    final subscribedFolders =
-        subscribedFoldersAsync.valueOrNull ?? const <LibraryFolder>[];
-    final hasFolders = ownedFolders.isNotEmpty || subscribedFolders.isNotEmpty;
+    final contentState = _resolveContentState(
+      ownedFoldersAsync: ownedFoldersAsync,
+      subscribedFoldersAsync: subscribedFoldersAsync,
+    );
 
     return Stack(
       children: [
         // Subtle background decoration - only when user has personal folders
-        if (hasFolders)
+        if (contentState.hasFolders)
           const Positioned.fill(child: _LibraryBackgroundDecoration()),
         // Main content
         RefreshIndicator(
@@ -299,22 +297,59 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
             ),
             slivers: [
               SliverToBoxAdapter(child: SizedBox(height: 4.h)),
-              ownedFoldersAsync.when(
-                data: (owned) {
-                  final combined = <LibraryFolder>[
-                    ...owned,
-                    ...subscribedFolders,
-                  ];
-                  return _buildFoldersSliver(combined);
-                },
-                loading: () => _buildLoadingSliver(),
-                error: (error, _) => _buildErrorSliver(error.toString()),
-              ),
+              if (contentState.isLoading)
+                _buildLoadingSliver()
+              else if (contentState.hasError)
+                _buildErrorSliver(contentState.error.toString())
+              else
+                _buildFoldersSliver(contentState.folders),
               SliverToBoxAdapter(child: SizedBox(height: 24.h)),
             ],
           ),
         ),
       ],
+    );
+  }
+
+  _ResolvedLibraryContentState _resolveContentState({
+    required AsyncValue<List<LibraryFolder>> ownedFoldersAsync,
+    required AsyncValue<List<LibraryFolder>> subscribedFoldersAsync,
+  }) {
+    final ownedFolders =
+        ownedFoldersAsync.valueOrNull ?? const <LibraryFolder>[];
+    final subscribedFolders =
+        subscribedFoldersAsync.valueOrNull ?? const <LibraryFolder>[];
+    final combinedFolders = <LibraryFolder>[
+      ...ownedFolders,
+      ...subscribedFolders,
+    ];
+
+    // Keep the page in loading until the initial async surface is truly settled.
+    // This prevents brief provider errors from flashing the full-page error UI.
+    final waitingForFirstStableResult =
+        combinedFolders.isEmpty &&
+        ((ownedFoldersAsync.isLoading && !ownedFoldersAsync.hasValue) ||
+            (subscribedFoldersAsync.isLoading &&
+                !subscribedFoldersAsync.hasValue));
+
+    if (waitingForFirstStableResult) {
+      return const _ResolvedLibraryContentState(
+        folders: <LibraryFolder>[],
+        isLoading: true,
+      );
+    }
+
+    if (combinedFolders.isNotEmpty) {
+      return _ResolvedLibraryContentState(folders: combinedFolders);
+    }
+
+    final error =
+        ownedFoldersAsync.asError?.error ??
+        subscribedFoldersAsync.asError?.error;
+
+    return _ResolvedLibraryContentState(
+      folders: const <LibraryFolder>[],
+      error: error,
     );
   }
 
@@ -406,9 +441,51 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   }
 
   Widget _buildLoadingSliver() {
-    return const SliverFillRemaining(
-      hasScrollBody: false,
-      child: Center(child: CircularProgressIndicator(color: kWhiteColor)),
+    final horizontalPadding = ResponsiveHelper.adaptive(
+      phone: 16.w,
+      tablet: 24.w,
+    );
+
+    final loadingCards = List.generate(
+      ResponsiveHelper.isTablet ? 6 : 5,
+      (index) => _LibraryFolderLoadingCard(isFeatured: index == 0),
+    );
+
+    return SliverToBoxAdapter(
+      child: Padding(
+        padding: EdgeInsets.symmetric(
+          horizontal: horizontalPadding,
+          vertical: 8.h,
+        ),
+        child: SkeletonWidget(
+          child:
+              ResponsiveHelper.isTablet
+                  ? GridView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: ResponsiveHelper.tabletGridColumns.clamp(
+                        2,
+                        3,
+                      ),
+                      crossAxisSpacing: 16.sp,
+                      mainAxisSpacing: 16.sp,
+                      childAspectRatio:
+                          ResponsiveHelper.isLandscape ? 2.5 : 2.0,
+                    ),
+                    itemCount: loadingCards.length,
+                    itemBuilder: (context, index) => loadingCards[index],
+                  )
+                  : Column(
+                    children: [
+                      for (final card in loadingCards) ...[
+                        card,
+                        SizedBox(height: 8.h),
+                      ],
+                    ],
+                  ),
+        ),
+      ),
     );
   }
 
@@ -647,6 +724,80 @@ class _LibraryBackgroundDecoration extends StatelessWidget {
       topRight: isTopRight ? Radius.circular(radius) : Radius.zero,
       bottomLeft: isBottomLeft ? Radius.circular(radius) : Radius.zero,
       bottomRight: isBottomRight ? Radius.circular(radius) : Radius.zero,
+    );
+  }
+}
+
+class _ResolvedLibraryContentState {
+  const _ResolvedLibraryContentState({
+    required this.folders,
+    this.isLoading = false,
+    this.error,
+  });
+
+  final List<LibraryFolder> folders;
+  final bool isLoading;
+  final Object? error;
+
+  bool get hasFolders => folders.isNotEmpty;
+  bool get hasError => error != null;
+}
+
+class _LibraryFolderLoadingCard extends StatelessWidget {
+  const _LibraryFolderLoadingCard({required this.isFeatured});
+
+  final bool isFeatured;
+
+  @override
+  Widget build(BuildContext context) {
+    final iconSize = isFeatured ? 64.0.h : 36.0.h;
+    final iconRadius = isFeatured ? 17.78.br : 10.0.br;
+
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 14.h),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1A1A1C),
+        borderRadius: BorderRadius.circular(12.br),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: iconSize,
+            height: iconSize,
+            decoration: BoxDecoration(
+              color: const Color(0xFF262626),
+              borderRadius: BorderRadius.circular(iconRadius),
+            ),
+          ),
+          SizedBox(width: 8.w),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  isFeatured ? 'TWIC Database' : 'Opening Preparation',
+                  style: AppTypography.textSmMedium.copyWith(
+                    color: const Color(0xFFFAFAFA),
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                SizedBox(height: 4.h),
+                Text(
+                  isFeatured ? '4.5 million master games' : '124 saved games',
+                  style: AppTypography.textXsRegular.copyWith(
+                    color: const Color(0xFFA1A1A1),
+                    height: 16 / 12,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

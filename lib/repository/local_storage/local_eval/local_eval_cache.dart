@@ -15,9 +15,7 @@ class LocalEvalCache {
 
   static const _cacheKeyPrefix = 'cloud_eval_';
   static const _versionKey = 'cloud_eval_version';
-  static const _currentVersion = 12; // v12: Migrated to SQLite
-  static const _maxCacheSize = 500;
-
+  static const _currentVersion = 13; // v13: Depth-aware cache keys
   /// Prevents concurrent version check/clear operations
   static Completer<void>? _versionCheckCompleter;
   static bool _versionVerified = false;
@@ -55,6 +53,8 @@ class LocalEvalCache {
 
   Future<void> save(String fen, CloudEval eval, {int? multiPV}) async {
     try {
+      if (fen.isEmpty || eval.depth <= 0 || eval.pvs.isEmpty) return;
+
       // Single synchronized version check
       await _ensureVersionChecked();
 
@@ -62,90 +62,77 @@ class LocalEvalCache {
 
       final effectiveMultiPv =
           (multiPV ?? eval.requestedMultiPv ?? eval.pvs.length).clamp(0, 5);
-      final key = _buildKey(fen, effectiveMultiPv);
-      final jsonValue = jsonEncode(eval.toJson());
-
-      // Batch both writes (main key + legacy key) in a single transaction
-      final entries = <String, String>{key: jsonValue};
-      if (effectiveMultiPv > 0) {
-        entries['$_cacheKeyPrefix$fen'] = jsonValue;
-      }
-      await db.setCacheBatch(entries);
+      final cacheKey = _buildKey(fen, effectiveMultiPv, eval.depth);
+      await db.setCacheBatch({cacheKey: jsonEncode(eval.toJson())});
     } catch (e) {
       // Cache failure is not critical
     }
   }
 
-  Future<CloudEval?> fetch(String fen, {int? multiPV}) async {
+  Future<CloudEval?> fetch(String fen, {int? multiPV, int minDepth = 0}) async {
     try {
       // Single synchronized version check
       await _ensureVersionChecked();
 
       final db = ref.read(appDatabaseProvider);
 
-      final desired = (multiPV ?? 0);
-      final keysToTry = <String>[];
+      final desired = multiPV ?? 0;
+      final entries = await db.getCacheByPrefixes(
+        prefixes: [_buildPrefix(fen)],
+      );
 
-      if (desired > 0) {
-        for (int pv = desired; pv >= 1; pv--) {
-          keysToTry.add(_buildKey(fen, pv));
-        }
-      }
-
-      // Legacy fallbacks (no PV suffix)
-      keysToTry.add('$_cacheKeyPrefix$fen');
-
-      // Single SQL query for all candidate keys instead of N sequential reads
-      final entries = await db.getCacheMulti(keys: keysToTry);
-
-      // Iterate in priority order (highest PV first)
-      for (final key in keysToTry) {
-        final entry = entries[key];
-        if (entry == null) continue;
-
+      CloudEval? bestEval;
+      for (final entry in entries.values) {
         try {
           final eval = CloudEval.fromJson(jsonDecode(entry.value));
           if (eval.pvs.isEmpty) continue;
+          if (eval.depth < minDepth) continue;
 
-          if (desired > 0) {
-            if (eval.pvs.length < desired) {
-              continue;
-            }
-            if (eval.pvs.length > desired) {
-              final trimmed = CloudEval(
-                fen: eval.fen,
-                knodes: eval.knodes,
-                depth: eval.depth,
-                pvs: eval.pvs.take(desired).toList(growable: false),
-                requestedMultiPv: desired,
-              );
-              return trimmed;
-            }
-            if (eval.requestedMultiPv != desired) {
-              return CloudEval(
-                fen: eval.fen,
-                knodes: eval.knodes,
-                depth: eval.depth,
-                pvs: eval.pvs,
-                requestedMultiPv: desired,
-              );
-            }
+          final effectiveMultiPv = _effectiveMultiPv(eval);
+          if (desired > 0 && effectiveMultiPv < desired) {
+            continue;
           }
-          return eval.requestedMultiPv == null
-              ? CloudEval(
-                fen: eval.fen,
-                knodes: eval.knodes,
-                depth: eval.depth,
-                pvs: eval.pvs,
-                requestedMultiPv: eval.pvs.length,
-              )
-              : eval;
+
+          if (bestEval == null || _isCandidateBetter(eval, bestEval)) {
+            bestEval = eval;
+          }
         } catch (_) {
           // corrupted entry - skip it
         }
       }
 
-      return null;
+      if (bestEval == null) return null;
+
+      if (desired > 0) {
+        if (bestEval.pvs.length > desired) {
+          return CloudEval(
+            fen: bestEval.fen,
+            knodes: bestEval.knodes,
+            depth: bestEval.depth,
+            pvs: bestEval.pvs.take(desired).toList(growable: false),
+            requestedMultiPv: desired,
+          );
+        }
+        if (bestEval.requestedMultiPv != desired) {
+          return CloudEval(
+            fen: bestEval.fen,
+            knodes: bestEval.knodes,
+            depth: bestEval.depth,
+            pvs: bestEval.pvs,
+            requestedMultiPv: desired,
+          );
+        }
+      }
+
+      return bestEval.requestedMultiPv == null
+          ? CloudEval(
+            fen: bestEval.fen,
+            knodes: bestEval.knodes,
+            depth: bestEval.depth,
+            pvs: bestEval.pvs,
+            requestedMultiPv: bestEval.pvs.length,
+          )
+          : bestEval;
     } catch (e) {
       return null;
     }
@@ -161,18 +148,24 @@ class LocalEvalCache {
       await _ensureVersionChecked();
 
       final db = ref.read(appDatabaseProvider);
+      final requested = fens.toSet();
+      final entries = await db.getCacheByPrefixes(
+        prefixes: fens.map(_buildPrefix).toList(),
+      );
 
-      final keys = fens.map((fen) => _buildKey(fen, 0)).toList();
-      final entries = await db.getCacheMulti(keys: keys);
-
-      for (final fen in fens) {
-        final entry = entries[_buildKey(fen, 0)];
-        if (entry != null) {
-          try {
-            result[fen] = CloudEval.fromJson(jsonDecode(entry.value));
-          } catch (_) {
-            // corrupted entry - skip it
+      for (final entry in entries.values) {
+        try {
+          final eval = CloudEval.fromJson(jsonDecode(entry.value));
+          if (!requested.contains(eval.fen) || eval.pvs.isEmpty) {
+            continue;
           }
+
+          final existing = result[eval.fen];
+          if (existing == null || _isCandidateBetter(eval, existing)) {
+            result[eval.fen] = eval;
+          }
+        } catch (_) {
+          // corrupted entry - skip it
         }
       }
     } catch (e) {
@@ -202,8 +195,22 @@ class LocalEvalCache {
     }
   }
 
-  String _buildKey(String fen, int multiPV) {
-    if (multiPV <= 0) return '$_cacheKeyPrefix$fen';
-    return '$_cacheKeyPrefix${fen}_pv$multiPV';
+  String _buildKey(String fen, int multiPV, int depth) {
+    return '$_cacheKeyPrefix${fen}_pv${multiPV}_d$depth';
+  }
+
+  String _buildPrefix(String fen) {
+    return '$_cacheKeyPrefix${fen}_pv';
+  }
+
+  int _effectiveMultiPv(CloudEval eval) {
+    return eval.requestedMultiPv ?? eval.pvs.length;
+  }
+
+  bool _isCandidateBetter(CloudEval candidate, CloudEval existing) {
+    if (candidate.depth != existing.depth) {
+      return candidate.depth > existing.depth;
+    }
+    return _effectiveMultiPv(candidate) >= _effectiveMultiPv(existing);
   }
 }

@@ -4205,7 +4205,16 @@ class ChessBoardScreenNotifierNew
       final newMoves = newLine.moves;
       if (prevMoves.length > newMoves.length &&
           _isPrefixMoves(newMoves, prevMoves)) {
-        merged.add(prevLine);
+        // Keep the longer move list for UI continuity, but always take the
+        // newest normalized score so PV cards cannot disagree with the eval bar.
+        merged.add(
+          AnalysisLine(
+            moves: prevLine.moves,
+            sanMoves: prevLine.sanMoves,
+            evaluation: newLine.evaluation,
+            mate: newLine.mate,
+          ),
+        );
       } else {
         merged.add(newLine);
       }

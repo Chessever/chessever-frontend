@@ -8,7 +8,7 @@ PODS:
     - AmplitudeCore (< 2.0.0, >= 1.1.0)
     - AnalyticsConnector (~> 1.3.0)
   - AnalyticsConnector (1.3.1)
-  - app_links (7.0.0):
+  - app_links (6.4.1):
     - Flutter
   - app_settings (6.1.2):
     - Flutter
@@ -280,7 +280,7 @@ SPEC CHECKSUMS:
   AmplitudeCore: 3b61daa947e49322bbec0e3e913f42bfa63f24b3
   AmplitudeSwift: 41d52966044cc377435eda13124854ab7b4ec454
   AnalyticsConnector: 3def11199b4ddcad7202c778bde982ec5da0ebb3
-  app_links: a754cbec3c255bd4bbb4d236ecc06f28cd9a7ce8
+  app_links: 3dbc685f76b1693c66a6d9dd1e9ab6f73d97dc0a
   app_settings: 0341ec6daa4f0c50f5a421bf0ad7c36084db6e90
   AppAuth: 1c1a8afa7e12f2ec3a294d9882dfa5ab7d3cb063
   AppCheckCore: cc8fd0a3a230ddd401f326489c99990b013f0c4f

@@ -392,6 +392,39 @@ class AppDatabase {
     return map;
   }
 
+  /// Fetch cache entries whose keys start with any of the provided prefixes.
+  /// Prefixes are escaped for SQL LIKE matching.
+  Future<Map<String, CacheEntry>> getCacheByPrefixes({
+    required List<String> prefixes,
+    String? userId,
+  }) async {
+    if (prefixes.isEmpty) return {};
+
+    final db = await database;
+    final uid = userId ?? '';
+    final escapedPrefixes = prefixes.map(_escapeLikePattern).toList();
+    final likeClauses = List.filled(
+      escapedPrefixes.length,
+      "key LIKE ? ESCAPE '\\'",
+    ).join(' OR ');
+
+    final result = await db.query(
+      _cacheTable,
+      columns: ['key', 'value', 'cached_at'],
+      where: '($likeClauses) AND user_id = ?',
+      whereArgs: [...escapedPrefixes.map((prefix) => '$prefix%'), uid],
+    );
+
+    final map = <String, CacheEntry>{};
+    for (final row in result) {
+      map[row['key'] as String] = CacheEntry(
+        value: row['value'] as String,
+        cachedAt: DateTime.fromMillisecondsSinceEpoch(row['cached_at'] as int),
+      );
+    }
+    return map;
+  }
+
   /// Write multiple cache entries in a single transaction.
   Future<void> setCacheBatch(
     Map<String, String> entries, {
@@ -411,6 +444,13 @@ class AppDatabase {
       }, conflictAlgorithm: ConflictAlgorithm.replace);
     }
     await batch.commit(noResult: true);
+  }
+
+  String _escapeLikePattern(String value) {
+    return value
+        .replaceAll(r'\', r'\\')
+        .replaceAll('%', r'\%')
+        .replaceAll('_', r'\_');
   }
 
   // ============================================
