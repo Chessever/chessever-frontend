@@ -13,8 +13,8 @@ enum BottomNavBarItem { tournaments, calendar, library }
 
 final Map<BottomNavBarItem, String> bottomNavBarIcons = {
   BottomNavBarItem.tournaments: SvgAsset.tournamentIcon,
-  BottomNavBarItem.calendar: SvgAsset.calendarIcon,
-  BottomNavBarItem.library: SvgAsset.bookIcon,
+  BottomNavBarItem.calendar: SvgAsset.calendarNavIcon,
+  BottomNavBarItem.library: SvgAsset.libraryNavIcon,
 };
 
 final namesBottomNavBarIcons = {
