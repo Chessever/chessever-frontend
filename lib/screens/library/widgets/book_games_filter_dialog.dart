@@ -4,6 +4,7 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/back_drop_filter_widget.dart';
+import 'package:chessever2/widgets/game_filter/wheel_range_filter.dart';
 import 'package:flutter/material.dart';
 import 'package:motor/motor.dart';
 
@@ -181,8 +182,6 @@ class _BookGamesFilterDialogState extends State<BookGamesFilterDialog> {
                       min: 1950,
                       max: DateTime.now().year.toDouble(),
                       divisions: DateTime.now().year - 1950,
-                      labelStart: _yearRange.start.round().toString(),
-                      labelEnd: _yearRange.end.round().toString(),
                       onChanged: (v) => setState(() => _yearRange = v),
                     ),
                     SizedBox(height: 16.h),
@@ -194,8 +193,6 @@ class _BookGamesFilterDialogState extends State<BookGamesFilterDialog> {
                       min: 800,
                       max: 3500,
                       divisions: 54,
-                      labelStart: _ratingRange.start.round().toString(),
-                      labelEnd: _ratingRange.end.round().toString(),
                       onChanged: (v) => setState(() => _ratingRange = v),
                     ),
                     SizedBox(height: 16.h),
@@ -450,55 +447,15 @@ class _BookGamesFilterDialogState extends State<BookGamesFilterDialog> {
     required double min,
     required double max,
     required int divisions,
-    required String labelStart,
-    required String labelEnd,
     required ValueChanged<RangeValues> onChanged,
   }) {
-    return Container(
-      padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 10.h),
-      decoration: BoxDecoration(
-        color: kBlack2Color,
-        borderRadius: BorderRadius.circular(8.br),
-        border: Border.all(color: kDividerColor),
-      ),
-      child: Column(
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                labelStart,
-                style: AppTypography.textSmMedium.copyWith(
-                  color: kPrimaryColor,
-                ),
-              ),
-              Text(
-                labelEnd,
-                style: AppTypography.textSmMedium.copyWith(
-                  color: kPrimaryColor,
-                ),
-              ),
-            ],
-          ),
-          SliderTheme(
-            data: SliderThemeData(
-              activeTrackColor: kPrimaryColor,
-              inactiveTrackColor: kDividerColor,
-              thumbColor: kPrimaryColor,
-              overlayColor: kPrimaryColor.withValues(alpha: 0.2),
-              trackHeight: 4,
-              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 8),
-            ),
-            child: RangeSlider(
-              values: values,
-              min: min,
-              max: max,
-              divisions: divisions,
-              onChanged: onChanged,
-            ),
-          ),
-        ],
-      ),
+    return WheelRangeFilter(
+      minValue: min,
+      maxValue: max,
+      currentStart: values.start,
+      currentEnd: values.end,
+      divisions: divisions,
+      onChanged: onChanged,
     );
   }
 }

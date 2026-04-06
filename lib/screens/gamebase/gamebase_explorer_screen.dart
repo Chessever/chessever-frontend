@@ -21,6 +21,7 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/figurine_notation.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/screen_wrapper.dart';
+import 'package:chessever2/widgets/game_filter/wheel_range_filter.dart';
 import 'package:chessever2/screens/gamebase/providers/gamebase_providers.dart';
 import 'package:chessever2/screens/gamebase/providers/gamebase_explorer_state.dart';
 import 'package:chessever2/screens/gamebase/widgets/widgets.dart';
@@ -1385,61 +1386,15 @@ class _FilterSheetState extends ConsumerState<_FilterSheet> {
                   ),
                 ),
                 SizedBox(height: 8.sp),
-                Container(
-                  padding: EdgeInsets.symmetric(
-                    horizontal: 16.w,
-                    vertical: 14.h,
-                  ),
-                  decoration: BoxDecoration(
-                    color: kBlack2Color,
-                    borderRadius: BorderRadius.circular(12.br),
-                    border: Border.all(color: kDividerColor),
-                  ),
-                  child: Column(
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            _ratingRange.start.round().toString(),
-                            style: AppTypography.textSmMedium.copyWith(
-                              color: kWhiteColor,
-                            ),
-                          ),
-                          Text(
-                            _ratingRange.end.round().toString(),
-                            style: AppTypography.textSmMedium.copyWith(
-                              color: kWhiteColor,
-                            ),
-                          ),
-                        ],
-                      ),
-                      SizedBox(height: 4.h),
-                      SliderTheme(
-                        data: SliderThemeData(
-                          activeTrackColor: kWhiteColor,
-                          inactiveTrackColor: kDividerColor,
-                          thumbColor: kWhiteColor,
-                          overlayColor: kWhiteColor.withValues(alpha: 0.2),
-                          trackHeight: 3,
-                          thumbShape: const RoundSliderThumbShape(
-                            enabledThumbRadius: 10,
-                          ),
-                          rangeThumbShape: const RoundRangeSliderThumbShape(
-                            enabledThumbRadius: 10,
-                          ),
-                          rangeTrackShape:
-                              const RoundedRectRangeSliderTrackShape(),
-                        ),
-                        child: RangeSlider(
-                          values: _ratingRange,
-                          min: _ratingMin,
-                          max: _ratingMax,
-                          divisions: 50, // (3500-1000)/50 = 50 steps of 50
-                          onChanged: _onRatingRangeChanged,
-                        ),
-                      ),
-                    ],
+                Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 16.w),
+                  child: WheelRangeFilter(
+                    minValue: _ratingMin,
+                    maxValue: _ratingMax,
+                    currentStart: _ratingRange.start,
+                    currentEnd: _ratingRange.end,
+                    divisions: 50,
+                    onChanged: _onRatingRangeChanged,
                   ),
                 ),
                 SizedBox(height: 24.sp),

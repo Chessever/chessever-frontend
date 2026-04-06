@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/widgets/back_drop_filter_widget.dart';
+import 'package:chessever2/widgets/game_filter/wheel_range_filter.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 class FilterPopup extends ConsumerWidget {
@@ -178,51 +179,15 @@ class FilterPopup extends ConsumerWidget {
                               ),
                             ),
                             SizedBox(height: 8.h),
-                            Container(
-                              padding: EdgeInsets.symmetric(
-                                horizontal: 16.sp,
-                                vertical: 12.sp,
-                              ),
-                              decoration: BoxDecoration(
-                                color: kBlack2Color,
-                                borderRadius: BorderRadius.circular(8.br),
-                              ),
-                              child: Column(
-                                children: [
-                                  Row(
-                                    mainAxisAlignment:
-                                        MainAxisAlignment.spaceBetween,
-                                    children: [
-                                      Text(
-                                        '${filterState.eloRange.start.round()}',
-                                        style: AppTypography.textXsMedium
-                                            .copyWith(color: kWhiteColor),
-                                      ),
-                                      Text(
-                                        '${filterState.eloRange.end.round()}',
-                                        style: AppTypography.textXsMedium
-                                            .copyWith(color: kWhiteColor),
-                                      ),
-                                    ],
-                                  ),
-                                  RangeSlider(
-                                    values: filterState.eloRange,
-                                    min: 800,
-                                    max: 3200,
-                                    divisions: 48,
-                                    labels: RangeLabels(
-                                      '${filterState.eloRange.start.round()}',
-                                      '${filterState.eloRange.end.round()}',
-                                    ),
-                                    activeColor: kPrimaryColor,
-                                    inactiveColor: kDividerColor,
-                                    onChanged:
-                                        (v) => ref
-                                            .read(filterPopupProvider.notifier)
-                                            .setEloRange(v),
-                                  ),
-                                ],
-                              ),
+                            WheelRangeFilter(
+                              minValue: 800,
+                              maxValue: 3200,
+                              currentStart: filterState.eloRange.start,
+                              currentEnd: filterState.eloRange.end,
+                              divisions: 48,
+                              onChanged: (v) => ref
+                                  .read(filterPopupProvider.notifier)
+                                  .setEloRange(v),
                             ),
                             SizedBox(height: 16.h),
                           ],

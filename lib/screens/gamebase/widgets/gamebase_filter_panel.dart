@@ -6,6 +6,7 @@ import '../../../revenue_cat_service/subscribe_state.dart';
 import '../../../theme/app_theme.dart';
 import '../../../utils/app_typography.dart';
 import '../../../utils/responsive_helper.dart';
+import '../../../widgets/game_filter/wheel_range_filter.dart';
 import '../../../widgets/paywall/premium_paywall_sheet.dart';
 import '../models/models.dart';
 import '../providers/gamebase_explorer_state.dart';
@@ -427,71 +428,40 @@ class _RatingRangeInputs extends HookConsumerWidget {
         range.value.start == _absMin && range.value.end == _absMax;
 
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.end,
       children: [
-        // Labels
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
-              range.value.start.round().toString(),
-              style: AppTypography.textSmMedium.copyWith(
-                color: isDefault ? kSecondaryTextColor : kWhiteColor,
-              ),
-            ),
-            if (!isDefault)
-              GestureDetector(
-                onTap: () {
-                  range.value = const RangeValues(_absMin, _absMax);
-                  ref
-                      .read(gamebaseExplorerProvider.notifier)
-                      .setRatingRange(null, null);
-                },
-                child: Text(
-                  'Reset',
-                  style: AppTypography.textXsMedium.copyWith(
-                    color: kSecondaryTextColor,
-                  ),
-                ),
-              ),
-            Text(
-              range.value.end.round().toString(),
-              style: AppTypography.textSmMedium.copyWith(
-                color: isDefault ? kSecondaryTextColor : kWhiteColor,
-              ),
-            ),
-          ],
-        ),
-        SizedBox(height: 4.h),
-        // Slider
-        SliderTheme(
-          data: SliderThemeData(
-            activeTrackColor: kWhiteColor.withOpacity(isDefault ? 0.15 : 0.4),
-            inactiveTrackColor: kWhiteColor.withOpacity(0.08),
-            thumbColor: kWhiteColor,
-            overlayColor: kWhiteColor.withOpacity(0.08),
-            thumbShape: RoundSliderThumbShape(enabledThumbRadius: 7.sp),
-            trackHeight: 3.h,
-            rangeThumbShape: RoundRangeSliderThumbShape(
-              enabledThumbRadius: 7.sp,
-            ),
-            rangeTrackShape: const RoundedRectRangeSliderTrackShape(),
-          ),
-          child: RangeSlider(
-            values: range.value,
-            min: _absMin,
-            max: _absMax,
-            divisions: ((_absMax - _absMin) / _step).round(),
-            onChanged: (values) {
-              range.value = values;
-            },
-            onChangeEnd: (values) {
-              final min = values.start == _absMin ? null : values.start.round();
-              final max = values.end == _absMax ? null : values.end.round();
+        if (!isDefault)
+          GestureDetector(
+            onTap: () {
+              range.value = const RangeValues(_absMin, _absMax);
               ref
                   .read(gamebaseExplorerProvider.notifier)
-                  .setRatingRange(min, max);
+                  .setRatingRange(null, null);
             },
+            child: Padding(
+              padding: EdgeInsets.only(bottom: 8.h),
+              child: Text(
+                'Reset',
+                style: AppTypography.textXsMedium.copyWith(
+                  color: kSecondaryTextColor,
+                ),
+              ),
+            ),
           ),
+        WheelRangeFilter(
+          minValue: _absMin,
+          maxValue: _absMax,
+          currentStart: range.value.start,
+          currentEnd: range.value.end,
+          divisions: ((_absMax - _absMin) / _step).round(),
+          onChanged: (values) {
+            range.value = values;
+            final min = values.start == _absMin ? null : values.start.round();
+            final max = values.end == _absMax ? null : values.end.round();
+            ref
+                .read(gamebaseExplorerProvider.notifier)
+                .setRatingRange(min, max);
+          },
         ),
       ],
     );
