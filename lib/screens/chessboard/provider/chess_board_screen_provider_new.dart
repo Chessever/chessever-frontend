@@ -6719,6 +6719,7 @@ List<Map<String, dynamic>> _analysisLinesWorker(Map<String, dynamic> payload) {
       }
 
       final bool isMate = pvData['isMate'] == true;
+      final bool whitePerspective = pvData['whitePerspective'] == true;
       final int? rawMate =
           pvData['mate'] == null
               ? null
@@ -6734,6 +6735,7 @@ List<Map<String, dynamic>> _analysisLinesWorker(Map<String, dynamic> payload) {
         'isMate': isMate,
         'mate': rawMate,
         'cp': cpValue,
+        'whitePerspective': whitePerspective,
       });
     }
 
