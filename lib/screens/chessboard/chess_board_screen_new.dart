@@ -6743,7 +6743,9 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard> {
               lichessAnnotationsAsync.valueOrNull ??
               const <int, LichessMoveAnnotation>{};
           if (lichessAnnotations.isEmpty) return null;
-          // Only show annotations on mainline, not variations.
+          // Only show annotations on mainline, not variations or PV previews.
+          if (widget.chessBoardState.isPvPreviewActive) return null;
+          
           // Use navigatorState.movePointer to avoid stale widget props.
           final currentMovePointer = navigatorState.movePointer;
           final isOnMainline =
