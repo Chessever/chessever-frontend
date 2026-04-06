@@ -4,6 +4,7 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/back_drop_filter_widget.dart';
+import 'package:chessever2/widgets/game_filter/wheel_range_filter.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -177,64 +178,15 @@ class _PremiumGamesFilterDialogState
                               duration: const Duration(milliseconds: 150),
                               child: IgnorePointer(
                                 ignoring: !_eloFilterEnabled,
-                                child: Container(
-                                  padding: EdgeInsets.symmetric(
-                                    horizontal: 16.sp,
-                                    vertical: 12.sp,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: kBlack2Color,
-                                    borderRadius: BorderRadius.circular(8.br),
-                                  ),
-                                  child: Column(
-                                    children: [
-                                      Row(
-                                        mainAxisAlignment:
-                                            MainAxisAlignment.spaceBetween,
-                                        children: [
-                                          Text(
-                                            '${_eloRange.start.round()}',
-                                            style: AppTypography.textSmMedium
-                                                .copyWith(
-                                                  color: kPrimaryColor,
-                                                  fontWeight: FontWeight.w600,
-                                                ),
-                                          ),
-                                          Text(
-                                            '${_eloRange.end.round()}',
-                                            style: AppTypography.textSmMedium
-                                                .copyWith(
-                                                  color: kPrimaryColor,
-                                                  fontWeight: FontWeight.w600,
-                                                ),
-                                          ),
-                                        ],
-                                      ),
-                                      SliderTheme(
-                                        data: SliderThemeData(
-                                          activeTrackColor: kPrimaryColor,
-                                          inactiveTrackColor: kDividerColor,
-                                          thumbColor: kPrimaryColor,
-                                          overlayColor: kPrimaryColor
-                                              .withValues(alpha: 0.2),
-                                          trackHeight: 4,
-                                          thumbShape:
-                                              const RoundSliderThumbShape(
-                                                enabledThumbRadius: 8,
-                                              ),
-                                        ),
-                                        child: RangeSlider(
-                                          values: _eloRange,
-                                          min: 800,
-                                          max: 3200,
-                                          divisions: 48,
-                                          onChanged: (values) {
-                                            setState(() => _eloRange = values);
-                                          },
-                                        ),
-                                      ),
-                                    ],
-                                  ),
+                                child: WheelRangeFilter(
+                                  minValue: 800,
+                                  maxValue: 3200,
+                                  currentStart: _eloRange.start,
+                                  currentEnd: _eloRange.end,
+                                  divisions: 48,
+                                  onChanged: (values) {
+                                    setState(() => _eloRange = values);
+                                  },
                                 ),
                               ),
                             ),

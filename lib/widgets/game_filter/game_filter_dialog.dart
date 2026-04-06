@@ -6,10 +6,11 @@ import 'package:chessever2/widgets/back_drop_filter_widget.dart';
 import 'package:chessever2/widgets/game_filter/eco_filter_dropdown.dart';
 import 'package:chessever2/widgets/game_filter/expandable_filter_dropdown.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
+import 'package:chessever2/widgets/game_filter/wheel_range_filter.dart';
 import 'package:flutter/material.dart';
-import 'package:motor/motor.dart';
 
 /// Shows the game filter dialog and returns the selected filter or null if cancelled
+
 Future<GameFilter?> showGameFilterDialog({
   required BuildContext context,
   required GameFilter currentFilter,
@@ -192,8 +193,6 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
                         min: 1990,
                         max: DateTime.now().year.toDouble(),
                         divisions: DateTime.now().year - 1990,
-                        labelStart: _yearRange.start.round().toString(),
-                        labelEnd: _yearRange.end.round().toString(),
                         onChanged: (v) => setState(() => _yearRange = v),
                       ),
                       // Rating range slider
@@ -205,8 +204,6 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
                         min: 1000,
                         max: 3500,
                         divisions: 50,
-                        labelStart: _ratingRange.start.round().toString(),
-                        labelEnd: _ratingRange.end.round().toString(),
                         onChanged: (v) => setState(() => _ratingRange = v),
                       ),
                       SizedBox(height: 12.h),
@@ -334,58 +331,15 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
     required double min,
     required double max,
     required int divisions,
-    required String labelStart,
-    required String labelEnd,
     required ValueChanged<RangeValues> onChanged,
   }) {
-    return Container(
-      padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 14.h),
-      decoration: BoxDecoration(
-        color: kBlack2Color,
-        borderRadius: BorderRadius.circular(12.br),
-        border: Border.all(color: kDividerColor),
-      ),
-      child: Column(
-        children: [
-          // Labels showing current range values
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                labelStart,
-                style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
-              ),
-              Text(
-                labelEnd,
-                style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
-              ),
-            ],
-          ),
-          SizedBox(height: 4.h),
-          // Range slider
-          SliderTheme(
-            data: SliderThemeData(
-              activeTrackColor: kWhiteColor,
-              inactiveTrackColor: kDividerColor,
-              thumbColor: kWhiteColor,
-              overlayColor: kWhiteColor.withValues(alpha: 0.2),
-              trackHeight: 3,
-              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 10),
-              rangeThumbShape: const RoundRangeSliderThumbShape(
-                enabledThumbRadius: 10,
-              ),
-              rangeTrackShape: const RoundedRectRangeSliderTrackShape(),
-            ),
-            child: RangeSlider(
-              values: values,
-              min: min,
-              max: max,
-              divisions: divisions,
-              onChanged: onChanged,
-            ),
-          ),
-        ],
-      ),
+    return WheelRangeFilter(
+      minValue: min,
+      maxValue: max,
+      currentStart: values.start,
+      currentEnd: values.end,
+      divisions: divisions,
+      onChanged: onChanged,
     );
   }
 }
