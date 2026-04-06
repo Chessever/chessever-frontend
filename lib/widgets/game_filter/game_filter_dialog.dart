@@ -8,6 +8,7 @@ import 'package:chessever2/widgets/game_filter/expandable_filter_dropdown.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:chessever2/widgets/game_filter/wheel_range_filter.dart';
 import 'package:flutter/material.dart';
+import 'package:motor/motor.dart';
 
 /// Shows the game filter dialog and returns the selected filter or null if cancelled
 
