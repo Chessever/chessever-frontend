@@ -246,6 +246,21 @@ class PlayerSelectionContent extends HookConsumerWidget {
                               ),
                             ),
                           ),
+                          if (searchQuery.value.isNotEmpty)
+                            GestureDetector(
+                              onTap: () {
+                                searchController.clear();
+                                HapticFeedback.lightImpact();
+                              },
+                              child: Padding(
+                                padding: EdgeInsets.only(left: 8.w),
+                                child: Icon(
+                                  Icons.close_rounded,
+                                  color: kWhiteColor.withOpacity(0.5),
+                                  size: 20.ic,
+                                ),
+                              ),
+                            ),
                         ],
                       ),
                     ).animate().fadeIn(duration: 360.ms, curve: _springCurve),
