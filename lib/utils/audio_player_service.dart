@@ -1,5 +1,7 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:isolate';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
@@ -214,8 +216,12 @@ class AudioPlayerService with WidgetsBindingObserver {
     );
     try {
       if (player.isInitialized) {
-        player.deinit();
-        debugPrint('🎧 AudioPlayerService: SoLoud deinit completed');
+        // PERFORMANCE: Run deinit in a background isolate to avoid blocking
+        // the main thread, which can cause hangs during hot-restart teardown.
+        unawaited(Isolate.run(() {
+          player.deinit();
+        }));
+        debugPrint('🎧 AudioPlayerService: SoLoud deinit triggered in background');
       }
     } catch (e, s) {
       debugPrint('⚠️ Audio teardown failed: $e\n$s');
@@ -249,7 +255,11 @@ class AudioPlayerService with WidgetsBindingObserver {
     // and tearing down there causes sound to disappear on Android.
     if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.detached) {
-      _teardownPlayer();
+      // IMPORTANT: Skip native teardown in debug mode to prevent hot-restarts
+      // from triggering native FFI teardowns that crash the VM (Service disappeared).
+      if (!kDebugMode) {
+        _teardownPlayer();
+      }
       return;
     }
 

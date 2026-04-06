@@ -1,31 +1,49 @@
 import 'dart:async';
 import 'dart:ffi';
 import 'dart:io' show Platform;
+import 'dart:isolate';
 import 'package:chessever2/repository/lichess/cloud_eval/cloud_eval.dart';
 import 'package:ffi/ffi.dart';
 import 'package:flutter/foundation.dart';
 import 'package:stockfish/stockfish.dart';
 import 'package:chessever2/providers/engine_settings_provider.dart';
 
+// Cache for native FFI pointers to avoid expensive lookups during teardown/hot-restart
+DynamicLibrary? _nativeStockfishLib;
+int Function(Pointer<Utf8>)? _nativeWriteFn;
+
 /// Write a UCI command directly to the native Stockfish stdin buffer via FFI,
 /// bypassing the Dart [Stockfish] wrapper's state check that throws when the
 /// engine isn't in [StockfishState.ready].
-void _rawStockfishStdin(String command) {
+///
+/// PERFORMANCE: Uses [Isolate.run] to avoid blocking the main thread. This is
+/// critical during hot-restart teardown where the native engine might be busy
+/// and holding the stdin mutex, which would otherwise hang the entire app.
+Future<void> _rawStockfishStdin(String command) async {
   try {
-    final lib =
-        Platform.isAndroid
-            ? DynamicLibrary.open('libstockfish.so')
-            : DynamicLibrary.process();
-    final write =
-        lib
-            .lookup<NativeFunction<IntPtr Function(Pointer<Utf8>)>>(
-              'stockfish_stdin_write',
-            )
-            .asFunction<int Function(Pointer<Utf8>)>();
-    final ptr = '$command\n'.toNativeUtf8();
-    write(ptr);
-    calloc.free(ptr);
-  } catch (_) {}
+    await Isolate.run(() {
+      _nativeStockfishLib ??=
+          Platform.isAndroid
+              ? DynamicLibrary.open('libstockfish.so')
+              : DynamicLibrary.process();
+
+      _nativeWriteFn ??=
+          _nativeStockfishLib!
+              .lookup<NativeFunction<IntPtr Function(Pointer<Utf8>)>>(
+                'stockfish_stdin_write',
+              )
+              .asFunction<int Function(Pointer<Utf8>)>();
+
+      final ptr = '$command\n'.toNativeUtf8();
+      try {
+        _nativeWriteFn!(ptr);
+      } finally {
+        calloc.free(ptr);
+      }
+    });
+  } catch (_) {
+    // Silently ignore FFI errors during teardown
+  }
 }
 
 @visibleForTesting
@@ -1072,11 +1090,9 @@ class StockfishSingleton {
       await Future.delayed(const Duration(milliseconds: 100));
     } catch (e) {
       // If stdin throws (engine not accepting commands yet), fall back to FFI
-      try {
-        _rawStockfishStdin('stop');
-        _rawStockfishStdin('quit');
-        await Future.delayed(const Duration(milliseconds: 100));
-      } catch (_) {}
+      unawaited(_rawStockfishStdin('stop'));
+      unawaited(_rawStockfishStdin('quit'));
+      await Future.delayed(const Duration(milliseconds: 100));
       debugPrint('⚠️ STOCKFISH: Could not send quit via stdin: $e');
     }
 
@@ -1245,10 +1261,8 @@ class StockfishSingleton {
             // The native engine is still alive (Dart reference may be null).
             // Send "quit" directly via FFI so the native process can shut down
             // before we attempt to create a fresh instance.
-            try {
-              _rawStockfishStdin('stop');
-              _rawStockfishStdin('quit');
-            } catch (_) {}
+            unawaited(_rawStockfishStdin('stop'));
+            unawaited(_rawStockfishStdin('quit'));
 
             if (_engine != null) {
               final existingEngine = _engine!;
@@ -1370,10 +1384,13 @@ class StockfishSingleton {
   void prepareForHotRestart() {
     _queueGeneration++;
 
-    // Write directly to native stdin — works even if Dart-side engine state
-    // is not `ready` (e.g. still starting, or already errored).
-    _rawStockfishStdin('stop');
-    _rawStockfishStdin('quit');
+    // Only attempt native cleanup if we actually created an engine instance.
+    // This avoids expensive FFI lookups and potential hangs on hot-restart
+    // when the engine was never used or already disposed.
+    if (_engine != null || _lastDisposeTime != null) {
+      unawaited(_rawStockfishStdin('stop'));
+      unawaited(_rawStockfishStdin('quit'));
+    }
 
     if (_currentJob != null && !_currentJob!.completer.isCompleted) {
       _currentJob!.completer.complete(
@@ -1422,7 +1439,6 @@ class StockfishSingleton {
     _engine = null;
     _lastDisposeTime = DateTime.now();
     _evaluationCache.clear();
-    debugPrint('🧹 STOCKFISH: Hot restart cleanup done (FFI quit sent)');
   }
 
   void dispose() {

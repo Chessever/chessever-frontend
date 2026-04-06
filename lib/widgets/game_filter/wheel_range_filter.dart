@@ -3,6 +3,7 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:flutter/material.dart';
+import 'package:motor/motor.dart';
 
 /// A range filter that uses two wheel scroll views styled like input fields.
 /// Replaces the standard RangeSlider for better usability and precise control.
@@ -47,7 +48,7 @@ class WheelRangeFilter extends StatelessWidget {
             },
           ),
         ),
-        
+
         // Separator
         Padding(
           padding: EdgeInsets.symmetric(horizontal: 12.w),
@@ -58,7 +59,7 @@ class WheelRangeFilter extends StatelessWidget {
             ),
           ),
         ),
-        
+
         // Maximum Value Wheel
         Expanded(
           child: _WheelInput(
@@ -104,13 +105,14 @@ class _WheelInput extends StatefulWidget {
 class _WheelInputState extends State<_WheelInput> {
   late FixedExtentScrollController _controller;
   late List<double> _values;
+  int _selectedIndex = 0;
 
   @override
   void initState() {
     super.initState();
     _generateValues();
-    final index = _findClosestIndex(widget.initialValue);
-    _controller = FixedExtentScrollController(initialItem: index);
+    _selectedIndex = _findClosestIndex(widget.initialValue);
+    _controller = FixedExtentScrollController(initialItem: _selectedIndex);
   }
 
   void _generateValues() {
@@ -122,7 +124,7 @@ class _WheelInputState extends State<_WheelInput> {
       _values.add(current);
       current += widget.step;
     }
-    
+
     // Safety check to ensure maxValue is included if not added due to precision
     if (_values.isEmpty || _values.last < widget.maxValue - epsilon) {
       _values.add(widget.maxValue);
@@ -156,6 +158,9 @@ class _WheelInputState extends State<_WheelInput> {
       final index = _findClosestIndex(widget.initialValue);
       if (index != _controller.selectedItem) {
         _controller.jumpToItem(index);
+        setState(() {
+          _selectedIndex = index;
+        });
       }
     }
   }
@@ -168,78 +173,172 @@ class _WheelInputState extends State<_WheelInput> {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      height: 48.h,
-      decoration: BoxDecoration(
-        color: kBlack2Color,
-        borderRadius: BorderRadius.circular(12.br),
-        border: Border.all(color: kDividerColor),
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(12.br),
-        child: Stack(
-          alignment: Alignment.center,
-          children: [
-            ListWheelScrollView.useDelegate(
-              controller: _controller,
-              itemExtent: 32.h,
-              perspective: 0.002, // Very slight perspective for a cleaner look
-              diameterRatio: 1.5,
-              physics: const FixedExtentScrollPhysics(),
-              onSelectedItemChanged: (index) {
-                HapticFeedbackService.selection();
-                widget.onChanged(_values[index]);
-              },
-              childDelegate: ListWheelChildBuilderDelegate(
-                childCount: _values.length,
-                builder: (context, index) {
-                  return Center(
-                    child: Text(
-                      _values[index].round().toString(),
-                      style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
-                    ),
-                  );
+    return GestureDetector(
+      onTapUp: (details) {
+        // Find if they tapped the upper half or lower half of the widget
+        final renderBox = context.findRenderObject() as RenderBox;
+        final localPosition = renderBox.globalToLocal(details.globalPosition);
+        final height = renderBox.size.height;
+
+        // Only trigger if they tap away from the center (to avoid double-firing with item taps)
+        if (localPosition.dy < height * 0.3) {
+          // Tapped top section -> scroll up to previous item
+          if (_selectedIndex > 0) {
+            _controller.animateToItem(
+              _selectedIndex - 1,
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.easeOutCubic,
+            );
+          }
+        } else if (localPosition.dy > height * 0.7) {
+          // Tapped bottom section -> scroll down to next item
+          if (_selectedIndex < _values.length - 1) {
+            _controller.animateToItem(
+              _selectedIndex + 1,
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.easeOutCubic,
+            );
+          }
+        }
+      },
+      child: Container(
+        height: 48.h,
+        decoration: BoxDecoration(
+          color: kBlack2Color,
+          borderRadius: BorderRadius.circular(12.br),
+          border: Border.all(color: kDividerColor),
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(12.br),
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              ListWheelScrollView.useDelegate(
+                controller: _controller,
+                itemExtent: 32.h,
+                perspective:
+                    0.002, // Very slight perspective for a cleaner look
+                diameterRatio: 1.5,
+                physics: const FixedExtentScrollPhysics(),
+                onSelectedItemChanged: (index) {
+                  HapticFeedbackService.selection();
+                  setState(() {
+                    _selectedIndex = index;
+                  });
+                  widget.onChanged(_values[index]);
                 },
+                childDelegate: ListWheelChildBuilderDelegate(
+                  childCount: _values.length,
+                  builder: (context, index) {
+                    final isSelected = index == _selectedIndex;
+
+                    return GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () {
+                        if (!isSelected) {
+                          _controller.animateToItem(
+                            index,
+                            duration: const Duration(milliseconds: 300),
+                            curve: Curves.easeOutCubic,
+                          );
+                        } else {
+                          // Tapping the center (already selected) increments to the next item
+                          if (_selectedIndex < _values.length - 1) {
+                            _controller.animateToItem(
+                              _selectedIndex + 1,
+                              duration: const Duration(milliseconds: 300),
+                              curve: Curves.easeOutCubic,
+                            );
+                          } else {
+                            // If at the very end, just give feedback
+                            HapticFeedbackService.light();
+                          }
+                        }
+                      },
+                      child: SingleMotionBuilder(
+                        motion: const CupertinoMotion.smooth(),
+                        value: isSelected ? 1.0 : 0.0,
+                        builder: (context, value, _) {
+                          final scale = 0.8 + (0.2 * value);
+                          final opacity = 0.5 + (0.5 * value);
+                          final color =
+                              Color.lerp(
+                                kSecondaryTextColor,
+                                kWhiteColor,
+                                value,
+                              )!;
+
+                          return Transform.scale(
+                            scale: scale,
+                            child: Opacity(
+                              opacity: opacity,
+                              child: Center(
+                                child: Text(
+                                  _values[index].round().toString(),
+                                  style: AppTypography.textSmMedium.copyWith(
+                                    color: color,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    );
+                  },
+                ),
               ),
-            ),
-            
-            // Fading gradients to simulate the "wheel inside a field" look
-            IgnorePointer(
-              child: Column(
-                children: [
-                  Expanded(
-                    child: Container(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: [
-                            kBlack2Color,
-                            kBlack2Color.withValues(alpha: 0),
-                          ],
+
+              // Fading gradients to simulate the "wheel inside a field" look
+              IgnorePointer(
+                child: Column(
+                  children: [
+                    Expanded(
+                      child: Container(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [
+                              kBlack2Color,
+                              kBlack2Color.withValues(alpha: 0),
+                            ],
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                  SizedBox(height: 24.h), // Clear center area
-                  Expanded(
-                    child: Container(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.bottomCenter,
-                          end: Alignment.topCenter,
-                          colors: [
-                            kBlack2Color,
-                            kBlack2Color.withValues(alpha: 0),
-                          ],
+                    SizedBox(height: 24.h), // Clear center area
+                    Expanded(
+                      child: Container(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.bottomCenter,
+                            end: Alignment.topCenter,
+                            colors: [
+                              kBlack2Color,
+                              kBlack2Color.withValues(alpha: 0),
+                            ],
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-          ],
+
+              // Scroll indicator icon
+              Positioned(
+                right: 12.w,
+                child: IgnorePointer(
+                  child: Icon(
+                    Icons.unfold_more_rounded,
+                    color: kSecondaryTextColor.withValues(alpha: 0.3),
+                    size: 16.ic,
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
