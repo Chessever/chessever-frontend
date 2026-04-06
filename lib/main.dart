@@ -534,7 +534,12 @@ void _initializePostStartupServices() {
         // On Android this prevents the OS from aggressively killing the app
         // due to background native thread activity. The engine will lazily
         // reinitialize on the next evaluatePosition() call after resume.
-        await StockfishSingleton().disposeAsync();
+        // 
+        // IMPORTANT: Skip this in debug mode to prevent hot-restarts from
+        // triggering native FFI teardowns that crash the VM (Service disappeared).
+        if (!kDebugMode) {
+          await StockfishSingleton().disposeAsync();
+        }
       },
       onAppResume: () async {
         if (kDebugMode) {
@@ -655,13 +660,10 @@ class _StartupGateState extends ConsumerState<StartupGate> {
   /// isolates/threads from blocking Flutter's reassemble mechanism.
   @override
   void reassemble() {
+    // SIGNAL native engines to quit. 
+    // We now use non-blocking background isolates for these calls in
+    // StockfishSingleton to avoid hanging the main thread during restart.
     StockfishSingleton().prepareForHotRestart();
-    try {
-      final soloud = SoLoud.instance;
-      if (soloud.isInitialized) {
-        soloud.deinit();
-      }
-    } catch (_) {}
     super.reassemble();
   }
 
