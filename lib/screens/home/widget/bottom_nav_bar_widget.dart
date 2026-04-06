@@ -36,7 +36,7 @@ class BottomNavBarWidget extends StatelessWidget {
               width: 20.w,
               svgIcon,
               colorFilter: ColorFilter.mode(
-                isSelected ? kWhiteColor : kDarkGreyColor,
+                isSelected ? kWhiteColor : kInactiveTabColor,
                 BlendMode.srcIn,
               ),
             ),
@@ -44,7 +44,7 @@ class BottomNavBarWidget extends StatelessWidget {
             Text(
               title,
               style: AppTypography.textXsMedium.copyWith(
-                color: isSelected ? kWhiteColor : kDarkGreyColor,
+                color: isSelected ? kWhiteColor : kInactiveTabColor,
               ),
             ),
           ],

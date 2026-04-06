@@ -127,7 +127,7 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
           ChessSvgBottomNavbar(
             key: e2eKey(E2eIds.boardGamebaseToggle),
             width: buttonWidth,
-            svgPath: SvgAsset.bookIcon,
+            svgPath: SvgAsset.libraryNavIcon,
             onPressed: onGamebaseToggle,
             isActive: isGamebaseActive,
           ),

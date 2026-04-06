@@ -61,8 +61,8 @@ const Color kBoardLightBrown = Color(0xFFC29D62);
 const Color kBoardLightDefault = Color(0xFFD1E9E9);
 
 const Color kInactiveTabColor = Color(
-  0x669D9D9D,
-); // #9D9D9D with 40% opacity (66 = 40%)
+  0x66FFFFFF,
+); // White with 40% opacity (66 = 40%)
 
 // Secondary/hint text colors with proper contrast on dark backgrounds
 const Color kSecondaryTextColor = Color(
