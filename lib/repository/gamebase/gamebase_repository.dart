@@ -1,3 +1,4 @@
+import 'package:chessever2/repository/lichess/cloud_eval/cloud_eval.dart';
 import 'package:dio/dio.dart';
 import 'package:chessever2/e2e/e2e_config.dart';
 import 'package:flutter/foundation.dart';
@@ -286,6 +287,47 @@ class GamebaseRepository {
     }
   }
 
+  Future<CloudEval?> getEvalByFen(String fen) async {
+    try {
+      final normalizedFen = _normalizeEvalFenForLookup(fen);
+      final response = await _dio.get(
+        '$_baseUrl/api/eval',
+        queryParameters: {'fen': normalizedFen},
+        options: Options(
+          headers: {'X-API-Key': _apiKey, 'Accept': 'application/json'},
+        ),
+      );
+
+      if (response.data['status'] == 'success') {
+        return CloudEval.fromJson(
+          Map<String, dynamic>.from(response.data['data']),
+        );
+      }
+      return null;
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 404) return null;
+      if (kDebugMode) {
+        debugPrint('[GamebaseRepository] getEvalByFen error: $e');
+      }
+      return null;
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[GamebaseRepository] getEvalByFen error: $e');
+      }
+      return null;
+    }
+  }
+
+  /// Canonicalize FEN for the eval endpoint.
+  ///
+  /// The eval service keys positions by the first four FEN fields only:
+  /// board, side to move, castling rights, en passant square.
+  static String _normalizeEvalFenForLookup(String fen) {
+    final parts = fen.trim().split(RegExp(r'\s+'));
+    if (parts.length < 4) return fen.trim();
+    return parts.take(4).join(' ');
+  }
+
   Future<GamebaseSearchMetadata> getSearchMetadata() async {
     try {
       final response = await _dio.get(
@@ -562,7 +604,6 @@ class GamebaseRepository {
 
     return Map<String, dynamic>.from(response.data);
   }
-
 
   /// List example games for a given position (and optionally a specific move from that position).
   ///

@@ -1,3 +1,4 @@
+import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
 import 'dart:async';
 
 import 'package:dartchess/dartchess.dart';
@@ -126,7 +127,7 @@ class ExplorerEvalNotifier extends StateNotifier<ExplorerEvalState> {
     evaluatePosition(fen, force: force);
   }
 
-  void evaluatePosition(String fen, {bool force = false}) {
+  Future<void> evaluatePosition(String fen, {bool force = false}) async {
     final normalizedFen = fen.trim();
     if (_isDisposed ||
         !_engineEnabled ||
@@ -190,6 +191,57 @@ class ExplorerEvalNotifier extends StateNotifier<ExplorerEvalState> {
       '(gen=$gen, owner=$_ownerId)',
     );
 
+    // ---------------------------------------------------------------
+    // 1️⃣  Check Gamebase first (New!)
+    // ---------------------------------------------------------------
+    try {
+      final gamebase = ref.read(gamebaseRepositoryProvider);
+      final gamebaseEval = await gamebase
+          .getEvalByFen(normalizedFen)
+          .timeout(const Duration(milliseconds: 800), onTimeout: () => null);
+
+      if (gamebaseEval != null && _isStale(gen) == false) {
+        final lines = _parsePvLines(gamebaseEval.pvs, normalizedFen);
+        if (lines.isNotEmpty) {
+          final first = lines.first;
+          final fenParts = normalizedFen.split(' ');
+          final sideToMove = fenParts.length >= 2 ? fenParts[1] : 'w';
+          final cp =
+              gamebaseEval.pvs.isNotEmpty ? gamebaseEval.pvs.first.cp : 0;
+          debugPrint(
+            '💎 EVAL SOURCE (explorer): GAMEBASE - fen=$normalizedFen, side=$sideToMove, cp=$cp, depth=${gamebaseEval.depth}',
+          );
+          state = state.copyWith(
+            evaluation: first.evaluation,
+            mate: first.mate,
+            depth: gamebaseEval.depth,
+            pvLines: lines,
+            isEvaluating: false,
+            clearMate: first.mate == null,
+          );
+          _updateDepthTracking(
+            depth: gamebaseEval.depth,
+            knodes: gamebaseEval.knodes,
+            fen: normalizedFen,
+            allowDecrease: false,
+            context: 'opening explorer gamebase',
+          );
+          return; // Skip Stockfish
+        }
+      }
+      debugPrint(
+        '⚪️ EVAL SOURCE (explorer): GAMEBASE MISS - fen=$normalizedFen',
+      );
+    } catch (e) {
+      debugPrint('⚠️ EXPLORER EVAL: Gamebase error: $e');
+    }
+
+    // ---------------------------------------------------------------
+    // 2️⃣  Fallback to Stockfish
+    // ---------------------------------------------------------------
+    debugPrint(
+      '🟢 EVAL SOURCE (explorer): STOCKFISH FALLBACK - fen=$normalizedFen',
+    );
     _scheduleWatchdog(gen, normalizedFen);
 
     StockfishSingleton()
@@ -264,11 +316,13 @@ class ExplorerEvalNotifier extends StateNotifier<ExplorerEvalState> {
                 '🔄 EXPLORER EVAL: Scheduling retry after cancellation',
               );
               state = state.copyWith(isEvaluating: false);
-              StockfishSingleton()
-                  .cancelEvaluationsForOwner(_ownerId)
-                  .then((_) {
+              StockfishSingleton().cancelEvaluationsForOwner(_ownerId).then((
+                _,
+              ) {
                 Future.delayed(const Duration(milliseconds: 300), () {
-                  if (!_isDisposed && mounted && _engineEnabled &&
+                  if (!_isDisposed &&
+                      mounted &&
+                      _engineEnabled &&
                       _positionKey(state.fen) == normalizedKey) {
                     evaluatePosition(normalizedFen, force: true);
                   }
@@ -317,9 +371,7 @@ class ExplorerEvalNotifier extends StateNotifier<ExplorerEvalState> {
               clearEval: !hasStableData,
               clearMate: !hasStableData,
             );
-            debugPrint(
-              '⚠️ EXPLORER EVAL: No lines returned (gen=$gen)',
-            );
+            debugPrint('⚠️ EXPLORER EVAL: No lines returned (gen=$gen)');
           }
         })
         .catchError((Object e, StackTrace __) {
@@ -348,9 +400,7 @@ class ExplorerEvalNotifier extends StateNotifier<ExplorerEvalState> {
       );
 
       if (_consecutiveWatchdogTimeouts >= _maxWatchdogRetries) {
-        debugPrint(
-          '🔧 EXPLORER EVAL WATCHDOG: Forcing Stockfish recovery',
-        );
+        debugPrint('🔧 EXPLORER EVAL WATCHDOG: Forcing Stockfish recovery');
         _consecutiveWatchdogTimeouts = 0;
         // Bump generation BEFORE cancelling so the cancelled job's .then
         // callback sees a stale generation and does NOT schedule its own

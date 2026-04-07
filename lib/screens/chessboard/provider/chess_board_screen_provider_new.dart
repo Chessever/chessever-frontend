@@ -36,7 +36,6 @@ const int _minPersistDepth = 20;
 const int _minPersistFullMoves = 8;
 const Duration _evalWatchdogInterval = Duration(milliseconds: 1000);
 const Duration _evalWatchdogMinActiveRuntime = Duration(seconds: 4);
-const Duration _cascadeEvalSoftTimeout = Duration(milliseconds: 60);
 
 bool _shouldPersistCloudEval(CloudEval eval) {
   return eval.meetsPersistenceThreshold(
@@ -5095,35 +5094,27 @@ class ChessBoardScreenNotifierNew
         '🎯 EVAL START: Evaluating position $fen (requesting $configuredMultiPV PVs)',
       );
 
-      // Fast-path local/Supabase cache lookup, but do not block Stockfish startup
-      // for long network waits. This keeps the engine responsive on cache misses.
+      // Fast-path cache lookup through local → Gamebase → Supabase.
+      // Local Stockfish only starts if the best available eval is still too
+      // shallow for the main board.
       try {
         _releaseLog(
-          '🎯 EVAL: Requesting cascade evaluation (local → Supabase cache only) with $configuredMultiPV PVs...',
+          '🎯 EVAL: Requesting cascade evaluation (local → Gamebase → Supabase) with $configuredMultiPV PVs...',
         );
-        final cascadeEval = await ref
-            .read(
-              cascadeEvalProviderForBoard(
-                CascadeEvalParams(
-                  fen: fenToAnalyze,
-                  multiPV: configuredMultiPV,
-                  isCurrentPosition: true,
-                ),
-              ).future,
-            )
-            .timeout(
-              _cascadeEvalSoftTimeout,
-              onTimeout:
-                  () => CloudEval(
-                    fen: fenToAnalyze,
-                    knodes: 0,
-                    depth: 0,
-                    pvs: const [],
-                    requestedMultiPv: configuredMultiPV,
-                  ),
-            );
+        final cascadeEval = await ref.read(
+          cascadeEvalProviderForBoard(
+            CascadeEvalParams(
+              fen: fenToAnalyze,
+              multiPV: configuredMultiPV,
+              isCurrentPosition: true,
+            ),
+          ).future,
+        );
         if (cascadeEval.pvs.isNotEmpty) {
           primaryEval = cascadeEval;
+          final shouldSkipLocalStockfish = cloudEvalSkipsBoardStockfish(
+            cascadeEval,
+          );
           final firstCascadePv = cascadeEval.pvs.first;
           final rawCp = firstCascadePv.cp;
           final rawEval = rawCp / 100.0;
@@ -5218,6 +5209,29 @@ class ChessBoardScreenNotifierNew
           _releaseLog(
             '🎯 EVAL: CASCADE SUCCESS - returned ${pvLines.length} variants from ${cascadeEval.pvs.length} cloud PVs, eval=$evaluation',
           );
+          final cascadeProgress = EngineSearchProgress(
+            depth: cascadeEval.depth,
+            kiloNodes: cascadeEval.knodes,
+            fenFragment: fenToAnalyze,
+          );
+          depthTracker.update(
+            component: EngineComponent.evaluationGauge,
+            progress: cascadeProgress,
+            context: 'cached/backend D:${cascadeEval.depth}',
+            allowDecrease: !preserveDepthProgress,
+          );
+          depthTracker.update(
+            component: EngineComponent.principalVariation,
+            progress: cascadeProgress,
+            context: 'cached/backend D:${cascadeEval.depth}',
+            allowDecrease: !preserveDepthProgress,
+          );
+          depthTracker.update(
+            component: EngineComponent.cascadeEval,
+            progress: cascadeProgress,
+            context: 'cached/backend D:${cascadeEval.depth}',
+            allowDecrease: !preserveDepthProgress,
+          );
           if (pvLines.isNotEmpty && mounted) {
             final snapshot = state.value;
             if (snapshot != null) {
@@ -5259,6 +5273,41 @@ class ChessBoardScreenNotifierNew
                 );
               }
             }
+          }
+          if (shouldSkipLocalStockfish && mounted) {
+            final snapshot = state.value;
+            if (snapshot != null) {
+              final shapes =
+                  snapshot.selectedVariantIndex != null && pvLines.isNotEmpty
+                      ? _getAllVariantArrowShapes(
+                        pvLines,
+                        snapshot.selectedVariantIndex!,
+                        isThreatsMode: snapshot.isThreatsMode,
+                      )
+                      : getBestMoveShape(
+                        snapshot.isThreatsMode
+                            ? positionForAnalysis
+                            : (snapshot.isAnalysisMode
+                                ? snapshot.analysisState.position
+                                : snapshot.position!),
+                        cascadeEval,
+                      );
+              state = AsyncValue.data(
+                snapshot.copyWith(
+                  evaluation: evaluation,
+                  mate: _mateFromPv(cascadeEval.pvs.first, fenToAnalyze),
+                  isEvaluating: false,
+                  shapes:
+                      snapshot.isPvPreviewActive
+                          ? const ISet<Shape>.empty()
+                          : shapes,
+                ),
+              );
+            }
+            _releaseLog(
+              '🎯 EVAL: Skipping local Stockfish - cached/backend eval is sufficient (depth=${cascadeEval.depth}, mate=${firstCascadePv.mate})',
+            );
+            return;
           }
         } else {
           _releaseLog('🎯 EVAL: Cascade returned empty PVs');
@@ -5549,10 +5598,7 @@ class ChessBoardScreenNotifierNew
                     stockfishResult.pvs.first,
                     fenToAnalyze,
                   ),
-                  mate: _mateFromPv(
-                    stockfishResult.pvs.first,
-                    fenToAnalyze,
-                  ),
+                  mate: _mateFromPv(stockfishResult.pvs.first, fenToAnalyze),
                   isEvaluating: false,
                   principalVariations: pvLines,
                   principalVariationsBaseFen: fen,
@@ -5625,7 +5671,8 @@ class ChessBoardScreenNotifierNew
             state = AsyncValue.data(
               fallbackState.copyWith(
                 isEvaluating: false,
-                evaluation: fallbackState.evaluation ?? 0,
+                evaluation: fallbackState.evaluation,
+                mate: fallbackState.mate,
               ),
             );
           }
