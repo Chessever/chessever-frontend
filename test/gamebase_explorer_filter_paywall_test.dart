@@ -102,7 +102,7 @@ class _TestExplorerEvalNotifier extends ExplorerEvalNotifier {
   }
 
   @override
-  void evaluatePosition(String fen, {bool force = false}) {
+  Future<void> evaluatePosition(String fen, {bool force = false}) async {
     state = state.copyWith(
       fen: fen,
       isEvaluating: false,
