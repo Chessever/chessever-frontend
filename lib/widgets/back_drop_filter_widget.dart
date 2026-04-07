@@ -8,11 +8,13 @@ class BackDropFilterWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return BackdropFilter(
-      blendMode: BlendMode.luminosity,
-      filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
-      child: Container(
-        decoration: BoxDecoration(gradient: radialOverlayGradient),
+    return RepaintBoundary(
+      child: BackdropFilter(
+        blendMode: BlendMode.luminosity,
+        filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+        child: Container(
+          decoration: BoxDecoration(gradient: radialOverlayGradient),
+        ),
       ),
     );
   }
