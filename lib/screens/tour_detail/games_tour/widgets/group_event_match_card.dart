@@ -229,6 +229,12 @@ class GroupEventMatchCard extends ConsumerWidget {
   }
 
   Widget _buildChessBoardGridView(BuildContext context, WidgetRef ref) {
+    final fullGamesList = gamesData.gamesTourModels;
+    final gameIndexMap = {
+      for (int i = 0; i < fullGamesList.length; i++)
+        fullGamesList[i].gameId: i,
+    };
+
     return ListView.builder(
       padding: EdgeInsets.zero,
       shrinkWrap: true,
@@ -245,10 +251,10 @@ class GroupEventMatchCard extends ConsumerWidget {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Expanded(
-                child: _buildGridChessBoard(context, ref, matchWithComparison),
+                child: _buildGridChessBoard(context, ref, matchWithComparison, gameIndexMap[matchWithComparison.game.gameId] ?? -1),
               ),
               if (game2 != null) ...[
-                Expanded(child: _buildGridChessBoard(context, ref, game2)),
+                Expanded(child: _buildGridChessBoard(context, ref, game2, gameIndexMap[game2.game.gameId] ?? -1)),
               ],
             ],
           ),
@@ -260,6 +266,10 @@ class GroupEventMatchCard extends ConsumerWidget {
   Widget _buildChessBoardView(BuildContext context, WidgetRef ref) {
     // Use the games list from widget data to maintain correct order for group events
     final fullGamesList = gamesData.gamesTourModels;
+    final gameIndexMap = {
+      for (int i = 0; i < fullGamesList.length; i++)
+        fullGamesList[i].gameId: i,
+    };
 
     return ListView.builder(
       padding: EdgeInsets.zero,
@@ -268,9 +278,7 @@ class GroupEventMatchCard extends ConsumerWidget {
       itemCount: games.length,
       itemBuilder: (context, index) {
         final matchWithComparison = games[index];
-        final gameIndex = fullGamesList.indexWhere(
-          (g) => g.gameId == matchWithComparison.game.gameId,
-        );
+        final gameIndex = gameIndexMap[matchWithComparison.game.gameId] ?? -1;
 
         return Padding(
           padding: EdgeInsets.only(bottom: 12.sp),
@@ -293,13 +301,10 @@ class GroupEventMatchCard extends ConsumerWidget {
     BuildContext context,
     WidgetRef ref,
     MatchWithComparison matchWithComparison,
+    int gameIndex,
   ) {
     // Use the games list from widget data to maintain correct order for group events
     final fullGamesList = gamesData.gamesTourModels;
-
-    final gameIndex = fullGamesList.indexWhere(
-      (g) => g.gameId == matchWithComparison.game.gameId,
-    );
 
     return GridGameCardWrapperWidget(
       key: ValueKey('game_${matchWithComparison.game.gameId}'),

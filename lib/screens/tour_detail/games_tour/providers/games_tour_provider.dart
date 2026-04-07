@@ -74,26 +74,20 @@ class GamesTourNotifier extends StateNotifier<AsyncValue<List<Games>>> {
   }
 
   void _startPeriodicRefresh() {
-    _stopPeriodicRefresh();
-
-    // Check for new rounds/games every 10 seconds
-    // This handles: new games, status changes, game completions
-    // Realtime updates for visible games are handled by liveGameCardProvider
-    _refreshTimer = Timer.periodic(const Duration(seconds: 10), (_) async {
-      await _checkForNewGames();
-    });
-
+    // Audit optimization: Removed aggressive 10s full-list polling.
+    // Realtime updates for visible games are handled by liveGameCardProvider.
+    // New games/rounds will be fetched on manual pull-to-refresh or initial load.
+    // _refreshTimer = Timer.periodic(const Duration(seconds: 10), (_) async {
+    //   await _checkForNewGames();
+    // });
     debugPrint(
-      '🔥 GamesTourNotifier: Started periodic refresh (10s interval) for tour $tourId',
+      '🔥 GamesTourNotifier: Periodic refresh disabled for tour $tourId (Optimization)',
     );
   }
 
   void _stopPeriodicRefresh() {
     _refreshTimer?.cancel();
     _refreshTimer = null;
-    debugPrint(
-      '🔥 GamesTourNotifier: Stopped periodic refresh for tour $tourId',
-    );
   }
 
   Future<void> _checkForNewGames() async {

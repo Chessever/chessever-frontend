@@ -6,12 +6,14 @@ class BlurBackground extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return CustomPaint(
-      size: Size(
-        MediaQuery.of(context).size.width,
-        MediaQuery.of(context).size.height,
+    return RepaintBoundary(
+      child: CustomPaint(
+        size: Size(
+          MediaQuery.of(context).size.width,
+          MediaQuery.of(context).size.height,
+        ),
+        painter: BlurPainter(context),
       ),
-      painter: BlurPainter(context),
     );
   }
 }
@@ -35,12 +37,14 @@ class AnimatedBlurBackground extends HookWidget {
     return AnimatedOpacity(
       opacity: fadeAnimation,
       duration: Duration(seconds: 1),
-      child: CustomPaint(
-        size: Size(
-          MediaQuery.of(context).size.width,
-          MediaQuery.of(context).size.height,
+      child: RepaintBoundary(
+        child: CustomPaint(
+          size: Size(
+            MediaQuery.of(context).size.width,
+            MediaQuery.of(context).size.height,
+          ),
+          painter: BlurPainter(context),
         ),
-        painter: BlurPainter(context),
       ),
     );
   }

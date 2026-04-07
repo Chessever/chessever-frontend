@@ -1,5 +1,4 @@
-import 'dart:typed_data';
-import 'dart:ui' as ui;
+
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:chessever2/theme/app_theme.dart';
@@ -192,18 +191,7 @@ class _ValidatedNetworkImageState extends State<_ValidatedNetworkImage> {
               return;
             }
 
-            // Check if image is mostly black/dark by sampling pixels
-            try {
-              final byteData = await image.toByteData(
-                format: ui.ImageByteFormat.rawRgba,
-              );
-              if (byteData != null &&
-                  _isImageMostlyBlack(byteData, width, height)) {
-                _setFallback();
-              }
-            } catch (e) {
-              // If pixel sampling fails, keep the image
-            }
+
           },
           onError: (exception, stackTrace) {
             _setFallback();
@@ -221,39 +209,7 @@ class _ValidatedNetworkImageState extends State<_ValidatedNetworkImage> {
         _showFallback = true;
       });
     }
-  }
-
-  /// Samples pixels from the image to determine if it's mostly black.
-  /// Returns true if the image appears to be a black placeholder.
-  bool _isImageMostlyBlack(ByteData byteData, int width, int height) {
-    final bytes = byteData.buffer.asUint8List();
-    final totalPixels = width * height;
-
-    // Sample up to 100 pixels evenly distributed across the image
-    final sampleCount = totalPixels < 100 ? totalPixels : 100;
-    final step = totalPixels ~/ sampleCount;
-
-    int darkPixelCount = 0;
-    const darkThreshold = 30; // RGB values below this are considered "dark"
-
-    for (int i = 0; i < sampleCount; i++) {
-      final pixelIndex = (i * step) * 4; // 4 bytes per pixel (RGBA)
-      if (pixelIndex + 2 < bytes.length) {
-        final r = bytes[pixelIndex];
-        final g = bytes[pixelIndex + 1];
-        final b = bytes[pixelIndex + 2];
-
-        // Check if pixel is dark
-        if (r < darkThreshold && g < darkThreshold && b < darkThreshold) {
-          darkPixelCount++;
-        }
-      }
-    }
-
-    // If more than 90% of sampled pixels are dark, it's a black placeholder
-    return darkPixelCount / sampleCount > 0.90;
-  }
-}
+  }}
 
 /// Clean initials placeholder using the app's theme gradient.
 class _InitialsPlaceholder extends StatelessWidget {
@@ -424,18 +380,7 @@ class _ValidatedNetworkImageCompactState
               return;
             }
 
-            // Check if image is mostly black
-            try {
-              final byteData = await image.toByteData(
-                format: ui.ImageByteFormat.rawRgba,
-              );
-              if (byteData != null &&
-                  _isImageMostlyBlack(byteData, width, height)) {
-                _setFallback();
-              }
-            } catch (e) {
-              // If pixel sampling fails, keep the image
-            }
+
           },
           onError: (exception, stackTrace) {
             _setFallback();
@@ -453,34 +398,7 @@ class _ValidatedNetworkImageCompactState
         _showFallback = true;
       });
     }
-  }
-
-  /// Samples pixels to detect mostly-black placeholder images.
-  bool _isImageMostlyBlack(ByteData byteData, int width, int height) {
-    final bytes = byteData.buffer.asUint8List();
-    final totalPixels = width * height;
-    final sampleCount = totalPixels < 100 ? totalPixels : 100;
-    final step = totalPixels ~/ sampleCount;
-
-    int darkPixelCount = 0;
-    const darkThreshold = 30;
-
-    for (int i = 0; i < sampleCount; i++) {
-      final pixelIndex = (i * step) * 4;
-      if (pixelIndex + 2 < bytes.length) {
-        final r = bytes[pixelIndex];
-        final g = bytes[pixelIndex + 1];
-        final b = bytes[pixelIndex + 2];
-
-        if (r < darkThreshold && g < darkThreshold && b < darkThreshold) {
-          darkPixelCount++;
-        }
-      }
-    }
-
-    return darkPixelCount / sampleCount > 0.90;
-  }
-}
+  }}
 
 /// A cleaner initials placeholder for compact/list contexts.
 class _CompactInitialsPlaceholder extends StatelessWidget {

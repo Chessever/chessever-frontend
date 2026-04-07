@@ -718,11 +718,95 @@ class ChessBoardScreenNotifierNew
             _isFollowingLive = false;
           }
 
-          // Only reparse moves if PGN actually changed (new moves arrived)
+          // Only update moves if PGN actually changed (new moves arrived)
           if (pgnChanged) {
-            _releaseLog('🆕 NEW MOVES: Reparsing PGN for game ${game.gameId}');
-            _hasParsedMoves = false;
-            parseMoves(pgnOverride: newPgn);
+            final liveFen = gameData['fen'] as String?;
+            final liveUci = gameData['last_move'] as String?;
+            bool fastPathSuccess = false;
+
+            // Audit Optimization: Fast-path incremental move application.
+            // If we have a single new move (UCI) and its resulting FEN matches
+            // the server's new FEN, we can just append it instead of reparsing the whole PGN.
+            if (liveFen != null && liveUci != null && currentState.allMoves.isNotEmpty) {
+              try {
+                // Find the actual final position from all moves
+                Position finalPos = currentState.startingPosition ?? Position.setupPosition(Rule.chess, Setup.parseFen(_defaultStartFen));
+                for (final m in currentState.allMoves) {
+                  finalPos = finalPos.play(m);
+                }
+
+                final extraMove = Move.parse(liveUci);
+                if (extraMove != null && finalPos.isLegal(extraMove)) {
+                  final sanResult = finalPos.makeSan(extraMove);
+                  final candidatePos = finalPos.play(extraMove);
+
+                  if (_normalizeFen(candidatePos.fen) == _normalizeFen(liveFen)) {
+                    _releaseLog('⚡ FAST PATH: Appending incremental move $liveUci without full PGN parse');
+                    
+                    final newAllMoves = [...currentState.allMoves, extraMove];
+                    final newMoveSans = [...currentState.moveSans, sanResult.$2];
+                    final newMoveTimes = [...currentState.moveTimes, ''];
+                    
+                    final wasViewingLastMove = currentState.currentMoveIndex == currentState.allMoves.length - 1;
+                    final isFollowing = game.gameStatus.isOngoing ? _isFollowingLive : wasViewingLastMove;
+                    final newMoveIndex = isFollowing ? newAllMoves.length - 1 : currentState.currentMoveIndex;
+
+                    Position displayPosition = currentState.startingPosition ?? Position.setupPosition(Rule.chess, Setup.parseFen(_defaultStartFen));
+                    Move? displayLastMove;
+                    if (newMoveIndex >= 0 && newMoveIndex < newAllMoves.length) {
+                      for (int i = 0; i <= newMoveIndex; i++) {
+                        displayLastMove = newAllMoves[i];
+                        displayPosition = displayPosition.play(newAllMoves[i]);
+                      }
+                    }
+
+                    final newState = currentState.copyWith(
+                      game: game,
+                      position: candidatePos,
+                      lastMove: extraMove,
+                      allMoves: newAllMoves,
+                      moveSans: newMoveSans,
+                      moveTimes: newMoveTimes,
+                      currentMoveIndex: newMoveIndex,
+                      pgnData: newPgn,
+                      analysisState: currentState.analysisState.copyWith(
+                        position: displayPosition,
+                        lastMove: displayLastMove,
+                        currentMoveIndex: newMoveIndex,
+                        allMoves: newAllMoves,
+                        moveSans: newMoveSans,
+                      ),
+                      hasUnseenMoves: !isFollowing,
+                      evaluation: null,
+                      isEvaluating: true,
+                    );
+                    
+                    state = AsyncValue.data(newState);
+                    
+                    if (isFollowing) {
+                      _updateLastSeenMoveCount(newMoveSans.length);
+                      _analysisNavigator?.updateWithLatestGame(_createChessGameFromPgn(newPgn ?? ''));
+                      _analysisNavigator?.goToTail();
+                      
+                      final currentVisiblePage = ref.read(currentlyVisiblePageIndexProvider);
+                      if (index == currentVisiblePage) {
+                        _updateEvaluation(force: true);
+                      }
+                    }
+                    
+                    fastPathSuccess = true;
+                  }
+                }
+              } catch (_) {
+                // Fast path failed, fallback to full parse
+              }
+            }
+
+            if (!fastPathSuccess) {
+              _releaseLog('🆕 NEW MOVES: Reparsing PGN for game ${game.gameId}');
+              _hasParsedMoves = false;
+              parseMoves(pgnOverride: newPgn);
+            }
           }
         });
       });
