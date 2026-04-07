@@ -144,6 +144,14 @@ class _EvaluationBarWidgetState extends State<EvaluationBarWidget> {
         ((widget.evaluation != null || _lastEval != null) || displayMate != 0);
     final showLoading =
         awaitingNewPositionData || (widget.isEvaluating && !hasEval);
+    final displayText =
+        showLoading
+            ? '...'
+            : !hasEval
+            ? ''
+            : (displayEval.abs() >= 10.0 && displayMate != 0)
+            ? '#$displayMate'
+            : _formatSignedEval(displayEval);
 
     return SingleMotionBuilder(
       motion: const CupertinoMotion.smooth(),
@@ -192,11 +200,7 @@ class _EvaluationBarWidgetState extends State<EvaluationBarWidget> {
                   child: FittedBox(
                     fit: BoxFit.scaleDown,
                     child: Text(
-                      showLoading
-                          ? '...'
-                          : (displayEval.abs() >= 10.0 && displayMate != 0)
-                          ? '#$displayMate'
-                          : _formatSignedEval(displayEval),
+                      displayText,
                       maxLines: 1,
                       textAlign: TextAlign.center,
                       style: AppTypography.textSmRegular.copyWith(
@@ -268,6 +272,7 @@ class EvaluationBarWidgetForGames extends ConsumerWidget {
                 blackHeight: height * 0.5,
                 evaluation: 0.0,
                 isEvaluating: true,
+                hasEvaluationData: false,
                 playerView: playerView,
                 isFlipped: false,
               ),
@@ -278,6 +283,7 @@ class EvaluationBarWidgetForGames extends ConsumerWidget {
                 whiteHeight: height * 0.5,
                 blackHeight: height * 0.5,
                 evaluation: 0.0,
+                hasEvaluationData: false,
                 playerView: playerView,
                 isFlipped: false,
               ),
@@ -290,6 +296,7 @@ class EvaluationBarWidgetForGames extends ConsumerWidget {
                 whiteHeight: height * 0.5,
                 blackHeight: height * 0.5,
                 evaluation: 0.0,
+                hasEvaluationData: false,
                 playerView: playerView,
                 isFlipped: false,
               );
@@ -356,6 +363,7 @@ class _Bars extends StatelessWidget {
   final bool isMate;
   final int mate;
   final bool isCheckmate;
+  final bool hasEvaluationData;
 
   const _Bars({
     required this.width,
@@ -369,6 +377,7 @@ class _Bars extends StatelessWidget {
     this.isMate = false,
     this.mate = 0,
     this.isCheckmate = false,
+    this.hasEvaluationData = true,
   });
 
   @override
@@ -411,8 +420,10 @@ class _Bars extends StatelessWidget {
               child: FittedBox(
                 fit: BoxFit.scaleDown,
                 child: Text(
-                  isEvaluating && evaluation == 0.0
+                  isEvaluating && !hasEvaluationData
                       ? '...'
+                      : !hasEvaluationData
+                      ? ''
                       : isCheckmate
                       ? '#'
                       : (isMate && mate != 0)

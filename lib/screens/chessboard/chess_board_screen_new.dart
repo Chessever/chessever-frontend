@@ -4,7 +4,6 @@ import 'dart:math' as math;
 import 'dart:ui';
 import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/providers/for_you_games_provider.dart';
-import 'package:chessever2/screens/chessboard/provider/stockfish_singleton.dart';
 import 'package:chessever2/screens/standings/score_card_screen.dart';
 import 'package:skeletonizer/skeletonizer.dart';
 import 'package:chessever2/providers/board_settings_provider_new.dart';
@@ -1032,7 +1031,6 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
         if (widget.disableGamebaseOverlayByDefault) {
           ref.read(gamebaseOverlayEnabledProvider.notifier).setEnabled(false);
         }
-        StockfishSingleton().warmUp();
         // Analysis mode is already enabled by default in the provider initialization
         // No need to toggle it here
         try {
@@ -6712,7 +6710,8 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard> {
 
     // Cross-check analysisState and navigatorState to avoid stale props.
     final gameStatus = widget.game.gameStatus;
-    final isAtGameEnd = _isAtGameEnd(widget.chessBoardState.analysisState) &&
+    final isAtGameEnd =
+        _isAtGameEnd(widget.chessBoardState.analysisState) &&
         (navigatorState == null || navigatorState.movePointer.length == 1);
     final isGameOver =
         gameStatus != GameStatus.ongoing && gameStatus != GameStatus.unknown;
@@ -6745,7 +6744,7 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard> {
           if (lichessAnnotations.isEmpty) return null;
           // Only show annotations on mainline, not variations or PV previews.
           if (widget.chessBoardState.isPvPreviewActive) return null;
-          
+
           // Use navigatorState.movePointer to avoid stale widget props.
           final currentMovePointer = navigatorState.movePointer;
           final isOnMainline =
@@ -7302,7 +7301,8 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     // Get figurine notation setting and piece assets for rendering
     final useFigurine = ref.watch(
       boardSettingsProviderNew.select(
-        (s) => s.valueOrNull?.useFigurine ?? const BoardSettingsNew().useFigurine,
+        (s) =>
+            s.valueOrNull?.useFigurine ?? const BoardSettingsNew().useFigurine,
       ),
     );
     final pieceAssets = ref.watch(
@@ -9398,7 +9398,8 @@ class _PrincipalVariationListState
     // Get figurine notation setting and piece assets for PV card rendering
     final useFigurine = ref.watch(
       boardSettingsProviderNew.select(
-        (s) => s.valueOrNull?.useFigurine ?? const BoardSettingsNew().useFigurine,
+        (s) =>
+            s.valueOrNull?.useFigurine ?? const BoardSettingsNew().useFigurine,
       ),
     );
     final pieceAssets = ref.watch(
