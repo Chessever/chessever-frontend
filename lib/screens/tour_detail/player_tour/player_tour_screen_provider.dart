@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:collection/collection.dart';
 import 'package:chessever2/repository/local_storage/favorite/favourate_standings_player_services.dart';
 import 'package:chessever2/repository/supabase/tour/tour.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
@@ -38,38 +39,99 @@ class PlayerTourScreenNotifier
       return const [];
     }
 
-    final aboutTourModel = tourDetailAsync.value?.aboutTourModel;
-    if (aboutTourModel == null || aboutTourModel.id.isEmpty) {
+    final tourDetail = tourDetailAsync.value!;
+    final aboutTourModel = tourDetail.aboutTourModel;
+    if (aboutTourModel.id.isEmpty) {
       return const [];
     }
 
-    final tourDetail = tourDetailAsync.value!;
-    final gamesData = gamesTourAsync.value!;
+    final List<TournamentPlayer> allPlayers;
+    final List<GamesTourModel> allGames;
 
-    return _buildStandings(
-      tourDetail: tourDetail,
-      gamesData: gamesData,
-      tourId: aboutTourModel.id,
+    // Detect if this is a pagination-purposed category (e.g. "Boards 1-66")
+    if (_isPaginationCategory(aboutTourModel.name)) {
+      final baseName = _getCategoryBaseName(aboutTourModel.name);
+      final relatedTours =
+          tourDetail.tours
+              .where(
+                (t) =>
+                    _isPaginationCategory(t.tour.name) &&
+                    _getCategoryBaseName(t.tour.name) == baseName,
+              )
+              .toList();
+
+      if (relatedTours.length > 1) {
+        // Merge players and games from all related pagination categories
+        // to compute accurate standings "behind the door"
+        allPlayers = [];
+        allGames = [];
+        for (final tourModel in relatedTours) {
+          allPlayers.addAll(tourModel.tour.players);
+
+          // Watch each related tour's games to ensure standings stay live
+          final tourGamesAsync = ref.watch(gamesTourProvider(tourModel.tour.id));
+          if (tourGamesAsync.hasValue) {
+            for (final g in tourGamesAsync.value!) {
+              try {
+                allGames.add(GamesTourModel.fromGame(g));
+              } catch (_) {
+                // Skip games that fail to parse
+              }
+            }
+          }
+        }
+      } else {
+        // Only one such category exists
+        allPlayers = List.from(relatedTours.firstOrNull?.tour.players ?? []);
+        allGames = gamesTourAsync.value?.gamesTourModels ?? [];
+      }
+    } else {
+      // Normal category - use only the selected tour
+      final selectedTours = tourDetail.tours.where(
+        (e) => e.tour.id == aboutTourModel.id,
+      );
+      allPlayers = [];
+      for (final tour in selectedTours) {
+        allPlayers.addAll(tour.tour.players);
+      }
+      allGames = gamesTourAsync.value?.gamesTourModels ?? [];
+    }
+
+    return _buildStandingsFromData(
+      tournamentPlayers: allPlayers,
+      gamesTourModels: allGames,
     );
   }
 
-  Future<List<PlayerStandingModel>> _buildStandings({
-    required TourDetailViewModel tourDetail,
-    required GamesScreenModel gamesData,
-    required String tourId,
+  /// Identifies categories like "Boards 1-66", "Boards 67-126", "Boards 252+"
+  bool _isPaginationCategory(String name) {
+    return RegExp(
+      r'Boards?\s+\d+[\-\+]?\d*\+?$',
+      caseSensitive: false,
+    ).hasMatch(name);
+  }
+
+  /// Extracts the base name before the pagination suffix (e.g. "Open | Boards 1-50" -> "Open |")
+  String _getCategoryBaseName(String name) {
+    return name
+        .replaceAll(
+          RegExp(r'\s*Boards?\s+\d+[\-\+]?\d*\+?$', caseSensitive: false),
+          '',
+        )
+        .trim();
+  }
+
+  Future<List<PlayerStandingModel>> _buildStandingsFromData({
+    required List<TournamentPlayer> tournamentPlayers,
+    required List<GamesTourModel> gamesTourModels,
   }) async {
-    // Step 1: Collect all players for the active tour
-    final selectedTours = tourDetail.tours.where((e) => e.tour.id == tourId);
-    var tournamentPlayers = <TournamentPlayer>[];
-    for (final tour in selectedTours) {
-      tournamentPlayers.addAll(tour.tour.players);
-    }
+    var players = List<TournamentPlayer>.from(tournamentPlayers);
 
     // Remove duplicates using a composite key (name + fideId + team) to avoid
     // merging similarly named players across different teams.
     final seen = <String>{};
-    tournamentPlayers =
-        tournamentPlayers.where((player) {
+    players =
+        players.where((player) {
           final key =
               '${_canonicalName(player.name)}-${player.fideId ?? 0}-${player.team ?? ''}';
           if (seen.contains(key)) return false;
@@ -80,14 +142,14 @@ class PlayerTourScreenNotifier
     // Fallback: if tour has no player roster but has games, extract players
     // from the games themselves. This handles tournaments where the upstream
     // source didn't populate the players array (e.g. knockout stages).
-    if (tournamentPlayers.isEmpty && gamesData.gamesTourModels.isNotEmpty) {
+    if (players.isEmpty && gamesTourModels.isNotEmpty) {
       final seenKeys = <String>{};
-      for (final game in gamesData.gamesTourModels) {
+      for (final game in gamesTourModels) {
         for (final card in [game.whitePlayer, game.blackPlayer]) {
           final key = _canonicalName(card.name);
           if (key.isEmpty || seenKeys.contains(key)) continue;
           seenKeys.add(key);
-          tournamentPlayers.add(
+          players.add(
             TournamentPlayer(
               name: card.name,
               federation: card.federation.isNotEmpty ? card.federation : null,
@@ -101,20 +163,20 @@ class PlayerTourScreenNotifier
       }
     }
 
-    // Step 2: Index games by normalized player name
+    // Index games by normalized player name
     final gamesByPlayerKey = <String, List<_PlayerGameRef>>{};
 
-    for (final game in gamesData.gamesTourModels) {
+    for (final game in gamesTourModels) {
       for (final ref in _expandGameRefs(game)) {
         if (ref.key.isEmpty) continue;
         gamesByPlayerKey.putIfAbsent(ref.key, () => []).add(ref);
       }
     }
 
-    // Step 3: Enrich player data and compute match results
+    // Enrich player data and compute match results
     final enrichedPlayers = <TournamentPlayer>[];
 
-    for (final player in tournamentPlayers) {
+    for (final player in players) {
       final key = _canonicalName(player.name);
       final playerGames = gamesByPlayerKey[key] ?? const <_PlayerGameRef>[];
       final referenceCard =
@@ -202,16 +264,12 @@ class PlayerTourScreenNotifier
       );
     }
 
-    // Step 4: Sort by ABSOLUTE SCORE (not percentage!)
-    // Example: 3.5/4 (87.5%) should rank HIGHER than 3/3 (100%) because 3.5 > 3
+    // Sort by ABSOLUTE SCORE (not percentage!)
     enrichedPlayers.sort((a, b) {
-      final aScore = a.score ?? 0.0; // Absolute points collected (e.g., 3.5)
-      final bScore = b.score ?? 0.0; // Absolute points collected (e.g., 3.0)
+      final aScore = a.score ?? 0.0;
+      final bScore = b.score ?? 0.0;
 
-      // Primary sort: by absolute score descending (whoever collected MORE points)
       if (bScore != aScore) return bScore.compareTo(aScore);
-
-      // Secondary sort: by rating/ELO descending (higher rated player first when scores equal)
       return (b.rating ?? 0).compareTo(a.rating ?? 0);
     });
 
