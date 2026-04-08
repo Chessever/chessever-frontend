@@ -2,6 +2,7 @@ import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_
 import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_state.dart';
 import 'package:chessever2/screens/group_event/widget/filter_popup/group_event_filter_provider.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:flutter/material.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/theme/app_theme.dart';
@@ -180,11 +181,11 @@ class FilterPopup extends ConsumerWidget {
                             ),
                             SizedBox(height: 8.h),
                             WheelRangeFilter(
-                              minValue: 2200,
+                              minValue: GameFilter.absoluteMinRating.toDouble(),
                               maxValue: 3200,
                               currentStart: filterState.eloRange.start,
                               currentEnd: filterState.eloRange.end,
-                              divisions: 20,
+                              divisions: (3200 - GameFilter.absoluteMinRating) ~/ 50,
                               onChanged: (v) => ref
                                   .read(filterPopupProvider.notifier)
                                   .setEloRange(v),

@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -85,10 +86,10 @@ class BookGamesFilter {
     this.result = BookGamesResultFilter.all,
     this.color = BookGamesColorFilter.all,
     this.timeControl = BookGamesTimeControlFilter.all,
-    this.minYear = 2020,
+    this.minYear = GameFilter.defaultMinYear,
     this.maxYear = 2100,
-    this.minRating = 2200,
-    this.maxRating = 3500,
+    this.minRating = GameFilter.defaultMinRating,
+    this.maxRating = GameFilter.absoluteMaxRating,
     this.opening = '',
     this.eco = '',
     this.event = '',
@@ -113,10 +114,10 @@ class BookGamesFilter {
       result != BookGamesResultFilter.all ||
       color != BookGamesColorFilter.all ||
       timeControl != BookGamesTimeControlFilter.all ||
-      minYear != 2020 ||
+      minYear != GameFilter.defaultMinYear ||
       maxYear != DateTime.now().year ||
-      minRating != 2200 ||
-      maxRating != 3500 ||
+      minRating != GameFilter.defaultMinRating ||
+      maxRating != GameFilter.absoluteMaxRating ||
       opening.trim().isNotEmpty ||
       eco.trim().isNotEmpty ||
       event.trim().isNotEmpty ||

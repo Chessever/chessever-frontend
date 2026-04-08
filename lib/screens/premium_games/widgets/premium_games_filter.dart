@@ -5,6 +5,7 @@ import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/back_drop_filter_widget.dart';
 import 'package:chessever2/widgets/game_filter/wheel_range_filter.dart';
+import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -55,7 +56,7 @@ class _PremiumGamesFilterDialogState
         widget.initialFilter.minElo != null ||
         widget.initialFilter.maxElo != null;
     _eloRange = RangeValues(
-      widget.initialFilter.minElo?.toDouble() ?? 2200,
+      widget.initialFilter.minElo?.toDouble() ?? GameFilter.defaultMinRating.toDouble(),
       widget.initialFilter.maxElo?.toDouble() ?? 3000,
     );
   }
@@ -179,11 +180,11 @@ class _PremiumGamesFilterDialogState
                               child: IgnorePointer(
                                 ignoring: !_eloFilterEnabled,
                                 child: WheelRangeFilter(
-                                  minValue: 2200,
+                                  minValue: GameFilter.absoluteMinRating.toDouble(),
                                   maxValue: 3200,
                                   currentStart: _eloRange.start,
                                   currentEnd: _eloRange.end,
-                                  divisions: 20,
+                                  divisions: (3200 - GameFilter.absoluteMinRating) ~/ 50,
                                   onChanged: (values) {
                                     setState(() => _eloRange = values);
                                   },
@@ -265,7 +266,7 @@ class _PremiumGamesFilterDialogState
       _dateRange = PremiumGamesDateRange.allTime;
       _result = PremiumGamesResult.all;
       _eloFilterEnabled = false;
-      _eloRange = const RangeValues(2200, 3000);
+      _eloRange = RangeValues(GameFilter.defaultMinRating.toDouble(), 3000);
     });
   }
 

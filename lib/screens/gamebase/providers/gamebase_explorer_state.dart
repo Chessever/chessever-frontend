@@ -166,9 +166,9 @@ extension GameFilterToGamebaseFilters on GameFilter {
         timeControls = [];
     }
 
-    // Explorer slider range is 2200–3500. Clamp and null-out when at boundary.
-    final clampedMin = minRating.clamp(2200, 3500);
-    final clampedMax = maxRating.clamp(2200, 3500);
+    // Explorer slider range is absoluteMinRating–absoluteMaxRating. Clamp and null-out when at boundary.
+    final clampedMin = minRating.clamp(GameFilter.absoluteMinRating, GameFilter.absoluteMaxRating);
+    final clampedMax = maxRating.clamp(GameFilter.absoluteMinRating, GameFilter.absoluteMaxRating);
 
     final GamebasePlayerColor? playerColor;
     switch (color) {
@@ -194,8 +194,8 @@ extension GameFilterToGamebaseFilters on GameFilter {
 
     return GamebaseFilters(
       timeControls: timeControls,
-      minRating: clampedMin > 2200 ? clampedMin : null,
-      maxRating: clampedMax < 3500 ? clampedMax : null,
+      minRating: clampedMin > GameFilter.absoluteMinRating ? clampedMin : null,
+      maxRating: clampedMax < GameFilter.absoluteMaxRating ? clampedMax : null,
       playerColor: playerColor,
       gameResult: gameResult,
     );
@@ -206,6 +206,6 @@ extension GameFilterToGamebaseFilters on GameFilter {
       timeControl != GameTimeControlFilter.all ||
       color != GameColorFilter.all ||
       result != GameResultFilter.all ||
-      minRating != 2200 ||
-      maxRating != 3500;
+      minRating != GameFilter.defaultMinRating ||
+      maxRating != GameFilter.absoluteMaxRating;
 }

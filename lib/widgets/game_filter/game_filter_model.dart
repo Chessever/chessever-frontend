@@ -154,15 +154,21 @@ class GameEcoFilter {
 
 /// Complete filter state for chess games
 class GameFilter {
+  static const int defaultMinYear = 2020;
+  static const int absoluteMinYear = 1800;
+  static const int defaultMinRating = 2200;
+  static const int absoluteMinRating = 0;
+  static const int absoluteMaxRating = 3500;
+
   GameFilter({
     this.result = GameResultFilter.all,
     this.color = GameColorFilter.all,
     this.timeControl = GameTimeControlFilter.all,
     GameEcoFilter? eco,
-    this.minYear = 2020,
+    this.minYear = defaultMinYear,
     int? maxYear,
-    this.minRating = 2200,
-    this.maxRating = 3500,
+    this.minRating = defaultMinRating,
+    this.maxRating = absoluteMaxRating,
   }) : eco = eco ?? GameEcoFilter.all,
        maxYear = maxYear ?? DateTime.now().year;
 
@@ -181,10 +187,10 @@ class GameFilter {
       color != GameColorFilter.all ||
       timeControl != GameTimeControlFilter.all ||
       !eco.isAll ||
-      minYear != 2020 ||
+      minYear != defaultMinYear ||
       maxYear != DateTime.now().year ||
-      minRating != 2200 ||
-      maxRating != 3500;
+      minRating != defaultMinRating ||
+      maxRating != absoluteMaxRating;
 
   /// Count of active filters
   int get activeFilterCount {
@@ -193,8 +199,8 @@ class GameFilter {
     if (color != GameColorFilter.all) count++;
     if (timeControl != GameTimeControlFilter.all) count++;
     if (!eco.isAll) count++;
-    if (minYear != 2020 || maxYear != DateTime.now().year) count++;
-    if (minRating != 2200 || maxRating != 3500) count++;
+    if (minYear != defaultMinYear || maxYear != DateTime.now().year) count++;
+    if (minRating != defaultMinRating || maxRating != absoluteMaxRating) count++;
     return count;
   }
 

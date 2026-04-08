@@ -191,9 +191,9 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
                       SizedBox(height: 8.h),
                       _rangeSliderCard(
                         values: _yearRange,
-                        min: 2020,
+                        min: GameFilter.absoluteMinYear.toDouble(),
                         max: DateTime.now().year.toDouble(),
-                        divisions: DateTime.now().year - 2020,
+                        divisions: DateTime.now().year - GameFilter.absoluteMinYear,
                         onChanged: (v) => setState(() => _yearRange = v),
                       ),
                       // Rating range slider
@@ -202,9 +202,9 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
                       SizedBox(height: 8.h),
                       _rangeSliderCard(
                         values: _ratingRange,
-                        min: 2200,
-                        max: 3500,
-                        divisions: 26, // (3500-2200)/50 = 26
+                        min: GameFilter.absoluteMinRating.toDouble(),
+                        max: GameFilter.absoluteMaxRating.toDouble(),
+                        divisions: (GameFilter.absoluteMaxRating - GameFilter.absoluteMinRating) ~/ 50,
                         onChanged: (v) => setState(() => _ratingRange = v),
                       ),
                       SizedBox(height: 12.h),

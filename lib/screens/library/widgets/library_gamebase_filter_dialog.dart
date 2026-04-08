@@ -22,10 +22,10 @@ class GamebaseFilter {
     this.result = GameResultFilter.all,
     this.color = GameColorFilter.all,
     this.timeControl = GameTimeControlFilter.all,
-    this.minYear = 2020,
+    this.minYear = GameFilter.defaultMinYear,
     int? maxYear,
-    this.minRating = 2200,
-    this.maxRating = 3500,
+    this.minRating = GameFilter.defaultMinRating,
+    this.maxRating = GameFilter.absoluteMaxRating,
   }) : maxYear = maxYear ?? DateTime.now().year;
 
   final GameTournamentTypeFilter tournamentType;
@@ -43,10 +43,10 @@ class GamebaseFilter {
       result != GameResultFilter.all ||
       color != GameColorFilter.all ||
       timeControl != GameTimeControlFilter.all ||
-      minYear != 2020 ||
+      minYear != GameFilter.defaultMinYear ||
       maxYear != DateTime.now().year ||
-      minRating != 2200 ||
-      maxRating != 3500;
+      minRating != GameFilter.defaultMinRating ||
+      maxRating != GameFilter.absoluteMaxRating;
 
   /// Count of active filters
   int get activeFilterCount {
@@ -55,8 +55,8 @@ class GamebaseFilter {
     if (result != GameResultFilter.all) count++;
     if (color != GameColorFilter.all) count++;
     if (timeControl != GameTimeControlFilter.all) count++;
-    if (minYear != 2020 || maxYear != DateTime.now().year) count++;
-    if (minRating != 2200 || maxRating != 3500) count++;
+    if (minYear != GameFilter.defaultMinYear || maxYear != DateTime.now().year) count++;
+    if (minRating != GameFilter.defaultMinRating || maxRating != GameFilter.absoluteMaxRating) count++;
     return count;
   }
 
@@ -314,9 +314,9 @@ class _LibraryGamebaseFilterDialogState
                       SizedBox(height: 8.h),
                       _rangeSliderCard(
                         values: _yearRange,
-                        min: 2020,
+                        min: GameFilter.absoluteMinYear.toDouble(),
                         max: DateTime.now().year.toDouble(),
-                        divisions: DateTime.now().year - 2020,
+                        divisions: DateTime.now().year - GameFilter.absoluteMinYear,
                         onChanged: (v) => setState(() => _yearRange = v),
                       ),
                       SizedBox(height: 20.h),
@@ -326,9 +326,9 @@ class _LibraryGamebaseFilterDialogState
                       SizedBox(height: 8.h),
                       _rangeSliderCard(
                         values: _ratingRange,
-                        min: 2200,
-                        max: 3500,
-                        divisions: 26,
+                        min: GameFilter.absoluteMinRating.toDouble(),
+                        max: GameFilter.absoluteMaxRating.toDouble(),
+                        divisions: (GameFilter.absoluteMaxRating - GameFilter.absoluteMinRating) ~/ 50,
                         onChanged: (v) => setState(() => _ratingRange = v),
                       ),
                       SizedBox(height: 12.h),
@@ -394,14 +394,14 @@ class _LibraryGamebaseFilterDialogState
         setState(() => _timeControl = GameTimeControlFilter.all);
       }));
     }
-    if (_yearRange.start > 2020 || _yearRange.end < DateTime.now().year) {
+    if (_yearRange.start > GameFilter.defaultMinYear || _yearRange.end < DateTime.now().year) {
       activeChipWidgets.add(buildChip('Year: ${_yearRange.start.round()}-${_yearRange.end.round()}', () {
-        setState(() => _yearRange = RangeValues(2020, DateTime.now().year.toDouble()));
+        setState(() => _yearRange = RangeValues(GameFilter.defaultMinYear.toDouble(), DateTime.now().year.toDouble()));
       }));
     }
-    if (_ratingRange.start > 2200 || _ratingRange.end < 3500) {
+    if (_ratingRange.start > GameFilter.defaultMinRating || _ratingRange.end < GameFilter.absoluteMaxRating) {
       activeChipWidgets.add(buildChip('ELO: ${_ratingRange.start.round()}-${_ratingRange.end.round()}', () {
-        setState(() => _ratingRange = const RangeValues(2200, 3500));
+        setState(() => _ratingRange = const RangeValues(GameFilter.defaultMinRating.toDouble(), GameFilter.absoluteMaxRating.toDouble()));
       }));
     }
 

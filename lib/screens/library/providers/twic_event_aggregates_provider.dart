@@ -5,6 +5,7 @@ import 'package:chessever2/screens/library/providers/gamebase_database_games_pro
 import 'package:chessever2/screens/library/providers/gamebase_filter_provider.dart';
 import 'package:chessever2/screens/library/widgets/library_gamebase_filter_dialog.dart';
 import 'package:chessever2/utils/time_utils.dart';
+import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 final twicSelectedEventProvider = StateProvider.autoDispose<String?>(
@@ -162,10 +163,10 @@ class TwicEventAggregatesNotifier
       result: _filter.resultApiValue,
       color: _filter.colorApiValue,
       timeControl: _filter.timeControlApiValue,
-      yearFrom: _filter.minYear != 2020 ? _filter.minYear : null,
+      yearFrom: _filter.minYear != GameFilter.absoluteMinYear ? _filter.minYear : null,
       yearTo: _filter.maxYear != DateTime.now().year ? _filter.maxYear : null,
-      ratingFrom: _filter.minRating > 2200 ? _filter.minRating : null,
-      ratingTo: _filter.maxRating < 3500 ? _filter.maxRating : null,
+      ratingFrom: _filter.minRating > GameFilter.absoluteMinRating ? _filter.minRating : null,
+      ratingTo: _filter.maxRating < GameFilter.absoluteMaxRating ? _filter.maxRating : null,
     );
 
     final events = response.events
