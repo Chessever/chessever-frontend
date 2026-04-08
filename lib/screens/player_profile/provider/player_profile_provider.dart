@@ -2831,11 +2831,8 @@ class PlayerProfileGamesNotifier
 
     final effectiveFilter = playerProfileEffectiveFilter(state.filter);
 
-    // Build search query — surname only to avoid 400 from commas
-    var searchQuery =
-        playerName.contains(',')
-            ? playerName.split(',').first.trim()
-            : playerName;
+    final escapedPlayerName = playerName.replaceAll('"', r'\"');
+    var searchQuery = 'player:"$escapedPlayerName"';
 
     final extraSearchQuery = state.searchQuery.trim();
     if (extraSearchQuery.isNotEmpty) {
