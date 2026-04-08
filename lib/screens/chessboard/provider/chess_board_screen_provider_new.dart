@@ -1054,6 +1054,62 @@ class ChessBoardScreenNotifierNew
         game = game.copyWith(pgn: resolvedPgn);
       }
 
+      // Update game model with metadata from PGN headers if available
+      if (gameData.headers.isNotEmpty) {
+        final whiteName =
+            (gameData.headers['White'] ?? game.whitePlayer.name).trim();
+        final blackName =
+            (gameData.headers['Black'] ?? game.blackPlayer.name).trim();
+        final whiteElo =
+            int.tryParse(gameData.headers['WhiteElo']?.toString() ?? '') ??
+            game.whitePlayer.rating;
+        final blackElo =
+            int.tryParse(gameData.headers['BlackElo']?.toString() ?? '') ??
+            game.blackPlayer.rating;
+        final whiteFed =
+            (gameData.headers['WhiteFed'] ?? game.whitePlayer.federation)
+                .trim();
+        final blackFed =
+            (gameData.headers['BlackFed'] ?? game.blackPlayer.federation)
+                .trim();
+        final whiteTitle =
+            (gameData.headers['WhiteTitle'] ?? game.whitePlayer.title).trim();
+        final blackTitle =
+            (gameData.headers['BlackTitle'] ?? game.blackPlayer.title).trim();
+        final whiteFideId =
+            int.tryParse(gameData.headers['WhiteFideId']?.toString() ?? '') ??
+            game.whitePlayer.fideId;
+        final blackFideId =
+            int.tryParse(gameData.headers['BlackFideId']?.toString() ?? '') ??
+            game.blackPlayer.fideId;
+
+        game = game.copyWith(
+          whitePlayer: game.whitePlayer.copyWith(
+            name: whiteName,
+            rating: whiteElo,
+            federation: whiteFed,
+            countryCode: whiteFed,
+            title: whiteTitle,
+            fideId: whiteFideId,
+          ),
+          blackPlayer: game.blackPlayer.copyWith(
+            name: blackName,
+            rating: blackElo,
+            federation: blackFed,
+            countryCode: blackFed,
+            title: blackTitle,
+            fideId: blackFideId,
+          ),
+          eco: gameData.headers['ECO'] ?? game.eco,
+          openingName: gameData.headers['Opening'] ?? game.openingName,
+          gameStatus:
+              GameStatus.fromString(gameData.headers['Result']) !=
+                      GameStatus.unknown
+                  ? GameStatus.fromString(gameData.headers['Result'])
+                  : game.gameStatus,
+        );
+      }
+
       var lastMoveIndex = allMoves.length - 1;
       final moveTimes = _parseMoveTimesFromPgn(resolvedPgn);
 

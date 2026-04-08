@@ -1390,57 +1390,63 @@ class _OverallStatsSection extends StatelessWidget {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '${resultStats.totalGames}',
-                        style: AppTypography.textLgBold.copyWith(
-                          color: kWhiteColor,
-                        ),
-                      ),
-                      Text(
-                        'Total Games',
-                        style: AppTypography.textXsRegular.copyWith(
-                          color: kWhiteColor.withValues(alpha: 0.5),
-                        ),
-                      ),
-                    ],
-                  ),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '${resultStats.wins}W / ${resultStats.draws}D / ${resultStats.losses}L',
-                        style: AppTypography.textSmMedium.copyWith(
-                          color: kWhiteColor,
-                        ),
-                      ),
-                      Text(
-                        'W / D / L',
-                        style: AppTypography.textXsRegular.copyWith(
-                          color: kWhiteColor.withValues(alpha: 0.5),
-                        ),
-                      ),
-                    ],
-                  ),
-                  if (avgOpponentRating > 0)
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          '$avgOpponentRating',
+                          '${resultStats.totalGames}',
                           style: AppTypography.textLgBold.copyWith(
                             color: kWhiteColor,
                           ),
                         ),
                         Text(
-                          'Avg. Opponent',
+                          'Total Games',
                           style: AppTypography.textXsRegular.copyWith(
                             color: kWhiteColor.withValues(alpha: 0.5),
                           ),
                         ),
                       ],
+                    ),
+                  ),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Text(
+                          '${resultStats.wins}W / ${resultStats.draws}D / ${resultStats.losses}L',
+                          style: AppTypography.textSmMedium.copyWith(
+                            color: kWhiteColor,
+                          ),
+                        ),
+                        Text(
+                          'W / D / L',
+                          style: AppTypography.textXsRegular.copyWith(
+                            color: kWhiteColor.withValues(alpha: 0.5),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (avgOpponentRating > 0)
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(
+                            '$avgOpponentRating',
+                            style: AppTypography.textLgBold.copyWith(
+                              color: kWhiteColor,
+                            ),
+                          ),
+                          Text(
+                            'Avg. Opponent',
+                            style: AppTypography.textXsRegular.copyWith(
+                              color: kWhiteColor.withValues(alpha: 0.5),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                 ],
               ),

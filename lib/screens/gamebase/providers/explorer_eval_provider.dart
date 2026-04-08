@@ -7,6 +7,8 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/repository/lichess/cloud_eval/cloud_eval.dart';
+import 'package:chessever2/repository/local_storage/local_eval/local_eval_cache.dart';
+import 'package:chessever2/repository/supabase/evals/persist_cloud_eval.dart';
 import 'package:chessever2/screens/chessboard/provider/stockfish_singleton.dart';
 
 class ExplorerPvLine {
@@ -211,6 +213,29 @@ class ExplorerEvalNotifier extends StateNotifier<ExplorerEvalState> {
           debugPrint(
             '💎 EVAL SOURCE (explorer): GAMEBASE - fen=$normalizedFen, side=$sideToMove, cp=$cp, depth=${gamebaseEval.depth}',
           );
+
+          final persist = ref.read(persistCloudEvalProvider);
+          if (gamebaseEval.depth >= 25) {
+            unawaited(
+              Future.wait<void>([
+                persist.call(normalizedFen, gamebaseEval),
+                ref.read(localEvalCacheProvider).save(
+                  normalizedFen,
+                  gamebaseEval,
+                  multiPV: gamebaseEval.requestedMultiPv ?? gamebaseEval.pvs.length,
+                ),
+              ]).catchError((_) => <void>[]),
+            );
+          } else {
+            unawaited(
+              ref.read(localEvalCacheProvider).save(
+                normalizedFen,
+                gamebaseEval,
+                multiPV: gamebaseEval.requestedMultiPv ?? gamebaseEval.pvs.length,
+              ).catchError((_) => null),
+            );
+          }
+
           state = state.copyWith(
             evaluation: first.evaluation,
             mate: first.mate,
