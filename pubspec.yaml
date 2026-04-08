@@ -189,7 +189,7 @@ flutter:
     - assets/sfx/
     - assets/launch.jpg
     - assets/app_icon.png
-    - .env
+    # - .env
     - shorebird.yaml
 
   # An image asset can refer to one or more resolution-specific "variants", see
