@@ -321,10 +321,22 @@ class DeepLinkService {
       });
 
       // Auth is required before we can proceed.
-      final isAuthenticated = await authFuture;
+      var isAuthenticated = await authFuture;
       if (!isAuthenticated) {
         debugPrint(
-          'DeepLinkService: No authenticated session available for game link, routing to home',
+          'DeepLinkService: No authenticated session available for game link, attempting anonymous sign-in...',
+        );
+        try {
+          await ref.read(authStateProvider.notifier).signInAnonymously();
+          isAuthenticated = true;
+        } catch (e) {
+          debugPrint('DeepLinkService: Anonymous sign-in failed: $e');
+        }
+      }
+
+      if (!isAuthenticated) {
+        debugPrint(
+          'DeepLinkService: Still no authenticated session, routing to home',
         );
         _captureDeepLinkException(
           Exception(
@@ -349,6 +361,49 @@ class DeepLinkService {
       final gameTourModel = GamesTourModel.fromGame(game);
 
       await appReadyFuture;
+
+      // Resolve tournament context so swiping and tournament button works.
+      final roundRepo = ref.read(roundRepositoryProvider);
+      final tourRepo = ref.read(tourRepositoryProvider);
+      final broadcastRepo = ref.read(groupBroadcastRepositoryProvider);
+
+      try {
+        final round =
+            await roundRepo.getRoundById(game.roundId).timeout(_fetchTimeout);
+        final tour =
+            await tourRepo.getToursByIds([round.tourId]).timeout(_fetchTimeout);
+
+        if (tour.isNotEmpty) {
+          final broadcastId = tour.first.groupBroadcastId;
+          if (broadcastId != null) {
+            final broadcast = await broadcastRepo
+                .getGroupBroadcastById(broadcastId)
+                .timeout(_fetchTimeout);
+
+            // Pre-select tour and round so the tournament button in board screen works
+            await _preselectTourAndRound(
+              ref,
+              groupBroadcastId: broadcast.id,
+              tourId: tour.first.id,
+              roundId: round.id,
+            );
+
+            ref.read(selectedBroadcastModelProvider.notifier).state = broadcast;
+            ref.read(chessboardViewFromProviderNew.notifier).state =
+                ChessboardView.tour;
+          } else {
+            ref.read(chessboardViewFromProviderNew.notifier).state =
+                ChessboardView.forYou;
+          }
+        } else {
+          ref.read(chessboardViewFromProviderNew.notifier).state =
+              ChessboardView.forYou;
+        }
+      } catch (e) {
+        debugPrint('DeepLinkService: Failed to resolve full context: $e');
+        ref.read(chessboardViewFromProviderNew.notifier).state =
+            ChessboardView.forYou;
+      }
 
       final roundGamesFuture = gameRepo.getGamesByRoundId(game.roundId).timeout(
         _fetchTimeout,
@@ -378,8 +433,6 @@ class DeepLinkService {
           },
         ),
       );
-      ref.read(chessboardViewFromProviderNew.notifier).state =
-          ChessboardView.forYou;
       ref.read(shouldStreamProvider.notifier).state = false;
 
       final navigator = navigatorKey.currentState;

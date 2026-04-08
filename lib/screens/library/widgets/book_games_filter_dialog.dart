@@ -5,6 +5,7 @@ import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/back_drop_filter_widget.dart';
 import 'package:chessever2/widgets/game_filter/wheel_range_filter.dart';
+import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:flutter/material.dart';
 import 'package:motor/motor.dart';
 
@@ -179,9 +180,9 @@ class _BookGamesFilterDialogState extends State<BookGamesFilterDialog> {
                     SizedBox(height: 8.h),
                     _rangeSlider(
                       values: _yearRange,
-                      min: 2020,
+                      min: GameFilter.absoluteMinYear.toDouble(),
                       max: DateTime.now().year.toDouble(),
-                      divisions: DateTime.now().year - 2020,
+                      divisions: DateTime.now().year - GameFilter.absoluteMinYear,
                       onChanged: (v) => setState(() => _yearRange = v),
                     ),
                     SizedBox(height: 16.h),
@@ -190,9 +191,9 @@ class _BookGamesFilterDialogState extends State<BookGamesFilterDialog> {
                     SizedBox(height: 8.h),
                     _rangeSlider(
                       values: _ratingRange,
-                      min: 2200,
-                      max: 3500,
-                      divisions: 26,
+                      min: GameFilter.absoluteMinRating.toDouble(),
+                      max: GameFilter.absoluteMaxRating.toDouble(),
+                      divisions: (GameFilter.absoluteMaxRating - GameFilter.absoluteMinRating) ~/ 50,
                       onChanged: (v) => setState(() => _ratingRange = v),
                     ),
                     SizedBox(height: 16.h),

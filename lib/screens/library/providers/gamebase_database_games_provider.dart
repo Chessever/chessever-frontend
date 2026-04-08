@@ -9,6 +9,7 @@ import 'package:chessever2/screens/library/widgets/library_gamebase_filter_dialo
 import 'package:chessever2/utils/chess_title_utils.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/utils/twic_player_enrichment.dart';
+import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -61,7 +62,7 @@ class DatabaseGamesPaginationState {
 
 /// Notifier for paginated database games
 bool _hasYearFilter(GamebaseFilter filter) =>
-    filter.minYear != 1800 || filter.maxYear != DateTime.now().year;
+    filter.minYear != GameFilter.absoluteMinYear || filter.maxYear != DateTime.now().year;
 
 List<String> _libraryExactGameSelectColumns() => const [
   'id',
@@ -273,10 +274,10 @@ class DatabaseGamesPaginationNotifier
         result: _filter.resultApiValue,
         color: _filter.colorApiValue,
         timeControl: _filter.timeControlApiValue,
-        yearFrom: _filter.minYear != 2020 ? _filter.minYear : null,
+        yearFrom: _filter.minYear != GameFilter.absoluteMinYear ? _filter.minYear : null,
         yearTo: _filter.maxYear != DateTime.now().year ? _filter.maxYear : null,
-        ratingFrom: _filter.minRating > 2200 ? _filter.minRating : null,
-        ratingTo: _filter.maxRating < 3500 ? _filter.maxRating : null,
+        ratingFrom: _filter.minRating > GameFilter.absoluteMinRating ? _filter.minRating : null,
+        ratingTo: _filter.maxRating < GameFilter.absoluteMaxRating ? _filter.maxRating : null,
       );
       rawRows = _rowsFromGlobalSearchResponse(response);
       totalCount = response.metadata.totalCount ?? 0;
@@ -589,10 +590,10 @@ final gamebaseDatabaseGamesProvider = FutureProvider.autoDispose<
         result: filter.resultApiValue,
         color: filter.colorApiValue,
         timeControl: filter.timeControlApiValue,
-        yearFrom: filter.minYear != 2020 ? filter.minYear : null,
+        yearFrom: filter.minYear != GameFilter.absoluteMinYear ? filter.minYear : null,
         yearTo: filter.maxYear != DateTime.now().year ? filter.maxYear : null,
-        ratingFrom: filter.minRating > 2200 ? filter.minRating : null,
-        ratingTo: filter.maxRating < 3500 ? filter.maxRating : null,
+        ratingFrom: filter.minRating > GameFilter.absoluteMinRating ? filter.minRating : null,
+        ratingTo: filter.maxRating < GameFilter.absoluteMaxRating ? filter.maxRating : null,
       );
       rawRows = _rowsFromGlobalSearchResponse(response);
     }
