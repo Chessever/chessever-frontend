@@ -263,26 +263,31 @@ class _PlayerAboutTabState extends ConsumerState<PlayerAboutTab>
                     final filterForOpenings = currentFilter.copyWith(
                       eco: GameEcoFilter.all,
                     );
+                    final effectiveFilterForOpenings =
+                        playerProfileEffectiveFilter(filterForOpenings);
                     final gamesForOpenings =
-                        filterForOpenings.hasActiveFilters
+                        playerProfileHasStructuredFilters(filterForOpenings)
                             ? GameFilterHelper.applyFilter(
                               allGames,
-                              filterForOpenings,
+                              effectiveFilterForOpenings,
                             )
                             : allGames;
 
                     // Filter for other stats: use full filter including ECO
+                    final effectiveCurrentFilter = playerProfileEffectiveFilter(
+                      currentFilter,
+                    );
                     final filteredGames =
-                        currentFilter.hasActiveFilters
+                        playerProfileHasStructuredFilters(currentFilter)
                             ? GameFilterHelper.applyFilter(
                               allGames,
-                              currentFilter,
+                              effectiveCurrentFilter,
                             )
                             : allGames;
 
                     // Show empty state if no games match filter (but only for non-ECO filters)
                     if (gamesForOpenings.isEmpty &&
-                        filterForOpenings.hasActiveFilters) {
+                        playerProfileHasStructuredFilters(filterForOpenings)) {
                       return _buildNoGamesForFilterMessage(filterForOpenings);
                     }
 

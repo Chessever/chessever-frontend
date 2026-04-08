@@ -529,7 +529,6 @@ class GamebaseRepository {
     final queryParams = <String, dynamic>{
       'color': color,
       if (q != null && q.isNotEmpty) 'q': q,
-      if (q != null && q.isNotEmpty) 'q': q,
       'pageNumber': pageNumber,
       'pageSize': pageSize,
       if (timeControl != null) 'timeControl': timeControl,

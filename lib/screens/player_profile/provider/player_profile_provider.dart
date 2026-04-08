@@ -1796,6 +1796,31 @@ class _SearchClauseTerm {
   final bool negated;
 }
 
+GameFilter playerProfileEffectiveFilter(GameFilter filter) {
+  return filter.copyWith(
+    minYear:
+        filter.minYear == GameFilter.defaultMinYear
+            ? GameFilter.absoluteMinYear
+            : filter.minYear,
+    minRating:
+        filter.minRating == GameFilter.defaultMinRating
+            ? GameFilter.absoluteMinRating
+            : filter.minRating,
+  );
+}
+
+bool playerProfileHasStructuredFilters(GameFilter filter) {
+  final effective = playerProfileEffectiveFilter(filter);
+  return effective.result != GameResultFilter.all ||
+      effective.color != GameColorFilter.all ||
+      effective.timeControl != GameTimeControlFilter.all ||
+      !effective.eco.isAll ||
+      effective.minYear != GameFilter.absoluteMinYear ||
+      effective.maxYear != DateTime.now().year ||
+      effective.minRating != GameFilter.absoluteMinRating ||
+      effective.maxRating != GameFilter.absoluteMaxRating;
+}
+
 class PlayerProfileGamesState {
   static const Object _unset = Object();
 
@@ -1848,11 +1873,15 @@ class PlayerProfileGamesState {
       games = games.where(_matchesPlayerResultFilter).toList();
     }
 
-    // Apply filter with targetFideId for accurate color filtering
-    // Also pass playerName for name-based matching when fideId is not available
+    if (!playerProfileHasStructuredFilters(filter)) {
+      return games;
+    }
+
+    // Apply filter with targetFideId for accurate color filtering.
+    // Player profile treats untouched year/rating sliders as neutral bounds.
     return GameFilterHelper.applyFilter(
       games,
-      filter,
+      playerProfileEffectiveFilter(filter),
       targetFideId: playerKey.fideId,
       playerNameQuery: playerKey.hasFideId ? null : playerKey.playerName,
     );
@@ -2244,8 +2273,7 @@ String? _resolvePlayerOutcome({
 }
 
 String? _yearMinToDateFrom(GameFilter filter) {
-  final defaultFilter = GameFilter.defaultFilter();
-  if (filter.minYear == defaultFilter.minYear) return null;
+  if (filter.minYear <= GameFilter.absoluteMinYear) return null;
   return '${filter.minYear}-01-01';
 }
 
@@ -2298,12 +2326,13 @@ final twicPlayerStatsProvider = FutureProvider.family.autoDispose<
     } else if (request.scope == TwicStatsScope.filteredIgnoringEco) {
       filter = filter.copyWith(eco: GameEcoFilter.all);
     }
+    final effectiveFilter = playerProfileEffectiveFilter(filter);
 
     final filteredGames =
-        filter.hasActiveFilters
+        playerProfileHasStructuredFilters(filter)
             ? GameFilterHelper.applyFilter(
               gamesState.allGames,
-              filter,
+              effectiveFilter,
               targetFideId: playerKey.fideId,
               playerNameQuery:
                   playerKey.hasFideId ? null : playerKey.playerName,
@@ -2337,10 +2366,11 @@ final twicPlayerStatsProvider = FutureProvider.family.autoDispose<
   } else if (request.scope == TwicStatsScope.filteredIgnoringEco) {
     filter = filter.copyWith(eco: GameEcoFilter.all);
   }
+  final effectiveFilter = playerProfileEffectiveFilter(filter);
 
-  final color = _colorToApi(filter.color) ?? 'all';
-  final timeControl = _timeControlToApi(filter.timeControl);
-  final eco = filter.eco.isAll ? null : filter.eco.code;
+  final color = _colorToApi(effectiveFilter.color) ?? 'all';
+  final timeControl = _timeControlToApi(effectiveFilter.timeControl);
+  final eco = effectiveFilter.eco.isAll ? null : effectiveFilter.eco.code;
   final outcome = _resolvePlayerOutcome(
     playerResultFilter:
         request.scope == TwicStatsScope.allGames
@@ -2349,15 +2379,17 @@ final twicPlayerStatsProvider = FutureProvider.family.autoDispose<
     resultFilter:
         request.scope == TwicStatsScope.allGames
             ? GameResultFilter.all
-            : filter.result,
-    colorFilter: filter.color,
+            : effectiveFilter.result,
+    colorFilter: effectiveFilter.color,
   );
-
-  final defaultFilter = GameFilter();
   final ratingFrom =
-      filter.minRating != defaultFilter.minRating ? filter.minRating : null;
+      effectiveFilter.minRating != GameFilter.absoluteMinRating
+          ? effectiveFilter.minRating
+          : null;
   final ratingTo =
-      filter.maxRating != defaultFilter.maxRating ? filter.maxRating : null;
+      effectiveFilter.maxRating != GameFilter.absoluteMaxRating
+          ? effectiveFilter.maxRating
+          : null;
 
   final repo = ref.read(gamebaseRepositoryProvider);
   Map<String, dynamic> response;
@@ -2369,8 +2401,8 @@ final twicPlayerStatsProvider = FutureProvider.family.autoDispose<
       timeControl: timeControl,
       outcome: outcome,
       eco: request.scope == TwicStatsScope.filteredIgnoringEco ? null : eco,
-      dateFrom: _yearMinToDateFrom(filter),
-      dateTo: _yearMaxToExclusiveDateTo(filter),
+      dateFrom: _yearMinToDateFrom(effectiveFilter),
+      dateTo: _yearMaxToExclusiveDateTo(effectiveFilter),
       ratingFrom: ratingFrom,
       ratingTo: ratingTo,
     );
@@ -2388,6 +2420,7 @@ final twicPlayerStatsProvider = FutureProvider.family.autoDispose<
         try {
           response = await repo.getPlayerStats(
             playerId: refreshedId,
+            q: searchQuery.isNotEmpty ? searchQuery : null,
             color: color,
             timeControl: timeControl,
             outcome: outcome,
@@ -2395,8 +2428,8 @@ final twicPlayerStatsProvider = FutureProvider.family.autoDispose<
                 request.scope == TwicStatsScope.filteredIgnoringEco
                     ? null
                     : eco,
-            dateFrom: _yearMinToDateFrom(filter),
-            dateTo: _yearMaxToExclusiveDateTo(filter),
+            dateFrom: _yearMinToDateFrom(effectiveFilter),
+            dateTo: _yearMaxToExclusiveDateTo(effectiveFilter),
             ratingFrom: ratingFrom,
             ratingTo: ratingTo,
           );
@@ -2506,6 +2539,7 @@ class PlayerProfileGamesNotifier
   final Ref _ref;
   final PlayerProfileKey _playerKey;
   int _loadToken = 0;
+  static const int _supabasePageSize = 1000;
   static const int _twicPageSize = 60;
   List<GamesTourModel>? _globalSearchFallbackCache;
 
@@ -2521,6 +2555,42 @@ class PlayerProfileGamesNotifier
       merged[game.gameId] = game;
     }
     return merged.values.toList(growable: false);
+  }
+
+  Future<List<Games>> _loadAllSupabaseGames(GameRepository gameRepo) async {
+    final seenIds = <String>{};
+    final allGames = <Games>[];
+
+    for (var page = 0; page < 200; page++) {
+      final offset = page * _supabasePageSize;
+      final batch =
+          _playerKey.hasFideId
+              ? await gameRepo.getGamesByFideIdPaginated(
+                _playerKey.fideId.toString(),
+                limit: _supabasePageSize,
+                offset: offset,
+              )
+              : await gameRepo.getGamesByPlayerNamePaginated(
+                _playerKey.playerName,
+                limit: _supabasePageSize,
+                offset: offset,
+              );
+
+      if (batch.isEmpty) break;
+
+      final before = seenIds.length;
+      for (final game in batch) {
+        if (seenIds.add(game.id)) {
+          allGames.add(game);
+        }
+      }
+
+      if (batch.length < _supabasePageSize || seenIds.length == before) {
+        break;
+      }
+    }
+
+    return allGames;
   }
 
   Future<void> _loadGames() async {
@@ -2554,25 +2624,14 @@ class PlayerProfileGamesNotifier
         totalCount = page.totalCount;
       } else {
         final gameRepo = _ref.read(gameRepositoryProvider);
-        List<Games> games;
-
-        if (_playerKey.hasFideId) {
-          games = await gameRepo.getGamesByFideId(
-            _playerKey.fideId.toString(),
-            limit: 1000,
-          );
-        } else {
-          games = await gameRepo.getGamesByPlayerName(
-            _playerKey.playerName,
-            limit: 1000,
-          );
-        }
+        final games = await _loadAllSupabaseGames(gameRepo);
 
         allGames =
             games
                 .map((game) => GamesTourModel.fromGame(game))
                 .where((game) => !_isVariantEvent(game.tourSlug))
                 .toList();
+        totalCount = allGames.length;
       }
 
       // Sort by date descending
@@ -2652,26 +2711,28 @@ class PlayerProfileGamesNotifier
     required int pageNumber,
     required int pageSize,
   }) async {
-    final filter = state.filter;
-    final color = _colorToApi(filter.color) ?? 'all';
-    final timeControl = _timeControlToApi(filter.timeControl);
-    final eco = filter.eco.isAll ? null : filter.eco.code;
+    final effectiveFilter = playerProfileEffectiveFilter(state.filter);
+    final color = _colorToApi(effectiveFilter.color) ?? 'all';
+    final timeControl = _timeControlToApi(effectiveFilter.timeControl);
+    final eco = effectiveFilter.eco.isAll ? null : effectiveFilter.eco.code;
     final outcome = _resolvePlayerOutcome(
       playerResultFilter: state.playerResultFilter,
-      resultFilter: filter.result,
-      colorFilter: filter.color,
+      resultFilter: effectiveFilter.result,
+      colorFilter: effectiveFilter.color,
     );
 
     // Year UI is inclusive; backend dateTo is exclusive.
-    final dateFrom = _yearMinToDateFrom(filter);
-    final dateTo = _yearMaxToExclusiveDateTo(filter);
+    final dateFrom = _yearMinToDateFrom(effectiveFilter);
+    final dateTo = _yearMaxToExclusiveDateTo(effectiveFilter);
 
-    // Rating filter: only send non-default values.
-    final defaultFilter = GameFilter();
     final ratingFrom =
-        filter.minRating != defaultFilter.minRating ? filter.minRating : null;
+        effectiveFilter.minRating != GameFilter.absoluteMinRating
+            ? effectiveFilter.minRating
+            : null;
     final ratingTo =
-        filter.maxRating != defaultFilter.maxRating ? filter.maxRating : null;
+        effectiveFilter.maxRating != GameFilter.absoluteMaxRating
+            ? effectiveFilter.maxRating
+            : null;
 
     final response = await repo.getPlayerGames(
       playerId: playerId,
@@ -2768,7 +2829,7 @@ class PlayerProfileGamesNotifier
     final playerName = _playerKey.playerName.trim();
     if (playerName.isEmpty) return const [];
 
-    final filter = state.filter;
+    final effectiveFilter = playerProfileEffectiveFilter(state.filter);
 
     // Build search query — surname only to avoid 400 from commas
     var searchQuery =
@@ -2776,23 +2837,35 @@ class PlayerProfileGamesNotifier
             ? playerName.split(',').first.trim()
             : playerName;
 
-    // Append ECO fielded token if active
-    if (!filter.eco.isAll && filter.eco.code != null) {
-      searchQuery = '$searchQuery eco:${filter.eco.code}';
+    final extraSearchQuery = state.searchQuery.trim();
+    if (extraSearchQuery.isNotEmpty) {
+      searchQuery = '$searchQuery $extraSearchQuery';
     }
 
-    final result = _gameFilterResultToApi(filter.result);
-    final color = _colorToApi(filter.color);
-    final timeControl = _timeControlToApi(filter.timeControl);
-    final defaultFilter = GameFilter();
+    // Append ECO fielded token if active
+    if (!effectiveFilter.eco.isAll && effectiveFilter.eco.code != null) {
+      searchQuery = '$searchQuery eco:${effectiveFilter.eco.code}';
+    }
+
+    final result = _gameFilterResultToApi(effectiveFilter.result);
+    final color = _colorToApi(effectiveFilter.color);
+    final timeControl = _timeControlToApi(effectiveFilter.timeControl);
     final yearFrom =
-        filter.minYear != defaultFilter.minYear ? filter.minYear : null;
+        effectiveFilter.minYear != GameFilter.absoluteMinYear
+            ? effectiveFilter.minYear
+            : null;
     final yearTo =
-        filter.maxYear != defaultFilter.maxYear ? filter.maxYear : null;
+        effectiveFilter.maxYear != DateTime.now().year
+            ? effectiveFilter.maxYear
+            : null;
     final ratingFrom =
-        filter.minRating != defaultFilter.minRating ? filter.minRating : null;
+        effectiveFilter.minRating != GameFilter.absoluteMinRating
+            ? effectiveFilter.minRating
+            : null;
     final ratingTo =
-        filter.maxRating != defaultFilter.maxRating ? filter.maxRating : null;
+        effectiveFilter.maxRating != GameFilter.absoluteMaxRating
+            ? effectiveFilter.maxRating
+            : null;
 
     final playerId = _playerKey.gamebasePlayerId?.trim();
     final fideIdStr =
