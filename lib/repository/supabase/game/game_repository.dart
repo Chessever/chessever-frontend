@@ -132,11 +132,12 @@ class GameRepository extends BaseRepository {
   Future<Games> getGameById(String id) async {
     debugPrint('Fetching game by ID: $id');
     return handleApiCall(() async {
-      final response = await supabase
-          .from('games')
-          .select(_gameListSelectColumns)
-          .eq('id', id)
-          .single();
+      final response =
+          await supabase
+              .from('games')
+              .select(_gameListSelectColumns)
+              .eq('id', id)
+              .single();
 
       return Games.fromJson(response);
     });
@@ -146,11 +147,12 @@ class GameRepository extends BaseRepository {
   Future<Games> getGameByLichessId(String lichessId) async {
     debugPrint('Fetching game by Lichess ID: $lichessId');
     return handleApiCall(() async {
-      final response = await supabase
-          .from('games')
-          .select(_gameListSelectColumns)
-          .eq('lichess_id', lichessId)
-          .single();
+      final response =
+          await supabase
+              .from('games')
+              .select(_gameListSelectColumns)
+              .eq('lichess_id', lichessId)
+              .single();
 
       return Games.fromJson(response);
     });
@@ -286,7 +288,9 @@ class GameRepository extends BaseRepository {
       final response = await supabase
           .from('games')
           .select(_gameListSelectColumns)
-          .or('player_white.eq.$normalizedName,player_black.eq.$normalizedName')
+          .or(
+            'player_white.eq."$normalizedName",player_black.eq."$normalizedName"',
+          )
           .order('date_start', ascending: false)
           .order('time_start', ascending: false)
           .range(offset, offset + limit - 1);
@@ -1385,10 +1389,11 @@ class GameRepository extends BaseRepository {
 }
 
 List<Games> _decodeGamesInIsolate(List<String> gameJsonList) {
-  final games = gameJsonList.map((e) {
-    final decoded = json.decode(e) as Map<String, dynamic>;
-    return Games.fromJson(decoded);
-  }).toList();
+  final games =
+      gameJsonList.map((e) {
+        final decoded = json.decode(e) as Map<String, dynamic>;
+        return Games.fromJson(decoded);
+      }).toList();
   return _deduplicateGames(games);
 }
 

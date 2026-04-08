@@ -127,17 +127,34 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
         .setSearchQuery('');
   }
 
+  GameFilter _dialogFilter(GameFilter filter) {
+    return playerProfileEffectiveFilter(filter);
+  }
+
+  GameFilter _storedFilter(GameFilter filter) {
+    return filter.copyWith(
+      minYear:
+          filter.minYear == GameFilter.absoluteMinYear
+              ? GameFilter.defaultMinYear
+              : filter.minYear,
+      minRating:
+          filter.minRating == GameFilter.absoluteMinRating
+              ? GameFilter.defaultMinRating
+              : filter.minRating,
+    );
+  }
+
   Future<void> _showFilterDialog() async {
     HapticFeedbackService.buttonPress();
     final currentState = ref.read(playerProfileGamesKeyProvider(_playerKey));
     final result = await showGameFilterDialog(
       context: context,
-      currentFilter: currentState.filter,
+      currentFilter: _dialogFilter(currentState.filter),
     );
     if (result != null && mounted) {
       ref
           .read(playerProfileGamesKeyProvider(_playerKey).notifier)
-          .applyFilter(result);
+          .applyFilter(_storedFilter(result));
     }
   }
 
@@ -346,6 +363,13 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
     });
 
     final state = ref.watch(playerProfileGamesKeyProvider(_playerKey));
+    if (!_searchFocusNode.hasFocus &&
+        _searchController.text != state.searchQuery) {
+      _searchController.value = TextEditingValue(
+        text: state.searchQuery,
+        selection: TextSelection.collapsed(offset: state.searchQuery.length),
+      );
+    }
     final viewMode = ref.watch(gamesListViewModeProvider);
     final horizontalPadding = ResponsiveHelper.adaptive(
       phone: 16.w,
@@ -647,13 +671,15 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
         selectedVisibleCount == 0
             ? 'Choose games to save'
             : '$selectedVisibleCount selected';
-    final subtitle = _isLoadingAllPagesForSelection
-        ? (state.totalCount != null && state.totalCount! > state.allGames.length
-            ? 'Loading ${formatCompactCount(state.allGames.length)} of ${formatCompactCount(state.totalCount!)} games...'
-            : 'Preparing your filtered game list...')
-        : state.hasActiveFilters
-        ? 'Selection follows current filters and search'
-        : 'Tap games manually or use quick select';
+    final subtitle =
+        _isLoadingAllPagesForSelection
+            ? (state.totalCount != null &&
+                    state.totalCount! > state.allGames.length
+                ? 'Loading ${formatCompactCount(state.allGames.length)} of ${formatCompactCount(state.totalCount!)} games...'
+                : 'Preparing your filtered game list...')
+            : state.hasActiveFilters
+            ? 'Selection follows current filters and search'
+            : 'Tap games manually or use quick select';
 
     return SingleMotionBuilder(
       motion: const CupertinoMotion.bouncy(),
@@ -744,12 +770,14 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
                     children: [
                       Expanded(
                         child: _SelectionActionButton(
-                          label: _isLoadingAllPagesForSelection
-                              ? (state.totalCount != null &&
-                                      state.totalCount! > state.allGames.length
-                                  ? 'Loading ${formatCompactCount(state.allGames.length)}/${formatCompactCount(state.totalCount!)}...'
-                                  : 'Selecting...')
-                              : _selectAllLabel(state),
+                          label:
+                              _isLoadingAllPagesForSelection
+                                  ? (state.totalCount != null &&
+                                          state.totalCount! >
+                                              state.allGames.length
+                                      ? 'Loading ${formatCompactCount(state.allGames.length)}/${formatCompactCount(state.totalCount!)}...'
+                                      : 'Selecting...')
+                                  : _selectAllLabel(state),
                           icon: Icons.select_all_rounded,
                           onTap:
                               _isLoadingAllPagesForSelection
