@@ -234,11 +234,11 @@ final _checkmateCacheProvider = Provider.autoDispose.family<bool?, String>((ref,
   if (fen.isEmpty) return null;
   try {
     final setup = Setup.parseFen(fen);
-    // Fast path: if king is not in check, it cannot be checkmate.
-    // This avoids the expensive Chess.fromSetup call for most positions.
-    if (!setup.board.isCheck(setup.turn)) return null;
-
     final position = Chess.fromSetup(setup);
+    
+    // Fast path: if king is not in check, it cannot be checkmate.
+    if (!position.isCheck) return null;
+
     if (position.isCheckmate) {
       // The side to move is the one that got checkmated
       // If it's black's turn and checkmate, white won (true)

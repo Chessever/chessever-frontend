@@ -267,7 +267,7 @@ class _BoardEditorScreenState extends ConsumerState<BoardEditorScreen> {
               : Chess.initial;
 
       // Play through mainline to get final position
-      var currentPos = startPos;
+      Position currentPos = startPos;
       for (final node in pgnGame.moves.mainline()) {
         final move = currentPos.parseSan(node.san);
         if (move == null) break;
