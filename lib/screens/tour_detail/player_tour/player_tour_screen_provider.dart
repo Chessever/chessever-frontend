@@ -15,6 +15,76 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 /// Provides player standings for the tournament detail "Players" tab.
 /// Uses [AutoDisposeAsyncNotifier] so the heavy computation only runs when needed
 /// and automatically refreshes when any dependency changes.
+/// Provides a merged list of games for the tournament, automatically combining
+/// games across pagination-purposed categories (e.g. "Boards 1-66" and "Boards 67-126").
+/// This ensures components like the ScoreCardScreen have the full context.
+final mergedTournamentGamesProvider = AutoDisposeProvider<List<GamesTourModel>>((ref) {
+  final tourDetailAsync = ref.watch(tourDetailScreenProvider);
+  final gamesTourAsync = ref.watch(gamesTourScreenProvider);
+
+  if (tourDetailAsync.isLoading ||
+      tourDetailAsync.hasError ||
+      gamesTourAsync.isLoading ||
+      gamesTourAsync.hasError) {
+    return const [];
+  }
+
+  final tourDetail = tourDetailAsync.value!;
+  final aboutTourModel = tourDetail.aboutTourModel;
+  if (aboutTourModel.id.isEmpty) {
+    return const [];
+  }
+
+  bool isPaginationCategory(String name) {
+    return RegExp(
+      r'Boards?\s+\d+[\-\+]?\d*\+?$',
+      caseSensitive: false,
+    ).hasMatch(name);
+  }
+
+  String getCategoryBaseName(String name) {
+    return name
+        .replaceAll(
+          RegExp(r'\s*Boards?\s+\d+[\-\+]?\d*\+?$', caseSensitive: false),
+          '',
+        )
+        .trim();
+  }
+
+  final allGames = <GamesTourModel>[];
+
+  if (isPaginationCategory(aboutTourModel.name)) {
+    final baseName = getCategoryBaseName(aboutTourModel.name);
+    final relatedTours =
+        tourDetail.tours
+            .where(
+              (t) =>
+                  isPaginationCategory(t.tour.name) &&
+                  getCategoryBaseName(t.tour.name) == baseName,
+            )
+            .toList();
+
+    if (relatedTours.length > 1) {
+      for (final tourModel in relatedTours) {
+        final tourGamesAsync = ref.watch(gamesTourProvider(tourModel.tour.id));
+        if (tourGamesAsync.hasValue) {
+          for (final g in tourGamesAsync.value!) {
+            try {
+              allGames.add(GamesTourModel.fromGame(g));
+            } catch (_) {}
+          }
+        }
+      }
+    } else {
+      allGames.addAll(gamesTourAsync.value?.gamesTourModels ?? []);
+    }
+  } else {
+    allGames.addAll(gamesTourAsync.value?.gamesTourModels ?? []);
+  }
+
+  return allGames;
+});
+
 final playerTourScreenProvider = AutoDisposeAsyncNotifierProvider<
   PlayerTourScreenNotifier,
   List<PlayerStandingModel>
@@ -29,14 +99,11 @@ class PlayerTourScreenNotifier
 
     final selectedBroadcast = ref.watch(selectedBroadcastModelProvider);
     final tourDetailAsync = ref.watch(tourDetailScreenProvider);
-    final gamesTourAsync = ref.watch(gamesTourScreenProvider);
 
     if (selectedBroadcast == null ||
         selectedBroadcast.id.isEmpty ||
         tourDetailAsync.isLoading ||
-        tourDetailAsync.hasError ||
-        gamesTourAsync.isLoading ||
-        gamesTourAsync.hasError) {
+        tourDetailAsync.hasError) {
       return const [];
     }
 
@@ -47,7 +114,7 @@ class PlayerTourScreenNotifier
     }
 
     final List<TournamentPlayer> allPlayers;
-    final List<GamesTourModel> allGames;
+    final List<GamesTourModel> allGames = ref.watch(mergedTournamentGamesProvider);
 
     // Detect if this is a pagination-purposed category (e.g. "Boards 1-66")
     if (_isPaginationCategory(aboutTourModel.name)) {
@@ -62,29 +129,14 @@ class PlayerTourScreenNotifier
               .toList();
 
       if (relatedTours.length > 1) {
-        // Merge players and games from all related pagination categories
-        // to compute accurate standings "behind the door"
+        // Merge players from all related pagination categories
         allPlayers = [];
-        allGames = [];
         for (final tourModel in relatedTours) {
           allPlayers.addAll(tourModel.tour.players);
-
-          // Watch each related tour's games to ensure standings stay live
-          final tourGamesAsync = ref.watch(gamesTourProvider(tourModel.tour.id));
-          if (tourGamesAsync.hasValue) {
-            for (final g in tourGamesAsync.value!) {
-              try {
-                allGames.add(GamesTourModel.fromGame(g));
-              } catch (_) {
-                // Skip games that fail to parse
-              }
-            }
-          }
         }
       } else {
         // Only one such category exists
         allPlayers = List.from(relatedTours.firstOrNull?.tour.players ?? []);
-        allGames = gamesTourAsync.value?.gamesTourModels ?? [];
       }
     } else {
       // Normal category - use only the selected tour
@@ -95,7 +147,6 @@ class PlayerTourScreenNotifier
       for (final tour in selectedTours) {
         allPlayers.addAll(tour.tour.players);
       }
-      allGames = gamesTourAsync.value?.gamesTourModels ?? [];
     }
 
     return _buildStandingsFromData(

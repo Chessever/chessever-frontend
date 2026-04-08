@@ -290,9 +290,16 @@ class ScoreCardScreen extends ConsumerWidget {
       );
     } else if (selectedBroadcast != null) {
       // Tournament context fallback when no explicit event context is available.
+      // Use mergedTournamentGamesProvider to ensure games from all related
+      // pagination categories (e.g. "Boards 67-126") are included.
+      final mergedGames = ref.watch(mergedTournamentGamesProvider);
+      
+      // If the merged provider is empty, we still want to check if the 
+      // underlying data is loading to show the skeleton loader
       final gamesTourAsync = ref.watch(gamesTourScreenProvider);
+      
       allGames = gamesTourAsync.when(
-        data: (data) => data.gamesTourModels,
+        data: (_) => mergedGames,
         loading: () {
           isLoadingGames = true;
           return [];
