@@ -1012,13 +1012,12 @@ class _ChessBoardWidget extends ConsumerWidget {
 
     if (isGameEnded && setup != null) {
       // Find kings directly from setup board pieces (much faster than Chess.fromSetup)
-      for (final entry in setup.board.pieces.entries) {
-        final piece = entry.value;
+      for (final (square, piece) in setup.board.pieces) {
         if (piece.role == Role.king) {
           if (piece.color == Side.white) {
-            whiteKingSquare = entry.key;
+            whiteKingSquare = square;
           } else {
-            blackKingSquare = entry.key;
+            blackKingSquare = square;
           }
         }
       }
