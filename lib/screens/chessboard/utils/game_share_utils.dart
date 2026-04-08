@@ -98,7 +98,17 @@ String? buildGameShareUrl({
   if (linkableId == null || !_isResolvableSharedGameId(linkableId)) {
     return null;
   }
-  return 'https://chessever.com/games/$linkableId';
+
+  final uri = Uri.parse('https://chessever.com/games/$linkableId');
+  final queryParams = <String, String>{};
+  if (_hasText(game.tourSlug)) queryParams['tour'] = game.tourSlug!;
+  if (_hasText(game.roundSlug)) queryParams['round'] = game.roundSlug!;
+
+  if (queryParams.isEmpty) {
+    return uri.toString();
+  }
+
+  return uri.replace(queryParameters: queryParams).toString();
 }
 
 String buildShareFallbackPgn(GamesTourModel game) {
