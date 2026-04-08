@@ -401,7 +401,7 @@ class _LibraryGamebaseFilterDialogState
     }
     if (_ratingRange.start > GameFilter.defaultMinRating || _ratingRange.end < GameFilter.absoluteMaxRating) {
       activeChipWidgets.add(buildChip('ELO: ${_ratingRange.start.round()}-${_ratingRange.end.round()}', () {
-        setState(() => _ratingRange = const RangeValues(GameFilter.defaultMinRating.toDouble(), GameFilter.absoluteMaxRating.toDouble()));
+        setState(() => _ratingRange = RangeValues(GameFilter.defaultMinRating.toDouble(), GameFilter.absoluteMaxRating.toDouble()));
       }));
     }
 
