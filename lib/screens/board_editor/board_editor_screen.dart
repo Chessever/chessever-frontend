@@ -258,26 +258,44 @@ class _BoardEditorScreenState extends ConsumerState<BoardEditorScreen> {
 
     try {
       final rawPgn = pgn.trim();
-      final game = PgnGame.parsePgn(rawPgn);
+      final pgnGame = PgnGame.parsePgn(rawPgn);
       // Determine starting position
-      final fenHeader = game.headers['FEN'];
+      final fenHeader = pgnGame.headers['FEN'];
       final startPos =
           fenHeader != null
               ? Chess.fromSetup(Setup.parseFen(fenHeader))
               : Chess.initial;
 
+      // Play through mainline to get final position
+      var currentPos = startPos;
+      for (final node in pgnGame.moves.mainline()) {
+        final move = currentPos.parseSan(node.san);
+        if (move == null) break;
+        currentPos = currentPos.play(move);
+      }
+
+      final finalFen = currentPos.fen;
       final startFen = startPos.fen;
-      final whiteName = (game.headers['White'] ?? 'White').trim();
-      final blackName = (game.headers['Black'] ?? 'Black').trim();
+      final whiteName = (pgnGame.headers['White'] ?? 'White').trim();
+      final blackName = (pgnGame.headers['Black'] ?? 'Black').trim();
 
       setState(() {
         _analysisPgnOverride = rawPgn;
-        _analysisPgnStartFen = startFen;
+        _analysisPgnStartFen = finalFen; // Set to finalFen so it matches the editor state
         _analysisWhiteName = whiteName.isNotEmpty ? whiteName : 'White';
         _analysisBlackName = blackName.isNotEmpty ? blackName : 'Black';
       });
-      ref.read(boardEditorProvider.notifier).loadFen(startFen);
-      _onDone();
+
+      // Load FINAL FEN into editor
+      ref.read(boardEditorProvider.notifier).loadFen(finalFen);
+
+      // If there are moves, we go straight to analysis
+      // If no moves, we stay in editor with the loaded FEN
+      if (pgnGame.moves.children.isNotEmpty) {
+        _onDone();
+      } else {
+        _showSnack('Loaded position from PGN');
+      }
     } catch (e) {
       _showSnack(
         'Failed to parse PGN',

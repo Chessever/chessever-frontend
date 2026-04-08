@@ -40,7 +40,7 @@ class LibraryGameCard extends ConsumerWidget {
       eventName ?? game.tourSlug ?? game.tourId,
     );
     final timeControlIcon = _getTimeControlIcon(game, displayEventName);
-    final displayEco = eco ?? ''; // Only ECO code, never round info
+    final displayEco = eco ?? game.eco ?? ''; // Only ECO code, never round info
     final displayDate = _formatDate(date ?? game.lastMoveTime);
 
     return TappableScale(

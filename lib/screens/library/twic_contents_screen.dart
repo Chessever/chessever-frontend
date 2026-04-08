@@ -270,6 +270,8 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen> {
       phone: 16.w,
       tablet: 24.w,
     );
+    final filterCount = ref.watch(activeGamebaseFilterCountProvider);
+
     return Padding(
       padding: EdgeInsets.fromLTRB(
         horizontalPadding,
@@ -285,6 +287,7 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen> {
         onChanged: _onSearchChanged,
         onFilterTap: _openFilters,
         filterButtonKey: e2eKey(E2eIds.libraryFilterButton),
+        filterBadgeCount: filterCount,
       ),
     );
   }

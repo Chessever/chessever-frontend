@@ -22,9 +22,9 @@ class GamebaseFilter {
     this.result = GameResultFilter.all,
     this.color = GameColorFilter.all,
     this.timeControl = GameTimeControlFilter.all,
-    this.minYear = 1800,
+    this.minYear = 2020,
     int? maxYear,
-    this.minRating = 0,
+    this.minRating = 2200,
     this.maxRating = 3500,
   }) : maxYear = maxYear ?? DateTime.now().year;
 
@@ -43,9 +43,9 @@ class GamebaseFilter {
       result != GameResultFilter.all ||
       color != GameColorFilter.all ||
       timeControl != GameTimeControlFilter.all ||
-      minYear != 1800 ||
+      minYear != 2020 ||
       maxYear != DateTime.now().year ||
-      minRating != 0 ||
+      minRating != 2200 ||
       maxRating != 3500;
 
   /// Count of active filters
@@ -55,8 +55,8 @@ class GamebaseFilter {
     if (result != GameResultFilter.all) count++;
     if (color != GameColorFilter.all) count++;
     if (timeControl != GameTimeControlFilter.all) count++;
-    if (minYear != 1800 || maxYear != DateTime.now().year) count++;
-    if (minRating != 0 || maxRating != 3500) count++;
+    if (minYear != 2020 || maxYear != DateTime.now().year) count++;
+    if (minRating != 2200 || maxRating != 3500) count++;
     return count;
   }
 
@@ -314,9 +314,9 @@ class _LibraryGamebaseFilterDialogState
                       SizedBox(height: 8.h),
                       _rangeSliderCard(
                         values: _yearRange,
-                        min: 1800,
+                        min: 2020,
                         max: DateTime.now().year.toDouble(),
-                        divisions: DateTime.now().year - 1800,
+                        divisions: DateTime.now().year - 2020,
                         onChanged: (v) => setState(() => _yearRange = v),
                       ),
                       SizedBox(height: 20.h),
@@ -326,9 +326,9 @@ class _LibraryGamebaseFilterDialogState
                       SizedBox(height: 8.h),
                       _rangeSliderCard(
                         values: _ratingRange,
-                        min: 0,
+                        min: 2200,
                         max: 3500,
-                        divisions: 70,
+                        divisions: 26,
                         onChanged: (v) => setState(() => _ratingRange = v),
                       ),
                       SizedBox(height: 12.h),
@@ -345,23 +345,97 @@ class _LibraryGamebaseFilterDialogState
   }
 
   Widget _buildHeader() {
+    final activeChipWidgets = <Widget>[];
+
+    Widget buildChip(String label, VoidCallback onRemove) {
+      return GestureDetector(
+        onTap: () {
+          HapticFeedbackService.buttonPress();
+          onRemove();
+        },
+        child: Container(
+          padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 4.h),
+          decoration: BoxDecoration(
+            color: kPrimaryColor.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(4.br),
+            border: Border.all(color: kPrimaryColor.withValues(alpha: 0.4)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                label,
+                style: AppTypography.textXsMedium.copyWith(color: kPrimaryColor),
+              ),
+              SizedBox(width: 4.w),
+              Icon(
+                Icons.close_rounded,
+                color: kPrimaryColor,
+                size: 14.ic,
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    if (_result != GameResultFilter.all) {
+      activeChipWidgets.add(buildChip('Result: ${_result.displayText}', () {
+        setState(() => _result = GameResultFilter.all);
+      }));
+    }
+    if (_color != GameColorFilter.all) {
+      activeChipWidgets.add(buildChip('Color: ${_color.displayText}', () {
+        setState(() => _color = GameColorFilter.all);
+      }));
+    }
+    if (_timeControl != GameTimeControlFilter.all) {
+      activeChipWidgets.add(buildChip('TC: ${_timeControl.displayText}', () {
+        setState(() => _timeControl = GameTimeControlFilter.all);
+      }));
+    }
+    if (_yearRange.start > 2020 || _yearRange.end < DateTime.now().year) {
+      activeChipWidgets.add(buildChip('Year: ${_yearRange.start.round()}-${_yearRange.end.round()}', () {
+        setState(() => _yearRange = RangeValues(2020, DateTime.now().year.toDouble()));
+      }));
+    }
+    if (_ratingRange.start > 2200 || _ratingRange.end < 3500) {
+      activeChipWidgets.add(buildChip('ELO: ${_ratingRange.start.round()}-${_ratingRange.end.round()}', () {
+        setState(() => _ratingRange = const RangeValues(2200, 3500));
+      }));
+    }
+
     return Padding(
       padding: EdgeInsets.fromLTRB(20.w, 18.h, 12.w, 6.h),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'Filters',
-            style: AppTypography.textMdBold.copyWith(color: kWhiteColor),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Filters',
+                style: AppTypography.textMdBold.copyWith(color: kWhiteColor),
+              ),
+              IconButton(
+                onPressed: () => Navigator.of(context).pop(),
+                icon: Icon(
+                  Icons.close_rounded,
+                  color: kWhiteColor.withValues(alpha: 0.6),
+                  size: 20.ic,
+                ),
+              ),
+            ],
           ),
-          IconButton(
-            onPressed: () => Navigator.of(context).pop(),
-            icon: Icon(
-              Icons.close_rounded,
-              color: kWhiteColor.withValues(alpha: 0.6),
-              size: 20.ic,
+          if (activeChipWidgets.isNotEmpty) ...[
+            SizedBox(height: 8.h),
+            Wrap(
+              spacing: 6.w,
+              runSpacing: 6.h,
+              children: activeChipWidgets,
             ),
-          ),
+            SizedBox(height: 4.h),
+          ],
         ],
       ),
     );

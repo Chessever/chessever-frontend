@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:chessever2/screens/chessboard/widgets/context_pop_up_menu.dart';
 import 'package:chessever2/providers/board_settings_provider_new.dart';
 import 'package:chessever2/providers/engine_settings_provider.dart';
@@ -23,6 +24,9 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 const String _kStartFen =
     'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 
+/// Simple cache for PGN to final FEN conversion to avoid expensive re-parsing during scroll
+final Map<String, String> _pgnToFenCache = {};
+
 Setup? _tryParseFen(String fen) {
   if (fen.trim().isEmpty) return null;
   try {
@@ -40,6 +44,11 @@ String _resolveFen(String? fen) {
 String? _finalFenFromPgn(String? pgn) {
   final raw = pgn?.trim();
   if (raw == null || raw.isEmpty) return null;
+
+  // Check cache first
+  final cached = _pgnToFenCache[raw];
+  if (cached != null) return cached;
+
   try {
     final game = PgnGame.parsePgn(raw);
     var position = PgnGame.startingPosition(game.headers);
@@ -51,7 +60,15 @@ String? _finalFenFromPgn(String? pgn) {
       moveCount++;
     }
     if (moveCount == 0) return null;
-    return position.fen;
+
+    final resultFen = position.fen;
+    // Limit cache size to prevent memory issues
+    if (_pgnToFenCache.length > 500) {
+      _pgnToFenCache.remove(_pgnToFenCache.keys.first);
+    }
+    _pgnToFenCache[raw] = resultFen;
+
+    return resultFen;
   } catch (_) {
     return null;
   }
@@ -86,6 +103,37 @@ bool _shouldShowEvalBar(WidgetRef ref) {
   final settings = ref.watch(engineSettingsProviderNew).valueOrNull;
   return settings?.showEngineGauge ?? true;
 }
+
+/// Resolved FEN provider that caches the resolution logic for a game model
+final _resolvedFenProvider = Provider.autoDispose.family<String, GamesTourModel>((ref, game) {
+  // Delay disposal by 3 seconds to prevent thrashing during fast scrolling
+  final link = ref.keepAlive();
+  final timer = Timer(const Duration(seconds: 3), () {
+    link.close();
+  });
+  ref.onDispose(() => timer.cancel());
+
+  // 1. Try local FEN first (already normalized in model usually)
+  final localFen = (game.fen ?? '').trim();
+  if (localFen.isNotEmpty && _tryParseFen(localFen) != null) {
+    return localFen;
+  }
+
+  // 2. Try PGN if FEN is missing
+  final pgn = (game.pgn ?? '').trim();
+  if (pgn.isNotEmpty) {
+    final pgnFen = _finalFenFromPgn(pgn);
+    if (pgnFen != null) return pgnFen;
+  }
+
+  // 3. Gamebase async fallback
+  if (_isGamebasePreviewGame(game) && !pgnHasMoves(game.pgn)) {
+    final remoteFen = ref.watch(_gamebaseFinalFenProvider(game.gameId)).valueOrNull;
+    if (remoteFen != null) return remoteFen;
+  }
+
+  return _kStartFen;
+});
 
 /// Shows the share overlay for a game from the grid/list view.
 ///
@@ -895,23 +943,7 @@ class _ChessBoardWithEvaluation extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     // Get effective game status for ended games
     final gameStatus = gamesTourModel.gameStatus;
-    final localFen =
-        _tryParseFen(gamesTourModel.fen?.trim() ?? '') != null
-            ? gamesTourModel.fen
-            : null;
-    final fenFromPgn = _finalFenFromPgn(gamesTourModel.pgn);
-    final shouldLoadGamebaseFen =
-        localFen == null &&
-        fenFromPgn == null &&
-        _isGamebasePreviewGame(gamesTourModel) &&
-        !pgnHasMoves(gamesTourModel.pgn);
-    final remoteFen =
-        shouldLoadGamebaseFen
-            ? ref
-                .watch(_gamebaseFinalFenProvider(gamesTourModel.gameId))
-                .valueOrNull
-            : null;
-    final resolvedFen = _resolveFen(remoteFen ?? fenFromPgn ?? localFen);
+    final resolvedFen = ref.watch(_resolvedFenProvider(gamesTourModel));
 
     if (!showEvalBar || !gamesTourModel.hasStarted) {
       return _ChessBoardWidget(
@@ -979,45 +1011,54 @@ class _ChessBoardWidget extends ConsumerWidget {
     Square? blackKingSquare;
 
     if (isGameEnded && setup != null) {
-      final position = Chess.fromSetup(setup);
-      final board = position.board;
-      whiteKingSquare = board.kingOf(Side.white);
-      blackKingSquare = board.kingOf(Side.black);
+      // Find kings directly from setup board pieces (much faster than Chess.fromSetup)
+      for (final entry in setup.board.pieces.entries) {
+        final piece = entry.value;
+        if (piece.role == Role.king) {
+          if (piece.color == Side.white) {
+            whiteKingSquare = entry.key;
+          } else {
+            blackKingSquare = entry.key;
+          }
+        }
+      }
 
       if (isWhiteWins && blackKingSquare != null) {
-        loserKingSquare = Square.fromName(blackKingSquare.name);
+        loserKingSquare = blackKingSquare;
         displayFen = _removeKingFromFen(displayFen, loserKingSquare, 'k');
       } else if (isBlackWins && whiteKingSquare != null) {
-        loserKingSquare = Square.fromName(whiteKingSquare.name);
+        loserKingSquare = whiteKingSquare;
         displayFen = _removeKingFromFen(displayFen, loserKingSquare, 'K');
       }
     }
 
-    final chessboard = Container(
-      height: boardSize,
-      width: boardSize,
-      decoration: BoxDecoration(
-        boxShadow: [
-          BoxShadow(
-            color: kBoardLightGrey.withValues(alpha: 0.5),
-            blurRadius: 8,
-            offset: const Offset(0, 4),
+    final chessboard = RepaintBoundary(
+      child: Container(
+        height: boardSize,
+        width: boardSize,
+        decoration: BoxDecoration(
+          boxShadow: [
+            BoxShadow(
+              color: kBoardLightGrey.withValues(alpha: 0.5),
+              blurRadius: 8,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: AbsorbPointer(
+          child: Chessboard.fixed(
+            size: boardSize,
+            settings: ChessboardSettings(
+              enableCoordinates: showCoordinates,
+              // Use theme colors from settings with our custom app colors
+              colorScheme: boardSettings.colorScheme,
+              // Use piece set from settings
+              pieceAssets: boardSettings.pieceAssets,
+            ),
+            orientation: Side.white,
+            fen: displayFen,
+            lastMove: lastMove,
           ),
-        ],
-      ),
-      child: AbsorbPointer(
-        child: Chessboard.fixed(
-          size: boardSize,
-          settings: ChessboardSettings(
-            enableCoordinates: showCoordinates,
-            // Use theme colors from settings with our custom app colors
-            colorScheme: boardSettings.colorScheme,
-            // Use piece set from settings
-            pieceAssets: boardSettings.pieceAssets,
-          ),
-          orientation: Side.white,
-          fen: displayFen,
-          lastMove: lastMove,
         ),
       ),
     );

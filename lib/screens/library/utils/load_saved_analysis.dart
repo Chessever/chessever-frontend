@@ -184,7 +184,7 @@ GamesTourModel convertSavedAnalysisToGame(SavedAnalysis analysis) {
   // Create player cards with minimal info
   final whitePlayer = PlayerCard(
     name: whiteName,
-    federation: '',
+    federation: whiteCountryCode,
     title: whiteTitle,
     rating: whiteRating,
     countryCode: whiteCountryCode,
@@ -194,13 +194,40 @@ GamesTourModel convertSavedAnalysisToGame(SavedAnalysis analysis) {
 
   final blackPlayer = PlayerCard(
     name: blackName,
-    federation: '',
+    federation: blackCountryCode,
     title: blackTitle,
     rating: blackRating,
     countryCode: blackCountryCode,
     team: null,
     fideId: null,
   );
+
+  final eco = md['ECO']?.toString();
+  final openingName = md['Opening']?.toString();
+  final event = md['Event']?.toString() ?? 'library';
+  final round = md['Round']?.toString() ?? 'saved_analysis';
+  final date = md['Date']?.toString();
+  final timeControl = md['TimeControl']?.toString();
+
+  DateTime? parsedDate;
+  if (date != null && date.isNotEmpty) {
+    // Attempt to parse PGN date format (YYYY.MM.DD) or standard ISO format
+    try {
+      if (date.contains('.')) {
+        final parts = date.split('.');
+        if (parts.length == 3) {
+          final year = int.tryParse(parts[0]);
+          final month = int.tryParse(parts[1]);
+          final day = int.tryParse(parts[2]);
+          if (year != null && month != null && day != null) {
+            parsedDate = DateTime(year, month, day);
+          }
+        }
+      } else {
+        parsedDate = DateTime.tryParse(date);
+      }
+    } catch (_) {}
+  }
 
   // Use analysis.id as gameId to avoid conflicts with live games
   // The original source game ID is preserved in analysis.sourceGameId
@@ -214,10 +241,14 @@ GamesTourModel convertSavedAnalysisToGame(SavedAnalysis analysis) {
     whiteClockCentiseconds: 0,
     blackClockCentiseconds: 0,
     gameStatus: GameStatus.fromString(result),
-    roundId: 'saved_analysis',
-    tourId: 'library',
+    roundId: round,
+    tourId: event,
+    timeControl: timeControl,
     // PGN populated for swiped-to games (the tapped game uses savedAnalysisData instead)
     pgn: exportGameToPgn(chessGame),
+    eco: eco,
+    openingName: openingName,
+    lastMoveTime: parsedDate,
   );
 }
 

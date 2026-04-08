@@ -116,7 +116,72 @@ String formatMoveText(
     }
   }
   buffer.write(node.move.san);
+
+  // Append NAG symbols
+  if (node.move.nags != null && node.move.nags!.isNotEmpty) {
+    for (final nag in node.move.nags!) {
+      buffer.write(_nagToSymbol(nag));
+    }
+  }
+
   return buffer.toString();
+}
+
+String _nagToSymbol(int nag) {
+  switch (nag) {
+    case 1:
+      return '!';
+    case 2:
+      return '?';
+    case 3:
+      return '!!';
+    case 4:
+      return '??';
+    case 5:
+      return '?!';
+    case 6:
+      return '!?';
+    case 7:
+      return '□';
+    case 8:
+      return 'null'; // Unusual
+    case 10:
+      return '=';
+    case 13:
+      return '∞';
+    case 14:
+      return '+/=';
+    case 15:
+      return '=/+';
+    case 16:
+      return '+/-';
+    case 17:
+      return '-/+';
+    case 18:
+      return '+-';
+    case 19:
+      return '-+';
+    case 22:
+      return '⨀';
+    case 23:
+      return '⨀';
+    case 32:
+      return '⟳';
+    case 36:
+      return '→';
+    case 40:
+      return '↑';
+    case 44:
+      return '=';
+    case 132:
+      return '⇆';
+    case 140:
+      return '∆';
+    case 146:
+      return 'N';
+    default:
+      return '';
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -184,6 +249,25 @@ List<NotationDisplayToken> buildNotationTokens(
         variationColorKey: variationContext?.id,
       ),
     );
+
+    // Add PGN comments
+    if (node.move.comments != null) {
+      for (final comment in node.move.comments!) {
+        // Skip clock comments as they are handled elsewhere in UI
+        if (comment.startsWith('[%clk')) continue;
+        tokens.add(
+          NotationDisplayToken(
+            type: NotationTokenType.comment,
+            text: comment,
+            depth: depth,
+            pointerId: pointerId,
+            variation: variationContext,
+            variationIndex: variationContext?.variationIndex,
+            variationColorKey: variationContext?.id,
+          ),
+        );
+      }
+    }
 
     final moveComment = variationComments[pointerId];
     if (moveComment != null && moveComment.isNotEmpty) {

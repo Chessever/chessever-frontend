@@ -4,7 +4,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 const defaultFilterPopupState = FilterPopupState(
   formatsAndStates: <String>{},
-  eloRange: RangeValues(800, 3200),
+  eloRange: RangeValues(2200, 3200),
 );
 
 final filterPopupProvider =

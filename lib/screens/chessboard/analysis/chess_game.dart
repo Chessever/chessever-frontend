@@ -76,22 +76,50 @@ class ChessGame {
   factory ChessGame.fromPgn(String gameId, String pgn) {
     final pgnGame = PgnGame.parsePgn(pgn);
     final startingPosition = PgnGame.startingPosition(pgnGame.headers);
-    final mainline = pgnGame.moves.mainline();
 
-    var currentPosition = startingPosition;
-    final parsedMainline = <ChessMove>[];
+    final mainline = _parsePgnNodes(
+      pgnGame.moves.children,
+      startingPosition,
+    );
 
-    for (final node in mainline) {
-      final currentMove = currentPosition.parseSan(node.san);
-      if (currentMove == null) {
-        break;
+    return ChessGame(
+      gameId: gameId,
+      startingFen: startingPosition.fen,
+      metadata: pgnGame.headers,
+      mainline: mainline,
+    );
+  }
+
+  static List<ChessMove> _parsePgnNodes(
+    List<PgnNode> siblings,
+    Position position,
+  ) {
+    final result = <ChessMove>[];
+    var currentPosition = position;
+    var currentSiblings = siblings;
+
+    while (currentSiblings.isNotEmpty) {
+      final mainlineNode = currentSiblings.first;
+      if (mainlineNode is! PgnChildNode) break;
+
+      final data = mainlineNode.data;
+      final move = currentPosition.parseSan(data.san);
+      if (move == null) break;
+
+      final nextPosition = currentPosition.play(move);
+
+      // Variations of THIS move are the other siblings
+      final variations = <ChessLine>[];
+      if (currentSiblings.length > 1) {
+        for (final varNode in currentSiblings.skip(1)) {
+          // Variations are parsed recursively as their own lines
+          variations.add(_parsePgnNodes([varNode], currentPosition));
+        }
       }
 
-      currentPosition = currentPosition.play(currentMove);
       String? clockTime;
-
-      if (node.comments != null) {
-        for (final comment in node.comments!) {
+      if (data.comments != null) {
+        for (final comment in data.comments!) {
           final timeMatch = _timeRegex.firstMatch(comment);
           if (timeMatch != null) {
             clockTime = timeMatch.group(1);
@@ -100,27 +128,29 @@ class ChessGame {
         }
       }
 
-      parsedMainline.add(
+      result.add(
         ChessMove(
           num: currentPosition.fullmoves,
-          fen: currentPosition.fen,
-          san: node.san,
-          uci: currentMove.uci,
+          fen: nextPosition.fen,
+          san: data.san,
+          uci: move.uci,
           turn:
               currentPosition.turn == Side.black
                   ? ChessColor.black
                   : ChessColor.white,
           clockTime: clockTime,
+          comments: data.comments,
+          nags: data.nags,
+          variations: variations.isNotEmpty ? variations : null,
         ),
       );
+
+      // Move to next position and next set of siblings (children of the current mainline node)
+      currentPosition = nextPosition;
+      currentSiblings = mainlineNode.children;
     }
 
-    return ChessGame(
-      gameId: gameId,
-      startingFen: startingPosition.fen,
-      metadata: pgnGame.headers,
-      mainline: parsedMainline,
-    );
+    return result;
   }
 }
 
@@ -149,6 +179,8 @@ class ChessMove {
   final String uci;
   final ChessColor turn;
   final String? clockTime;
+  final List<String>? comments;
+  final List<int>? nags;
   final List<ChessLine>? variations;
 
   ChessMove({
@@ -158,6 +190,8 @@ class ChessMove {
     required this.uci,
     required this.turn,
     this.clockTime,
+    this.comments,
+    this.nags,
     this.variations,
   });
 
@@ -169,6 +203,8 @@ class ChessMove {
       uci: json['u'] as String,
       turn: ChessColor.fromJson(json['t'] as String),
       clockTime: json['ct'] as String?,
+      comments: (json['c'] as List?)?.cast<String>(),
+      nags: (json['g'] as List?)?.cast<int>(),
       variations:
           json['v'] == null
               ? null
@@ -194,6 +230,8 @@ class ChessMove {
     'u': uci,
     't': turn.toJson(),
     'ct': clockTime,
+    if (comments != null) 'c': comments,
+    if (nags != null) 'g': nags,
     if (variations != null)
       'v':
           variations!
@@ -210,6 +248,8 @@ class ChessMove {
     String? uci,
     ChessColor? turn,
     String? clockTime,
+    List<String>? comments,
+    List<int>? nags,
     List<ChessLine>? variations,
     bool overrideVariations = false,
   }) {
@@ -220,6 +260,8 @@ class ChessMove {
       uci: uci ?? this.uci,
       turn: turn ?? this.turn,
       clockTime: clockTime ?? this.clockTime,
+      comments: comments ?? this.comments,
+      nags: nags ?? this.nags,
       variations: overrideVariations ? variations : this.variations,
     );
   }
