@@ -183,81 +183,15 @@ class _BoardEditorScreenState extends ConsumerState<BoardEditorScreen> {
   }
 
   Future<void> _pastePgn() async {
-    final controller = TextEditingController();
-    final pgn = await showModalBottomSheet<String>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: const Color(0xFF1A1A1C),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (ctx) {
-        return Padding(
-          padding: EdgeInsets.only(
-            bottom: MediaQuery.of(ctx).viewInsets.bottom,
-          ),
-          child: Padding(
-            padding: EdgeInsets.all(20.sp),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(
-                  'Paste PGN',
-                  style: AppTypography.textLgMedium.copyWith(
-                    color: kWhiteColor,
-                  ),
-                ),
-                SizedBox(height: 12.h),
-                TextField(
-                  controller: controller,
-                  maxLines: 8,
-                  style: AppTypography.textSmRegular.copyWith(
-                    color: kWhiteColor,
-                    fontFamily: 'monospace',
-                  ),
-                  decoration: InputDecoration(
-                    hintText: '1. e4 e5 2. Nf3 ...',
-                    hintStyle: AppTypography.textSmRegular.copyWith(
-                      color: kWhiteColor.withValues(alpha: 0.3),
-                    ),
-                    filled: true,
-                    fillColor: const Color(0xFF111111),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8.br),
-                      borderSide: BorderSide.none,
-                    ),
-                  ),
-                ),
-                SizedBox(height: 12.h),
-                ElevatedButton(
-                  onPressed: () => Navigator.of(ctx).pop(controller.text),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: kWhiteColor,
-                    foregroundColor: kBackgroundColor,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10.br),
-                    ),
-                    padding: EdgeInsets.symmetric(vertical: 14.h),
-                  ),
-                  child: Text(
-                    'Load',
-                    style: AppTypography.textMdMedium.copyWith(
-                      color: kBackgroundColor,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-
-    if (pgn == null || pgn.trim().isEmpty) return;
+    final clipboard = await Clipboard.getData(Clipboard.kTextPlain);
+    final pgn = clipboard?.text?.trim();
+    if (pgn == null || pgn.isEmpty) {
+      _showSnack('Clipboard is empty');
+      return;
+    }
 
     try {
-      final rawPgn = pgn.trim();
+      final rawPgn = pgn;
       final pgnGame = PgnGame.parsePgn(rawPgn);
       // Determine starting position
       final fenHeader = pgnGame.headers['FEN'];
@@ -277,14 +211,20 @@ class _BoardEditorScreenState extends ConsumerState<BoardEditorScreen> {
       final finalFen = currentPos.fen;
       final whiteName = (pgnGame.headers['White'] ?? 'White').trim();
       final blackName = (pgnGame.headers['Black'] ?? 'Black').trim();
-      final whiteElo = int.tryParse(pgnGame.headers['WhiteElo']?.toString() ?? '') ?? 0;
-      final blackElo = int.tryParse(pgnGame.headers['BlackElo']?.toString() ?? '') ?? 0;
+      final whiteElo =
+          int.tryParse(pgnGame.headers['WhiteElo']?.toString() ?? '') ?? 0;
+      final blackElo =
+          int.tryParse(pgnGame.headers['BlackElo']?.toString() ?? '') ?? 0;
       final whiteFed = pgnGame.headers['WhiteFed']?.toString() ?? '';
       final blackFed = pgnGame.headers['BlackFed']?.toString() ?? '';
       final whiteTitle = pgnGame.headers['WhiteTitle']?.toString() ?? '';
       final blackTitle = pgnGame.headers['BlackTitle']?.toString() ?? '';
-      final whiteFideId = int.tryParse(pgnGame.headers['WhiteFideId']?.toString() ?? '');
-      final blackFideId = int.tryParse(pgnGame.headers['BlackFideId']?.toString() ?? '');
+      final whiteFideId = int.tryParse(
+        pgnGame.headers['WhiteFideId']?.toString() ?? '',
+      );
+      final blackFideId = int.tryParse(
+        pgnGame.headers['BlackFideId']?.toString() ?? '',
+      );
 
       setState(() {
         _analysisPgnOverride = rawPgn;
@@ -295,6 +235,8 @@ class _BoardEditorScreenState extends ConsumerState<BoardEditorScreen> {
 
       // Load FINAL FEN into editor
       ref.read(boardEditorProvider.notifier).loadFen(finalFen);
+
+      if (!mounted) return;
 
       // If there are moves, we go straight to analysis
       if (pgnGame.moves.children.isNotEmpty) {
