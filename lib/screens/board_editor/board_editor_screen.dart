@@ -275,13 +275,20 @@ class _BoardEditorScreenState extends ConsumerState<BoardEditorScreen> {
       }
 
       final finalFen = currentPos.fen;
-      final startFen = startPos.fen;
       final whiteName = (pgnGame.headers['White'] ?? 'White').trim();
       final blackName = (pgnGame.headers['Black'] ?? 'Black').trim();
+      final whiteElo = int.tryParse(pgnGame.headers['WhiteElo']?.toString() ?? '') ?? 0;
+      final blackElo = int.tryParse(pgnGame.headers['BlackElo']?.toString() ?? '') ?? 0;
+      final whiteFed = pgnGame.headers['WhiteFed']?.toString() ?? '';
+      final blackFed = pgnGame.headers['BlackFed']?.toString() ?? '';
+      final whiteTitle = pgnGame.headers['WhiteTitle']?.toString() ?? '';
+      final blackTitle = pgnGame.headers['BlackTitle']?.toString() ?? '';
+      final whiteFideId = int.tryParse(pgnGame.headers['WhiteFideId']?.toString() ?? '');
+      final blackFideId = int.tryParse(pgnGame.headers['BlackFideId']?.toString() ?? '');
 
       setState(() {
         _analysisPgnOverride = rawPgn;
-        _analysisPgnStartFen = finalFen; // Set to finalFen so it matches the editor state
+        _analysisPgnStartFen = finalFen;
         _analysisWhiteName = whiteName.isNotEmpty ? whiteName : 'White';
         _analysisBlackName = blackName.isNotEmpty ? blackName : 'Black';
       });
@@ -290,9 +297,60 @@ class _BoardEditorScreenState extends ConsumerState<BoardEditorScreen> {
       ref.read(boardEditorProvider.notifier).loadFen(finalFen);
 
       // If there are moves, we go straight to analysis
-      // If no moves, we stay in editor with the loaded FEN
       if (pgnGame.moves.children.isNotEmpty) {
-        _onDone();
+        final timestamp = DateTime.now().millisecondsSinceEpoch;
+        final whitePlayer = PlayerCard(
+          name: _analysisWhiteName,
+          federation: whiteFed,
+          title: whiteTitle,
+          rating: whiteElo,
+          countryCode: whiteFed,
+          team: null,
+          fideId: whiteFideId,
+        );
+
+        final blackPlayer = PlayerCard(
+          name: _analysisBlackName,
+          federation: blackFed,
+          title: blackTitle,
+          rating: blackElo,
+          countryCode: blackFed,
+          team: null,
+          fideId: blackFideId,
+        );
+
+        final game = GamesTourModel(
+          gameId: 'editor_$timestamp',
+          source: GameSource.boardEditor,
+          whitePlayer: whitePlayer,
+          blackPlayer: blackPlayer,
+          whiteTimeDisplay: '--:--',
+          blackTimeDisplay: '--:--',
+          whiteClockCentiseconds: 0,
+          blackClockCentiseconds: 0,
+          gameStatus: GameStatus.fromString(pgnGame.headers['Result']),
+          roundId: pgnGame.headers['Round'] ?? 'board_editor',
+          tourId: pgnGame.headers['Event'] ?? 'board_editor',
+          pgn: rawPgn,
+          eco: pgnGame.headers['ECO'],
+          openingName: pgnGame.headers['Opening'],
+        );
+
+        ref.read(chessboardViewFromProviderNew.notifier).state =
+            ChessboardView.tour;
+
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder:
+                (_) => ChessBoardScreenNew(
+                  currentIndex: 0,
+                  games: [game],
+                  hideEventInfo: true,
+                  showGamebaseButton: false,
+                  disableGamebaseOverlayByDefault: true,
+                ),
+          ),
+        );
       } else {
         _showSnack('Loaded position from PGN');
       }

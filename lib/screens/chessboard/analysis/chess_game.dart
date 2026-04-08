@@ -5,6 +5,7 @@ typedef Number = int;
 typedef ChessLine = List<ChessMove>;
 
 final RegExp _timeRegex = RegExp(r'\[%clk (\d+:\d+:\d+)\]');
+final RegExp _evalRegex = RegExp(r'\[%eval ([^\]]+)\]');
 
 class ChessGame {
   static const String metadataIsLiveKey = 'isLiveGame';
@@ -118,12 +119,16 @@ class ChessGame {
       }
 
       String? clockTime;
+      String? eval;
       if (data.comments != null) {
         for (final comment in data.comments!) {
           final timeMatch = _timeRegex.firstMatch(comment);
           if (timeMatch != null) {
             clockTime = timeMatch.group(1);
-            break;
+          }
+          final evalMatch = _evalRegex.firstMatch(comment);
+          if (evalMatch != null) {
+            eval = evalMatch.group(1);
           }
         }
       }
@@ -139,6 +144,7 @@ class ChessGame {
                   ? ChessColor.black
                   : ChessColor.white,
           clockTime: clockTime,
+          eval: eval,
           comments: data.comments,
           nags: data.nags,
           variations: variations.isNotEmpty ? variations : null,
@@ -179,6 +185,7 @@ class ChessMove {
   final String uci;
   final ChessColor turn;
   final String? clockTime;
+  final String? eval;
   final List<String>? comments;
   final List<int>? nags;
   final List<ChessLine>? variations;
@@ -190,6 +197,7 @@ class ChessMove {
     required this.uci,
     required this.turn,
     this.clockTime,
+    this.eval,
     this.comments,
     this.nags,
     this.variations,
@@ -203,6 +211,7 @@ class ChessMove {
       uci: json['u'] as String,
       turn: ChessColor.fromJson(json['t'] as String),
       clockTime: json['ct'] as String?,
+      eval: json['e'] as String?,
       comments: (json['c'] as List?)?.cast<String>(),
       nags: (json['g'] as List?)?.cast<int>(),
       variations:
@@ -230,6 +239,7 @@ class ChessMove {
     'u': uci,
     't': turn.toJson(),
     'ct': clockTime,
+    'e': eval,
     if (comments != null) 'c': comments,
     if (nags != null) 'g': nags,
     if (variations != null)
@@ -248,6 +258,7 @@ class ChessMove {
     String? uci,
     ChessColor? turn,
     String? clockTime,
+    String? eval,
     List<String>? comments,
     List<int>? nags,
     List<ChessLine>? variations,
@@ -260,6 +271,7 @@ class ChessMove {
       uci: uci ?? this.uci,
       turn: turn ?? this.turn,
       clockTime: clockTime ?? this.clockTime,
+      eval: eval ?? this.eval,
       comments: comments ?? this.comments,
       nags: nags ?? this.nags,
       variations: overrideVariations ? variations : this.variations,

@@ -9,10 +9,13 @@ import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
 import 'package:chessever2/repository/supabase/round/round_repository.dart';
 import 'package:chessever2/repository/supabase/tour/tour_repository.dart';
+import 'package:chessever2/repository/library/library_repository.dart';
+import 'package:chessever2/repository/library/models/library_folder.dart';
 import 'package:chessever2/providers/auth_state_provider.dart';
 import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/library/book_preview_screen.dart';
+import 'package:chessever2/screens/library/folder_contents_screen.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
@@ -233,7 +236,20 @@ class DeepLinkService {
         }
       }
 
-      if (resolvedState?.status != AppAuthStatus.authenticated) {
+      var isAuthenticated = resolvedState?.status == AppAuthStatus.authenticated;
+      if (!isAuthenticated) {
+        debugPrint(
+          'DeepLinkService: No authenticated session available for book link, attempting anonymous sign-in...',
+        );
+        try {
+          await ref.read(authStateProvider.notifier).signInAnonymously();
+          isAuthenticated = true;
+        } catch (e) {
+          debugPrint('DeepLinkService: Anonymous sign-in failed: $e');
+        }
+      }
+
+      if (!isAuthenticated) {
         debugPrint('DeepLinkService: User not authenticated, routing to home');
         _captureDeepLinkException(
           Exception('Deep link ignored because user is not authenticated'),
@@ -266,6 +282,113 @@ class DeepLinkService {
         stackTrace,
         stage: 'navigate_to_book_preview',
         extras: {'shareToken': _maskedValue(shareToken)},
+      );
+      navigatorKey.currentState?.pushNamedAndRemoveUntil(
+        '/home_screen',
+        (route) => false,
+      );
+    } finally {
+      _isNavigating = false;
+    }
+  }
+
+  /// Navigate to a specific library folder for push notifications (e.g. game added/updated in a database).
+  Future<void> _navigateToFolder(
+    String folderId,
+    GlobalKey<NavigatorState> navigatorKey,
+    WidgetRef ref,
+  ) async {
+    if (_isNavigating) return;
+    _isNavigating = true;
+
+    try {
+      try {
+        await _appReadyCompleter.future.timeout(const Duration(seconds: 30));
+      } catch (_) {
+        debugPrint(
+          'DeepLinkService: Timed out waiting for app ready, proceeding',
+        );
+      }
+
+      AppAuthState? resolvedState = ref.read(authStateProvider).value;
+      if (resolvedState == null) {
+        try {
+          resolvedState = await ref.read(authStateProvider.future);
+        } catch (_) {
+          resolvedState = null;
+        }
+      }
+
+      var isAuthenticated = resolvedState?.status == AppAuthStatus.authenticated;
+      if (!isAuthenticated) {
+        debugPrint(
+          'DeepLinkService: No authenticated session available for folder link, attempting anonymous sign-in...',
+        );
+        try {
+          await ref.read(authStateProvider.notifier).signInAnonymously();
+          isAuthenticated = true;
+        } catch (e) {
+          debugPrint('DeepLinkService: Anonymous sign-in failed: $e');
+        }
+      }
+
+      if (!isAuthenticated) {
+        debugPrint('DeepLinkService: User not authenticated, routing to home');
+        _captureDeepLinkException(
+          Exception('Folder deep link ignored because user is not authenticated'),
+          StackTrace.current,
+          stage: 'folder_requires_auth',
+          extras: {'folderId': _maskedValue(folderId)},
+          captureAsException: false,
+        );
+        navigatorKey.currentState?.pushNamedAndRemoveUntil(
+          '/home_screen',
+          (route) => false,
+        );
+        return;
+      }
+
+      debugPrint('DeepLinkService: Opening library folder: $folderId');
+
+      final repo = ref.read(libraryRepositoryProvider);
+      
+      LibraryFolder? targetFolder;
+      try {
+        targetFolder = await repo.getFolder(folderId);
+      } catch (_) {
+        // Might fail if not owner, ignore
+      }
+
+      // Fallback: Check subscriptions
+      if (targetFolder == null) {
+        try {
+          final subscribedBooks = await repo.getSubscribedBooks();
+          targetFolder = subscribedBooks.where((f) => f.id == folderId).firstOrNull;
+        } catch (_) {
+          // Ignore
+        }
+      }
+
+      final navigator = navigatorKey.currentState;
+      if (navigator != null) {
+        if (targetFolder != null) {
+          navigator.push(
+            MaterialPageRoute(
+              builder: (_) => FolderContentsScreen(folder: targetFolder!),
+            ),
+          );
+        } else {
+          debugPrint('DeepLinkService: Folder not found or access denied: $folderId');
+          navigator.pushNamedAndRemoveUntil('/home_screen', (route) => false);
+        }
+      }
+    } catch (e, stackTrace) {
+      debugPrint('DeepLinkService: Failed to open folder: $e');
+      _captureDeepLinkException(
+        e,
+        stackTrace,
+        stage: 'navigate_to_folder',
+        extras: {'folderId': _maskedValue(folderId)},
       );
       navigatorKey.currentState?.pushNamedAndRemoveUntil(
         '/home_screen',
@@ -534,6 +657,7 @@ class DeepLinkService {
       data['tourId'],
       data['category_id'],
     ]);
+    final folderId = _firstNonEmptyString([data['folder_id'], data['folderId']]);
 
     switch (type) {
       case 'game_started':
@@ -557,6 +681,14 @@ class DeepLinkService {
             roundId: roundId,
             tourId: tourId,
           );
+        } else {
+          _navigateToHome(navigatorKey);
+        }
+        return;
+      case 'book_game_added':
+      case 'book_game_updated':
+        if (folderId != null && folderId.isNotEmpty) {
+          _navigateToFolder(folderId, navigatorKey, ref);
         } else {
           _navigateToHome(navigatorKey);
         }
@@ -625,7 +757,20 @@ class DeepLinkService {
         }
       }
 
-      if (resolvedState?.status != AppAuthStatus.authenticated) {
+      var isAuthenticated = resolvedState?.status == AppAuthStatus.authenticated;
+      if (!isAuthenticated) {
+        debugPrint(
+          'DeepLinkService: No authenticated session available for event link, attempting anonymous sign-in...',
+        );
+        try {
+          await ref.read(authStateProvider.notifier).signInAnonymously();
+          isAuthenticated = true;
+        } catch (e) {
+          debugPrint('DeepLinkService: Anonymous sign-in failed: $e');
+        }
+      }
+
+      if (!isAuthenticated) {
         debugPrint('DeepLinkService: User not authenticated, routing to home');
         _captureDeepLinkException(
           Exception('Event deep link ignored because user is not authenticated'),

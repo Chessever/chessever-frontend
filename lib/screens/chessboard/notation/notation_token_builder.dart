@@ -253,8 +253,10 @@ List<NotationDisplayToken> buildNotationTokens(
     // Add PGN comments
     if (node.move.comments != null) {
       for (final comment in node.move.comments!) {
-        // Skip clock comments as they are handled elsewhere in UI
-        if (comment.startsWith('[%clk')) continue;
+        // Skip clock and eval comments as they are handled elsewhere in UI
+        if (comment.startsWith('[%clk') || comment.startsWith('[%eval')) {
+          continue;
+        }
         tokens.add(
           NotationDisplayToken(
             type: NotationTokenType.comment,

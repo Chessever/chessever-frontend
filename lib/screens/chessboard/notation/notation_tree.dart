@@ -217,10 +217,16 @@ String _lineToPgn({
       buffer.write('{ [%clk ${move.clockTime}] } ');
     }
 
+    if (move.eval != null && move.eval!.isNotEmpty) {
+      buffer.write('{ [%eval ${move.eval}] } ');
+    }
+
     // Export other comments
     if (move.comments != null && move.comments!.isNotEmpty) {
       for (final comment in move.comments!) {
-        if (comment.startsWith('[%clk')) continue;
+        if (comment.startsWith('[%clk') || comment.startsWith('[%eval')) {
+          continue;
+        }
         buffer.write('{ $comment } ');
       }
     }

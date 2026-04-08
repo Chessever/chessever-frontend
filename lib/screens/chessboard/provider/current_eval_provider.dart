@@ -39,7 +39,7 @@ class CascadeEvalParams {
   int get hashCode => Object.hash(fen, multiPV, isCurrentPosition);
 }
 
-const int _minPersistDepth = 20;
+const int _minPersistDepth = 25;
 const int _minPersistFullMoves = 8;
 const int _gameCardFallbackDepth = 12;
 const int boardEvalSufficientDepth = 25;
@@ -106,6 +106,7 @@ bool cloudEvalSkipsBoardStockfish(CloudEval eval) {
 Future<CloudEval?> _readGamebaseEvalFast({
   required GamebaseRepository gamebase,
   required LocalEvalCache local,
+  required PersistCloudEval persist,
   required String fen,
   required String sourceTag,
 }) async {
@@ -121,15 +122,34 @@ Future<CloudEval?> _readGamebaseEvalFast({
       debugPrint(
         "💎 EVAL SOURCE ($sourceTag): GAMEBASE - fen=$fen, side=$sideToMove, cp=$cp, depth=${gamebaseEval.depth}",
       );
-      unawaited(
-        local
-            .save(
+
+      if (_shouldPersistCloudEval(gamebaseEval)) {
+        // OPTIMIZATION: Save to both local cache and Supabase in background
+        unawaited(
+          Future.wait<void>([
+            persist.call(fen, gamebaseEval),
+            local.save(
               fen,
               gamebaseEval,
               multiPV: gamebaseEval.requestedMultiPv ?? gamebaseEval.pvs.length,
-            )
-            .catchError((_) => null),
-      );
+            ),
+          ]).catchError((e) {
+            debugPrint('⚠️ $sourceTag: Background persist failed for $fen: $e');
+            return <void>[];
+          }),
+        );
+      } else {
+        // Just local cache
+        unawaited(
+          local
+              .save(
+                fen,
+                gamebaseEval,
+                multiPV: gamebaseEval.requestedMultiPv ?? gamebaseEval.pvs.length,
+              )
+              .catchError((_) => null),
+        );
+      }
       return gamebaseEval;
     }
   } catch (e) {
@@ -169,6 +189,7 @@ final cascadeEvalProvider = FutureProvider.family.autoDispose<
   final gamebaseEval = await _readGamebaseEvalFast(
     gamebase: gamebase,
     local: local,
+    persist: persist,
     fen: fen,
     sourceTag: 'cascadeEval',
   );
@@ -324,6 +345,7 @@ final cascadeEvalProviderForBoard = FutureProvider.family.autoDispose<
   final fen = params.fen;
   final multiPV = params.multiPV;
   final local = ref.watch(localEvalCacheProvider);
+  final persist = ref.watch(persistCloudEvalProvider);
   final evalsRepo = ref.watch(evalsRepositoryProvider);
   final gamebase = ref.read(gamebaseRepositoryProvider);
 
@@ -344,6 +366,7 @@ final cascadeEvalProviderForBoard = FutureProvider.family.autoDispose<
   final gamebaseEval = await _readGamebaseEvalFast(
     gamebase: gamebase,
     local: local,
+    persist: persist,
     fen: fen,
     sourceTag: 'board',
   );
@@ -439,6 +462,7 @@ final gameCardEvalWithStockfishFallbackProvider = FutureProvider.family.autoDisp
   final gamebaseEval = await _readGamebaseEvalFast(
     gamebase: gamebase,
     local: local,
+    persist: persist,
     fen: fen,
     sourceTag: 'gameCard',
   );
