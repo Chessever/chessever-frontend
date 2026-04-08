@@ -798,7 +798,7 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
               SizedBox(width: playerView == PlayerView.gridView ? 3.w : 4.w),
             ],
             // Always show clock/time on the right - simplified structure to prevent overflow
-            if (showClock)
+            if (showClock && moveTime != null && moveTime != '--:--' && moveTime != '-:--:--' && moveTime != '-')
               Container(
                 padding: EdgeInsets.symmetric(
                   horizontal: clockPadding,

@@ -180,11 +180,11 @@ class FilterPopup extends ConsumerWidget {
                             ),
                             SizedBox(height: 8.h),
                             WheelRangeFilter(
-                              minValue: 800,
+                              minValue: 2200,
                               maxValue: 3200,
                               currentStart: filterState.eloRange.start,
                               currentEnd: filterState.eloRange.end,
-                              divisions: 48,
+                              divisions: 20,
                               onChanged: (v) => ref
                                   .read(filterPopupProvider.notifier)
                                   .setEloRange(v),

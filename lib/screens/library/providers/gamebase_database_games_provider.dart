@@ -273,9 +273,9 @@ class DatabaseGamesPaginationNotifier
         result: _filter.resultApiValue,
         color: _filter.colorApiValue,
         timeControl: _filter.timeControlApiValue,
-        yearFrom: _filter.minYear != 1800 ? _filter.minYear : null,
+        yearFrom: _filter.minYear != 2020 ? _filter.minYear : null,
         yearTo: _filter.maxYear != DateTime.now().year ? _filter.maxYear : null,
-        ratingFrom: _filter.minRating > 0 ? _filter.minRating : null,
+        ratingFrom: _filter.minRating > 2200 ? _filter.minRating : null,
         ratingTo: _filter.maxRating < 3500 ? _filter.maxRating : null,
       );
       rawRows = _rowsFromGlobalSearchResponse(response);
@@ -423,7 +423,7 @@ class DatabaseGamesPaginationNotifier
           final whiteCard = enrichPlayerCardFromChessPlayers(
             PlayerCard(
               name: whiteName.isNotEmpty ? whiteName : 'White',
-              federation: '',
+              federation: whiteFed,
               title: whiteTitle,
               rating: whiteElo,
               countryCode: whiteFed,
@@ -440,7 +440,7 @@ class DatabaseGamesPaginationNotifier
           final blackCard = enrichPlayerCardFromChessPlayers(
             PlayerCard(
               name: blackName.isNotEmpty ? blackName : 'Black',
-              federation: '',
+              federation: blackFed,
               title: blackTitle,
               rating: blackElo,
               countryCode: blackFed,
@@ -475,6 +475,10 @@ class DatabaseGamesPaginationNotifier
             fen: rowFen,
             pgn: pgn,
             lastMoveTime: date,
+            eco: eco.trim().isNotEmpty ? eco.trim() : null,
+            openingName: (preview['opening']?.toString() ?? '').trim().isNotEmpty
+                ? preview['opening'].toString().trim()
+                : null,
           );
         })
         .toList(growable: false);
@@ -585,9 +589,9 @@ final gamebaseDatabaseGamesProvider = FutureProvider.autoDispose<
         result: filter.resultApiValue,
         color: filter.colorApiValue,
         timeControl: filter.timeControlApiValue,
-        yearFrom: filter.minYear != 1800 ? filter.minYear : null,
+        yearFrom: filter.minYear != 2020 ? filter.minYear : null,
         yearTo: filter.maxYear != DateTime.now().year ? filter.maxYear : null,
-        ratingFrom: filter.minRating > 0 ? filter.minRating : null,
+        ratingFrom: filter.minRating > 2200 ? filter.minRating : null,
         ratingTo: filter.maxRating < 3500 ? filter.maxRating : null,
       );
       rawRows = _rowsFromGlobalSearchResponse(response);
@@ -742,7 +746,7 @@ final gamebaseDatabaseGamesProvider = FutureProvider.autoDispose<
           final whiteCard = enrichPlayerCardFromChessPlayers(
             PlayerCard(
               name: whiteName,
-              federation: '',
+              federation: whiteFed,
               title: whiteTitle,
               rating:
                   whiteEloFromRow > 0
@@ -762,7 +766,7 @@ final gamebaseDatabaseGamesProvider = FutureProvider.autoDispose<
           final blackCard = enrichPlayerCardFromChessPlayers(
             PlayerCard(
               name: blackName,
-              federation: '',
+              federation: blackFed,
               title: blackTitle,
               rating:
                   blackEloFromRow > 0
@@ -800,6 +804,10 @@ final gamebaseDatabaseGamesProvider = FutureProvider.autoDispose<
             fen: rowFen,
             pgn: pgn,
             lastMoveTime: date,
+            eco: eco.trim().isNotEmpty ? eco.trim() : null,
+            openingName: (row['opening']?.toString() ?? '').trim().isNotEmpty
+                ? row['opening'].toString().trim()
+                : null,
           );
         })
         .toList(growable: false);

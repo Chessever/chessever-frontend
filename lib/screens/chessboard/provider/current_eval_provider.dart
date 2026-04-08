@@ -98,6 +98,8 @@ bool _isMatePv(Pv pv) {
 
 bool cloudEvalSkipsBoardStockfish(CloudEval eval) {
   if (eval.pvs.isEmpty) return false;
+  // We must have actual moves to show in the UI; evaluation alone is not enough.
+  if (eval.pvs.first.moves.trim().isEmpty) return false;
   return _isMatePv(eval.pvs.first) || eval.depth >= boardEvalSufficientDepth;
 }
 

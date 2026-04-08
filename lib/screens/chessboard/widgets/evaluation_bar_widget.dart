@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:chessever2/repository/lichess/cloud_eval/cloud_eval.dart';
@@ -221,6 +222,34 @@ class _EvaluationBarWidgetState extends State<EvaluationBarWidget> {
   }
 }
 
+/// Provider to cache checkmate detection results to avoid expensive calculations during scroll
+final _checkmateCacheProvider = Provider.autoDispose.family<bool?, String>((ref, fen) {
+  // Delay disposal by 3 seconds to prevent thrashing during fast scrolling
+  final link = ref.keepAlive();
+  final timer = Timer(const Duration(seconds: 3), () {
+    link.close();
+  });
+  ref.onDispose(() => timer.cancel());
+
+  if (fen.isEmpty) return null;
+  try {
+    final setup = Setup.parseFen(fen);
+    // Fast path: if king is not in check, it cannot be checkmate.
+    // This avoids the expensive Chess.fromSetup call for most positions.
+    if (!setup.board.isCheck(setup.turn)) return null;
+
+    final position = Chess.fromSetup(setup);
+    if (position.isCheckmate) {
+      // The side to move is the one that got checkmated
+      // If it's black's turn and checkmate, white won (true)
+      return setup.turn == Side.black;
+    }
+    return null;
+  } catch (_) {
+    return null;
+  }
+});
+
 /// Evaluation widget used on game cards.
 /// Uses depth-aware local/Supabase reuse first, then low-priority Stockfish.
 /// Auto-disposes when card scrolls out of view (only evaluates visible boards).
@@ -241,7 +270,8 @@ class EvaluationBarWidgetForGames extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     // First, check if position is checkmate - handle immediately without external eval
-    final checkmateResult = _detectCheckmate(fen);
+    // Uses the cached provider for better scroll performance
+    final checkmateResult = ref.watch(_checkmateCacheProvider(fen));
     if (checkmateResult != null) {
       // Checkmate detected - show definitive result
       // whiteWon = true means white delivered checkmate (eval +10.0)
@@ -320,25 +350,6 @@ class EvaluationBarWidgetForGames extends ConsumerWidget {
             );
           },
         );
-  }
-
-  /// Detects if the FEN position is checkmate.
-  /// Returns: true if white won (delivered checkmate), false if black won, null if not checkmate
-  bool? _detectCheckmate(String fen) {
-    if (fen.isEmpty) return null;
-    try {
-      final setup = Setup.parseFen(fen);
-      final position = Chess.fromSetup(setup);
-      if (position.isCheckmate) {
-        // The side to move is the one that got checkmated
-        // So if it's white's turn and checkmate, black won (delivered checkmate)
-        // If it's black's turn and checkmate, white won (delivered checkmate)
-        return setup.turn == Side.black; // true = white won
-      }
-      return null;
-    } catch (e) {
-      return null;
-    }
   }
 
   double _getWhiteHeight(double eval, double totalHeight) {

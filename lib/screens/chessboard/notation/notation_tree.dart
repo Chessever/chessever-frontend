@@ -205,8 +205,24 @@ String _lineToPgn({
     }
 
     buffer.write('${move.san} ');
+
+    // Export NAGs
+    if (move.nags != null && move.nags!.isNotEmpty) {
+      for (final nag in move.nags!) {
+        buffer.write('\$$nag ');
+      }
+    }
+
     if (move.clockTime != null && move.clockTime!.isNotEmpty) {
       buffer.write('{ [%clk ${move.clockTime}] } ');
+    }
+
+    // Export other comments
+    if (move.comments != null && move.comments!.isNotEmpty) {
+      for (final comment in move.comments!) {
+        if (comment.startsWith('[%clk')) continue;
+        buffer.write('{ $comment } ');
+      }
     }
 
     final variations = move.variations ?? const <ChessLine>[];

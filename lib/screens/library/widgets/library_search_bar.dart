@@ -3,6 +3,7 @@ import 'package:chessever2/repository/library/models/saved_analysis.dart';
 import 'package:chessever2/screens/gamebase/models/models.dart';
 import 'package:chessever2/screens/library/widgets/animated_search_hint.dart';
 import 'package:chessever2/screens/library/widgets/library_search_overlay.dart';
+import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
@@ -29,6 +30,7 @@ class LibrarySearchBar extends ConsumerStatefulWidget {
   final List<String>? hintPhrases;
   final Key? textFieldKey;
   final Key? filterButtonKey;
+  final int filterBadgeCount;
 
   const LibrarySearchBar({
     super.key,
@@ -47,6 +49,7 @@ class LibrarySearchBar extends ConsumerStatefulWidget {
     this.hintPhrases,
     this.textFieldKey,
     this.filterButtonKey,
+    this.filterBadgeCount = 0,
   });
 
   @override
@@ -272,20 +275,58 @@ class _LibrarySearchBarState extends ConsumerState<LibrarySearchBar> {
             GestureDetector(
               key: widget.filterButtonKey,
               onTap: widget.onFilterTap,
-              child: Container(
-                width: 32.h,
-                height: 32.h,
-                decoration: BoxDecoration(
-                  color: const Color(0xFF1A1A1C),
-                  borderRadius: BorderRadius.circular(4.br),
-                ),
-                child: Center(
-                  child: SvgWidget(
-                    SvgAsset.listFilterIcon,
-                    width: 24.sp,
-                    height: 24.sp,
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Container(
+                    width: 32.h,
+                    height: 32.h,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1A1A1C),
+                      borderRadius: BorderRadius.circular(4.br),
+                    ),
+                    child: Center(
+                      child: SvgWidget(
+                        SvgAsset.listFilterIcon,
+                        width: 24.sp,
+                        height: 24.sp,
+                        colorFilter: ColorFilter.mode(
+                          widget.filterBadgeCount > 0
+                              ? kWhiteColor
+                              : _effectiveFocusNode.hasFocus
+                              ? kPrimaryColor
+                              : Colors.grey[400]!,
+                          BlendMode.srcIn,
+                        ),
+                      ),
+                    ),
                   ),
-                ),
+                  if (widget.filterBadgeCount > 0)
+                    Positioned(
+                      right: -4.w,
+                      top: -4.h,
+                      child: Container(
+                        padding: EdgeInsets.all(4.w),
+                        decoration: const BoxDecoration(
+                          color: Color(0xFFEF4444),
+                          shape: BoxShape.circle,
+                        ),
+                        constraints: BoxConstraints(
+                          minWidth: 16.w,
+                          minHeight: 16.h,
+                        ),
+                        child: Text(
+                          '${widget.filterBadgeCount}',
+                          style: AppTypography.textXsBold.copyWith(
+                            color: kWhiteColor,
+                            fontSize: 10.sp,
+                            height: 1,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    ),
+                ],
               ),
             ),
           ],

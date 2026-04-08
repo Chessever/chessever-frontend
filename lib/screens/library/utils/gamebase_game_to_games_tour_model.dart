@@ -55,14 +55,17 @@ GamesTourModel mapGamebaseGameToGamesTourModel(GamebaseGame game) {
     return int.tryParse(raw.toString());
   }
 
+  final whiteCountryCode = countryCodeFromMetadata(isWhite: true);
+  final blackCountryCode = countryCodeFromMetadata(isWhite: false);
+
   final whitePlayer = PlayerCard(
     name: whiteName,
-    federation: '',
+    federation: whiteCountryCode,
     title: ChessTitleUtils.normalize(
       (md['WhiteTitle']?.toString() ?? '').trim(),
     ),
     rating: parseRating(md['WhiteElo']),
-    countryCode: countryCodeFromMetadata(isWhite: true),
+    countryCode: whiteCountryCode,
     team: null,
     fideId: parseFideId(md['WhiteFideId']),
     gamebasePlayerId: game.whitePlayerId?.trim(),
@@ -70,12 +73,12 @@ GamesTourModel mapGamebaseGameToGamesTourModel(GamebaseGame game) {
 
   final blackPlayer = PlayerCard(
     name: blackName,
-    federation: '',
+    federation: blackCountryCode,
     title: ChessTitleUtils.normalize(
       (md['BlackTitle']?.toString() ?? '').trim(),
     ),
     rating: parseRating(md['BlackElo']),
-    countryCode: countryCodeFromMetadata(isWhite: false),
+    countryCode: blackCountryCode,
     team: null,
     fideId: parseFideId(md['BlackFideId']),
     gamebasePlayerId: game.blackPlayerId?.trim(),
@@ -84,8 +87,9 @@ GamesTourModel mapGamebaseGameToGamesTourModel(GamebaseGame game) {
   final eventRaw = (md['Event']?.toString() ?? '').trim();
   final tourId = eventRaw.isNotEmpty ? eventRaw : 'Gamebase';
 
-  final ecoRaw = (md['ECO']?.toString() ?? '').trim();
-  final roundSlug = ecoRaw.isNotEmpty ? ecoRaw : game.timeControlDisplay;
+  final eco = (md['ECO']?.toString() ?? '').trim();
+  final opening = (md['Opening']?.toString() ?? '').trim();
+  final roundSlug = eco.isNotEmpty ? eco : game.timeControlDisplay;
 
   final pgn =
       buildPgnFromGamebaseData(data) ??
@@ -111,6 +115,8 @@ GamesTourModel mapGamebaseGameToGamesTourModel(GamebaseGame game) {
     tourId: tourId,
     pgn: pgn,
     lastMoveTime: game.date,
+    eco: eco.isNotEmpty ? eco : null,
+    openingName: opening.isNotEmpty ? opening : null,
   );
 }
 

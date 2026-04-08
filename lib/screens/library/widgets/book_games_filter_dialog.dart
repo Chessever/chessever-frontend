@@ -179,9 +179,9 @@ class _BookGamesFilterDialogState extends State<BookGamesFilterDialog> {
                     SizedBox(height: 8.h),
                     _rangeSlider(
                       values: _yearRange,
-                      min: 1950,
+                      min: 2020,
                       max: DateTime.now().year.toDouble(),
-                      divisions: DateTime.now().year - 1950,
+                      divisions: DateTime.now().year - 2020,
                       onChanged: (v) => setState(() => _yearRange = v),
                     ),
                     SizedBox(height: 16.h),
@@ -190,9 +190,9 @@ class _BookGamesFilterDialogState extends State<BookGamesFilterDialog> {
                     SizedBox(height: 8.h),
                     _rangeSlider(
                       values: _ratingRange,
-                      min: 800,
+                      min: 2200,
                       max: 3500,
-                      divisions: 54,
+                      divisions: 26,
                       onChanged: (v) => setState(() => _ratingRange = v),
                     ),
                     SizedBox(height: 16.h),

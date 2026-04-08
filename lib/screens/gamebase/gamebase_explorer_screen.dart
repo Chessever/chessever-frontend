@@ -920,7 +920,7 @@ class _FilterSheet extends ConsumerStatefulWidget {
 }
 
 class _FilterSheetState extends ConsumerState<_FilterSheet> {
-  static const double _ratingMin = 1000;
+  static const double _ratingMin = 2200;
   static const double _ratingMax = 3500;
 
   late GamebaseFilters _draftFilters;
@@ -1393,7 +1393,7 @@ class _FilterSheetState extends ConsumerState<_FilterSheet> {
                     maxValue: _ratingMax,
                     currentStart: _ratingRange.start,
                     currentEnd: _ratingRange.end,
-                    divisions: 50,
+                    divisions: 26,
                     onChanged: _onRatingRangeChanged,
                   ),
                 ),

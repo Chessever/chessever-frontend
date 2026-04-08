@@ -55,7 +55,7 @@ class _PremiumGamesFilterDialogState
         widget.initialFilter.minElo != null ||
         widget.initialFilter.maxElo != null;
     _eloRange = RangeValues(
-      widget.initialFilter.minElo?.toDouble() ?? 1000,
+      widget.initialFilter.minElo?.toDouble() ?? 2200,
       widget.initialFilter.maxElo?.toDouble() ?? 3000,
     );
   }
@@ -179,11 +179,11 @@ class _PremiumGamesFilterDialogState
                               child: IgnorePointer(
                                 ignoring: !_eloFilterEnabled,
                                 child: WheelRangeFilter(
-                                  minValue: 800,
+                                  minValue: 2200,
                                   maxValue: 3200,
                                   currentStart: _eloRange.start,
                                   currentEnd: _eloRange.end,
-                                  divisions: 48,
+                                  divisions: 20,
                                   onChanged: (values) {
                                     setState(() => _eloRange = values);
                                   },
@@ -265,7 +265,7 @@ class _PremiumGamesFilterDialogState
       _dateRange = PremiumGamesDateRange.allTime;
       _result = PremiumGamesResult.all;
       _eloFilterEnabled = false;
-      _eloRange = const RangeValues(1000, 3000);
+      _eloRange = const RangeValues(2200, 3000);
     });
   }
 

@@ -66,6 +66,12 @@ final currentlyVisiblePageIndexProvider = StateProvider<int>((ref) {
   return 0;
 });
 
+/// Global provider to track if the board is flipped.
+/// This ensures the board orientation stays consistent when swiping between games.
+final activeBoardFlippedProvider = StateProvider<bool>((ref) {
+  return false;
+});
+
 /// Global provider to track last seen move count per game
 /// This is used to determine if there are unseen moves when new moves arrive
 final lastSeenMoveCountProvider = StateProvider<Map<String, int>>((ref) {
@@ -178,8 +184,18 @@ class ChessBoardScreenNotifierNew
     final showEngineAnalysis = engineSettings?.showEngineAnalysis ?? true;
 
     // Check if we're restoring from saved analysis
-    final isBoardFlipped = savedAnalysisData?.isBoardFlipped ?? false;
+    // Priority: Saved analysis preference > Global session preference
+    final bool isBoardFlipped =
+        savedAnalysisData?.isBoardFlipped ?? ref.read(activeBoardFlippedProvider);
     final variationComments = savedAnalysisData?.variationComments ?? const {};
+
+    // Listen for global orientation changes to keep all boards in sync
+    ref.listen<bool>(activeBoardFlippedProvider, (previous, next) {
+      final currentState = state.valueOrNull;
+      if (currentState != null && currentState.isBoardFlipped != next) {
+        state = AsyncValue.data(currentState.copyWith(isBoardFlipped: next));
+      }
+    });
 
     debugPrint(
       '🎯 ChessBoard[$index]: Initializing with showEngineAnalysis=$showEngineAnalysis (from settings: ${engineSettings?.showEngineAnalysis})',
@@ -192,6 +208,15 @@ class ChessBoardScreenNotifierNew
       debugPrint(
         '🎯 ChessBoard[$index]: Board flipped=$isBoardFlipped, comments=${variationComments.length}',
       );
+
+      // If this is a saved analysis with a specific orientation, update the session global
+      // so subsequent swiped games inherit this orientation.
+      // Use microtask to avoid "modifying during initialization" error.
+      Future.microtask(() {
+        if (ref.read(activeBoardFlippedProvider) != isBoardFlipped) {
+          ref.read(activeBoardFlippedProvider.notifier).state = isBoardFlipped;
+        }
+      });
     }
 
     // For live games, seed the board with the current live FEN so it renders
@@ -3388,14 +3413,89 @@ class ChessBoardScreenNotifierNew
 
   ChessGame _createChessGameFromPgn(String pgn) {
     final parsed = ChessGame.fromPgn(game.gameId, pgn);
+
+    final metadata = Map<String, dynamic>.from(parsed.metadata);
+
+    // Enrich metadata from GamesTourModel if missing in PGN
+    // This ensures saved games preserve player info, flags, and ECO
+    if (metadata['White'] == null ||
+        metadata['White'] == '?' ||
+        metadata['White'] == 'White') {
+      metadata['White'] = game.whitePlayer.name;
+    }
+    if (metadata['Black'] == null ||
+        metadata['Black'] == '?' ||
+        metadata['Black'] == 'Black') {
+      metadata['Black'] = game.blackPlayer.name;
+    }
+
+    if (metadata['WhiteElo'] == null && game.whitePlayer.rating > 0) {
+      metadata['WhiteElo'] = game.whitePlayer.rating.toString();
+    }
+    if (metadata['BlackElo'] == null && game.blackPlayer.rating > 0) {
+      metadata['BlackElo'] = game.blackPlayer.rating.toString();
+    }
+
+    if (metadata['WhiteFed'] == null &&
+        game.whitePlayer.countryCode.isNotEmpty) {
+      metadata['WhiteFed'] = game.whitePlayer.countryCode;
+    }
+    if (metadata['BlackFed'] == null &&
+        game.blackPlayer.countryCode.isNotEmpty) {
+      metadata['BlackFed'] = game.blackPlayer.countryCode;
+    }
+
+    if (metadata['WhiteTitle'] == null && game.whitePlayer.title.isNotEmpty) {
+      metadata['WhiteTitle'] = game.whitePlayer.title;
+    }
+    if (metadata['BlackTitle'] == null && game.blackPlayer.title.isNotEmpty) {
+      metadata['BlackTitle'] = game.blackPlayer.title;
+    }
+
+    if (metadata['ECO'] == null && game.eco != null && game.eco!.isNotEmpty) {
+      metadata['ECO'] = game.eco;
+    }
+    if (metadata['Opening'] == null &&
+        game.openingName != null &&
+        game.openingName!.isNotEmpty) {
+      metadata['Opening'] = game.openingName;
+    }
+
+    if (metadata['Event'] == null || metadata['Event'] == '?' || metadata['Event'] == 'Gamebase') {
+      final eventName = (game.tourSlug != null && game.tourSlug!.isNotEmpty) ? game.tourSlug! : game.tourId;
+      if (eventName.isNotEmpty && eventName != 'library' && eventName != 'Gamebase') {
+        metadata['Event'] = eventName;
+      }
+    }
+    
+    if (metadata['Round'] == null || metadata['Round'] == '?') {
+      final roundName = (game.roundSlug != null && game.roundSlug!.isNotEmpty) ? game.roundSlug! : game.roundId;
+      if (roundName.isNotEmpty && roundName != 'saved_analysis' && roundName != 'gamebase') {
+        metadata['Round'] = roundName;
+      }
+    }
+    
+    if (metadata['Date'] == null || metadata['Date'] == '?') {
+      if (game.lastMoveTime != null) {
+        metadata['Date'] = "${game.lastMoveTime!.year}.${game.lastMoveTime!.month.toString().padLeft(2, '0')}.${game.lastMoveTime!.day.toString().padLeft(2, '0')}";
+      }
+    }
+    
+    if (metadata['TimeControl'] == null || metadata['TimeControl'] == '?') {
+      if (game.timeControl != null && game.timeControl!.isNotEmpty) {
+        metadata['TimeControl'] = game.timeControl;
+      }
+    }
+    
+    if (metadata['Result'] == null || metadata['Result'] == '*' || metadata['Result'] == '?') {
+      if (game.gameStatus != GameStatus.unknown) {
+        metadata['Result'] = game.gameStatus.displayText;
+      }
+    }
+
     final needsLiveFlag = game.gameStatus.isOngoing;
     final needsMainlineExtension = game.roundId == 'board_editor';
 
-    if (!needsLiveFlag && !needsMainlineExtension) {
-      return parsed;
-    }
-
-    final metadata = Map<String, dynamic>.from(parsed.metadata);
     if (needsLiveFlag) {
       metadata[ChessGame.metadataIsLiveKey] = true;
     }
@@ -3981,9 +4081,16 @@ class ChessBoardScreenNotifierNew
   void flipBoard() {
     final currentState = state.value;
     if (currentState == null) return;
+    final newValue = !currentState.isBoardFlipped;
+
+    // Update local state
     state = AsyncValue.data(
-      currentState.copyWith(isBoardFlipped: !currentState.isBoardFlipped),
+      currentState.copyWith(isBoardFlipped: newValue),
     );
+
+    // Sync to global provider so other boards stay flipped during swiping
+    ref.read(activeBoardFlippedProvider.notifier).state = newValue;
+
     _scheduleAutoSave();
   }
 
@@ -5358,7 +5465,7 @@ class ChessBoardScreenNotifierNew
               }
             }
           }
-          if (shouldSkipLocalStockfish && mounted) {
+          if (shouldSkipLocalStockfish && pvLines.isNotEmpty && mounted) {
             final snapshot = state.value;
             if (snapshot != null) {
               final shapes =

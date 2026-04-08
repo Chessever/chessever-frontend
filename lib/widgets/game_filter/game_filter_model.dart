@@ -159,9 +159,9 @@ class GameFilter {
     this.color = GameColorFilter.all,
     this.timeControl = GameTimeControlFilter.all,
     GameEcoFilter? eco,
-    this.minYear = 1990,
+    this.minYear = 2020,
     int? maxYear,
-    this.minRating = 1000,
+    this.minRating = 2200,
     this.maxRating = 3500,
   }) : eco = eco ?? GameEcoFilter.all,
        maxYear = maxYear ?? DateTime.now().year;
@@ -181,9 +181,9 @@ class GameFilter {
       color != GameColorFilter.all ||
       timeControl != GameTimeControlFilter.all ||
       !eco.isAll ||
-      minYear != 1990 ||
+      minYear != 2020 ||
       maxYear != DateTime.now().year ||
-      minRating != 1000 ||
+      minRating != 2200 ||
       maxRating != 3500;
 
   /// Count of active filters
@@ -193,8 +193,8 @@ class GameFilter {
     if (color != GameColorFilter.all) count++;
     if (timeControl != GameTimeControlFilter.all) count++;
     if (!eco.isAll) count++;
-    if (minYear != 1990 || maxYear != DateTime.now().year) count++;
-    if (minRating != 1000 || maxRating != 3500) count++;
+    if (minYear != 2020 || maxYear != DateTime.now().year) count++;
+    if (minRating != 2200 || maxRating != 3500) count++;
     return count;
   }
 

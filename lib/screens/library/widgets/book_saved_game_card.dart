@@ -44,12 +44,38 @@ class BookSavedGameCard extends StatelessWidget {
       mainline,
     );
 
+    final eco = md['ECO']?.toString() ?? '';
+    final openingName = md['Opening']?.toString() ?? '';
+    final event = md['Event']?.toString() ?? md['Site']?.toString() ?? 'library';
+    final round = md['Round']?.toString() ?? 'saved_analysis';
+    final timeControl = md['TimeControl']?.toString();
+    final dateStr = md['Date']?.toString();
+    
+    DateTime? parsedDate;
+    if (dateStr != null && dateStr.isNotEmpty) {
+      try {
+        if (dateStr.contains('.')) {
+          final parts = dateStr.split('.');
+          if (parts.length == 3) {
+            final year = int.tryParse(parts[0]);
+            final month = int.tryParse(parts[1]);
+            final day = int.tryParse(parts[2]);
+            if (year != null && month != null && day != null) {
+              parsedDate = DateTime(year, month, day);
+            }
+          }
+        } else {
+          parsedDate = DateTime.tryParse(dateStr);
+        }
+      } catch (_) {}
+    }
+
     return GamesTourModel(
       gameId: analysis.id,
       source: GameSource.savedAnalysis,
       whitePlayer: PlayerCard(
         name: whiteName,
-        federation: '',
+        federation: whiteCountryCode,
         title: whiteTitle,
         rating: whiteElo,
         countryCode: whiteCountryCode,
@@ -57,7 +83,7 @@ class BookSavedGameCard extends StatelessWidget {
       ),
       blackPlayer: PlayerCard(
         name: blackName,
-        federation: '',
+        federation: blackCountryCode,
         title: blackTitle,
         rating: blackElo,
         countryCode: blackCountryCode,
@@ -70,10 +96,14 @@ class BookSavedGameCard extends StatelessWidget {
       whiteClockSeconds: whiteClockSeconds,
       blackClockSeconds: blackClockSeconds,
       gameStatus: status,
-      roundId: 'library',
-      tourId: 'library',
+      roundId: round,
+      tourId: event,
+      timeControl: timeControl,
+      lastMoveTime: parsedDate,
       lastMove: last?.uci,
       fen: last?.fen ?? analysis.chessGame.startingFen,
+      eco: eco.isNotEmpty ? eco : null,
+      openingName: openingName.isNotEmpty ? openingName : null,
     );
   }
 

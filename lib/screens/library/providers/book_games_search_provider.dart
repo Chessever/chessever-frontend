@@ -85,9 +85,9 @@ class BookGamesFilter {
     this.result = BookGamesResultFilter.all,
     this.color = BookGamesColorFilter.all,
     this.timeControl = BookGamesTimeControlFilter.all,
-    this.minYear = 1990,
+    this.minYear = 2020,
     this.maxYear = 2100,
-    this.minRating = 1000,
+    this.minRating = 2200,
     this.maxRating = 3500,
     this.opening = '',
     this.eco = '',
@@ -113,9 +113,9 @@ class BookGamesFilter {
       result != BookGamesResultFilter.all ||
       color != BookGamesColorFilter.all ||
       timeControl != BookGamesTimeControlFilter.all ||
-      minYear != 1990 ||
+      minYear != 2020 ||
       maxYear != DateTime.now().year ||
-      minRating != 1000 ||
+      minRating != 2200 ||
       maxRating != 3500 ||
       opening.trim().isNotEmpty ||
       eco.trim().isNotEmpty ||

@@ -395,7 +395,7 @@ class _FilterChip extends StatelessWidget {
 class _RatingRangeInputs extends HookConsumerWidget {
   const _RatingRangeInputs({required this.minRating, required this.maxRating});
 
-  static const double _absMin = 1000;
+  static const double _absMin = 2200;
   static const double _absMax = 3500;
   static const int _step = 50;
 
