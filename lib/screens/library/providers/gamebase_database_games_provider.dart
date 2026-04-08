@@ -63,20 +63,13 @@ class DatabaseGamesPaginationState {
 bool _hasYearFilter(GamebaseFilter filter) =>
     filter.minYear != 1800 || filter.maxYear != DateTime.now().year;
 
-bool _matchesYearFilter(Map<String, dynamic> row, GamebaseFilter filter) {
-  if (!_hasYearFilter(filter)) return true;
-  final raw = row['date'];
-  if (raw == null) return false;
-  final date = DateTime.tryParse(raw.toString());
-  if (date == null) return false;
-  return date.year >= filter.minYear && date.year <= filter.maxYear;
-}
-
 List<String> _libraryExactGameSelectColumns() => const [
   'id',
   'date',
   'result',
   'timeControl',
+  'whiteName',
+  'blackName',
   'white',
   'black',
   'whitePlayerId',
@@ -243,13 +236,6 @@ class DatabaseGamesPaginationNotifier
         (escapedEvent == null || escapedEvent.isEmpty)
             ? baseQuery
             : '$baseQuery event:"$escapedEvent"';
-    final hasRatingFilter = _filter.minRating > 0 || _filter.maxRating < 3500;
-    final useClientSideAverageRating =
-        _filter.colorApiValue == null && hasRatingFilter;
-    final useClientSideYearFiltering = shouldUseClientSideYearFiltering(
-      _query,
-      _filter,
-    );
     late final List<Map<String, dynamic>> rawRows;
     late final int totalCount;
     late final bool totalCountIsEstimate;
@@ -283,28 +269,16 @@ class DatabaseGamesPaginationNotifier
         query: composedQuery,
         resources: const ['game'],
         pageNumber: pageNumber,
-        pageSize: useClientSideYearFiltering ? _pageSize * 5 : _pageSize,
+        pageSize: _pageSize,
         result: _filter.resultApiValue,
         color: _filter.colorApiValue,
         timeControl: _filter.timeControlApiValue,
-        yearFrom: useClientSideYearFiltering
-            ? null
-            : (_filter.minYear != 1800 ? _filter.minYear : null),
-        yearTo: useClientSideYearFiltering
-            ? null
-            : (_filter.maxYear != DateTime.now().year ? _filter.maxYear : null),
-        ratingFrom:
-            !useClientSideAverageRating && _filter.minRating > 0
-                ? _filter.minRating
-                : null,
-        ratingTo:
-            !useClientSideAverageRating && _filter.maxRating < 3500
-                ? _filter.maxRating
-                : null,
+        yearFrom: _filter.minYear != 1800 ? _filter.minYear : null,
+        yearTo: _filter.maxYear != DateTime.now().year ? _filter.maxYear : null,
+        ratingFrom: _filter.minRating > 0 ? _filter.minRating : null,
+        ratingTo: _filter.maxRating < 3500 ? _filter.maxRating : null,
       );
-      rawRows = _rowsFromGlobalSearchResponse(
-        response,
-      ).where((row) => _matchesYearFilter(row, _filter)).toList(growable: false);
+      rawRows = _rowsFromGlobalSearchResponse(response);
       totalCount = response.metadata.totalCount ?? 0;
       totalCountIsEstimate = response.metadata.totalCountIsEstimate;
       hasMore = response.metadata.hasMore;
@@ -379,8 +353,8 @@ class DatabaseGamesPaginationNotifier
           final date = _parseDate(preview['date']);
           final resultStr = preview['result']?.toString() ?? '*';
 
-          final whiteName = (preview['white']?.toString() ?? '').trim();
-          final blackName = (preview['black']?.toString() ?? '').trim();
+          final whiteName = coalesceName(preview, 'white', 'whiteName');
+          final blackName = coalesceName(preview, 'black', 'blackName');
 
           final eco = preview['eco']?.toString() ?? '';
           final opening = preview['opening']?.toString() ?? '';
@@ -503,15 +477,6 @@ class DatabaseGamesPaginationNotifier
             lastMoveTime: date,
           );
         })
-        .where(
-          (game) =>
-              !useClientSideAverageRating ||
-              _matchesAverageRatingRange(
-                game,
-                _filter.minRating,
-                _filter.maxRating,
-              ),
-        )
         .toList(growable: false);
 
     return _PageResult(
@@ -520,6 +485,13 @@ class DatabaseGamesPaginationNotifier
       totalCountIsEstimate: totalCountIsEstimate,
       hasMore: hasMore,
     );
+  }
+
+  String coalesceName(Map<String, dynamic> row, String keyA, String keyB) {
+    final a = (row[keyA]?.toString() ?? '').trim();
+    if (a.isNotEmpty) return a;
+    final b = (row[keyB]?.toString() ?? '').trim();
+    return b.isNotEmpty ? b : (keyA.startsWith('white') ? 'White' : 'Black');
   }
 
   static DateTime? _parseDate(Object? raw) {
@@ -588,13 +560,6 @@ final gamebaseDatabaseGamesProvider = FutureProvider.autoDispose<
   final repo = ref.read(gamebaseRepositoryProvider);
 
   try {
-    final hasRatingFilter = filter.minRating > 0 || filter.maxRating < 3500;
-    final useClientSideAverageRating =
-        filter.colorApiValue == null && hasRatingFilter;
-    final useClientSideYearFiltering = shouldUseClientSideYearFiltering(
-      query,
-      filter,
-    );
     late final List<Map<String, dynamic>> rawRows;
     if (shouldUseExactLibraryGameQuery(query, filter)) {
       final where = _buildLibraryExactWhere(filter);
@@ -616,28 +581,16 @@ final gamebaseDatabaseGamesProvider = FutureProvider.autoDispose<
         query: query.trim().isEmpty ? '*' : query.trim(),
         resources: const ['game'],
         pageNumber: 1,
-        pageSize: useClientSideYearFiltering ? 250 : 50,
+        pageSize: 50,
         result: filter.resultApiValue,
         color: filter.colorApiValue,
         timeControl: filter.timeControlApiValue,
-        yearFrom: useClientSideYearFiltering
-            ? null
-            : (filter.minYear != 1800 ? filter.minYear : null),
-        yearTo: useClientSideYearFiltering
-            ? null
-            : (filter.maxYear != DateTime.now().year ? filter.maxYear : null),
-        ratingFrom:
-            !useClientSideAverageRating && filter.minRating > 0
-                ? filter.minRating
-                : null,
-        ratingTo:
-            !useClientSideAverageRating && filter.maxRating < 3500
-                ? filter.maxRating
-                : null,
+        yearFrom: filter.minYear != 1800 ? filter.minYear : null,
+        yearTo: filter.maxYear != DateTime.now().year ? filter.maxYear : null,
+        ratingFrom: filter.minRating > 0 ? filter.minRating : null,
+        ratingTo: filter.maxRating < 3500 ? filter.maxRating : null,
       );
-      rawRows = _rowsFromGlobalSearchResponse(
-        response,
-      ).where((row) => _matchesYearFilter(row, filter)).toList(growable: false);
+      rawRows = _rowsFromGlobalSearchResponse(response);
     }
 
     if (rawRows.isEmpty) {
@@ -849,15 +802,6 @@ final gamebaseDatabaseGamesProvider = FutureProvider.autoDispose<
             lastMoveTime: date,
           );
         })
-        .where(
-          (game) =>
-              !useClientSideAverageRating ||
-              _matchesAverageRatingRange(
-                game,
-                filter.minRating,
-                filter.maxRating,
-              ),
-        )
         .toList(growable: false);
   } catch (e, st) {
     if (kDebugMode) {
@@ -867,15 +811,3 @@ final gamebaseDatabaseGamesProvider = FutureProvider.autoDispose<
     return const <GamesTourModel>[];
   }
 });
-
-bool _matchesAverageRatingRange(
-  GamesTourModel game,
-  int minRating,
-  int maxRating,
-) {
-  final white = game.whitePlayer.rating;
-  final black = game.blackPlayer.rating;
-  if (white <= 0 || black <= 0) return false;
-  final average = (white + black) / 2.0;
-  return average >= minRating && average <= maxRating;
-}

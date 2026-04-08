@@ -76,15 +76,6 @@ paths:
           schema:
             type: integer
             minimum: 1
-        - name: color
-          in: query
-          required: false
-          description: Filter by player's color. Requires `playerId`.
-          schema:
-            type: string
-            enum:
-              - white
-              - black
       responses:
         "200":
           description: Successful response with move aggregates
@@ -248,15 +239,6 @@ paths:
           schema:
             type: integer
             minimum: 1
-        - name: color
-          in: query
-          required: false
-          description: Filter by player's color. Requires `playerId`.
-          schema:
-            type: string
-            enum:
-              - white
-              - black
         - name: pageNumber
           in: query
           required: false
@@ -1031,6 +1013,69 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /api/eval:
+    get:
+      summary: Get evaluation for a position
+      description: |
+        Returns a precomputed engine evaluation for a given FEN position.
+        The evaluation is sourced from the Lichess evaluation database.
+      operationId: getEval
+      tags:
+        - Eval
+      parameters:
+        - name: fen
+          in: query
+          required: true
+          description: |
+            FEN string representing the chess position.
+            The halfmove clock and fullmove number (last two FEN fields) are ignored for matching.
+          schema:
+            type: string
+          example: "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
+      responses:
+        "200":
+          description: Successful response with evaluation data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [success]
+                  data:
+                    $ref: "#/components/schemas/PositionEval"
+              example:
+                status: success
+                data:
+                  fen: "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq -"
+                  source: "lichess_db_eval"
+                  depth: 36
+                  knodes: 206765
+                  pvs:
+                    - cp: 35
+                      mate: null
+                      moves: ["e2e4", "e7e5", "g1f3"]
+                      whitePerspective: true
+        "400":
+          description: Invalid request (e.g., invalid FEN)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Evaluation not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
 components:
   securitySchemes:
     ApiKeyAuth:
@@ -1082,14 +1127,6 @@ components:
           description: |
             Maximum rating filter (player to move at this position).
             Aggregates use 100-point rating buckets, so precision is ±99.
-        color:
-          type: string
-          enum: [white, black]
-          description: Filter by player's color. Requires `playerId`.
-        result:
-          type: string
-          enum: [W, B, D]
-          description: Filter by game result (W=White wins, B=Black wins, D=Draw).
     PositionGamesQueryRequest:
       type: object
       required:
@@ -1136,14 +1173,6 @@ components:
           description: |
             Maximum rating filter (player to move at this position).
             Aggregates use 100-point rating buckets, so precision is ±99.
-        color:
-          type: string
-          enum: [white, black]
-          description: Filter by player's color. Requires `playerId`.
-        result:
-          type: string
-          enum: [W, B, D]
-          description: Filter by game result (W=White wins, B=Black wins, D=Draw).
         pageNumber:
           type: integer
           minimum: 0
@@ -1753,3 +1782,42 @@ components:
         status: error
         error:
           message: "Missing API Key"
+
+    PositionEval:
+      type: object
+      required: [fen, source, depth, knodes, pvs]
+      properties:
+        fen:
+          type: string
+          description: Normalized FEN position (4 fields)
+        source:
+          type: string
+          description: Data source name (e.g., "lichess_db_eval")
+        depth:
+          type: integer
+          description: Search depth of the evaluation
+        knodes:
+          type: integer
+          description: Number of nodes searched (in thousands)
+        pvs:
+          type: array
+          items:
+            type: object
+            required: [moves, whitePerspective]
+            properties:
+              cp:
+                type: integer
+                nullable: true
+                description: Centipawn evaluation (relative to white)
+              mate:
+                type: integer
+                nullable: true
+                description: Moves to mate (positive for white, negative for black)
+              moves:
+                type: array
+                items:
+                  type: string
+                description: Recommended mainline moves in UCI notation
+              whitePerspective:
+                type: boolean
+                description: Indicates the evaluation is from white's perspective
