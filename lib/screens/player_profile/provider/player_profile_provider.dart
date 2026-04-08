@@ -1831,6 +1831,11 @@ class PlayerProfileGamesState {
   List<GamesTourModel> get filteredGames {
     var games = allGames;
 
+    if (playerKey.source == PlayerProfileDataSource.twic) {
+      // TWIC games are strictly server-side filtered, paginated exactly as returned from the API.
+      return games;
+    }
+
     // Apply search query (supports chained AND / OR / NOT terms).
     if (searchQuery.trim().isNotEmpty) {
       games = games
@@ -2320,11 +2325,12 @@ final twicPlayerStatsProvider = FutureProvider.family.autoDispose<
   if (playerId == null || playerId.isEmpty) return null;
 
   final filterSnapshot = ref.watch(
-    playerProfileGamesKeyProvider(
-      playerKey,
-    ).select((state) => (state.filter, state.playerResultFilter)),
+    playerProfileGamesKeyProvider(playerKey).select(
+      (state) => (state.filter, state.playerResultFilter, state.searchQuery),
+    ),
   );
   var filter = filterSnapshot.$1;
+  final searchQuery = filterSnapshot.$3.trim();
 
   if (request.scope == TwicStatsScope.allGames) {
     filter = GameFilter.defaultFilter();
@@ -2358,6 +2364,7 @@ final twicPlayerStatsProvider = FutureProvider.family.autoDispose<
   try {
     response = await repo.getPlayerStats(
       playerId: playerId,
+      q: searchQuery.isNotEmpty ? searchQuery : null,
       color: color,
       timeControl: timeControl,
       outcome: outcome,
@@ -2668,6 +2675,7 @@ class PlayerProfileGamesNotifier
 
     final response = await repo.getPlayerGames(
       playerId: playerId,
+      q: state.searchQuery.trim().isNotEmpty ? state.searchQuery.trim() : null,
       color: color,
       timeControl: timeControl,
       outcome: outcome,
@@ -3170,11 +3178,10 @@ class PlayerProfileGamesNotifier
   }
 
   void setSearchQuery(String query) {
+    if (state.searchQuery == query) return;
     state = state.copyWith(searchQuery: query);
     if (_playerKey.source != PlayerProfileDataSource.twic) return;
-    final trimmed = query.trim();
-    if (trimmed.isEmpty) return;
-    unawaited(_primeSearchPages());
+    _loadGames();
   }
 
   void setPlayerResultFilter(PlayerResultFilter filter) {
@@ -3184,18 +3191,6 @@ class PlayerProfileGamesNotifier
 
   Future<void> refresh() async {
     await _loadGames();
-  }
-
-  Future<void> _primeSearchPages() async {
-    var pagesLoaded = 0;
-    while (mounted &&
-        state.searchQuery.trim().isNotEmpty &&
-        state.filteredGames.isEmpty &&
-        state.hasMorePages &&
-        pagesLoaded < 3) {
-      await loadMore();
-      pagesLoaded += 1;
-    }
   }
 }
 

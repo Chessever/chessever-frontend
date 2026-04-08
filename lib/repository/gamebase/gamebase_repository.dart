@@ -509,6 +509,7 @@ class GamebaseRepository {
   /// [outcome] uses 'win'/'loss'/'draw' (player perspective, not W/B/D).
   Future<Map<String, dynamic>> getPlayerGames({
     required String playerId,
+    String? q,
     String color = 'all',
     String? timeControl,
     String? outcome,
@@ -527,6 +528,8 @@ class GamebaseRepository {
   }) async {
     final queryParams = <String, dynamic>{
       'color': color,
+      if (q != null && q.isNotEmpty) 'q': q,
+      if (q != null && q.isNotEmpty) 'q': q,
       'pageNumber': pageNumber,
       'pageSize': pageSize,
       if (timeControl != null) 'timeControl': timeControl,
@@ -564,6 +567,7 @@ class GamebaseRepository {
   /// Maps to GET /api/player/{playerId}/stats.
   Future<Map<String, dynamic>> getPlayerStats({
     required String playerId,
+    String? q,
     String color = 'all',
     String? timeControl,
     String? outcome,
@@ -580,6 +584,7 @@ class GamebaseRepository {
   }) async {
     final queryParams = <String, dynamic>{
       'color': color,
+      if (q != null && q.isNotEmpty) 'q': q,
       if (timeControl != null) 'timeControl': timeControl,
       if (outcome != null) 'outcome': outcome,
       if (eco != null) 'eco': eco,
@@ -686,5 +691,11 @@ class GamebaseRepository {
 }
 
 final gamebaseRepositoryProvider = Provider<GamebaseRepository>((ref) {
-  return GamebaseRepository(Dio());
+  final dio = Dio(
+    BaseOptions(
+      connectTimeout: const Duration(seconds: 10),
+      receiveTimeout: const Duration(seconds: 30),
+    ),
+  );
+  return GamebaseRepository(dio);
 });
