@@ -9,7 +9,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 /// Small horizontal eval bar for opening explorer move rows.
 ///
-/// Uses [cascadeEvalProviderForBoard] (local cache + Supabase only, NO
+/// Uses [cascadeEvalProviderForBoard] (local cache + Gamebase only, NO
 /// Stockfish) so that rendering 15+ candidate moves doesn't trigger expensive
 /// engine evaluations. Shows nothing when no cached eval exists.
 class MiniEvalBar extends ConsumerWidget {

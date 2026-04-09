@@ -251,7 +251,7 @@ final _checkmateCacheProvider = Provider.autoDispose.family<bool?, String>((ref,
 });
 
 /// Evaluation widget used on game cards.
-/// Uses depth-aware local/Supabase reuse first, then low-priority Stockfish.
+/// Uses depth-aware local/Gamebase reuse first, then low-priority Stockfish.
 /// Auto-disposes when card scrolls out of view (only evaluates visible boards).
 class EvaluationBarWidgetForGames extends ConsumerWidget {
   final double width;
