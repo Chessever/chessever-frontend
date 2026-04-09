@@ -34,6 +34,7 @@ paths:
           required: true
           description: |
             FEN string representing the chess position.
+            Accepts either a standard 6-field FEN or a normalized 4-field FEN.
             The halfmove clock and fullmove number (last two FEN fields) are ignored for matching.
           schema:
             type: string

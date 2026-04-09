@@ -320,6 +320,9 @@ class GamebaseRepository {
 
   /// Canonicalize FEN for the eval endpoint.
   ///
+  /// The backend accepts either 6-field or normalized 4-field FENs, but the
+  /// client always sends the canonical 4-field form for stable cache keys.
+  ///
   /// The eval service keys positions by the first four FEN fields only:
   /// board, side to move, castling rights, en passant square.
   static String _normalizeEvalFenForLookup(String fen) {
