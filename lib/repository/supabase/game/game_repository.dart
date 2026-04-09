@@ -177,7 +177,9 @@ class GameRepository extends BaseRepository {
   // Get all games for a specific player by fideId
   Future<List<Games>> getGamesByFideId(String fideId, {int? limit}) async {
     return handleApiCall(() async {
-      print('===== GameRepository: Fetching games for fideId: $fideId =====');
+      debugPrint(
+        '===== GameRepository: Fetching games for fideId: $fideId =====',
+      );
 
       final fideIdInt = _parseFideId(fideId);
       if (fideIdInt == null) return <Games>[];
@@ -194,7 +196,9 @@ class GameRepository extends BaseRepository {
         query = query.limit(limit);
       }
 
-      print('===== GameRepository: Executing query with limit: $limit =====');
+      debugPrint(
+        '===== GameRepository: Executing query with limit: $limit =====',
+      );
       final response = await query;
 
       final jsonList =
@@ -926,24 +930,7 @@ class GameRepository extends BaseRepository {
           .order('last_move_time', ascending: false, nullsFirst: false)
           .range(offset, offset + limit - 1);
 
-      // Handle null response gracefully
-      if (response == null) {
-        debugPrint(
-          '[GameRepository] Warning: null response from getGamesFromTourIds query',
-        );
-        return <Games>[];
-      }
-
-      // Safely convert to List
-      final List<dynamic> responseList;
-      if (response is List) {
-        responseList = response;
-      } else {
-        debugPrint(
-          '[GameRepository] Warning: response is not a List, got ${response.runtimeType}',
-        );
-        return <Games>[];
-      }
+      final responseList = response as List<dynamic>;
 
       if (responseList.isEmpty) {
         debugPrint(
@@ -1050,6 +1037,36 @@ class GameRepository extends BaseRepository {
     }
   }
 
+  Future<Map<String, DateTime>> getLatestLastMoveTimesByRoundIds(
+    List<String> roundIds,
+  ) async {
+    if (roundIds.isEmpty) return <String, DateTime>{};
+
+    return handleApiCall(() async {
+      final response = await supabase
+          .from('games')
+          .select('round_id,last_move_time')
+          .inFilter('round_id', roundIds)
+          .not('last_move_time', 'is', null)
+          .order('last_move_time', ascending: false, nullsFirst: false);
+
+      final latestByRoundId = <String, DateTime>{};
+      for (final row in response as List) {
+        final roundId = row['round_id'] as String?;
+        final lastMoveTimeRaw = row['last_move_time'] as String?;
+        if (roundId == null || roundId.isEmpty || lastMoveTimeRaw == null) {
+          continue;
+        }
+        latestByRoundId.putIfAbsent(
+          roundId,
+          () => DateTime.parse(lastMoveTimeRaw),
+        );
+      }
+
+      return latestByRoundId;
+    });
+  }
+
   /// Get games for "For You" event cards
   /// Current round = live games with moves, else most recently played,
   /// else earliest upcoming round when nothing has started yet.
@@ -1073,7 +1090,7 @@ class GameRepository extends BaseRepository {
 
       Set<String> currentRoundIds = {};
 
-      if (liveResponse is List && liveResponse.isNotEmpty) {
+      if (liveResponse.isNotEmpty) {
         // Live games exist - use the most recently active live round
         final liveRoundId = liveResponse.first['round_id'];
         if (liveRoundId is String && liveRoundId.isNotEmpty) {
@@ -1094,7 +1111,7 @@ class GameRepository extends BaseRepository {
             .order('last_move_time', ascending: false)
             .limit(1);
 
-        if (recentResponse is List && recentResponse.isNotEmpty) {
+        if (recentResponse.isNotEmpty) {
           currentRoundIds.add(recentResponse.first['round_id'] as String);
           debugPrint(
             '[GameRepository] ForYou: Most recent round: $currentRoundIds',
@@ -1121,7 +1138,7 @@ class GameRepository extends BaseRepository {
           );
         }
 
-        if (roundResponse is List && roundResponse.isNotEmpty) {
+        if (roundResponse != null && roundResponse.isNotEmpty) {
           final roundId = roundResponse.first['id'];
           if (roundId is String && roundId.isNotEmpty) {
             currentRoundIds.add(roundId);
@@ -1143,7 +1160,7 @@ class GameRepository extends BaseRepository {
           .limit(neededCount + 4);
 
       final games = <Games>[];
-      if (gamesResponse is List && gamesResponse.isNotEmpty) {
+      if (gamesResponse.isNotEmpty) {
         final jsonList =
             gamesResponse.map((item) => json.encode(item)).toList();
         games.addAll(await compute(_decodeGamesInIsolate, jsonList));
@@ -1154,14 +1171,6 @@ class GameRepository extends BaseRepository {
       debugPrint('[GameRepository] Error in getForYouEventGames: $e');
       return <Games>[];
     }
-  }
-
-  static int _extractRoundNumberStatic(String? roundSlug) {
-    if (roundSlug == null || roundSlug.isEmpty) return 0;
-    final match =
-        RegExp(r'round-?(\d+)', caseSensitive: false).firstMatch(roundSlug) ??
-        RegExp(r'(\d+)').firstMatch(roundSlug);
-    return int.tryParse(match?.group(1) ?? '0') ?? 0;
   }
 
   /// Get top live games globally, ordered by recency.

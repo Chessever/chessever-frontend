@@ -11,6 +11,49 @@ final groupBroadcastRepositoryProvider =
     });
 
 class GroupBroadcastRepository extends BaseRepository {
+  /// Fetch group broadcasts matching any provided IDs or names.
+  Future<List<GroupBroadcast>> getGroupBroadcastsByIdsOrNames(
+    List<String> identifiers,
+  ) async {
+    if (identifiers.isEmpty) return <GroupBroadcast>[];
+
+    return handleApiCall(() async {
+      final values = identifiers
+          .map((value) => value.trim())
+          .where((value) => value.isNotEmpty)
+          .toSet()
+          .toList(growable: false);
+
+      if (values.isEmpty) {
+        return <GroupBroadcast>[];
+      }
+
+      final resultsById = <String, GroupBroadcast>{};
+
+      final byIdResponse = await supabase
+          .from('group_broadcasts')
+          .select()
+          .inFilter('id', values);
+
+      for (final json in byIdResponse as List) {
+        final broadcast = GroupBroadcast.fromJson(json);
+        resultsById[broadcast.id] = broadcast;
+      }
+
+      final byNameResponse = await supabase
+          .from('group_broadcasts')
+          .select()
+          .inFilter('name', values);
+
+      for (final json in byNameResponse as List) {
+        final broadcast = GroupBroadcast.fromJson(json);
+        resultsById[broadcast.id] = broadcast;
+      }
+
+      return resultsById.values.toList(growable: false);
+    });
+  }
+
   /// Get tour IDs that belong to current (non-past) events
   /// These are tours whose parent group_broadcast is ongoing or upcoming (not completed)
   /// Returns tour IDs that can be matched against games.tour_id

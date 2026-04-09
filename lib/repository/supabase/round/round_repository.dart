@@ -9,6 +9,20 @@ final roundRepositoryProvider = AutoDisposeProvider<RoundRepository>((ref) {
 });
 
 class RoundRepository extends BaseRepository {
+  Future<List<Round>> getRoundsByIds(List<String> roundIds) async {
+    if (roundIds.isEmpty) return <Round>[];
+
+    return handleApiCall(() async {
+      final response = await supabase
+          .from('rounds')
+          .select()
+          .inFilter('id', roundIds)
+          .order('created_at', ascending: true);
+
+      return (response as List).map((json) => Round.fromJson(json)).toList();
+    });
+  }
+
   // Fetch rounds by tour ID
   Future<List<Round>> getRoundsByTourId(String tourId) async {
     return handleApiCall(() async {

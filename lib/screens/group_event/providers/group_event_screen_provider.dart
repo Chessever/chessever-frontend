@@ -101,15 +101,22 @@ class _GroupEventScreenController
   var _groupBroadcastList = <GroupBroadcast>[];
 
   bool get _isFilterActive {
-    if (appliedFilter.formatsAndStates.isNotEmpty) return true;
-    if (appliedFilter.eloRange.start > defaultFilterPopupState.eloRange.start)
+    if (appliedFilter.formatsAndStates.isNotEmpty) {
       return true;
-    if (appliedFilter.eloRange.end < defaultFilterPopupState.eloRange.end)
+    }
+    if (appliedFilter.eloRange.start > defaultFilterPopupState.eloRange.start) {
       return true;
+    }
+    if (appliedFilter.eloRange.end < defaultFilterPopupState.eloRange.end) {
+      return true;
+    }
     return false;
   }
 
-  List<GroupBroadcast> _applyClientFilter(List<GroupBroadcast> broadcasts) {
+  List<GroupBroadcast> _applyClientFilter(
+    List<GroupBroadcast> broadcasts, {
+    List<String>? liveIds,
+  }) {
     final filterSet =
         appliedFilter.formatsAndStates
             .map((f) => f.trim().toLowerCase())
@@ -122,11 +129,12 @@ class _GroupEventScreenController
     }.intersection(filterSet);
     final requestedFormats = filterSet.difference(requestedStatuses);
 
-    final liveIds = ref.read(liveBroadcastIdsProvider);
+    final List<String> effectiveLiveIds =
+        liveIds ?? ref.read(liveBroadcastIdsProvider);
 
     return broadcasts.where((tour) {
       if (requestedStatuses.isNotEmpty) {
-        final isLive = liveIds.contains(tour.id);
+        final isLive = effectiveLiveIds.contains(tour.id);
         final matchesStatus =
             (requestedStatuses.contains('live') && isLive) ||
             (requestedStatuses.contains('completed') && !isLive);
@@ -211,6 +219,19 @@ class _GroupEventScreenController
     });
   }
 
+  Future<List<String>> _getLiveIdsSnapshot() async {
+    final cached = ref.read(liveGroupBroadcastIdsProvider).valueOrNull;
+    if (cached != null) {
+      return cached;
+    }
+
+    try {
+      return await ref.read(liveGroupBroadcastIdsProvider.future);
+    } catch (_) {
+      return const <String>[];
+    }
+  }
+
   // Update live status without rebuilding the entire state
   void _updateLiveStatusInExistingModels() {
     final currentModels = state.valueOrNull;
@@ -275,9 +296,11 @@ class _GroupEventScreenController
 
       _groupBroadcastList = tour;
 
+      final strictLiveIds = liveIds ?? await _getLiveIdsSnapshot();
+
       // Apply client-side filter if active
       if (inputBroadcast == null && _isFilterActive) {
-        tour = _applyClientFilter(tour);
+        tour = _applyClientFilter(tour, liveIds: strictLiveIds);
       }
 
       final sortingService = ref.read(tournamentSortingServiceProvider);
@@ -285,10 +308,7 @@ class _GroupEventScreenController
       final tourEventCardModel =
           tour
               .map(
-                (t) => GroupEventCardModel.fromGroupBroadcast(
-                  t,
-                  liveIds ?? ref.read(liveBroadcastIdsProvider),
-                ),
+                (t) => GroupEventCardModel.fromGroupBroadcast(t, strictLiveIds),
               )
               .toList();
 
@@ -303,7 +323,9 @@ class _GroupEventScreenController
               : sortingService.sortAllTours(tourEventCardModel);
 
       state = AsyncValue.data(sortedTours);
-    } catch (error, _) {}
+    } catch (error, stackTrace) {
+      state = AsyncValue.error(error, stackTrace);
+    }
   }
 
   Future<void> loadMorePast() async {
@@ -316,24 +338,34 @@ class _GroupEventScreenController
         limit: _pastLimit,
         offset: _pastOffset,
       );
+      final strictLiveIds = await _getLiveIdsSnapshot();
 
       // Apply client-side filter to new batch if active
       var filteredBroadcasts = broadcasts;
       if (_isFilterActive) {
-        filteredBroadcasts = _applyClientFilter(broadcasts);
+        filteredBroadcasts = _applyClientFilter(
+          broadcasts,
+          liveIds: strictLiveIds,
+        );
       }
 
       final existingIds = state.valueOrNull?.map((e) => e.id).toSet() ?? {};
+      final newBroadcasts = filteredBroadcasts
+          .where((broadcast) => !existingIds.contains(broadcast.id))
+          .toList(growable: false);
       final newModels =
-          filteredBroadcasts
-              .where((b) => !existingIds.contains(b.id))
+          newBroadcasts
               .map(
-                (b) => GroupEventCardModel.fromGroupBroadcast(
-                  b,
-                  ref.read(liveBroadcastIdsProvider),
-                ),
+                (b) => GroupEventCardModel.fromGroupBroadcast(b, strictLiveIds),
               )
               .toList();
+
+      final knownIds =
+          _groupBroadcastList.map((broadcast) => broadcast.id).toSet();
+      _groupBroadcastList = [
+        ..._groupBroadcastList,
+        ...newBroadcasts.where((broadcast) => !knownIds.contains(broadcast.id)),
+      ];
 
       final current = state.valueOrNull ?? [];
       final totalEvents = [...current, ...newModels];
@@ -373,20 +405,18 @@ class _GroupEventScreenController
               .refresh();
 
       _groupBroadcastList = refreshed;
+      final strictLiveIds = await _getLiveIdsSnapshot();
 
       // Apply client-side filter if active
       var toDisplay = refreshed;
       if (_isFilterActive) {
-        toDisplay = _applyClientFilter(refreshed);
+        toDisplay = _applyClientFilter(refreshed, liveIds: strictLiveIds);
       }
 
       final tourEventCardModel =
           toDisplay
               .map(
-                (t) => GroupEventCardModel.fromGroupBroadcast(
-                  t,
-                  ref.read(liveBroadcastIdsProvider),
-                ),
+                (t) => GroupEventCardModel.fromGroupBroadcast(t, strictLiveIds),
               )
               .toList();
       final sortingService = ref.read(tournamentSortingServiceProvider);
@@ -440,10 +470,10 @@ class _GroupEventScreenController
             'Tournament Opened',
             properties: {
               'tournament_id': id,
-              'tournament_name': selectedBroadcast?.name,
+              'tournament_name': selectedBroadcast.name,
               'category': tourEventCategory.name,
               'is_live': ref.read(liveBroadcastIdsProvider).contains(id),
-              'time_control': selectedBroadcast?.timeControl,
+              'time_control': selectedBroadcast.timeControl,
             },
           ),
         );
@@ -492,14 +522,12 @@ class _GroupEventScreenController
 
     try {
       final broadcasts = await ref.read(supabaseSearchProvider(query).future);
+      final strictLiveIds = await _getLiveIdsSnapshot();
 
       final tourEventCardModel =
           broadcasts
               .map(
-                (b) => GroupEventCardModel.fromGroupBroadcast(
-                  b,
-                  ref.read(liveBroadcastIdsProvider),
-                ),
+                (b) => GroupEventCardModel.fromGroupBroadcast(b, strictLiveIds),
               )
               .toList();
 
@@ -529,14 +557,12 @@ class _GroupEventScreenController
           await ref
               .read(groupBroadcastLocalStorage(tourEventCategory))
               .getGroupBroadcasts();
+      final strictLiveIds = await _getLiveIdsSnapshot();
 
       final filteredTournaments =
           groupBroadcast
               .map(
-                (e) => GroupEventCardModel.fromGroupBroadcast(
-                  e,
-                  ref.read(liveBroadcastIdsProvider),
-                ),
+                (e) => GroupEventCardModel.fromGroupBroadcast(e, strictLiveIds),
               )
               .where((tour) {
                 if (tourEventCategory == GroupEventCategory.current) {
@@ -633,9 +659,7 @@ class _GroupEventScreenController
     }
     final words = searchTerm.trim().split(' ');
     if (words.length == 1 || (words.length >= 2 && words.length <= 4)) {
-      return words.every(
-        (w) => w.isNotEmpty && w[0] == w[0].toUpperCase() && w.length >= 1,
-      );
+      return words.every((w) => w.isNotEmpty && w[0] == w[0].toUpperCase());
     }
     return false;
   }
