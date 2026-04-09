@@ -780,16 +780,7 @@ class _CompletedIndicator extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.only(left: 6.w),
-      child: Text(
-        "Completed",
-        style: AppTypography.textXsMedium.copyWith(
-          color: kWhiteColor.withValues(alpha: 0.5),
-          fontSize: 11.sp,
-        ),
-      ),
-    );
+    return const SizedBox.shrink();
   }
 }
 
@@ -837,8 +828,8 @@ class _StarWidget extends ConsumerWidget {
       },
       orElse:
           () =>
-      currentCache[tourEventCardModel.id] ??
-          const EventFavoritePlayers.empty(),
+              currentCache[tourEventCardModel.id] ??
+              const EventFavoritePlayers.empty(),
     );
 
     // Priority: Star icon (user favorited) ALWAYS takes precedence

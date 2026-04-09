@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart';
-import 'package:chessever2/screens/group_event/providers/group_event_screen_provider.dart';
 import 'package:chessever2/screens/group_event/group_event_screen.dart';
+import 'package:chessever2/screens/group_event/providers/live_group_broadcast_id_provider.dart';
 import 'package:chessever2/utils/country_utils.dart';
 import 'package:country_picker/country_picker.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -56,7 +56,9 @@ final supabaseCombinedSearchProvider = AutoDisposeFutureProvider.family<
   final normalizedCountryKey = fideCountryCode?.toUpperCase();
 
   // Run all searches in parallel for better performance
-  final liveIds = ref.read(liveBroadcastIdsProvider);
+  final List<String> liveIds =
+      ref.read(liveGroupBroadcastIdsProvider).valueOrNull ??
+      await ref.read(liveGroupBroadcastIdsProvider.future);
 
   final parallelResults = await Future.wait([
     // 1. Supabase RPC for events

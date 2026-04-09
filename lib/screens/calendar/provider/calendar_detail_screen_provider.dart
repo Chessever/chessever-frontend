@@ -10,7 +10,6 @@ import 'package:chessever2/screens/calendar/calendar_event_detail_screen.dart';
 import 'package:chessever2/screens/calendar/provider/calendar_screen_provider.dart';
 import 'package:chessever2/screens/calendar/provider/calendar_search_isolate.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
-import 'package:chessever2/screens/group_event/providers/group_event_screen_provider.dart';
 import 'package:chessever2/screens/group_event/providers/live_group_broadcast_id_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
 import 'package:flutter/foundation.dart';
@@ -110,7 +109,9 @@ class _CalendarDetailScreenController
       calendarEvents = calEvents;
 
       // Pre-build isolate-safe data
-      final liveIds = ref.read(liveBroadcastIdsProvider);
+      final List<String> liveIds =
+          ref.read(liveGroupBroadcastIdsProvider).valueOrNull ??
+          await ref.read(liveGroupBroadcastIdsProvider.future);
       _eventsData = [
         ...current.map((b) => _broadcastToEventData(b, liveIds)),
         ...calEvents.map(_calendarEventToEventData),
@@ -220,7 +221,9 @@ class _CalendarDetailScreenController
       if (!mounted || _filterVersion != currentVersion) return;
 
       // Convert back to GroupEventCardModel for UI
-      final liveIds = ref.read(liveBroadcastIdsProvider);
+      final liveIds =
+          ref.read(liveGroupBroadcastIdsProvider).valueOrNull ??
+          const <String>[];
       final events =
           result.events.map((data) {
             // Try to find the original model for efficiency

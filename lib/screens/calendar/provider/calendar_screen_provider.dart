@@ -6,7 +6,7 @@ import 'package:chessever2/repository/supabase/group_broadcast/group_tour_reposi
 import 'package:chessever2/screens/calendar/calendar_screen.dart';
 import 'package:chessever2/screens/calendar/provider/calendar_search_isolate.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
-import 'package:chessever2/screens/group_event/providers/group_event_screen_provider.dart';
+import 'package:chessever2/screens/group_event/providers/live_group_broadcast_id_provider.dart';
 import 'package:chessever2/screens/favorites/favorite_players_provider.dart';
 import 'package:chessever2/utils/country_utils.dart';
 import 'package:chessever2/utils/location_service_provider.dart';
@@ -150,13 +150,13 @@ class _CalendarScreenNotifier
       final yearCalendarEvents = await ref
           .read(calendarEventRepositoryProvider)
           .getCalendarEventsForYear(year: selectedYear);
+      final List<String> liveIds =
+          ref.read(liveGroupBroadcastIdsProvider).valueOrNull ??
+          await ref.read(liveGroupBroadcastIdsProvider.future);
 
       _yearEvents = [
         ...yearBroadcasts.map(
-          (b) => GroupEventCardModel.fromGroupBroadcast(
-            b,
-            ref.read(liveBroadcastIdsProvider),
-          ),
+          (b) => GroupEventCardModel.fromGroupBroadcast(b, liveIds),
         ),
         ...yearCalendarEvents.map(GroupEventCardModel.fromCalendarEvent),
       ];
