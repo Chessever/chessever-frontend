@@ -3549,6 +3549,33 @@ class ChessBoardScreenNotifierNew
       }
     }
 
+    // Preserve clock times
+    if (metadata['WhiteClockSeconds'] == null && game.whiteClockSeconds != null) {
+      metadata['WhiteClockSeconds'] = game.whiteClockSeconds.toString();
+    }
+    if (metadata['BlackClockSeconds'] == null && game.blackClockSeconds != null) {
+      metadata['BlackClockSeconds'] = game.blackClockSeconds.toString();
+    }
+    if (metadata['WhiteTimeDisplay'] == null && game.whiteTimeDisplay != '--:--') {
+      metadata['WhiteTimeDisplay'] = game.whiteTimeDisplay;
+    }
+    if (metadata['BlackTimeDisplay'] == null && game.blackTimeDisplay != '--:--') {
+      metadata['BlackTimeDisplay'] = game.blackTimeDisplay;
+    }
+
+    // Preserve board number
+    if (metadata['BoardNr'] == null && game.boardNr != null) {
+      metadata['BoardNr'] = game.boardNr.toString();
+    }
+
+    // Preserve slugs for URLs
+    if (metadata['TourSlug'] == null && game.tourSlug != null) {
+      metadata['TourSlug'] = game.tourSlug;
+    }
+    if (metadata['RoundSlug'] == null && game.roundSlug != null) {
+      metadata['RoundSlug'] = game.roundSlug;
+    }
+
     final needsLiveFlag = game.gameStatus.isOngoing;
     final needsMainlineExtension = game.roundId == 'board_editor';
 

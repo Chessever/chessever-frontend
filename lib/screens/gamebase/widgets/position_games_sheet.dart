@@ -635,7 +635,11 @@ class _PositionGamesSheetState extends ConsumerState<PositionGamesSheet> {
     final eco = row['eco']?.toString() ?? '';
     final opening = row['opening']?.toString() ?? '';
     final variation = row['variation']?.toString() ?? '';
-    final event = row['event']?.toString() ?? '';
+    final event = (row['event']?.toString() ?? '').trim();
+    final tourId = (row['tour_id']?.toString() ??
+            row['tournament_id']?.toString() ??
+            event)
+        .trim();
 
     final whiteName = (row['white']?.toString() ?? '').trim();
     final blackName = (row['black']?.toString() ?? '').trim();
@@ -689,7 +693,7 @@ class _PositionGamesSheetState extends ConsumerState<PositionGamesSheet> {
       gameStatus: GameStatus.fromString(resultStr),
       roundId: 'opening_explorer',
       roundSlug: formatCode.isNotEmpty ? formatCode : null,
-      tourId: event.trim().isNotEmpty ? event.trim() : 'Gamebase',
+      tourId: tourId.isNotEmpty ? tourId : 'Gamebase',
       tourSlug: null,
       lastMoveTime: date,
       eco: eco.trim().isNotEmpty ? eco.trim() : null,

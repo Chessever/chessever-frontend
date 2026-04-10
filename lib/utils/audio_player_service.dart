@@ -147,12 +147,16 @@ class AudioPlayerService with WidgetsBindingObserver {
       _assetsLoaded = false;
     }
 
-    // Configure audio session BEFORE initializing SoLoud
+    // Configure audio session BEFORE and AFTER initializing SoLoud
     // This ensures our app doesn't steal audio focus from other apps
+    // and correctly applies ambient mode even if SoLoud resets it during init.
     await _configureAudioSession();
 
     if (!player.isInitialized) {
       await SoLoud.instance.init();
+      // Re-apply after init just in case SoLoud native layer reset the category
+      _audioSessionConfigured = false; 
+      await _configureAudioSession();
     }
 
     if (!_assetsLoaded) {

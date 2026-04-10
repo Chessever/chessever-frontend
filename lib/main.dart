@@ -867,7 +867,14 @@ class MyApp extends HookConsumerWidget {
     ResponsiveHelper.init(context);
 
     // Set orientation based on device type - tablets get landscape, phones stay portrait
+    // Also ensure status bar is visible and UI is edge-to-edge
     useEffect(() {
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+      SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        systemNavigationBarColor: Colors.transparent,
+      ));
+
       if (ResponsiveHelper.isTablet) {
         SystemChrome.setPreferredOrientations([
           DeviceOrientation.portraitUp,

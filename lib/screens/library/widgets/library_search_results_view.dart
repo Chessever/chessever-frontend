@@ -124,13 +124,15 @@ class _LibrarySearchResultsViewState
             ? buildPgnFromGamebaseData(Map<String, dynamic>.from(data))
             : null;
     var pgn = row['pgn']?.toString() ?? builtPgn;
-    final tourId =
-        (md['Event'] as String?)?.trim().isNotEmpty == true
-            ? md['Event'].toString()
-            : (row['event']?.toString() ??
-                row['Event']?.toString() ??
-                row['tournament']?.toString() ??
-                'Gamebase');
+    final tourId = (row['tour_id']?.toString() ??
+            row['tournament_id']?.toString() ??
+            ((md['Event'] as String?)?.trim().isNotEmpty == true
+                ? md['Event'].toString()
+                : (row['event']?.toString() ??
+                    row['Event']?.toString() ??
+                    row['tournament']?.toString() ??
+                    'Gamebase')))
+        .trim();
 
     DateTime? parseMdDate(String? raw) {
       if (raw == null) return null;
@@ -608,10 +610,7 @@ class _LibraryGridGame extends ConsumerWidget {
                 (_) => ChessBoardScreenNew(
                   games: allGames,
                   currentIndex: gameIndex,
-                  hideEventInfo: true,
                   showGamebaseButton: false,
-                  disableGamebaseOverlayByDefault: true,
-                  showClock: false,
                 ),
           ),
         );
@@ -653,10 +652,7 @@ class _LibraryBoardGame extends ConsumerWidget {
                 (_) => ChessBoardScreenNew(
                   games: allGames,
                   currentIndex: gameIndex,
-                  hideEventInfo: true,
                   showGamebaseButton: false,
-                  disableGamebaseOverlayByDefault: true,
-                  showClock: false,
                 ),
           ),
         );

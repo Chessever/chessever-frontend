@@ -107,7 +107,7 @@
 			</dict>
 		</dict>
 		<key>UIStatusBarHidden</key>
-		<true/>
+		<false/>
 		<key>UISupportedInterfaceOrientations</key>
 		<array>
 			<string>UIInterfaceOrientationPortrait</string>
@@ -122,7 +122,7 @@
 			<string>UIInterfaceOrientationLandscapeRight</string>
 		</array>
 		<key>UIViewControllerBasedStatusBarAppearance</key>
-		<false/>
+		<true/>
 		<key>FlutterDeepLinkingEnabled</key>
 		<false/>
 	</dict>

@@ -21,6 +21,14 @@ import app_links
       UNUserNotificationCenter.current().delegate = self as? UNUserNotificationCenterDelegate
     }
 
+    // Register plugins
+    GeneratedPluginRegistrant.register(with: self)
+
+    // Setup audio session channel for the main engine
+    if let controller = window?.rootViewController as? FlutterViewController {
+      setupAudioSessionChannel(binaryMessenger: controller.binaryMessenger)
+    }
+
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 
@@ -75,7 +83,8 @@ import app_links
       // - Mixes with other audio (won't stop music/podcasts)
       // - Respects the silent switch
       // - Doesn't request audio focus
-      try audioSession.setCategory(.ambient, mode: .default, options: [])
+      // Added .mixWithOthers just to be explicit
+      try audioSession.setCategory(.ambient, mode: .default, options: [.mixWithOthers])
       try audioSession.setActive(true)
 
       result(true)

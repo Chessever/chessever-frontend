@@ -270,6 +270,11 @@ class GamebasePlayerGamesNotifier
                   ? eco.trim()
                   : (timeControl ?? '');
 
+          final tourId = (row['tour_id']?.toString() ??
+                  row['tournament_id']?.toString() ??
+                  event)
+              .trim();
+
           return GamesTourModel(
             gameId: id,
             source: GameSource.gamebase,
@@ -282,7 +287,7 @@ class GamebasePlayerGamesNotifier
             gameStatus: GameStatus.fromString(result),
             roundId: 'gamebase_player',
             roundSlug: formatCode.isNotEmpty ? formatCode : null,
-            tourId: event.isNotEmpty ? event : 'Gamebase',
+            tourId: tourId.isNotEmpty ? tourId : 'Gamebase',
             pgn: pgn,
             lastMoveTime: date,
           );

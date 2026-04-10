@@ -107,12 +107,58 @@ class _WheelInputState extends State<_WheelInput> {
   late List<double> _values;
   int _selectedIndex = 0;
 
+  bool _isEditing = false;
+  late TextEditingController _textController;
+  late FocusNode _focusNode;
+
   @override
   void initState() {
     super.initState();
     _generateValues();
     _selectedIndex = _findClosestIndex(widget.initialValue);
     _controller = FixedExtentScrollController(initialItem: _selectedIndex);
+    _textController = TextEditingController();
+    _focusNode = FocusNode();
+    _focusNode.addListener(_onFocusChange);
+  }
+
+  void _onFocusChange() {
+    if (!_focusNode.hasFocus && _isEditing) {
+      _submitEdit();
+    }
+  }
+
+  void _startEditing() {
+    HapticFeedbackService.light();
+    setState(() {
+      _isEditing = true;
+      _textController.text = _values[_selectedIndex].round().toString();
+    });
+    _textController.selection = TextSelection(
+      baseOffset: 0,
+      extentOffset: _textController.text.length,
+    );
+    _focusNode.requestFocus();
+  }
+
+  void _submitEdit() {
+    if (!_isEditing) return;
+    final text = _textController.text;
+    double? val = double.tryParse(text);
+    if (val != null) {
+      val = val.clamp(widget.minValue, widget.maxValue);
+      int index = _findClosestIndex(val);
+      if (index != _selectedIndex) {
+        setState(() {
+          _selectedIndex = index;
+        });
+        _controller.jumpToItem(index);
+        widget.onChanged(_values[index]);
+      }
+    }
+    setState(() {
+      _isEditing = false;
+    });
   }
 
   void _generateValues() {
@@ -167,6 +213,9 @@ class _WheelInputState extends State<_WheelInput> {
 
   @override
   void dispose() {
+    _focusNode.removeListener(_onFocusChange);
+    _focusNode.dispose();
+    _textController.dispose();
     _controller.dispose();
     super.dispose();
   }
@@ -174,7 +223,7 @@ class _WheelInputState extends State<_WheelInput> {
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTapUp: (details) {
+      onTapUp: _isEditing ? null : (details) {
         // Find if they tapped the upper half or lower half of the widget
         final renderBox = context.findRenderObject() as RenderBox;
         final localPosition = renderBox.globalToLocal(details.globalPosition);
@@ -213,130 +262,136 @@ class _WheelInputState extends State<_WheelInput> {
           child: Stack(
             alignment: Alignment.center,
             children: [
-              ListWheelScrollView.useDelegate(
-                controller: _controller,
-                itemExtent: 32.h,
-                perspective:
-                    0.002, // Very slight perspective for a cleaner look
-                diameterRatio: 1.5,
-                physics: const FixedExtentScrollPhysics(),
-                onSelectedItemChanged: (index) {
-                  HapticFeedbackService.selection();
-                  setState(() {
-                    _selectedIndex = index;
-                  });
-                  widget.onChanged(_values[index]);
-                },
-                childDelegate: ListWheelChildBuilderDelegate(
-                  childCount: _values.length,
-                  builder: (context, index) {
-                    final isSelected = index == _selectedIndex;
+              if (!_isEditing) ...[
+                ListWheelScrollView.useDelegate(
+                  controller: _controller,
+                  itemExtent: 32.h,
+                  perspective:
+                      0.002, // Very slight perspective for a cleaner look
+                  diameterRatio: 1.5,
+                  physics: const FixedExtentScrollPhysics(),
+                  onSelectedItemChanged: (index) {
+                    HapticFeedbackService.selection();
+                    setState(() {
+                      _selectedIndex = index;
+                    });
+                    widget.onChanged(_values[index]);
+                  },
+                  childDelegate: ListWheelChildBuilderDelegate(
+                    childCount: _values.length,
+                    builder: (context, index) {
+                      final isSelected = index == _selectedIndex;
 
-                    return GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: () {
-                        if (!isSelected) {
-                          _controller.animateToItem(
-                            index,
-                            duration: const Duration(milliseconds: 300),
-                            curve: Curves.easeOutCubic,
-                          );
-                        } else {
-                          // Tapping the center (already selected) increments to the next item
-                          if (_selectedIndex < _values.length - 1) {
+                      return GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () {
+                          if (!isSelected) {
                             _controller.animateToItem(
-                              _selectedIndex + 1,
+                              index,
                               duration: const Duration(milliseconds: 300),
                               curve: Curves.easeOutCubic,
                             );
                           } else {
-                            // If at the very end, just give feedback
-                            HapticFeedbackService.light();
+                            _startEditing();
                           }
-                        }
-                      },
-                      child: SingleMotionBuilder(
-                        motion: const CupertinoMotion.smooth(),
-                        value: isSelected ? 1.0 : 0.0,
-                        builder: (context, value, _) {
-                          final scale = 0.8 + (0.2 * value);
-                          final opacity = 0.5 + (0.5 * value);
-                          final color =
-                              Color.lerp(
-                                kSecondaryTextColor,
-                                kWhiteColor,
-                                value,
-                              )!;
+                        },
+                        child: SingleMotionBuilder(
+                          motion: const CupertinoMotion.smooth(),
+                          value: isSelected ? 1.0 : 0.0,
+                          builder: (context, value, _) {
+                            final scale = 0.8 + (0.2 * value);
+                            final opacity = 0.5 + (0.5 * value);
+                            final color =
+                                Color.lerp(
+                                  kSecondaryTextColor,
+                                  kWhiteColor,
+                                  value,
+                                )!;
 
-                          return Transform.scale(
-                            scale: scale,
-                            child: Opacity(
-                              opacity: opacity,
-                              child: Center(
-                                child: Text(
-                                  _values[index].round().toString(),
-                                  style: AppTypography.textSmMedium.copyWith(
-                                    color: color,
+                            return Transform.scale(
+                              scale: scale,
+                              child: Opacity(
+                                opacity: opacity,
+                                child: Center(
+                                  child: Text(
+                                    _values[index].round().toString(),
+                                    style: AppTypography.textSmMedium.copyWith(
+                                      color: color,
+                                    ),
                                   ),
                                 ),
                               ),
-                            ),
-                          );
-                        },
-                      ),
-                    );
-                  },
-                ),
-              ),
-
-              // Fading gradients to simulate the "wheel inside a field" look
-              IgnorePointer(
-                child: Column(
-                  children: [
-                    Expanded(
-                      child: Container(
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                            colors: [
-                              kBlack2Color,
-                              kBlack2Color.withValues(alpha: 0),
-                            ],
-                          ),
+                            );
+                          },
                         ),
-                      ),
-                    ),
-                    SizedBox(height: 24.h), // Clear center area
-                    Expanded(
-                      child: Container(
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.bottomCenter,
-                            end: Alignment.topCenter,
-                            colors: [
-                              kBlack2Color,
-                              kBlack2Color.withValues(alpha: 0),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-              // Scroll indicator icon
-              Positioned(
-                right: 12.w,
-                child: IgnorePointer(
-                  child: Icon(
-                    Icons.unfold_more_rounded,
-                    color: kSecondaryTextColor.withValues(alpha: 0.3),
-                    size: 16.ic,
+                      );
+                    },
                   ),
                 ),
-              ),
+
+                // Fading gradients to simulate the "wheel inside a field" look
+                IgnorePointer(
+                  child: Column(
+                    children: [
+                      Expanded(
+                        child: Container(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [
+                                kBlack2Color,
+                                kBlack2Color.withValues(alpha: 0),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                      SizedBox(height: 24.h), // Clear center area
+                      Expanded(
+                        child: Container(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.bottomCenter,
+                              end: Alignment.topCenter,
+                              colors: [
+                                kBlack2Color,
+                                kBlack2Color.withValues(alpha: 0),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                // Scroll indicator icon
+                Positioned(
+                  right: 12.w,
+                  child: IgnorePointer(
+                    child: Icon(
+                      Icons.unfold_more_rounded,
+                      color: kSecondaryTextColor.withValues(alpha: 0.3),
+                      size: 16.ic,
+                    ),
+                  ),
+                ),
+              ] else
+                Center(
+                  child: TextField(
+                    controller: _textController,
+                    focusNode: _focusNode,
+                    keyboardType: TextInputType.number,
+                    textAlign: TextAlign.center,
+                    style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+                    decoration: const InputDecoration(
+                      border: InputBorder.none,
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                    onSubmitted: (_) => _submitEdit(),
+                  ),
+                ),
             ],
           ),
         ),
