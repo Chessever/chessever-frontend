@@ -239,6 +239,19 @@ paths:
           schema:
             type: integer
             minimum: 1
+        - name: sortBy
+          in: query
+          required: false
+          description: Field to sort by (e.g. whiteElo, date)
+          schema:
+            type: string
+        - name: sortDirection
+          in: query
+          required: false
+          description: Sort direction (asc or desc)
+          schema:
+            type: string
+            enum: [asc, desc]
         - name: pageNumber
           in: query
           required: false
@@ -587,6 +600,19 @@ paths:
           schema:
             type: string
           example: "1503014"
+        - name: sortBy
+          in: query
+          required: false
+          description: Field to sort by (e.g. whiteElo, date)
+          schema:
+            type: string
+        - name: sortDirection
+          in: query
+          required: false
+          description: Sort direction (asc or desc)
+          schema:
+            type: string
+            enum: [asc, desc]
         - name: pageNumber
           in: query
           required: false
@@ -803,6 +829,19 @@ paths:
           description: Maximum Elo (inclusive)
           schema:
             type: integer
+        - name: sortBy
+          in: query
+          required: false
+          description: Field to sort by (e.g. whiteElo, date)
+          schema:
+            type: string
+        - name: sortDirection
+          in: query
+          required: false
+          description: Sort direction (asc or desc)
+          schema:
+            type: string
+            enum: [asc, desc]
         - name: pageNumber
           in: query
           required: false
@@ -1128,6 +1167,15 @@ components:
           description: |
             Maximum rating filter (player to move at this position).
             Aggregates use 100-point rating buckets, so precision is ±99.
+        orderBy:
+          type: array
+          description: Sorting criteria
+          items:
+            type: object
+            required: [field, direction]
+            properties:
+              field: { type: string }
+              direction: { type: string, enum: [asc, desc] }
     PositionGamesQueryRequest:
       type: object
       required:
@@ -1174,6 +1222,15 @@ components:
           description: |
             Maximum rating filter (player to move at this position).
             Aggregates use 100-point rating buckets, so precision is ±99.
+        orderBy:
+          type: array
+          description: Sorting criteria
+          items:
+            type: object
+            required: [field, direction]
+            properties:
+              field: { type: string }
+              direction: { type: string, enum: [asc, desc] }
         pageNumber:
           type: integer
           minimum: 0
