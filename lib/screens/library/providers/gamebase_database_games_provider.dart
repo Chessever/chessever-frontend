@@ -87,6 +87,8 @@ List<String> _libraryExactGameSelectColumns() => const [
   'opening',
   'variation',
   'event',
+  'tour_id',
+  'tournament_id',
   'site',
   'fen',
   'finalFen',
@@ -458,6 +460,11 @@ class DatabaseGamesPaginationNotifier
           final formatCode =
               (eco.trim().isNotEmpty) ? eco.trim() : (timeControl ?? '');
 
+          final tourId = (preview['tour_id']?.toString() ??
+                  preview['tournament_id']?.toString() ??
+                  event.trim())
+              .trim();
+
           return GamesTourModel(
             gameId: safeId,
             source: GameSource.gamebase,
@@ -470,7 +477,7 @@ class DatabaseGamesPaginationNotifier
             gameStatus: GameStatus.fromString(resultStr),
             roundId: 'gamebase_search',
             roundSlug: formatCode.isNotEmpty ? formatCode : null,
-            tourId: event.trim().isNotEmpty ? event.trim() : 'Gamebase',
+            tourId: tourId.isNotEmpty ? tourId : 'Gamebase',
             timeControl: timeControl,
             lastMove: rowLastMove,
             fen: rowFen,
@@ -787,6 +794,11 @@ final gamebaseDatabaseGamesProvider = FutureProvider.autoDispose<
           final formatCode =
               (eco.trim().isNotEmpty) ? eco.trim() : (timeControl ?? '');
 
+          final tourId = (row['tour_id']?.toString() ??
+                  row['tournament_id']?.toString() ??
+                  event.trim())
+              .trim();
+
           return GamesTourModel(
             gameId: safeId,
             source: GameSource.gamebase,
@@ -799,7 +811,7 @@ final gamebaseDatabaseGamesProvider = FutureProvider.autoDispose<
             gameStatus: GameStatus.fromString(resultStr),
             roundId: 'gamebase_search',
             roundSlug: formatCode.isNotEmpty ? formatCode : null,
-            tourId: event.trim().isNotEmpty ? event.trim() : 'Gamebase',
+            tourId: tourId.isNotEmpty ? tourId : 'Gamebase',
             timeControl: timeControl,
             lastMove: rowLastMove,
             fen: rowFen,

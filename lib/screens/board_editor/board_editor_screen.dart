@@ -153,7 +153,6 @@ class _BoardEditorScreenState extends ConsumerState<BoardEditorScreen> {
             (_) => ChessBoardScreenNew(
               currentIndex: 0,
               games: [game],
-              hideEventInfo: true,
               showGamebaseButton: false,
               disableGamebaseOverlayByDefault: true,
             ),
@@ -287,7 +286,6 @@ class _BoardEditorScreenState extends ConsumerState<BoardEditorScreen> {
                 (_) => ChessBoardScreenNew(
                   currentIndex: 0,
                   games: [game],
-                  hideEventInfo: true,
                   showGamebaseButton: false,
                   disableGamebaseOverlayByDefault: true,
                 ),

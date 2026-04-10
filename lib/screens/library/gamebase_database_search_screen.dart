@@ -450,6 +450,11 @@ class _GamesList extends ConsumerWidget {
                     : null,
           );
 
+          final tourId = (row['tour_id']?.toString() ??
+                  row['tournament_id']?.toString() ??
+                  event.trim())
+              .trim();
+
           return GamesTourModel(
             gameId: safeId,
             source: GameSource.gamebase,
@@ -462,7 +467,7 @@ class _GamesList extends ConsumerWidget {
             gameStatus: GameStatus.fromString(result),
             roundId: 'gamebase_search',
             roundSlug: eco.trim().isNotEmpty ? eco.trim() : timeControl,
-            tourId: event.trim().isNotEmpty ? event.trim() : 'Gamebase',
+            tourId: tourId.isNotEmpty ? tourId : 'Gamebase',
             timeControl: timeControl,
             pgn: pgn,
             lastMoveTime: date,

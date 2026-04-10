@@ -280,6 +280,8 @@ class GamebaseDatabaseSearchState {
       'blackPlayerId',
       'white_player_id',
       'black_player_id',
+      'tour_id',
+      'tournament_id',
     ]) {
       if (columnSet.contains(name) && !curated.contains(name)) {
         curated.add(name);

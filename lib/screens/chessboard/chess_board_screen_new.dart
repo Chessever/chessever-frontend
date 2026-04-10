@@ -11682,17 +11682,40 @@ class _CommentDialogState extends ConsumerState<_CommentDialog>
 */
 // End of deprecated _CommentDialog class
 
-/// Provider to fetch tour info by tour ID - used by the event info sheet
+/// Provider to fetch tour info by tour ID or name - used by the event info sheet
 final _tourInfoByIdProvider = FutureProvider.autoDispose
     .family<AboutTourModel?, String>((ref, tourId) async {
       if (tourId.isEmpty) return null;
 
+      final repo = ref.read(tourRepositoryProvider);
+
       try {
-        final tours = await ref.read(tourRepositoryProvider).getToursByIds([
-          tourId,
-        ]);
-        if (tours.isNotEmpty) {
-          return AboutTourModel.fromTour(tours.first);
+        // 1. Try fetching by UUID first (exact match)
+        final uuidPattern = RegExp(
+          r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
+          caseSensitive: false,
+        );
+
+        if (uuidPattern.hasMatch(tourId.trim())) {
+          final tours = await repo.getToursByIds([tourId.trim()]);
+          if (tours.isNotEmpty) {
+            return AboutTourModel.fromTour(tours.first);
+          }
+        }
+
+        // 2. Fallback: Try searching by name if it's not a UUID or not found by UUID
+        // This handles legacy games or games from Gamebase where we only have the name.
+        final searchResults = await repo.searchTours(query: tourId.trim(), limit: 1);
+        if (searchResults.isNotEmpty) {
+          // Verify it's a reasonably close match (simple containment check)
+          final bestMatch = searchResults.first;
+          final normalizedQuery = tourId.trim().toLowerCase();
+          final normalizedMatch = bestMatch.name.toLowerCase();
+
+          if (normalizedMatch.contains(normalizedQuery) ||
+              normalizedQuery.contains(normalizedMatch)) {
+            return AboutTourModel.fromTour(bestMatch);
+          }
         }
       } catch (e) {
         debugPrint('Failed to fetch tour info for $tourId: $e');

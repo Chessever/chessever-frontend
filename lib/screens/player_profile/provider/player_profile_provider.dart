@@ -648,6 +648,11 @@ Future<List<GamesTourModel>> _getTwicGamesViaPlayerEndpoint(
           gamebasePlayerId: row['blackPlayerId']?.toString().trim(),
         );
 
+        final tourId = (row['tour_id']?.toString() ??
+                row['tournament_id']?.toString() ??
+                event)
+            .trim();
+
         return GamesTourModel(
           gameId: safeId,
           source: GameSource.twic,
@@ -663,7 +668,7 @@ Future<List<GamesTourModel>> _getTwicGamesViaPlayerEndpoint(
               (eco != null && eco.trim().isNotEmpty)
                   ? eco.trim()
                   : (timeControl ?? ''),
-          tourId: event.isNotEmpty ? event : 'Gamebase',
+          tourId: tourId.isNotEmpty ? tourId : 'Gamebase',
           tourSlug: event.isNotEmpty ? event : 'Gamebase',
           pgn: pgn,
           lastMoveTime: date,
@@ -834,6 +839,11 @@ Future<List<GamesTourModel>> _getTwicGamesFromGamebase(
           gamebasePlayerId: row['blackPlayerId']?.toString().trim(),
         );
 
+        final tourId = (row['tour_id']?.toString() ??
+                row['tournament_id']?.toString() ??
+                event)
+            .trim();
+
         return GamesTourModel(
           gameId: safeId,
           source: GameSource.twic,
@@ -849,7 +859,7 @@ Future<List<GamesTourModel>> _getTwicGamesFromGamebase(
               (eco != null && eco.trim().isNotEmpty)
                   ? eco.trim()
                   : (timeControl ?? ''),
-          tourId: event.isNotEmpty ? event : 'Gamebase',
+          tourId: tourId.isNotEmpty ? tourId : 'Gamebase',
           tourSlug: event.isNotEmpty ? event : 'Gamebase',
           pgn: pgn,
           lastMoveTime: date,

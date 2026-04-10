@@ -85,7 +85,10 @@ GamesTourModel mapGamebaseGameToGamesTourModel(GamebaseGame game) {
   );
 
   final eventRaw = (md['Event']?.toString() ?? '').trim();
-  final tourId = eventRaw.isNotEmpty ? eventRaw : 'Gamebase';
+  final tourId = (data['tour_id']?.toString() ??
+          data['tournament_id']?.toString() ??
+          (eventRaw.isNotEmpty ? eventRaw : 'Gamebase'))
+      .trim();
 
   final eco = (md['ECO']?.toString() ?? '').trim();
   final opening = (md['Opening']?.toString() ?? '').trim();

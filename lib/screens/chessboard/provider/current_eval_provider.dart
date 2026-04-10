@@ -124,19 +124,18 @@ Future<CloudEval?> _readGamebaseEvalFast({
       );
 
       if (_shouldPersistCloudEval(gamebaseEval)) {
-        // OPTIMIZATION: Save to both local cache and Supabase in background
+        // OPTIMIZATION: Save to local cache in background
+        // Supabase persistence disabled as per user request
         unawaited(
-          Future.wait<void>([
-            persist.call(fen, gamebaseEval),
-            local.save(
-              fen,
-              gamebaseEval,
-              multiPV: gamebaseEval.requestedMultiPv ?? gamebaseEval.pvs.length,
-            ),
-          ]).catchError((e) {
-            debugPrint('⚠️ $sourceTag: Background persist failed for $fen: $e');
-            return <void>[];
-          }),
+          local
+              .save(
+                fen,
+                gamebaseEval,
+                multiPV: gamebaseEval.requestedMultiPv ?? gamebaseEval.pvs.length,
+              )
+              .catchError((e) {
+                debugPrint('⚠️ $sourceTag: Background local save failed for $fen: $e');
+              }),
         );
       } else {
         // Just local cache
@@ -197,7 +196,8 @@ final cascadeEvalProvider = FutureProvider.family.autoDispose<
     return gamebaseEval;
   }
 
-  // 2️⃣  Supabase
+  // 2️⃣  Supabase (DISABLED - using Gamebase + Stockfish only)
+  /*
   try {
     final supabaseEval = await evalsRepo
         .fetchFromSupabase(fen, desiredMultiPv: multiPV)
@@ -229,6 +229,7 @@ final cascadeEvalProvider = FutureProvider.family.autoDispose<
   } catch (e) {
     debugPrint('⚠️ cascadeEval: Supabase error: $e');
   }
+  */
 
   // 3️⃣  Stockfish (primary engine - Lichess removed)
   final engineSettingsValue = ref.read(engineSettingsProviderNew).value;
@@ -289,19 +290,18 @@ final cascadeEvalProvider = FutureProvider.family.autoDispose<
 
     if (_shouldPersistCloudEval(cloudFromSf)) {
       // Persist Stockfish result asynchronously for future reuse
+      // Supabase persistence disabled as per user request
       unawaited(
-        Future.wait<void>([
-          persist.call(fen, cloudFromSf),
-          local.save(
-            fen,
-            cloudFromSf,
-            multiPV: cloudFromSf.requestedMultiPv ?? cloudFromSf.pvs.length,
-          ),
-        ]).catchError((error) {
+        local
+            .save(
+              fen,
+              cloudFromSf,
+              multiPV: cloudFromSf.requestedMultiPv ?? cloudFromSf.pvs.length,
+            )
+            .catchError((error) {
           debugPrint(
-            '⚠️ cascadeEval: Background persist failed for $fen: $error',
+            '⚠️ cascadeEval: Background local save failed for $fen: $error',
           );
-          return <void>[];
         }),
       );
     }
@@ -374,7 +374,8 @@ final cascadeEvalProviderForBoard = FutureProvider.family.autoDispose<
     return gamebaseEval;
   }
 
-  // 2️⃣ Query Supabase (our database, no rate limits)
+  // 2️⃣ Query Supabase (DISABLED - using Gamebase + Stockfish only)
+  /*
   try {
     final supabaseEval = await evalsRepo
         .fetchFromSupabase(fen, desiredMultiPv: multiPV)
@@ -406,6 +407,7 @@ final cascadeEvalProviderForBoard = FutureProvider.family.autoDispose<
   } catch (e) {
     debugPrint('⚠️ cascadeEvalForBoard: Supabase error: $e');
   }
+  */
 
   // 3️⃣ Return empty - Stockfish is managed by board notifier directly
   // This provider is for quick cache/Supabase lookups only
@@ -470,6 +472,8 @@ final gameCardEvalWithStockfishFallbackProvider = FutureProvider.family.autoDisp
     return gamebaseEval;
   }
 
+  // Supabase lookup (DISABLED - using Gamebase + Stockfish only)
+  /*
   try {
     final supabaseEval = await evalsRepo
         .fetchFromSupabase(fen, desiredMultiPv: multiPV)
@@ -498,6 +502,7 @@ final gameCardEvalWithStockfishFallbackProvider = FutureProvider.family.autoDisp
   } catch (e) {
     debugPrint('⚠️ gameCardEval: Supabase error for $fen: $e');
   }
+  */
 
   try {
     final sfEval = await StockfishSingleton().evaluatePosition(
@@ -529,19 +534,18 @@ final gameCardEvalWithStockfishFallbackProvider = FutureProvider.family.autoDisp
     );
 
     if (_shouldPersistGameCardEval(cloudFromSf)) {
+      // Supabase persistence disabled as per user request
       unawaited(
-        Future.wait<void>([
-          persist.call(fen, cloudFromSf),
-          local.save(
-            fen,
-            cloudFromSf,
-            multiPV: cloudFromSf.requestedMultiPv ?? cloudFromSf.pvs.length,
-          ),
-        ]).catchError((error) {
+        local
+            .save(
+              fen,
+              cloudFromSf,
+              multiPV: cloudFromSf.requestedMultiPv ?? cloudFromSf.pvs.length,
+            )
+            .catchError((error) {
           debugPrint(
-            '⚠️ gameCardEval: Background persist failed for $fen: $error',
+            '⚠️ gameCardEval: Background local save failed for $fen: $error',
           );
-          return <void>[];
         }),
       );
     }

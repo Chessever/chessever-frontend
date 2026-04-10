@@ -154,9 +154,9 @@ class GameEcoFilter {
 
 /// Complete filter state for chess games
 class GameFilter {
-  static const int defaultMinYear = 2020;
+  static const int defaultMinYear = 1800;
   static const int absoluteMinYear = 1800;
-  static const int defaultMinRating = 2200;
+  static const int defaultMinRating = 0;
   static const int absoluteMinRating = 0;
   static const int absoluteMaxRating = 3500;
 

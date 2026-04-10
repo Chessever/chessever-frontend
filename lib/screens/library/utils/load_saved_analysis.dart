@@ -53,8 +53,6 @@ Future<void> loadSavedAnalysis(
             games: [game],
             savedAnalysisData: savedAnalysisData,
             showGamebaseButton: false,
-            disableGamebaseOverlayByDefault: true,
-            showClock: false,
           ),
     ),
   );
@@ -114,8 +112,6 @@ Future<void> loadSavedAnalysisWithSwiping(
             savedAnalysisData: savedAnalysisData,
             savedAnalysesDataByIndex: savedAnalysesDataByIndex,
             showGamebaseButton: false,
-            disableGamebaseOverlayByDefault: true,
-            showClock: false,
           ),
     ),
   );
@@ -229,6 +225,20 @@ GamesTourModel convertSavedAnalysisToGame(SavedAnalysis analysis) {
     } catch (_) {}
   }
 
+  final whiteTimeDisplay = md['WhiteTimeDisplay']?.toString() ?? '--:--';
+  final blackTimeDisplay = md['BlackTimeDisplay']?.toString() ?? '--:--';
+  final whiteClockSeconds = md['WhiteClockSeconds'] != null ? int.tryParse(md['WhiteClockSeconds'].toString()) : null;
+  final blackClockSeconds = md['BlackClockSeconds'] != null ? int.tryParse(md['BlackClockSeconds'].toString()) : null;
+  final boardNr = md['BoardNr'] != null ? int.tryParse(md['BoardNr'].toString()) : null;
+  final tourSlug = md['TourSlug']?.toString();
+  final roundSlug = md['RoundSlug']?.toString();
+
+  // Determine tournament ID: prefer the saved UUID from sourceTournamentId
+  // which allows fetching full event info (images, website, etc.)
+  final tourId = (analysis.sourceTournamentId?.isNotEmpty == true)
+      ? analysis.sourceTournamentId!
+      : event;
+
   // Use analysis.id as gameId to avoid conflicts with live games
   // The original source game ID is preserved in analysis.sourceGameId
   return GamesTourModel(
@@ -236,13 +246,18 @@ GamesTourModel convertSavedAnalysisToGame(SavedAnalysis analysis) {
     source: GameSource.savedAnalysis,
     whitePlayer: whitePlayer,
     blackPlayer: blackPlayer,
-    whiteTimeDisplay: '--:--',
-    blackTimeDisplay: '--:--',
-    whiteClockCentiseconds: 0,
-    blackClockCentiseconds: 0,
+    whiteTimeDisplay: whiteTimeDisplay,
+    blackTimeDisplay: blackTimeDisplay,
+    whiteClockCentiseconds: (whiteClockSeconds ?? 0) * 100,
+    blackClockCentiseconds: (blackClockSeconds ?? 0) * 100,
+    whiteClockSeconds: whiteClockSeconds,
+    blackClockSeconds: blackClockSeconds,
+    boardNr: boardNr,
+    tourSlug: tourSlug,
+    roundSlug: roundSlug,
     gameStatus: GameStatus.fromString(result),
     roundId: round,
-    tourId: event,
+    tourId: tourId,
     timeControl: timeControl,
     // PGN populated for swiped-to games (the tapped game uses savedAnalysisData instead)
     pgn: exportGameToPgn(chessGame),

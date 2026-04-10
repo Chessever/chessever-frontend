@@ -128,6 +128,11 @@ GamesTourModel _mapPlayerGameRowToModel(
 
   final event = (row['event']?.toString() ?? 'Gamebase').trim();
 
+  final tourId = (row['tour_id']?.toString() ??
+          row['tournament_id']?.toString() ??
+          event)
+      .trim();
+
   final whiteName =
       (row['white']?.toString() ?? row['whiteName']?.toString() ?? 'White')
           .trim();
@@ -227,7 +232,7 @@ GamesTourModel _mapPlayerGameRowToModel(
             : ((eco != null && eco.trim().isNotEmpty)
                 ? eco.trim()
                 : (timeControl ?? '')),
-    tourId: event.isNotEmpty ? event : 'Gamebase',
+    tourId: tourId.isNotEmpty ? tourId : 'Gamebase',
     tourSlug: event.isNotEmpty ? event : 'Gamebase',
     lastMove: row['lastMove']?.toString(),
     fen:

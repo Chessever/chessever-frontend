@@ -5,6 +5,10 @@
       "args": [
         "mcp-server"
       ]
+    },
+    "supabase-chessever": {
+      "url": "https://mcp.supabase.com/mcp?project_ref=oelbsuggrzyqwzmvidju&read_only=true",
+      "type": "http"
     }
   }
 }
