@@ -73,6 +73,8 @@ class GamebaseRepository {
     int? maxRating,
     String? color,
     String? result,
+    int? yearFrom,
+    int? yearTo,
   }) async {
     try {
       final normalizedFen = _normalizeFenForLookup(fen);
@@ -87,6 +89,8 @@ class GamebaseRepository {
         if (maxRating != null) 'maxRating': maxRating,
         if (color != null) 'color': color,
         if (result != null) 'result': result,
+        if (yearFrom != null) 'yearFrom': yearFrom,
+        if (yearTo != null) 'yearTo': yearTo,
       };
 
       if (kDebugMode) {
@@ -625,6 +629,10 @@ class GamebaseRepository {
     String? result,
     int? minRating,
     int? maxRating,
+    int? yearFrom,
+    int? yearTo,
+    GamebaseSortField? sortBy,
+    GamebaseSortDirection? sortDirection,
     int pageNumber = 0,
     int pageSize = 20,
   }) async {
@@ -634,6 +642,19 @@ class GamebaseRepository {
           .map((m) => m.trim().toLowerCase())
           .where((m) => RegExp(r'^[a-h][1-8][a-h][1-8][qrbn]?$').hasMatch(m))
           .toList(growable: false);
+
+      final orderBy =
+          sortBy != null
+              ? [
+                {
+                  'field': sortBy.name,
+                  'direction':
+                      sortDirection == GamebaseSortDirection.asc
+                          ? 'asc'
+                          : 'desc',
+                },
+              ]
+              : null;
 
       final response =
           normalizedMoves.isNotEmpty
@@ -653,6 +674,11 @@ class GamebaseRepository {
                   if (maxRating != null) 'maxRating': maxRating,
                   if (color != null) 'color': color,
                   if (result != null) 'result': result,
+                  if (yearFrom != null) 'yearFrom': yearFrom,
+                  if (yearTo != null) 'yearTo': yearTo,
+                  if (sortBy != null) 'sortBy': sortBy.name,
+                  if (sortDirection != null)
+                    'sortDirection': sortDirection.name,
                 },
                 options: Options(
                   headers: {'X-API-Key': _apiKey, 'Accept': 'application/json'},
@@ -673,6 +699,11 @@ class GamebaseRepository {
                   if (maxRating != null) 'maxRating': maxRating,
                   if (color != null) 'color': color,
                   if (result != null) 'result': result,
+                  if (yearFrom != null) 'yearFrom': yearFrom,
+                  if (yearTo != null) 'yearTo': yearTo,
+                  if (sortBy != null) 'sortBy': sortBy.name,
+                  if (sortDirection != null)
+                    'sortDirection': sortDirection.name,
                 },
                 options: Options(
                   headers: {'X-API-Key': _apiKey, 'Accept': 'application/json'},
