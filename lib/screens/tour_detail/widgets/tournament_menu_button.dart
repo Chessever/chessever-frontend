@@ -6,6 +6,7 @@ import 'package:chessever2/screens/group_event/widget/appbar_icons_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_pin_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/match_expansion_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/round_expansion_provider.dart';
 import 'package:chessever2/theme/app_theme.dart';
@@ -13,11 +14,13 @@ import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/utils/tablet_safe_menu.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 enum TournamentMenuAction {
   focusLiveGames,
+  showAllGames,
   unpinAll,
   pinAll,
   collapseAllRounds,
@@ -27,10 +30,7 @@ enum TournamentMenuAction {
 }
 
 class TournamentMenuButton extends ConsumerWidget {
-  const TournamentMenuButton({
-    super.key,
-    required this.tourData,
-  });
+  const TournamentMenuButton({super.key, required this.tourData});
 
   final TourDetailViewModel tourData;
 
@@ -38,21 +38,33 @@ class TournamentMenuButton extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final GlobalKey menuKey = GlobalKey();
 
+    // Watch mute state here to keep the provider alive while on this screen
+    // and ensure ref.read in the onTap gets a synchronous value.
+    final groupBroadcastId = tourData.aboutTourModel.groupBroadcastId;
+    final isMuted =
+        (groupBroadcastId != null && groupBroadcastId.isNotEmpty)
+            ? ref.watch(eventMuteProvider(groupBroadcastId)).valueOrNull ??
+                false
+            : false;
+
     return AppBarIcons(
       key: menuKey,
-      padding: EdgeInsets.symmetric(
-        horizontal: 2.sp,
-        vertical: 1.sp,
-      ),
+      padding: EdgeInsets.symmetric(horizontal: 2.sp, vertical: 1.sp),
       image: SvgAsset.threeDots,
       onTap: () {
         final RenderBox? renderBox =
             menuKey.currentContext?.findRenderObject() as RenderBox?;
         if (renderBox != null) {
-          final roundIds =
+          final visibleRoundIds =
               ref.read(gamesAppBarProvider.notifier).getVisibleRoundIds();
-          final matchKeys =
-              ref.read(gamesAppBarProvider.notifier).getAllMatchKeys();
+          final allRoundIds =
+              ref.read(gamesAppBarProvider.notifier).getAllRoundIdsWithGames();
+          final visibleMatchKeys = ref
+              .read(gamesAppBarProvider.notifier)
+              .getVisibleMatchKeys(visibleRoundIds);
+          final allMatchKeys = ref
+              .read(gamesAppBarProvider.notifier)
+              .getVisibleMatchKeys(allRoundIds);
           final Offset offset = renderBox.localToGlobal(Offset.zero);
 
           showTabletSafeMenu(
@@ -70,9 +82,12 @@ class TournamentMenuButton extends ConsumerWidget {
             items: _buildRedesignedMenuItems(
               ref,
               context,
-              roundIds,
-              matchKeys,
+              visibleRoundIds,
+              visibleMatchKeys,
+              allRoundIds,
+              allMatchKeys,
               tourData,
+              isMuted,
             ),
           );
         }
@@ -83,28 +98,46 @@ class TournamentMenuButton extends ConsumerWidget {
   List<PopupMenuEntry<TournamentMenuAction>> _buildRedesignedMenuItems(
     WidgetRef ref,
     BuildContext context,
-    List<String> roundIds,
-    List<String> matchKeys,
+    List<String> visibleRoundIds,
+    List<String> visibleMatchKeys,
+    List<String> allRoundIds,
+    List<String> allMatchKeys,
     TourDetailViewModel tourData,
+    bool isMuted,
   ) {
     final List<PopupMenuEntry<TournamentMenuAction>> items = [];
 
-    // 1. Focus on live games
+    final gamesScreenState = ref.read(gamesTourScreenProvider).valueOrNull;
+    final isFocusingLiveGames =
+        gamesScreenState?.gameDisplayMode == GameDisplayMode.hideFinishedGames;
+
+    // 1. Focus on live games / Show all games
     items.add(
       PopupMenuItem<TournamentMenuAction>(
-        value: TournamentMenuAction.focusLiveGames,
+        value:
+            isFocusingLiveGames
+                ? TournamentMenuAction.showAllGames
+                : TournamentMenuAction.focusLiveGames,
         padding: EdgeInsets.zero,
         height: 36.h,
         onTap: () {
-          unawaited(
-            ref.read(gamesTourScreenProvider.notifier).hideFinishedGames(),
-          );
+          if (isFocusingLiveGames) {
+            unawaited(
+              ref.read(gamesTourScreenProvider.notifier).showAllGames(),
+            );
+          } else {
+            unawaited(
+              ref.read(gamesTourScreenProvider.notifier).hideFinishedGames(),
+            );
+          }
         },
-        child: const _MenuDropDownItem(
-          text: "Focus on live games",
+        child: _MenuDropDownItem(
+          text: isFocusingLiveGames ? "Show all games" : "Focus on live games",
           fontFamily: 'InterDisplay',
           icon: Icon(
-            Icons.center_focus_strong_outlined,
+            isFocusingLiveGames
+                ? Icons.format_list_bulleted_outlined
+                : Icons.center_focus_strong_outlined,
             color: kWhiteColor,
             size: 16,
           ),
@@ -115,11 +148,17 @@ class TournamentMenuButton extends ConsumerWidget {
 
     // 2. Pin/Unpin All
     final isAnyPinned =
-        ref.read(gamesPinprovider(tourData.aboutTourModel.id)).allPins.isNotEmpty;
+        ref
+            .read(gamesPinprovider(tourData.aboutTourModel.id))
+            .allPins
+            .isNotEmpty;
 
     items.add(
       PopupMenuItem<TournamentMenuAction>(
-        value: isAnyPinned ? TournamentMenuAction.unpinAll : TournamentMenuAction.pinAll,
+        value:
+            isAnyPinned
+                ? TournamentMenuAction.unpinAll
+                : TournamentMenuAction.pinAll,
         padding: EdgeInsets.zero,
         height: 36.h,
         onTap: () {
@@ -133,8 +172,8 @@ class TournamentMenuButton extends ConsumerWidget {
           text: isAnyPinned ? "Unpin all" : "Pin all",
           icon: SvgPicture.asset(
             isAnyPinned ? SvgAsset.unpine : SvgAsset.pin,
-            height: 16.h,
-            width: 16.w,
+            height: 16,
+            width: 16,
             colorFilter: const ColorFilter.mode(kWhiteColor, BlendMode.srcIn),
           ),
         ),
@@ -142,8 +181,14 @@ class TournamentMenuButton extends ConsumerWidget {
     );
 
     // 3. Expand/Collapse All
-    final expandedRounds = ref.read(roundExpansionProvider);
-    final isAllCollapsed = roundIds.every((id) => !expandedRounds.containsKey(id));
+    final roundExpansionState = ref.read(roundExpansionProvider);
+    final matchExpansionState = ref.read(matchExpansionProvider);
+    final isAllCollapsed = areAllVisibleSectionsCollapsed(
+      visibleRoundIds: visibleRoundIds,
+      visibleMatchKeys: visibleMatchKeys,
+      roundExpansionState: roundExpansionState,
+      matchExpansionState: matchExpansionState,
+    );
 
     items.add(
       PopupMenuItem<TournamentMenuAction>(
@@ -155,11 +200,17 @@ class TournamentMenuButton extends ConsumerWidget {
         height: 36.h,
         onTap: () {
           if (isAllCollapsed) {
-            ref.read(roundExpansionProvider.notifier).expandAll(roundIds);
-            ref.read(matchExpansionProvider.notifier).expandAll();
+            ref.read(roundExpansionProvider.notifier).expandAll(allRoundIds);
+            if (allMatchKeys.isNotEmpty) {
+              ref.read(matchExpansionProvider.notifier).expandAll();
+            }
           } else {
-            ref.read(roundExpansionProvider.notifier).collapseAll(roundIds);
-            ref.read(matchExpansionProvider.notifier).collapseAll(matchKeys);
+            ref.read(roundExpansionProvider.notifier).collapseAll(allRoundIds);
+            if (allMatchKeys.isNotEmpty) {
+              ref
+                  .read(matchExpansionProvider.notifier)
+                  .collapseAll(allMatchKeys);
+            }
           }
         },
         child: _MenuDropDownItem(
@@ -176,9 +227,6 @@ class TournamentMenuButton extends ConsumerWidget {
     // 4. Notifications
     final groupBroadcastId = tourData.aboutTourModel.groupBroadcastId;
     if (groupBroadcastId != null && groupBroadcastId.isNotEmpty) {
-      final isMuted =
-          ref.read(eventMuteProvider(groupBroadcastId)).valueOrNull ?? false;
-
       items.add(
         PopupMenuItem<TournamentMenuAction>(
           value:
@@ -190,9 +238,7 @@ class TournamentMenuButton extends ConsumerWidget {
           onTap: () {
             final isAuthenticated = ref.read(isAuthenticatedProvider);
             if (!isAuthenticated) {
-              ScaffoldMessenger.of(
-                context,
-              ).showSnackBar(
+              ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
                   content: Text('Please sign in to manage notifications'),
                 ),
@@ -200,11 +246,26 @@ class TournamentMenuButton extends ConsumerWidget {
               return;
             }
             ref.read(eventMuteProvider(groupBroadcastId).notifier).toggleMute();
+            
+            ScaffoldMessenger.of(context).hideCurrentSnackBar();
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  isMuted
+                      ? 'Notifications enabled for this event'
+                      : 'Notifications disabled for this event',
+                ),
+                duration: const Duration(seconds: 2),
+                behavior: SnackBarBehavior.floating,
+              ),
+            );
           },
           child: _MenuDropDownItem(
             text: isMuted ? "Enable notifications" : "Disable notifications",
             icon: Icon(
-              isMuted ? Icons.notifications_none : Icons.notifications_off_outlined,
+              isMuted
+                  ? Icons.notifications_none
+                  : Icons.notifications_off_outlined,
               color: kWhiteColor,
               size: 16,
             ),
@@ -215,6 +276,30 @@ class TournamentMenuButton extends ConsumerWidget {
 
     return items;
   }
+}
+
+@visibleForTesting
+bool areAllVisibleSectionsCollapsed({
+  required Iterable<String> visibleRoundIds,
+  required Iterable<String> visibleMatchKeys,
+  required Map<String, bool> roundExpansionState,
+  required Map<String, bool> matchExpansionState,
+}) {
+  final rounds = visibleRoundIds.toList(growable: false);
+  final matches = visibleMatchKeys.toList(growable: false);
+
+  if (rounds.isEmpty && matches.isEmpty) {
+    return false;
+  }
+
+  final areRoundsCollapsed = rounds.every(
+    (id) => !(roundExpansionState[id] ?? true),
+  );
+  final areMatchesCollapsed = matches.every(
+    (key) => !resolveMatchExpansionState(matchExpansionState, key),
+  );
+
+  return areRoundsCollapsed && areMatchesCollapsed;
 }
 
 class _MenuDropDownItem extends StatelessWidget {
@@ -233,9 +318,9 @@ class _MenuDropDownItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 172.w,
-      height: 36.h,
-      padding: EdgeInsets.symmetric(horizontal: 8.w),
+      width: 176.w,
+      height: 40.h,
+      padding: EdgeInsets.symmetric(horizontal: 12.w),
       decoration: BoxDecoration(
         color: kBlack2Color,
         border:
@@ -250,17 +335,21 @@ class _MenuDropDownItem extends StatelessWidget {
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Text(
-            text,
-            style: TextStyle(
-              fontFamily: fontFamily,
-              fontSize: 12.sp,
-              fontWeight: FontWeight.w400,
-              color: kWhiteColor,
+          Expanded(
+            child: Text(
+              text,
+              style: TextStyle(
+                fontFamily: fontFamily,
+                fontSize: 12.sp,
+                fontWeight: FontWeight.w400,
+                color: kWhiteColor,
+              ),
             ),
           ),
-          SizedBox(width: 16.w, height: 16.h, child: icon),
+          SizedBox(width: 8.w),
+          SizedBox(width: 16, height: 16, child: icon),
         ],
       ),
     );

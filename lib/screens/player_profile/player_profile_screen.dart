@@ -514,8 +514,9 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
     // Watch favorites to show correct state
     final favoritesAsync = ref.watch(favoritePlayersProviderNew);
     final isFavorite = favoritesAsync.maybeWhen(
-      data: (players) =>
-          players.any((p) => p.fideId == widget.fideId?.toString()),
+      data:
+          (players) =>
+              players.any((p) => p.fideId == widget.fideId?.toString()),
       orElse: () => false,
     );
 
@@ -1385,6 +1386,7 @@ class _ActionCardState extends State<_ActionCard> {
                     horizontal: 10.w,
                     vertical: 10.h,
                   ),
+                  clipBehavior: Clip.antiAlias,
                   decoration: BoxDecoration(
                     color: bg,
                     borderRadius: BorderRadius.circular(12.br),

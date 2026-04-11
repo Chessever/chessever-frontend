@@ -36,7 +36,7 @@ Vault secrets (Supabase DB):
    - `live_updates` — live game updates: `live_game_update`
    - `live_alerts` — live game milestone alerts
    - `call_to_action` — chess world updates
-   - `general` — fallback (book updates, etc.)
+  - `general` — fallback (database activity, etc.)
 
 ## Supabase: Notifications Pipeline
 
@@ -74,7 +74,7 @@ Both use named parameters for `net.http_post` and authenticate with `x-stream-to
 
 1. **Priority 0:** `game_started`, `game_finished` (immediate per-game events)
 2. **Priority 1:** `round_started`, `round_heads_up`, `round_finished` (round-level events)
-3. **Priority 2:** `book_game_added`
+3. **Priority 2:** `book_game_added`, `book_game_updated`, `book_game_removed`
 4. **Priority 3:** `call_to_action`, other
 5. **Priority 4:** `live_game_update` (high-volume, separate pipeline)
 
@@ -105,8 +105,9 @@ This function:
 8. For `round_finished`: results digest for event-starred users only ("Carlsen 1-0 · Caruana ½-½ +3").
 9. Sends notifications via OneSignal with `android_channel_id` routing.
 10. All round/event data payloads include `tour_id`, `round_id`, and `group_broadcast_id` for deep-link routing.
-11. Records 900-second bidirectional cooldown windows after sending `game_started` or `round_started` (player channel).
-12. Marks rows as `sent`, `skipped`, or `failed`.
+11. Database activity payloads include `folder_id` and a deep-link URL so taps can land directly on the subscribed database screen on both iOS and Android.
+12. Records 900-second bidirectional cooldown windows after sending `game_started` or `round_started` (player channel).
+13. Marks rows as `sent`, `skipped`, or `failed`.
 
 
 ## Live Updates (Per-Game)

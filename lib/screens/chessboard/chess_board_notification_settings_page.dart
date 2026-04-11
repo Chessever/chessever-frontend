@@ -201,32 +201,34 @@ class _ChessBoardNotificationSettingsPageState
                           title: 'Heads-up Alerts',
                           subtitle: 'Before rounds start',
                           value: prefs.headsUpAlerts,
-                          onChanged: !interactive
-                              ? null
-                              : (value) {
-                                  _trackPersist(
-                                    ref
-                                        .read(
-                                          notificationPreferencesProvider
-                                              .notifier,
-                                        )
-                                        .setHeadsUpAlerts(value),
-                                  );
-                                },
-                          trailing: NotifLeadTimeControl(
-                            value: prefs.headsUpLeadMinutes,
-                            onChanged: (!interactive || !prefs.headsUpAlerts)
-                                ? null
-                                : (minutes) {
+                          onChanged:
+                              !interactive
+                                  ? null
+                                  : (value) {
                                     _trackPersist(
                                       ref
                                           .read(
                                             notificationPreferencesProvider
                                                 .notifier,
                                           )
-                                          .setHeadsUpLeadMinutes(minutes),
+                                          .setHeadsUpAlerts(value),
                                     );
                                   },
+                          trailing: NotifLeadTimeControl(
+                            value: prefs.headsUpLeadMinutes,
+                            onChanged:
+                                (!interactive || !prefs.headsUpAlerts)
+                                    ? null
+                                    : (minutes) {
+                                      _trackPersist(
+                                        ref
+                                            .read(
+                                              notificationPreferencesProvider
+                                                  .notifier,
+                                            )
+                                            .setHeadsUpLeadMinutes(minutes),
+                                      );
+                                    },
                           ),
                         ),
                       ),
@@ -245,18 +247,19 @@ class _ChessBoardNotificationSettingsPageState
                           subtitle: 'Get live move-by-move updates and alerts.',
                           value: prefs.liveGameUpdates,
                           badge: const BetaBadge(),
-                          onChanged: !interactive
-                              ? null
-                              : (value) {
-                                  _trackPersist(
-                                    ref
-                                        .read(
-                                          notificationPreferencesProvider
-                                              .notifier,
-                                        )
-                                        .setLiveGameUpdates(value),
-                                  );
-                                },
+                          onChanged:
+                              !interactive
+                                  ? null
+                                  : (value) {
+                                    _trackPersist(
+                                      ref
+                                          .read(
+                                            notificationPreferencesProvider
+                                                .notifier,
+                                          )
+                                          .setLiveGameUpdates(value),
+                                    );
+                                  },
                         ),
                       ),
                     ],
@@ -271,17 +274,20 @@ class _ChessBoardNotificationSettingsPageState
                 NotifToggleTile(
                   title: 'Database Updates',
                   subtitle:
-                      'Get notified when new games are added to your subscribed databases.',
+                      'Get notified when games are added, updated, or removed in your subscribed databases.',
                   value: prefs.bookUpdateAlerts,
-                  onChanged: !interactive
-                      ? null
-                      : (value) {
-                          _trackPersist(
-                            ref
-                                .read(notificationPreferencesProvider.notifier)
-                                .setBookUpdateAlerts(value),
-                          );
-                        },
+                  onChanged:
+                      !interactive
+                          ? null
+                          : (value) {
+                            _trackPersist(
+                              ref
+                                  .read(
+                                    notificationPreferencesProvider.notifier,
+                                  )
+                                  .setBookUpdateAlerts(value),
+                            );
+                          },
                 ),
 
                 SizedBox(height: 24.h),
@@ -293,15 +299,18 @@ class _ChessBoardNotificationSettingsPageState
                   title: 'Chess World',
                   subtitle: 'Get occasional highlights from chess.',
                   value: prefs.callToActionAlerts,
-                  onChanged: !interactive
-                      ? null
-                      : (value) {
-                          _trackPersist(
-                            ref
-                                .read(notificationPreferencesProvider.notifier)
-                                .setCallToActionAlerts(value),
-                          );
-                        },
+                  onChanged:
+                      !interactive
+                          ? null
+                          : (value) {
+                            _trackPersist(
+                              ref
+                                  .read(
+                                    notificationPreferencesProvider.notifier,
+                                  )
+                                  .setCallToActionAlerts(value),
+                            );
+                          },
                 ),
 
                 SizedBox(height: 24.h),

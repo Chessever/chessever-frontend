@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
@@ -9,6 +10,7 @@ import 'package:chessever2/screens/chessboard/widgets/nag_display.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/figurine_notation.dart';
 import 'package:chessground/chessground.dart';
+import 'package:collection/collection.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -16,6 +18,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/providers/board_settings_provider_new.dart';
 import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
+import 'package:chessever2/screens/chessboard/analysis/chess_game_navigator.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/chessboard/chess_board_settings_page.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_board_bottom_nav_bar.dart';
@@ -373,8 +376,7 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
                 child: Column(
                   children: [
                     if (showEngineAnalysis) const _ExplorerEngineLines(),
-                    const _ExplorerNotationView(),
-                    const Expanded(child: MoveStatisticsPanel()),
+                    const Expanded(child: _ExplorerBottomPanels()),
                   ],
                 ),
               ),
@@ -447,8 +449,7 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
                 child: Column(
                   children: [
                     if (showEngineAnalysis) const _ExplorerEngineLines(),
-                    const _ExplorerNotationView(),
-                    const Expanded(child: MoveStatisticsPanel()),
+                    const Expanded(child: _ExplorerBottomPanels()),
                   ],
                 ),
               ),
@@ -507,7 +508,7 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
                   child: Column(
                     children: [
                       if (showEngineAnalysis) const _ExplorerEngineLines(),
-                      const Expanded(child: MoveStatisticsPanel()),
+                      const Expanded(child: _ExplorerBottomPanels()),
                     ],
                   ),
                 ),
@@ -1064,7 +1065,7 @@ class _FilterSheetState extends ConsumerState<_FilterSheet> {
       onTap: () async {
         await requirePremiumGuard(context, ref);
       },
-      child: AbsorbPointer(ignoringSemantics: true, child: field),
+      child: AbsorbPointer(child: ExcludeSemantics(child: field)),
     );
   }
 
@@ -1891,28 +1892,196 @@ class _EngineLine extends StatelessWidget {
   }
 }
 
-class _ExplorerNotationView extends ConsumerWidget {
-  const _ExplorerNotationView();
+class _ExplorerNotationView extends ConsumerStatefulWidget {
+  const _ExplorerNotationView({required this.isActive, super.key});
+
+  final bool isActive;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_ExplorerNotationView> createState() =>
+      _ExplorerNotationViewState();
+}
+
+class _ExplorerBottomPanels extends StatefulWidget {
+  const _ExplorerBottomPanels();
+
+  @override
+  State<_ExplorerBottomPanels> createState() => _ExplorerBottomPanelsState();
+}
+
+class _ExplorerBottomPanelsState extends State<_ExplorerBottomPanels> {
+  late final PageController _pageController;
+  int _currentPage = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _pageController = PageController();
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final swipeLabel =
+        _currentPage == 0 ? 'Swipe left for notation' : 'Swipe right for moves';
+
+    return Stack(
+      children: [
+        Positioned.fill(
+          child: PageView(
+            controller: _pageController,
+            onPageChanged: (page) => setState(() => _currentPage = page),
+            children: [
+              const MoveStatisticsPanel(
+                key: PageStorageKey<String>('opening-explorer-moves-panel'),
+              ),
+              _ExplorerNotationView(
+                key: const PageStorageKey<String>(
+                  'opening-explorer-notation-panel',
+                ),
+                isActive: _currentPage == 1,
+              ),
+            ],
+          ),
+        ),
+        Positioned(
+          top: 8.sp,
+          left: 0,
+          right: 0,
+          child: Center(
+            child: Semantics(
+              label: swipeLabel,
+              child: IgnorePointer(
+                child: Container(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: 8.sp,
+                    vertical: 5.sp,
+                  ),
+                  decoration: BoxDecoration(
+                    color: kBlack2Color.withValues(alpha: 0.82),
+                    borderRadius: BorderRadius.circular(999.br),
+                    border: Border.all(color: kDividerColor),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _ExplorerPageDot(isSelected: _currentPage == 0),
+                      SizedBox(width: 6.sp),
+                      _ExplorerPageDot(isSelected: _currentPage == 1),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ExplorerPageDot extends StatelessWidget {
+  const _ExplorerPageDot({required this.isSelected});
+
+  final bool isSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 180),
+      curve: Curves.easeOutCubic,
+      width: isSelected ? 16.sp : 6.sp,
+      height: 6.sp,
+      decoration: BoxDecoration(
+        color:
+            isSelected
+                ? kWhiteColor.withValues(alpha: 0.92)
+                : kSecondaryTextColor.withValues(alpha: 0.65),
+        borderRadius: BorderRadius.circular(999.br),
+      ),
+    );
+  }
+}
+
+class _ExplorerNotationViewState extends ConsumerState<_ExplorerNotationView> {
+  static const int _autoCollapseDepth = 3;
+  static const int _autoCollapseMoveThreshold = 12;
+  static const List<Color> _variationDepthPalette = [
+    Color(0xFFE9EDCC),
+    Color(0xFFD6E3BC),
+    Color(0xFFBFD3CB),
+    Color(0xFFA6C2DA),
+    Color(0xFF8EB2CB),
+  ];
+
+  final ScrollController _scrollController = ScrollController();
+  final Map<String, GlobalKey> _moveKeys = {};
+  final ListEquality<int> _pointerEquality = const ListEquality<int>();
+  final Set<String> _collapsedVariationIds = <String>{};
+  final Set<String> _expandedVariationIds = <String>{};
+  String? _lastSignature;
+  ChessMovePointer? _lastPointer;
+
+  @override
+  void didUpdateWidget(covariant _ExplorerNotationView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.isActive && !oldWidget.isActive) {
+      _lastPointer = null;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        final pointer = ref.read(gamebaseExplorerProvider).movePointer;
+        if (pointer.isEmpty) return;
+        _scrollToPointer(NotationPointer.encode(pointer));
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final state = ref.watch(gamebaseExplorerProvider);
     final game = state.game;
     if (game == null || game.mainline.isEmpty) {
-      return const SizedBox.shrink();
+      return Center(
+        child: Padding(
+          padding: EdgeInsets.all(20.sp),
+          child: Text(
+            'Play a move to build the notation.',
+            style: AppTypography.textSmRegular.copyWith(
+              color: kSecondaryTextColor,
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ),
+      );
+    }
+
+    final signature = notationGameSignature(game);
+    if (_lastSignature != signature) {
+      _moveKeys.clear();
+      _lastSignature = signature;
+      _lastPointer = null;
+      _collapsedVariationIds.clear();
+      _expandedVariationIds.clear();
     }
 
     final tree = NotationTreeBuilder.build(game);
-    final pointerId = NotationPointer.encode(state.movePointer);
-
-    // For explorer, we always want variations expanded for better visibility
+    final pointerId =
+        state.movePointer.isEmpty
+            ? null
+            : NotationPointer.encode(state.movePointer);
     final forcedOpenIds = <String>{};
     _collectVariationAncestors(pointerId, tree.mainline, forcedOpenIds);
-
-    // We want to see all variations in the explorer
-    final expandedVariationIds = <String>{};
-    _collectAllVariationIds(tree.mainline, expandedVariationIds);
-
     final pointerMap = <String, NotationMoveNode>{};
     final tokens = buildNotationTokens(
       tree.mainline,
@@ -1922,13 +2091,26 @@ class _ExplorerNotationView extends ConsumerWidget {
       forcedOpenIds: forcedOpenIds,
       variationComments: const {},
       lichessAnnotations: const {},
-      collapsedVariationIds: const {},
-      expandedVariationIds: expandedVariationIds,
-      autoCollapseDepth: 10, // Don't collapse in explorer
-      autoCollapseMoveThreshold: 100,
+      collapsedVariationIds: _collapsedVariationIds,
+      expandedVariationIds: _expandedVariationIds,
+      autoCollapseDepth: _autoCollapseDepth,
+      autoCollapseMoveThreshold: _autoCollapseMoveThreshold,
     );
 
-    if (tokens.isEmpty) return const SizedBox.shrink();
+    if (tokens.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: EdgeInsets.all(20.sp),
+          child: Text(
+            'No notation available for this line yet.',
+            style: AppTypography.textSmRegular.copyWith(
+              color: kSecondaryTextColor,
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ),
+      );
+    }
 
     final useFigurine = ref.watch(
       boardSettingsProviderNew.select(
@@ -1943,45 +2125,51 @@ class _ExplorerNotationView extends ConsumerWidget {
       ),
     );
 
-    final currentNode = pointerMap[pointerId];
+    final currentNode = pointerId == null ? null : pointerMap[pointerId];
     final currentPly = currentNode?.ply ?? -1;
+
+    if (widget.isActive && pointerId != null) {
+      _schedulePointerScroll(state.movePointer, pointerId);
+    }
 
     return Container(
       width: double.infinity,
-      padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 8.sp),
-      decoration: BoxDecoration(
-        border: Border(bottom: BorderSide(color: kDividerColor, width: 1)),
-      ),
-      constraints: BoxConstraints(maxHeight: 120.h),
+      decoration: BoxDecoration(color: kDarkGreyColor.withValues(alpha: 0.22)),
       child: SingleChildScrollView(
+        controller: _scrollController,
+        padding: EdgeInsets.all(18.sp),
         child: Wrap(
-          spacing: 4.sp,
-          runSpacing: 4.sp,
+          spacing: 2.sp,
+          runSpacing: 2.sp,
           children:
               tokens.map((token) {
                 if (token.type == NotationTokenType.move) {
                   return _buildMoveChip(
-                    context,
-                    ref,
                     token,
                     pointerId,
                     currentPly,
                     useFigurine,
                     pieceAssets,
                   );
-                } else if (token.type == NotationTokenType.openParen ||
-                    token.type == NotationTokenType.closeParen) {
+                }
+                if (token.type == NotationTokenType.comment ||
+                    token.type == NotationTokenType.lichessComment) {
                   return Padding(
-                    padding: EdgeInsets.symmetric(vertical: 2.sp),
+                    padding: EdgeInsets.symmetric(
+                      horizontal: 4.sp,
+                      vertical: 2.sp,
+                    ),
                     child: Text(
                       token.text,
-                      style: AppTypography.textXsMedium.copyWith(
-                        color: kWhiteColor.withValues(alpha: 0.5),
+                      style: AppTypography.textXsRegular.copyWith(
+                        color: kWhiteColor70.withValues(alpha: 0.65),
+                        fontStyle: FontStyle.italic,
+                        height: 1.35,
                       ),
                     ),
                   );
                 }
-                return const SizedBox.shrink();
+                return _buildAuxToken(token, currentPly);
               }).toList(),
         ),
       ),
@@ -2007,25 +2195,18 @@ class _ExplorerNotationView extends ConsumerWidget {
     }
   }
 
-  void _collectAllVariationIds(List<NotationMoveNode> nodes, Set<String> out) {
-    for (final node in nodes) {
-      for (final variation in node.variations) {
-        out.add(variation.id);
-        _collectAllVariationIds(variation.moves, out);
-      }
-    }
-  }
-
   Widget _buildMoveChip(
-    BuildContext context,
-    WidgetRef ref,
     NotationDisplayToken token,
-    String currentPointerId,
+    String? currentPointerId,
     int currentPly,
     bool useFigurine,
     PieceAssets? pieceAssets,
   ) {
     final pointerId = token.pointerId;
+    final key =
+        pointerId == null
+            ? null
+            : _moveKeys.putIfAbsent(pointerId, () => GlobalKey());
     final isCurrent = pointerId != null && pointerId == currentPointerId;
 
     final nags = token.node?.move.nags ?? const <int>[];
@@ -2039,10 +2220,7 @@ class _ExplorerNotationView extends ConsumerWidget {
       }
     }
 
-    final color =
-        isCurrent
-            ? kPrimaryColor
-            : (firstNagColor ?? kWhiteColor.withValues(alpha: 0.8));
+    final color = firstNagColor ?? _resolveMoveColor(token, currentPly);
     final textStyle = AppTypography.textXsMedium.copyWith(
       color: color,
       fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
@@ -2092,6 +2270,7 @@ class _ExplorerNotationView extends ConsumerWidget {
     }
 
     return GestureDetector(
+      key: key,
       onTap: () {
         if (token.pointer != null) {
           ref
@@ -2100,23 +2279,263 @@ class _ExplorerNotationView extends ConsumerWidget {
         }
       },
       child: Container(
-        padding: EdgeInsets.symmetric(horizontal: 4.sp, vertical: 1.sp),
+        padding: EdgeInsets.symmetric(horizontal: 6.sp, vertical: 2.sp),
         decoration: BoxDecoration(
           color:
               isCurrent
-                  ? kPrimaryColor.withValues(alpha: 0.1)
+                  ? kWhiteColor70.withValues(alpha: 0.25)
                   : Colors.transparent,
           borderRadius: BorderRadius.circular(4.sp),
           border: Border.all(
-            color:
-                isCurrent
-                    ? kPrimaryColor.withValues(alpha: 0.3)
-                    : Colors.transparent,
-            width: 0.5,
+            color: isCurrent ? kWhiteColor : Colors.transparent,
+            width: 0.7,
           ),
         ),
         child: Text.rich(TextSpan(children: moveSpans)),
       ),
+    );
+  }
+
+  Widget _buildAuxToken(NotationDisplayToken token, int currentPly) {
+    final isVariationToken =
+        token.type != NotationTokenType.ellipsis &&
+        (token.variation != null || token.variationColorKey != null);
+    Color depthColor;
+    if (isVariationToken) {
+      depthColor = _accentColorForToken(token);
+    } else if (token.depth > 0) {
+      depthColor = _colorForVariationDepth(token.depth);
+    } else {
+      depthColor = kWhiteColor.withValues(alpha: 0.75);
+    }
+
+    if (token.type == NotationTokenType.variationPlaceholder) {
+      return GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => _toggleVariationCollapse(token),
+        child: Container(
+          padding: EdgeInsets.symmetric(horizontal: 8.sp, vertical: 4.sp),
+          decoration: BoxDecoration(
+            color: depthColor.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(6.sp),
+            border: Border.all(
+              color: depthColor.withValues(alpha: 0.25),
+              width: 1,
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.unfold_more_rounded,
+                size: 12.sp,
+                color: depthColor.withValues(alpha: 0.7),
+              ),
+              SizedBox(width: 4.sp),
+              Text(
+                token.text,
+                style: AppTypography.textXsMedium.copyWith(
+                  color: depthColor.withValues(alpha: 0.85),
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    if (token.type == NotationTokenType.openParen && token.variation != null) {
+      final isCollapsed = token.isCollapsed;
+      return GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => _toggleVariationCollapse(token),
+        child: Container(
+          padding: EdgeInsets.symmetric(horizontal: 4.sp, vertical: 2.sp),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 150),
+                curve: Curves.easeOutCubic,
+                width: 16.sp,
+                height: 16.sp,
+                margin: EdgeInsets.only(right: 3.sp),
+                decoration: BoxDecoration(
+                  color:
+                      isCollapsed
+                          ? depthColor.withValues(alpha: 0.2)
+                          : depthColor.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(4.sp),
+                  border: Border.all(
+                    color: depthColor.withValues(
+                      alpha: isCollapsed ? 0.4 : 0.25,
+                    ),
+                    width: 1,
+                  ),
+                ),
+                child: Center(
+                  child: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 150),
+                    child: Icon(
+                      isCollapsed ? Icons.add_rounded : Icons.remove_rounded,
+                      key: ValueKey<bool>(isCollapsed),
+                      size: 12.sp,
+                      color: depthColor.withValues(alpha: 0.9),
+                    ),
+                  ),
+                ),
+              ),
+              Text(
+                token.text,
+                style: AppTypography.textXsMedium.copyWith(
+                  color: depthColor.withValues(alpha: 0.85),
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    if (token.type == NotationTokenType.closeParen && token.variation != null) {
+      return GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => _toggleVariationCollapse(token),
+        child: Padding(
+          padding: EdgeInsets.symmetric(horizontal: 2.sp, vertical: 2.sp),
+          child: Text(
+            token.text,
+            style: AppTypography.textXsMedium.copyWith(
+              color: depthColor.withValues(alpha: 0.85),
+              fontStyle: FontStyle.italic,
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Text(
+      token.text,
+      style: AppTypography.textXsMedium.copyWith(
+        color:
+            token.type == NotationTokenType.ellipsis
+                ? kWhiteColor70
+                : depthColor.withValues(alpha: 0.85),
+        fontStyle:
+            token.type == NotationTokenType.ellipsis
+                ? FontStyle.normal
+                : FontStyle.italic,
+      ),
+    );
+  }
+
+  void _toggleVariationCollapse(NotationDisplayToken token) {
+    final variation = token.variation;
+    if (variation == null) return;
+
+    final variationId = variation.id;
+    final defaultCollapsed = token.defaultsToCollapsed;
+
+    setState(() {
+      if (defaultCollapsed) {
+        if (!_expandedVariationIds.remove(variationId)) {
+          _expandedVariationIds.add(variationId);
+          _collapsedVariationIds.remove(variationId);
+        }
+      } else {
+        if (!_collapsedVariationIds.remove(variationId)) {
+          _collapsedVariationIds.add(variationId);
+          _expandedVariationIds.remove(variationId);
+        }
+      }
+    });
+  }
+
+  Color _accentColorForToken(NotationDisplayToken token) {
+    final depth = math.max(1, token.depth);
+    final seed = token.variationColorKey ?? token.variation?.id;
+    return _colorForVariationAccent(depth, seed: seed);
+  }
+
+  Color _colorForVariationAccent(int depth, {String? seed}) {
+    if (seed == null || seed.isEmpty) {
+      return _colorForVariationDepth(depth);
+    }
+    return _colorFromSeed(seed);
+  }
+
+  Color _colorFromSeed(String seed) {
+    final normalizedSeed = seed.hashCode & 0x7fffffff;
+    final random = math.Random(normalizedSeed);
+    final hue = random.nextDouble() * 360.0;
+    final saturation = 0.45 + random.nextDouble() * 0.35;
+    final lightness = 0.45 + random.nextDouble() * 0.25;
+    return HSLColor.fromAHSL(1.0, hue, saturation, lightness).toColor();
+  }
+
+  Color _colorForVariationDepth(int depth) {
+    if (depth <= 0) return kWhiteColor;
+    final paletteIndex = (depth - 1) % _variationDepthPalette.length;
+    return _variationDepthPalette[paletteIndex];
+  }
+
+  Color _resolveMoveColor(NotationDisplayToken token, int currentPly) {
+    final node = token.node;
+    if (node == null || token.pointerId == null) {
+      return kWhiteColor;
+    }
+
+    final isPast = currentPly >= 0 && node.ply <= currentPly;
+    if (node.isMainline || token.depth <= 0) {
+      return isPast ? kWhiteColor : kWhiteColor;
+    }
+
+    final depthColor = _colorForVariationAccent(
+      token.depth,
+      seed: token.variationColorKey ?? token.variation?.id,
+    );
+    return depthColor.withValues(alpha: isPast ? 0.95 : 0.75);
+  }
+
+  void _schedulePointerScroll(ChessMovePointer pointer, String pointerId) {
+    if (!widget.isActive) return;
+    if (_lastPointer != null &&
+        _pointerEquality.equals(_lastPointer!, pointer)) {
+      return;
+    }
+    _lastPointer = List<int>.of(pointer);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _scrollToPointer(pointerId);
+    });
+  }
+
+  void _scrollToPointer(String pointerId) {
+    if (!_scrollController.hasClients) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _scrollToPointer(pointerId);
+      });
+      return;
+    }
+
+    final key = _moveKeys[pointerId];
+    final targetContext = key?.currentContext;
+    if (targetContext == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _scrollToPointer(pointerId);
+      });
+      return;
+    }
+
+    Scrollable.ensureVisible(
+      targetContext,
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOutCubic,
+      alignment: 0.5,
     );
   }
 }

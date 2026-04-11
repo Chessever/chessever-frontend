@@ -123,7 +123,7 @@ class _WheelInputState extends State<_WheelInput> {
   }
 
   void _onFocusChange() {
-    if (!_focusNode.hasFocus && _isEditing) {
+    if (mounted && !_focusNode.hasFocus && _isEditing) {
       _submitEdit();
     }
   }
@@ -134,31 +134,36 @@ class _WheelInputState extends State<_WheelInput> {
       _isEditing = true;
       _textController.text = _values[_selectedIndex].round().toString();
     });
-    _textController.selection = TextSelection(
-      baseOffset: 0,
-      extentOffset: _textController.text.length,
-    );
-    _focusNode.requestFocus();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _textController.selection = TextSelection(
+        baseOffset: 0,
+        extentOffset: _textController.text.length,
+      );
+      _focusNode.requestFocus();
+    });
   }
 
   void _submitEdit() {
-    if (!_isEditing) return;
+    if (!_isEditing || !mounted) return;
     final text = _textController.text;
     double? val = double.tryParse(text);
+    int? nextIndex;
     if (val != null) {
       val = val.clamp(widget.minValue, widget.maxValue);
-      int index = _findClosestIndex(val);
-      if (index != _selectedIndex) {
-        setState(() {
-          _selectedIndex = index;
-        });
-        _controller.jumpToItem(index);
-        widget.onChanged(_values[index]);
-      }
+      nextIndex = _findClosestIndex(val);
     }
     setState(() {
+      if (nextIndex != null) {
+        _selectedIndex = nextIndex!;
+      }
       _isEditing = false;
     });
+
+    if (nextIndex != null) {
+      widget.onChanged(_values[nextIndex!]);
+    }
+    _scheduleControllerSync();
   }
 
   void _generateValues() {
@@ -190,6 +195,27 @@ class _WheelInputState extends State<_WheelInput> {
     return closestIndex;
   }
 
+  int _nearestLoopingTarget(int index) {
+    if (!_controller.hasClients || _values.isEmpty) {
+      return index;
+    }
+
+    final current = _controller.selectedItem;
+    final cycle = _values.length;
+    final offset = ((current - index) / cycle).round();
+    return index + offset * cycle;
+  }
+
+  void _scheduleControllerSync() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_controller.hasClients || _values.isEmpty) return;
+      final target = _nearestLoopingTarget(_selectedIndex);
+      if (target != _controller.selectedItem) {
+        _controller.jumpToItem(target);
+      }
+    });
+  }
+
   @override
   void didUpdateWidget(_WheelInput oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -199,18 +225,18 @@ class _WheelInputState extends State<_WheelInput> {
       _generateValues();
     }
 
-    // If initialValue changed from outside, jump to it
-    if (oldWidget.initialValue != widget.initialValue) {
-      final index = _findClosestIndex(widget.initialValue);
-      final normalizedCurrent =
-          (_controller.selectedItem % _values.length + _values.length) %
-          _values.length;
-      if (index != normalizedCurrent) {
-        _controller.jumpToItem(index);
-        setState(() {
-          _selectedIndex = index;
-        });
-      }
+    final index = _findClosestIndex(widget.initialValue);
+    if (_selectedIndex != index) {
+      setState(() {
+        _selectedIndex = index;
+        if (_isEditing) {
+          _textController.text = _values[index].round().toString();
+        }
+      });
+    }
+
+    if (!_isEditing) {
+      _scheduleControllerSync();
     }
   }
 
@@ -226,29 +252,35 @@ class _WheelInputState extends State<_WheelInput> {
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTapUp: _isEditing ? null : (details) {
-        // Find if they tapped the upper half or lower half of the widget
-        final renderBox = context.findRenderObject() as RenderBox;
-        final localPosition = renderBox.globalToLocal(details.globalPosition);
-        final height = renderBox.size.height;
+      onTapUp:
+          _isEditing
+              ? null
+              : (details) {
+                // Find if they tapped the upper half or lower half of the widget
+                final renderBox = context.findRenderObject() as RenderBox;
+                final localPosition = renderBox.globalToLocal(
+                  details.globalPosition,
+                );
+                final height = renderBox.size.height;
+                if (!_controller.hasClients) return;
 
-        // Only trigger if they tap away from the center (to avoid double-firing with item taps)
-        if (localPosition.dy < height * 0.3) {
-          // Tapped top section -> scroll up to previous item
-          _controller.animateToItem(
-            _controller.selectedItem - 1,
-            duration: const Duration(milliseconds: 300),
-            curve: Curves.easeOutCubic,
-          );
-        } else if (localPosition.dy > height * 0.7) {
-          // Tapped bottom section -> scroll down to next item
-          _controller.animateToItem(
-            _controller.selectedItem + 1,
-            duration: const Duration(milliseconds: 300),
-            curve: Curves.easeOutCubic,
-          );
-        }
-      },
+                // Only trigger if they tap away from the center (to avoid double-firing with item taps)
+                if (localPosition.dy < height * 0.3) {
+                  // Tapped top section -> scroll up to previous item
+                  _controller.animateToItem(
+                    _controller.selectedItem - 1,
+                    duration: const Duration(milliseconds: 300),
+                    curve: Curves.easeOutCubic,
+                  );
+                } else if (localPosition.dy > height * 0.7) {
+                  // Tapped bottom section -> scroll down to next item
+                  _controller.animateToItem(
+                    _controller.selectedItem + 1,
+                    duration: const Duration(milliseconds: 300),
+                    curve: Curves.easeOutCubic,
+                  );
+                }
+              },
       child: Container(
         height: 48.h,
         decoration: BoxDecoration(
@@ -287,11 +319,16 @@ class _WheelInputState extends State<_WheelInput> {
                         behavior: HitTestBehavior.opaque,
                         onTap: () {
                           if (!isSelected) {
-                            // Find the closest target index that matches target % n == index
-                            final current = _controller.selectedItem;
-                            final n = _values.length;
-                            final k = ((current - index) / n).round();
-                            final target = index + k * n;
+                            if (!_controller.hasClients) {
+                              setState(() {
+                                _selectedIndex = index;
+                              });
+                              widget.onChanged(_values[index]);
+                              _scheduleControllerSync();
+                              return;
+                            }
+
+                            final target = _nearestLoopingTarget(index);
 
                             _controller.animateToItem(
                               target,
@@ -391,7 +428,9 @@ class _WheelInputState extends State<_WheelInput> {
                     focusNode: _focusNode,
                     keyboardType: TextInputType.number,
                     textAlign: TextAlign.center,
-                    style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+                    style: AppTypography.textSmMedium.copyWith(
+                      color: kWhiteColor,
+                    ),
                     decoration: const InputDecoration(
                       border: InputBorder.none,
                       contentPadding: EdgeInsets.zero,

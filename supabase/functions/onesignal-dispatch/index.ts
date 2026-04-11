@@ -689,8 +689,12 @@ async function processItem(item: OutboxItem, cloudEvalState: CloudEvalState) {
       await sendOneSignal(eligible, {
         title: folderName,
         body: `${ownerName} added "${gameTitle}"`,
-        url: null,
-        data: { type: "book_game_added", folder_id: folderId },
+        url: `https://chessever.com/databases/${folderId}`,
+        data: {
+          type: "book_game_added",
+          folder_id: folderId,
+          analysis_id: item.payload?.analysis_id,
+        },
         androidChannelId: ANDROID_CHANNELS.general,
       });
 
@@ -730,8 +734,57 @@ async function processItem(item: OutboxItem, cloudEvalState: CloudEvalState) {
       await sendOneSignal(eligible, {
         title: folderName,
         body: `${ownerName} updated "${gameTitle}"`,
-        url: null,
-        data: { type: "book_game_updated", folder_id: folderId },
+        url: `https://chessever.com/databases/${folderId}`,
+        data: {
+          type: "book_game_updated",
+          folder_id: folderId,
+          analysis_id: item.payload?.analysis_id,
+        },
+        androidChannelId: ANDROID_CHANNELS.general,
+      });
+
+      await markSent(item.id);
+      return { id: item.id, status: "sent", recipients: eligible.length };
+    }
+
+    if (item.event_type === "book_game_removed") {
+      const folderId = item.payload?.folder_id as string;
+      if (!folderId) {
+        await markSkipped(item.id, "missing_folder_id");
+        return { id: item.id, status: "skipped", reason: "missing_folder_id" };
+      }
+
+      const { data: subs } = await supabase
+        .from("book_subscriptions")
+        .select("subscriber_id")
+        .eq("folder_id", folderId);
+
+      const subscriberIds = (subs ?? []).map((s) => s.subscriber_id as string);
+      if (subscriberIds.length === 0) {
+        await markSkipped(item.id, "no_subscribers");
+        return { id: item.id, status: "skipped", reason: "no_subscribers" };
+      }
+
+      const eligible = await filterBookUpdateRecipients(subscriberIds);
+      if (eligible.length === 0) {
+        await markSkipped(item.id, "no_recipients");
+        return { id: item.id, status: "skipped", reason: "no_recipients" };
+      }
+
+      const folderName = (item.payload?.folder_name as string) ?? "a book";
+      const gameTitle = (item.payload?.game_title as string) ?? "a game";
+      const ownerName =
+        (item.payload?.owner_display_name as string) ?? "Someone";
+
+      await sendOneSignal(eligible, {
+        title: folderName,
+        body: `${ownerName} removed "${gameTitle}"`,
+        url: `https://chessever.com/databases/${folderId}`,
+        data: {
+          type: "book_game_removed",
+          folder_id: folderId,
+          analysis_id: item.payload?.analysis_id,
+        },
         androidChannelId: ANDROID_CHANNELS.general,
       });
 
@@ -1964,6 +2017,8 @@ function channelForEvent(eventType: string) {
     case "call_to_action":
       return ANDROID_CHANNELS.callToAction;
     case "book_game_added":
+    case "book_game_updated":
+    case "book_game_removed":
       return ANDROID_CHANNELS.general;
     default:
       return ANDROID_CHANNELS.general;
