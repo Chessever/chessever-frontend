@@ -6,37 +6,22 @@ import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_v
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart';
-import 'package:chessever2/screens/tour_detail/games_tour/providers/games_pin_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/knockout_tournament_state_provider.dart';
-import 'package:chessever2/screens/tour_detail/games_tour/providers/round_expansion_provider.dart';
-import 'package:chessever2/screens/tour_detail/games_tour/providers/match_expansion_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/utils/knockout_match_detector.dart';
 import 'package:chessever2/screens/group_event/widget/appbar_icons_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/category_dropdown.dart';
+import 'package:chessever2/screens/tour_detail/widgets/tournament_menu_button.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
-import 'package:chessever2/utils/tablet_safe_menu.dart';
 import 'package:chessever2/widgets/search/gameSearch/enhanced_game_search_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_svg/svg.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:chessever2/providers/event_mute_provider.dart';
-import 'package:chessever2/providers/auth_state_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
-
-// Enum for menu items to improve maintainability
-enum MenuAction {
-  unpinAll,
-  showHideFinishedGames,
-  collapseAllRounds,
-  expandAllRounds,
-  disableNotifications,
-}
 
 class GamesAppBarWidget extends ConsumerStatefulWidget {
   const GamesAppBarWidget({super.key});
@@ -50,14 +35,12 @@ class _GamesAppBarWidgetState extends ConsumerState<GamesAppBarWidget>
   bool isSearching = false;
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _focusNode = FocusNode();
-  late final GlobalKey _menuKey;
   Timer? _debounceTimer;
   late AnimationController _animationController;
 
   @override
   void initState() {
     super.initState();
-    _menuKey = GlobalKey();
     _animationController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 300),
@@ -268,12 +251,6 @@ class _GamesAppBarWidgetState extends ConsumerState<GamesAppBarWidget>
     return tourDetailAsync.when(
       data: (tourData) {
         final hasTours = tourData.tours.isNotEmpty;
-        final disableAutoPin =
-            ref
-                .watch(gamesPinprovider(tourData.aboutTourModel.id))
-                .autoPinDisabled;
-
-        final gamesTourScreen = ref.watch(gamesTourScreenProvider.notifier);
 
         return GestureDetector(
           behavior: HitTestBehavior.translucent,
@@ -355,396 +332,7 @@ class _GamesAppBarWidgetState extends ConsumerState<GamesAppBarWidget>
                           SizedBox(width: 18.w),
                           Semantics(
                             label: 'More options',
-                            child: AppBarIcons(
-                              key: _menuKey,
-                              padding: EdgeInsets.symmetric(
-                                horizontal: 2.sp,
-                                vertical: 1.sp,
-                              ),
-                              image: SvgAsset.threeDots,
-                              onTap: () {
-                                final RenderBox? renderBox =
-                                    _menuKey.currentContext?.findRenderObject()
-                                        as RenderBox?;
-                                if (renderBox != null) {
-                                  // CRITICAL FIX: Use visible rounds only (not all rounds)
-                                  // This ensures collapse/expand only affects rounds that are actually shown in the UI
-                                  // Previously, collapsing hidden rounds had no visual effect
-                                  final roundIds =
-                                      ref
-                                          .read(gamesAppBarProvider.notifier)
-                                          .getVisibleRoundIds();
-                                  // Get ALL match keys from ALL rounds for group events
-                                  // This ensures versus cards stay collapsed even after expanding a round
-                                  final matchKeys =
-                                      ref
-                                          .read(gamesAppBarProvider.notifier)
-                                          .getAllMatchKeys();
-                                  final Offset offset = renderBox.localToGlobal(
-                                    Offset.zero,
-                                  );
-                                  showTabletSafeMenu(
-                                    context: context,
-                                    position: RelativeRect.fromLTRB(
-                                      offset.dx,
-                                      offset.dy + renderBox.size.height,
-                                      offset.dx + renderBox.size.width,
-                                      offset.dy,
-                                    ),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(
-                                        12.br,
-                                      ),
-                                    ),
-                                    color: kBlack2Color,
-                                    items: <PopupMenuEntry<MenuAction>>[
-                                      PopupMenuItem<MenuAction>(
-                                        value: MenuAction.unpinAll,
-                                        onTap: () {
-                                          ref
-                                              .read(
-                                                gamesTourScreenProvider
-                                                    .notifier,
-                                              )
-                                              .unpinAllGames();
-                                        },
-                                        child: SizedBox(
-                                          width: 200,
-                                          child: Row(
-                                            mainAxisAlignment:
-                                                MainAxisAlignment.spaceBetween,
-                                            children: [
-                                              Text(
-                                                "Unpin all",
-                                                style: AppTypography
-                                                    .textXsMedium
-                                                    .copyWith(
-                                                      color: kWhiteColor,
-                                                    ),
-                                              ),
-                                              SvgPicture.asset(
-                                                SvgAsset.unpine,
-                                                height: 13.h,
-                                                width: 13.w,
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                      ),
-                                      PopupMenuDivider(
-                                        height: 1.h,
-                                        thickness: 0.5.w,
-                                        color: kDividerColor,
-                                      ),
-                                      if (disableAutoPin) ...[
-                                        PopupMenuItem<MenuAction>(
-                                          value: MenuAction.unpinAll,
-                                          onTap: () {
-                                            unawaited(
-                                              ref
-                                                  .read(
-                                                    gamesTourScreenProvider
-                                                        .notifier,
-                                                  )
-                                                  .enableAutoPin(),
-                                            );
-                                          },
-                                          child: SizedBox(
-                                            width: 200,
-                                            child: Row(
-                                              mainAxisAlignment:
-                                                  MainAxisAlignment
-                                                      .spaceBetween,
-                                              children: [
-                                                Text(
-                                                  "Enable Auto Pin",
-                                                  style: AppTypography
-                                                      .textXsMedium
-                                                      .copyWith(
-                                                        color: kWhiteColor,
-                                                      ),
-                                                ),
-                                                SvgPicture.asset(
-                                                  SvgAsset.pin,
-                                                  height: 13.h,
-                                                  width: 13.w,
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                        ),
-                                        PopupMenuDivider(
-                                          height: 1.h,
-                                          thickness: 0.5.w,
-                                          color: kDividerColor,
-                                        ),
-                                      ] else ...[
-                                        PopupMenuItem<MenuAction>(
-                                          value: MenuAction.unpinAll,
-                                          onTap: () {
-                                            unawaited(
-                                              ref
-                                                  .read(
-                                                    gamesTourScreenProvider
-                                                        .notifier,
-                                                  )
-                                                  .disableAutoPin(),
-                                            );
-                                          },
-                                          child: SizedBox(
-                                            width: 200,
-                                            child: Row(
-                                              mainAxisAlignment:
-                                                  MainAxisAlignment
-                                                      .spaceBetween,
-                                              children: [
-                                                Text(
-                                                  "Disable Auto Pin",
-                                                  style: AppTypography
-                                                      .textXsMedium
-                                                      .copyWith(
-                                                        color: kWhiteColor,
-                                                      ),
-                                                ),
-                                                SvgPicture.asset(
-                                                  SvgAsset.unpine,
-                                                  height: 13.h,
-                                                  width: 13.w,
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                        ),
-                                        PopupMenuDivider(
-                                          height: 1.h,
-                                          thickness: 0.5.w,
-                                          color: kDividerColor,
-                                        ),
-                                      ],
-
-                                      if (roundIds.isNotEmpty) ...[
-                                        PopupMenuItem<MenuAction>(
-                                          value: MenuAction.collapseAllRounds,
-                                          onTap: () {
-                                            // Update state first - collapse both rounds and versus cards
-                                            ref
-                                                .read(
-                                                  roundExpansionProvider
-                                                      .notifier,
-                                                )
-                                                .collapseAll(roundIds);
-                                            // Also collapse all versus cards (match cards)
-                                            // IMPORTANT: Always call collapseAll to set the collapse mode flag
-                                            // even if matchKeys is empty, so that newly rendered cards
-                                            // will be collapsed by default
-                                            ref
-                                                .read(
-                                                  matchExpansionProvider
-                                                      .notifier,
-                                                )
-                                                .collapseAll(matchKeys);
-                                          },
-                                          child: SizedBox(
-                                            width: 200,
-                                            child: Row(
-                                              mainAxisAlignment:
-                                                  MainAxisAlignment
-                                                      .spaceBetween,
-                                              children: [
-                                                Text(
-                                                  "Collapse all",
-                                                  style: AppTypography
-                                                      .textXsMedium
-                                                      .copyWith(
-                                                        color: kWhiteColor,
-                                                      ),
-                                                ),
-                                                Icon(
-                                                  Icons.unfold_less,
-                                                  color: kWhiteColor,
-                                                  size: 16.sp,
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                        ),
-                                        PopupMenuDivider(
-                                          height: 1.h,
-                                          thickness: 0.5.w,
-                                          color: kDividerColor,
-                                        ),
-                                        PopupMenuItem<MenuAction>(
-                                          value: MenuAction.expandAllRounds,
-                                          onTap: () {
-                                            // Update state first - expand both rounds and versus cards
-                                            ref
-                                                .read(
-                                                  roundExpansionProvider
-                                                      .notifier,
-                                                )
-                                                .expandAll(roundIds);
-                                            // Also expand all versus cards (match cards)
-                                            ref
-                                                .read(
-                                                  matchExpansionProvider
-                                                      .notifier,
-                                                )
-                                                .expandAll();
-                                          },
-                                          child: SizedBox(
-                                            width: 200,
-                                            child: Row(
-                                              mainAxisAlignment:
-                                                  MainAxisAlignment
-                                                      .spaceBetween,
-                                              children: [
-                                                Text(
-                                                  "Expand all",
-                                                  style: AppTypography
-                                                      .textXsMedium
-                                                      .copyWith(
-                                                        color: kWhiteColor,
-                                                      ),
-                                                ),
-                                                Icon(
-                                                  Icons.unfold_more,
-                                                  color: kWhiteColor,
-                                                  size: 16.sp,
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                        ),
-                                        PopupMenuDivider(
-                                          height: 1.h,
-                                          thickness: 0.5.w,
-                                          color: kDividerColor,
-                                        ),
-                                      ],
-
-                                      PopupMenuItem<MenuAction>(
-                                        value: MenuAction.showHideFinishedGames,
-                                        onTap: () {
-                                          unawaited(
-                                            ref
-                                                .read(
-                                                  gamesTourScreenProvider
-                                                      .notifier,
-                                                )
-                                                .toggleFinishedGames(),
-                                          );
-                                        },
-                                        child: SizedBox(
-                                          width: 200,
-                                          child: Row(
-                                            mainAxisAlignment:
-                                                MainAxisAlignment.spaceBetween,
-                                            children: [
-                                              Text(
-                                                gamesTourScreen.getTitle(),
-                                                style: AppTypography
-                                                    .textXsMedium
-                                                    .copyWith(
-                                                      color: kWhiteColor,
-                                                    ),
-                                              ),
-                                              SvgPicture.asset(
-                                                SvgAsset.active,
-                                                height: 13.h,
-                                                width: 13.w,
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                      ),
-                                      if (tourData
-                                              .aboutTourModel
-                                              .groupBroadcastId
-                                              ?.isNotEmpty ==
-                                          true) ...[
-                                        PopupMenuDivider(
-                                          height: 1.h,
-                                          thickness: 0.5.w,
-                                          color: kDividerColor,
-                                        ),
-                                        () {
-                                          final groupBroadcastId =
-                                              tourData
-                                                  .aboutTourModel
-                                                  .groupBroadcastId!;
-                                          final isMuted =
-                                              ref
-                                                  .read(
-                                                    eventMuteProvider(
-                                                      groupBroadcastId,
-                                                    ),
-                                                  )
-                                                  .valueOrNull ??
-                                              false;
-                                          return PopupMenuItem<MenuAction>(
-                                            value:
-                                                MenuAction.disableNotifications,
-                                            onTap: () {
-                                              final isAuthenticated = ref.read(
-                                                isAuthenticatedProvider,
-                                              );
-                                              if (!isAuthenticated) {
-                                                ScaffoldMessenger.of(
-                                                  context,
-                                                ).showSnackBar(
-                                                  const SnackBar(
-                                                    content: Text(
-                                                      'Please sign in to manage notifications',
-                                                    ),
-                                                  ),
-                                                );
-                                                return;
-                                              }
-                                              ref
-                                                  .read(
-                                                    eventMuteProvider(
-                                                      groupBroadcastId,
-                                                    ).notifier,
-                                                  )
-                                                  .toggleMute();
-                                            },
-                                            child: SizedBox(
-                                              width: 200,
-                                              child: Row(
-                                                mainAxisAlignment:
-                                                    MainAxisAlignment
-                                                        .spaceBetween,
-                                                children: [
-                                                  Text(
-                                                    isMuted
-                                                        ? "Enable notifications"
-                                                        : "Disable notifications",
-                                                    style: AppTypography
-                                                        .textXsMedium
-                                                        .copyWith(
-                                                          color: kWhiteColor,
-                                                        ),
-                                                  ),
-                                                  Icon(
-                                                    isMuted
-                                                        ? Icons
-                                                            .notifications_outlined
-                                                        : Icons
-                                                            .notifications_off_outlined,
-                                                    color: kWhiteColor,
-                                                    size: 16.sp,
-                                                  ),
-                                                ],
-                                              ),
-                                            ),
-                                          );
-                                        }(),
-                                      ],
-                                    ],
-                                  );
-                                }
-                              },
-                            ),
+                            child: TournamentMenuButton(tourData: tourData),
                           ),
                           SizedBox(width: 20.w),
                         ],

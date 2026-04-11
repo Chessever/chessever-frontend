@@ -21,14 +21,6 @@ import app_links
       UNUserNotificationCenter.current().delegate = self as? UNUserNotificationCenterDelegate
     }
 
-    // Register plugins
-    GeneratedPluginRegistrant.register(with: self)
-
-    // Setup audio session channel for the main engine
-    if let controller = window?.rootViewController as? FlutterViewController {
-      setupAudioSessionChannel(binaryMessenger: controller.binaryMessenger)
-    }
-
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 
@@ -54,6 +46,8 @@ import app_links
   }
 
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
+    // Storyboard-based apps use an implicit engine, so plugin and channel
+    // registration must happen here exactly once.
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
     setupAudioSessionChannel(binaryMessenger: engineBridge.applicationRegistrar.messenger())
   }

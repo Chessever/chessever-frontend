@@ -72,6 +72,12 @@ class _SwipeActionCardState extends State<SwipeActionCard>
   bool _showSuccessFlash = false;
   bool _isShowingHint = false;
 
+  bool get _shouldShowActionBackground =>
+      _dragExtent.abs() > 0.5 ||
+      _isShowingHint ||
+      _showSuccessFlash ||
+      _isDismissing;
+
   @override
   void initState() {
     super.initState();
@@ -206,43 +212,44 @@ class _SwipeActionCardState extends State<SwipeActionCard>
       child: Stack(
         children: [
           // Background action indicator
-          Positioned.fill(
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(widget.borderRadius.br),
-              child: Container(
-                color: widget.backgroundColor,
-                padding: EdgeInsets.symmetric(horizontal: 20.w),
-                child: Align(
-                  alignment:
-                      isRtl ? Alignment.centerRight : Alignment.centerLeft,
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (isRtl && widget.label != null) ...[
-                        Text(
-                          widget.label!,
-                          style: AppTypography.textSmMedium.copyWith(
-                            color: kWhiteColor,
+          if (_shouldShowActionBackground)
+            Positioned.fill(
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(widget.borderRadius.br),
+                child: Container(
+                  color: widget.backgroundColor,
+                  padding: EdgeInsets.symmetric(horizontal: 20.w),
+                  child: Align(
+                    alignment:
+                        isRtl ? Alignment.centerRight : Alignment.centerLeft,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (isRtl && widget.label != null) ...[
+                          Text(
+                            widget.label!,
+                            style: AppTypography.textSmMedium.copyWith(
+                              color: kWhiteColor,
+                            ),
                           ),
-                        ),
-                        SizedBox(width: 10.w),
-                      ],
-                      Icon(widget.icon, color: kWhiteColor, size: 22.sp),
-                      if (!isRtl && widget.label != null) ...[
-                        SizedBox(width: 10.w),
-                        Text(
-                          widget.label!,
-                          style: AppTypography.textSmMedium.copyWith(
-                            color: kWhiteColor,
+                          SizedBox(width: 10.w),
+                        ],
+                        Icon(widget.icon, color: kWhiteColor, size: 22.sp),
+                        if (!isRtl && widget.label != null) ...[
+                          SizedBox(width: 10.w),
+                          Text(
+                            widget.label!,
+                            style: AppTypography.textSmMedium.copyWith(
+                              color: kWhiteColor,
+                            ),
                           ),
-                        ),
+                        ],
                       ],
-                    ],
+                    ),
                   ),
                 ),
               ),
             ),
-          ),
 
           // Success flash overlay
           if (_showSuccessFlash)

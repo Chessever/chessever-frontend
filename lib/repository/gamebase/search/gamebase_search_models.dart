@@ -197,3 +197,9 @@ class GamebaseSearchQueryResponse {
     );
   }
 }
+
+/// Sort fields for Gamebase explorer queries.
+enum GamebaseSortField { date, whiteElo, blackElo, avgElo }
+
+/// Sort directions for Gamebase explorer queries.
+enum GamebaseSortDirection { asc, desc }

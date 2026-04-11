@@ -202,7 +202,10 @@ class _WheelInputState extends State<_WheelInput> {
     // If initialValue changed from outside, jump to it
     if (oldWidget.initialValue != widget.initialValue) {
       final index = _findClosestIndex(widget.initialValue);
-      if (index != _controller.selectedItem) {
+      final normalizedCurrent =
+          (_controller.selectedItem % _values.length + _values.length) %
+          _values.length;
+      if (index != normalizedCurrent) {
         _controller.jumpToItem(index);
         setState(() {
           _selectedIndex = index;
@@ -232,22 +235,18 @@ class _WheelInputState extends State<_WheelInput> {
         // Only trigger if they tap away from the center (to avoid double-firing with item taps)
         if (localPosition.dy < height * 0.3) {
           // Tapped top section -> scroll up to previous item
-          if (_selectedIndex > 0) {
-            _controller.animateToItem(
-              _selectedIndex - 1,
-              duration: const Duration(milliseconds: 300),
-              curve: Curves.easeOutCubic,
-            );
-          }
+          _controller.animateToItem(
+            _controller.selectedItem - 1,
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOutCubic,
+          );
         } else if (localPosition.dy > height * 0.7) {
           // Tapped bottom section -> scroll down to next item
-          if (_selectedIndex < _values.length - 1) {
-            _controller.animateToItem(
-              _selectedIndex + 1,
-              duration: const Duration(milliseconds: 300),
-              curve: Curves.easeOutCubic,
-            );
-          }
+          _controller.animateToItem(
+            _controller.selectedItem + 1,
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOutCubic,
+          );
         }
       },
       child: Container(
@@ -271,23 +270,31 @@ class _WheelInputState extends State<_WheelInput> {
                   diameterRatio: 1.5,
                   physics: const FixedExtentScrollPhysics(),
                   onSelectedItemChanged: (index) {
+                    final normalizedIndex =
+                        (index % _values.length + _values.length) %
+                        _values.length;
                     HapticFeedbackService.selection();
                     setState(() {
-                      _selectedIndex = index;
+                      _selectedIndex = normalizedIndex;
                     });
-                    widget.onChanged(_values[index]);
+                    widget.onChanged(_values[normalizedIndex]);
                   },
-                  childDelegate: ListWheelChildBuilderDelegate(
-                    childCount: _values.length,
-                    builder: (context, index) {
+                  childDelegate: ListWheelChildLoopingListDelegate(
+                    children: List.generate(_values.length, (index) {
                       final isSelected = index == _selectedIndex;
 
                       return GestureDetector(
                         behavior: HitTestBehavior.opaque,
                         onTap: () {
                           if (!isSelected) {
+                            // Find the closest target index that matches target % n == index
+                            final current = _controller.selectedItem;
+                            final n = _values.length;
+                            final k = ((current - index) / n).round();
+                            final target = index + k * n;
+
                             _controller.animateToItem(
-                              index,
+                              target,
                               duration: const Duration(milliseconds: 300),
                               curve: Curves.easeOutCubic,
                             );
@@ -325,7 +332,7 @@ class _WheelInputState extends State<_WheelInput> {
                           },
                         ),
                       );
-                    },
+                    }),
                   ),
                 ),
 

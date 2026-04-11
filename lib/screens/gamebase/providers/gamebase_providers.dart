@@ -3,7 +3,9 @@ import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
 import 'package:chessever2/repository/gamebase/search/gamebase_search_models.dart';
 import 'package:chessever2/screens/gamebase/models/models.dart';
 import 'package:chessever2/utils/audio_player_service.dart';
-import 'package:chess/chess.dart' hide State;
+import 'package:dartchess/dartchess.dart';
+import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
+import 'package:chessever2/screens/chessboard/analysis/chess_game_navigator.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'dart:async';
@@ -39,29 +41,30 @@ int _pliesFromFen(String fen) {
 class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
   GamebaseExplorerNotifier(this.ref)
       : super(
-          const GamebaseExplorerState(
+          GamebaseExplorerState(
             currentFen:
                 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
-            currentMoveIndex: -1,
+            game: ChessGame(
+              gameId: 'explorer_initial',
+              startingFen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+              metadata: {
+                'Event': 'Opening Explorer',
+                'Site': 'ChessEver',
+                'Date': DateTime.now().toIso8601String().split('T')[0],
+                'White': 'White',
+                'Black': 'Black',
+                'Result': '*',
+              },
+              mainline: const [],
+            ),
+            movePointer: const [],
           ),
         );
-  // NOTE: We intentionally do NOT fetch in the constructor.
-  // The view calls setPosition() with the actual board FEN, which triggers
-  // the fetch. Fetching here with the default starting FEN causes a race
-  // condition where the starting position response can overwrite the real
-  // position's data.
-  //
-  // However, the initial state DOES include the starting FEN so that
-  // child widgets (e.g. _ExplorerEvalBar) receive a valid FEN on the very
-  // first build frame, before any postFrameCallback has fired. Without
-  // this, the eval bar's initState postFrameCallback sees an empty FEN
-  // and silently skips engine startup — leaving the eval stuck on "..."
-  // until the user navigates at least once.
 
   final Ref ref;
 
-  /// Internal chess instance for position tracking
-  Chess? _chess;
+  /// Internal position tracking using dartchess (consistent with ChessGame)
+  Position get currentPosition => Position.setupPosition(Rule.chess, Setup.parseFen(state.currentFen));
 
   /// Debounce timer for network fetches
   Timer? _debounceTimer;
@@ -76,11 +79,6 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
   final Map<String, Future<List<MoveAggregate>>> _inFlightAggregateRequests =
       {};
 
-  Chess get chess {
-    _chess ??= Chess();
-    return _chess!;
-  }
-
   /// Play SFX for a SAN move string if sound is enabled.
   void _playSfx(String san) {
     final boardSettings = ref.read(boardSettingsProviderNew).valueOrNull;
@@ -88,21 +86,17 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
     AudioPlayerService.instance.playSfxForSan(san);
   }
 
-  /// Get the SAN for a UCI move at the current chess position.
-  /// Returns null if the move is not found in legal moves.
+  /// Get the SAN for a UCI move at the current position.
   String? _getSanForUci(String uci) {
-    final from = uci.substring(0, 2);
-    final to = uci.substring(2, 4);
-    final promotion = uci.length > 4 ? uci[4] : null;
-    final moves = chess.generate_moves();
-    for (final m in moves) {
-      if (m.fromAlgebraic == from &&
-          m.toAlgebraic == to &&
-          (promotion == null || m.promotion?.name == promotion)) {
-        return chess.move_to_san(m);
-      }
+    try {
+      final playedMove = NormalMove.fromUci(uci);
+      if (playedMove == null) return null;
+      if (!currentPosition.isLegal(playedMove)) return null;
+      final (_, san) = currentPosition.makeSan(playedMove);
+      return san;
+    } catch (_) {
+      return null;
     }
-    return null;
   }
 
   void _scheduleFetch([Duration delay = const Duration(milliseconds: 200)]) {
@@ -165,6 +159,8 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
         playerId: playerIdFilter,
         color: colorFilter,
         result: resultFilter,
+        yearFrom: filters.yearFrom,
+        yearTo: filters.yearTo,
       );
 
       final aggregates = response.data.moves
@@ -192,12 +188,7 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
     final requestedFen = state.currentFen;
     final filtersSnapshot = state.filters;
 
-    // Only send the explored line up to the current position.
-    // moveHistory may contain "future" moves when the user navigates back.
-    final exploredMoves =
-        state.currentMoveIndex >= 0
-            ? state.moveHistory.sublist(0, state.currentMoveIndex + 1)
-            : const <String>[];
+    final exploredMoves = state.exploredMoves;
 
     final cacheKey = _buildCacheKey(
       fen: requestedFen,
@@ -275,18 +266,13 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
     for (var i = 0; i < candidates.length; i++) {
       final a = candidates[i];
       try {
-        final chess = Chess.fromFEN(baseFen);
-        final from = a.uci.substring(0, 2);
-        final to = a.uci.substring(2, 4);
-        final promotion = a.uci.length > 4 ? a.uci[4] : null;
-        final moved = chess.move({
-          'from': from,
-          'to': to,
-          if (promotion != null) 'promotion': promotion,
-        });
-        if (!moved) continue;
+        final position = Position.setupPosition(Rule.chess, Setup.parseFen(baseFen));
+        final move = NormalMove.fromUci(a.uci);
+        if (move == null) continue;
+        if (!position.isLegal(move)) continue;
 
-        final nextFen = normalizeFenForGamebase(chess.fen);
+        final nextPosition = position.play(move);
+        final nextFen = normalizeFenForGamebase(nextPosition.fen);
         final nextMoves = <String>[...exploredMoves, a.uci];
         final nextCacheKey = _buildCacheKey(
           fen: nextFen,
@@ -318,17 +304,11 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
                 i < 2 &&
                 prefetched.isNotEmpty) {
               final reply = prefetched.first;
-              final replyChess = Chess.fromFEN(nextFen);
-              final replyFrom = reply.uci.substring(0, 2);
-              final replyTo = reply.uci.substring(2, 4);
-              final replyPromotion = reply.uci.length > 4 ? reply.uci[4] : null;
-              final replyMoved = replyChess.move({
-                'from': replyFrom,
-                'to': replyTo,
-                if (replyPromotion != null) 'promotion': replyPromotion,
-              });
-              if (replyMoved) {
-                final replyFen = normalizeFenForGamebase(replyChess.fen);
+              final replyPosition = nextPosition;
+              final replyMove = NormalMove.fromUci(reply.uci);
+              if (replyMove != null && replyPosition.isLegal(replyMove)) {
+                final nextReplyPosition = replyPosition.play(replyMove);
+                final replyFen = normalizeFenForGamebase(nextReplyPosition.fen);
                 final replyMoves = <String>[...nextMoves, reply.uci];
                 final replyCacheKey = _buildCacheKey(
                   fen: replyFen,
@@ -362,15 +342,9 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
   bool _isLegalUciForFen(String uci, String fen) {
     if (!_uciRegex.hasMatch(uci)) return false;
     try {
-      final testBoard = Chess.fromFEN(fen);
-      final from = uci.substring(0, 2);
-      final to = uci.substring(2, 4);
-      final promotion = uci.length > 4 ? uci[4] : null;
-      return testBoard.move({
-        'from': from,
-        'to': to,
-        if (promotion != null) 'promotion': promotion,
-      });
+      final position = Position.setupPosition(Rule.chess, Setup.parseFen(fen));
+      final move = NormalMove.fromUci(uci);
+      return move != null && position.isLegal(move);
     } catch (_) {
       return false;
     }
@@ -381,207 +355,341 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
     final normalizedUci = uci.trim().toLowerCase();
     if (!_uciRegex.hasMatch(normalizedUci)) return;
 
-    // Rapid taps can race with async aggregate refreshes; ignore stale moves
-    // that are no longer legal in the current explorer position.
     if (!_isLegalUciForFen(normalizedUci, state.currentFen)) {
-      debugPrint(
-        '[GamebaseExplorer] Ignoring stale/illegal move: $normalizedUci',
-      );
+      debugPrint('[GamebaseExplorer] Ignoring stale/illegal move: $normalizedUci');
       return;
     }
 
     try {
-      // Parse UCI move
-      final from = normalizedUci.substring(0, 2);
-      final to = normalizedUci.substring(2, 4);
-      final promotion = normalizedUci.length > 4 ? normalizedUci[4] : null;
-
-      // Reset chess to current position if needed
-      _rebuildChessPosition();
-
-      // Get SAN before making the move (for SFX)
       final san = _getSanForUci(normalizedUci);
+      if (san != null) _playSfx(san);
 
-      // Make the move
-      final moved = chess.move({
-        'from': from,
-        'to': to,
-        if (promotion != null) 'promotion': promotion,
-      });
+      // Replicate Navigator logic
+      final playedMove = NormalMove.fromUci(normalizedUci)!;
+      final currentLine = _lineForPointerInGame(state.game!, state.movePointer);
+      final currentMove = _moveForPointerInGame(state.game!, state.movePointer);
+      final currentIndex = state.movePointer.isEmpty ? -1 : state.movePointer.last;
 
-      if (moved) {
-        if (san != null) _playSfx(san);
-        // If we're not at the end of history, truncate
-        final newHistory = state.moveHistory.sublist(
-          0,
-          state.currentMoveIndex + 1,
-        )..add(normalizedUci);
-
-        state = state.copyWith(
-          currentFen: normalizeFenForGamebase(chess.fen),
-          moveHistory: newHistory,
-          currentMoveIndex: newHistory.length - 1,
-        );
-
-        _scheduleFetch(Duration.zero);
+      if (currentLine != null && currentIndex < currentLine.length - 1) {
+        final nextMove = currentLine[currentIndex + 1];
+        if (nextMove.uci == normalizedUci) {
+          final pointer = List<int>.of(state.movePointer);
+          pointer.last = currentIndex + 1;
+          state = state.copyWith(
+            currentFen: nextMove.fen,
+            movePointer: pointer,
+          );
+          _scheduleFetch(Duration.zero);
+          return;
+        }
       }
+
+      if (currentMove?.variations != null) {
+        for (var i = 0; i < currentMove!.variations!.length; i++) {
+          final variation = currentMove.variations![i];
+          if (variation.isNotEmpty && variation[0].uci == normalizedUci) {
+            final newPointer = state.movePointer.isEmpty ? [0] : [...state.movePointer, i, 0];
+            state = state.copyWith(
+              currentFen: variation[0].fen,
+              movePointer: newPointer,
+            );
+            _scheduleFetch(Duration.zero);
+            return;
+          }
+        }
+      }
+
+      // Create new move/variation
+      final position = currentPosition;
+      final (newPosition, sanActual) = position.makeSan(playedMove);
+      final movingColor = position.turn == Side.white ? ChessColor.white : ChessColor.black;
+      final nextToMove = newPosition.turn == Side.white ? ChessColor.white : ChessColor.black;
+
+      final moveNumber = currentMove != null
+          ? (currentMove.turn == ChessColor.black ? currentMove.num + 1 : currentMove.num)
+          : (movingColor == ChessColor.white ? 1 : 1);
+
+      final newChessMove = ChessMove(
+        num: moveNumber,
+        fen: newPosition.fen,
+        san: sanActual,
+        uci: normalizedUci,
+        turn: nextToMove,
+      );
+
+      if (currentIndex == -1) {
+        if (state.game!.mainline.isEmpty) {
+          state = state.copyWith(
+            game: state.game!.copyWith(mainline: [newChessMove]),
+            movePointer: [0],
+            currentFen: newPosition.fen,
+          );
+        } else {
+          final firstMove = state.game!.mainline.first;
+          final updatedVariations = List<ChessLine>.of(firstMove.variations ?? <ChessLine>[]);
+          updatedVariations.add([newChessMove]);
+
+          state = state.copyWith(
+            game: state.game!.copyWith(
+              mainline: [
+                firstMove.copyWith(variations: updatedVariations, overrideVariations: true),
+                ...state.game!.mainline.sublist(1),
+              ],
+            ),
+            movePointer: [0, updatedVariations.length - 1, 0],
+            currentFen: newPosition.fen,
+          );
+        }
+      } else if (currentIndex == currentLine!.length - 1) {
+        final updatedMainline = _appendMoveAfterPointer(state.game!.mainline, state.movePointer, 0, newChessMove);
+        final newPointer = List<int>.of(state.movePointer);
+        newPointer.last = currentIndex + 1;
+        state = state.copyWith(
+          game: state.game!.copyWith(mainline: updatedMainline),
+          movePointer: newPointer,
+          currentFen: newPosition.fen,
+        );
+      } else {
+        int? newVariationIndex;
+        final updatedMainline = _addVariationToPointer(
+          state.game!.mainline,
+          state.movePointer,
+          0,
+          newChessMove,
+          (index) => newVariationIndex = index,
+        );
+        if (newVariationIndex != null) {
+          final newPointer = <int>[...state.movePointer, newVariationIndex!, 0];
+          state = state.copyWith(
+            game: state.game!.copyWith(mainline: updatedMainline),
+            movePointer: newPointer,
+            currentFen: newPosition.fen,
+          );
+        }
+      }
+
+      _scheduleFetch(Duration.zero);
     } catch (e) {
       debugPrint('[GamebaseExplorer] makeMove error for $normalizedUci: $e');
     }
   }
 
-  /// Rebuild chess position from move history
-  void _rebuildChessPosition() {
-    _chess = Chess();
-    for (
-      var i = 0;
-      i <= state.currentMoveIndex && i < state.moveHistory.length;
-      i++
-    ) {
-      final uci = state.moveHistory[i];
-      final from = uci.substring(0, 2);
-      final to = uci.substring(2, 4);
-      final promotion = uci.length > 4 ? uci[4] : null;
-      chess.move({
-        'from': from,
-        'to': to,
-        if (promotion != null) 'promotion': promotion,
-      });
+  ChessLine? _lineForPointerInGame(ChessGame game, ChessMovePointer pointer) {
+    ChessLine? line = game.mainline;
+    ChessMove? move;
+    for (var i = 0; i < pointer.length; i++) {
+      final index = pointer[i];
+      if (i.isEven) {
+        if (line == null || index >= line.length) return null;
+        move = line[index];
+      } else {
+        final variations = move?.variations;
+        if (variations == null || index >= variations.length) return null;
+        line = variations[index];
+      }
     }
+    return line;
+  }
+
+  ChessMove? _moveForPointerInGame(ChessGame game, ChessMovePointer pointer) {
+    if (pointer.isEmpty) return null;
+    ChessLine? line = game.mainline;
+    ChessMove? move;
+    for (var i = 0; i < pointer.length; i++) {
+      final index = pointer[i];
+      if (i.isEven) {
+        if (line == null || index >= line.length) return null;
+        move = line[index];
+      } else {
+        final variations = move?.variations;
+        if (variations == null || index >= variations.length) return null;
+        line = variations[index];
+      }
+    }
+    return move;
+  }
+
+  ChessLine _appendMoveAfterPointer(ChessLine source, ChessMovePointer pointer, int pointerIndex, ChessMove newMove) {
+    if (pointer.isEmpty) return [...source, newMove];
+    final moveIndex = pointer[pointerIndex];
+    if (pointerIndex == pointer.length - 1) {
+      final newLine = List<ChessMove>.of(source);
+      if (moveIndex + 1 >= newLine.length) {
+        newLine.add(newMove);
+      } else {
+        newLine.insert(moveIndex + 1, newMove);
+      }
+      return newLine;
+    }
+    final variationIndex = pointer[pointerIndex + 1];
+    final move = source[moveIndex];
+    final variations = List<ChessLine>.of(move.variations!);
+    variations[variationIndex] = _appendMoveAfterPointer(variations[variationIndex], pointer, pointerIndex + 2, newMove);
+    final newLine = List<ChessMove>.of(source);
+    newLine[moveIndex] = move.copyWith(variations: variations, overrideVariations: true);
+    return newLine;
+  }
+
+  ChessLine _addVariationToPointer(ChessLine source, ChessMovePointer pointer, int pointerIndex, ChessMove newMove, void Function(int index) onAdded) {
+    if (pointer.isEmpty) return source;
+    final moveIndex = pointer[pointerIndex];
+    if (pointerIndex == pointer.length - 1) {
+      final move = source[moveIndex];
+      final variations = List<ChessLine>.of(move.variations ?? <ChessLine>[]);
+      variations.add([newMove]);
+      onAdded(variations.length - 1);
+      final newLine = List<ChessMove>.of(source);
+      newLine[moveIndex] = move.copyWith(variations: variations, overrideVariations: true);
+      return newLine;
+    }
+    final variationIndex = pointer[pointerIndex + 1];
+    final move = source[moveIndex];
+    final variations = List<ChessLine>.of(move.variations!);
+    variations[variationIndex] = _addVariationToPointer(variations[variationIndex], pointer, pointerIndex + 2, newMove, onAdded);
+    final newLine = List<ChessMove>.of(source);
+    newLine[moveIndex] = move.copyWith(variations: variations, overrideVariations: true);
+    return newLine;
   }
 
   /// Go to previous move
   void goBack() {
     if (!state.canGoBack) return;
 
-    final newIndex = state.currentMoveIndex - 1;
-    _chess = Chess();
+    final newPointer = _previousPointer(state.movePointer);
+    if (newPointer == null) return;
 
-    // Replay moves up to new index
-    for (var i = 0; i <= newIndex && i < state.moveHistory.length; i++) {
-      final uci = state.moveHistory[i];
-      final from = uci.substring(0, 2);
-      final to = uci.substring(2, 4);
-      final promotion = uci.length > 4 ? uci[4] : null;
-      chess.move({
-        'from': from,
-        'to': to,
-        if (promotion != null) 'promotion': promotion,
-      });
-    }
+    final move = _moveForPointerInGame(state.game!, newPointer);
+    final fen = move?.fen ?? state.game!.startingFen;
 
-    // Play SFX for the move being undone (from the position we just rebuilt)
-    final undoneUci = state.moveHistory[state.currentMoveIndex];
-    final san = _getSanForUci(undoneUci);
-    if (san != null) _playSfx(san);
+    // Play SFX for the move being undone
+    final currentMove = _moveForPointerInGame(state.game!, state.movePointer);
+    if (currentMove != null) _playSfx(currentMove.san);
 
     state = state.copyWith(
-      currentMoveIndex: newIndex,
-      currentFen:
-          newIndex >= 0
-              ? normalizeFenForGamebase(chess.fen)
-              : 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+      movePointer: newPointer,
+      currentFen: normalizeFenForGamebase(fen),
     );
 
     _scheduleFetch(Duration.zero);
   }
 
+  ChessMovePointer? _previousPointer(ChessMovePointer pointer) {
+    if (pointer.isEmpty) return null;
+    final previous = List<int>.of(pointer);
+    if (previous.last > 0) {
+      previous.last--;
+      return previous;
+    }
+    if (previous.length >= 3) {
+      previous.removeLast(); // move index
+      previous.removeLast(); // variation index
+      return previous;
+    }
+    return const [];
+  }
+
   /// Go to next move.
-  ///
-  /// If there is a stored next move in the explored line, replay it.
-  /// Otherwise, automatically play the most-played move from the current
-  /// position's aggregates (so the forward button is always usable).
   void goForward() {
     if (!state.canGoForward) return;
 
-    if (state.currentMoveIndex < state.maxNavigableMoveIndex) {
-      // Replay the next stored move in history.
-      final newIndex = state.currentMoveIndex + 1;
-      _rebuildChessPosition();
+    final nextPointer = state.game != null ? _nextPointerInGame(state.game!, state.movePointer) : null;
 
-      final uci = state.moveHistory[newIndex];
-
-      // Get SAN before making the move (for SFX)
-      final san = _getSanForUci(uci);
-
-      final from = uci.substring(0, 2);
-      final to = uci.substring(2, 4);
-      final promotion = uci.length > 4 ? uci[4] : null;
-      chess.move({
-        'from': from,
-        'to': to,
-        if (promotion != null) 'promotion': promotion,
-      });
-
-      if (san != null) _playSfx(san);
-
-      state = state.copyWith(
-        currentMoveIndex: newIndex,
-        currentFen: normalizeFenForGamebase(chess.fen),
-      );
-
-      _scheduleFetch(Duration.zero);
+    if (nextPointer != null) {
+      final move = _moveForPointerInGame(state.game!, nextPointer);
+      if (move != null) {
+        _playSfx(move.san);
+        state = state.copyWith(
+          movePointer: nextPointer,
+          currentFen: normalizeFenForGamebase(move.fen),
+        );
+        _scheduleFetch(Duration.zero);
+      }
     } else if (!state.isLoading && state.moveAggregates.isNotEmpty) {
-      // At the frontier — play the most-played move from current position.
       makeMove(state.moveAggregates.first.uci);
     }
+  }
+
+  ChessMovePointer? _nextPointerInGame(ChessGame game, ChessMovePointer pointer) {
+    if (game.mainline.isEmpty) return null;
+    if (pointer.isEmpty) return [0];
+    final currentLine = _lineForPointerInGame(game, pointer);
+    if (currentLine == null) return null;
+    final lastIndex = pointer.last;
+    if (lastIndex + 1 < currentLine.length) {
+      final next = List<int>.of(pointer);
+      next.last = lastIndex + 1;
+      return next;
+    }
+    return null;
   }
 
   /// Go to first position
   void goToStart() {
-    final wasAtStart = state.currentMoveIndex < 0;
-    _chess = Chess();
     state = state.copyWith(
-      currentMoveIndex: -1,
-      currentFen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+      movePointer: const [],
+      currentFen: state.game!.startingFen,
     );
-    if (!wasAtStart) _playSfx('');
+    _playSfx('');
     _scheduleFetch(Duration.zero);
   }
 
   /// Go to last position.
-  ///
-  /// If not already at the frontier of the explored line, jump there.
-  /// If already at the frontier, play the most-played aggregate move (same
-  /// behaviour as [goForward]).
   void goToEnd() {
-    final targetIndex = state.maxNavigableMoveIndex;
-    if (targetIndex > state.currentMoveIndex) {
-      goToMove(targetIndex);
-    } else if (!state.isLoading && state.moveAggregates.isNotEmpty) {
-      makeMove(state.moveAggregates.first.uci);
+    final currentLine = _lineForPointerInGame(state.game!, state.movePointer);
+    if (currentLine == null || currentLine.isEmpty) return;
+
+    final newPointer = List<int>.of(state.movePointer);
+    if (newPointer.isEmpty) {
+      newPointer.add(currentLine.length - 1);
+    } else {
+      newPointer.last = currentLine.length - 1;
+    }
+
+    final move = _moveForPointerInGame(state.game!, newPointer);
+    if (move != null) {
+      state = state.copyWith(
+        movePointer: newPointer,
+        currentFen: normalizeFenForGamebase(move.fen),
+      );
+      _playSfx('');
+      _scheduleFetch(Duration.zero);
     }
   }
 
-  /// Go to specific move index
+  /// Go to specific move index (mainline only for now from original code)
   void goToMove(int index) {
-    if (index < -1 || index >= state.moveHistory.length) return;
+    if (index < -1 || index >= state.game!.mainline.length) return;
 
-    _chess = Chess();
-    for (var i = 0; i <= index && i < state.moveHistory.length; i++) {
-      final uci = state.moveHistory[i];
-      final from = uci.substring(0, 2);
-      final to = uci.substring(2, 4);
-      final promotion = uci.length > 4 ? uci[4] : null;
-      chess.move({
-        'from': from,
-        'to': to,
-        if (promotion != null) 'promotion': promotion,
-      });
+    if (index == -1) {
+      goToStart();
+      return;
     }
 
-    if (index != state.currentMoveIndex) _playSfx('');
-
+    final newPointer = [index];
+    final move = state.game!.mainline[index];
     state = state.copyWith(
-      currentMoveIndex: index,
-      currentFen:
-          index >= 0
-              ? normalizeFenForGamebase(chess.fen)
-              : 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+      movePointer: newPointer,
+      currentFen: normalizeFenForGamebase(move.fen),
     );
-
+    _playSfx('');
     _scheduleFetch(Duration.zero);
   }
+
+  /// Go to specific move pointer
+  void goToMovePointer(ChessMovePointer pointer) {
+    final move = _moveForPointerInGame(state.game!, pointer);
+    if (move == null && pointer.isNotEmpty) return;
+
+    final fen = move?.fen ?? state.game!.startingFen;
+    
+    state = state.copyWith(
+      movePointer: pointer,
+      currentFen: normalizeFenForGamebase(fen),
+    );
+    _playSfx('');
+    _scheduleFetch(Duration.zero);
+  }
+
 
   /// Initialize the explorer pre-filtered to a specific player.
   ///
@@ -589,10 +697,22 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
   /// single fetch. Avoids the double-fetch that would occur if [goToStart]
   /// and [addPlayerFilter] were called separately.
   void initializeWithPlayer(GamebasePlayer player) {
-    _chess = Chess();
     state = GamebaseExplorerState(
       currentFen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
-      currentMoveIndex: -1,
+      game: ChessGame(
+        gameId: 'explorer_player_${player.id}',
+        startingFen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+        metadata: {
+          'Event': 'Opening Explorer',
+          'Site': 'ChessEver',
+          'Date': DateTime.now().toIso8601String().split('T')[0],
+          'White': 'White',
+          'Black': 'Black',
+          'Result': '*',
+        },
+        mainline: const [],
+      ),
+      movePointer: const [],
       filters: GamebaseFilters(
         playerIds: [player.id],
         selectedPlayers: [player],
@@ -607,10 +727,22 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
     GamebasePlayer player,
     GamebaseFilters filters,
   ) {
-    _chess = Chess();
     state = GamebaseExplorerState(
       currentFen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
-      currentMoveIndex: -1,
+      game: ChessGame(
+        gameId: 'explorer_player_${player.id}',
+        startingFen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+        metadata: {
+          'Event': 'Opening Explorer',
+          'Site': 'ChessEver',
+          'Date': DateTime.now().toIso8601String().split('T')[0],
+          'White': 'White',
+          'Black': 'Black',
+          'Result': '*',
+        },
+        mainline: const [],
+      ),
+      movePointer: const [],
       filters: GamebaseFilters(
         playerIds: [player.id],
         selectedPlayers: [player],
@@ -619,6 +751,8 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
         maxRating: filters.maxRating,
         playerColor: filters.playerColor,
         gameResult: filters.gameResult,
+        yearFrom: filters.yearFrom,
+        yearTo: filters.yearTo,
       ),
     );
     _scheduleFetch(Duration.zero);
@@ -632,10 +766,22 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
     _debounceTimer?.cancel();
     // Invalidate any in-flight response from a previous position.
     _fetchToken++;
-    _chess = Chess();
-    state = const GamebaseExplorerState(
+    state = GamebaseExplorerState(
       currentFen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
-      currentMoveIndex: -1,
+      game: ChessGame(
+        gameId: 'explorer_reset',
+        startingFen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+        metadata: {
+          'Event': 'Opening Explorer',
+          'Site': 'ChessEver',
+          'Date': DateTime.now().toIso8601String().split('T')[0],
+          'White': 'White',
+          'Black': 'Black',
+          'Result': '*',
+        },
+        mainline: const [],
+      ),
+      movePointer: const [],
     );
     if (fetch) {
       _scheduleFetch(Duration.zero);
@@ -658,31 +804,53 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
           .map((m) => m.trim().toLowerCase())
           .where((m) => RegExp(r'^[a-h][1-8][a-h][1-8][qrbn]?$').hasMatch(m))
           .toList(growable: false);
-      final expectedPlyCount = _pliesFromFen(normalized);
-      final clampedMoves =
-          sanitizedMoves.length > expectedPlyCount
-              ? sanitizedMoves.sublist(0, expectedPlyCount)
-              : sanitizedMoves;
-      final newIndex = clampedMoves.isEmpty ? -1 : clampedMoves.length - 1;
-
-      // Skip if nothing changed to avoid unnecessary API calls.
-      if (state.currentFen == normalized &&
-          state.currentMoveIndex == newIndex &&
-          listEquals(state.moveHistory, clampedMoves)) {
-        debugPrint(
-          '[GamebaseExplorer] setPositionWithMoves: position unchanged, skipping',
-        );
+      
+      // If we already have a game tree and the moves match a path in it, 
+      // we should just update the pointer.
+      // But usually this is called when opening the explorer.
+      
+      // Build a simple ChessGame from these moves if current game is empty or different starting position
+      final currentExploredMoves = state.exploredMoves;
+      if (listEquals(currentExploredMoves, sanitizedMoves) && state.currentFen == normalized) {
         return;
       }
 
-      debugPrint(
-        '[GamebaseExplorer] setPosition: ${normalized.split(' ').take(2).join(' ')}...',
-      );
-      _chess = Chess.fromFEN(normalized);
+      debugPrint('[GamebaseExplorer] setPosition: ${normalized.split(' ').take(2).join(' ')}...');
+
+      // Build a new ChessGame with these moves as mainline
+      final mainline = <ChessMove>[];
+      var currentPosition = Position.setupPosition(Rule.chess, Setup.parseFen('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'));
+      
+      for (final uci in sanitizedMoves) {
+        final move = NormalMove.fromUci(uci);
+        if (move == null || !currentPosition.isLegal(move)) break;
+        final (nextPos, san) = currentPosition.makeSan(move);
+        final movingColor = currentPosition.turn == Side.white ? ChessColor.white : ChessColor.black;
+        final nextToMove = nextPos.turn == Side.white ? ChessColor.white : ChessColor.black;
+        
+        mainline.add(ChessMove(
+          num: movingColor == ChessColor.white ? currentPosition.fullmoves : currentPosition.fullmoves,
+          fen: nextPos.fen,
+          san: san,
+          uci: uci,
+          turn: nextToMove,
+        ));
+        currentPosition = nextPos;
+      }
+
       state = state.copyWith(
         currentFen: normalized,
-        moveHistory: clampedMoves,
-        currentMoveIndex: newIndex,
+        game: ChessGame(
+          gameId: 'explorer_sync_${DateTime.now().millisecondsSinceEpoch}',
+          startingFen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+          metadata: {
+            'Event': 'Opening Explorer',
+            'Site': 'ChessEver',
+            'Date': DateTime.now().toIso8601String().split('T')[0],
+          },
+          mainline: mainline,
+        ),
+        movePointer: mainline.isEmpty ? const [] : [mainline.length - 1],
       );
       _scheduleFetch(Duration.zero);
     } catch (e) {
@@ -801,6 +969,8 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
 
     final color = filters.playerColor?.name ?? 'any';
     final result = filters.gameResult?.apiValue ?? 'any';
+    final yearFrom = filters.yearFrom?.toString() ?? 'any';
+    final yearTo = filters.yearTo?.toString() ?? 'any';
 
     return [
       fen,
@@ -811,6 +981,8 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
       maxRating,
       color,
       result,
+      yearFrom,
+      yearTo,
     ].join('|');
   }
 
@@ -923,6 +1095,10 @@ class GamebasePositionGamesQuery {
   final String? result;
   final int? minRating;
   final int? maxRating;
+  final int? yearFrom;
+  final int? yearTo;
+  final GamebaseSortField sortBy;
+  final GamebaseSortDirection sortDirection;
   final int pageNumber; // 0-indexed
   final int pageSize;
 
@@ -936,6 +1112,10 @@ class GamebasePositionGamesQuery {
     this.result,
     this.minRating,
     this.maxRating,
+    this.yearFrom,
+    this.yearTo,
+    this.sortBy = GamebaseSortField.date,
+    this.sortDirection = GamebaseSortDirection.desc,
     this.pageNumber = 0,
     this.pageSize = 20,
   });
@@ -952,6 +1132,10 @@ class GamebasePositionGamesQuery {
         other.result == result &&
         other.minRating == minRating &&
         other.maxRating == maxRating &&
+        other.yearFrom == yearFrom &&
+        other.yearTo == yearTo &&
+        other.sortBy == sortBy &&
+        other.sortDirection == sortDirection &&
         other.pageNumber == pageNumber &&
         other.pageSize == pageSize;
   }
@@ -967,11 +1151,14 @@ class GamebasePositionGamesQuery {
     result,
     minRating,
     maxRating,
+    yearFrom,
+    yearTo,
+    sortBy,
+    sortDirection,
     pageNumber,
     pageSize,
   );
 }
-
 
 final positionGamesProvider = FutureProvider.autoDispose
     .family<GamebaseSearchQueryResponse, GamebasePositionGamesQuery>((
@@ -989,6 +1176,10 @@ final positionGamesProvider = FutureProvider.autoDispose
         result: query.result,
         minRating: query.minRating,
         maxRating: query.maxRating,
+        yearFrom: query.yearFrom,
+        yearTo: query.yearTo,
+        sortBy: query.sortBy,
+        sortDirection: query.sortDirection,
         pageNumber: query.pageNumber,
         pageSize: query.pageSize,
       );

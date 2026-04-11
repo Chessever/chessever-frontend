@@ -1,6 +1,8 @@
 import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game_navigator.dart';
 import 'package:chessever2/screens/chessboard/notation/notation_pointer.dart';
+import 'package:dartchess/dartchess.dart'
+    show PgnChildNode, PgnGame, PgnNode, PgnNodeData;
 
 class NotationVariationNode {
   final String id;
@@ -158,94 +160,90 @@ void _appendLineSignature(ChessLine line, StringBuffer buffer) {
 }
 
 String exportGameToPgn(ChessGame game) {
-  final buffer = StringBuffer();
-  final headers =
-      game.metadata.entries.toList()..sort((a, b) => a.key.compareTo(b.key));
-  for (final entry in headers) {
-    final value = entry.value?.toString() ?? '';
-    buffer.writeln('[${entry.key} "$value"]');
-  }
-  buffer.writeln();
+  final root = PgnNode<PgnNodeData>();
+  _appendLineToPgnNode(root, game.mainline);
 
-  final moves =
-      _lineToPgn(
-        line: game.mainline,
-        startPly: NotationTreeBuilder._startingPly(game.startingFen),
-      ).trim();
-  if (moves.isNotEmpty) {
-    buffer.write(moves);
-    buffer.write(' ');
-  }
-  buffer.write('*');
-  return buffer.toString();
+  final headers = _buildPgnHeaders(game);
+  return PgnGame<PgnNodeData>(
+    headers: headers,
+    moves: root,
+    comments: const [],
+  ).makePgn();
 }
 
-String _lineToPgn({
-  required ChessLine line,
-  required int startPly,
-  bool isVariation = false,
-}) {
-  if (line.isEmpty) return '';
-  final buffer = StringBuffer();
-  var ply = startPly;
+const _standardStartingFen =
+    'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 
-  for (var i = 0; i < line.length; i++) {
-    final move = line[i];
-    final moveNumber = (ply ~/ 2) + 1;
-    final isWhiteMove = ply.isEven;
-    final showNumber = isWhiteMove || i == 0;
+Map<String, String> _buildPgnHeaders(ChessGame game) {
+  final sortedEntries =
+      game.metadata.entries.toList()..sort((a, b) => a.key.compareTo(b.key));
+  final headers = <String, String>{};
 
-    if (showNumber) {
-      final bool suppressBlackNumber = isVariation && !isWhiteMove && i == 0;
-      if (suppressBlackNumber) {
-        buffer.write('... ');
-      } else {
-        buffer.write(isWhiteMove ? '$moveNumber. ' : '$moveNumber... ');
-      }
-    }
-
-    buffer.write('${move.san} ');
-
-    // Export NAGs
-    if (move.nags != null && move.nags!.isNotEmpty) {
-      for (final nag in move.nags!) {
-        buffer.write('\$$nag ');
-      }
-    }
-
-    if (move.clockTime != null && move.clockTime!.isNotEmpty) {
-      buffer.write('{ [%clk ${move.clockTime}] } ');
-    }
-
-    if (move.eval != null && move.eval!.isNotEmpty) {
-      buffer.write('{ [%eval ${move.eval}] } ');
-    }
-
-    // Export other comments
-    if (move.comments != null && move.comments!.isNotEmpty) {
-      for (final comment in move.comments!) {
-        if (comment.startsWith('[%clk') || comment.startsWith('[%eval')) {
-          continue;
-        }
-        buffer.write('{ $comment } ');
-      }
-    }
-
-    final variations = move.variations ?? const <ChessLine>[];
-    for (final variation in variations) {
-      final variationText =
-          _lineToPgn(
-            line: variation,
-            startPly: ply + 1,
-            isVariation: true,
-          ).trim();
-      if (variationText.isNotEmpty) {
-        buffer.write('($variationText) ');
-      }
-    }
-
-    ply++;
+  for (final entry in sortedEntries) {
+    headers[entry.key] = entry.value?.toString() ?? '';
   }
 
-  return buffer.toString();
+  headers.putIfAbsent('Result', () => '*');
+
+  final hasCustomStart =
+      game.startingFen.trim().isNotEmpty &&
+      game.startingFen.trim() != _standardStartingFen;
+  final hasFenHeader = (headers['FEN']?.trim().isNotEmpty ?? false);
+
+  if (hasCustomStart || hasFenHeader) {
+    headers['SetUp'] = '1';
+    headers.putIfAbsent('FEN', () => game.startingFen);
+  }
+
+  return headers;
+}
+
+void _appendLineToPgnNode(PgnNode<PgnNodeData> parent, ChessLine line) {
+  if (line.isEmpty) return;
+
+  final headMove = line.first;
+  final headNode = PgnChildNode<PgnNodeData>(_toPgnNodeData(headMove));
+  parent.children.add(headNode);
+  _appendChildrenToPgnNode(headNode, line, moveIndex: 0);
+}
+
+void _appendChildrenToPgnNode(
+  PgnNode<PgnNodeData> parent,
+  ChessLine line, {
+  required int moveIndex,
+}) {
+  final move = line[moveIndex];
+
+  if (moveIndex + 1 < line.length) {
+    _appendLineToPgnNode(parent, line.sublist(moveIndex + 1));
+  }
+
+  for (final variation in move.variations ?? const <ChessLine>[]) {
+    _appendLineToPgnNode(parent, variation);
+  }
+}
+
+PgnNodeData _toPgnNodeData(ChessMove move) {
+  final comments = <String>[];
+
+  if (move.clockTime?.isNotEmpty ?? false) {
+    comments.add('[%clk ${move.clockTime}]');
+  }
+
+  if (move.eval?.isNotEmpty ?? false) {
+    comments.add('[%eval ${move.eval}]');
+  }
+
+  for (final comment in move.comments ?? const <String>[]) {
+    if (comment.startsWith('[%clk') || comment.startsWith('[%eval')) {
+      continue;
+    }
+    comments.add(comment);
+  }
+
+  return PgnNodeData(
+    san: move.san,
+    comments: comments.isEmpty ? null : comments,
+    nags: move.nags,
+  );
 }

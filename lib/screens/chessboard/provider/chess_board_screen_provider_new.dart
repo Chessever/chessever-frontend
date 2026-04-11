@@ -115,6 +115,7 @@ class ChessBoardScreenNotifierNew
     required this.index,
     this.savedAnalysisData,
     this.startAtLastMove = false,
+    this.initialFen,
   }) : super(const AsyncValue.loading()) {
     _stockfishOwnerId = StockfishSingleton.generateOwnerId(game.gameId, index);
     _initializeState();
@@ -133,6 +134,7 @@ class ChessBoardScreenNotifierNew
   /// Mutable so it can be set after a first-time save from the save sheet.
   SavedAnalysisData? savedAnalysisData;
   final bool startAtLastMove;
+  final String? initialFen;
   Timer? _longPressTimer;
   bool _hasParsedMoves = false;
   bool _isProcessingMove = false;
@@ -186,7 +188,8 @@ class ChessBoardScreenNotifierNew
     // Check if we're restoring from saved analysis
     // Priority: Saved analysis preference > Global session preference
     final bool isBoardFlipped =
-        savedAnalysisData?.isBoardFlipped ?? ref.read(activeBoardFlippedProvider);
+        savedAnalysisData?.isBoardFlipped ??
+        ref.read(activeBoardFlippedProvider);
     final variationComments = savedAnalysisData?.variationComments ?? const {};
 
     // Listen for global orientation changes to keep all boards in sync
@@ -752,10 +755,17 @@ class ChessBoardScreenNotifierNew
             // Audit Optimization: Fast-path incremental move application.
             // If we have a single new move (UCI) and its resulting FEN matches
             // the server's new FEN, we can just append it instead of reparsing the whole PGN.
-            if (liveFen != null && liveUci != null && currentState.allMoves.isNotEmpty) {
+            if (liveFen != null &&
+                liveUci != null &&
+                currentState.allMoves.isNotEmpty) {
               try {
                 // Find the actual final position from all moves
-                Position finalPos = currentState.startingPosition ?? Position.setupPosition(Rule.chess, Setup.parseFen(_defaultStartFen));
+                Position finalPos =
+                    currentState.startingPosition ??
+                    Position.setupPosition(
+                      Rule.chess,
+                      Setup.parseFen(_defaultStartFen),
+                    );
                 for (final m in currentState.allMoves) {
                   finalPos = finalPos.play(m);
                 }
@@ -765,20 +775,40 @@ class ChessBoardScreenNotifierNew
                   final sanResult = finalPos.makeSan(extraMove);
                   final candidatePos = finalPos.play(extraMove);
 
-                  if (_normalizeFen(candidatePos.fen) == _normalizeFen(liveFen)) {
-                    _releaseLog('⚡ FAST PATH: Appending incremental move $liveUci without full PGN parse');
-                    
-                    final newAllMoves = [...currentState.allMoves, extraMove];
-                    final newMoveSans = [...currentState.moveSans, sanResult.$2];
-                    final newMoveTimes = [...currentState.moveTimes, ''];
-                    
-                    final wasViewingLastMove = currentState.currentMoveIndex == currentState.allMoves.length - 1;
-                    final isFollowing = game.gameStatus.isOngoing ? _isFollowingLive : wasViewingLastMove;
-                    final newMoveIndex = isFollowing ? newAllMoves.length - 1 : currentState.currentMoveIndex;
+                  if (_normalizeFen(candidatePos.fen) ==
+                      _normalizeFen(liveFen)) {
+                    _releaseLog(
+                      '⚡ FAST PATH: Appending incremental move $liveUci without full PGN parse',
+                    );
 
-                    Position displayPosition = currentState.startingPosition ?? Position.setupPosition(Rule.chess, Setup.parseFen(_defaultStartFen));
+                    final newAllMoves = [...currentState.allMoves, extraMove];
+                    final newMoveSans = [
+                      ...currentState.moveSans,
+                      sanResult.$2,
+                    ];
+                    final newMoveTimes = [...currentState.moveTimes, ''];
+
+                    final wasViewingLastMove =
+                        currentState.currentMoveIndex ==
+                        currentState.allMoves.length - 1;
+                    final isFollowing =
+                        game.gameStatus.isOngoing
+                            ? _isFollowingLive
+                            : wasViewingLastMove;
+                    final newMoveIndex =
+                        isFollowing
+                            ? newAllMoves.length - 1
+                            : currentState.currentMoveIndex;
+
+                    Position displayPosition =
+                        currentState.startingPosition ??
+                        Position.setupPosition(
+                          Rule.chess,
+                          Setup.parseFen(_defaultStartFen),
+                        );
                     Move? displayLastMove;
-                    if (newMoveIndex >= 0 && newMoveIndex < newAllMoves.length) {
+                    if (newMoveIndex >= 0 &&
+                        newMoveIndex < newAllMoves.length) {
                       for (int i = 0; i <= newMoveIndex; i++) {
                         displayLastMove = newAllMoves[i];
                         displayPosition = displayPosition.play(newAllMoves[i]);
@@ -805,20 +835,24 @@ class ChessBoardScreenNotifierNew
                       evaluation: null,
                       isEvaluating: true,
                     );
-                    
+
                     state = AsyncValue.data(newState);
-                    
+
                     if (isFollowing) {
                       _updateLastSeenMoveCount(newMoveSans.length);
-                      _analysisNavigator?.updateWithLatestGame(_createChessGameFromPgn(newPgn ?? ''));
+                      _analysisNavigator?.updateWithLatestGame(
+                        _createChessGameFromPgn(newPgn ?? ''),
+                      );
                       _analysisNavigator?.goToTail();
-                      
-                      final currentVisiblePage = ref.read(currentlyVisiblePageIndexProvider);
+
+                      final currentVisiblePage = ref.read(
+                        currentlyVisiblePageIndexProvider,
+                      );
                       if (index == currentVisiblePage) {
                         _updateEvaluation(force: true);
                       }
                     }
-                    
+
                     fastPathSuccess = true;
                   }
                 }
@@ -828,7 +862,9 @@ class ChessBoardScreenNotifierNew
             }
 
             if (!fastPathSuccess) {
-              _releaseLog('🆕 NEW MOVES: Reparsing PGN for game ${game.gameId}');
+              _releaseLog(
+                '🆕 NEW MOVES: Reparsing PGN for game ${game.gameId}',
+              );
               _hasParsedMoves = false;
               parseMoves(pgnOverride: newPgn);
             }
@@ -1176,6 +1212,7 @@ class ChessBoardScreenNotifierNew
           hasNewMoves && !shouldForceLatestPosition && !isFollowing;
 
       // Determine which move index to display:
+      // - If initialFen is provided: find the move that matches it
       // - On initial load of a finished game: start at beginning (-1)
       //   unless startAtLastMove is explicitly set
       // - On initial load of a live game: show latest move
@@ -1187,6 +1224,34 @@ class ChessBoardScreenNotifierNew
       if (isPreviewActive) {
         newMoveIndex =
             currentState?.analysisState.currentMoveIndex ?? lastMoveIndex;
+      } else if (isFirstLoad && initialFen != null) {
+        // Find the move that matches the initial FEN
+        final targetFen = _normalizeFen(initialFen!);
+        int matchedIndex = -1;
+
+        // Check starting position
+        if (_normalizeFen(startingPos.fen) == targetFen) {
+          matchedIndex = -1;
+        } else {
+          // Check each move
+          Position checkPos = startingPos;
+          for (int i = 0; i < allMoves.length; i++) {
+            checkPos = checkPos.play(allMoves[i]);
+            if (_normalizeFen(checkPos.fen) == targetFen) {
+              matchedIndex = i;
+              break;
+            }
+          }
+        }
+
+        // If no match found by FEN, fallback to standard logic
+        if (matchedIndex != -1 || _normalizeFen(startingPos.fen) == targetFen) {
+          newMoveIndex = matchedIndex;
+        } else if (game.gameStatus.isFinished && !startAtLastMove) {
+          newMoveIndex = -1;
+        } else {
+          newMoveIndex = lastMoveIndex;
+        }
       } else if (isFirstLoad &&
           game.gameStatus.isFinished &&
           !startAtLastMove) {
@@ -3517,49 +3582,68 @@ class ChessBoardScreenNotifierNew
       metadata['Opening'] = game.openingName;
     }
 
-    if (metadata['Event'] == null || metadata['Event'] == '?' || metadata['Event'] == 'Gamebase') {
-      final eventName = (game.tourSlug != null && game.tourSlug!.isNotEmpty) ? game.tourSlug! : game.tourId;
-      if (eventName.isNotEmpty && eventName != 'library' && eventName != 'Gamebase') {
+    if (metadata['Event'] == null ||
+        metadata['Event'] == '?' ||
+        metadata['Event'] == 'Gamebase') {
+      final eventName =
+          (game.tourSlug != null && game.tourSlug!.isNotEmpty)
+              ? game.tourSlug!
+              : game.tourId;
+      if (eventName.isNotEmpty &&
+          eventName != 'library' &&
+          eventName != 'Gamebase') {
         metadata['Event'] = eventName;
       }
     }
-    
+
     if (metadata['Round'] == null || metadata['Round'] == '?') {
-      final roundName = (game.roundSlug != null && game.roundSlug!.isNotEmpty) ? game.roundSlug! : game.roundId;
-      if (roundName.isNotEmpty && roundName != 'saved_analysis' && roundName != 'gamebase') {
+      final roundName =
+          (game.roundSlug != null && game.roundSlug!.isNotEmpty)
+              ? game.roundSlug!
+              : game.roundId;
+      if (roundName.isNotEmpty &&
+          roundName != 'saved_analysis' &&
+          roundName != 'gamebase') {
         metadata['Round'] = roundName;
       }
     }
-    
+
     if (metadata['Date'] == null || metadata['Date'] == '?') {
       if (game.lastMoveTime != null) {
-        metadata['Date'] = "${game.lastMoveTime!.year}.${game.lastMoveTime!.month.toString().padLeft(2, '0')}.${game.lastMoveTime!.day.toString().padLeft(2, '0')}";
+        metadata['Date'] =
+            "${game.lastMoveTime!.year}.${game.lastMoveTime!.month.toString().padLeft(2, '0')}.${game.lastMoveTime!.day.toString().padLeft(2, '0')}";
       }
     }
-    
+
     if (metadata['TimeControl'] == null || metadata['TimeControl'] == '?') {
       if (game.timeControl != null && game.timeControl!.isNotEmpty) {
         metadata['TimeControl'] = game.timeControl;
       }
     }
-    
-    if (metadata['Result'] == null || metadata['Result'] == '*' || metadata['Result'] == '?') {
+
+    if (metadata['Result'] == null ||
+        metadata['Result'] == '*' ||
+        metadata['Result'] == '?') {
       if (game.gameStatus != GameStatus.unknown) {
         metadata['Result'] = game.gameStatus.displayText;
       }
     }
 
     // Preserve clock times
-    if (metadata['WhiteClockSeconds'] == null && game.whiteClockSeconds != null) {
+    if (metadata['WhiteClockSeconds'] == null &&
+        game.whiteClockSeconds != null) {
       metadata['WhiteClockSeconds'] = game.whiteClockSeconds.toString();
     }
-    if (metadata['BlackClockSeconds'] == null && game.blackClockSeconds != null) {
+    if (metadata['BlackClockSeconds'] == null &&
+        game.blackClockSeconds != null) {
       metadata['BlackClockSeconds'] = game.blackClockSeconds.toString();
     }
-    if (metadata['WhiteTimeDisplay'] == null && game.whiteTimeDisplay != '--:--') {
+    if (metadata['WhiteTimeDisplay'] == null &&
+        game.whiteTimeDisplay != '--:--') {
       metadata['WhiteTimeDisplay'] = game.whiteTimeDisplay;
     }
-    if (metadata['BlackTimeDisplay'] == null && game.blackTimeDisplay != '--:--') {
+    if (metadata['BlackTimeDisplay'] == null &&
+        game.blackTimeDisplay != '--:--') {
       metadata['BlackTimeDisplay'] = game.blackTimeDisplay;
     }
 
@@ -4167,9 +4251,7 @@ class ChessBoardScreenNotifierNew
     final newValue = !currentState.isBoardFlipped;
 
     // Update local state
-    state = AsyncValue.data(
-      currentState.copyWith(isBoardFlipped: newValue),
-    );
+    state = AsyncValue.data(currentState.copyWith(isBoardFlipped: newValue));
 
     // Sync to global provider so other boards stay flipped during swiping
     ref.read(activeBoardFlippedProvider.notifier).state = newValue;
@@ -5368,6 +5450,8 @@ class ChessBoardScreenNotifierNew
         '🎯 EVAL START: Evaluating position $fen (requesting $configuredMultiPV PVs)',
       );
 
+      int startingDepth = 0;
+
       // Fast-path cache lookup through local → Gamebase → Supabase.
       // Local Stockfish only starts if the best available eval is still too
       // shallow for the main board.
@@ -5385,6 +5469,7 @@ class ChessBoardScreenNotifierNew
           ).future,
         );
         if (cascadeEval.pvs.isNotEmpty) {
+          startingDepth = cascadeEval.depth;
           primaryEval = cascadeEval;
           final shouldSkipLocalStockfish = cloudEvalSkipsBoardStockfish(
             cascadeEval,
@@ -5618,6 +5703,11 @@ class ChessBoardScreenNotifierNew
               _activeEvalKey != cacheKey) {
             return;
           }
+
+          // If we already showed a cached evaluation, don't let Stockfish 
+          // overwrite the UI with shallower/less accurate early searches.
+          if (depth <= startingDepth) return;
+
           final progress = EngineSearchProgress(
             depth: depth,
             kiloNodes: knodes,
@@ -5638,6 +5728,11 @@ class ChessBoardScreenNotifierNew
               _activeEvalKey != cacheKey) {
             return;
           }
+
+          // If we already showed a cached evaluation, don't let Stockfish 
+          // overwrite the UI with shallower/less accurate early searches.
+          if (depth <= startingDepth) return;
+
           // CRITICAL: Update evaluation synchronously so the eval bar
           // never stalls while depth keeps increasing. Previously, the
           // entire callback was wrapped in Future<void> which could
@@ -5668,12 +5763,6 @@ class ChessBoardScreenNotifierNew
               isEvaluating: true,
             );
             state = AsyncValue.data(workingState);
-
-            // Only rebuild expensive PV lines at milestone depths.
-            // Intermediate depths only update the eval bar above.
-            // The bestmove handler always builds final PVs regardless.
-            final isPvMilestone = depth <= 1 || depth % 4 == 0;
-            if (!isPvMilestone) return;
 
             // Build PV lines asynchronously — the heavy work is
             // deferred but eval bar is already updated above.
@@ -6411,9 +6500,8 @@ class ChessBoardScreenNotifierNew
   }
 
   ISet<Shape> getBestMoveShape(Position pos, CloudEval? cloudEval) {
-    ISet<Shape> shapes = const ISet.empty();
     if (cloudEval?.pvs.isNotEmpty ?? false) {
-      final arrowShapes = <Arrow>[];
+      final arrowShapes = <Shape>[];
 
       // CRITICAL: Validate that the PVs are for the correct position
       // The cloudEval.fen should match the position we're displaying arrows for
@@ -6518,13 +6606,11 @@ class ChessBoardScreenNotifierNew
         }
       }
 
-      if (arrowShapes.isNotEmpty) {
-        shapes = arrowShapes.toISet();
-      }
+      return arrowShapes.toISet();
     } else {
       _releaseLog('No evaluation data available.');
     }
-    return shapes;
+    return const ISet.empty();
   }
 
   ISet<Shape> _variantArrowShapes(
@@ -6586,7 +6672,7 @@ class ChessBoardScreenNotifierNew
     int selectedIndex, {
     bool isThreatsMode = false,
   }) {
-    final arrows = <Arrow>[];
+    final arrows = <Shape>[];
 
     // Use maxArrowsOnBoard setting to limit number of arrows
     final engineSettings = ref.read(engineSettingsProviderNew).valueOrNull;
@@ -6890,11 +6976,15 @@ class ChessBoardProviderParams {
   /// Used by the opening explorer's "Analyze" action.
   final bool startAtLastMove;
 
+  /// Optional initial position to show.
+  final String? initialFen;
+
   const ChessBoardProviderParams({
     required this.game,
     required this.index,
     this.savedAnalysisData,
     this.startAtLastMove = false,
+    this.initialFen,
   });
 
   @override
@@ -6969,6 +7059,7 @@ final chessBoardScreenProviderNew = AutoDisposeStateNotifierProvider.family<
     index: params.index,
     savedAnalysisData: params.savedAnalysisData,
     startAtLastMove: params.startAtLastMove,
+    initialFen: params.initialFen,
   );
 });
 

@@ -1,6 +1,8 @@
 import 'package:flutter/foundation.dart';
+import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
 import 'package:chessever2/screens/group_event/group_event_screen.dart';
 import 'package:chessever2/screens/group_event/providers/live_group_broadcast_id_provider.dart';
+import 'package:chessever2/screens/gamebase/models/models.dart';
 import 'package:chessever2/utils/country_utils.dart';
 import 'package:country_picker/country_picker.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -227,6 +229,11 @@ final supabaseCombinedSearchProvider = AutoDisposeFutureProvider.family<
       ..addAll(byNormalizedName.values);
   }
 
+  await _backfillMissingPlayerRatings(
+    playerResults,
+    ref.read(gamebaseRepositoryProvider),
+  );
+
   // Merge resilient local-search results from ALL categories (current + past)
   // This ensures we find events even if Supabase RPC is slow or returns limited results
   final allLocalSearches = [localSearchCurrent, localSearchPast];
@@ -371,6 +378,124 @@ final supabaseCombinedSearchProvider = AutoDisposeFutureProvider.family<
   return searchResult;
 });
 
+Future<void> _backfillMissingPlayerRatings(
+  List<SearchResult> playerResults,
+  GamebaseRepository gamebaseRepository,
+) async {
+  final lookups = <String, SearchPlayer>{};
+
+  for (final result in playerResults) {
+    final player = result.player;
+    if (player == null) continue;
+    if ((player.rating ?? 0) > 0) continue;
+
+    final lookupKey =
+        (player.fideId != null && player.fideId! > 0)
+            ? 'fide:${player.fideId}'
+            : 'name:${_normalizePlayerLookupName(player.name)}';
+    lookups.putIfAbsent(lookupKey, () => player);
+  }
+
+  if (lookups.isEmpty) return;
+
+  final resolvedRatings = <String, int?>{};
+  await Future.wait(
+    lookups.entries.map((entry) async {
+      resolvedRatings[entry.key] = await _fetchGamebaseDisplayRating(
+        gamebaseRepository,
+        entry.value,
+      );
+    }),
+    eagerError: false,
+  );
+
+  for (var i = 0; i < playerResults.length; i++) {
+    final result = playerResults[i];
+    final player = result.player;
+    if (player == null || (player.rating ?? 0) > 0) continue;
+
+    final lookupKey =
+        (player.fideId != null && player.fideId! > 0)
+            ? 'fide:${player.fideId}'
+            : 'name:${_normalizePlayerLookupName(player.name)}';
+    final fallbackRating = resolvedRatings[lookupKey];
+    if (fallbackRating == null || fallbackRating <= 0) continue;
+
+    playerResults[i] = SearchResult(
+      tournament: result.tournament,
+      score: result.score,
+      matchedText: result.matchedText,
+      type: result.type,
+      player: player.copyWith(rating: fallbackRating),
+    );
+  }
+}
+
+Future<int?> _fetchGamebaseDisplayRating(
+  GamebaseRepository gamebaseRepository,
+  SearchPlayer player,
+) async {
+  try {
+    final fideId = player.fideId;
+    final candidates =
+        (fideId != null && fideId > 0)
+            ? await gamebaseRepository.getPlayers(
+              fideId: fideId.toString(),
+              pageSize: 5,
+            )
+            : await gamebaseRepository.getPlayers(
+              name: player.name,
+              pageSize: 10,
+            );
+
+    if (candidates.isEmpty) return null;
+
+    final normalizedTarget = _normalizePlayerLookupName(player.name);
+    GamebasePlayer? bestMatch;
+
+    if (fideId != null && fideId > 0) {
+      for (final candidate in candidates) {
+        if (candidate.fideId == fideId.toString()) {
+          bestMatch = candidate;
+          break;
+        }
+      }
+    }
+
+    for (final candidate in candidates) {
+      final normalizedCandidate = _normalizePlayerLookupName(candidate.name);
+      if (normalizedCandidate == normalizedTarget) {
+        bestMatch ??= candidate;
+        break;
+      }
+      if (bestMatch == null &&
+          (normalizedCandidate.contains(normalizedTarget) ||
+              normalizedTarget.contains(normalizedCandidate))) {
+        bestMatch = candidate;
+      }
+    }
+
+    bestMatch ??= candidates.first;
+
+    final displayRating =
+        bestMatch.ratingClassical ??
+        bestMatch.ratingRapid ??
+        bestMatch.ratingBlitz ??
+        bestMatch.highestRating;
+    return (displayRating != null && displayRating > 0) ? displayRating : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+String _normalizePlayerLookupName(String name) {
+  return name
+      .toLowerCase()
+      .replaceAll(',', ' ')
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .trim();
+}
+
 /// Detects ISO-2 country code from a user query.
 /// Supports ISO2/ISO3/FIDE codes and country names.
 String? _detectCountryIsoCode(String query) {
@@ -421,9 +546,8 @@ Future<List<SearchResult>> _fetchTopCountryPlayers({
         .from('chess_players')
         .select('fideid, name, title, rating, country')
         .eq('country', fideCode)
-        .gt('rating', 0)
-        .lt('rating', 3300)
-        .order('rating', ascending: false)
+        .or('rating.lt.3300,rating.is.null')
+        .order('rating', ascending: false, nullsFirst: false)
         .limit(limit);
 
     final country = CountryService().findByCode(countryIso2)?.name ?? fideCode;
@@ -511,9 +635,10 @@ Future<List<SearchResult>> _fetchPlayersByName({
       queryBuilder = queryBuilder.ilike('name', '%$word%');
     }
 
+    queryBuilder = queryBuilder.or('rating.lt.3300,rating.is.null');
+
     final rows = await queryBuilder
-        .gt('rating', 0)
-        .order('rating', ascending: false)
+        .order('rating', ascending: false, nullsFirst: false)
         .limit(limit);
 
     final placeholderTournament = GroupEventCardModel(

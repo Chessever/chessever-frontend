@@ -219,20 +219,29 @@ class ExplorerEvalNotifier extends StateNotifier<ExplorerEvalState> {
             unawaited(
               Future.wait<void>([
                 persist.call(normalizedFen, gamebaseEval),
-                ref.read(localEvalCacheProvider).save(
-                  normalizedFen,
-                  gamebaseEval,
-                  multiPV: gamebaseEval.requestedMultiPv ?? gamebaseEval.pvs.length,
-                ),
+                ref
+                    .read(localEvalCacheProvider)
+                    .save(
+                      normalizedFen,
+                      gamebaseEval,
+                      multiPV:
+                          gamebaseEval.requestedMultiPv ??
+                          gamebaseEval.pvs.length,
+                    ),
               ]).catchError((_) => <void>[]),
             );
           } else {
             unawaited(
-              ref.read(localEvalCacheProvider).save(
-                normalizedFen,
-                gamebaseEval,
-                multiPV: gamebaseEval.requestedMultiPv ?? gamebaseEval.pvs.length,
-              ).catchError((_) => null),
+              ref
+                  .read(localEvalCacheProvider)
+                  .save(
+                    normalizedFen,
+                    gamebaseEval,
+                    multiPV:
+                        gamebaseEval.requestedMultiPv ??
+                        gamebaseEval.pvs.length,
+                  )
+                  .catchError((_) => null),
             );
           }
 
@@ -281,6 +290,7 @@ class ExplorerEvalNotifier extends StateNotifier<ExplorerEvalState> {
           ownerId: _ownerId,
           onDepthUpdate: (depth, knodes) {
             if (_isStale(gen)) return;
+
             final nextDepth = depth > state.depth ? depth : state.depth;
             state = state.copyWith(depth: nextDepth, isEvaluating: true);
             _updateDepthTracking(

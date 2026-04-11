@@ -234,3 +234,4 @@ class _LibraryFolderCopyWithImpl<$R, $Out>
     Then<$Out2, $R2> t,
   ) => _LibraryFolderCopyWithImpl<$R2, $Out2>($value, $cast, t);
 }
+

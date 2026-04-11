@@ -22,12 +22,11 @@ class EngineSearchProgress {
   static const int minReportDepth = 8;
 
   EngineSearchProgress({
-    required int depth,
+    required this.depth,
     required this.kiloNodes,
     this.fenFragment = '',
     DateTime? timestamp,
-  }) : depth = depth < minReportDepth ? minReportDepth : depth,
-       timestamp = timestamp ?? DateTime.now();
+  }) : timestamp = timestamp ?? DateTime.now();
 
   final int depth;
   final int kiloNodes;

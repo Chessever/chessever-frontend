@@ -34,11 +34,11 @@ class PlayersRepository extends BaseRepository {
         builder = builder.eq('country', fideCode);
       }
 
-      // Filter: rating > 0 and rating < 3300 (exclude bots/invalid)
-      builder = builder.gt('rating', 0).lt('rating', 3300);
+      // Filter: rating < 3300 (exclude bots/invalid)
+      builder = builder.or('rating.lt.3300,rating.is.null');
 
       final data = await builder
-          .order('rating', ascending: false)
+          .order('rating', ascending: false, nullsFirst: false)
           .range(offset, offset + pageSize - 1);
 
       return (data as List<dynamic>).map((row) {
@@ -135,9 +135,8 @@ class PlayersRepository extends BaseRepository {
           .from('chess_players')
           .select('fideid, name, title, rating, country')
           .or('name.ilike.$term,title.ilike.$term')
-          .gt('rating', 0)
-          .lt('rating', 3300)
-          .order('rating', ascending: false)
+          .or('rating.lt.3300,rating.is.null')
+          .order('rating', ascending: false, nullsFirst: false)
           .range(offset, offset + pageSize - 1);
 
       return (data as List<dynamic>).map((row) {

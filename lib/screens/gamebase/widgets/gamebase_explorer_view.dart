@@ -325,7 +325,7 @@ class _GamebaseMovesTable extends StatelessWidget {
             children: [
               Expanded(flex: 2, child: Text('Move', style: _headerStyle)),
               Expanded(
-                flex: 2,
+                flex: 3,
                 child: Text(
                   '#',
                   style: _headerStyle,
@@ -348,6 +348,8 @@ class _GamebaseMovesTable extends StatelessWidget {
                   textAlign: TextAlign.right,
                 ),
               ),
+              // Match the action button width in rows
+              if (onGameSelected != null) SizedBox(width: 38.w),
             ],
           ),
         ),
@@ -573,7 +575,7 @@ class _MoveRow extends ConsumerWidget {
 
             // Count
             Expanded(
-              flex: 2,
+              flex: 3,
               child: Text(
                 NumberFormat.compact().format(total),
                 style: AppTypography.textSmRegular.copyWith(
@@ -619,7 +621,9 @@ class _MoveRow extends ConsumerWidget {
                 onTap: onOpenGame,
                 behavior: HitTestBehavior.opaque,
                 child: Container(
-                  padding: EdgeInsets.all(6.sp),
+                  width: 28.w,
+                  height: 28.h,
+                  alignment: Alignment.center,
                   decoration: BoxDecoration(
                     color: kWhiteColor.withValues(alpha: 0.08),
                     borderRadius: BorderRadius.circular(8.br),

@@ -1,8 +1,70 @@
 import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.dart';
+import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
+import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/repository/supabase/round/round.dart';
+import 'package:chessever2/repository/supabase/round/round_repository.dart';
+import 'package:chessever2/repository/supabase/settings/settings.dart';
+import 'package:chessever2/repository/supabase/settings/settings_repository.dart';
 import 'package:chessever2/repository/supabase/tour/tour.dart';
+import 'package:chessever2/repository/supabase/tour/tour_repository.dart';
 import 'package:chessever2/screens/group_event/providers/live_group_broadcast_id_provider.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
+
+class _SilentSettingsRepository implements SettingsRepository {
+  @override
+  Future<Settings?> getSettings() async => null;
+
+  @override
+  Stream<List<String>> subscribeToLiveGroupBroadcastIds() =>
+      const Stream<List<String>>.empty();
+
+  @override
+  Stream<List<String>> subscribeToLiveRoundIds() =>
+      const Stream<List<String>>.empty();
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => null;
+}
+
+class _FakeGroupBroadcastRepository implements GroupBroadcastRepository {
+  @override
+  Future<List<GroupBroadcast>> getGroupBroadcastsByIdsOrNames(
+    List<String> identifiers,
+  ) async => <GroupBroadcast>[];
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => null;
+}
+
+class _FakeTourRepository implements TourRepository {
+  @override
+  Future<Map<String, List<Tour>>> getToursByGroupBroadcastIds(
+    List<String> groupBroadcastIds,
+  ) async => <String, List<Tour>>{};
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => null;
+}
+
+class _FakeRoundRepository implements RoundRepository {
+  @override
+  Future<List<Round>> getRoundsByIds(List<String> roundIds) async =>
+      <Round>[];
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => null;
+}
+
+class _FakeGameRepository implements GameRepository {
+  @override
+  Future<Map<String, DateTime>> getLatestLastMoveTimesByRoundIds(
+    List<String> roundIds,
+  ) async => <String, DateTime>{};
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => null;
+}
 
 GroupBroadcast _broadcast({
   required String id,
@@ -60,6 +122,30 @@ Round _round({
 }
 
 void main() {
+  group('liveGroupBroadcastIdsProvider', () {
+    test('emits a fallback immediately before settings snapshots arrive', () async {
+      final container = ProviderContainer(
+        overrides: [
+          settingsRepositoryProvider.overrideWithValue(_SilentSettingsRepository()),
+          groupBroadcastRepositoryProvider.overrideWithValue(
+            _FakeGroupBroadcastRepository(),
+          ),
+          tourRepositoryProvider.overrideWithValue(_FakeTourRepository()),
+          roundRepositoryProvider.overrideWithValue(_FakeRoundRepository()),
+          gameRepositoryProvider.overrideWithValue(_FakeGameRepository()),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      await expectLater(
+        container
+            .read(liveGroupBroadcastIdsProvider.future)
+            .timeout(const Duration(milliseconds: 100)),
+        completion(isEmpty),
+      );
+    });
+  });
+
   group('computeStrictLiveGroupBroadcastIds', () {
     final now = DateTime(2026, 4, 9, 18);
     final broadcast = _broadcast(

@@ -1,4 +1,7 @@
+import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
+import 'package:chessever2/screens/chessboard/analysis/chess_game_navigator.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
+import 'package:chessever2/repository/gamebase/search/gamebase_search_models.dart';
 import 'package:dart_mappable/dart_mappable.dart';
 import '../models/models.dart';
 
@@ -47,6 +50,10 @@ class GamebaseFilters with GamebaseFiltersMappable {
     this.selectedPlayers = const [],
     this.playerColor,
     this.gameResult,
+    this.yearFrom,
+    this.yearTo,
+    this.sortBy = GamebaseSortField.date,
+    this.sortDirection = GamebaseSortDirection.desc,
   });
 
   /// Selected time controls (empty = all)
@@ -69,6 +76,18 @@ class GamebaseFilters with GamebaseFiltersMappable {
 
   /// Game result filter (null = all results)
   final GamebaseGameResult? gameResult;
+
+  /// Minimum game year filter
+  final int? yearFrom;
+
+  /// Maximum game year filter
+  final int? yearTo;
+
+  /// Field to sort by
+  final GamebaseSortField sortBy;
+
+  /// Direction of sorting
+  final GamebaseSortDirection sortDirection;
 }
 
 /// State for the Gamebase explorer screen.
@@ -76,23 +95,17 @@ class GamebaseFilters with GamebaseFiltersMappable {
 class GamebaseExplorerState with GamebaseExplorerStateMappable {
   const GamebaseExplorerState({
     this.currentFen = '', // Empty by default; setPosition() sets the real FEN
-    this.moveHistory = const [],
-    this.currentMoveIndex = -1,
     this.moveAggregates = const [],
     this.isLoading = false,
     this.error,
     this.filters = const GamebaseFilters(),
     this.selectedGame,
+    this.game,
+    this.movePointer = const [],
   });
 
   /// Current position in FEN notation
   final String currentFen;
-
-  /// Move history as list of UCI moves
-  final List<String> moveHistory;
-
-  /// Current move index in history (-1 = initial position)
-  final int currentMoveIndex;
 
   /// Move aggregates for current position
   final List<MoveAggregate> moveAggregates;
@@ -109,31 +122,40 @@ class GamebaseExplorerState with GamebaseExplorerStateMappable {
   /// Currently selected game (when viewing a specific game)
   final GamebaseGame? selectedGame;
 
-  /// Check if at initial position
-  bool get isAtInitialPosition => currentMoveIndex == -1;
+  /// The underlying game model with variations
+  final ChessGame? game;
 
-  /// Check if at latest move
-  bool get isAtLatestMove => currentMoveIndex == maxNavigableMoveIndex;
+  /// The current position in the game tree
+  final ChessMovePointer movePointer;
+
+  /// Check if at initial position
+  bool get isAtInitialPosition =>
+      game != null ? movePointer.isEmpty : true;
 
   /// Check if can go back
-  bool get canGoBack => currentMoveIndex >= 0;
+  bool get canGoBack => game != null ? movePointer.isNotEmpty : false;
 
   /// Check if can go forward (either replay a stored move or play the most-played aggregate)
-  bool get canGoForward =>
-      currentMoveIndex < maxNavigableMoveIndex || moveAggregates.isNotEmpty;
+  bool get canGoForward {
+    if (game != null) {
+      // Logic from ChessGameNavigatorState
+      final nextPointer = _nextPointerInGame(game!, movePointer);
+      return nextPointer != null || moveAggregates.isNotEmpty;
+    }
+    return moveAggregates.isNotEmpty;
+  }
 
   /// Current backend move_number (1-indexed ply position).
-  int get currentMoveNumber => currentMoveIndex + 2;
-
-  /// Last move index available in the explored line.
-  int get maxNavigableMoveIndex =>
-      moveHistory.isEmpty ? -1 : moveHistory.length - 1;
+  int get currentMoveNumber =>
+      game != null ? _pointerToPly(game!, movePointer) + 1 : 1;
 
   /// Explored move line up to the currently selected position.
-  List<String> get exploredMoves =>
-      currentMoveIndex >= 0
-          ? moveHistory.sublist(0, currentMoveIndex + 1)
-          : const <String>[];
+  List<String> get exploredMoves {
+    if (game != null) {
+      return _pointerToUciPath(game!, movePointer);
+    }
+    return const <String>[];
+  }
 
   /// Get total games in current position
   int get totalGames => moveAggregates.fold(0, (sum, agg) => sum + agg.total);
@@ -145,7 +167,82 @@ class GamebaseExplorerState with GamebaseExplorerStateMappable {
       filters.maxRating != null ||
       filters.playerIds.isNotEmpty ||
       filters.playerColor != null ||
-      filters.gameResult != null;
+      filters.gameResult != null ||
+      filters.yearFrom != null ||
+      filters.yearTo != null;
+
+  // Helper methods to replicate navigator logic within state
+  static int _pointerToPly(ChessGame game, ChessMovePointer pointer) {
+    if (pointer.isEmpty) return 0; // Assuming start from ply 0 for now or calculate from FEN
+    // For simplicity, let's just count moves in the pointer path
+    // Actually ply should be depth in tree if we count properly.
+    // A pointer like [5] is ply 5 (if starting from 0).
+    // A pointer like [2, 0, 1] is move 2 in mainline, then variation 0, move 1 in that variation.
+    // Total ply = 2 + 1 + 1? No.
+    // Let's use a more accurate way if needed.
+    return _pointerToUciPath(game, pointer).length;
+  }
+
+  static List<String> _pointerToUciPath(ChessGame game, ChessMovePointer pointer) {
+    final path = <String>[];
+    if (pointer.isEmpty) return path;
+
+    ChessLine? currentList = game.mainline;
+    ChessMove? currentMove;
+
+    for (var i = 0; i < pointer.length; i++) {
+      final index = pointer[i];
+      if (i.isEven) {
+        if (currentList == null || index >= currentList.length) break;
+        for (var j = 0; j <= index; j++) {
+          path.add(currentList![j].uci);
+        }
+        currentMove = currentList![index];
+      } else {
+        if (currentMove == null ||
+            currentMove.variations == null ||
+            index >= currentMove.variations!.length) break;
+        currentList = currentMove.variations![index];
+        // After switching to a variation, we don't add the move yet,
+        // it will be added in the next (even) iteration.
+      }
+    }
+    return path;
+  }
+
+  static ChessMovePointer? _nextPointerInGame(ChessGame game, ChessMovePointer pointer) {
+    // Replicate _nextPointerInGame from ChessGameNavigator for canGoForward logic
+    if (game.mainline.isEmpty) return null;
+    if (pointer.isEmpty) return [0];
+
+    final currentLine = _lineForPointer(game, pointer);
+    if (currentLine == null) return null;
+
+    final lastIndex = pointer.last;
+    if (lastIndex + 1 < currentLine.length) {
+      final next = List<int>.of(pointer);
+      next.last = lastIndex + 1;
+      return next;
+    }
+    return null;
+  }
+
+  static ChessLine? _lineForPointer(ChessGame game, ChessMovePointer pointer) {
+    ChessLine? line = game.mainline;
+    ChessMove? move;
+    for (var i = 0; i < pointer.length; i++) {
+      final index = pointer[i];
+      if (i.isEven) {
+        if (line == null || index >= line.length) return null;
+        move = line[index];
+      } else {
+        final variations = move?.variations;
+        if (variations == null || index >= variations.length) return null;
+        line = variations[index];
+      }
+    }
+    return line;
+  }
 }
 
 /// Maps a [GameFilter] (player profile) into [GamebaseFilters] (explorer).
@@ -198,6 +295,8 @@ extension GameFilterToGamebaseFilters on GameFilter {
       maxRating: clampedMax < GameFilter.absoluteMaxRating ? clampedMax : null,
       playerColor: playerColor,
       gameResult: gameResult,
+      yearFrom: minYear > GameFilter.absoluteMinYear ? minYear : null,
+      yearTo: maxYear < DateTime.now().year ? maxYear : null,
     );
   }
 
@@ -207,5 +306,7 @@ extension GameFilterToGamebaseFilters on GameFilter {
       color != GameColorFilter.all ||
       result != GameResultFilter.all ||
       minRating != GameFilter.defaultMinRating ||
-      maxRating != GameFilter.absoluteMaxRating;
+      maxRating != GameFilter.absoluteMaxRating ||
+      minYear != GameFilter.absoluteMinYear ||
+      maxYear != DateTime.now().year;
 }

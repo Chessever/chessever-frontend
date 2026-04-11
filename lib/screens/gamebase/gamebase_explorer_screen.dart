@@ -2,6 +2,12 @@ import 'dart:async';
 
 import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
+import 'package:chessever2/screens/chessboard/notation/notation_pointer.dart';
+import 'package:chessever2/screens/chessboard/notation/notation_token_builder.dart';
+import 'package:chessever2/screens/chessboard/notation/notation_tree.dart';
+import 'package:chessever2/screens/chessboard/widgets/nag_display.dart';
+import 'package:chessever2/utils/app_typography.dart';
+import 'package:chessever2/utils/figurine_notation.dart';
 import 'package:chessground/chessground.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:flutter/material.dart';
@@ -17,8 +23,6 @@ import 'package:chessever2/screens/chessboard/widgets/evaluation_bar_widget.dart
 import 'package:chessever2/screens/gamebase/providers/explorer_eval_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/theme/app_theme.dart';
-import 'package:chessever2/utils/app_typography.dart';
-import 'package:chessever2/utils/figurine_notation.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/screen_wrapper.dart';
 import 'package:chessever2/widgets/game_filter/wheel_range_filter.dart';
@@ -369,6 +373,7 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
                 child: Column(
                   children: [
                     if (showEngineAnalysis) const _ExplorerEngineLines(),
+                    const _ExplorerNotationView(),
                     const Expanded(child: MoveStatisticsPanel()),
                   ],
                 ),
@@ -442,6 +447,7 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
                 child: Column(
                   children: [
                     if (showEngineAnalysis) const _ExplorerEngineLines(),
+                    const _ExplorerNotationView(),
                     const Expanded(child: MoveStatisticsPanel()),
                   ],
                 ),
@@ -623,42 +629,16 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
 
   void _openAnalysis(BuildContext context) {
     final state = ref.read(gamebaseExplorerProvider);
-    final exploredMoves = state.exploredMoves;
+    final game = state.game;
+    if (game == null) return;
+
     final timestamp = DateTime.now().millisecondsSinceEpoch;
 
-    // Convert UCI moves to SAN by replaying from the start.
-    //
-    // NOTE: `package:chess`'s `move()` returns a `bool` in our current version,
-    // so we can't rely on verbose move maps (`move['san']`). Use `dartchess`
-    // instead (same helper we use in the move list) to produce SAN + advance FEN.
-    final sanMoves = <String>[];
-    var currentFen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
-    for (final uci in exploredMoves) {
-      final (san, nextFen) = uciToSanAndFen(uci, currentFen);
-      sanMoves.add(san);
-      if (nextFen == null) break;
-      currentFen = nextFen;
-    }
-
-    // Build PGN move text.
-    final moveText = StringBuffer();
-    for (var i = 0; i < sanMoves.length; i++) {
-      if (i % 2 == 0) moveText.write('${(i ~/ 2) + 1}. ');
-      moveText.write(sanMoves[i]);
-      if (i < sanMoves.length - 1) moveText.write(' ');
-    }
-
-    final pgn =
-        '[Event "Opening Explorer"]\n'
-        '[Site "ChessEver"]\n'
-        '[Date "${DateTime.now().toIso8601String().split('T')[0]}"]\n'
-        '[White "White"]\n'
-        '[Black "Black"]\n'
-        '[Result "*"]\n'
-        '\n${moveText.isEmpty ? '*' : '$moveText *'}';
+    // Use the notation tree helper to export full PGN with variations
+    final pgn = exportGameToPgn(game);
 
     final whitePlayer = PlayerCard(
-      name: 'White',
+      name: game.metadata['White']?.toString() ?? 'White',
       federation: '',
       title: '',
       rating: 0,
@@ -668,7 +648,7 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
     );
 
     final blackPlayer = PlayerCard(
-      name: 'Black',
+      name: game.metadata['Black']?.toString() ?? 'Black',
       federation: '',
       title: '',
       rating: 0,
@@ -677,7 +657,7 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
       fideId: null,
     );
 
-    final game = GamesTourModel(
+    final tourGame = GamesTourModel(
       gameId: 'explorer_$timestamp',
       source: GameSource.openingExplorer,
       whitePlayer: whitePlayer,
@@ -692,8 +672,6 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
       pgn: pgn,
     );
 
-    _resetExplorerState();
-
     ref.read(chessboardViewFromProviderNew.notifier).state =
         ChessboardView.tour;
 
@@ -702,7 +680,7 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
         builder:
             (_) => ChessBoardScreenNew(
               currentIndex: 0,
-              games: [game],
+              games: [tourGame],
               hideEventInfo: true,
               showGamebaseButton: false,
               disableGamebaseOverlayByDefault: true,
@@ -922,9 +900,12 @@ class _FilterSheet extends ConsumerStatefulWidget {
 class _FilterSheetState extends ConsumerState<_FilterSheet> {
   static const double _ratingMin = 0;
   static const double _ratingMax = 3500;
+  static const double _yearMin = 1800;
+  static double get _yearMax => DateTime.now().year.toDouble();
 
   late GamebaseFilters _draftFilters;
   late RangeValues _ratingRange;
+  late RangeValues _yearRange;
   final TextEditingController _playerSearchController = TextEditingController();
   final FocusNode _playerSearchFocusNode = FocusNode();
   String _playerSearchQuery = '';
@@ -949,6 +930,13 @@ class _FilterSheetState extends ConsumerState<_FilterSheet> {
         _ratingMin,
         _ratingMax,
       ),
+    );
+    _yearRange = RangeValues(
+      (_draftFilters.yearFrom?.toDouble() ?? _yearMin).clamp(
+        _yearMin,
+        _yearMax,
+      ),
+      (_draftFilters.yearTo?.toDouble() ?? _yearMax).clamp(_yearMin, _yearMax),
     );
   }
 
@@ -976,6 +964,10 @@ class _FilterSheetState extends ConsumerState<_FilterSheet> {
     setState(() => _ratingRange = values);
   }
 
+  void _onYearRangeChanged(RangeValues values) {
+    setState(() => _yearRange = values);
+  }
+
   /// Converts the current slider range into nullable min/max for [GamebaseFilters].
   /// Returns null when at the boundary (meaning "no filter").
   int? get _effectiveMinRating {
@@ -986,6 +978,16 @@ class _FilterSheetState extends ConsumerState<_FilterSheet> {
   int? get _effectiveMaxRating {
     final v = _ratingRange.end.round();
     return v >= _ratingMax ? null : v;
+  }
+
+  int? get _effectiveYearFrom {
+    final v = _yearRange.start.round();
+    return v <= _yearMin ? null : v;
+  }
+
+  int? get _effectiveYearTo {
+    final v = _yearRange.end.round();
+    return v >= _yearMax ? null : v;
   }
 
   bool _canUsePlayerFilter(bool isSubscribed) {
@@ -1119,11 +1121,14 @@ class _FilterSheetState extends ConsumerState<_FilterSheet> {
       _draftFilters.copyWith(
         minRating: _effectiveMinRating,
         maxRating: _effectiveMaxRating,
+        yearFrom: _effectiveYearFrom,
+        yearTo: _effectiveYearTo,
       ),
       canUsePlayerFilter: canUsePlayerFilter,
     );
-    ref.read(gamebaseExplorerProvider.notifier).updateFilters(finalFilters);
+
     Navigator.pop(context);
+    ref.read(gamebaseExplorerProvider.notifier).updateFilters(finalFilters);
   }
 
   bool _isScopedPlayerDraft(GamebaseFilters filters) {
@@ -1136,25 +1141,29 @@ class _FilterSheetState extends ConsumerState<_FilterSheet> {
   }
 
   bool _hasActiveDraft(GamebaseFilters filters) {
-    final hasTimeOrRating =
+    final hasTimeOrRatingOrYear =
         filters.timeControls.isNotEmpty ||
         _effectiveMinRating != null ||
-        _effectiveMaxRating != null;
+        _effectiveMaxRating != null ||
+        _effectiveYearFrom != null ||
+        _effectiveYearTo != null;
     final hasColor = filters.playerColor != null;
     final hasResult = filters.gameResult != null;
     if (widget.scopedPlayer == null) {
-      return hasTimeOrRating ||
+      return hasTimeOrRatingOrYear ||
           hasColor ||
           hasResult ||
           filters.playerIds.isNotEmpty;
     }
-    return hasTimeOrRating ||
+    return hasTimeOrRatingOrYear ||
         hasColor ||
         hasResult ||
         !_isScopedPlayerDraft(filters);
   }
 
   void _clearAll() {
+    Navigator.pop(context);
+
     final notifier = ref.read(gamebaseExplorerProvider.notifier);
     final scopedPlayer = widget.scopedPlayer;
     if (scopedPlayer != null) {
@@ -1167,14 +1176,6 @@ class _FilterSheetState extends ConsumerState<_FilterSheet> {
     } else {
       notifier.clearFilters();
     }
-    setState(() {
-      _draftFilters = _draftFilters.copyWith(
-        playerColor: null,
-        gameResult: null,
-      );
-      _ratingRange = const RangeValues(_ratingMin, _ratingMax);
-    });
-    Navigator.pop(context);
   }
 
   @override
@@ -1399,6 +1400,29 @@ class _FilterSheetState extends ConsumerState<_FilterSheet> {
                 ),
                 SizedBox(height: 24.sp),
 
+                // Year range
+                Text(
+                  'Year Range',
+                  style: TextStyle(
+                    color: kSecondaryTextColor,
+                    fontSize: 12.f,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                SizedBox(height: 8.sp),
+                Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 16.w),
+                  child: WheelRangeFilter(
+                    minValue: _yearMin,
+                    maxValue: _yearMax,
+                    currentStart: _yearRange.start,
+                    currentEnd: _yearRange.end,
+                    divisions: (_yearMax - _yearMin).toInt(),
+                    onChanged: _onYearRangeChanged,
+                  ),
+                ),
+                SizedBox(height: 24.sp),
+
                 if (widget.scopedPlayer == null) ...[
                   // Player search (hidden in player-scoped explorer)
                   Text(
@@ -1614,7 +1638,8 @@ class _ExplorerEngineLines extends ConsumerWidget {
 
     final useFigurine = ref.watch(
       boardSettingsProviderNew.select(
-        (s) => s.valueOrNull?.useFigurine ?? const BoardSettingsNew().useFigurine,
+        (s) =>
+            s.valueOrNull?.useFigurine ?? const BoardSettingsNew().useFigurine,
       ),
     );
     final pieceAssets = ref.watch(
@@ -1863,5 +1888,235 @@ class _EngineLine extends StatelessWidget {
       isWhite = !isWhite;
     }
     return buffer.toString();
+  }
+}
+
+class _ExplorerNotationView extends ConsumerWidget {
+  const _ExplorerNotationView();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final state = ref.watch(gamebaseExplorerProvider);
+    final game = state.game;
+    if (game == null || game.mainline.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    final tree = NotationTreeBuilder.build(game);
+    final pointerId = NotationPointer.encode(state.movePointer);
+
+    // For explorer, we always want variations expanded for better visibility
+    final forcedOpenIds = <String>{};
+    _collectVariationAncestors(pointerId, tree.mainline, forcedOpenIds);
+
+    // We want to see all variations in the explorer
+    final expandedVariationIds = <String>{};
+    _collectAllVariationIds(tree.mainline, expandedVariationIds);
+
+    final pointerMap = <String, NotationMoveNode>{};
+    final tokens = buildNotationTokens(
+      tree.mainline,
+      depth: 0,
+      startingPly: tree.startingPly,
+      pointerMap: pointerMap,
+      forcedOpenIds: forcedOpenIds,
+      variationComments: const {},
+      lichessAnnotations: const {},
+      collapsedVariationIds: const {},
+      expandedVariationIds: expandedVariationIds,
+      autoCollapseDepth: 10, // Don't collapse in explorer
+      autoCollapseMoveThreshold: 100,
+    );
+
+    if (tokens.isEmpty) return const SizedBox.shrink();
+
+    final useFigurine = ref.watch(
+      boardSettingsProviderNew.select(
+        (s) =>
+            s.valueOrNull?.useFigurine ?? const BoardSettingsNew().useFigurine,
+      ),
+    );
+    final pieceAssets = ref.watch(
+      boardSettingsProviderNew.select(
+        (s) =>
+            s.valueOrNull?.pieceAssets ?? const BoardSettingsNew().pieceAssets,
+      ),
+    );
+
+    final currentNode = pointerMap[pointerId];
+    final currentPly = currentNode?.ply ?? -1;
+
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 8.sp),
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: kDividerColor, width: 1)),
+      ),
+      constraints: BoxConstraints(maxHeight: 120.h),
+      child: SingleChildScrollView(
+        child: Wrap(
+          spacing: 4.sp,
+          runSpacing: 4.sp,
+          children:
+              tokens.map((token) {
+                if (token.type == NotationTokenType.move) {
+                  return _buildMoveChip(
+                    context,
+                    ref,
+                    token,
+                    pointerId,
+                    currentPly,
+                    useFigurine,
+                    pieceAssets,
+                  );
+                } else if (token.type == NotationTokenType.openParen ||
+                    token.type == NotationTokenType.closeParen) {
+                  return Padding(
+                    padding: EdgeInsets.symmetric(vertical: 2.sp),
+                    child: Text(
+                      token.text,
+                      style: AppTypography.textXsMedium.copyWith(
+                        color: kWhiteColor.withValues(alpha: 0.5),
+                      ),
+                    ),
+                  );
+                }
+                return const SizedBox.shrink();
+              }).toList(),
+        ),
+      ),
+    );
+  }
+
+  void _collectVariationAncestors(
+    String? targetId,
+    List<NotationMoveNode> nodes,
+    Set<String> out,
+  ) {
+    if (targetId == null) return;
+    for (final node in nodes) {
+      final id = NotationPointer.encode(node.pointer);
+      if (targetId.startsWith(id)) {
+        for (final variation in node.variations) {
+          if (targetId.startsWith(variation.id)) {
+            out.add(variation.id);
+            _collectVariationAncestors(targetId, variation.moves, out);
+          }
+        }
+      }
+    }
+  }
+
+  void _collectAllVariationIds(List<NotationMoveNode> nodes, Set<String> out) {
+    for (final node in nodes) {
+      for (final variation in node.variations) {
+        out.add(variation.id);
+        _collectAllVariationIds(variation.moves, out);
+      }
+    }
+  }
+
+  Widget _buildMoveChip(
+    BuildContext context,
+    WidgetRef ref,
+    NotationDisplayToken token,
+    String currentPointerId,
+    int currentPly,
+    bool useFigurine,
+    PieceAssets? pieceAssets,
+  ) {
+    final pointerId = token.pointerId;
+    final isCurrent = pointerId != null && pointerId == currentPointerId;
+
+    final nags = token.node?.move.nags ?? const <int>[];
+    final displayNags = <NagDisplay>[];
+    Color? firstNagColor;
+    for (final nag in nags) {
+      final d = getNagDisplay(nag);
+      if (d != null) {
+        displayNags.add(d);
+        firstNagColor ??= d.color;
+      }
+    }
+
+    final color =
+        isCurrent
+            ? kPrimaryColor
+            : (firstNagColor ?? kWhiteColor.withValues(alpha: 0.8));
+    final textStyle = AppTypography.textXsMedium.copyWith(
+      color: color,
+      fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
+    );
+    final numberStyle = AppTypography.textXsMedium.copyWith(
+      color: kWhiteColor.withValues(alpha: 0.5),
+      fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
+    );
+
+    final List<InlineSpan> moveSpans;
+    if (useFigurine && pieceAssets != null) {
+      moveSpans = buildFigurineSpans(
+        text: token.text,
+        pieceAssets: pieceAssets,
+        style: textStyle,
+        pieceSize: 12.sp,
+        numberStyle: numberStyle,
+      );
+    } else {
+      final String fullText = token.text;
+      String prefix = '';
+      String body = fullText;
+      final prefixRegex = RegExp(r'^(\d+\.{1,3}\s+)(.*)$');
+      final match = prefixRegex.firstMatch(fullText);
+      if (match != null) {
+        prefix = match.group(1)!;
+        body = match.group(2)!;
+      }
+      moveSpans = [
+        if (prefix.isNotEmpty) TextSpan(text: prefix, style: numberStyle),
+        TextSpan(text: body, style: textStyle),
+      ];
+    }
+
+    if (displayNags.isNotEmpty) {
+      for (final d in displayNags) {
+        moveSpans.add(
+          TextSpan(
+            text: d.symbol,
+            style: textStyle.copyWith(
+              color: d.color ?? textStyle.color,
+              fontWeight: d.color != null ? FontWeight.bold : FontWeight.normal,
+            ),
+          ),
+        );
+      }
+    }
+
+    return GestureDetector(
+      onTap: () {
+        if (token.pointer != null) {
+          ref
+              .read(gamebaseExplorerProvider.notifier)
+              .goToMovePointer(token.pointer!);
+        }
+      },
+      child: Container(
+        padding: EdgeInsets.symmetric(horizontal: 4.sp, vertical: 1.sp),
+        decoration: BoxDecoration(
+          color:
+              isCurrent
+                  ? kPrimaryColor.withValues(alpha: 0.1)
+                  : Colors.transparent,
+          borderRadius: BorderRadius.circular(4.sp),
+          border: Border.all(
+            color:
+                isCurrent
+                    ? kPrimaryColor.withValues(alpha: 0.3)
+                    : Colors.transparent,
+            width: 0.5,
+          ),
+        ),
+        child: Text.rich(TextSpan(children: moveSpans)),
+      ),
+    );
   }
 }

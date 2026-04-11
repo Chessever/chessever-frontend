@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/chess_progress_bar.dart';
@@ -747,40 +749,78 @@ class _MotorPopupWrapperState extends State<_MotorPopupWrapper> {
       motion: const CupertinoMotion.bouncy(),
       value: _animationProgress,
       builder: (context, value, child) {
-        final scale = 0.9 + (0.1 * value);
+        final menuScale = 0.9 + (0.1 * value);
+        final cardScale = 0.96 + (0.04 * value);
         final opacity = value.clamp(0.0, 1.0);
+        final cardLift = (1.0 - value) * 10.h;
 
         return Material(
           color: Colors.transparent,
           child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
             onTap: widget.onDismiss,
             child: Stack(
               children: [
-                // Backdrop with animated opacity
-                Opacity(
-                  opacity: opacity,
-                  child: SelectiveBlurBackground(
-                    clearPosition: widget.cardPosition,
-                    clearSize: widget.cardSize,
+                // Stronger blur + dim scrim so background imagery does not
+                // visually compete with the focused card.
+                Positioned.fill(
+                  child: IgnorePointer(
+                    child: Opacity(
+                      opacity: opacity,
+                      child: ClipRect(
+                        child: BackdropFilter(
+                          filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+                          child: Container(
+                            color: kBackgroundColor.withValues(alpha: 0.72),
+                          ),
+                        ),
+                      ),
+                    ),
                   ),
                 ),
-                // Card content
+
+                // Focused card replica
                 Positioned(
                   left: widget.cardPosition.dx,
-                  top: widget.cardPosition.dy,
-                  child: GestureDetector(
-                    onTap: widget.onDismiss,
-                    child: SizedBox(
-                      width: widget.cardSize.width,
-                      height: widget.cardSize.height,
-                      child: Stack(
-                        children: [
-                          _GameCardContent(
-                            matchComparison: widget.matchComparison,
+                  top: widget.cardPosition.dy - cardLift,
+                  child: Opacity(
+                    opacity: opacity,
+                    child: Transform.scale(
+                      scale: cardScale,
+                      alignment: Alignment.center,
+                      child: GestureDetector(
+                        onTap: widget.onDismiss,
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(12.br),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.42),
+                                blurRadius: 28,
+                                spreadRadius: 2,
+                                offset: const Offset(0, 18),
+                              ),
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.2),
+                                blurRadius: 10,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
                           ),
-                          if (widget.isPinned)
-                            PinIconOverlay(right: 8.sp, top: 4.sp),
-                        ],
+                          child: SizedBox(
+                            width: widget.cardSize.width,
+                            height: widget.cardSize.height,
+                            child: Stack(
+                              children: [
+                                _GameCardContent(
+                                  matchComparison: widget.matchComparison,
+                                ),
+                                if (widget.isPinned)
+                                  PinIconOverlay(right: 8.sp, top: 4.sp),
+                              ],
+                            ),
+                          ),
+                        ),
                       ),
                     ),
                   ),
@@ -792,7 +832,7 @@ class _MotorPopupWrapperState extends State<_MotorPopupWrapper> {
                   child: Opacity(
                     opacity: opacity,
                     child: Transform.scale(
-                      scale: scale,
+                      scale: menuScale,
                       child: ContextPopupMenu(
                         isPinned: widget.isPinned,
                         onPinToggle: widget.onPinToggle,
