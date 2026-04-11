@@ -676,6 +676,7 @@ class GamebaseRepository {
                   if (result != null) 'result': result,
                   if (yearFrom != null) 'yearFrom': yearFrom,
                   if (yearTo != null) 'yearTo': yearTo,
+                  if (orderBy != null) 'orderBy': orderBy,
                   if (sortBy != null) 'sortBy': sortBy.name,
                   if (sortDirection != null)
                     'sortDirection': sortDirection.name,
