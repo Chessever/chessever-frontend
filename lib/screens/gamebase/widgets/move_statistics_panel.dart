@@ -12,6 +12,11 @@ import '../providers/gamebase_explorer_state.dart';
 import '../providers/gamebase_providers.dart';
 import 'position_games_sheet.dart';
 
+const double _kMoveColumnWidth = 84;
+const double _kGamesColumnWidth = 52;
+const double _kLastColumnWidth = 66;
+const double _kColumnGap = 6;
+
 /// Panel displaying move statistics for the current position.
 /// Shows each possible move with game count and win/draw/loss bar.
 class MoveStatisticsPanel extends ConsumerWidget {
@@ -116,7 +121,7 @@ class MoveStatisticsPanel extends ConsumerWidget {
           child: Row(
             children: [
               SizedBox(
-                width: 86.w,
+                width: _kMoveColumnWidth.w,
                 child: Text(
                   'Move',
                   style: TextStyle(
@@ -126,7 +131,7 @@ class MoveStatisticsPanel extends ConsumerWidget {
                   ),
                 ),
               ),
-              SizedBox(width: 8.sp),
+              SizedBox(width: _kColumnGap.sp),
               Expanded(
                 child: Text(
                   'Score',
@@ -138,9 +143,9 @@ class MoveStatisticsPanel extends ConsumerWidget {
                   ),
                 ),
               ),
-              SizedBox(width: 8.sp),
+              SizedBox(width: _kColumnGap.sp),
               SizedBox(
-                width: 56.w,
+                width: _kGamesColumnWidth.w,
                 child: Text(
                   'Games',
                   textAlign: TextAlign.right,
@@ -152,7 +157,7 @@ class MoveStatisticsPanel extends ConsumerWidget {
                 ),
               ),
               SizedBox(
-                width: 74.w,
+                width: _kLastColumnWidth.w,
                 child: Text(
                   'Last',
                   textAlign: TextAlign.right,
@@ -256,7 +261,7 @@ class _MoveStatisticsRow extends ConsumerWidget {
           children: [
             // Move name
             SizedBox(
-              width: 86.w,
+              width: _kMoveColumnWidth.w,
               child: Row(
                 children: [
                   Text(
@@ -292,7 +297,7 @@ class _MoveStatisticsRow extends ConsumerWidget {
                 ],
               ),
             ),
-            SizedBox(width: 8.sp),
+            SizedBox(width: _kColumnGap.sp),
             // Statistics bar
             Expanded(
               child: _StatisticsBar(
@@ -301,44 +306,60 @@ class _MoveStatisticsRow extends ConsumerWidget {
                 blackRate: aggregate.blackWinRate,
               ),
             ),
-            SizedBox(width: 8.sp),
-            // Game count + list button — natural width, never truncates
-            Text(
-              aggregate.formattedTotal,
-              style: TextStyle(color: kSecondaryTextColor, fontSize: 12.f),
-            ),
-            SizedBox(width: 2.sp),
-            IconButton(
-              visualDensity: VisualDensity.compact,
-              padding: EdgeInsets.zero,
-              constraints: BoxConstraints.tightFor(width: 22.w, height: 22.h),
-              icon: Icon(
-                Icons.list_alt_rounded,
-                color: kSecondaryTextColor,
-                size: 16.ic,
-              ),
-              tooltip: 'Games',
-              onPressed: () {
-                showModalBottomSheet(
-                  context: context,
-                  backgroundColor: Colors.transparent,
-                  isScrollControlled: true,
-                  constraints: BoxConstraints(
-                    maxHeight: MediaQuery.of(context).size.height * 0.88,
-                  ),
-                  builder:
-                      (_) => PositionGamesSheet(
-                        fen: currentFen,
-                        moves: exploredMoves,
-                        uci: aggregate.uci,
-                        filters: filters,
-                        title: 'Games for $moveNumberLabel$sanMove',
+            SizedBox(width: _kColumnGap.sp),
+            SizedBox(
+              width: _kGamesColumnWidth.w,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  Flexible(
+                    child: Text(
+                      aggregate.formattedTotal,
+                      textAlign: TextAlign.right,
+                      style: TextStyle(
+                        color: kSecondaryTextColor,
+                        fontSize: 12.f,
                       ),
-                );
-              },
+                    ),
+                  ),
+                  SizedBox(width: 1.sp),
+                  IconButton(
+                    visualDensity: VisualDensity.compact,
+                    padding: EdgeInsets.zero,
+                    constraints: BoxConstraints.tightFor(
+                      width: 20.w,
+                      height: 20.h,
+                    ),
+                    icon: Icon(
+                      Icons.list_alt_rounded,
+                      color: kSecondaryTextColor,
+                      size: 15.ic,
+                    ),
+                    tooltip: 'Games',
+                    onPressed: () {
+                      showModalBottomSheet(
+                        context: context,
+                        backgroundColor: Colors.transparent,
+                        isScrollControlled: true,
+                        constraints: BoxConstraints(
+                          maxHeight: MediaQuery.of(context).size.height * 0.88,
+                        ),
+                        builder:
+                            (_) => PositionGamesSheet(
+                              fen: currentFen,
+                              moves: exploredMoves,
+                              uci: aggregate.uci,
+                              filters: filters,
+                              title: 'Games for $moveNumberLabel$sanMove',
+                            ),
+                      );
+                    },
+                  ),
+                ],
+              ),
             ),
             SizedBox(
-              width: 74.w,
+              width: _kLastColumnWidth.w,
               child: Text(
                 _formatLastPlayed(aggregate.lastPlayed),
                 textAlign: TextAlign.right,
@@ -419,73 +440,89 @@ class _StatisticsBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(16.br),
-      child: SizedBox(
-        height: 16.h,
-        child: Row(
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
           children: [
-            // White wins
-            if (whiteRate > 0)
-              Expanded(
-                flex: (whiteRate * 100).round().clamp(1, 100),
-                child: Container(
-                  color: kMoveStatWhiteColor,
-                  alignment: Alignment.center,
-                  child:
-                      whiteRate >= 0.08
-                          ? Text(
-                            '${(whiteRate * 100).toStringAsFixed(0)}%',
-                            style: TextStyle(
-                              color: kMoveStatBlackColor,
-                              fontSize: 10.f,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          )
-                          : null,
-                ),
+            Expanded(
+              child: _ScoreStatLabel(
+                prefix: 'W',
+                value: '${(whiteRate * 100).toStringAsFixed(0)}%',
+                color: kMoveStatWhiteColor,
               ),
-            // Draws
-            if (drawRate > 0)
-              Expanded(
-                flex: (drawRate * 100).round().clamp(1, 100),
-                child: Container(
-                  color: kMoveStatDrawColor,
-                  alignment: Alignment.center,
-                  child:
-                      drawRate >= 0.08
-                          ? Text(
-                            '${(drawRate * 100).toStringAsFixed(0)}%',
-                            style: TextStyle(
-                              color: kMoveStatWhiteColor,
-                              fontSize: 10.f,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          )
-                          : null,
-                ),
+            ),
+            Expanded(
+              child: _ScoreStatLabel(
+                prefix: 'D',
+                value: '${(drawRate * 100).toStringAsFixed(0)}%',
+                color: kSecondaryTextColor,
               ),
-            // Black wins
-            if (blackRate > 0)
-              Expanded(
-                flex: (blackRate * 100).round().clamp(1, 100),
-                child: Container(
-                  color: kMoveStatBlackColor,
-                  alignment: Alignment.center,
-                  child:
-                      blackRate >= 0.08
-                          ? Text(
-                            '${(blackRate * 100).toStringAsFixed(0)}%',
-                            style: TextStyle(
-                              color: kMoveStatWhiteColor,
-                              fontSize: 10.f,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          )
-                          : null,
-                ),
+            ),
+            Expanded(
+              child: _ScoreStatLabel(
+                prefix: 'L',
+                value: '${(blackRate * 100).toStringAsFixed(0)}%',
+                color: kWhiteColor,
               ),
+            ),
           ],
+        ),
+        SizedBox(height: 4.h),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(16.br),
+          child: SizedBox(
+            height: 10.h,
+            child: Row(
+              children: [
+                if (whiteRate > 0)
+                  Expanded(
+                    flex: (whiteRate * 100).round().clamp(1, 100),
+                    child: Container(color: kMoveStatWhiteColor),
+                  ),
+                if (drawRate > 0)
+                  Expanded(
+                    flex: (drawRate * 100).round().clamp(1, 100),
+                    child: Container(color: kMoveStatDrawColor),
+                  ),
+                if (blackRate > 0)
+                  Expanded(
+                    flex: (blackRate * 100).round().clamp(1, 100),
+                    child: Container(color: kMoveStatBlackColor),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ScoreStatLabel extends StatelessWidget {
+  const _ScoreStatLabel({
+    required this.prefix,
+    required this.value,
+    required this.color,
+  });
+
+  final String prefix;
+  final String value;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        child: Text(
+          '$prefix $value',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: color,
+            fontSize: 10.f,
+            fontWeight: FontWeight.w600,
+          ),
         ),
       ),
     );
