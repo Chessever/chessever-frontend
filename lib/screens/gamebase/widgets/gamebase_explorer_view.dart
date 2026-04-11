@@ -186,7 +186,8 @@ class _HorizontalPvLines extends ConsumerWidget {
 
     final useFigurine = ref.watch(
       boardSettingsProviderNew.select(
-        (s) => s.valueOrNull?.useFigurine ?? const BoardSettingsNew().useFigurine,
+        (s) =>
+            s.valueOrNull?.useFigurine ?? const BoardSettingsNew().useFigurine,
       ),
     );
     final pieceAssets = ref.watch(
@@ -266,20 +267,26 @@ class _HorizontalPvLines extends ConsumerWidget {
                   ),
                   SizedBox(width: 8.w),
                   Expanded(
-                    child: useFigurine
-                        ? RichText(
-                          overflow: TextOverflow.ellipsis,
-                          maxLines: 1,
-                          text: TextSpan(
-                            children: buildFigurineSpans(
-                              text: moves,
-                              pieceAssets: pieceAssets,
+                    child:
+                        useFigurine
+                            ? RichText(
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: 1,
+                              text: TextSpan(
+                                children: buildFigurineSpans(
+                                  text: moves,
+                                  pieceAssets: pieceAssets,
+                                  style: movesStyle,
+                                  pieceSize: 12.f,
+                                ),
+                              ),
+                            )
+                            : Text(
+                              moves,
                               style: movesStyle,
-                              pieceSize: 12.f,
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: 1,
                             ),
-                          ),
-                        )
-                        : Text(moves, style: movesStyle, overflow: TextOverflow.ellipsis, maxLines: 1),
                   ),
                 ],
               ),
@@ -485,20 +492,10 @@ class _MoveRow extends ConsumerWidget {
     final whitePct = (move.white / total * 100).round();
     final drawPct = (move.draws / total * 100).round();
 
-    final lastPlayedAsync =
-        move.gameId != null
-            ? ref.watch(gamePreviewByIdProvider(move.gameId!))
-            : const AsyncValue<Map<String, dynamic>?>.data(null);
-
-    final lastPlayedText = lastPlayedAsync.when(
-      data: (row) {
-        final raw = row?['date']?.toString();
-        final date = raw != null ? DateTime.tryParse(raw) : null;
-        return date != null ? DateFormat('MM-yyyy').format(date) : '—';
-      },
-      loading: () => '…',
-      error: (_, __) => '—',
-    );
+    final lastPlayedText =
+        move.lastPlayed != null
+            ? DateFormat('MMM yyyy').format(move.lastPlayed!)
+            : '—';
 
     // Convert UCI to SAN.
     String san = move.uci;
@@ -520,7 +517,8 @@ class _MoveRow extends ConsumerWidget {
 
     final useFigurine = ref.watch(
       boardSettingsProviderNew.select(
-        (s) => s.valueOrNull?.useFigurine ?? const BoardSettingsNew().useFigurine,
+        (s) =>
+            s.valueOrNull?.useFigurine ?? const BoardSettingsNew().useFigurine,
       ),
     );
     final pieceAssets = ref.watch(

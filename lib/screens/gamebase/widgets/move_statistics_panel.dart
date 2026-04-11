@@ -3,6 +3,7 @@ import 'package:chessever2/utils/figurine_notation.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:intl/intl.dart';
 
 import '../../../theme/app_theme.dart';
 import '../../../utils/responsive_helper.dart';
@@ -110,6 +111,62 @@ class MoveStatisticsPanel extends ConsumerWidget {
           ),
         ),
         Divider(color: kDividerColor, height: 1),
+        Padding(
+          padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 6.sp),
+          child: Row(
+            children: [
+              SizedBox(
+                width: 86.w,
+                child: Text(
+                  'Move',
+                  style: TextStyle(
+                    color: kSecondaryTextColor,
+                    fontSize: 11.f,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              SizedBox(width: 8.sp),
+              Expanded(
+                child: Text(
+                  'Score',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: kSecondaryTextColor,
+                    fontSize: 11.f,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              SizedBox(width: 8.sp),
+              SizedBox(
+                width: 56.w,
+                child: Text(
+                  'Games',
+                  textAlign: TextAlign.right,
+                  style: TextStyle(
+                    color: kSecondaryTextColor,
+                    fontSize: 11.f,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              SizedBox(
+                width: 74.w,
+                child: Text(
+                  'Last',
+                  textAlign: TextAlign.right,
+                  style: TextStyle(
+                    color: kSecondaryTextColor,
+                    fontSize: 11.f,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        Divider(color: kDividerColor, height: 1),
         // Move list
         Expanded(
           child: ListView.separated(
@@ -174,7 +231,8 @@ class _MoveStatisticsRow extends ConsumerWidget {
 
     final useFigurine = ref.watch(
       boardSettingsProviderNew.select(
-        (s) => s.valueOrNull?.useFigurine ?? const BoardSettingsNew().useFigurine,
+        (s) =>
+            s.valueOrNull?.useFigurine ?? const BoardSettingsNew().useFigurine,
       ),
     );
     final pieceAssets = ref.watch(
@@ -274,10 +332,18 @@ class _MoveStatisticsRow extends ConsumerWidget {
                         moves: exploredMoves,
                         uci: aggregate.uci,
                         filters: filters,
-                        title: 'Games for $sanMove',
+                        title: 'Games for $moveNumberLabel$sanMove',
                       ),
                 );
               },
+            ),
+            SizedBox(
+              width: 74.w,
+              child: Text(
+                _formatLastPlayed(aggregate.lastPlayed),
+                textAlign: TextAlign.right,
+                style: TextStyle(color: kSecondaryTextColor, fontSize: 12.f),
+              ),
             ),
           ],
         ),
@@ -286,6 +352,10 @@ class _MoveStatisticsRow extends ConsumerWidget {
   }
 }
 
+String _formatLastPlayed(DateTime? date) {
+  if (date == null) return '—';
+  return DateFormat('MMM yyyy').format(date);
+}
 
 /// Convert UCI move notation to SAN (Standard Algebraic Notation) for display.
 String uciToSan(String uci, String fen) {
