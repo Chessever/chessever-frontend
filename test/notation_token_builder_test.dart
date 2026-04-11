@@ -25,7 +25,7 @@ NotationTree _treeFromSans(List<String> sans, {ChessLine? variation}) {
   final moves = <ChessMove>[];
   for (var i = 0; i < sans.length; i++) {
     final isFirst = i == 0 && variation != null;
-    moves.add(_move(sans[i], variations: isFirst ? [variation!] : null));
+    moves.add(_move(sans[i], variations: isFirst ? [variation] : null));
   }
   final game = ChessGame(
     gameId: 'test',
@@ -118,8 +118,9 @@ void main() {
       expect(moveTokens[2].text, '2. Nf3');
 
       // No lichessComment tokens
-      final lichessComments =
-          tokens.where((t) => t.type == NotationTokenType.lichessComment);
+      final lichessComments = tokens.where(
+        (t) => t.type == NotationTokenType.lichessComment,
+      );
       expect(lichessComments, isEmpty);
     });
 
@@ -147,8 +148,10 @@ void main() {
           (t) => t.type == NotationTokenType.move && t.moveIndex == 1,
         );
         expect(annotatedMoveIdx, greaterThanOrEqualTo(0));
-        expect(tokens[annotatedMoveIdx + 1].type,
-            NotationTokenType.lichessComment);
+        expect(
+          tokens[annotatedMoveIdx + 1].type,
+          NotationTokenType.lichessComment,
+        );
       },
     );
 
@@ -164,8 +167,9 @@ void main() {
         };
         final tokens = _buildTokens(tree, lichessAnnotations: annotations);
 
-        final lichessComments =
-            tokens.where((t) => t.type == NotationTokenType.lichessComment);
+        final lichessComments = tokens.where(
+          (t) => t.type == NotationTokenType.lichessComment,
+        );
         expect(lichessComments, isEmpty);
       },
     );
@@ -180,8 +184,9 @@ void main() {
       };
       final tokens = _buildTokens(tree, lichessAnnotations: annotations);
 
-      final lichessComments =
-          tokens.where((t) => t.type == NotationTokenType.lichessComment);
+      final lichessComments = tokens.where(
+        (t) => t.type == NotationTokenType.lichessComment,
+      );
       expect(lichessComments, isEmpty);
     });
 
@@ -225,6 +230,36 @@ void main() {
       expect(moves[2].text, '2. Nf3');
       expect(moves[3].text, 'Nc6');
       expect(moves[4].text, '3. Bb5');
+    });
+  });
+
+  group('exportGameToPgn', () {
+    test('round-trips variations that start with a black move', () {
+      final game = ChessGame(
+        gameId: 'test',
+        startingFen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+        metadata: const {},
+        mainline: [
+          _move(
+            'e4',
+            variations: [
+              [_move('c5')],
+            ],
+          ),
+          _move('e5'),
+          _move('Nf3'),
+        ],
+      );
+
+      final pgn = exportGameToPgn(game);
+      expect(pgn, contains('1... c5'));
+
+      final reparsed = ChessGame.fromPgn('round_trip', pgn);
+      expect(reparsed.mainline, hasLength(3));
+      expect(reparsed.mainline.first.variations, isNotNull);
+      expect(reparsed.mainline.first.variations, hasLength(1));
+      expect(reparsed.mainline.first.variations!.first, hasLength(1));
+      expect(reparsed.mainline.first.variations!.first.first.san, 'c5');
     });
   });
 }

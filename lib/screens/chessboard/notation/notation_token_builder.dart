@@ -115,14 +115,13 @@ String formatMoveText(
       buffer.write('${node.moveNumber}$separator');
     }
   }
-  buffer.write(node.move.san);
 
-  // Append NAG symbols
-  if (node.move.nags != null && node.move.nags!.isNotEmpty) {
-    for (final nag in node.move.nags!) {
-      buffer.write(_nagToSymbol(nag));
-    }
-  }
+  // We do NOT append NAGs here anymore. The UI will render them natively
+  // with correct colors using the _getNagDisplay mapping in the view.
+  // To avoid duplication, we also strip PGN-style text annotations (like !?)
+  // from the end of the base SAN string.
+  final cleanSan = node.move.san.replaceAll(RegExp(r'[!?]+$'), '');
+  buffer.write(cleanSan);
 
   return buffer.toString();
 }
@@ -138,9 +137,9 @@ String _nagToSymbol(int nag) {
     case 4:
       return '??';
     case 5:
-      return '?!';
+      return '!?'; // Corrected from ?!
     case 6:
-      return '!?';
+      return '?!'; // Corrected from !?
     case 7:
       return '□';
     case 8:
@@ -150,13 +149,13 @@ String _nagToSymbol(int nag) {
     case 13:
       return '∞';
     case 14:
-      return '+/=';
+      return '⩲'; // Unicode for +=
     case 15:
-      return '=/+';
+      return '⩱'; // Unicode for =+
     case 16:
-      return '+/-';
+      return '±'; // Unicode for +/-
     case 17:
-      return '-/+';
+      return '∓'; // Unicode for -/+
     case 18:
       return '+-';
     case 19:

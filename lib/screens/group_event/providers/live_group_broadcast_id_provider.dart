@@ -48,6 +48,20 @@ final liveGroupBroadcastIdsProvider = AutoDisposeStreamProvider<List<String>>((
   var resolveRequestId = 0;
   List<String>? lastResolvedIds;
 
+  void emit(List<String> nextIds) {
+    if (controller.isClosed) {
+      return;
+    }
+
+    final stableIds = List<String>.unmodifiable(nextIds);
+    if (lastResolvedIds != null && listEquals(lastResolvedIds, stableIds)) {
+      return;
+    }
+
+    lastResolvedIds = stableIds;
+    controller.add(stableIds);
+  }
+
   Future<List<String>> resolve({
     required List<String> configuredLiveEntries,
     required List<String> liveRoundIds,
@@ -80,13 +94,11 @@ final liveGroupBroadcastIdsProvider = AutoDisposeStreamProvider<List<String>>((
       return;
     }
 
-    if (lastResolvedIds != null && listEquals(lastResolvedIds, resolvedIds)) {
-      return;
-    }
-
-    lastResolvedIds = resolvedIds;
-    controller.add(resolvedIds);
+    emit(resolvedIds);
   }
+
+  // Unblock first-load callers immediately; strict IDs will stream in later.
+  emit(const <String>[]);
 
   final configuredSubscription = configuredLiveEntriesStream.listen(
     (nextConfiguredLiveEntries) {

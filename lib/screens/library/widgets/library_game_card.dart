@@ -7,6 +7,7 @@ import 'package:chessever2/utils/chess_title_utils.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/png_asset.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/utils/string_utils.dart';
 import 'package:chessever2/widgets/app_button.dart';
 import 'package:chessever2/widgets/federation_flag.dart';
 import 'package:flutter/material.dart';
@@ -36,9 +37,15 @@ class LibraryGameCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final displayEventName = _formatEventName(
-      eventName ?? game.tourSlug ?? game.tourId,
-    );
+    final rawName = eventName ?? game.tourSlug ?? game.tourId;
+    final cleanedName = rawName.replaceAll('-', ' ').replaceAll('_', ' ').trim();
+    final isGeneric = cleanedName.isEmpty ||
+        cleanedName.toLowerCase() == 'gamebase' ||
+        cleanedName.toLowerCase() == 'search' ||
+        cleanedName.toLowerCase() == 'library';
+        
+    final displayEventName = isGeneric ? 'Library' : StringUtils.slugToTitle(rawName);
+    
     final timeControlIcon = _getTimeControlIcon(game, displayEventName);
     final displayEco = eco ?? game.eco ?? ''; // Only ECO code, never round info
     final displayDate = _formatDate(date ?? game.lastMoveTime);
@@ -167,97 +174,6 @@ class LibraryGameCard extends ConsumerWidget {
         ),
       ),
     );
-  }
-
-  String _formatEventName(String rawName) {
-    final cleaned = rawName.replaceAll('-', ' ').replaceAll('_', ' ').trim();
-    if (cleaned.isEmpty ||
-        cleaned.toLowerCase() == 'gamebase' ||
-        cleaned.toLowerCase() == 'search' ||
-        cleaned.toLowerCase() == 'library') {
-      return 'Library';
-    }
-    // Apply proper title case
-    return _toTitleCase(cleaned);
-  }
-
-  String _toTitleCase(String text) {
-    if (text.isEmpty) return text;
-
-    // Words that should stay lowercase in titles (unless first word)
-    const lowercaseWords = {
-      'a',
-      'an',
-      'the',
-      'and',
-      'but',
-      'or',
-      'for',
-      'nor',
-      'on',
-      'at',
-      'to',
-      'from',
-      'by',
-      'of',
-      'in',
-      'vs',
-      'vs.',
-    };
-
-    // Words/abbreviations that should stay uppercase
-    const uppercaseWords = {
-      'gm',
-      'im',
-      'fm',
-      'cm',
-      'wgm',
-      'wim',
-      'wfm',
-      'wcm',
-      'usa',
-      'uk',
-      'ussr',
-      'fide',
-      'ecf',
-      'uscf',
-      'ii',
-      'iii',
-      'iv',
-      'vi',
-      'vii',
-      'viii',
-      'ix',
-      'xi',
-      'xii',
-    };
-
-    final words = text.split(RegExp(r'\s+'));
-    final result = <String>[];
-
-    for (var i = 0; i < words.length; i++) {
-      final word = words[i];
-      if (word.isEmpty) continue;
-
-      final lowerWord = word.toLowerCase();
-
-      // Check if it's an abbreviation that should be uppercase
-      if (uppercaseWords.contains(lowerWord)) {
-        result.add(word.toUpperCase());
-      }
-      // Check if it's a word that should stay lowercase (but not if first word)
-      else if (i > 0 && lowercaseWords.contains(lowerWord)) {
-        result.add(lowerWord);
-      }
-      // Otherwise capitalize first letter
-      else {
-        result.add(
-          '${word[0].toUpperCase()}${word.substring(1).toLowerCase()}',
-        );
-      }
-    }
-
-    return result.join(' ');
   }
 
   /// Get time control icon from game data

@@ -206,7 +206,7 @@ class PlayerPaginationNotifier
       final name = (player['name'] ?? '').toString().toUpperCase();
       final rating = (player['rating'] ?? 0) as int? ?? 0;
       final isBot = name.contains('BOT') || name.contains('STOCKFISH');
-      final isCrazyRating = rating >= 3300 || rating <= 0;
+      final isCrazyRating = rating >= 3300;
       return !isBot && !isCrazyRating;
     }).toList();
   }

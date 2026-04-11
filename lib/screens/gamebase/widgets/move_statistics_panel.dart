@@ -12,9 +12,9 @@ import '../providers/gamebase_explorer_state.dart';
 import '../providers/gamebase_providers.dart';
 import 'position_games_sheet.dart';
 
-const double _kMoveColumnWidth = 84;
-const double _kGamesColumnWidth = 52;
-const double _kLastColumnWidth = 66;
+const double _kMoveColumnWidth = 74;
+const double _kGamesColumnWidth = 84;
+const double _kLastColumnWidth = 56;
 const double _kColumnGap = 6;
 
 /// Panel displaying move statistics for the current position.
@@ -156,6 +156,7 @@ class MoveStatisticsPanel extends ConsumerWidget {
                   ),
                 ),
               ),
+              SizedBox(width: _kColumnGap.sp),
               SizedBox(
                 width: _kLastColumnWidth.w,
                 child: Text(
@@ -358,6 +359,7 @@ class _MoveStatisticsRow extends ConsumerWidget {
                 ],
               ),
             ),
+            SizedBox(width: _kColumnGap.sp),
             SizedBox(
               width: _kLastColumnWidth.w,
               child: Text(
@@ -440,89 +442,73 @@ class _StatisticsBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Row(
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(16.br),
+      child: SizedBox(
+        height: 16.h,
+        child: Row(
           children: [
-            Expanded(
-              child: _ScoreStatLabel(
-                prefix: 'W',
-                value: '${(whiteRate * 100).toStringAsFixed(0)}%',
-                color: kMoveStatWhiteColor,
+            // White wins
+            if (whiteRate > 0)
+              Expanded(
+                flex: (whiteRate * 100).round().clamp(1, 100),
+                child: Container(
+                  color: kMoveStatWhiteColor,
+                  alignment: Alignment.center,
+                  child:
+                      whiteRate >= 0.08
+                          ? Text(
+                            '${(whiteRate * 100).toStringAsFixed(0)}%',
+                            style: TextStyle(
+                              color: kMoveStatBlackColor,
+                              fontSize: 10.f,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          )
+                          : null,
+                ),
               ),
-            ),
-            Expanded(
-              child: _ScoreStatLabel(
-                prefix: 'D',
-                value: '${(drawRate * 100).toStringAsFixed(0)}%',
-                color: kSecondaryTextColor,
+            // Draws
+            if (drawRate > 0)
+              Expanded(
+                flex: (drawRate * 100).round().clamp(1, 100),
+                child: Container(
+                  color: kMoveStatDrawColor,
+                  alignment: Alignment.center,
+                  child:
+                      drawRate >= 0.08
+                          ? Text(
+                            '${(drawRate * 100).toStringAsFixed(0)}%',
+                            style: TextStyle(
+                              color: kMoveStatWhiteColor,
+                              fontSize: 10.f,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          )
+                          : null,
+                ),
               ),
-            ),
-            Expanded(
-              child: _ScoreStatLabel(
-                prefix: 'L',
-                value: '${(blackRate * 100).toStringAsFixed(0)}%',
-                color: kWhiteColor,
+            // Black wins
+            if (blackRate > 0)
+              Expanded(
+                flex: (blackRate * 100).round().clamp(1, 100),
+                child: Container(
+                  color: kMoveStatBlackColor,
+                  alignment: Alignment.center,
+                  child:
+                      blackRate >= 0.08
+                          ? Text(
+                            '${(blackRate * 100).toStringAsFixed(0)}%',
+                            style: TextStyle(
+                              color: kMoveStatWhiteColor,
+                              fontSize: 10.f,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          )
+                          : null,
+                ),
               ),
-            ),
           ],
-        ),
-        SizedBox(height: 4.h),
-        ClipRRect(
-          borderRadius: BorderRadius.circular(16.br),
-          child: SizedBox(
-            height: 10.h,
-            child: Row(
-              children: [
-                if (whiteRate > 0)
-                  Expanded(
-                    flex: (whiteRate * 100).round().clamp(1, 100),
-                    child: Container(color: kMoveStatWhiteColor),
-                  ),
-                if (drawRate > 0)
-                  Expanded(
-                    flex: (drawRate * 100).round().clamp(1, 100),
-                    child: Container(color: kMoveStatDrawColor),
-                  ),
-                if (blackRate > 0)
-                  Expanded(
-                    flex: (blackRate * 100).round().clamp(1, 100),
-                    child: Container(color: kMoveStatBlackColor),
-                  ),
-              ],
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _ScoreStatLabel extends StatelessWidget {
-  const _ScoreStatLabel({
-    required this.prefix,
-    required this.value,
-    required this.color,
-  });
-
-  final String prefix;
-  final String value;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: FittedBox(
-        fit: BoxFit.scaleDown,
-        child: Text(
-          '$prefix $value',
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            color: color,
-            fontSize: 10.f,
-            fontWeight: FontWeight.w600,
-          ),
         ),
       ),
     );

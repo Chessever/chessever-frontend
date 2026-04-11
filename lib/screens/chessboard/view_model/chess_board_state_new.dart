@@ -407,7 +407,7 @@ class ChessBoardStateNew {
     this.fenData,
     this.isAnalysisMode = false,
     this.analysisState = const AnalysisBoardState(),
-    this.shapes = const ISet.empty(),
+    this.shapes = const ISet<Shape>.empty(),
     this.mate,
     this.principalVariations = const [],
     this.principalVariationsBaseFen,

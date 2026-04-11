@@ -30,6 +30,7 @@ import 'package:chessever2/screens/chessboard/widgets/share_game_card_overlay.da
 import 'package:chessever2/screens/chessboard/chess_board_settings_page.dart';
 import 'package:chessever2/screens/chessboard/widgets/smooth_sheet_config.dart';
 import 'package:chessever2/screens/chessboard/widgets/save_analysis_sheet.dart';
+import 'package:chessever2/screens/chessboard/widgets/nag_display.dart';
 import 'package:chessever2/screens/group_event/providers/countryman_games_tour_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
@@ -59,7 +60,7 @@ import 'package:chessever2/widgets/logo_pattern_fallback.dart';
 // import 'package:chessever2/widgets/smooth_dialog.dart'; // UNUSED: Removed with old dialog
 import 'package:smooth_sheets/smooth_sheets.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:country_flags/country_flags.dart';
+import 'package:country_flags/country_flags.dart' hide Shape, Circle;
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
 import 'package:chessever2/screens/group_event/model/about_tour_model.dart';
 import 'package:chessever2/repository/supabase/tour/tour_repository.dart';
@@ -633,6 +634,9 @@ class ChessBoardScreenNew extends ConsumerStatefulWidget {
   /// Used by the opening explorer's "Analyze" action.
   final bool startAtLastMove;
 
+  /// Optional initial position to show (FEN).
+  final String? initialFen;
+
   const ChessBoardScreenNew({
     required this.currentIndex,
     required this.games,
@@ -644,6 +648,7 @@ class ChessBoardScreenNew extends ConsumerStatefulWidget {
     this.disableGamebaseOverlayByDefault = false,
     this.showClock = true,
     this.startAtLastMove = false,
+    this.initialFen,
     super.key,
   });
 
@@ -913,6 +918,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
       index: index,
       savedAnalysisData: _getSavedAnalysisDataForIndex(index),
       startAtLastMove: widget.startAtLastMove,
+      initialFen: widget.initialFen,
     );
   }
 
@@ -6578,6 +6584,77 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard> {
     return squares.last;
   }
 
+  Iterable<Shape> _extractAnnotationShapes(ChessMove? move) {
+    if (move == null || move.comments == null) return const [];
+
+    final shapes = <Shape>[];
+
+    Color getColor(String code) {
+      switch (code.toUpperCase()) {
+        case 'G':
+          return const Color(0xFF15781B).withValues(alpha: 0.8); // Green
+        case 'Y':
+          return const Color(0xFFE58F00).withValues(alpha: 0.8); // Yellow
+        case 'B':
+          return const Color(0xFF003088).withValues(alpha: 0.8); // Blue
+        case 'R':
+          return const Color(0xFF882020).withValues(alpha: 0.8); // Red
+        case 'O':
+          return const Color(0xFFE68F00).withValues(alpha: 0.8); // Orange
+        default:
+          return const Color(
+            0xFF15781B,
+          ).withValues(alpha: 0.8); // Default green
+      }
+    }
+
+    for (final comment in move.comments!) {
+      // Parse [%cal ...]
+      final calMatch = RegExp(r'\[%cal\s+([^\]]+)\]').firstMatch(comment);
+      if (calMatch != null) {
+        final items = calMatch.group(1)!.split(',');
+        for (final item in items) {
+          final trimmed = item.trim();
+          if (trimmed.length == 5) {
+            // e.g. Gg8g7
+            final colorCode = trimmed[0];
+            final origStr = trimmed.substring(1, 3);
+            final destStr = trimmed.substring(3, 5);
+
+            try {
+              final orig = Square.fromName(origStr);
+              final dest = Square.fromName(destStr);
+              shapes.add(
+                Arrow(color: getColor(colorCode), orig: orig, dest: dest),
+              );
+            } catch (_) {}
+          }
+        }
+      }
+
+      // Parse [%csl ...]
+      final cslMatch = RegExp(r'\[%csl\s+([^\]]+)\]').firstMatch(comment);
+      if (cslMatch != null) {
+        final items = cslMatch.group(1)!.split(',');
+        for (final item in items) {
+          final trimmed = item.trim();
+          if (trimmed.length == 3) {
+            // e.g. Re2
+            final colorCode = trimmed[0];
+            final sqStr = trimmed.substring(1, 3);
+
+            try {
+              final sq = Square.fromName(sqStr);
+              shapes.add(Circle(color: getColor(colorCode), orig: sq));
+            } catch (_) {}
+          }
+        }
+      }
+    }
+
+    return shapes;
+  }
+
   Positioned _buildBoardAnnotationBadge({
     required Square square,
     required LichessMoveAnnotation annotation,
@@ -6792,6 +6869,18 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard> {
       squareHighlightsMap.putIfAbsent(entry.key, () => entry.value);
     }
 
+    final pvShapes =
+        (widget.chessBoardState.showEngineAnalysis &&
+                widget.chessBoardState.showPrincipalVariations &&
+                showPvArrows)
+            ? (widget.chessBoardState.shapes ?? const ISet<Shape>.empty())
+            : const ISet<Shape>.empty();
+
+    final annotationShapes = _extractAnnotationShapes(
+      navigatorState?.currentMove,
+    );
+    final allShapes = pvShapes.addAll(annotationShapes);
+
     final chessboard = Chessboard(
       size: widget.size,
       settings: ChessboardSettings(
@@ -6810,16 +6899,7 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard> {
       orientation: widget.isFlipped ? Side.black : Side.white,
       fen: displayFen,
       lastMove: widget.chessBoardState.analysisState.lastMove,
-      // Only show shapes (arrows) when ALL conditions are met:
-      // 1. Engine analysis is enabled (master toggle)
-      // 2. Principal variations are enabled in board state
-      // 3. PV arrows are enabled in engine settings
-      shapes:
-          (widget.chessBoardState.showEngineAnalysis &&
-                  widget.chessBoardState.showPrincipalVariations &&
-                  showPvArrows)
-              ? widget.chessBoardState.shapes
-              : const ISet.empty(),
+      shapes: allShapes,
       squareHighlights: IMap(squareHighlightsMap),
       annotations: gameEndingData?.annotations ?? const IMap.empty(),
       game: GameData(
@@ -7736,19 +7816,24 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
         pointerId != null &&
         tailPointerId != null &&
         pointerId == tailPointerId;
+
     final annotation = _resolveLichessAnnotation(token, lichessAnnotations);
-    // Debug: Log annotation resolution for moves that should have annotations
-    if (lichessAnnotations.isNotEmpty && token.moveIndex != null) {
-      final hasAnnotation = lichessAnnotations.containsKey(token.moveIndex);
-      if (hasAnnotation) {
-        debugPrint(
-          '🎯 [MoveChip] Move ${token.moveIndex} "${token.text}" has annotation: ${annotation?.type.name}',
-        );
+    final nags = token.node?.move.nags ?? const <int>[];
+
+    // Resolve NAGs into displays
+    final displayNags = <NagDisplay>[];
+    Color? firstNagColor;
+    for (final nag in nags) {
+      final d = getNagDisplay(nag);
+      if (d != null) {
+        displayNags.add(d);
+        firstNagColor ??= d.color;
       }
     }
+
     final annotationColor = annotation?.type.color;
     final baseColor = _resolveMoveColor(token, currentPly);
-    final color = annotationColor ?? baseColor;
+    final color = annotationColor ?? firstNagColor ?? baseColor;
 
     final textStyle = AppTypography.textXsMedium.copyWith(
       color: color,
@@ -7770,13 +7855,11 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
         numberStyle: numberStyle,
       );
     } else {
-      // Derive move-number prefix directly from the formatted move text to
-      // avoid duplicating move-number rules defined in the notation builder.
+      // Derive move-number prefix directly from the formatted move text
       final String fullText = token.text;
       String prefix = '';
       String body = fullText;
 
-      // Match patterns like "1. e4", "12... Nf6", etc.
       final prefixRegex = RegExp(r'^(\d+\.{1,3}\s+)(.*)$');
       final match = prefixRegex.firstMatch(fullText);
       if (match != null) {
@@ -7807,6 +7890,19 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
           ),
         ),
       );
+    } else if (annotation == null && displayNags.isNotEmpty) {
+      // Render NAG symbols inline if no evaluative Lichess annotation
+      for (final d in displayNags) {
+        moveSpans.add(
+          TextSpan(
+            text: d.symbol,
+            style: textStyle.copyWith(
+              color: d.color ?? baseColor,
+              fontWeight: d.color != null ? FontWeight.bold : FontWeight.normal,
+            ),
+          ),
+        );
+      }
     }
 
     // bookMove: keep the floating badge (no inline symbol available)
@@ -11683,45 +11779,50 @@ class _CommentDialogState extends ConsumerState<_CommentDialog>
 // End of deprecated _CommentDialog class
 
 /// Provider to fetch tour info by tour ID or name - used by the event info sheet
-final _tourInfoByIdProvider = FutureProvider.autoDispose
-    .family<AboutTourModel?, String>((ref, tourId) async {
-      if (tourId.isEmpty) return null;
+final _tourInfoByIdProvider = FutureProvider.autoDispose.family<
+  AboutTourModel?,
+  String
+>((ref, tourId) async {
+  if (tourId.isEmpty) return null;
 
-      final repo = ref.read(tourRepositoryProvider);
+  final repo = ref.read(tourRepositoryProvider);
 
-      try {
-        // 1. Try fetching by UUID first (exact match)
-        final uuidPattern = RegExp(
-          r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
-          caseSensitive: false,
-        );
+  try {
+    // 1. Try fetching by UUID first (exact match)
+    final uuidPattern = RegExp(
+      r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
+      caseSensitive: false,
+    );
 
-        if (uuidPattern.hasMatch(tourId.trim())) {
-          final tours = await repo.getToursByIds([tourId.trim()]);
-          if (tours.isNotEmpty) {
-            return AboutTourModel.fromTour(tours.first);
-          }
-        }
-
-        // 2. Fallback: Try searching by name if it's not a UUID or not found by UUID
-        // This handles legacy games or games from Gamebase where we only have the name.
-        final searchResults = await repo.searchTours(query: tourId.trim(), limit: 1);
-        if (searchResults.isNotEmpty) {
-          // Verify it's a reasonably close match (simple containment check)
-          final bestMatch = searchResults.first;
-          final normalizedQuery = tourId.trim().toLowerCase();
-          final normalizedMatch = bestMatch.name.toLowerCase();
-
-          if (normalizedMatch.contains(normalizedQuery) ||
-              normalizedQuery.contains(normalizedMatch)) {
-            return AboutTourModel.fromTour(bestMatch);
-          }
-        }
-      } catch (e) {
-        debugPrint('Failed to fetch tour info for $tourId: $e');
+    if (uuidPattern.hasMatch(tourId.trim())) {
+      final tours = await repo.getToursByIds([tourId.trim()]);
+      if (tours.isNotEmpty) {
+        return AboutTourModel.fromTour(tours.first);
       }
-      return null;
-    });
+    }
+
+    // 2. Fallback: Try searching by name if it's not a UUID or not found by UUID
+    // This handles legacy games or games from Gamebase where we only have the name.
+    final searchResults = await repo.searchTours(
+      query: tourId.trim(),
+      limit: 1,
+    );
+    if (searchResults.isNotEmpty) {
+      // Verify it's a reasonably close match (simple containment check)
+      final bestMatch = searchResults.first;
+      final normalizedQuery = tourId.trim().toLowerCase();
+      final normalizedMatch = bestMatch.name.toLowerCase();
+
+      if (normalizedMatch.contains(normalizedQuery) ||
+          normalizedQuery.contains(normalizedMatch)) {
+        return AboutTourModel.fromTour(bestMatch);
+      }
+    }
+  } catch (e) {
+    debugPrint('Failed to fetch tour info for $tourId: $e');
+  }
+  return null;
+});
 
 /// Event info sheet - displays tournament/event details
 class _EventInfoSheet extends ConsumerWidget {
@@ -11730,36 +11831,24 @@ class _EventInfoSheet extends ConsumerWidget {
 
   const _EventInfoSheet({required this.game, this.pgn});
 
-  /// Parse opening info (ECO code and Opening name) from PGN headers
-  ({String? eco, String? opening}) _parseOpeningFromPgn() {
+  /// Parse headers from PGN
+  Map<String, String> _parseHeadersFromPgn() {
     final pgnString = pgn ?? game.pgn;
     if (pgnString == null || pgnString.isEmpty) {
-      return (eco: null, opening: null);
+      return {};
     }
 
     try {
       final pgnGame = PgnGame.parsePgn(pgnString);
-      final eco = pgnGame.headers['ECO'];
-      final opening = pgnGame.headers['Opening'];
-      return (eco: eco, opening: opening);
+      return pgnGame.headers;
     } catch (e) {
       // Fallback to regex parsing if dartchess fails
-      String? eco;
-      String? opening;
-
-      final ecoMatch = RegExp(r'\[ECO\s+"([^"]+)"\]').firstMatch(pgnString);
-      if (ecoMatch != null) {
-        eco = ecoMatch.group(1);
+      final headers = <String, String>{};
+      final matches = RegExp(r'\[(\w+)\s+"([^"]+)"\]').allMatches(pgnString);
+      for (final match in matches) {
+        headers[match.group(1)!] = match.group(2)!;
       }
-
-      final openingMatch = RegExp(
-        r'\[Opening\s+"([^"]+)"\]',
-      ).firstMatch(pgnString);
-      if (openingMatch != null) {
-        opening = openingMatch.group(1);
-      }
-
-      return (eco: eco, opening: opening);
+      return headers;
     }
   }
 
@@ -11891,13 +11980,33 @@ class _EventInfoSheet extends ConsumerWidget {
     ScrollController scrollController,
     LocationService locationService,
   ) {
+    final headers = _parseHeadersFromPgn();
+
+    // Determine event name: PGN [Event] > game.tourSlug > game.tourId (if not UUID)
+    String eventName = 'Game Info';
+    if (headers['Event'] != null &&
+        headers['Event']!.isNotEmpty &&
+        headers['Event'] != '?') {
+      eventName = headers['Event']!;
+    } else if (game.tourSlug != null && game.tourSlug!.isNotEmpty) {
+      eventName = StringUtils.slugToTitle(game.tourSlug!);
+    } else if (game.tourId.isNotEmpty) {
+      final isUuid = RegExp(
+        r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
+        caseSensitive: false,
+      ).hasMatch(game.tourId);
+      if (!isUuid) {
+        eventName = game.tourId;
+      }
+    }
+
     return ListView(
       controller: scrollController,
       padding: EdgeInsets.symmetric(horizontal: 20.sp),
       children: [
         // Game header
         Text(
-          'Game Info',
+          eventName,
           style: AppTypography.textLgBold.copyWith(color: kWhiteColor),
         ),
         SizedBox(height: 16.h),
@@ -11908,20 +12017,63 @@ class _EventInfoSheet extends ConsumerWidget {
           value:
               game.roundSlug != null
                   ? StringUtils.formatRoundLabel(game.roundSlug)
-                  : game.roundDisplayName,
+                  : (headers['Round'] ?? game.roundDisplayName),
         ),
         SizedBox(height: 12.h),
         // Board number
-        if (game.boardNr != null) ...[
+        if (game.boardNr != null || headers['Board'] != null) ...[
           _EventInfoRow(
             icon: Icons.grid_on_rounded,
             label: 'Board',
-            value: 'Board ${game.boardNr}',
+            value:
+                game.boardNr != null
+                    ? 'Board ${game.boardNr}'
+                    : 'Board ${headers['Board']}',
           ),
           SizedBox(height: 12.h),
         ],
         // Opening info from PGN
-        ..._buildOpeningInfoRows(),
+        ..._buildOpeningInfoRows(headers),
+
+        // Date info
+        if (headers['Date'] != null &&
+            headers['Date'] != '????.??.??' &&
+            headers['Date'] != '?') ...[
+          _EventInfoRow(
+            icon: Icons.calendar_today_rounded,
+            label: 'Date',
+            value: headers['Date']!,
+          ),
+          SizedBox(height: 12.h),
+        ],
+
+        // Location info
+        if (headers['Site'] != null && headers['Site'] != '?') ...[
+          _EventInfoRow(
+            icon: Icons.location_on_rounded,
+            label: 'Location',
+            value: headers['Site']!,
+            trailing: _buildCountryFlag(
+              locationService.getCountryCode(headers['Site']!),
+            ),
+          ),
+          SizedBox(height: 12.h),
+        ],
+
+        // Time control info
+        if (game.timeControl != null ||
+            (headers['TimeControl'] != null &&
+                headers['TimeControl'] != '?')) ...[
+          _EventInfoRow(
+            icon: Icons.access_time_rounded,
+            label: 'Time Control',
+            value: StringUtils.capitalizeWords(
+              headers['TimeControl'] ?? game.timeControl!,
+            ),
+          ),
+          SizedBox(height: 12.h),
+        ],
+
         // Players section
         SizedBox(height: 8.h),
         Text(
@@ -11942,19 +12094,22 @@ class _EventInfoSheet extends ConsumerWidget {
   }
 
   /// Build opening info rows if available in PGN
-  List<Widget> _buildOpeningInfoRows() {
-    final openingInfo = _parseOpeningFromPgn();
+  List<Widget> _buildOpeningInfoRows([Map<String, String>? headers]) {
+    final effectiveHeaders = headers ?? _parseHeadersFromPgn();
+    final eco = effectiveHeaders['ECO'];
+    final opening = effectiveHeaders['Opening'];
+
     final List<Widget> rows = [];
 
-    if (openingInfo.eco != null || openingInfo.opening != null) {
+    if (eco != null || opening != null) {
       // Combine ECO and Opening name
       String openingDisplay = '';
-      if (openingInfo.eco != null && openingInfo.opening != null) {
-        openingDisplay = '${openingInfo.eco}: ${openingInfo.opening}';
-      } else if (openingInfo.opening != null) {
-        openingDisplay = openingInfo.opening!;
-      } else if (openingInfo.eco != null) {
-        openingDisplay = openingInfo.eco!;
+      if (eco != null && opening != null) {
+        openingDisplay = '$eco: $opening';
+      } else if (opening != null) {
+        openingDisplay = opening;
+      } else if (eco != null) {
+        openingDisplay = eco;
       }
 
       if (openingDisplay.isNotEmpty) {

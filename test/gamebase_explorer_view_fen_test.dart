@@ -25,6 +25,8 @@ class _FakeGamebaseRepository extends GamebaseRepository {
     int? maxRating,
     String? color,
     String? result,
+    int? yearFrom,
+    int? yearTo,
   }) async {
     return const GamebaseResponse(
       status: 'success',

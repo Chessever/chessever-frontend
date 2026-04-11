@@ -118,19 +118,100 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
   late FocusNode _titleFocusNode;
   late FocusNode _newFolderNameFocusNode;
 
+  // ChessBase-style metadata controllers
+  late TextEditingController _whiteSurnameController;
+  late TextEditingController _whiteFirstNameController;
+  late TextEditingController _blackSurnameController;
+  late TextEditingController _blackFirstNameController;
+  late TextEditingController _eventController;
+  late TextEditingController _ecoController;
+  late TextEditingController _whiteEloController;
+  late TextEditingController _blackEloController;
+  late TextEditingController _roundController;
+  late TextEditingController _subroundController;
+  late TextEditingController _yearController;
+  late TextEditingController _monthController;
+  late TextEditingController _dayController;
+
   LibraryFolder? _selectedFolder;
   bool _isSaving = false;
   String? _errorMessage;
   bool _isCreatingNewFolder = false;
+  bool _showGameDetails = false;
+  String _selectedResult = '*';
   Color _selectedFolderColor = _folderColorPresets.first;
 
   @override
   void initState() {
     super.initState();
+    _initializeControllers();
+  }
+
+  void _initializeControllers() {
+    final state = widget.config.state;
+    final game = state.game;
+    final analysisGame = state.analysisState.game;
+    final metadata = analysisGame?.metadata ?? {};
+
     _titleController = TextEditingController(text: _generateDefaultTitle());
     _newFolderNameController = TextEditingController();
     _titleFocusNode = FocusNode();
     _newFolderNameFocusNode = FocusNode();
+
+    // Parse White name
+    final whiteRaw = metadata['White']?.toString() ?? game.whitePlayer.name;
+    final whiteParts = whiteRaw.split(', ');
+    _whiteSurnameController = TextEditingController(text: whiteParts[0]);
+    _whiteFirstNameController = TextEditingController(
+      text: whiteParts.length > 1 ? whiteParts[1] : '',
+    );
+
+    // Parse Black name
+    final blackRaw = metadata['Black']?.toString() ?? game.blackPlayer.name;
+    final blackParts = blackRaw.split(', ');
+    _blackSurnameController = TextEditingController(text: blackParts[0]);
+    _blackFirstNameController = TextEditingController(
+      text: blackParts.length > 1 ? blackParts[1] : '',
+    );
+
+    _eventController = TextEditingController(
+      text: metadata['Event']?.toString() ?? '',
+    );
+    _ecoController = TextEditingController(text: metadata['ECO']?.toString() ?? '');
+    _whiteEloController = TextEditingController(
+      text: metadata['WhiteElo']?.toString() ?? '',
+    );
+    _blackEloController = TextEditingController(
+      text: metadata['BlackElo']?.toString() ?? '',
+    );
+    _roundController = TextEditingController(
+      text: metadata['Round']?.toString() ?? '',
+    );
+    _subroundController = TextEditingController(
+      text: metadata['Subround']?.toString() ?? '',
+    );
+
+    _selectedResult = metadata['Result']?.toString() ?? '*';
+
+    // Parse date YYYY.MM.DD
+    final dateStr = metadata['Date']?.toString() ?? '';
+    final dateParts = dateStr.split('.');
+    _yearController = TextEditingController(
+      text: (dateParts.isNotEmpty && dateParts[0] != '????') ? dateParts[0] : '',
+    );
+    _monthController = TextEditingController(
+      text: (dateParts.length > 1 && dateParts[1] != '??') ? dateParts[1] : '',
+    );
+    _dayController = TextEditingController(
+      text: (dateParts.length > 2 && dateParts[2] != '??') ? dateParts[2] : '',
+    );
+  }
+
+  void _resetControllers() {
+    setState(() {
+      _initializeControllers();
+    });
+    HapticFeedback.mediumImpact();
   }
 
   @override
@@ -139,6 +220,21 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
     _newFolderNameController.dispose();
     _titleFocusNode.dispose();
     _newFolderNameFocusNode.dispose();
+
+    _whiteSurnameController.dispose();
+    _whiteFirstNameController.dispose();
+    _blackSurnameController.dispose();
+    _blackFirstNameController.dispose();
+    _eventController.dispose();
+    _ecoController.dispose();
+    _whiteEloController.dispose();
+    _blackEloController.dispose();
+    _roundController.dispose();
+    _subroundController.dispose();
+    _yearController.dispose();
+    _monthController.dispose();
+    _dayController.dispose();
+
     super.dispose();
   }
 
@@ -198,10 +294,45 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
       }
 
       final state = widget.config.state;
-      final analysisGame = state.analysisState.game;
+      var analysisGame = state.analysisState.game;
       if (analysisGame == null) {
         throw Exception('No analysis game to save');
       }
+
+      // Update metadata with form values
+      final updatedMetadata = Map<String, dynamic>.from(analysisGame.metadata);
+      
+      // Combine names: Surname, First Name
+      final whiteSurname = _whiteSurnameController.text.trim();
+      final whiteFirst = _whiteFirstNameController.text.trim();
+      final whiteFull = whiteFirst.isEmpty ? whiteSurname : '$whiteSurname, $whiteFirst';
+      updatedMetadata['White'] = whiteFull.isEmpty ? '?' : whiteFull;
+      
+      final blackSurname = _blackSurnameController.text.trim();
+      final blackFirst = _blackFirstNameController.text.trim();
+      final blackFull = blackFirst.isEmpty ? blackSurname : '$blackSurname, $blackFirst';
+      updatedMetadata['Black'] = blackFull.isEmpty ? '?' : blackFull;
+      
+      updatedMetadata['Event'] = _eventController.text.trim().isEmpty ? '?' : _eventController.text.trim();
+      updatedMetadata['ECO'] = _ecoController.text.trim();
+      updatedMetadata['WhiteElo'] = _whiteEloController.text.trim();
+      updatedMetadata['BlackElo'] = _blackEloController.text.trim();
+      updatedMetadata['Round'] = _roundController.text.trim().isEmpty ? '?' : _roundController.text.trim();
+      updatedMetadata['Subround'] = _subroundController.text.trim();
+      updatedMetadata['Result'] = _selectedResult;
+
+      final year = _yearController.text.trim();
+      final month = _monthController.text.trim();
+      final day = _dayController.text.trim();
+      if (year.isNotEmpty) {
+        final m = month.isEmpty ? '??' : month.padLeft(2, '0');
+        final d = day.isEmpty ? '??' : day.padLeft(2, '0');
+        updatedMetadata['Date'] = '$year.$m.$d';
+      } else {
+        updatedMetadata['Date'] = '????.??.??';
+      }
+
+      analysisGame = analysisGame.copyWith(metadata: updatedMetadata);
 
       // Build analysis_state JSONB with navigation info
       final analysisStateJson = <String, dynamic>{
@@ -348,6 +479,19 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
                 _buildTitleSection()
                     .animate()
                     .fadeIn(duration: 300.ms, delay: 100.ms)
+                    .slideY(
+                      begin: 0.1,
+                      end: 0,
+                      duration: 350.ms,
+                      curve: Curves.easeOutCubic,
+                    ),
+
+                SizedBox(height: 20.h),
+
+                // Game Details (PGN Headers)
+                _buildGameDetailsSection()
+                    .animate()
+                    .fadeIn(duration: 300.ms, delay: 125.ms)
                     .slideY(
                       begin: 0.1,
                       end: 0,
@@ -555,6 +699,273 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildGameDetailsSection() {
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: 24.w),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          GestureDetector(
+            onTap: () {
+              setState(() => _showGameDetails = !_showGameDetails);
+              HapticFeedback.selectionClick();
+            },
+            child: Container(
+              padding: EdgeInsets.symmetric(vertical: 12.h, horizontal: 16.w),
+              decoration: BoxDecoration(
+                color: kWhiteColor.withValues(alpha: 0.04),
+                borderRadius: BorderRadius.circular(12.br),
+                border: Border.all(color: kWhiteColor.withValues(alpha: 0.08)),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.edit_note_rounded,
+                    color: kWhiteColor.withValues(alpha: 0.6),
+                    size: 20.sp,
+                  ),
+                  SizedBox(width: 12.w),
+                  Expanded(
+                    child: Text(
+                      'Game Details',
+                      style: AppTypography.textSmMedium.copyWith(
+                        color: kWhiteColor.withValues(alpha: 0.9),
+                      ),
+                    ),
+                  ),
+                  Text(
+                    _showGameDetails ? 'Hide' : 'Show',
+                    style: AppTypography.textXsMedium.copyWith(
+                      color: kPrimaryColor,
+                    ),
+                  ),
+                  SizedBox(width: 4.w),
+                  Icon(
+                    _showGameDetails
+                        ? Icons.keyboard_arrow_up_rounded
+                        : Icons.keyboard_arrow_down_rounded,
+                    color: kPrimaryColor,
+                    size: 18.sp,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (_showGameDetails) ...[
+            SizedBox(height: 16.h),
+            
+            // White Player
+            _buildPlayerSection('White', _whiteSurnameController, _whiteFirstNameController),
+            SizedBox(height: 16.h),
+            
+            // Black Player
+            _buildPlayerSection('Black', _blackSurnameController, _blackFirstNameController),
+            SizedBox(height: 16.h),
+            
+            _buildMetadataField('Tournament', _eventController),
+            SizedBox(height: 12.h),
+            Row(
+              children: [
+                Expanded(child: _buildMetadataField('ECO', _ecoController)),
+                SizedBox(width: 12.w),
+                Expanded(child: _buildMetadataField('Result', null, isResult: true)),
+              ],
+            ),
+            SizedBox(height: 12.h),
+            Row(
+              children: [
+                Expanded(child: _buildMetadataField('White Elo', _whiteEloController, isNumeric: true)),
+                SizedBox(width: 12.w),
+                Expanded(child: _buildMetadataField('Black Elo', _blackEloController, isNumeric: true)),
+              ],
+            ),
+            SizedBox(height: 12.h),
+            Row(
+              children: [
+                Expanded(child: _buildMetadataField('Round', _roundController)),
+                SizedBox(width: 12.w),
+                Expanded(child: _buildMetadataField('Subround', _subroundController)),
+              ],
+            ),
+            SizedBox(height: 12.h),
+            _buildDateField(),
+            SizedBox(height: 16.h),
+            
+            // Reset button
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                onPressed: _isSaving ? null : _resetControllers,
+                icon: Icon(Icons.refresh_rounded, size: 14.sp, color: kWhiteColor.withValues(alpha: 0.4)),
+                label: Text(
+                  'Reset Details',
+                  style: AppTypography.textXsMedium.copyWith(color: kWhiteColor.withValues(alpha: 0.4)),
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPlayerSection(String label, TextEditingController surname, TextEditingController first) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: AppTypography.textXsMedium.copyWith(
+            color: kWhiteColor.withValues(alpha: 0.5),
+            letterSpacing: 0.5,
+          ),
+        ),
+        SizedBox(height: 6.h),
+        Row(
+          children: [
+            Expanded(child: _buildSmallTextField('Surname', surname)),
+            SizedBox(width: 8.w),
+            Expanded(child: _buildSmallTextField('First name', first)),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSmallTextField(String hint, TextEditingController controller) {
+    return Container(
+      height: 40.h,
+      decoration: BoxDecoration(
+        color: kWhiteColor.withValues(alpha: 0.03),
+        borderRadius: BorderRadius.circular(8.br),
+        border: Border.all(color: kWhiteColor.withValues(alpha: 0.06)),
+      ),
+      child: TextField(
+        controller: controller,
+        enabled: !_isSaving,
+        style: AppTypography.textSmRegular.copyWith(color: kWhiteColor),
+        decoration: InputDecoration(
+          hintText: hint,
+          hintStyle: AppTypography.textXsRegular.copyWith(color: kWhiteColor.withValues(alpha: 0.2)),
+          border: InputBorder.none,
+          contentPadding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 8.h),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMetadataField(
+    String label,
+    TextEditingController? controller, {
+    bool isNumeric = false,
+    bool isResult = false,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: AppTypography.textXsMedium.copyWith(
+            color: kWhiteColor.withValues(alpha: 0.5),
+          ),
+        ),
+        SizedBox(height: 6.h),
+        Container(
+          height: 44.h,
+          decoration: BoxDecoration(
+            color: kWhiteColor.withValues(alpha: 0.03),
+            borderRadius: BorderRadius.circular(10.br),
+            border: Border.all(color: kWhiteColor.withValues(alpha: 0.06)),
+          ),
+          child: isResult ? _buildResultDropdown() : TextField(
+            controller: controller,
+            enabled: !_isSaving,
+            keyboardType: isNumeric ? TextInputType.number : TextInputType.text,
+            inputFormatters: isNumeric ? [FilteringTextInputFormatter.digitsOnly] : null,
+            style: AppTypography.textSmRegular.copyWith(color: kWhiteColor),
+            decoration: InputDecoration(
+              border: InputBorder.none,
+              contentPadding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 10.h),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildResultDropdown() {
+    final results = ['1-0', '0-1', '1/2-1/2', '+:-', '-:+', '=:=', '0-0', '*'];
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: 12.w),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String>(
+          value: _selectedResult,
+          isExpanded: true,
+          dropdownColor: const Color(0xFF1A1A1C),
+          icon: Icon(Icons.arrow_drop_down, color: kWhiteColor.withValues(alpha: 0.4)),
+          style: AppTypography.textSmRegular.copyWith(color: kWhiteColor),
+          onChanged: _isSaving ? null : (String? newValue) {
+            if (newValue != null) setState(() => _selectedResult = newValue);
+          },
+          items: results.map<DropdownMenuItem<String>>((String value) {
+            return DropdownMenuItem<String>(
+              value: value,
+              child: Text(value),
+            );
+          }).toList(),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDateField() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Date (YYYY.MM.DD)',
+          style: AppTypography.textXsMedium.copyWith(
+            color: kWhiteColor.withValues(alpha: 0.5),
+          ),
+        ),
+        SizedBox(height: 6.h),
+        Row(
+          children: [
+            Expanded(flex: 2, child: _buildSmallTextField('YYYY', _yearController)),
+            SizedBox(width: 6.w),
+            Expanded(child: _buildSmallTextField('MM', _monthController)),
+            SizedBox(width: 6.w),
+            Expanded(child: _buildSmallTextField('DD', _dayController)),
+            SizedBox(width: 8.w),
+            GestureDetector(
+              onTap: _isSaving ? null : () {
+                final now = DateTime.now();
+                setState(() {
+                  _yearController.text = now.year.toString();
+                  _monthController.text = now.month.toString().padLeft(2, '0');
+                  _dayController.text = now.day.toString().padLeft(2, '0');
+                });
+                HapticFeedback.lightImpact();
+              },
+              child: Container(
+                padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 10.h),
+                decoration: BoxDecoration(
+                  color: kPrimaryColor.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8.br),
+                  border: Border.all(color: kPrimaryColor.withValues(alpha: 0.2)),
+                ),
+                child: Text(
+                  'Today',
+                  style: AppTypography.textXsMedium.copyWith(color: kPrimaryColor),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
     );
   }
 

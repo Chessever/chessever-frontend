@@ -14,6 +14,7 @@ import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provide
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_app_bar_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/category_dropdown.dart';
+import 'package:chessever2/screens/tour_detail/widgets/tournament_menu_button.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -351,8 +352,7 @@ class _TourDetailDropDownAppBar extends ConsumerWidget {
           Expanded(
             child: Center(child: CategoryDropdown(constrainWidth: false)),
           ),
-          // Placeholder for symmetry with back button
-          SizedBox(width: 48.w),
+          TournamentMenuButton(tourData: data),
         ],
       ),
     );
@@ -418,5 +418,5 @@ class _LoadingAppBarWithTitle extends StatelessWidget {
 const _mappedName = {
   TournamentDetailScreenMode.about: 'About',
   TournamentDetailScreenMode.games: 'Games',
-  TournamentDetailScreenMode.standings: 'Players',
+  TournamentDetailScreenMode.standings: 'Standings',
 };
