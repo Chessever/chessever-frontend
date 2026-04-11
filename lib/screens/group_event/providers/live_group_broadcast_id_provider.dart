@@ -165,12 +165,31 @@ class _StrictLiveGroupBroadcastResolver {
     required List<String> configuredLiveEntries,
     required List<String> liveRoundIds,
   }) async {
-    if (configuredLiveEntries.isEmpty || liveRoundIds.isEmpty) {
+    if (liveRoundIds.isEmpty) {
+      return const <String>[];
+    }
+
+    final liveRounds = await roundRepository.getRoundsByIds(liveRoundIds);
+    if (liveRounds.isEmpty) {
+      return const <String>[];
+    }
+
+    final liveTours = await tourRepository.getToursByIds(
+      liveRounds.map((round) => round.tourId).toSet().toList(growable: false),
+    );
+    final candidateLiveEntries = {
+      ...configuredLiveEntries,
+      ...liveTours
+          .map((tour) => tour.groupBroadcastId)
+          .whereType<String>()
+          .where((id) => id.isNotEmpty),
+    }.toList(growable: false);
+    if (candidateLiveEntries.isEmpty) {
       return const <String>[];
     }
 
     final configuredBroadcasts = await groupBroadcastRepository
-        .getGroupBroadcastsByIdsOrNames(configuredLiveEntries);
+        .getGroupBroadcastsByIdsOrNames(candidateLiveEntries);
     if (configuredBroadcasts.isEmpty) {
       return const <String>[];
     }
@@ -185,11 +204,6 @@ class _StrictLiveGroupBroadcastResolver {
       return const <String>[];
     }
 
-    final liveRounds = await roundRepository.getRoundsByIds(liveRoundIds);
-    if (liveRounds.isEmpty) {
-      return const <String>[];
-    }
-
     final latestMoveTimesByRoundId = await gameRepository
         .getLatestLastMoveTimesByRoundIds(
           liveRounds.map((round) => round.id).toList(growable: false),
@@ -197,7 +211,7 @@ class _StrictLiveGroupBroadcastResolver {
 
     return computeStrictLiveGroupBroadcastIds(
       broadcasts: configuredBroadcasts,
-      configuredLiveEntries: configuredLiveEntries,
+      configuredLiveEntries: candidateLiveEntries,
       toursByGroupBroadcastId: toursByGroupBroadcastId,
       liveRounds: liveRounds,
       latestMoveTimesByRoundId: latestMoveTimesByRoundId,
@@ -263,15 +277,6 @@ List<String> computeStrictLiveGroupBroadcastIds({
   final strictLiveIds = <String>[];
   for (final broadcast in broadcasts) {
     if (!matchesConfiguredLiveGroup(broadcast, configuredLiveEntries)) {
-      continue;
-    }
-
-    final withinStart =
-        broadcast.dateStart == null ||
-        !effectiveNow.isBefore(broadcast.dateStart!);
-    final withinEnd =
-        broadcast.dateEnd == null || !effectiveNow.isAfter(broadcast.dateEnd!);
-    if (!withinStart || !withinEnd) {
       continue;
     }
 

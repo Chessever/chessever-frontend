@@ -111,14 +111,11 @@ class GroupEventCardModel extends Equatable {
     final now = DateTime.now();
 
     // Check if it's a live event first (highest priority)
-    // Settings may store either IDs or names, so check both
+    // The provider only hands us IDs after verifying recent live-round activity,
+    // so trust that signal over stale broadcast schedule metadata.
     if (liveGroupIds.contains(groupId) ||
         (groupName != null && liveGroupIds.contains(groupName))) {
-      final withinStart = startDate == null || !now.isBefore(startDate);
-      final withinEnd = endDate == null || !now.isAfter(endDate);
-      if (withinStart && withinEnd) {
-        return TourEventCategory.live;
-      }
+      return TourEventCategory.live;
     }
 
     // If we have both start and end dates

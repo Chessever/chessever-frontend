@@ -44,13 +44,15 @@ class _FakeTourRepository implements TourRepository {
   ) async => <String, List<Tour>>{};
 
   @override
+  Future<List<Tour>> getToursByIds(List<String> tourIds) async => <Tour>[];
+
+  @override
   dynamic noSuchMethod(Invocation invocation) => null;
 }
 
 class _FakeRoundRepository implements RoundRepository {
   @override
-  Future<List<Round>> getRoundsByIds(List<String> roundIds) async =>
-      <Round>[];
+  Future<List<Round>> getRoundsByIds(List<String> roundIds) async => <Round>[];
 
   @override
   dynamic noSuchMethod(Invocation invocation) => null;
@@ -123,27 +125,32 @@ Round _round({
 
 void main() {
   group('liveGroupBroadcastIdsProvider', () {
-    test('emits a fallback immediately before settings snapshots arrive', () async {
-      final container = ProviderContainer(
-        overrides: [
-          settingsRepositoryProvider.overrideWithValue(_SilentSettingsRepository()),
-          groupBroadcastRepositoryProvider.overrideWithValue(
-            _FakeGroupBroadcastRepository(),
-          ),
-          tourRepositoryProvider.overrideWithValue(_FakeTourRepository()),
-          roundRepositoryProvider.overrideWithValue(_FakeRoundRepository()),
-          gameRepositoryProvider.overrideWithValue(_FakeGameRepository()),
-        ],
-      );
-      addTearDown(container.dispose);
+    test(
+      'emits a fallback immediately before settings snapshots arrive',
+      () async {
+        final container = ProviderContainer(
+          overrides: [
+            settingsRepositoryProvider.overrideWithValue(
+              _SilentSettingsRepository(),
+            ),
+            groupBroadcastRepositoryProvider.overrideWithValue(
+              _FakeGroupBroadcastRepository(),
+            ),
+            tourRepositoryProvider.overrideWithValue(_FakeTourRepository()),
+            roundRepositoryProvider.overrideWithValue(_FakeRoundRepository()),
+            gameRepositoryProvider.overrideWithValue(_FakeGameRepository()),
+          ],
+        );
+        addTearDown(container.dispose);
 
-      await expectLater(
-        container
-            .read(liveGroupBroadcastIdsProvider.future)
-            .timeout(const Duration(milliseconds: 100)),
-        completion(isEmpty),
-      );
-    });
+        await expectLater(
+          container
+              .read(liveGroupBroadcastIdsProvider.future)
+              .timeout(const Duration(milliseconds: 100)),
+          completion(isEmpty),
+        );
+      },
+    );
   });
 
   group('computeStrictLiveGroupBroadcastIds', () {
@@ -227,6 +234,39 @@ void main() {
 
       expect(freshResult, [broadcast.id]);
       expect(staleResult, isEmpty);
+    });
+
+    test('keeps event live even when the broadcast end date is stale', () {
+      final staleScheduleBroadcast = _broadcast(
+        id: 'event-2',
+        name: 'Event Two',
+        start: now.subtract(const Duration(days: 2)),
+        end: now.subtract(const Duration(hours: 12)),
+      );
+      final staleScheduleTour = _tour(
+        id: 'tour-2',
+        groupBroadcastId: staleScheduleBroadcast.id,
+      );
+      final staleScheduleRound = _round(
+        id: 'round-4',
+        tourId: staleScheduleTour.id,
+        startsAt: now.subtract(const Duration(hours: 1)),
+      );
+
+      final result = computeStrictLiveGroupBroadcastIds(
+        broadcasts: [staleScheduleBroadcast],
+        configuredLiveEntries: [staleScheduleBroadcast.id],
+        toursByGroupBroadcastId: {
+          staleScheduleBroadcast.id: [staleScheduleTour],
+        },
+        liveRounds: [staleScheduleRound],
+        latestMoveTimesByRoundId: {
+          staleScheduleRound.id: now.subtract(const Duration(minutes: 5)),
+        },
+        now: now,
+      );
+
+      expect(result, [staleScheduleBroadcast.id]);
     });
 
     test('supports configured live entries that match the event name', () {
