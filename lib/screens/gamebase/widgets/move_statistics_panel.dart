@@ -12,11 +12,6 @@ import '../providers/gamebase_explorer_state.dart';
 import '../providers/gamebase_providers.dart';
 import 'position_games_sheet.dart';
 
-const double _kMoveColumnBaseWidth = 82;
-const double _kGamesColumnBaseWidth = 52;
-const double _kLastColumnBaseWidth = 62;
-const double _kExplorerColumnGap = 6;
-
 /// Panel displaying move statistics for the current position.
 /// Shows each possible move with game count and win/draw/loss bar.
 class MoveStatisticsPanel extends ConsumerWidget {
@@ -121,7 +116,7 @@ class MoveStatisticsPanel extends ConsumerWidget {
           child: Row(
             children: [
               SizedBox(
-                width: _kMoveColumnBaseWidth.w,
+                width: 86.w,
                 child: Text(
                   'Move',
                   style: TextStyle(
@@ -131,7 +126,7 @@ class MoveStatisticsPanel extends ConsumerWidget {
                   ),
                 ),
               ),
-              SizedBox(width: _kExplorerColumnGap.sp),
+              SizedBox(width: 8.sp),
               Expanded(
                 child: Text(
                   'Score',
@@ -143,9 +138,9 @@ class MoveStatisticsPanel extends ConsumerWidget {
                   ),
                 ),
               ),
-              SizedBox(width: _kExplorerColumnGap.sp),
+              SizedBox(width: 8.sp),
               SizedBox(
-                width: _kGamesColumnBaseWidth.w,
+                width: 56.w,
                 child: Text(
                   'Games',
                   textAlign: TextAlign.right,
@@ -157,7 +152,7 @@ class MoveStatisticsPanel extends ConsumerWidget {
                 ),
               ),
               SizedBox(
-                width: _kLastColumnBaseWidth.w,
+                width: 74.w,
                 child: Text(
                   'Last',
                   textAlign: TextAlign.right,
@@ -261,7 +256,7 @@ class _MoveStatisticsRow extends ConsumerWidget {
           children: [
             // Move name
             SizedBox(
-              width: _kMoveColumnBaseWidth.w,
+              width: 86.w,
               child: Row(
                 children: [
                   Text(
@@ -297,69 +292,53 @@ class _MoveStatisticsRow extends ConsumerWidget {
                 ],
               ),
             ),
-            SizedBox(width: _kExplorerColumnGap.sp),
-            // Fixed W/D/L score cells so values remain readable at any percentage.
+            SizedBox(width: 8.sp),
+            // Statistics bar
             Expanded(
-              child: _StatisticsBreakdown(
-                whitePercent: aggregate.whiteWinPercent,
-                drawPercent: aggregate.drawPercent,
-                blackPercent: aggregate.blackWinPercent,
+              child: _StatisticsBar(
+                whiteRate: aggregate.whiteWinRate,
+                drawRate: aggregate.drawRate,
+                blackRate: aggregate.blackWinRate,
               ),
             ),
-            SizedBox(width: _kExplorerColumnGap.sp),
-            SizedBox(
-              width: _kGamesColumnBaseWidth.w,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  Flexible(
-                    child: Text(
-                      aggregate.formattedTotal,
-                      textAlign: TextAlign.right,
-                      style: TextStyle(
-                        color: kSecondaryTextColor,
-                        fontSize: 12.f,
+            SizedBox(width: 8.sp),
+            // Game count + list button — natural width, never truncates
+            Text(
+              aggregate.formattedTotal,
+              style: TextStyle(color: kSecondaryTextColor, fontSize: 12.f),
+            ),
+            SizedBox(width: 2.sp),
+            IconButton(
+              visualDensity: VisualDensity.compact,
+              padding: EdgeInsets.zero,
+              constraints: BoxConstraints.tightFor(width: 22.w, height: 22.h),
+              icon: Icon(
+                Icons.list_alt_rounded,
+                color: kSecondaryTextColor,
+                size: 16.ic,
+              ),
+              tooltip: 'Games',
+              onPressed: () {
+                showModalBottomSheet(
+                  context: context,
+                  backgroundColor: Colors.transparent,
+                  isScrollControlled: true,
+                  constraints: BoxConstraints(
+                    maxHeight: MediaQuery.of(context).size.height * 0.88,
+                  ),
+                  builder:
+                      (_) => PositionGamesSheet(
+                        fen: currentFen,
+                        moves: exploredMoves,
+                        uci: aggregate.uci,
+                        filters: filters,
+                        title: 'Games for $moveNumberLabel$sanMove',
                       ),
-                    ),
-                  ),
-                  SizedBox(width: 1.sp),
-                  IconButton(
-                    visualDensity: VisualDensity.compact,
-                    padding: EdgeInsets.zero,
-                    constraints: BoxConstraints.tightFor(
-                      width: 20.w,
-                      height: 20.h,
-                    ),
-                    icon: Icon(
-                      Icons.list_alt_rounded,
-                      color: kSecondaryTextColor,
-                      size: 15.ic,
-                    ),
-                    tooltip: 'Games',
-                    onPressed: () {
-                      showModalBottomSheet(
-                        context: context,
-                        backgroundColor: Colors.transparent,
-                        isScrollControlled: true,
-                        constraints: BoxConstraints(
-                          maxHeight: MediaQuery.of(context).size.height * 0.88,
-                        ),
-                        builder:
-                            (_) => PositionGamesSheet(
-                              fen: currentFen,
-                              moves: exploredMoves,
-                              uci: aggregate.uci,
-                              filters: filters,
-                              title: 'Games for $moveNumberLabel$sanMove',
-                            ),
-                      );
-                    },
-                  ),
-                ],
-              ),
+                );
+              },
             ),
             SizedBox(
-              width: _kLastColumnBaseWidth.w,
+              width: 74.w,
               child: Text(
                 _formatLastPlayed(aggregate.lastPlayed),
                 textAlign: TextAlign.right,
@@ -426,88 +405,87 @@ int _fullMoveNumberFromFen(String fen) {
   }
 }
 
-/// Equal-width score cells for white, draw, and black outcomes.
-class _StatisticsBreakdown extends StatelessWidget {
-  const _StatisticsBreakdown({
-    required this.whitePercent,
-    required this.drawPercent,
-    required this.blackPercent,
+/// Horizontal bar showing win/draw/loss distribution.
+class _StatisticsBar extends StatelessWidget {
+  const _StatisticsBar({
+    required this.whiteRate,
+    required this.drawRate,
+    required this.blackRate,
   });
 
-  final String whitePercent;
-  final String drawPercent;
-  final String blackPercent;
+  final double whiteRate;
+  final double drawRate;
+  final double blackRate;
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: 22.h,
-      child: Row(
-        children: [
-          Expanded(
-            child: _ScoreCell(
-              label: 'W',
-              value: whitePercent,
-              backgroundColor: kMoveStatWhiteColor,
-              textColor: kMoveStatBlackColor,
-            ),
-          ),
-          SizedBox(width: 2.sp),
-          Expanded(
-            child: _ScoreCell(
-              label: 'D',
-              value: drawPercent,
-              backgroundColor: kMoveStatDrawColor,
-              textColor: kMoveStatWhiteColor,
-            ),
-          ),
-          SizedBox(width: 2.sp),
-          Expanded(
-            child: _ScoreCell(
-              label: 'L',
-              value: blackPercent,
-              backgroundColor: kMoveStatBlackColor,
-              textColor: kMoveStatWhiteColor,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ScoreCell extends StatelessWidget {
-  const _ScoreCell({
-    required this.label,
-    required this.value,
-    required this.backgroundColor,
-    required this.textColor,
-  });
-
-  final String label;
-  final String value;
-  final Color backgroundColor;
-  final Color textColor;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      alignment: Alignment.center,
-      padding: EdgeInsets.symmetric(horizontal: 4.w),
-      decoration: BoxDecoration(
-        color: backgroundColor,
-        borderRadius: BorderRadius.circular(12.br),
-      ),
-      child: FittedBox(
-        fit: BoxFit.scaleDown,
-        child: Text(
-          '$label $value',
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            color: textColor,
-            fontSize: 10.f,
-            fontWeight: FontWeight.w700,
-          ),
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(16.br),
+      child: SizedBox(
+        height: 16.h,
+        child: Row(
+          children: [
+            // White wins
+            if (whiteRate > 0)
+              Expanded(
+                flex: (whiteRate * 100).round().clamp(1, 100),
+                child: Container(
+                  color: kMoveStatWhiteColor,
+                  alignment: Alignment.center,
+                  child:
+                      whiteRate >= 0.08
+                          ? Text(
+                            '${(whiteRate * 100).toStringAsFixed(0)}%',
+                            style: TextStyle(
+                              color: kMoveStatBlackColor,
+                              fontSize: 10.f,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          )
+                          : null,
+                ),
+              ),
+            // Draws
+            if (drawRate > 0)
+              Expanded(
+                flex: (drawRate * 100).round().clamp(1, 100),
+                child: Container(
+                  color: kMoveStatDrawColor,
+                  alignment: Alignment.center,
+                  child:
+                      drawRate >= 0.08
+                          ? Text(
+                            '${(drawRate * 100).toStringAsFixed(0)}%',
+                            style: TextStyle(
+                              color: kMoveStatWhiteColor,
+                              fontSize: 10.f,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          )
+                          : null,
+                ),
+              ),
+            // Black wins
+            if (blackRate > 0)
+              Expanded(
+                flex: (blackRate * 100).round().clamp(1, 100),
+                child: Container(
+                  color: kMoveStatBlackColor,
+                  alignment: Alignment.center,
+                  child:
+                      blackRate >= 0.08
+                          ? Text(
+                            '${(blackRate * 100).toStringAsFixed(0)}%',
+                            style: TextStyle(
+                              color: kMoveStatWhiteColor,
+                              fontSize: 10.f,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          )
+                          : null,
+                ),
+              ),
+          ],
         ),
       ),
     );
