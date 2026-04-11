@@ -27,8 +27,9 @@ import 'package:sentry_flutter/sentry_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 List<GamesTourModel> _buildSortedRoundGameModels(List<Games> roundGames) {
-  final gameList =
-      roundGames.map(GamesTourModel.fromGame).toList(growable: false);
+  final gameList = roundGames
+      .map(GamesTourModel.fromGame)
+      .toList(growable: false);
   gameList.sort((a, b) {
     final aBoard = a.boardNr ?? 1 << 30;
     final bBoard = b.boardNr ?? 1 << 30;
@@ -40,7 +41,8 @@ List<GamesTourModel> _buildSortedRoundGameModels(List<Games> roundGames) {
 
 /// Service to handle deep links and notification tap routing.
 /// Handles URLs like: `https://chessever.com/games/{id}`
-/// Handles notification data routing for games, events, and rounds.
+/// Handles URLs like: `https://chessever.com/databases/{id}`
+/// Handles notification data routing for games, events, rounds, and databases.
 class DeepLinkService {
   static final DeepLinkService instance = DeepLinkService._();
   DeepLinkService._();
@@ -92,11 +94,7 @@ class DeepLinkService {
       }
     } catch (e, stackTrace) {
       debugPrint('DeepLinkService: Error getting initial link: $e');
-      _captureDeepLinkException(
-        e,
-        stackTrace,
-        stage: 'get_initial_link',
-      );
+      _captureDeepLinkException(e, stackTrace, stage: 'get_initial_link');
     }
 
     // Listen for links while app is running (warm start / already open)
@@ -110,11 +108,7 @@ class DeepLinkService {
       },
       onError: (Object error, StackTrace stackTrace) {
         debugPrint('DeepLinkService: Error listening to links: $error');
-        _captureDeepLinkException(
-          error,
-          stackTrace,
-          stage: 'uri_link_stream',
-        );
+        _captureDeepLinkException(error, stackTrace, stage: 'uri_link_stream');
       },
     );
   }
@@ -130,6 +124,7 @@ class DeepLinkService {
     try {
       String? gameId;
       String? bookShareToken;
+      String? folderId;
 
       // Universal link: https://chessever.com/games/<id>
       if (uri.pathSegments.length >= 2 && uri.pathSegments[0] == 'games') {
@@ -139,6 +134,13 @@ class DeepLinkService {
       // Universal link: https://chessever.com/books/<shareToken>
       if (uri.pathSegments.length >= 2 && uri.pathSegments[0] == 'books') {
         bookShareToken = uri.pathSegments[1];
+      }
+
+      // Universal link: https://chessever.com/databases/<folderId>
+      if (uri.pathSegments.length >= 2 &&
+          (uri.pathSegments[0] == 'databases' ||
+              uri.pathSegments[0] == 'folders')) {
+        folderId = uri.pathSegments[1];
       }
 
       // Custom scheme: com.chessever.app://games/<id>
@@ -155,12 +157,20 @@ class DeepLinkService {
         bookShareToken = uri.pathSegments[0];
       }
 
+      // Custom scheme: com.chessever.app://databases/<folderId>
+      if (folderId == null &&
+          (uri.host == 'databases' || uri.host == 'folders') &&
+          uri.pathSegments.isNotEmpty) {
+        folderId = uri.pathSegments[0];
+      }
+
       _addBreadcrumb(
         'deep link parsed',
         data: {
           ..._sanitizedUriData(uri),
           'gameId': _maskedValue(gameId),
           'bookShareToken': _maskedValue(bookShareToken),
+          'folderId': _maskedValue(folderId),
         },
       );
 
@@ -183,13 +193,16 @@ class DeepLinkService {
           data: {'shareToken': _maskedValue(bookShareToken)},
         );
         _navigateToBookPreview(bookShareToken, navigatorKey, ref);
+      } else if (folderId != null && folderId.isNotEmpty) {
+        _addBreadcrumb(
+          'routing to database folder',
+          data: {'folderId': _maskedValue(folderId)},
+        );
+        _navigateToFolder(folderId, navigatorKey, ref);
       } else {
         _addBreadcrumb(
           'deep link ignored',
-          data: {
-            'reason': 'unsupported path',
-            ..._sanitizedUriData(uri),
-          },
+          data: {'reason': 'unsupported path', ..._sanitizedUriData(uri)},
         );
       }
     } catch (e, stackTrace) {
@@ -236,7 +249,8 @@ class DeepLinkService {
         }
       }
 
-      var isAuthenticated = resolvedState?.status == AppAuthStatus.authenticated;
+      var isAuthenticated =
+          resolvedState?.status == AppAuthStatus.authenticated;
       if (!isAuthenticated) {
         debugPrint(
           'DeepLinkService: No authenticated session available for book link, attempting anonymous sign-in...',
@@ -319,7 +333,8 @@ class DeepLinkService {
         }
       }
 
-      var isAuthenticated = resolvedState?.status == AppAuthStatus.authenticated;
+      var isAuthenticated =
+          resolvedState?.status == AppAuthStatus.authenticated;
       if (!isAuthenticated) {
         debugPrint(
           'DeepLinkService: No authenticated session available for folder link, attempting anonymous sign-in...',
@@ -335,7 +350,9 @@ class DeepLinkService {
       if (!isAuthenticated) {
         debugPrint('DeepLinkService: User not authenticated, routing to home');
         _captureDeepLinkException(
-          Exception('Folder deep link ignored because user is not authenticated'),
+          Exception(
+            'Folder deep link ignored because user is not authenticated',
+          ),
           StackTrace.current,
           stage: 'folder_requires_auth',
           extras: {'folderId': _maskedValue(folderId)},
@@ -351,7 +368,7 @@ class DeepLinkService {
       debugPrint('DeepLinkService: Opening library folder: $folderId');
 
       final repo = ref.read(libraryRepositoryProvider);
-      
+
       LibraryFolder? targetFolder;
       try {
         targetFolder = await repo.getFolder(folderId);
@@ -363,7 +380,8 @@ class DeepLinkService {
       if (targetFolder == null) {
         try {
           final subscribedBooks = await repo.getSubscribedBooks();
-          targetFolder = subscribedBooks.where((f) => f.id == folderId).firstOrNull;
+          targetFolder =
+              subscribedBooks.where((f) => f.id == folderId).firstOrNull;
         } catch (_) {
           // Ignore
         }
@@ -378,7 +396,9 @@ class DeepLinkService {
             ),
           );
         } else {
-          debugPrint('DeepLinkService: Folder not found or access denied: $folderId');
+          debugPrint(
+            'DeepLinkService: Folder not found or access denied: $folderId',
+          );
           navigator.pushNamedAndRemoveUntil('/home_screen', (route) => false);
         }
       }
@@ -435,13 +455,14 @@ class DeepLinkService {
       _addBreadcrumb('fetching game', data: {'gameId': gameId});
 
       final authFuture = _waitForAuthenticatedSession(ref);
-      final appReadyFuture =
-          _appReadyCompleter.future.timeout(const Duration(seconds: 30),
-              onTimeout: () {
-        debugPrint(
-          'DeepLinkService: Timed out waiting for app ready, proceeding',
-        );
-      });
+      final appReadyFuture = _appReadyCompleter.future.timeout(
+        const Duration(seconds: 30),
+        onTimeout: () {
+          debugPrint(
+            'DeepLinkService: Timed out waiting for app ready, proceeding',
+          );
+        },
+      );
 
       // Auth is required before we can proceed.
       var isAuthenticated = await authFuture;
@@ -491,10 +512,12 @@ class DeepLinkService {
       final broadcastRepo = ref.read(groupBroadcastRepositoryProvider);
 
       try {
-        final round =
-            await roundRepo.getRoundById(game.roundId).timeout(_fetchTimeout);
-        final tour =
-            await tourRepo.getToursByIds([round.tourId]).timeout(_fetchTimeout);
+        final round = await roundRepo
+            .getRoundById(game.roundId)
+            .timeout(_fetchTimeout);
+        final tour = await tourRepo
+            .getToursByIds([round.tourId])
+            .timeout(_fetchTimeout);
 
         if (tour.isNotEmpty) {
           final broadcastId = tour.first.groupBroadcastId;
@@ -528,9 +551,9 @@ class DeepLinkService {
             ChessboardView.forYou;
       }
 
-      final roundGamesFuture = gameRepo.getGamesByRoundId(game.roundId).timeout(
-        _fetchTimeout,
-      );
+      final roundGamesFuture = gameRepo
+          .getGamesByRoundId(game.roundId)
+          .timeout(_fetchTimeout);
 
       debugPrint('DeepLinkService: Game loaded, navigating to chess board');
       _addBreadcrumb(
@@ -657,7 +680,10 @@ class DeepLinkService {
       data['tourId'],
       data['category_id'],
     ]);
-    final folderId = _firstNonEmptyString([data['folder_id'], data['folderId']]);
+    final folderId = _firstNonEmptyString([
+      data['folder_id'],
+      data['folderId'],
+    ]);
 
     switch (type) {
       case 'game_started':
@@ -687,6 +713,7 @@ class DeepLinkService {
         return;
       case 'book_game_added':
       case 'book_game_updated':
+      case 'book_game_removed':
         if (folderId != null && folderId.isNotEmpty) {
           _navigateToFolder(folderId, navigatorKey, ref);
         } else {
@@ -708,6 +735,11 @@ class DeepLinkService {
             roundId: roundId,
             tourId: tourId,
           );
+          return;
+        }
+
+        if (folderId != null) {
+          _navigateToFolder(folderId, navigatorKey, ref);
           return;
         }
 
@@ -757,7 +789,8 @@ class DeepLinkService {
         }
       }
 
-      var isAuthenticated = resolvedState?.status == AppAuthStatus.authenticated;
+      var isAuthenticated =
+          resolvedState?.status == AppAuthStatus.authenticated;
       if (!isAuthenticated) {
         debugPrint(
           'DeepLinkService: No authenticated session available for event link, attempting anonymous sign-in...',
@@ -773,7 +806,9 @@ class DeepLinkService {
       if (!isAuthenticated) {
         debugPrint('DeepLinkService: User not authenticated, routing to home');
         _captureDeepLinkException(
-          Exception('Event deep link ignored because user is not authenticated'),
+          Exception(
+            'Event deep link ignored because user is not authenticated',
+          ),
           StackTrace.current,
           stage: 'event_link_requires_auth',
           extras: {
@@ -1100,7 +1135,8 @@ class _DeepLinkedChessBoardRoute extends StatefulWidget {
       _DeepLinkedChessBoardRouteState();
 }
 
-class _DeepLinkedChessBoardRouteState extends State<_DeepLinkedChessBoardRoute> {
+class _DeepLinkedChessBoardRouteState
+    extends State<_DeepLinkedChessBoardRoute> {
   late List<GamesTourModel> _games;
   late int _currentIndex;
 
@@ -1118,7 +1154,9 @@ class _DeepLinkedChessBoardRouteState extends State<_DeepLinkedChessBoardRoute> 
       if (!mounted || roundGames.isEmpty) return;
 
       final gameList = _buildSortedRoundGameModels(roundGames);
-      final index = gameList.indexWhere((g) => g.gameId == widget.initialGameId);
+      final index = gameList.indexWhere(
+        (g) => g.gameId == widget.initialGameId,
+      );
       if (index < 0) return;
 
       setState(() {

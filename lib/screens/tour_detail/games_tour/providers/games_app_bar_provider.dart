@@ -155,9 +155,28 @@ class _GamesAppBarNotifier
 
     final selectedId = vm?.selectedId;
     final userSelected = vm?.userSelectedId ?? false;
+    final screenMode = ref.read(gamesTourScreenModeProvider).valueOrNull;
+    final isGroupEvent = screenMode == GamesTourScreenMode.groupEvent;
+
+    final gamesByRound = _buildRoundGameCounts();
+
+    if (isGroupEvent) {
+      return allRounds
+          .where((round) {
+            final gamesInRound = gamesByRound[round.id] ?? 0;
+            if (gamesInRound == 0) return false;
+
+            if (userSelected && selectedId == round.id) {
+              return true;
+            }
+
+            return round.roundStatus != RoundStatus.upcoming;
+          })
+          .map((round) => round.id)
+          .toList();
+    }
 
     // Smart filtering: Match the EXACT logic in games_tour_content_body.dart
-    final gamesByRound = _buildRoundGameCounts();
 
     // Check if this is a multi-stage knockout
     final isMultiStageKnockout = allRounds.any(
@@ -223,34 +242,65 @@ class _GamesAppBarNotifier
     return visibleRounds.map((r) => r.id).toList();
   }
 
-  /// Get list of ALL match keys from ALL rounds (for group events)
-  /// This is used by collapse/expand all buttons to affect versus cards
-  /// Note: Gets match keys from ALL rounds, not just visible ones, so that
-  /// when a collapsed round is later expanded, its versus cards remain collapsed
-  List<String> getAllMatchKeys() {
+  /// Get match keys for knockout sections that are currently visible in the list.
+  /// Collapse/expand actions should follow the sections the user can currently see.
+  List<String> getVisibleMatchKeys([Iterable<String>? visibleRoundIds]) {
+    final knockoutState =
+        tourId != null
+            ? ref.read(knockoutTournamentStateProvider(tourId!))
+            : const KnockoutTournamentState.empty();
+
+    // We only care about match keys if it's a knockout tournament
+    if (!knockoutState.isKnockout) {
+      return [];
+    }
+
+    final targetRoundIds = (visibleRoundIds ?? getVisibleRoundIds()).toSet();
+    if (targetRoundIds.isEmpty) return [];
+
+    final matchKeys = <String>[];
+    final gamesData = ref.read(gamesTourScreenProvider).valueOrNull;
+    final allGames = gamesData?.gamesTourModels ?? [];
+
+    for (final roundId in targetRoundIds) {
+      if (!_isKnockoutRound(roundId)) {
+        continue;
+      }
+
+      List<GamesTourModel> roundGames;
+      if (roundId.startsWith('$kKnockoutStagePrefix-')) {
+        final stageTourId = roundId.replaceFirst('$kKnockoutStagePrefix-', '');
+        final stageKnockoutState = ref.read(
+          knockoutTournamentStateProvider(stageTourId),
+        );
+        roundGames = stageKnockoutState.allGames;
+      } else {
+        roundGames = allGames.where((g) => g.roundId == roundId).toList();
+      }
+
+      if (roundGames.isEmpty) continue;
+
+      final matches = KnockoutMatchDetector.groupByMatches(roundGames);
+      matchKeys.addAll(matches.keys);
+    }
+
+    return matchKeys;
+  }
+
+  /// Get all rounds that currently have games in the Games tab dataset.
+  /// This is used by the menu actions so "Expand all" / "Collapse all"
+  /// always affect the full list dataset, not only the currently visible slice.
+  List<String> getAllRoundIdsWithGames() {
     final vm = state.valueOrNull;
     final allRounds = vm?.gamesAppBarModels ?? [];
     if (allRounds.isEmpty) return [];
 
-    final gamesScreenModel = ref.read(gamesTourScreenProvider).valueOrNull;
-    if (gamesScreenModel == null) return [];
+    final gamesByRound = _buildRoundGameCounts();
 
-    final matchKeys = <String>[];
-
-    // For each round (visible or not), get the match keys (team headers)
-    for (final round in allRounds) {
-      final grouped = ref
-          .read(gamesTourContentProvider)
-          .getGroupHeader(
-            selectedRoundId: round.id,
-            gamesScreenModel: gamesScreenModel,
-          );
-
-      // Each group header key is a match key (e.g., "Team1 vs Team2")
-      matchKeys.addAll(grouped.keys);
-    }
-
-    return matchKeys;
+    return allRounds
+        .where((round) => (gamesByRound[round.id] ?? 0) > 0)
+        .map((round) => round.id)
+        .toList(growable: false);
   }
 
   Future<void> _scrollToRound(String roundId) async {

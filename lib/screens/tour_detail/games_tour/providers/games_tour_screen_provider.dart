@@ -493,7 +493,7 @@ class GamesTourScreenProvider
       GamesScreenModel(
         gamesTourModels: models,
         pinnedGamedIs: pinnedIds,
-        isSearchMode: true,
+        isSearchMode: false,
         gameDisplayMode: GameDisplayMode.showfinishedGame,
       ),
     );
@@ -512,7 +512,7 @@ class GamesTourScreenProvider
       GamesScreenModel(
         gamesTourModels: models,
         pinnedGamedIs: pinnedIds,
-        isSearchMode: true,
+        isSearchMode: false,
         gameDisplayMode: GameDisplayMode.hideFinishedGames,
       ),
     );

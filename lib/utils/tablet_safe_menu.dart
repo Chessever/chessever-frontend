@@ -218,8 +218,8 @@ Future<T?> _showTabletOverlayMenu<T>({
                               },
                               child: Padding(
                                 padding: const EdgeInsets.symmetric(
-                                  horizontal: 16,
-                                  vertical: 12,
+                                  horizontal: 4,
+                                  vertical: 0,
                                 ),
                                 child: item.child,
                               ),
