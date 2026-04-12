@@ -1928,7 +1928,9 @@ class _ExplorerBottomPanelsState extends State<_ExplorerBottomPanels> {
   @override
   Widget build(BuildContext context) {
     final swipeLabel =
-        _currentPage == 0 ? 'Swipe left for notation' : 'Swipe right for moves';
+        _currentPage == 0
+            ? 'Moves panel. Swipe left for notation.'
+            : 'Notation panel. Swipe right for moves.';
 
     return Stack(
       children: [
@@ -1950,7 +1952,7 @@ class _ExplorerBottomPanelsState extends State<_ExplorerBottomPanels> {
           ),
         ),
         Positioned(
-          top: 8.sp,
+          bottom: 6.sp,
           left: 0,
           right: 0,
           child: Center(
@@ -1959,19 +1961,27 @@ class _ExplorerBottomPanelsState extends State<_ExplorerBottomPanels> {
               child: IgnorePointer(
                 child: Container(
                   padding: EdgeInsets.symmetric(
-                    horizontal: 8.sp,
-                    vertical: 5.sp,
+                    horizontal: 7.sp,
+                    vertical: 3.sp,
                   ),
                   decoration: BoxDecoration(
-                    color: kBlack2Color.withValues(alpha: 0.82),
+                    color: kBlack2Color.withValues(alpha: 0.72),
                     borderRadius: BorderRadius.circular(999.br),
-                    border: Border.all(color: kDividerColor),
+                    border: Border.all(
+                      color: kDividerColor.withValues(alpha: 0.65),
+                    ),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
+                      Icon(
+                        Icons.swap_horiz_rounded,
+                        size: 10.sp,
+                        color: kSecondaryTextColor.withValues(alpha: 0.78),
+                      ),
+                      SizedBox(width: 5.sp),
                       _ExplorerPageDot(isSelected: _currentPage == 0),
-                      SizedBox(width: 6.sp),
+                      SizedBox(width: 5.sp),
                       _ExplorerPageDot(isSelected: _currentPage == 1),
                     ],
                   ),
@@ -1995,8 +2005,8 @@ class _ExplorerPageDot extends StatelessWidget {
     return AnimatedContainer(
       duration: const Duration(milliseconds: 180),
       curve: Curves.easeOutCubic,
-      width: isSelected ? 16.sp : 6.sp,
-      height: 6.sp,
+      width: isSelected ? 12.sp : 4.sp,
+      height: 4.sp,
       decoration: BoxDecoration(
         color:
             isSelected

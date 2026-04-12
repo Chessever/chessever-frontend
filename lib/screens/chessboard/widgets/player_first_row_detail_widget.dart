@@ -3,6 +3,7 @@ import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
 import 'package:chessever2/repository/supabase/chess_player/chess_player_repository.dart';
 import 'package:chessever2/screens/chessboard/view_model/chess_board_state_new.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
+import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
 import 'package:chessever2/screens/group_event/providers/countryman_games_tour_screen_provider.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/screens/standings/score_card_screen.dart';
@@ -18,6 +19,7 @@ import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/twic_player_enrichment.dart';
 import 'package:chessever2/widgets/atomic_countdown_text.dart';
 import 'package:chessever2/widgets/federation_flag.dart';
+import 'package:dartchess/dartchess.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:flutter_svg/svg.dart';
@@ -52,11 +54,50 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final baseGameModel = chessBoardState?.game ?? gamesTourModel;
+    final shouldWatchDirectLiveClock =
+        playerView == PlayerView.boardView &&
+        chessBoardState != null &&
+        baseGameModel.gameStatus.isOngoing;
+    final liveGameData =
+        shouldWatchDirectLiveClock
+            ? ref.watch(gameUpdatesStreamProvider(baseGameModel.gameId)).valueOrNull
+            : null;
+    final effectiveGameModel =
+        liveGameData != null
+            ? baseGameModel.copyWith(
+              pgn: liveGameData['pgn'] as String? ?? baseGameModel.pgn,
+              fen: liveGameData['fen'] as String? ?? baseGameModel.fen,
+              lastMove:
+                  liveGameData['last_move'] as String? ?? baseGameModel.lastMove,
+              lastMoveTime:
+                  liveGameData['last_move_time'] != null
+                      ? (DateTime.tryParse(
+                            liveGameData['last_move_time'] as String,
+                          ) ??
+                          baseGameModel.lastMoveTime)
+                      : baseGameModel.lastMoveTime,
+              whiteClockSeconds:
+                  GamesTourModel.normalizeClockSeconds(
+                    clockSeconds:
+                        (liveGameData['last_clock_white'] as num?)?.round(),
+                    clockCentiseconds: baseGameModel.whiteClockCentiseconds,
+                  ) ??
+                  baseGameModel.whiteClockSeconds,
+              blackClockSeconds:
+                  GamesTourModel.normalizeClockSeconds(
+                    clockSeconds:
+                        (liveGameData['last_clock_black'] as num?)?.round(),
+                    clockCentiseconds: baseGameModel.blackClockCentiseconds,
+                  ) ??
+                  baseGameModel.blackClockSeconds,
+            )
+            : baseGameModel;
     final playerCard = useMemoized(() {
       return isWhitePlayer
-          ? gamesTourModel.whitePlayer
-          : gamesTourModel.blackPlayer;
-    }, [gamesTourModel, isWhitePlayer]);
+          ? effectiveGameModel.whitePlayer
+          : effectiveGameModel.blackPlayer;
+    }, [effectiveGameModel, isWhitePlayer]);
     final enrichedPlayerFuture = useMemoized(
       () async {
         final fideId = playerCard.fideId;
@@ -199,11 +240,11 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
       // Fallback to game model's time display (which comes from database or PGN)
       calculatedMoveTime ??=
           isWhitePlayer
-              ? gamesTourModel.whiteTimeDisplay
-              : gamesTourModel.blackTimeDisplay;
+              ? effectiveGameModel.whiteTimeDisplay
+              : effectiveGameModel.blackTimeDisplay;
 
       return calculatedMoveTime;
-    }, [chessBoardState, isWhitePlayer, gamesTourModel]);
+    }, [chessBoardState, isWhitePlayer, effectiveGameModel]);
 
     // Harmonized text styles for consistent visual hierarchy
     final rankStyle =
@@ -352,17 +393,17 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
       // We only show the gauge area if:
       // 1. The game is finished (to show 1, 0, or 1/2)
       // 2. The game is ongoing AND started AND gauge is enabled in settings
-      final isFinished = gamesTourModel.gameStatus.isFinished;
+      final isFinished = effectiveGameModel.gameStatus.isFinished;
       final effectivelyShowingEvalBar =
           showEvalBarInSettings &&
-          gamesTourModel.hasStarted &&
-          gamesTourModel.gameStatus.isOngoing;
+          effectiveGameModel.hasStarted &&
+          effectiveGameModel.gameStatus.isOngoing;
 
       if (isFinished || effectivelyShowingEvalBar) {
         return playerView == PlayerView.gridView ? 10.w : 20.w;
       }
       return 0.0;
-    }, [ref.watch(engineSettingsProviderNew), gamesTourModel, playerView]);
+    }, [ref.watch(engineSettingsProviderNew), effectiveGameModel, playerView]);
 
     // Clock padding - add small horizontal padding to prevent flickering and provide stability
     final clockPadding = playerView == PlayerView.gridView ? 4.w : 6.w;
@@ -517,7 +558,7 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
               // filtered to the current event for score card context.
               ref.read(selectedBroadcastModelProvider.notifier).state = null;
               final allBoardGames = ref.read(chessBoardAllGamesProvider);
-              final currentEvent = gamesTourModel.tourId;
+              final currentEvent = effectiveGameModel.tourId;
               if (currentEvent.isNotEmpty && allBoardGames.isNotEmpty) {
                 gamesContext =
                     allBoardGames
@@ -546,7 +587,7 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
                     .valueOrNull
                     ?.gamesTourModels ??
                 [];
-            final currentTourIdCountryman = gamesTourModel.tourId;
+            final currentTourIdCountryman = effectiveGameModel.tourId;
             if (currentTourIdCountryman.isNotEmpty) {
               gamesContext =
                   allCountrymanGames
@@ -564,9 +605,9 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
             // since it may not contain the current game (ChessBoardScreenNew receives
             // resolved full event games from gameCardWrapperProvider).
             ref.read(selectedBroadcastModelProvider.notifier).state = null;
-            if (gamesTourModel.tourId.isNotEmpty) {
+            if (effectiveGameModel.tourId.isNotEmpty) {
               // Pass current game - ScoreCardScreen will fetch all event games via tourId
-              gamesContext = [gamesTourModel];
+              gamesContext = [effectiveGameModel];
               hasEventContext = true;
             } else {
               // No tourId - can't determine event context
@@ -581,8 +622,8 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
         // - view might not match expected case
         // - gamesContext filter returned empty (e.g., For You only has few games from event)
         if ((gamesContext == null || gamesContext.isEmpty) &&
-            gamesTourModel.tourId.isNotEmpty) {
-          gamesContext = [gamesTourModel];
+            effectiveGameModel.tourId.isNotEmpty) {
+          gamesContext = [effectiveGameModel];
           hasEventContext = true;
         }
 
@@ -607,12 +648,12 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
             SizedBox(
               width: engineGaugeWidth,
               child:
-                  gamesTourModel.gameStatus.isFinished
+                  effectiveGameModel.gameStatus.isFinished
                       ? Center(
                         child: Text(
-                          gamesTourModel.gameStatus == GameStatus.whiteWins
+                          effectiveGameModel.gameStatus == GameStatus.whiteWins
                               ? (isWhitePlayer ? '1' : '0')
-                              : gamesTourModel.gameStatus ==
+                              : effectiveGameModel.gameStatus ==
                                   GameStatus.blackWins
                               ? (isWhitePlayer ? '0' : '1')
                               : '½',
@@ -798,7 +839,7 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
               SizedBox(width: playerView == PlayerView.gridView ? 3.w : 4.w),
             ],
             // Always show clock/time on the right - simplified structure to prevent overflow
-            if (showClock && moveTime != null && moveTime != '--:--' && moveTime != '-:--:--' && moveTime != '-')
+            if (showClock && moveTime != '--:--' && moveTime != '-:--:--' && moveTime != '-')
               Container(
                 padding: EdgeInsets.symmetric(
                   horizontal: clockPadding,
@@ -813,7 +854,7 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
                 ),
                 child: _PlayerClock(
                   isWhitePlayer: isWhitePlayer,
-                  gamesTourModel: gamesTourModel,
+                  gamesTourModel: effectiveGameModel,
                   chessBoardState: chessBoardState,
                   isCurrentPlayer: isCurrentPlayer,
                   timeStyle: timeStyle,
@@ -910,6 +951,19 @@ class _PlayerClock extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    String normalizeFen(String? fen) {
+      if (fen == null) return '';
+      return fen.trim().split(RegExp(r'\s+')).take(4).join(' ');
+    }
+
+    final effectiveGameModel = chessBoardState?.game ?? gamesTourModel;
+    final currentPosition =
+        chessBoardState?.isAnalysisMode == true
+            ? chessBoardState?.analysisState.position
+            : chessBoardState?.position;
+    final currentPositionFen =
+        currentPosition == null ? '' : normalizeFen(currentPosition.fen);
+    final liveFen = normalizeFen(effectiveGameModel.fen);
     final bool isAtLatestPosition = () {
       final state = chessBoardState;
       if (state == null) return true;
@@ -922,15 +976,27 @@ class _PlayerClock extends StatelessWidget {
 
       return state.isAtEnd;
     }();
+    final isShowingLivePosition =
+        isAtLatestPosition ||
+        (currentPositionFen.isNotEmpty &&
+            liveFen.isNotEmpty &&
+            currentPositionFen == liveFen);
+    final liveActivePlayer = effectiveGameModel.activePlayer;
+    final isLiveCurrentPlayer =
+        liveActivePlayer != null &&
+        ((isWhitePlayer && liveActivePlayer == Side.white) ||
+            (!isWhitePlayer && liveActivePlayer == Side.black));
+    final shouldCountForThisPlayer =
+        isShowingLivePosition ? isLiveCurrentPlayer : isCurrentPlayer;
 
     // Determine if this player's clock should be counting down
     // Only countdown for live games when at the latest move and it's this player's turn
     // NEVER countdown when exploring analysis variations - always show static clock time
     final isClockRunning =
-        gamesTourModel.gameStatus.isOngoing &&
-        gamesTourModel.lastMoveTime != null &&
-        isCurrentPlayer && // Use the isCurrentPlayer prop from parent which uses state.position.turn
-        isAtLatestPosition && // Only countdown when at latest move
+        effectiveGameModel.gameStatus.isOngoing &&
+        effectiveGameModel.lastMoveTime != null &&
+        shouldCountForThisPlayer &&
+        isShowingLivePosition &&
         !(chessBoardState?.analysisState.isInAnalysisVariation ??
             false); // Never countdown when exploring analysis variations
 
@@ -944,27 +1010,29 @@ class _PlayerClock extends StatelessWidget {
 
     final clockCentiseconds =
         isWhitePlayer
-            ? gamesTourModel.whiteClockCentiseconds
-            : gamesTourModel.blackClockCentiseconds;
+            ? effectiveGameModel.whiteClockCentiseconds
+            : effectiveGameModel.blackClockCentiseconds;
+    final liveClockSeconds =
+        isWhitePlayer
+            ? effectiveGameModel.whiteClockSeconds
+            : effectiveGameModel.blackClockSeconds;
 
     return AtomicCountdownText(
-      // CRITICAL FIX: Add key to force widget rebuild when lastMoveTime changes
-      // This ensures the dateTimeProvider selector captures the NEW lastMoveTime
-      key: ValueKey(gamesTourModel.lastMoveTime?.millisecondsSinceEpoch ?? 0),
+      // Force a fresh countdown widget when either the reference time or the
+      // live clock snapshot changes.
+      key: ValueKey(
+        '${effectiveGameModel.lastMoveTime?.millisecondsSinceEpoch ?? 0}:${liveClockSeconds ?? -1}',
+      ),
       moveTime:
           moveTime, // Primary for past moves: PGN-parsed move times (more accurate for historical display)
       clockSeconds:
-          // For live games at latest move: use database fields for accurate countdown math
-          // For past moves: null (rely on PGN moveTime)
-          (chessBoardState?.isAtEnd ?? true) && isClockRunning
-              ? (isWhitePlayer
-                  ? gamesTourModel.whiteClockSeconds
-                  : gamesTourModel.blackClockSeconds)
-              : null,
+          // Prefer streamed clock snapshots whenever the board is on the live
+          // position. PGN clock tags are only used for historical navigation.
+          isShowingLivePosition ? liveClockSeconds : null,
       clockCentiseconds:
           clockCentiseconds, // Fallback source: raw database clock
       lastMoveTime:
-          gamesTourModel.lastMoveTime, // Critical for live countdown timing
+          effectiveGameModel.lastMoveTime, // Critical for live countdown timing
       isActive: isClockRunning,
       style: timeStyle,
     );
