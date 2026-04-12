@@ -68,54 +68,6 @@ class MoveStatisticsPanel extends ConsumerWidget {
             color: kWhiteColor,
             backgroundColor: Colors.transparent,
           ),
-        // Header with total games
-        Padding(
-          padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 8.sp),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'Moves',
-                style: TextStyle(
-                  color: kWhiteColor,
-                  fontSize: 14.f,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              InkWell(
-                borderRadius: BorderRadius.circular(6.br),
-                onTap: () {
-                  showModalBottomSheet(
-                    context: context,
-                    backgroundColor: Colors.transparent,
-                    isScrollControlled: true,
-                    constraints: BoxConstraints(
-                      maxHeight: MediaQuery.of(context).size.height * 0.88,
-                    ),
-                    builder:
-                        (_) => PositionGamesSheet(
-                          fen: state.currentFen,
-                          moves: state.exploredMoves,
-                          filters: state.filters,
-                          title: 'Games in this position',
-                        ),
-                  );
-                },
-                child: Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 4.h),
-                  child: Text(
-                    '${_formatNumber(state.totalGames)} games',
-                    style: TextStyle(
-                      color: kSecondaryTextColor,
-                      fontSize: 12.f,
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-        Divider(color: kDividerColor, height: 1),
         Padding(
           padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 6.sp),
           child: Row(
@@ -199,15 +151,6 @@ class MoveStatisticsPanel extends ConsumerWidget {
         ),
       ],
     );
-  }
-
-  String _formatNumber(int number) {
-    if (number >= 1000000) {
-      return '${(number / 1000000).toStringAsFixed(1)}M';
-    } else if (number >= 1000) {
-      return '${(number / 1000).toStringAsFixed(1)}K';
-    }
-    return number.toString();
   }
 }
 

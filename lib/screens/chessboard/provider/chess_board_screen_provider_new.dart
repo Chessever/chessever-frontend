@@ -841,9 +841,9 @@ class ChessBoardScreenNotifierNew
                     if (isFollowing) {
                       _updateLastSeenMoveCount(newMoveSans.length);
                       _analysisNavigator?.updateWithLatestGame(
-                        _createChessGameFromPgn(newPgn ?? ''),
+                        _createChessGameFromPgn(newPgn),
+                        goToTail: true,
                       );
-                      _analysisNavigator?.goToTail();
 
                       final currentVisiblePage = ref.read(
                         currentlyVisiblePageIndexProvider,
@@ -1365,16 +1365,15 @@ class ChessBoardScreenNotifierNew
         if (!mounted || thisGeneration != _parseGeneration) return;
       } else if (_analysisNavigator != null) {
         final liveAnalysisGame = _createChessGameFromPgn(resolvedPgn);
-        _analysisNavigator!.updateWithLatestGame(liveAnalysisGame);
-
-        // CRITICAL: When user is following live moves and new moves arrived,
-        // jump the navigator to the tail so the animation plays.
-        // Uses _isFollowingLive for live games to avoid race conditions where
-        // _syncAnalysisFromNavigator (triggered by updateWithLatestGame above)
-        // temporarily sets currentMoveIndex to the old position.
-        if (isFollowing && hasNewMoves) {
-          _analysisNavigator!.goToTail();
-        }
+        _analysisNavigator!.updateWithLatestGame(
+          liveAnalysisGame,
+          // Emit a single navigator state when auto-following the latest move.
+          // The previous two-step update (updateWithLatestGame + goToTail)
+          // briefly pushed the board back to the old pointer, which in turn
+          // re-triggered evaluation and could leave the PV/eval UI in a
+          // perpetual restart loop on live/latest positions.
+          goToTail: isFollowing && hasNewMoves,
+        );
 
         unawaited(_persistAnalysisState());
       }
@@ -6485,10 +6484,21 @@ class ChessBoardScreenNotifierNew
 
       state = AsyncValue.data(progressedState);
 
-      // Reset cancellation guard whenever the navigation tracker changes so the next
-      // scheduled evaluation is allowed to run if a transient cancel flag was set.
-      _cancelEvaluation = false;
-      _updateEvaluation();
+      final shouldRefreshEvaluation =
+          !sameFenAsCurrent ||
+          (!progressedState.isEvaluating &&
+              progressedState.evaluation == null &&
+              progressedState.mate == null &&
+              progressedState.principalVariations.isEmpty);
+
+      // Reset cancellation guard only when we are going to queue a fresh eval.
+      // Same-position navigator syncs happen frequently during live updates and
+      // tree maintenance; re-evaluating there was restarting the engine without
+      // an actual board-position change.
+      if (shouldRefreshEvaluation) {
+        _cancelEvaluation = false;
+        _updateEvaluation();
+      }
 
       // Schedule auto-save when the game tree has changed (new moves/variations)
       if (navigatorState.game != current.analysisState.game) {

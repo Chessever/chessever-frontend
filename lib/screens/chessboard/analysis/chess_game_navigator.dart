@@ -1118,7 +1118,10 @@ class ChessGameNavigator extends StateNotifier<ChessGameNavigatorState> {
     );
   }
 
-  void updateWithLatestGame(ChessGame latestGame) {
+  void updateWithLatestGame(
+    ChessGame latestGame, {
+    bool goToTail = false,
+  }) {
     final newMainline = <ChessMove>[];
     final newPointer = List.of(state.movePointer);
 
@@ -1153,11 +1156,29 @@ class ChessGameNavigator extends StateNotifier<ChessGameNavigatorState> {
       }
     }
 
+    final nextGame = latestGame.copyWith(mainline: newMainline);
+    final nextState = ChessGameNavigatorState(
+      game: nextGame,
+      movePointer: newPointer,
+    );
+
+    if (!goToTail) {
+      replaceState(nextState);
+      return;
+    }
+
+    final tailPointer = List.of(nextState.movePointer);
+    final currentLine = nextState.currentLine;
+    if (currentLine != null && currentLine.isNotEmpty) {
+      if (tailPointer.isEmpty) {
+        tailPointer.add(currentLine.length - 1);
+      } else {
+        tailPointer.last = currentLine.length - 1;
+      }
+    }
+
     replaceState(
-      ChessGameNavigatorState(
-        game: latestGame.copyWith(mainline: newMainline),
-        movePointer: newPointer,
-      ),
+      ChessGameNavigatorState(game: nextGame, movePointer: tailPointer),
     );
   }
 
