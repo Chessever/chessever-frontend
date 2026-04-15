@@ -117,7 +117,7 @@ class AnalysisBoardState {
       isInAnalysisVariation
           ? currentMoveIndex ==
               (branchPointMoveIndex ?? -1) + analysisMoves.length
-          : currentMoveIndex == allMoves.length - 1;
+          : allMoves.isNotEmpty && currentMoveIndex == allMoves.length - 1;
 
   int get totalMoves =>
       isInAnalysisVariation
@@ -385,7 +385,7 @@ class ChessBoardStateNew {
 
   bool get isAtStart => currentMoveIndex == -1;
 
-  bool get isAtEnd => currentMoveIndex == allMoves.length - 1;
+  bool get isAtEnd => allMoves.isNotEmpty && currentMoveIndex == allMoves.length - 1;
 
   int get totalMoves => allMoves.length;
 

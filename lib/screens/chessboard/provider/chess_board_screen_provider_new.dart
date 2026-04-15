@@ -6445,30 +6445,19 @@ class ChessBoardScreenNotifierNew
         }
       }
 
-      // CRITICAL: Sync allMoves from navigator to ensure move history is displayed
+      // CRITICAL: Sync fullMovePath from navigator to ensure move history is correctly
+      // displayed even when inside a subline (variation).
+      final fullPath = navigatorState.fullMovePath;
       final movesFromNavigator =
-          navigatorState.currentLine
-              ?.map((chessMove) {
+          fullPath
+              .map((chessMove) {
                 final parsed = Move.parse(chessMove.uci);
                 return parsed;
               })
               .whereType<Move>()
-              .toList() ??
-          const <Move>[];
+              .toList();
 
-      int currentMoveIndex;
-      final chessMove = navigatorState.currentMove;
-      if (chessMove == null) {
-        currentMoveIndex = -1;
-      } else {
-        var moveNumber = chessMove.num;
-        final whiteJustMoved = chessMove.turn == ChessColor.black;
-        if (!whiteJustMoved) {
-          moveNumber = (moveNumber - 1).clamp(1, moveNumber);
-        }
-        currentMoveIndex =
-            whiteJustMoved ? (moveNumber - 1) * 2 : (moveNumber - 1) * 2 + 1;
-      }
+      final currentMoveIndex = movesFromNavigator.length - 1;
 
       final nextState = current.copyWith(
         analysisState: current.analysisState.copyWith(
@@ -6476,10 +6465,8 @@ class ChessBoardScreenNotifierNew
           position: position,
           validMoves: makeLegalMoves(position),
           lastMove: lastMove,
-          moveSans:
-              navigatorState.currentLine?.map((move) => move.san).toList() ??
-              const [],
-          allMoves: movesFromNavigator, // Sync allMoves from navigator
+          moveSans: fullPath.map((move) => move.san).toList(),
+          allMoves: movesFromNavigator, // Sync full path from navigator
           movePointer: navigatorState.movePointer,
           currentMoveIndex: currentMoveIndex,
           suggestionLines:
