@@ -119,6 +119,20 @@ Map<String, dynamic>? _buildLibraryExactWhere(
       'value': filter.timeControlApiValue,
     });
   }
+  if (filter.isOnlineApiValue != null) {
+    expressions.add({
+      'field': 'isOnline',
+      'op': 'eq',
+      'value': filter.isOnlineApiValue,
+    });
+  }
+  if (!filter.eco.isAll) {
+    expressions.add({
+      'field': 'eco',
+      'op': 'ilike',
+      'value': '${filter.eco.code}%',
+    });
+  }
   if (_hasYearFilter(filter)) {
     expressions.add({
       'field': 'date',
@@ -130,6 +144,16 @@ Map<String, dynamic>? _buildLibraryExactWhere(
     });
   }
 
+  // Structured Elo filtering using the averageRating calculated field
+  if (filter.minRating > GameFilter.absoluteMinRating ||
+      filter.maxRating < GameFilter.absoluteMaxRating) {
+    expressions.add({
+      'field': 'averageRating',
+      'op': 'between',
+      'values': [filter.minRating, filter.maxRating],
+    });
+  }
+
   if (expressions.isEmpty) return null;
   if (expressions.length == 1) return expressions.first;
   return {'and': expressions};
@@ -137,9 +161,19 @@ Map<String, dynamic>? _buildLibraryExactWhere(
 
 @visibleForTesting
 bool shouldUseExactLibraryGameQuery(String query, GamebaseFilter filter) {
+  // If there's a free-text query, use globalSearch (indexed tsvector).
   if (query.trim().isNotEmpty) return false;
-  if (!_hasYearFilter(filter)) return false;
+
+  // Use exact query only if we have selective structured filters (year or rating).
+  final hasYear = _hasYearFilter(filter);
+  final hasRating = filter.minRating > GameFilter.absoluteMinRating ||
+      filter.maxRating < GameFilter.absoluteMaxRating;
+
+  if (!hasYear && !hasRating) return false;
+
+  // Exact query currently doesn't handle color filter as easily as globalSearch.
   if (filter.colorApiValue != null) return false;
+
   return true;
 }
 
@@ -268,14 +302,20 @@ class DatabaseGamesPaginationNotifier
     } else {
       // Use GET /api/search (token-based + FTS) because it is indexed and fast.
       // POST /api/search/query currently can be very slow for free-text search.
+      String finalQuery = composedQuery;
+      if (!_filter.eco.isAll) {
+        finalQuery = 'eco:${_filter.eco.code} $finalQuery';
+      }
+
       final response = await repo.globalSearch(
-        query: composedQuery,
+        query: finalQuery,
         resources: const ['game'],
         pageNumber: pageNumber,
         pageSize: _pageSize,
         result: _filter.resultApiValue,
         color: _filter.colorApiValue,
         timeControl: _filter.timeControlApiValue,
+        isOnline: _filter.isOnlineApiValue,
         yearFrom: _filter.minYear != GameFilter.absoluteMinYear ? _filter.minYear : null,
         yearTo: _filter.maxYear != DateTime.now().year ? _filter.maxYear : null,
         ratingFrom: _filter.minRating > GameFilter.absoluteMinRating ? _filter.minRating : null,
@@ -479,6 +519,7 @@ class DatabaseGamesPaginationNotifier
             roundSlug: formatCode.isNotEmpty ? formatCode : null,
             tourId: tourId.isNotEmpty ? tourId : 'Gamebase',
             timeControl: timeControl,
+            isOnline: preview['isOnline'] == true,
             lastMove: rowLastMove,
             fen: rowFen,
             pgn: pgn,
@@ -589,14 +630,20 @@ final gamebaseDatabaseGamesProvider = FutureProvider.autoDispose<
       );
       rawRows = response.data;
     } else {
+      String finalQuery = query.trim().isEmpty ? '*' : query.trim();
+      if (!filter.eco.isAll) {
+        finalQuery = 'eco:${filter.eco.code} $finalQuery';
+      }
+
       final response = await repo.globalSearch(
-        query: query.trim().isEmpty ? '*' : query.trim(),
+        query: finalQuery,
         resources: const ['game'],
         pageNumber: 1,
         pageSize: 50,
         result: filter.resultApiValue,
         color: filter.colorApiValue,
         timeControl: filter.timeControlApiValue,
+        isOnline: filter.isOnlineApiValue,
         yearFrom: filter.minYear != GameFilter.absoluteMinYear ? filter.minYear : null,
         yearTo: filter.maxYear != DateTime.now().year ? filter.maxYear : null,
         ratingFrom: filter.minRating > GameFilter.absoluteMinRating ? filter.minRating : null,
@@ -813,6 +860,7 @@ final gamebaseDatabaseGamesProvider = FutureProvider.autoDispose<
             roundSlug: formatCode.isNotEmpty ? formatCode : null,
             tourId: tourId.isNotEmpty ? tourId : 'Gamebase',
             timeControl: timeControl,
+            isOnline: row['isOnline'] == true,
             lastMove: rowLastMove,
             fen: rowFen,
             pgn: pgn,
