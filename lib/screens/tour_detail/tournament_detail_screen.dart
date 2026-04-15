@@ -24,6 +24,8 @@ import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
+import 'package:motor/motor.dart';
+
 class TournamentDetailScreen extends ConsumerStatefulWidget {
   const TournamentDetailScreen({super.key});
 
@@ -36,11 +38,14 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
     with RouteAware, WidgetsBindingObserver {
   late PageController pageController;
   late final String _scrollScopeId;
+  bool isStandingsSearching = false;
+  late TextEditingController standingsSearchController;
+  late FocusNode standingsSearchFocusNode;
 
   @override
   void didPush() {
     Future.microtask(() {
-      print('🔥 TournamentDetail: didPush - enabling streaming');
+      debugPrint('🔥 TournamentDetail: didPush - enabling streaming');
       ref.read(shouldStreamProvider.notifier).state = true;
     });
     super.didPush();
@@ -49,7 +54,7 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
   @override
   void didPop() {
     Future.microtask(() {
-      print('🔥 TournamentDetail: didPop - disabling streaming');
+      debugPrint('🔥 TournamentDetail: didPop - disabling streaming');
       ref.read(shouldStreamProvider.notifier).state = false;
     });
     super.didPop();
@@ -58,7 +63,7 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
   @override
   void didPopNext() {
     Future.microtask(() {
-      print('🔥 TournamentDetail: didPopNext - enabling streaming');
+      debugPrint('🔥 TournamentDetail: didPopNext - enabling streaming');
       ref.read(shouldStreamProvider.notifier).state = true;
     });
     super.didPopNext();
@@ -67,7 +72,7 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
   @override
   void didPushNext() {
     Future.microtask(() {
-      print(
+      debugPrint(
         '🔥 TournamentDetail: didPushNext - disabling streaming while off-screen',
       );
       // Disable streaming when navigating to sub-screens (e.g., chessboard)
@@ -96,7 +101,7 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
   }
 
   void _handleAppResumed() {
-    print('🔥 TournamentDetail: App resumed - refreshing games');
+    debugPrint('🔥 TournamentDetail: App resumed - refreshing games');
     // Re-enable streaming when app comes back to foreground
     ref.read(shouldStreamProvider.notifier).state = true;
 
@@ -110,13 +115,13 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
       try {
         ref.read(gamesTourProvider(aboutTourModel.id).notifier).refreshGames();
       } catch (e) {
-        print('🔥 TournamentDetail: Error refreshing games on resume: $e');
+        debugPrint('🔥 TournamentDetail: Error refreshing games on resume: $e');
       }
     }
   }
 
   void _handleAppPaused() {
-    print('🔥 TournamentDetail: App paused - stopping streaming');
+    debugPrint('🔥 TournamentDetail: App paused - stopping streaming');
     // Stop streaming when app goes to background to save resources
     ref.read(shouldStreamProvider.notifier).state = false;
   }
@@ -130,6 +135,8 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
     );
     pageController = PageController(initialPage: initialPage);
     _scrollScopeId = 'games_scroll_${UniqueKey()}';
+    standingsSearchController = TextEditingController();
+    standingsSearchFocusNode = FocusNode();
   }
 
   @override
@@ -151,7 +158,7 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
       // Scroll provider is scoped per screen; it will dispose with the ProviderScope below.
     } catch (e) {
       // Ignore errors during cleanup
-      print('Error during provider cleanup: $e');
+      debugPrint('Error during provider cleanup: $e');
     }
   }
 
@@ -159,6 +166,8 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     pageController.dispose();
+    standingsSearchController.dispose();
+    standingsSearchFocusNode.dispose();
     super.dispose();
   }
 
@@ -234,7 +243,7 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
             ? _TourDetailDropDownAppBar(data: data)
             : selectedTourMode == TournamentDetailScreenMode.games
             ? const GamesAppBarWidget()
-            : _TourDetailDropDownAppBar(data: data),
+            : _buildStandingsAppBar(data),
         SizedBox(height: 8.h),
         _buildSegmentedSwitcher(
           selectedTourMode,
@@ -242,6 +251,146 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
         ),
       ],
     );
+  }
+
+  Widget _buildStandingsAppBar(TourDetailViewModel data) {
+    final horizontalPadding = ResponsiveHelper.adaptive(
+      phone: 16.w,
+      tablet: 24.w,
+    );
+
+    return SizedBox(
+      height: 44.h,
+      child: Padding(
+        padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
+        child: SingleMotionBuilder(
+          motion: CupertinoMotion.snappy(),
+          value: isStandingsSearching ? 1.0 : 0.0,
+          builder: (context, value, child) {
+            return Stack(
+              alignment: Alignment.center,
+              children: [
+                // Normal App Bar Content (Back button + Dropdown + Search/Menu icons)
+                Opacity(
+                  opacity: (1.0 - value * 2).clamp(0.0, 1.0).toDouble(),
+                  child: IgnorePointer(
+                    ignoring: isStandingsSearching,
+                    child: Row(
+                      children: [
+                        IconButton(
+                          iconSize: 24.ic,
+                          padding: EdgeInsets.zero,
+                          onPressed: () => Navigator.of(context).pop(),
+                          icon: Icon(
+                            Icons.arrow_back_ios_new_outlined,
+                            size: 24.ic,
+                          ),
+                        ),
+                        Expanded(
+                          child: Center(
+                            child: CategoryDropdown(constrainWidth: false),
+                          ),
+                        ),
+                        IconButton(
+                          iconSize: 24.ic,
+                          padding: EdgeInsets.zero,
+                          icon: Icon(Icons.search, size: 24.ic),
+                          onPressed: () {
+                            setState(() => isStandingsSearching = true);
+                            standingsSearchFocusNode.requestFocus();
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                // Expanding Search Bar
+                Positioned(
+                  right: 0,
+                  left: (1 - value) * (MediaQuery.of(context).size.width - horizontalPadding * 2 - 40.w),
+                  child: Opacity(
+                    opacity: value.clamp(0.0, 1.0),
+                    child: IgnorePointer(
+                      ignoring: !isStandingsSearching,
+                      child: _buildStandingsSearchBar(),
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStandingsSearchBar() {
+    return Container(
+      height: 40.h,
+      padding: EdgeInsets.symmetric(horizontal: 12.w),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1A1A1C),
+        borderRadius: BorderRadius.circular(12.br),
+        border: Border.all(
+          color: kDarkBlue.withValues(alpha: 0.3),
+          width: 1.w,
+        ),
+      ),
+      child: Row(
+        children: [
+          GestureDetector(
+            onTap: _closeStandingsSearch,
+            child: Icon(
+              Icons.arrow_back,
+              size: 20.sp,
+              color: kWhiteColor,
+            ),
+          ),
+          SizedBox(width: 8.w),
+          Expanded(
+            child: TextField(
+              controller: standingsSearchController,
+              focusNode: standingsSearchFocusNode,
+              style: AppTypography.textXsRegular.copyWith(color: kWhiteColor),
+              onChanged: (value) {
+                ref.read(standingsSearchQueryProvider.notifier).state = value;
+              },
+              decoration: InputDecoration(
+                hintText: 'Search players...',
+                hintStyle: AppTypography.textXsRegular.copyWith(
+                  color: const Color(0xFFFFFFFF).withValues(alpha: 0.5),
+                ),
+                border: InputBorder.none,
+                isDense: true,
+                contentPadding: EdgeInsets.zero,
+              ),
+            ),
+          ),
+          if (standingsSearchController.text.isNotEmpty)
+            GestureDetector(
+              onTap: () {
+                standingsSearchController.clear();
+                ref.read(standingsSearchQueryProvider.notifier).state = '';
+                setState(() {});
+              },
+              child: Icon(
+                Icons.close,
+                size: 16.sp,
+                color: const Color(0xFFFFFFFF).withValues(alpha: 0.7),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  void _closeStandingsSearch() {
+    standingsSearchFocusNode.unfocus();
+    setState(() {
+      isStandingsSearching = false;
+      standingsSearchController.clear();
+    });
+    ref.read(standingsSearchQueryProvider.notifier).state = '';
   }
 
   Widget _buildErrorAppBar(Object error) {
@@ -283,6 +432,10 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
 
   void _handleTabSelection(int index) {
     try {
+      // Close search when switching tabs
+      if (isStandingsSearching) {
+        _closeStandingsSearch();
+      }
       // Schedule the state change to avoid mutating provider state during
       // layout/semantics passes, which can trigger parentDataDirty assertions.
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -298,12 +451,17 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
         curve: Curves.easeInOut,
       );
     } catch (e) {
-      print('Error handling tab selection: $e');
+      debugPrint('Error handling tab selection: $e');
     }
   }
 
   void _handlePageChanged(int index) {
     try {
+      // Close search if we move away from standings tab (index 2)
+      if (index != 2 && isStandingsSearching) {
+        _closeStandingsSearch();
+      }
+
       // Update the selected mode when page changes (from swiping)
       final currentModeIndex = TournamentDetailScreenMode.values.indexOf(
         ref.read(selectedTourModeProvider),
@@ -318,13 +476,13 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
         });
       }
     } catch (e) {
-      print('Error handling page change: $e');
+      debugPrint('Error handling page change: $e');
     }
   }
 }
 
 class _TourDetailDropDownAppBar extends ConsumerWidget {
-  const _TourDetailDropDownAppBar({required this.data, super.key});
+  const _TourDetailDropDownAppBar({required this.data});
 
   final TourDetailViewModel data;
 
@@ -381,7 +539,7 @@ class _TourDetailDropDownAppBar extends ConsumerWidget {
 }
 
 class _LoadingAppBarWithTitle extends StatelessWidget {
-  const _LoadingAppBarWithTitle({required this.title, super.key});
+  const _LoadingAppBarWithTitle({required this.title});
 
   final String title;
 
@@ -397,7 +555,7 @@ class _LoadingAppBarWithTitle extends StatelessWidget {
             try {
               Navigator.of(context).pop();
             } catch (e) {
-              print('Error navigating back from loading state: $e');
+              debugPrint('Error navigating back from loading state: $e');
             }
           },
           icon: Icon(Icons.arrow_back_ios_new_outlined, size: 24.ic),

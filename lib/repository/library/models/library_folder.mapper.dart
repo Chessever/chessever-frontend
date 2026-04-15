@@ -61,6 +61,12 @@ class LibraryFolderMapper extends ClassMapperBase<LibraryFolder> {
     _$ownerDisplayName,
     opt: true,
   );
+  static String? _$parentId(LibraryFolder v) => v.parentId;
+  static const Field<LibraryFolder, String> _f$parentId = Field(
+    'parentId',
+    _$parentId,
+    opt: true,
+  );
   static bool _$isSubscribed(LibraryFolder v) => v.isSubscribed;
   static const Field<LibraryFolder, bool> _f$isSubscribed = Field(
     'isSubscribed',
@@ -81,6 +87,7 @@ class LibraryFolderMapper extends ClassMapperBase<LibraryFolder> {
     #updatedAt: _f$updatedAt,
     #shareToken: _f$shareToken,
     #ownerDisplayName: _f$ownerDisplayName,
+    #parentId: _f$parentId,
     #isSubscribed: _f$isSubscribed,
   };
 
@@ -96,6 +103,7 @@ class LibraryFolderMapper extends ClassMapperBase<LibraryFolder> {
       updatedAt: data.dec(_f$updatedAt),
       shareToken: data.dec(_f$shareToken),
       ownerDisplayName: data.dec(_f$ownerDisplayName),
+      parentId: data.dec(_f$parentId),
       isSubscribed: data.dec(_f$isSubscribed),
     );
   }
@@ -173,6 +181,7 @@ abstract class LibraryFolderCopyWith<$R, $In extends LibraryFolder, $Out>
     DateTime? updatedAt,
     String? shareToken,
     String? ownerDisplayName,
+    String? parentId,
     bool? isSubscribed,
   });
   LibraryFolderCopyWith<$R2, $In, $Out2> $chain<$R2, $Out2>(Then<$Out2, $R2> t);
@@ -198,6 +207,7 @@ class _LibraryFolderCopyWithImpl<$R, $Out>
     DateTime? updatedAt,
     Object? shareToken = $none,
     Object? ownerDisplayName = $none,
+    Object? parentId = $none,
     bool? isSubscribed,
   }) => $apply(
     FieldCopyWithData({
@@ -211,6 +221,7 @@ class _LibraryFolderCopyWithImpl<$R, $Out>
       if (updatedAt != null) #updatedAt: updatedAt,
       if (shareToken != $none) #shareToken: shareToken,
       if (ownerDisplayName != $none) #ownerDisplayName: ownerDisplayName,
+      if (parentId != $none) #parentId: parentId,
       if (isSubscribed != null) #isSubscribed: isSubscribed,
     }),
   );
@@ -226,6 +237,7 @@ class _LibraryFolderCopyWithImpl<$R, $Out>
     updatedAt: data.get(#updatedAt, or: $value.updatedAt),
     shareToken: data.get(#shareToken, or: $value.shareToken),
     ownerDisplayName: data.get(#ownerDisplayName, or: $value.ownerDisplayName),
+    parentId: data.get(#parentId, or: $value.parentId),
     isSubscribed: data.get(#isSubscribed, or: $value.isSubscribed),
   );
 

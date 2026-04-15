@@ -343,6 +343,7 @@ class _BookGamesFilterDialogState extends State<BookGamesFilterDialog> {
   }
 
   void _applyFilters() {
+    FocusScope.of(context).unfocus();
     HapticFeedbackService.buttonPress();
     final newFilter = BookGamesFilter(
       result: _result,

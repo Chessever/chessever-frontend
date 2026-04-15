@@ -3,11 +3,12 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:motor/motor.dart';
 
 /// A range filter that uses two wheel scroll views styled like input fields.
 /// Replaces the standard RangeSlider for better usability and precise control.
-class WheelRangeFilter extends StatelessWidget {
+class WheelRangeFilter extends StatefulWidget {
   final double minValue;
   final double maxValue;
   final double currentStart;
@@ -26,26 +27,81 @@ class WheelRangeFilter extends StatelessWidget {
   });
 
   @override
+  State<WheelRangeFilter> createState() => _WheelRangeFilterState();
+}
+
+class _WheelRangeFilterState extends State<WheelRangeFilter> {
+  late RangeValues _range;
+
+  @override
+  void initState() {
+    super.initState();
+    _range = _normalizeRange(widget.currentStart, widget.currentEnd);
+  }
+
+  @override
+  void didUpdateWidget(covariant WheelRangeFilter oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.currentStart != widget.currentStart ||
+        oldWidget.currentEnd != widget.currentEnd ||
+        oldWidget.minValue != widget.minValue ||
+        oldWidget.maxValue != widget.maxValue) {
+      final nextRange = _normalizeRange(widget.currentStart, widget.currentEnd);
+      if (_range != nextRange) {
+        _range = nextRange;
+      }
+    }
+  }
+
+  RangeValues _normalizeRange(double start, double end) {
+    final clampedStart = start.clamp(widget.minValue, widget.maxValue);
+    final clampedEnd = end.clamp(widget.minValue, widget.maxValue);
+    if (clampedStart <= clampedEnd) {
+      return RangeValues(clampedStart, clampedEnd);
+    }
+    return RangeValues(clampedEnd, clampedStart);
+  }
+
+  void _updateRange(RangeValues nextRange) {
+    final normalized = _normalizeRange(nextRange.start, nextRange.end);
+    if (_range != normalized) {
+      setState(() {
+        _range = normalized;
+      });
+
+      // Only notify parent if the change is significant to avoid rounding loops
+      if ((normalized.start - widget.currentStart).abs() > 0.001 ||
+          (normalized.end - widget.currentEnd).abs() > 0.001) {
+        widget.onChanged(normalized);
+      }
+    }
+  }
+
+  void _updateStart(double value) {
+    final nextEnd = value > _range.end ? value : _range.end;
+    _updateRange(RangeValues(value, nextEnd));
+  }
+
+  void _updateEnd(double value) {
+    final nextStart = value < _range.start ? value : _range.start;
+    _updateRange(RangeValues(nextStart, value));
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final step = (maxValue - minValue) / divisions;
+    final step = (widget.maxValue - widget.minValue) / widget.divisions;
 
     return Row(
       children: [
         // Minimum Value Wheel
         Expanded(
           child: _WheelInput(
-            key: ValueKey('start-$minValue-$maxValue'),
-            minValue: minValue,
-            maxValue: maxValue,
-            initialValue: currentStart,
+            key: ValueKey('start-${widget.minValue}-${widget.maxValue}'),
+            minValue: widget.minValue,
+            maxValue: widget.maxValue,
+            initialValue: _range.start,
             step: step,
-            onChanged: (val) {
-              if (val > currentEnd) {
-                onChanged(RangeValues(val, val));
-              } else {
-                onChanged(RangeValues(val, currentEnd));
-              }
-            },
+            onChanged: _updateStart,
           ),
         ),
 
@@ -63,18 +119,12 @@ class WheelRangeFilter extends StatelessWidget {
         // Maximum Value Wheel
         Expanded(
           child: _WheelInput(
-            key: ValueKey('end-$minValue-$maxValue'),
-            minValue: minValue,
-            maxValue: maxValue,
-            initialValue: currentEnd,
+            key: ValueKey('end-${widget.minValue}-${widget.maxValue}'),
+            minValue: widget.minValue,
+            maxValue: widget.maxValue,
+            initialValue: _range.end,
             step: step,
-            onChanged: (val) {
-              if (val < currentStart) {
-                onChanged(RangeValues(val, val));
-              } else {
-                onChanged(RangeValues(currentStart, val));
-              }
-            },
+            onChanged: _updateEnd,
           ),
         ),
       ],
@@ -147,22 +197,23 @@ class _WheelInputState extends State<_WheelInput> {
   void _submitEdit() {
     if (!_isEditing || !mounted) return;
     final text = _textController.text;
-    double? val = double.tryParse(text);
-    int? nextIndex;
+    final val = double.tryParse(text);
+
+    int nextIndex;
     if (val != null) {
-      val = val.clamp(widget.minValue, widget.maxValue);
-      nextIndex = _findClosestIndex(val);
+      final clamped = val.clamp(widget.minValue, widget.maxValue);
+      nextIndex = _findClosestIndex(clamped);
+    } else {
+      // Revert to initial value if input is invalid
+      nextIndex = _findClosestIndex(widget.initialValue);
     }
+
     setState(() {
-      if (nextIndex != null) {
-        _selectedIndex = nextIndex!;
-      }
+      _selectedIndex = nextIndex;
       _isEditing = false;
     });
 
-    if (nextIndex != null) {
-      widget.onChanged(_values[nextIndex!]);
-    }
+    widget.onChanged(_values[_selectedIndex]);
     _scheduleControllerSync();
   }
 
@@ -226,12 +277,9 @@ class _WheelInputState extends State<_WheelInput> {
     }
 
     final index = _findClosestIndex(widget.initialValue);
-    if (_selectedIndex != index) {
+    if (_selectedIndex != index && !_isEditing) {
       setState(() {
         _selectedIndex = index;
-        if (_isEditing) {
-          _textController.text = _values[index].round().toString();
-        }
       });
     }
 
@@ -305,6 +353,9 @@ class _WheelInputState extends State<_WheelInput> {
                     final normalizedIndex =
                         (index % _values.length + _values.length) %
                         _values.length;
+                    
+                    if (normalizedIndex == _selectedIndex) return;
+
                     HapticFeedbackService.selection();
                     setState(() {
                       _selectedIndex = normalizedIndex;
@@ -428,13 +479,44 @@ class _WheelInputState extends State<_WheelInput> {
                     focusNode: _focusNode,
                     keyboardType: TextInputType.number,
                     textAlign: TextAlign.center,
+                    autofocus: true,
                     style: AppTypography.textSmMedium.copyWith(
                       color: kWhiteColor,
                     ),
+                    inputFormatters: [
+                      FilteringTextInputFormatter.digitsOnly,
+                      LengthLimitingTextInputFormatter(
+                        widget.maxValue.round().toString().length,
+                      ),
+                    ],
                     decoration: const InputDecoration(
                       border: InputBorder.none,
                       contentPadding: EdgeInsets.zero,
                     ),
+                    onChanged: (text) {
+                      if (text.isEmpty) return;
+                      final val = double.tryParse(text);
+                      if (val != null) {
+                        // Only auto-update parent if the value is "complete" (e.g. 4 digits for years)
+                        // This prevents jarring normalization jumps during early typing
+                        // while ensuring that valid-length values are saved immediately.
+                        final isComplete =
+                            text.length >=
+                            widget.minValue.round().toString().length;
+
+                        if (isComplete) {
+                          final clamped = val.clamp(
+                            widget.minValue,
+                            widget.maxValue,
+                          );
+                          final index = _findClosestIndex(clamped);
+                          if (index != _selectedIndex) {
+                            setState(() => _selectedIndex = index);
+                            widget.onChanged(_values[index]);
+                          }
+                        }
+                      }
+                    },
                     onSubmitted: (_) => _submitEdit(),
                   ),
                 ),

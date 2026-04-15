@@ -2257,6 +2257,12 @@ String? _timeControlToApi(GameTimeControlFilter tc) => switch (tc) {
   GameTimeControlFilter.blitz => 'BLITZ',
 };
 
+bool? _onlineToApi(GameOnlineFilter o) => switch (o) {
+  GameOnlineFilter.all => null,
+  GameOnlineFilter.online => true,
+  GameOnlineFilter.otb => false,
+};
+
 String? _outcomeFromAbsoluteResult(
   GameResultFilter resultFilter,
   GameColorFilter colorFilter,
@@ -2415,6 +2421,7 @@ final twicPlayerStatsProvider = FutureProvider.family.autoDispose<
       dateTo: _yearMaxToExclusiveDateTo(effectiveFilter),
       ratingFrom: ratingFrom,
       ratingTo: ratingTo,
+      isOnline: _onlineToApi(effectiveFilter.online),
     );
   } on DioException catch (e) {
     if (e.response?.statusCode == 404) {
@@ -2442,6 +2449,7 @@ final twicPlayerStatsProvider = FutureProvider.family.autoDispose<
             dateTo: _yearMaxToExclusiveDateTo(effectiveFilter),
             ratingFrom: ratingFrom,
             ratingTo: ratingTo,
+            isOnline: _onlineToApi(effectiveFilter.online),
           );
         } on DioException catch (retryError) {
           if (retryError.response?.statusCode == 404) {
@@ -2757,6 +2765,7 @@ class PlayerProfileGamesNotifier
       dateTo: dateTo,
       ratingFrom: ratingFrom,
       ratingTo: ratingTo,
+      isOnline: _onlineToApi(effectiveFilter.online),
       pageNumber: pageNumber,
       pageSize: pageSize,
     );
@@ -2892,6 +2901,7 @@ class PlayerProfileGamesNotifier
         yearTo: yearTo,
         ratingFrom: ratingFrom,
         ratingTo: ratingTo,
+        isOnline: _onlineToApi(effectiveFilter.online),
       );
 
       final pageRows = response.results
@@ -3071,6 +3081,7 @@ class PlayerProfileGamesNotifier
               ? opening.trim()
               : null,
       timeControl: timeControl,
+      isOnline: row['isOnline'] == true,
     );
   }
 
@@ -3230,6 +3241,7 @@ class PlayerProfileGamesNotifier
     GameTimeControlFilter? timeControl,
     GameColorFilter? color,
     GameEcoFilter? eco,
+    GameOnlineFilter? online,
     GameResultFilter? result,
     PlayerResultFilter? playerResultFilter,
     String? searchQuery,
@@ -3238,6 +3250,7 @@ class PlayerProfileGamesNotifier
       timeControl: timeControl,
       color: color,
       eco: eco,
+      online: online,
       result: result,
     );
     state = state.copyWith(

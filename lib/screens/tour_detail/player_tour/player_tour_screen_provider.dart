@@ -1,13 +1,12 @@
 import 'dart:math' as math;
 
-import 'package:collection/collection.dart';
+import 'package:chessever2/repository/supabase/tour/tour_repository.dart';
 import 'package:chessever2/repository/local_storage/favorite/favourate_standings_player_services.dart';
 import 'package:chessever2/repository/supabase/tour/tour.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
-import 'package:chessever2/screens/group_event/model/tour_detail_view_model.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -85,6 +84,9 @@ final mergedTournamentGamesProvider = AutoDisposeProvider<List<GamesTourModel>>(
   return allGames;
 });
 
+/// Search query for the standings tab
+final standingsSearchQueryProvider = StateProvider.autoDispose<String>((ref) => '');
+
 final playerTourScreenProvider = AutoDisposeAsyncNotifierProvider<
   PlayerTourScreenNotifier,
   List<PlayerStandingModel>
@@ -99,6 +101,7 @@ class PlayerTourScreenNotifier
 
     final selectedBroadcast = ref.watch(selectedBroadcastModelProvider);
     final tourDetailAsync = ref.watch(tourDetailScreenProvider);
+    final searchQuery = ref.watch(standingsSearchQueryProvider).toLowerCase().trim();
 
     if (selectedBroadcast == null ||
         selectedBroadcast.id.isEmpty ||
@@ -117,9 +120,10 @@ class PlayerTourScreenNotifier
     final List<GamesTourModel> allGames = ref.watch(mergedTournamentGamesProvider);
 
     // Detect if this is a pagination-purposed category (e.g. "Boards 1-66")
+    final List<TourModel> relatedTours;
     if (_isPaginationCategory(aboutTourModel.name)) {
       final baseName = _getCategoryBaseName(aboutTourModel.name);
-      final relatedTours =
+      relatedTours =
           tourDetail.tours
               .where(
                 (t) =>
@@ -127,32 +131,41 @@ class PlayerTourScreenNotifier
                     _getCategoryBaseName(t.tour.name) == baseName,
               )
               .toList();
-
-      if (relatedTours.length > 1) {
-        // Merge players from all related pagination categories
-        allPlayers = [];
-        for (final tourModel in relatedTours) {
-          allPlayers.addAll(tourModel.tour.players);
-        }
-      } else {
-        // Only one such category exists
-        allPlayers = List.from(relatedTours.firstOrNull?.tour.players ?? []);
-      }
     } else {
-      // Normal category - use only the selected tour
-      final selectedTours = tourDetail.tours.where(
-        (e) => e.tour.id == aboutTourModel.id,
+      relatedTours = tourDetail.tours.where((e) => e.tour.id == aboutTourModel.id).toList();
+    }
+
+    if (searchQuery.isNotEmpty) {
+      // Must query Supabase for the search directly rather than filtering local data,
+      // as local data might be paginated or incomplete.
+      final tourRepo = ref.read(tourRepositoryProvider);
+      final searchResults = await Future.wait(
+        relatedTours.map((t) => tourRepo.searchPlayersInTour(t.tour.id, searchQuery)),
       );
+      allPlayers = searchResults.expand((list) => list).toList();
+    } else {
       allPlayers = [];
-      for (final tour in selectedTours) {
-        allPlayers.addAll(tour.tour.players);
+      for (final tourModel in relatedTours) {
+        allPlayers.addAll(tourModel.tour.players);
       }
     }
 
-    return _buildStandingsFromData(
+    final standings = await _buildStandingsFromData(
       tournamentPlayers: allPlayers,
       gamesTourModels: allGames,
     );
+
+    if (searchQuery.isEmpty) {
+      return standings;
+    }
+
+    // We must filter again locally, primarily for tournaments that have no player 
+    // roster and generate their standings dynamically from the games fallback.
+    return standings.where((p) {
+      return p.name.toLowerCase().contains(searchQuery) ||
+          (p.title?.toLowerCase().contains(searchQuery) ?? false) ||
+          (p.countryCode.toLowerCase().contains(searchQuery));
+    }).toList();
   }
 
   /// Identifies categories like "Boards 1-66", "Boards 67-126", "Boards 252+"
@@ -300,6 +313,8 @@ class PlayerTourScreenNotifier
             opponentRating,
             status,
             gameRef.isWhite,
+            title: gameRef.playerCard.title,
+            timeControl: gameRef.game.timeControl,
           );
           hasCalculatedRatingDiff = true;
         }
@@ -404,10 +419,27 @@ class PlayerTourScreenNotifier
     return null;
   }
 
-  int _getKFactor(double rating) {
+  int _getKFactor(double rating, {String? title, String? timeControl}) {
+    // FIDE Rapid and Blitz Rating Regulations: K is 20 for all players.
+    if (timeControl == 'rapid' || timeControl == 'blitz') {
+      return 20;
+    }
+
+    // FIDE Standard Rating Regulations:
+    // K = 10 once a player's rating has reached 2400 and remains at that level subsequently,
+    // even if the rating drops below 2400.
     if (rating >= 2400) {
       return 10;
     }
+
+    // Check for GM/IM titles as reliable indicators of having reached 2400 in the past.
+    if (title != null) {
+      final t = title.toUpperCase();
+      if (t == 'GM' || t == 'IM') {
+        return 10;
+      }
+    }
+
     return 20;
   }
 
@@ -415,8 +447,10 @@ class PlayerTourScreenNotifier
     double playerRating,
     double opponentRating,
     GameStatus gameStatus,
-    bool isWhite,
-  ) {
+    bool isWhite, {
+    String? title,
+    String? timeControl,
+  }) {
     double actualScore;
 
     switch (gameStatus) {
@@ -435,7 +469,11 @@ class PlayerTourScreenNotifier
 
     final ratingDiff = (opponentRating - playerRating).clamp(-400.0, 400.0);
     final expectedScore = 1 / (1 + math.pow(10, ratingDiff / 400.0));
-    final kFactor = _getKFactor(playerRating);
+    final kFactor = _getKFactor(
+      playerRating,
+      title: title,
+      timeControl: timeControl,
+    );
     return kFactor * (actualScore - expectedScore);
   }
 }

@@ -40,6 +40,7 @@ class PlayerTourScreen extends ConsumerWidget {
                   .watch(playerTourScreenProvider)
                   .when(
                     data: (data) {
+                      final isSearching = ref.watch(standingsSearchQueryProvider).isNotEmpty;
                       return data.isEmpty
                           ? Center(
                             child: Column(
@@ -47,7 +48,11 @@ class PlayerTourScreen extends ConsumerWidget {
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
                                 SizedBox(height: 64.h),
-                                EmptyWidget(title: "No data available"),
+                                EmptyWidget(
+                                  title: isSearching
+                                      ? "No players found matching your search"
+                                      : "No data available",
+                                ),
                               ],
                             ),
                           )

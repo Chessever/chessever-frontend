@@ -415,6 +415,7 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
     final result = await showGameFilterDialog(
       context: context,
       currentFilter: state.filter,
+      showFormatFilter: false,
     );
     if (result != null && mounted) {
       ref.read(countrymenCombinedGamesProvider.notifier).applyFilter(result);

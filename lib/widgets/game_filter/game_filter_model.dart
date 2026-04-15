@@ -60,6 +60,22 @@ extension GameColorFilterX on GameColorFilter {
   }
 }
 
+/// Online vs OTB filter options
+enum GameOnlineFilter { all, online, otb }
+
+extension GameOnlineFilterX on GameOnlineFilter {
+  String get displayText {
+    switch (this) {
+      case GameOnlineFilter.all:
+        return 'All Formats';
+      case GameOnlineFilter.online:
+        return 'Online Only';
+      case GameOnlineFilter.otb:
+        return 'OTB Only';
+    }
+  }
+}
+
 /// Time control filter options
 enum GameTimeControlFilter { all, rapid, blitz, classical }
 
@@ -164,6 +180,7 @@ class GameFilter {
     this.result = GameResultFilter.all,
     this.color = GameColorFilter.all,
     this.timeControl = GameTimeControlFilter.all,
+    this.online = GameOnlineFilter.all,
     GameEcoFilter? eco,
     this.minYear = defaultMinYear,
     int? maxYear,
@@ -175,6 +192,7 @@ class GameFilter {
   final GameResultFilter result;
   final GameColorFilter color;
   final GameTimeControlFilter timeControl;
+  final GameOnlineFilter online;
   final GameEcoFilter eco;
   final int minYear;
   final int maxYear;
@@ -186,6 +204,7 @@ class GameFilter {
       result != GameResultFilter.all ||
       color != GameColorFilter.all ||
       timeControl != GameTimeControlFilter.all ||
+      online != GameOnlineFilter.all ||
       !eco.isAll ||
       minYear != defaultMinYear ||
       maxYear != DateTime.now().year ||
@@ -198,16 +217,19 @@ class GameFilter {
     if (result != GameResultFilter.all) count++;
     if (color != GameColorFilter.all) count++;
     if (timeControl != GameTimeControlFilter.all) count++;
+    if (online != GameOnlineFilter.all) count++;
     if (!eco.isAll) count++;
     if (minYear != defaultMinYear || maxYear != DateTime.now().year) count++;
-    if (minRating != defaultMinRating || maxRating != absoluteMaxRating) count++;
+    if (minRating != defaultMinRating || maxRating != GameFilter.absoluteMaxRating) count++;
     return count;
   }
+
 
   GameFilter copyWith({
     GameResultFilter? result,
     GameColorFilter? color,
     GameTimeControlFilter? timeControl,
+    GameOnlineFilter? online,
     GameEcoFilter? eco,
     int? minYear,
     int? maxYear,
@@ -218,6 +240,7 @@ class GameFilter {
       result: result ?? this.result,
       color: color ?? this.color,
       timeControl: timeControl ?? this.timeControl,
+      online: online ?? this.online,
       eco: eco ?? this.eco,
       minYear: minYear ?? this.minYear,
       maxYear: maxYear ?? this.maxYear,
@@ -235,6 +258,7 @@ class GameFilter {
         other.result == result &&
         other.color == color &&
         other.timeControl == timeControl &&
+        other.online == online &&
         other.eco == eco &&
         other.minYear == minYear &&
         other.maxYear == maxYear &&
@@ -247,6 +271,7 @@ class GameFilter {
     result,
     color,
     timeControl,
+    online,
     eco,
     minYear,
     maxYear,
@@ -283,6 +308,13 @@ class GameFilterHelper {
             inferred != filter.timeControl) {
           return false;
         }
+      }
+
+      // Online vs OTB filter
+      if (filter.online != GameOnlineFilter.all) {
+        final isOnline = game.isOnline;
+        if (filter.online == GameOnlineFilter.online && !isOnline) return false;
+        if (filter.online == GameOnlineFilter.otb && isOnline) return false;
       }
 
       // ECO filter - uses the new class-based filter

@@ -211,13 +211,13 @@ class _BulkAddToFolderPageState extends ConsumerState<_BulkAddToFolderPage> {
     }
 
     if (!mounted) return;
-    final name = await showCreateFolderDialog(context);
-    if (name == null || name.trim().isEmpty) return;
+    final data = await showCreateFolderDialog(context);
+    if (data == null || data.name.trim().isEmpty) return;
 
     try {
       final created = await ref
           .read(libraryRepositoryProvider)
-          .createFolder(name: name);
+          .createFolder(name: data.name, parentId: data.parentId);
       ref.invalidate(libraryFoldersStreamProvider);
 
       if (!mounted) return;
@@ -225,7 +225,7 @@ class _BulkAddToFolderPageState extends ConsumerState<_BulkAddToFolderPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Database "$name" created',
+            'Database "${data.name}" created',
             style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
           ),
           backgroundColor: kBlack2Color.withValues(alpha: 0.95),
@@ -495,13 +495,53 @@ class _BulkAddToFolderPageState extends ConsumerState<_BulkAddToFolderPage> {
     }
   }
 
+  /// Sorts folders such that children follow their parents based on parentId.
+  List<LibraryFolder> _sortFoldersHierarchically(List<LibraryFolder> folders) {
+    final Map<String?, List<LibraryFolder>> groupedByParent = {};
+    for (final folder in folders) {
+      groupedByParent.putIfAbsent(folder.parentId, () => []).add(folder);
+    }
+
+    final List<LibraryFolder> sorted = [];
+
+    void addFolders(String? parentId) {
+      final children = groupedByParent[parentId] ?? [];
+      // Sort children by orderIndex
+      children.sort((a, b) => a.orderIndex.compareTo(b.orderIndex));
+      for (final folder in children) {
+        sorted.add(folder);
+        addFolders(folder.id);
+      }
+    }
+
+    addFolders(null);
+
+    // Handle orphans (shouldn't happen with correct DB state but good for robustness)
+    if (sorted.length < folders.length) {
+      final sortedIds = sorted.map((f) => f.id).toSet();
+      for (final folder in folders) {
+        if (!sortedIds.contains(folder.id)) {
+          sorted.add(folder);
+        }
+      }
+    }
+
+    return sorted;
+  }
+
   @override
   Widget build(BuildContext context) {
     final foldersAsync = ref.watch(libraryFoldersStreamProvider);
-    final folders = foldersAsync.valueOrNull ?? const <LibraryFolder>[];
-    final selectedFolders =
-        folders.where((f) => _selectedFolderIds.contains(f.id)).toList();
     final sourceLabel = widget.sourceLabel ?? 'selection';
+
+    final List<LibraryFolder> selectedFolders =
+        foldersAsync.whenOrNull(
+          data:
+              (folders) => folders
+                  .where((f) => _selectedFolderIds.contains(f.id))
+                  .toList(),
+        ) ??
+        [];
 
     return Material(
       type: MaterialType.transparency,
@@ -550,13 +590,14 @@ class _BulkAddToFolderPageState extends ConsumerState<_BulkAddToFolderPage> {
                         ),
                       );
                     }
+                    final sortedFolders = _sortFoldersHierarchically(folders);
                     return ListView.separated(
                       shrinkWrap: true,
                       padding: EdgeInsets.symmetric(horizontal: 16.w),
-                      itemCount: folders.length,
+                      itemCount: sortedFolders.length,
                       separatorBuilder: (_, __) => SizedBox(height: 8.h),
                       itemBuilder: (context, index) {
-                        final folder = folders[index];
+                        final folder = sortedFolders[index];
                         return _BulkFolderSelectionTile(
                           folder: folder,
                           selected: _selectedFolderIds.contains(folder.id),
@@ -727,10 +768,17 @@ class _BulkFolderSelectionTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isSubdatabase = folder.parentId != null;
+
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: EdgeInsets.all(16.sp),
+        padding: EdgeInsets.only(
+          left: 16.w + (isSubdatabase ? 24.w : 0),
+          right: 16.w,
+          top: 14.h,
+          bottom: 14.h,
+        ),
         decoration: BoxDecoration(
           color:
               selected
@@ -746,6 +794,14 @@ class _BulkFolderSelectionTile extends StatelessWidget {
         ),
         child: Row(
           children: [
+            if (isSubdatabase) ...[
+              Icon(
+                Icons.subdirectory_arrow_right_rounded,
+                size: 16.sp,
+                color: kWhiteColor.withValues(alpha: 0.3),
+              ),
+              SizedBox(width: 8.w),
+            ],
             Icon(Icons.folder_rounded, color: kWhiteColor, size: 24.sp),
             SizedBox(width: 12.w),
             Expanded(
@@ -770,3 +826,4 @@ class _BulkFolderSelectionTile extends StatelessWidget {
     );
   }
 }
+

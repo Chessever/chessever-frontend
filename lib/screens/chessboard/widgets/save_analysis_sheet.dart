@@ -1212,10 +1212,48 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
     Key? key,
   }) {
     return foldersAsync.when(
-      data: (folders) => _buildFolderListContent(folders, key: key),
+      data: (folders) {
+        // Sort folders hierarchically: parents first, then their children
+        final sortedFolders = _sortFoldersHierarchically(folders);
+        return _buildFolderListContent(sortedFolders, key: key);
+      },
       loading: () => _buildFolderListLoading(key: key),
       error: (e, _) => _buildFolderListError(e, key: key),
     );
+  }
+
+  /// Sorts folders such that children follow their parents based on parentId.
+  List<LibraryFolder> _sortFoldersHierarchically(List<LibraryFolder> folders) {
+    final Map<String?, List<LibraryFolder>> groupedByParent = {};
+    for (final folder in folders) {
+      groupedByParent.putIfAbsent(folder.parentId, () => []).add(folder);
+    }
+
+    final List<LibraryFolder> sorted = [];
+
+    void addFolders(String? parentId) {
+      final children = groupedByParent[parentId] ?? [];
+      // Sort children by orderIndex
+      children.sort((a, b) => a.orderIndex.compareTo(b.orderIndex));
+      for (final folder in children) {
+        sorted.add(folder);
+        addFolders(folder.id);
+      }
+    }
+
+    addFolders(null);
+
+    // Handle orphans (shouldn't happen with correct DB state but good for robustness)
+    if (sorted.length < folders.length) {
+      final sortedIds = sorted.map((f) => f.id).toSet();
+      for (final folder in folders) {
+        if (!sortedIds.contains(folder.id)) {
+          sorted.add(folder);
+        }
+      }
+    }
+
+    return sorted;
   }
 
   Widget _buildFolderListContent(List<LibraryFolder> folders, {Key? key}) {
@@ -1309,6 +1347,7 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
                 final folder = entry.value;
                 final isSelected = _selectedFolder?.id == folder.id;
                 final isLast = index == folders.length - 1;
+                final isSubdatabase = folder.parentId != null;
 
                 return Column(
                   children: [
@@ -1326,7 +1365,9 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
                     if (!isLast)
                       Container(
                         height: 1,
-                        margin: EdgeInsets.only(left: 56.w),
+                        margin: EdgeInsets.only(
+                          left: isSubdatabase ? 80.w : 56.w,
+                        ),
                         color: kWhiteColor.withValues(alpha: 0.05),
                       ),
                   ],
@@ -1336,6 +1377,7 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
       ),
     );
   }
+
 
   Widget _buildFolderListLoading({Key? key}) {
     return Container(
@@ -1617,6 +1659,7 @@ class _FolderListItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final folderColor = _parseColorString(folder.color);
+    final isSubdatabase = folder.parentId != null;
 
     return GestureDetector(
       onTap: isDisabled ? null : onTap,
@@ -1626,7 +1669,12 @@ class _FolderListItem extends StatelessWidget {
         builder: (context, value, child) {
           final animValue = value.clamp(0.0, 1.0).toDouble();
           return Container(
-            padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 12.h),
+            padding: EdgeInsets.only(
+              left: 14.w + (isSubdatabase ? 24.w : 0),
+              right: 14.w,
+              top: 12.h,
+              bottom: 12.h,
+            ),
             decoration: BoxDecoration(
               color: Color.lerp(
                 Colors.transparent,
@@ -1636,6 +1684,14 @@ class _FolderListItem extends StatelessWidget {
             ),
             child: Row(
               children: [
+                if (isSubdatabase) ...[
+                  Icon(
+                    Icons.subdirectory_arrow_right_rounded,
+                    size: 16.sp,
+                    color: kWhiteColor.withValues(alpha: 0.3),
+                  ),
+                  SizedBox(width: 8.w),
+                ],
                 // Folder icon
                 Container(
                   padding: EdgeInsets.all(8.sp),
@@ -1706,6 +1762,7 @@ class _FolderListItem extends StatelessWidget {
       ),
     );
   }
+
 }
 
 /// Provider to fetch folders for the current user

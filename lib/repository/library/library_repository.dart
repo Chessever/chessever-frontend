@@ -5,6 +5,7 @@ import 'package:chessever2/repository/library/models/saved_analysis.dart';
 import 'package:chessever2/repository/library/models/shared_book_preview.dart';
 import 'package:chessever2/repository/supabase/base_repository.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 // Provider for library repository
 final libraryRepositoryProvider = AutoDisposeProvider<LibraryRepository>(
@@ -52,6 +53,7 @@ class LibraryRepository extends BaseRepository {
     String? color,
     String? icon,
     int? orderIndex,
+    String? parentId,
   }) => handleApiCall(() async {
     final userId = supabase.auth.currentUser?.id;
     if (userId == null) throw Exception('User not authenticated');
@@ -66,6 +68,7 @@ class LibraryRepository extends BaseRepository {
       color: color ?? '#0FB4E5',
       icon: icon ?? 'folder',
       orderIndex: nextOrder,
+      parentId: parentId,
       createdAt: DateTime.now(),
       updatedAt: DateTime.now(),
     );
@@ -79,6 +82,27 @@ class LibraryRepository extends BaseRepository {
 
     return LibraryFolder.fromSupabase(response);
   });
+
+  /// Ensure the user has the default "My Database" structure.
+  /// Creates a root "My Database" folder and a child "My Database" folder.
+  Future<void> ensureDefaultFolders() async {
+    final userId = supabase.auth.currentUser?.id;
+    if (userId == null) return;
+
+    // Check if user already has any folders
+    final existing = await supabase
+        .from('user_folders')
+        .select('id')
+        .eq('user_id', userId)
+        .limit(1);
+
+    if ((existing as List).isNotEmpty) return;
+
+    // Create root folder
+    final rootFolder = await createFolder(name: 'My Database');
+    // Create child folder inside it
+    await createFolder(name: 'My Database', parentId: rootFolder.id);
+  }
 
   /// Update a folder
   Future<LibraryFolder> updateFolder(LibraryFolder folder) =>
@@ -522,21 +546,30 @@ class LibraryRepository extends BaseRepository {
             .eq('user_id', userId);
       });
 
-  /// Get count of analyses in a folder
+  /// Get count of analyses in a folder (including sub-folders)
   Future<int> getAnalysisCountInFolder(String folderId) =>
       handleApiCall(() async {
-        final userId = supabase.auth.currentUser?.id;
-        if (userId == null) return 0;
+        // Fetch subfolder IDs - removed user_id filter to allow subscribers to count
+        final subfoldersResponse =
+            await supabase.from('user_folders').select('id').eq(
+              'parent_id',
+              folderId,
+            );
 
-        final response =
+        final folderIds = [folderId];
+        for (final row in subfoldersResponse) {
+          final id = row['id'] as String?;
+          if (id != null) folderIds.add(id);
+        }
+
+        // Count analyses in these folders - removed user_id filter to allow subscribers to count
+        final count =
             await supabase
                 .from('user_saved_analyses')
-                .select()
-                .eq('user_id', userId)
-                .eq('folder_id', folderId)
-                .count();
+                .count(CountOption.exact)
+                .inFilter('folder_id', folderIds);
 
-        return response.count;
+        return count;
       });
 
   // ============ PAGINATED QUERIES ============
@@ -582,14 +615,27 @@ class LibraryRepository extends BaseRepository {
         .toList();
   });
 
-  /// Count analyses in a shared folder (RLS handles access control).
+  /// Count analyses in a shared folder (including sub-folders).
   Future<int> getSharedFolderAnalysisCount(String folderId) =>
       handleApiCall(() async {
+        // Fetch subfolder IDs
+        final subfoldersResponse =
+            await supabase
+                .from('user_folders')
+                .select('id')
+                .eq('parent_id', folderId);
+
+        final folderIds = [folderId];
+        for (final row in subfoldersResponse) {
+          final id = row['id'] as String?;
+          if (id != null) folderIds.add(id);
+        }
+
         final response =
             await supabase
                 .from('user_saved_analyses')
                 .select('id')
-                .eq('folder_id', folderId)
+                .inFilter('folder_id', folderIds)
                 .count();
 
         return response.count;

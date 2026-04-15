@@ -215,7 +215,7 @@ class ExplorerEvalNotifier extends StateNotifier<ExplorerEvalState> {
           );
 
           final persist = ref.read(persistCloudEvalProvider);
-          if (gamebaseEval.depth >= 25) {
+          if (gamebaseEval.depth >= 20) {
             unawaited(
               Future.wait<void>([
                 persist.call(normalizedFen, gamebaseEval),

@@ -846,9 +846,9 @@ class StockfishSingleton {
         safetyTimeout = searchDuration + const Duration(seconds: 1);
       } else {
         // Deep searches with multiPV take exponentially longer per depth level.
-        // depth 15: ~10s, depth 25: ~60s, depth 40: ~300s, depth 50+: ~600s
+        // depth 15: ~10s, depth 20: ~30s, depth 25: ~60s, depth 40: ~300s, depth 50+: ~600s
         final timeoutSeconds =
-            depth <= 15 ? 15 : (depth <= 25 ? 60 : (depth <= 40 ? 300 : 600));
+            depth <= 15 ? 15 : (depth <= 20 ? 60 : (depth <= 40 ? 300 : 600));
         safetyTimeout = Duration(seconds: timeoutSeconds);
       }
 

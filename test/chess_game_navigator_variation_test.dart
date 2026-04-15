@@ -33,7 +33,7 @@ void main() {
     expect(navigator.state.game.mainline[0].variations, isNull);
   });
 
-  test('promoteVariationToMainline replaces parent continuation', () {
+  test('promoteVariationToMainline preserves other variations and mainline continuation', () {
     final promotedLine = [
       move(
         'c5',
@@ -43,12 +43,14 @@ void main() {
       ),
       move('Nc3'),
     ];
+    final otherVariation = [move('d4')];
+
     final game = ChessGame(
       gameId: 'g1',
       startingFen: 'fen',
       metadata: const {},
       mainline: [
-        move('e4', variations: [promotedLine]),
+        move('e4', variations: [promotedLine, otherVariation]),
         move('e5'),
         move('Nf3'),
       ],
@@ -59,16 +61,28 @@ void main() {
 
     final updated = navigator.state.game.mainline;
     expect(updated.map((m) => m.san), ['e4', 'c5', 'Nc3']);
-    for (final move in updated) {
-      expect(move.variations, isNull);
-    }
+    
+    final e4 = updated[0];
+    expect(e4.variations, isNotNull);
+    // Should have 3 variations: 
+    // 0: old mainline [e5, Nf3]
+    // 1: otherVariation [d4]
+    expect(e4.variations!.length, 2);
+    expect(e4.variations![0].map((m) => m.san), ['e5', 'Nf3']);
+    expect(e4.variations![1].map((m) => m.san), ['d4']);
+
+    final c5 = updated[1];
+    expect(c5.variations, isNotNull);
+    expect(c5.variations!.first.map((m) => m.san), ['d4']);
+    
     expect(navigator.state.movePointer, equals(<int>[1]));
   });
 
-  test('promoteVariationToMainline promotes nested variations one level', () {
+  test('promoteVariationToMainline promotes nested variations one level and preserves siblings', () {
     final deepVariation = [move('d4')];
+    final siblingVariation = [move('a6')];
     final firstVariation = [
-      move('c5', variations: [deepVariation]),
+      move('c5', variations: [deepVariation, siblingVariation]),
       move('Nc6'),
     ];
     final game = ChessGame(
@@ -81,15 +95,25 @@ void main() {
     );
     final navigator = ChessGameNavigator(game);
 
+    // Promote 'd4' (variation index 0 of move 'c5' in firstVariation)
     navigator.promoteVariationToMainline([0, 0, 0, 0, 0]);
 
     final e4 = navigator.state.game.mainline.first;
     expect(e4.variations, isNotNull);
-    final promotedVariation = e4.variations!.first;
-    expect(promotedVariation.map((m) => m.san), ['c5', 'd4']);
-    for (final move in promotedVariation) {
-      expect(move.variations, isNull);
-    }
+    final firstVar = e4.variations!.first;
+    
+    // firstVar (the promoted one) should now be e4 -> c5 -> d4
+    expect(firstVar.map((m) => m.san), ['c5', 'd4']);
+    
+    final c5 = firstVar[0];
+    expect(c5.variations, isNotNull);
+    // c5 should have 2 variations:
+    // 0: old continuation [Nc6]
+    // 1: sibling variation [a6]
+    expect(c5.variations!.length, 2);
+    expect(c5.variations![0].map((m) => m.san), ['Nc6']);
+    expect(c5.variations![1].map((m) => m.san), ['a6']);
+    
     expect(navigator.state.movePointer, equals(<int>[0, 0, 1]));
   });
 }

@@ -1,7 +1,6 @@
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/game_filter/wheel_range_filter.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 class _WheelRangeFilterHarness extends StatefulWidget {
@@ -82,6 +81,39 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('2000-2100'), findsOneWidget);
+      expect(find.byType(TextField), findsNothing);
+      _expectNoFlutterExceptions(tester);
+    },
+  );
+
+  testWidgets(
+    'editing both bounds preserves the previously selected opposite bound',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(430, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      await tester.pumpWidget(const _WheelRangeFilterHarness());
+      await tester.pumpAndSettle();
+
+      expect(find.text('1900-2100'), findsOneWidget);
+
+      await tester.tap(find.text('1900').first);
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), '2000');
+      await tester.pump();
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+
+      expect(find.text('2000-2100'), findsOneWidget);
+
+      await tester.tap(find.text('2100').last);
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), '2050');
+      await tester.pump();
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+
+      expect(find.text('2000-2050'), findsOneWidget);
       expect(find.byType(TextField), findsNothing);
       _expectNoFlutterExceptions(tester);
     },

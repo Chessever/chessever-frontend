@@ -852,6 +852,58 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     await prefs.setBool(_kWalkthroughDontShowKey, true);
   }
 
+  GamesTourModel _preferFresherGameSnapshot({
+    required GamesTourModel navigationGame,
+    required GamesTourModel providerGame,
+  }) {
+    final navigationLastMoveTime = navigationGame.lastMoveTime;
+    final providerLastMoveTime = providerGame.lastMoveTime;
+
+    if (navigationLastMoveTime != null && providerLastMoveTime != null) {
+      if (navigationLastMoveTime.isAfter(providerLastMoveTime)) {
+        return navigationGame;
+      }
+      if (providerLastMoveTime.isAfter(navigationLastMoveTime)) {
+        return providerGame;
+      }
+    } else if (navigationLastMoveTime != null && providerLastMoveTime == null) {
+      return navigationGame;
+    } else if (providerLastMoveTime != null && navigationLastMoveTime == null) {
+      return providerGame;
+    }
+
+    final navigationPgnLength = navigationGame.pgn?.length ?? 0;
+    final providerPgnLength = providerGame.pgn?.length ?? 0;
+    if (navigationPgnLength > providerPgnLength) {
+      return navigationGame;
+    }
+    if (providerPgnLength > navigationPgnLength) {
+      return providerGame;
+    }
+
+    final navigationFen = (navigationGame.fen ?? '').trim();
+    final providerFen = (providerGame.fen ?? '').trim();
+    if (navigationFen.isNotEmpty && providerFen.isEmpty) {
+      return navigationGame;
+    }
+    if (providerFen.isNotEmpty && navigationFen.isEmpty) {
+      return providerGame;
+    }
+
+    final navigationLastMove = (navigationGame.lastMove ?? '').trim();
+    final providerLastMove = (providerGame.lastMove ?? '').trim();
+    if (navigationLastMove.isNotEmpty && providerLastMove.isEmpty) {
+      return navigationGame;
+    }
+    if (providerLastMove.isNotEmpty && navigationLastMove.isEmpty) {
+      return providerGame;
+    }
+
+    // Prefer the navigation payload on ties because it may already contain the
+    // card-level realtime snapshot that opened this board.
+    return navigationGame;
+  }
+
   GamesTourModel _resolveGameForIndex(int index) {
     if (widget.games.isEmpty) {
       throw StateError('No games available to resolve');
@@ -887,7 +939,10 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
 
     for (final game in liveGames) {
       if (game.gameId == fallbackGame.gameId) {
-        return game;
+        return _preferFresherGameSnapshot(
+          navigationGame: fallbackGame,
+          providerGame: game,
+        );
       }
     }
 
@@ -6566,6 +6621,25 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard> {
   bool _isAtGameEnd(AnalysisBoardState s) =>
       s.isAtEnd && s.movePointer.length == 1;
 
+  LichessMoveAnnotationType? _mapNagToAnnotationType(int nag) {
+    switch (nag) {
+      case 1:
+        return LichessMoveAnnotationType.goodMove; // !
+      case 2:
+        return LichessMoveAnnotationType.mistake; // ?
+      case 3:
+        return LichessMoveAnnotationType.brilliant; // !!
+      case 4:
+        return LichessMoveAnnotationType.blunder; // ??
+      case 5:
+        return LichessMoveAnnotationType.goodMove; // !? (Interesting)
+      case 6:
+        return LichessMoveAnnotationType.inaccuracy; // ?! (Inaccuracy)
+      default:
+        return null;
+    }
+  }
+
   Square? _lastMoveDestinationSquare(Move? lastMove) {
     if (lastMove == null) return null;
     if (lastMove is NormalMove) {
@@ -6818,9 +6892,6 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard> {
           final lichessAnnotations =
               lichessAnnotationsAsync.valueOrNull ??
               const <int, LichessMoveAnnotation>{};
-          if (lichessAnnotations.isEmpty) return null;
-          // Only show annotations on mainline, not variations or PV previews.
-          if (widget.chessBoardState.isPvPreviewActive) return null;
 
           // Use navigatorState.movePointer to avoid stale widget props.
           final currentMovePointer = navigatorState.movePointer;
@@ -6830,7 +6901,28 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard> {
           final currentMoveIndex =
               currentMovePointer.isEmpty ? -1 : currentMovePointer[0];
           if (currentMoveIndex < 0) return null;
-          return lichessAnnotations[currentMoveIndex];
+
+          // 1. Try Lichess annotations first
+          if (lichessAnnotations.isNotEmpty) {
+            // Only show annotations on mainline, not variations or PV previews.
+            if (widget.chessBoardState.isPvPreviewActive) return null;
+            final annotation = lichessAnnotations[currentMoveIndex];
+            if (annotation != null) return annotation;
+          }
+
+          // 2. Fallback to NAGs from the move itself (e.g. for pasted PGNs)
+          final currentMove = navigatorState.currentMove;
+          if (currentMove != null &&
+              currentMove.nags != null &&
+              currentMove.nags!.isNotEmpty) {
+            final nag = currentMove.nags!.first;
+            final type = _mapNagToAnnotationType(nag);
+            if (type != null) {
+              return LichessMoveAnnotation(type: type, comment: '');
+            }
+          }
+
+          return null;
         })();
     final boardAnnotationSquare = _lastMoveDestinationSquare(
       widget.chessBoardState.analysisState.lastMove,

@@ -27,6 +27,7 @@ class _FakeGamebaseRepository extends GamebaseRepository {
     String? result,
     int? yearFrom,
     int? yearTo,
+    bool? isOnline,
   }) async {
     return const GamebaseResponse(
       status: 'success',

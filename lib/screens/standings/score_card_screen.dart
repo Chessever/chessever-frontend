@@ -157,12 +157,28 @@ class ScoreCardScreen extends ConsumerWidget {
   }
 
   // Calculate K-factor
-  int _getKFactor(double rating) {
-    if (rating >= 2400) {
-      return 10;
-    } else {
+  int _getKFactor(double rating, {String? title, String? timeControl}) {
+    // FIDE Rapid and Blitz Rating Regulations: K is 20 for all players.
+    if (timeControl == 'rapid' || timeControl == 'blitz') {
       return 20;
     }
+
+    // FIDE Standard Rating Regulations:
+    // K = 10 once a player's rating has reached 2400 and remains at that level subsequently,
+    // even if the rating drops below 2400.
+    if (rating >= 2400) {
+      return 10;
+    }
+
+    // Check for GM/IM titles as reliable indicators of having reached 2400 in the past.
+    if (title != null) {
+      final t = title.toUpperCase();
+      if (t == 'GM' || t == 'IM') {
+        return 10;
+      }
+    }
+
+    return 20;
   }
 
   // Calculate FIDE Elo rating change
@@ -192,7 +208,12 @@ class ScoreCardScreen extends ConsumerWidget {
 
     double ratingDiff = (opponentRating - playerRating).clamp(-400.0, 400.0);
     double expectedScore = 1 / (1 + math.pow(10, ratingDiff / 400.0));
-    int kFactor = _getKFactor(playerRating);
+    final playerTitle = isWhite ? game.whitePlayer.title : game.blackPlayer.title;
+    int kFactor = _getKFactor(
+      playerRating,
+      title: playerTitle,
+      timeControl: game.timeControl,
+    );
     double ratingChange = kFactor * (actualScore - expectedScore);
 
     return ratingChange;

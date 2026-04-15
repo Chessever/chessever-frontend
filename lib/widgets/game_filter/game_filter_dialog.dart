@@ -15,12 +15,14 @@ import 'package:motor/motor.dart';
 Future<GameFilter?> showGameFilterDialog({
   required BuildContext context,
   required GameFilter currentFilter,
+  bool showFormatFilter = true,
 }) {
   return showDialog<GameFilter>(
     context: context,
     barrierColor: Colors.transparent,
     builder: (_) => GameFilterDialog(
       initialFilter: currentFilter,
+      showFormatFilter: showFormatFilter,
     ),
   );
 }
@@ -29,9 +31,11 @@ class GameFilterDialog extends StatefulWidget {
   const GameFilterDialog({
     super.key,
     required this.initialFilter,
+    this.showFormatFilter = true,
   });
 
   final GameFilter initialFilter;
+  final bool showFormatFilter;
 
   @override
   State<GameFilterDialog> createState() => _GameFilterDialogState();
@@ -41,6 +45,7 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
   late GameResultFilter _result;
   late GameColorFilter _color;
   late GameTimeControlFilter _timeControl;
+  late GameOnlineFilter _online;
   late GameEcoFilter _eco;
   late RangeValues _yearRange;
   late RangeValues _ratingRange;
@@ -54,6 +59,7 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
     _result = widget.initialFilter.result;
     _color = widget.initialFilter.color;
     _timeControl = widget.initialFilter.timeControl;
+    _online = widget.initialFilter.online;
     _eco = widget.initialFilter.eco;
     _yearRange = RangeValues(
       widget.initialFilter.minYear.toDouble(),
@@ -177,6 +183,19 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
                         onChanged: (v) => setState(() => _timeControl = v),
                       ),
                       SizedBox(height: 20.h),
+
+                      // Online filter
+                      if (widget.showFormatFilter) ...[
+                        _sectionLabel('Format'),
+                        SizedBox(height: 8.h),
+                        ExpandableFilterDropdown<GameOnlineFilter>(
+                          value: _online,
+                          items: GameOnlineFilter.values,
+                          itemLabel: (v) => v.displayText,
+                          onChanged: (v) => setState(() => _online = v),
+                        ),
+                        SizedBox(height: 20.h),
+                      ],
 
                       _sectionLabel('Opening'),
                       SizedBox(height: 8.h),
@@ -303,11 +322,13 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
   }
 
   void _applyFilters() {
+    FocusScope.of(context).unfocus();
     HapticFeedbackService.buttonPress();
     final newFilter = GameFilter(
       result: _result,
       color: _color,
       timeControl: _timeControl,
+      online: _online,
       eco: _eco,
       minYear: _yearRange.start.round(),
       maxYear: _yearRange.end.round(),
