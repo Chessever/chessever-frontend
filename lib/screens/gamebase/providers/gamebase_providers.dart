@@ -103,12 +103,6 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
 
   void _scheduleFetch([Duration delay = const Duration(milliseconds: 200)]) {
     _debounceTimer?.cancel();
-
-    if (delay == Duration.zero) {
-      Future.microtask(_fetchMoveAggregates);
-      return;
-    }
-
     _debounceTimer = Timer(delay, _fetchMoveAggregates);
   }
 
@@ -391,7 +385,7 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
           final pointer = List<int>.of(state.movePointer);
           pointer.last = currentIndex + 1;
           state = state.copyWith(
-            currentFen: nextMove.fen,
+            currentFen: normalizeFenForGamebase(nextMove.fen),
             movePointer: pointer,
           );
           _scheduleFetch(Duration.zero);
@@ -406,7 +400,7 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
             final newPointer =
                 state.movePointer.isEmpty ? [0] : [...state.movePointer, i, 0];
             state = state.copyWith(
-              currentFen: variation[0].fen,
+              currentFen: normalizeFenForGamebase(variation[0].fen),
               movePointer: newPointer,
             );
             _scheduleFetch(Duration.zero);
@@ -443,7 +437,7 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
           state = state.copyWith(
             game: state.game!.copyWith(mainline: [newChessMove]),
             movePointer: [0],
-            currentFen: newPosition.fen,
+            currentFen: normalizeFenForGamebase(newPosition.fen),
           );
         } else {
           final firstMove = state.game!.mainline.first;
@@ -463,7 +457,7 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
               ],
             ),
             movePointer: [0, updatedVariations.length - 1, 0],
-            currentFen: newPosition.fen,
+            currentFen: normalizeFenForGamebase(newPosition.fen),
           );
         }
       } else if (currentIndex == currentLine!.length - 1) {
@@ -478,7 +472,7 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
         state = state.copyWith(
           game: state.game!.copyWith(mainline: updatedMainline),
           movePointer: newPointer,
-          currentFen: newPosition.fen,
+          currentFen: normalizeFenForGamebase(newPosition.fen),
         );
       } else {
         int? newVariationIndex;
@@ -494,7 +488,7 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
           state = state.copyWith(
             game: state.game!.copyWith(mainline: updatedMainline),
             movePointer: newPointer,
-            currentFen: newPosition.fen,
+            currentFen: normalizeFenForGamebase(newPosition.fen),
           );
         }
       }
