@@ -522,6 +522,7 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
 
   PreferredSizeWidget _buildAppBar(BuildContext context) {
     final state = ref.watch(gamebaseExplorerProvider);
+    final currentPage = ref.watch(explorerPageIndexProvider);
 
     return AppBar(
       backgroundColor: kBlack2Color,
@@ -532,9 +533,12 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
         icon: Icon(Icons.arrow_back, size: 24.ic),
         onPressed: () => Navigator.of(context).pop(),
       ),
-      title:
-          state.filters.selectedPlayers.isNotEmpty
-              ? Column(
+      title: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (state.filters.selectedPlayers.isNotEmpty)
+            Expanded(
+              child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -542,34 +546,24 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
                     state.filters.selectedPlayers.first.titleAndName,
                     style: TextStyle(
                       color: kWhiteColor,
-                      fontSize: 16.f,
+                      fontSize: 15.f,
                       fontWeight: FontWeight.w600,
+                      letterSpacing: -0.2,
                     ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
-                  Text(
-                    'Opening Explorer',
-                    style: TextStyle(
-                      color: kSecondaryTextColor,
-                      fontSize: 12.f,
-                      fontWeight: FontWeight.w400,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
+                  _ExplorerSegmentedTitle(currentPage: currentPage),
                 ],
-              )
-              : Text(
-                'Opening Explorer',
-                style: TextStyle(
-                  color: kWhiteColor,
-                  fontSize: 18.f,
-                  fontWeight: FontWeight.w600,
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
               ),
+            )
+          else
+            _ExplorerSegmentedTitle(
+              currentPage: currentPage,
+              isLarge: true,
+            ),
+        ],
+      ),
       actions: [
         if (_shouldShowClearFilters(state))
           IconButton(
@@ -1902,21 +1896,22 @@ class _ExplorerNotationView extends ConsumerStatefulWidget {
       _ExplorerNotationViewState();
 }
 
-class _ExplorerBottomPanels extends StatefulWidget {
+class _ExplorerBottomPanels extends ConsumerStatefulWidget {
   const _ExplorerBottomPanels();
 
   @override
-  State<_ExplorerBottomPanels> createState() => _ExplorerBottomPanelsState();
+  ConsumerState<_ExplorerBottomPanels> createState() =>
+      _ExplorerBottomPanelsState();
 }
 
-class _ExplorerBottomPanelsState extends State<_ExplorerBottomPanels> {
+class _ExplorerBottomPanelsState extends ConsumerState<_ExplorerBottomPanels> {
   late final PageController _pageController;
-  int _currentPage = 0;
 
   @override
   void initState() {
     super.initState();
-    _pageController = PageController();
+    final initialPage = ref.read(explorerPageIndexProvider);
+    _pageController = PageController(initialPage: initialPage);
   }
 
   @override
@@ -1927,68 +1922,30 @@ class _ExplorerBottomPanelsState extends State<_ExplorerBottomPanels> {
 
   @override
   Widget build(BuildContext context) {
-    final swipeLabel =
-        _currentPage == 0
-            ? 'Moves panel. Swipe left for notation.'
-            : 'Notation panel. Swipe right for moves.';
+    // Sync external page changes (e.g. from AppBar toggle) to PageView
+    ref.listen(explorerPageIndexProvider, (previous, next) {
+      if (_pageController.hasClients &&
+          _pageController.page?.round() != next) {
+        _pageController.animateToPage(
+          next,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOutCubic,
+        );
+      }
+    });
 
-    return Stack(
+    return PageView(
+      controller: _pageController,
+      onPageChanged: (page) => ref.read(explorerPageIndexProvider.notifier).state = page,
       children: [
-        Positioned.fill(
-          child: PageView(
-            controller: _pageController,
-            onPageChanged: (page) => setState(() => _currentPage = page),
-            children: [
-              const MoveStatisticsPanel(
-                key: PageStorageKey<String>('opening-explorer-moves-panel'),
-              ),
-              _ExplorerNotationView(
-                key: const PageStorageKey<String>(
-                  'opening-explorer-notation-panel',
-                ),
-                isActive: _currentPage == 1,
-              ),
-            ],
-          ),
+        const MoveStatisticsPanel(
+          key: PageStorageKey<String>('opening-explorer-moves-panel'),
         ),
-        Positioned(
-          bottom: 6.sp,
-          left: 0,
-          right: 0,
-          child: Center(
-            child: Semantics(
-              label: swipeLabel,
-              child: IgnorePointer(
-                child: Container(
-                  padding: EdgeInsets.symmetric(
-                    horizontal: 7.sp,
-                    vertical: 3.sp,
-                  ),
-                  decoration: BoxDecoration(
-                    color: kBlack2Color.withValues(alpha: 0.72),
-                    borderRadius: BorderRadius.circular(999.br),
-                    border: Border.all(
-                      color: kDividerColor.withValues(alpha: 0.65),
-                    ),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.swap_horiz_rounded,
-                        size: 10.sp,
-                        color: kSecondaryTextColor.withValues(alpha: 0.78),
-                      ),
-                      SizedBox(width: 5.sp),
-                      _ExplorerPageDot(isSelected: _currentPage == 0),
-                      SizedBox(width: 5.sp),
-                      _ExplorerPageDot(isSelected: _currentPage == 1),
-                    ],
-                  ),
-                ),
-              ),
-            ),
+        _ExplorerNotationView(
+          key: const PageStorageKey<String>(
+            'opening-explorer-notation-panel',
           ),
+          isActive: ref.watch(explorerPageIndexProvider) == 1,
         ),
       ],
     );
@@ -2014,6 +1971,79 @@ class _ExplorerPageDot extends StatelessWidget {
                 : kSecondaryTextColor.withValues(alpha: 0.65),
         borderRadius: BorderRadius.circular(999.br),
       ),
+    );
+  }
+}
+
+class _ExplorerSegmentedTitle extends ConsumerWidget {
+  const _ExplorerSegmentedTitle({
+    required this.currentPage,
+    this.isLarge = false,
+  });
+
+  final int currentPage;
+  final bool isLarge;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return GestureDetector(
+      onTap: () {
+        ref.read(explorerPageIndexProvider.notifier).state =
+            (currentPage + 1) % 2;
+      },
+      behavior: HitTestBehavior.opaque,
+      child: Semantics(
+        label:
+            currentPage == 0
+                ? 'Opening Explorer: Moves view. Tap to switch to notation.'
+                : 'Opening Explorer: Notation view. Tap to switch to moves.',
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _SegmentLabel(
+              label: 'Explorer',
+              isActive: currentPage == 0,
+              isLarge: isLarge,
+            ),
+            SizedBox(width: 8.sp),
+            _ExplorerPageDot(isSelected: currentPage == 0),
+            SizedBox(width: 4.sp),
+            _ExplorerPageDot(isSelected: currentPage == 1),
+            SizedBox(width: 8.sp),
+            _SegmentLabel(
+              label: 'Notation',
+              isActive: currentPage == 1,
+              isLarge: isLarge,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SegmentLabel extends StatelessWidget {
+  const _SegmentLabel({
+    required this.label,
+    required this.isActive,
+    required this.isLarge,
+  });
+
+  final String label;
+  final bool isActive;
+  final bool isLarge;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedDefaultTextStyle(
+      duration: const Duration(milliseconds: 200),
+      style: TextStyle(
+        color: isActive ? kWhiteColor : kSecondaryTextColor.withValues(alpha: 0.7),
+        fontSize: isLarge ? 17.f : 13.f,
+        fontWeight: FontWeight.w600, // Constant weight to prevent layout shift
+        letterSpacing: -0.2,
+      ),
+      child: Text(label),
     );
   }
 }

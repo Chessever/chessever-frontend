@@ -214,6 +214,7 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
     GameTimeControlFilter? timeControl,
     GameColorFilter? color,
     GameEcoFilter? eco,
+    GameOnlineFilter? online,
     PlayerResultFilter? playerResultFilter,
     String? searchQuery,
   }) async {
@@ -237,6 +238,7 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
       timeControl: timeControl,
       color: color,
       eco: eco,
+      online: online,
     );
     final newPlayerResult =
         playerResultFilter ?? currentState.playerResultFilter;
@@ -260,6 +262,7 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
       timeControl: timeControl,
       color: color,
       eco: eco,
+      online: online,
       playerResultFilter: playerResultFilter,
       searchQuery: searchQuery,
     );
@@ -1382,80 +1385,93 @@ class _ActionCardState extends State<_ActionCard> {
                       h,
                     )!;
                 return Container(
+                  height: 62.h,
                   padding: EdgeInsets.symmetric(
                     horizontal: 10.w,
-                    vertical: 10.h,
+                    vertical: 8.h,
                   ),
                   clipBehavior: Clip.antiAlias,
                   decoration: BoxDecoration(
                     color: bg,
                     borderRadius: BorderRadius.circular(12.br),
                   ),
-                  child: Row(
-                    children: [
-                      // Icon badge
-                      Stack(
-                        clipBehavior: Clip.none,
-                        children: [
-                          Container(
-                            width: 34.w,
-                            height: 34.h,
-                            decoration: BoxDecoration(
-                              color: iconBg,
-                              borderRadius: BorderRadius.circular(9.br),
-                            ),
-                            child: Icon(
-                              widget.icon,
-                              size: 18.ic,
-                              color: iconColor,
-                            ),
-                          ),
-                          // Red dot badge when highlighted
-                          if (widget.isHighlighted)
-                            Positioned(
-                              right: -3,
-                              top: -3,
-                              child: Container(
-                                width: 9.w,
-                                height: 9.w,
-                                decoration: const BoxDecoration(
-                                  color: _filterRed,
-                                  shape: BoxShape.circle,
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      return OverflowBox(
+                        minWidth: 0,
+                        maxWidth: double.infinity,
+                        alignment: Alignment.centerLeft,
+                        child: SizedBox(
+                          width: constraints.maxWidth.clamp(160.w, double.infinity),
+                          child: Row(
+                            children: [
+                              // Icon badge
+                              Stack(
+                                clipBehavior: Clip.none,
+                                children: [
+                                  Container(
+                                    width: 34.w,
+                                    height: 34.h,
+                                    decoration: BoxDecoration(
+                                      color: iconBg,
+                                      borderRadius: BorderRadius.circular(9.br),
+                                    ),
+                                    child: Icon(
+                                      widget.icon,
+                                      size: 18.ic,
+                                      color: iconColor,
+                                    ),
+                                  ),
+                                  // Red dot badge when highlighted
+                                  if (widget.isHighlighted)
+                                    Positioned(
+                                      right: -3,
+                                      top: -3,
+                                      child: Container(
+                                        width: 9.w,
+                                        height: 9.w,
+                                        decoration: const BoxDecoration(
+                                          color: _filterRed,
+                                          shape: BoxShape.circle,
+                                        ),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                              SizedBox(width: 8.w),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      widget.title,
+                                      style: AppTypography.textSmBold.copyWith(
+                                        color: kWhiteColor,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                    SizedBox(height: 2.h),
+                                    Text(
+                                      widget.subtitle,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: AppTypography.textXsRegular.copyWith(
+                                        color:
+                                            widget.isHighlighted
+                                                ? _filterRed.withValues(alpha: 0.9)
+                                                : kWhiteColor.withValues(alpha: 0.5),
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
-                            ),
-                        ],
-                      ),
-                      SizedBox(width: 8.w),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              widget.title,
-                              style: AppTypography.textSmBold.copyWith(
-                                color: kWhiteColor,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            SizedBox(height: 2.h),
-                            Text(
-                              widget.subtitle,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: AppTypography.textXsRegular.copyWith(
-                                color:
-                                    widget.isHighlighted
-                                        ? _filterRed.withValues(alpha: 0.9)
-                                        : kWhiteColor.withValues(alpha: 0.5),
-                              ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
-                      ),
-                    ],
+                      );
+                    },
                   ),
                 );
               },

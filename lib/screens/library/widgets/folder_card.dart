@@ -255,6 +255,8 @@ class FolderCard extends ConsumerWidget {
   void _showOverlayMenu(BuildContext context, WidgetRef ref) {
     HapticFeedbackService.light();
 
+    final isSubFolder = folder.parentId != null;
+
     if (folder.isSubscribed) {
       // Subscribed books: only show Unsubscribe
       showSubscribedFolderOverlayMenu(
@@ -269,6 +271,7 @@ class FolderCard extends ConsumerWidget {
         onStopSharing: () => _stopSharing(context, ref),
         onRename: () => _renameFolder(context, ref),
         onDelete: () => _deleteFolder(context, ref),
+        isSubFolder: isSubFolder,
       );
     } else {
       // Not shared: show Share, Rename, Delete
@@ -277,6 +280,7 @@ class FolderCard extends ConsumerWidget {
         onShare: () => _shareFolder(context, ref),
         onRename: () => _renameFolder(context, ref),
         onDelete: () => _deleteFolder(context, ref),
+        isSubFolder: isSubFolder,
       );
     }
   }
@@ -608,6 +612,7 @@ void showFolderOverlayMenu({
   required VoidCallback onShare,
   required VoidCallback onRename,
   required VoidCallback onDelete,
+  bool isSubFolder = false,
 }) {
   _showOverlay(
     context: context,
@@ -615,8 +620,19 @@ void showFolderOverlayMenu({
       _OverlayMenuItemData(
         Icons.ios_share_rounded,
         'Share',
-        onShare,
+        isSubFolder
+            ? () {
+              HapticFeedbackService.error();
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('only root-level database can be shared with others'),
+                  behavior: SnackBarBehavior.floating,
+                ),
+              );
+            }
+            : onShare,
         _MenuItemPosition.top,
+        isEnabled: !isSubFolder,
       ),
       _OverlayMenuItemData(
         Icons.edit_rounded,
@@ -641,6 +657,7 @@ void showSharedFolderOverlayMenu({
   required VoidCallback onStopSharing,
   required VoidCallback onRename,
   required VoidCallback onDelete,
+  bool isSubFolder = false,
 }) {
   _showOverlay(
     context: context,
@@ -648,14 +665,26 @@ void showSharedFolderOverlayMenu({
       _OverlayMenuItemData(
         Icons.copy_rounded,
         'Copy Link',
-        onCopyLink,
+        isSubFolder
+            ? () {
+              HapticFeedbackService.error();
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('only root-level database can be shared with others'),
+                  behavior: SnackBarBehavior.floating,
+                ),
+              );
+            }
+            : onCopyLink,
         _MenuItemPosition.top,
+        isEnabled: !isSubFolder,
       ),
       _OverlayMenuItemData(
         Icons.link_off_rounded,
         'Stop Sharing',
         onStopSharing,
         _MenuItemPosition.middle,
+        isEnabled: !isSubFolder,
       ),
       _OverlayMenuItemData(
         Icons.edit_rounded,
@@ -696,8 +725,15 @@ class _OverlayMenuItemData {
   final String label;
   final VoidCallback onTap;
   final _MenuItemPosition position;
+  final bool isEnabled;
 
-  _OverlayMenuItemData(this.icon, this.label, this.onTap, this.position);
+  _OverlayMenuItemData(
+    this.icon,
+    this.label,
+    this.onTap,
+    this.position, {
+    this.isEnabled = true,
+  });
 }
 
 void _showOverlay({
@@ -718,10 +754,16 @@ void _showOverlay({
           items:
               items
                   .map(
-                    (item) => _OverlayMenuItemData(item.icon, item.label, () {
-                      entry.remove();
-                      item.onTap();
-                    }, item.position),
+                    (item) => _OverlayMenuItemData(
+                      item.icon,
+                      item.label,
+                      () {
+                        entry.remove();
+                        item.onTap();
+                      },
+                      item.position,
+                      isEnabled: item.isEnabled,
+                    ),
                   )
                   .toList(),
         ),
@@ -843,6 +885,7 @@ class _FolderOverlayMenuState extends State<_FolderOverlayMenu>
                           label: item.label,
                           onTap: item.onTap,
                           position: item.position,
+                          isEnabled: item.isEnabled,
                         ),
                     ],
                   ),
@@ -867,12 +910,14 @@ class _OverlayMenuItem extends StatefulWidget {
   final String label;
   final VoidCallback onTap;
   final _MenuItemPosition position;
+  final bool isEnabled;
 
   const _OverlayMenuItem({
     required this.icon,
     required this.label,
     required this.onTap,
     required this.position,
+    this.isEnabled = true,
   });
 
   @override
@@ -884,9 +929,15 @@ class _OverlayMenuItemState extends State<_OverlayMenuItem> {
 
   @override
   Widget build(BuildContext context) {
+    final textColor = widget.isEnabled ? kWhiteColor : const Color(0xFF4D4D4D);
+    final iconColor = widget.isEnabled ? kWhiteColor : const Color(0xFF4D4D4D);
+
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTapDown: (_) => setState(() => _isPressed = true),
+      onTapDown:
+          (_) => setState(
+            () => _isPressed = widget.isEnabled ? true : false,
+          ),
       onTapUp: (_) => setState(() => _isPressed = false),
       onTapCancel: () => setState(() => _isPressed = false),
       onTap: widget.onTap,
@@ -914,14 +965,14 @@ class _OverlayMenuItemState extends State<_OverlayMenuItem> {
                 borderRadius: BorderRadius.circular(3.br),
               ),
               child: Center(
-                child: Icon(widget.icon, color: kWhiteColor, size: 15.sp),
+                child: Icon(widget.icon, color: iconColor, size: 15.sp),
               ),
             ),
             SizedBox(width: 11.w),
             Expanded(
               child: Text(
                 widget.label,
-                style: AppTypography.textMdMedium.copyWith(color: kWhiteColor),
+                style: AppTypography.textMdMedium.copyWith(color: textColor),
                 overflow: TextOverflow.ellipsis,
               ),
             ),

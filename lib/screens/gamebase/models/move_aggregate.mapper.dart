@@ -185,3 +185,4 @@ class _MoveAggregateCopyWithImpl<$R, $Out>
     Then<$Out2, $R2> t,
   ) => _MoveAggregateCopyWithImpl<$R2, $Out2>($value, $cast, t);
 }
+

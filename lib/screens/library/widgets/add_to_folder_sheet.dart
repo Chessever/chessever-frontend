@@ -50,11 +50,11 @@ class _AddToFolderSheetShell extends ConsumerWidget {
             SpringPagedSheetRoute(
               scrollConfiguration: const SheetScrollConfiguration(),
               dragConfiguration: ChessSheetConfigs.commentEditor,
-              initialOffset: const SheetOffset.proportionalToViewport(0.55),
+              initialOffset: const SheetOffset.proportionalToViewport(0.65),
               snapGrid: SheetSnapGrid(
                 snaps: const [
-                  SheetOffset.proportionalToViewport(0.55),
-                  SheetOffset.proportionalToViewport(0.75),
+                  SheetOffset.proportionalToViewport(0.65),
+                  SheetOffset.proportionalToViewport(0.85),
                 ],
                 minFlingSpeed: 600.0,
               ),
@@ -88,6 +88,7 @@ class _AddToFolderPage extends ConsumerStatefulWidget {
 
 class _AddToFolderPageState extends ConsumerState<_AddToFolderPage> {
   final Set<String> _selectedFolderIds = <String>{};
+  final Set<String> _expandedFolderIds = <String>{};
   bool _isSaving = false;
 
   Future<ChessGame> _resolveChessGame() async {
@@ -95,32 +96,24 @@ class _AddToFolderPageState extends ConsumerState<_AddToFolderPage> {
     final gamebaseRepository = ref.read(gamebaseRepositoryProvider);
 
     String? pgn = widget.game.pgn;
-
-    // Check if we already have a PGN with actual moves
     final hasMoves = pgn != null && pgnHasMoves(pgn);
 
     if (!hasMoves) {
-      // Try Supabase game repository first (for live tournament games)
       try {
         final supabasePgn = await gameRepository.getGamePgn(widget.game.gameId);
         if (supabasePgn != null && pgnHasMoves(supabasePgn)) {
           pgn = supabasePgn;
         }
-      } catch (_) {
-        // Ignore and fall back to Gamebase fetch below.
-      }
+      } catch (_) {}
 
-      // If still no moves, try Gamebase API with includePgn=true
       if (pgn == null || !pgnHasMoves(pgn)) {
         final fullGame = await gamebaseRepository.getGameWithPgn(
           widget.game.gameId,
         );
         if (fullGame != null) {
-          // Try raw PGN first
           if (fullGame.pgn != null && pgnHasMoves(fullGame.pgn!)) {
             pgn = fullGame.pgn;
           } else if (fullGame.data != null) {
-            // Build PGN from game data (contains moves)
             final builtPgn = buildPgnFromGamebaseData(fullGame.data);
             if (builtPgn != null && pgnHasMoves(builtPgn)) {
               pgn = builtPgn;
@@ -137,11 +130,9 @@ class _AddToFolderPageState extends ConsumerState<_AddToFolderPage> {
     final chessGame = ChessGame.fromPgn(widget.game.gameId, pgn);
     final meta = Map<String, dynamic>.from(chessGame.metadata);
 
-    // Always set player names from the game model (more reliable)
     meta['White'] = widget.game.whitePlayer.name;
     meta['Black'] = widget.game.blackPlayer.name;
 
-    // Always set player federations/country codes for flag display
     final whiteFed =
         widget.game.whitePlayer.countryCode.isNotEmpty
             ? widget.game.whitePlayer.countryCode
@@ -153,15 +144,12 @@ class _AddToFolderPageState extends ConsumerState<_AddToFolderPage> {
     if (whiteFed.isNotEmpty) meta['WhiteFed'] = whiteFed;
     if (blackFed.isNotEmpty) meta['BlackFed'] = blackFed;
 
-    // Always set player titles (overwrite even if PGN had them)
     if (widget.game.whitePlayer.title.isNotEmpty) {
       meta['WhiteTitle'] = widget.game.whitePlayer.title;
     }
     if (widget.game.blackPlayer.title.isNotEmpty) {
       meta['BlackTitle'] = widget.game.blackPlayer.title;
     }
-
-    // Always set player ratings
     if (widget.game.whitePlayer.rating > 0) {
       meta['WhiteElo'] = widget.game.whitePlayer.rating.toString();
     }
@@ -176,15 +164,12 @@ class _AddToFolderPageState extends ConsumerState<_AddToFolderPage> {
     );
     if (resolvedEventName != null) {
       meta['Event'] = resolvedEventName;
-    } else if (_looksLikeOpaqueEventId(meta['Event']?.toString())) {
-      // Avoid persisting hash/UUID-like placeholders as event names.
-      meta.remove('Event');
     }
 
     return chessGame.copyWith(metadata: meta);
   }
 
-  void _toggleFolder(LibraryFolder folder) {
+  void _toggleFolderSelection(LibraryFolder folder) {
     if (_isSaving) return;
     HapticFeedbackService.light();
     setState(() {
@@ -192,6 +177,17 @@ class _AddToFolderPageState extends ConsumerState<_AddToFolderPage> {
         _selectedFolderIds.remove(folder.id);
       } else {
         _selectedFolderIds.add(folder.id);
+      }
+    });
+  }
+
+  void _toggleFolderExpansion(String folderId) {
+    HapticFeedbackService.light();
+    setState(() {
+      if (_expandedFolderIds.contains(folderId)) {
+        _expandedFolderIds.remove(folderId);
+      } else {
+        _expandedFolderIds.add(folderId);
       }
     });
   }
@@ -213,13 +209,13 @@ class _AddToFolderPageState extends ConsumerState<_AddToFolderPage> {
 
     if (!mounted) return;
     HapticFeedbackService.light();
-    final name = await showCreateFolderDialog(context);
-    if (name == null || name.trim().isEmpty) return;
+    final data = await showCreateFolderDialog(context);
+    if (data == null || data.name.trim().isEmpty) return;
 
     try {
       final created = await ref
           .read(libraryRepositoryProvider)
-          .createFolder(name: name);
+          .createFolder(name: data.name, parentId: data.parentId);
       ref.invalidate(libraryFoldersStreamProvider);
 
       if (!mounted) return;
@@ -228,7 +224,7 @@ class _AddToFolderPageState extends ConsumerState<_AddToFolderPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Database "$name" created',
+            'Database "${data.name}" created',
             style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
           ),
           backgroundColor: kBlack2Color.withValues(alpha: 0.95),
@@ -257,13 +253,8 @@ class _AddToFolderPageState extends ConsumerState<_AddToFolderPage> {
   }) {
     final fromMetadata = metadataEvent?.trim() ?? '';
     if (_isReadableEventName(fromMetadata)) return fromMetadata;
-
     final fromSlug = tourSlug?.trim() ?? '';
     if (_isReadableEventName(fromSlug)) return _humanizeSlug(fromSlug);
-
-    final fromId = tourId?.trim() ?? '';
-    if (_isReadableEventName(fromId)) return fromId;
-
     return null;
   }
 
@@ -275,52 +266,14 @@ class _AddToFolderPageState extends ConsumerState<_AddToFolderPage> {
         lower == 'opening_explorer') {
       return false;
     }
-    return !_looksLikeOpaqueEventId(value);
-  }
-
-  bool _looksLikeOpaqueEventId(String? value) {
-    final text = value?.trim() ?? '';
-    if (text.isEmpty) return false;
-
-    final uuid = RegExp(
-      r'^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$',
-      caseSensitive: false,
-    );
-    if (uuid.hasMatch(text)) return true;
-
-    final objectId = RegExp(r'^[0-9a-f]{24}$', caseSensitive: false);
-    if (objectId.hasMatch(text)) return true;
-
-    final longHex = RegExp(r'^[0-9a-f]{12,64}$', caseSensitive: false);
-    if (longHex.hasMatch(text)) return true;
-
-    if (text.length >= 16 && !text.contains(RegExp(r'\s'))) {
-      final alphaCount = RegExp(r'[A-Za-z]').allMatches(text).length;
-      final digitCount = RegExp(r'\d').allMatches(text).length;
-      final separatorCount = RegExp(r'[-_]').allMatches(text).length;
-      final otherCount = text.length - alphaCount - digitCount - separatorCount;
-      if (otherCount == 0 && digitCount >= (alphaCount * 2)) return true;
-    }
-
-    return false;
+    return true;
   }
 
   String _humanizeSlug(String value) {
     if (!value.contains('-') && !value.contains('_')) return value;
-    final words = value
-        .split(RegExp(r'[-_]+'))
-        .map((segment) => segment.trim())
-        .where((segment) => segment.isNotEmpty)
-        .toList(growable: false);
+    final words = value.split(RegExp(r'[-_]+')).where((s) => s.isNotEmpty).toList();
     if (words.isEmpty) return value;
-    return words.map(_capitalizeWord).join(' ');
-  }
-
-  String _capitalizeWord(String word) {
-    if (word.isEmpty) return word;
-    if (RegExp(r'^\d+$').hasMatch(word)) return word;
-    final lower = word.toLowerCase();
-    return '${lower[0].toUpperCase()}${lower.substring(1)}';
+    return words.map((w) => w[0].toUpperCase() + w.substring(1).toLowerCase()).join(' ');
   }
 
   Future<void> _handleAddToSelected(List<LibraryFolder> selected) async {
@@ -379,7 +332,6 @@ class _AddToFolderPageState extends ConsumerState<_AddToFolderPage> {
 
       if (!mounted) return;
       final messenger = ScaffoldMessenger.of(context);
-      // Pop the outer route (the sheet), not the inner PagedSheet navigator
       Navigator.of(context, rootNavigator: true).pop();
       messenger.showSnackBar(
         SnackBar(
@@ -413,10 +365,10 @@ class _AddToFolderPageState extends ConsumerState<_AddToFolderPage> {
 
   @override
   Widget build(BuildContext context) {
-    final foldersAsync = ref.watch(libraryFoldersStreamProvider);
-    final folders = foldersAsync.valueOrNull ?? const <LibraryFolder>[];
-    final selectedFolders =
-        folders.where((f) => _selectedFolderIds.contains(f.id)).toList();
+    final recentDatabases = ref.watch(recentDatabasesProvider);
+    final rootFolders = ref.watch(rootLibraryFoldersProvider);
+    final allFolders = ref.watch(combinedLibraryFoldersProvider).valueOrNull ?? [];
+    final selectedFolders = allFolders.where((f) => _selectedFolderIds.contains(f.id)).toList();
 
     return Material(
       type: MaterialType.transparency,
@@ -433,153 +385,273 @@ class _AddToFolderPageState extends ConsumerState<_AddToFolderPage> {
                 style: AppTypography.textLgBold.copyWith(color: kWhiteColor),
               ),
             ),
+            
+            // Recent Databases
+            if (recentDatabases.isNotEmpty) ...[
+              SizedBox(height: 16.h),
+              _buildRecentDatabases(recentDatabases),
+            ],
+
             SizedBox(height: 16.h),
+            
             Flexible(
               child: IgnorePointer(
                 ignoring: _isSaving,
-                child: foldersAsync.when(
-                  data: (folders) {
-                    if (folders.isEmpty) {
-                      return Padding(
-                        padding: EdgeInsets.all(20.sp),
-                        child: Text(
-                          'No databases yet.',
-                          style: AppTypography.textSmRegular.copyWith(
-                            color: kWhiteColor.withValues(alpha: 0.5),
-                          ),
-                          textAlign: TextAlign.center,
+                child: rootFolders.isEmpty 
+                  ? Padding(
+                      padding: EdgeInsets.all(24.sp),
+                      child: Text(
+                        'No databases yet.',
+                        style: AppTypography.textSmRegular.copyWith(
+                          color: kWhiteColor.withValues(alpha: 0.5),
                         ),
-                      );
-                    }
-                    return ListView.separated(
+                        textAlign: TextAlign.center,
+                      ),
+                    )
+                  : ListView.builder(
                       shrinkWrap: true,
                       padding: EdgeInsets.symmetric(horizontal: 16.w),
-                      itemCount: folders.length,
-                      separatorBuilder: (_, __) => SizedBox(height: 8.h),
+                      itemCount: rootFolders.length,
                       itemBuilder: (context, index) {
-                        final folder = folders[index];
-                        return _FolderSelectionTile(
+                        final folder = rootFolders[index];
+                        return _ExpandableFolderTile(
                           folder: folder,
-                          selected: _selectedFolderIds.contains(folder.id),
-                          onTap: () => _toggleFolder(folder),
+                          isSelected: _selectedFolderIds.contains(folder.id),
+                          isExpanded: _expandedFolderIds.contains(folder.id),
+                          selectedIds: _selectedFolderIds,
+                          onToggleSelect: () => _toggleFolderSelection(folder),
+                          onToggleExpand: () => _toggleFolderExpansion(folder.id),
+                          onToggleChildSelect: _toggleFolderSelection,
                         );
                       },
-                    );
-                  },
-                  loading:
-                      () => const Center(
-                        child: CircularProgressIndicator(color: kWhiteColor),
-                      ),
-                  error:
-                      (e, _) => Center(
-                        child: Text(
-                          'Error loading databases',
-                          style: AppTypography.textSmRegular.copyWith(
-                            color: kRedColor,
-                          ),
-                        ),
-                      ),
-                ),
+                    ),
               ),
             ),
+
             SizedBox(height: 16.h),
-            Padding(
-              padding: EdgeInsets.symmetric(horizontal: 16.w),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: GestureDetector(
-                      onTap: _isSaving ? null : _handleCreateNewBook,
-                      child: Opacity(
-                        opacity: _isSaving ? 0.6 : 1,
-                        child: Container(
-                          padding: EdgeInsets.symmetric(vertical: 14.h),
-                          decoration: BoxDecoration(
-                            color: kWhiteColor.withValues(alpha: 0.10),
-                            borderRadius: BorderRadius.circular(12.br),
-                            border: Border.all(
-                              color: kWhiteColor.withValues(alpha: 0.14),
-                            ),
-                          ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                Icons.create_new_folder_outlined,
-                                color: kWhiteColor,
-                                size: 20.sp,
-                              ),
-                              SizedBox(width: 8.w),
-                              Text(
-                                'New Database',
-                                style: AppTypography.textSmMedium.copyWith(
-                                  color: kWhiteColor,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  SizedBox(width: 10.w),
-                  Expanded(
-                    child: GestureDetector(
-                      onTap:
-                          _isSaving
-                              ? null
-                              : () => _handleAddToSelected(selectedFolders),
-                      child: Opacity(
-                        opacity:
-                            (_isSaving || selectedFolders.isEmpty) ? 0.6 : 1,
-                        child: Container(
-                          padding: EdgeInsets.symmetric(vertical: 14.h),
-                          decoration: BoxDecoration(
-                            color: kPrimaryColor,
-                            borderRadius: BorderRadius.circular(12.br),
-                          ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              if (_isSaving) ...[
-                                SizedBox(
-                                  height: 18.sp,
-                                  width: 18.sp,
-                                  child: const CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    color: kWhiteColor,
-                                  ),
-                                ),
-                                SizedBox(width: 8.w),
-                              ] else ...[
-                                Icon(
-                                  Icons.add_rounded,
-                                  color: kWhiteColor,
-                                  size: 20.sp,
-                                ),
-                                SizedBox(width: 8.w),
-                              ],
-                              Text(
-                                selectedFolders.isEmpty
-                                    ? 'Add'
-                                    : 'Add (${selectedFolders.length})',
-                                style: AppTypography.textSmMedium.copyWith(
-                                  color: kWhiteColor,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
+            _buildActionButtons(selectedFolders),
             SizedBox(height: MediaQuery.of(context).viewPadding.bottom + 10.h),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildRecentDatabases(List<LibraryFolder> recent) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: EdgeInsets.symmetric(horizontal: 20.w),
+          child: Text(
+            'RECENT',
+            style: AppTypography.textXsBold.copyWith(
+              color: kWhiteColor.withValues(alpha: 0.4),
+              letterSpacing: 1.2,
+            ),
+          ),
+        ),
+        SizedBox(height: 8.h),
+        SizedBox(
+          height: 40.h,
+          child: ListView.separated(
+            padding: EdgeInsets.symmetric(horizontal: 16.w),
+            scrollDirection: Axis.horizontal,
+            itemCount: recent.length,
+            separatorBuilder: (_, __) => SizedBox(width: 8.w),
+            itemBuilder: (context, index) {
+              final folder = recent[index];
+              final isSelected = _selectedFolderIds.contains(folder.id);
+              return GestureDetector(
+                onTap: () => _toggleFolderSelection(folder),
+                child: Container(
+                  padding: EdgeInsets.symmetric(horizontal: 12.w),
+                  decoration: BoxDecoration(
+                    color: isSelected 
+                      ? kPrimaryColor.withValues(alpha: 0.2) 
+                      : kWhiteColor.withValues(alpha: 0.05),
+                    borderRadius: BorderRadius.circular(20.br),
+                    border: Border.all(
+                      color: isSelected 
+                        ? kPrimaryColor.withValues(alpha: 0.6) 
+                        : kWhiteColor.withValues(alpha: 0.1),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.history_rounded,
+                        size: 14.sp,
+                        color: isSelected ? kPrimaryColor : kWhiteColor.withValues(alpha: 0.6),
+                      ),
+                      SizedBox(width: 6.w),
+                      Text(
+                        folder.name,
+                        style: AppTypography.textXsMedium.copyWith(
+                          color: isSelected ? kWhiteColor : kWhiteColor.withValues(alpha: 0.8),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildActionButtons(List<LibraryFolder> selected) {
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: 16.w),
+      child: Row(
+        children: [
+          Expanded(
+            child: GestureDetector(
+              onTap: _isSaving ? null : _handleCreateNewBook,
+              child: Opacity(
+                opacity: _isSaving ? 0.6 : 1,
+                child: Container(
+                  padding: EdgeInsets.symmetric(vertical: 14.h),
+                  decoration: BoxDecoration(
+                    color: kWhiteColor.withValues(alpha: 0.10),
+                    borderRadius: BorderRadius.circular(12.br),
+                    border: Border.all(
+                      color: kWhiteColor.withValues(alpha: 0.14),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.create_new_folder_outlined,
+                        color: kWhiteColor,
+                        size: 20.sp,
+                      ),
+                      SizedBox(width: 8.w),
+                      Text(
+                        'New Database',
+                        style: AppTypography.textSmMedium.copyWith(
+                          color: kWhiteColor,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+          SizedBox(width: 10.w),
+          Expanded(
+            child: GestureDetector(
+              onTap:
+                  _isSaving
+                      ? null
+                      : () => _handleAddToSelected(selected),
+              child: Opacity(
+                opacity:
+                    (_isSaving || selected.isEmpty) ? 0.6 : 1,
+                child: Container(
+                  padding: EdgeInsets.symmetric(vertical: 14.h),
+                  decoration: BoxDecoration(
+                    color: kPrimaryColor,
+                    borderRadius: BorderRadius.circular(12.br),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      if (_isSaving) ...[
+                        SizedBox(
+                          height: 18.sp,
+                          width: 18.sp,
+                          child: const CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: kWhiteColor,
+                          ),
+                        ),
+                        SizedBox(width: 8.w),
+                      ] else ...[
+                        Icon(
+                          Icons.add_rounded,
+                          color: kWhiteColor,
+                          size: 20.sp,
+                        ),
+                        SizedBox(width: 8.w),
+                      ],
+                      Text(
+                        selected.isEmpty
+                            ? 'Add'
+                            : 'Add (${selected.length})',
+                        style: AppTypography.textSmMedium.copyWith(
+                          color: kWhiteColor,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ExpandableFolderTile extends ConsumerWidget {
+  const _ExpandableFolderTile({
+    required this.folder,
+    required this.isSelected,
+    required this.isExpanded,
+    required this.selectedIds,
+    required this.onToggleSelect,
+    required this.onToggleExpand,
+    required this.onToggleChildSelect,
+  });
+
+  final LibraryFolder folder;
+  final bool isSelected;
+  final bool isExpanded;
+  final Set<String> selectedIds;
+  final VoidCallback onToggleSelect;
+  final VoidCallback onToggleExpand;
+  final Function(LibraryFolder) onToggleChildSelect;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final children = ref.watch(childLibraryFoldersProvider(folder.id));
+    final hasChildren = children.isNotEmpty;
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _FolderSelectionTile(
+          folder: folder,
+          selected: isSelected,
+          onTap: onToggleSelect,
+          trailing: hasChildren ? IconButton(
+            onPressed: onToggleExpand,
+            icon: Icon(
+              isExpanded ? Icons.keyboard_arrow_up_rounded : Icons.keyboard_arrow_down_rounded,
+              color: kWhiteColor.withValues(alpha: 0.5),
+            ),
+          ) : null,
+        ),
+        if (hasChildren && isExpanded) ...[
+          SizedBox(height: 4.h),
+          ...children.map((child) => Padding(
+            padding: EdgeInsets.only(left: 24.w, bottom: 4.h),
+            child: _FolderSelectionTile(
+              folder: child,
+              selected: selectedIds.contains(child.id),
+              onTap: () => onToggleChildSelect(child),
+              isSmall: true,
+            ),
+          )),
+        ],
+        SizedBox(height: 8.h),
+      ],
     );
   }
 }
@@ -589,18 +661,27 @@ class _FolderSelectionTile extends StatelessWidget {
     required this.folder,
     required this.selected,
     required this.onTap,
+    this.trailing,
+    this.isSmall = false,
   });
 
   final LibraryFolder folder;
   final bool selected;
   final VoidCallback onTap;
+  final Widget? trailing;
+  final bool isSmall;
 
   @override
   Widget build(BuildContext context) {
+    final isSubdatabase = folder.parentId != null;
+
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: EdgeInsets.all(16.sp),
+        padding: EdgeInsets.symmetric(
+          horizontal: 16.w, 
+          vertical: isSmall ? 10.h : 14.h,
+        ),
         decoration: BoxDecoration(
           color:
               selected
@@ -616,14 +697,30 @@ class _FolderSelectionTile extends StatelessWidget {
         ),
         child: Row(
           children: [
-            Icon(Icons.folder_rounded, color: kWhiteColor, size: 24.sp),
+            if (isSubdatabase) ...[
+              Icon(
+                Icons.subdirectory_arrow_right_rounded,
+                size: 16.sp,
+                color: kWhiteColor.withValues(alpha: 0.3),
+              ),
+              SizedBox(width: 8.w),
+            ],
+            Icon(
+              folder.parentId == null ? Icons.folder_rounded : Icons.folder_open_rounded, 
+              color: kWhiteColor.withValues(alpha: isSmall ? 0.6 : 1.0), 
+              size: isSmall ? 20.sp : 24.sp,
+            ),
             SizedBox(width: 12.w),
             Expanded(
               child: Text(
                 folder.name,
-                style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+                style: (isSmall ? AppTypography.textSmMedium : AppTypography.textSmMedium).copyWith(
+                  color: kWhiteColor.withValues(alpha: isSmall ? 0.8 : 1.0),
+                ),
               ),
             ),
+            if (trailing != null) trailing!,
+            SizedBox(width: 8.w),
             Icon(
               selected
                   ? Icons.check_circle_rounded
@@ -632,11 +729,12 @@ class _FolderSelectionTile extends StatelessWidget {
                   selected
                       ? kPrimaryColor
                       : kWhiteColor.withValues(alpha: 0.35),
-              size: 20.sp,
+              size: isSmall ? 18.sp : 20.sp,
             ),
           ],
         ),
       ),
     );
   }
+
 }

@@ -694,6 +694,172 @@ class ChessBoardScreenNotifierNew
     });
   }
 
+  void _handleGameStreamUpdate(
+    Map<String, dynamic> gameData, {
+    required String source,
+  }) {
+    _releaseLog(
+      '📦 DATA[$source]: game ${game.gameId}, '
+      'white_clock=${gameData['last_clock_white']}, '
+      'black_clock=${gameData['last_clock_black']}, '
+      'pgn_length=${(gameData['pgn'] as String?)?.length ?? 0}',
+    );
+
+    final currentState = state.valueOrNull;
+    if (currentState == null) return;
+
+    // Check if PGN has changed (new moves)
+    final newPgn = gameData['pgn'] as String?;
+    final previousResolvedPgn = currentState.pgnData ?? game.pgn;
+    final pgnChanged = newPgn != null && newPgn != previousResolvedPgn;
+    final streamStatus = gameData['status'] as String?;
+
+    // Update game data with ALL stream values including PGN
+    game = game.copyWith(
+      pgn: newPgn ?? game.pgn,
+      fen: gameData['fen'] as String? ?? game.fen,
+      lastMove: gameData['last_move'] as String? ?? game.lastMove,
+      lastMoveTime:
+          gameData['last_move_time'] != null
+              ? DateTime.tryParse(gameData['last_move_time'] as String)
+              : game.lastMoveTime,
+      whiteClockSeconds: (gameData['last_clock_white'] as num?)?.round(),
+      blackClockSeconds: (gameData['last_clock_black'] as num?)?.round(),
+      gameStatus:
+          streamStatus != null
+              ? _parseGameStatus(streamStatus)
+              : game.gameStatus,
+    );
+
+    // CRITICAL: Update state immediately with new game object to show clock changes
+    state = AsyncValue.data(currentState.copyWith(game: game));
+
+    // Stop auto-following when game finishes
+    if (game.gameStatus.isFinished) {
+      _isFollowingLive = false;
+    }
+
+    // Only update moves if PGN actually changed (new moves arrived)
+    if (pgnChanged) {
+      final liveFen = gameData['fen'] as String?;
+      final liveUci = gameData['last_move'] as String?;
+      bool fastPathSuccess = false;
+
+      // Audit Optimization: Fast-path incremental move application.
+      // If we have a single new move (UCI) and its resulting FEN matches
+      // the server's new FEN, we can just append it instead of reparsing the whole PGN.
+      if (liveFen != null &&
+          liveUci != null &&
+          currentState.allMoves.isNotEmpty) {
+        try {
+          // Find the actual final position from all moves
+          Position finalPos =
+              currentState.startingPosition ??
+              Position.setupPosition(
+                Rule.chess,
+                Setup.parseFen(_defaultStartFen),
+              );
+          for (final m in currentState.allMoves) {
+            finalPos = finalPos.play(m);
+          }
+
+          final extraMove = Move.parse(liveUci);
+          if (extraMove != null && finalPos.isLegal(extraMove)) {
+            final sanResult = finalPos.makeSan(extraMove);
+            final candidatePos = finalPos.play(extraMove);
+
+            if (_normalizeFen(candidatePos.fen) == _normalizeFen(liveFen)) {
+              _releaseLog(
+                '⚡ FAST PATH[$source]: Appending incremental move '
+                '$liveUci without full PGN parse',
+              );
+
+              final newAllMoves = [...currentState.allMoves, extraMove];
+              final newMoveSans = [...currentState.moveSans, sanResult.$2];
+              final newMoveTimes = [...currentState.moveTimes, ''];
+
+              final wasViewingLastMove =
+                  currentState.currentMoveIndex ==
+                  currentState.allMoves.length - 1;
+              final isFollowing =
+                  game.gameStatus.isOngoing
+                      ? _isFollowingLive
+                      : wasViewingLastMove;
+              final newMoveIndex =
+                  isFollowing
+                      ? newAllMoves.length - 1
+                      : currentState.currentMoveIndex;
+
+              Position displayPosition =
+                  currentState.startingPosition ??
+                  Position.setupPosition(
+                    Rule.chess,
+                    Setup.parseFen(_defaultStartFen),
+                  );
+              Move? displayLastMove;
+              if (newMoveIndex >= 0 && newMoveIndex < newAllMoves.length) {
+                for (int i = 0; i <= newMoveIndex; i++) {
+                  displayLastMove = newAllMoves[i];
+                  displayPosition = displayPosition.play(newAllMoves[i]);
+                }
+              }
+
+              final newState = currentState.copyWith(
+                game: game,
+                position: candidatePos,
+                lastMove: extraMove,
+                allMoves: newAllMoves,
+                moveSans: newMoveSans,
+                moveTimes: newMoveTimes,
+                currentMoveIndex: newMoveIndex,
+                pgnData: newPgn,
+                analysisState: currentState.analysisState.copyWith(
+                  position: displayPosition,
+                  lastMove: displayLastMove,
+                  currentMoveIndex: newMoveIndex,
+                  allMoves: newAllMoves,
+                  moveSans: newMoveSans,
+                ),
+                hasUnseenMoves: !isFollowing,
+                evaluation: null,
+                isEvaluating: true,
+              );
+
+              state = AsyncValue.data(newState);
+
+              if (isFollowing) {
+                _updateLastSeenMoveCount(newMoveSans.length);
+                _analysisNavigator?.updateWithLatestGame(
+                  _createChessGameFromPgn(newPgn),
+                  goToTail: true,
+                );
+
+                final currentVisiblePage = ref.read(
+                  currentlyVisiblePageIndexProvider,
+                );
+                if (index == currentVisiblePage) {
+                  _updateEvaluation(force: true);
+                }
+              }
+
+              fastPathSuccess = true;
+            }
+          }
+        } catch (_) {
+          // Fast path failed, fallback to full parse
+        }
+      }
+
+      if (!fastPathSuccess) {
+        _releaseLog(
+          '🆕 NEW MOVES[$source]: Reparsing PGN for game ${game.gameId}',
+        );
+        _hasParsedMoves = false;
+        unawaited(parseMoves(pgnOverride: newPgn));
+      }
+    }
+  }
+
   void _setupPgnStreamListener() {
     // Only listen to game updates stream if the game is ongoing
     _releaseLog(
@@ -705,172 +871,22 @@ class ChessBoardScreenNotifierNew
       // CONSOLIDATED: One stream for ALL game data (PGN, clocks, status, etc.)
       ref.listen(gameUpdatesStreamProvider(game.gameId), (previous, next) {
         _releaseLog('📡 STREAM EVENT for game ${game.gameId}');
-
         next.whenData((gameData) {
           if (gameData == null) return;
-
-          _releaseLog(
-            '📦 DATA: game ${game.gameId}, white_clock=${gameData['last_clock_white']}, black_clock=${gameData['last_clock_black']}, pgn_length=${(gameData['pgn'] as String?)?.length ?? 0}',
-          );
-
-          final currentState = state.value;
-          if (currentState == null) return;
-
-          // Check if PGN has changed (new moves)
-          final newPgn = gameData['pgn'] as String?;
-          final pgnChanged = newPgn != null && newPgn != game.pgn;
-          final streamStatus = gameData['status'] as String?;
-
-          // Update game data with ALL stream values including PGN
-          game = game.copyWith(
-            pgn: newPgn ?? game.pgn,
-            fen: gameData['fen'] as String? ?? game.fen,
-            lastMove: gameData['last_move'] as String? ?? game.lastMove,
-            lastMoveTime:
-                gameData['last_move_time'] != null
-                    ? DateTime.tryParse(gameData['last_move_time'] as String)
-                    : game.lastMoveTime,
-            whiteClockSeconds: (gameData['last_clock_white'] as num?)?.round(),
-            blackClockSeconds: (gameData['last_clock_black'] as num?)?.round(),
-            gameStatus:
-                streamStatus != null
-                    ? _parseGameStatus(streamStatus)
-                    : game.gameStatus,
-          );
-
-          // CRITICAL: Update state immediately with new game object to show clock changes
-          state = AsyncValue.data(currentState.copyWith(game: game));
-
-          // Stop auto-following when game finishes
-          if (game.gameStatus.isFinished) {
-            _isFollowingLive = false;
-          }
-
-          // Only update moves if PGN actually changed (new moves arrived)
-          if (pgnChanged) {
-            final liveFen = gameData['fen'] as String?;
-            final liveUci = gameData['last_move'] as String?;
-            bool fastPathSuccess = false;
-
-            // Audit Optimization: Fast-path incremental move application.
-            // If we have a single new move (UCI) and its resulting FEN matches
-            // the server's new FEN, we can just append it instead of reparsing the whole PGN.
-            if (liveFen != null &&
-                liveUci != null &&
-                currentState.allMoves.isNotEmpty) {
-              try {
-                // Find the actual final position from all moves
-                Position finalPos =
-                    currentState.startingPosition ??
-                    Position.setupPosition(
-                      Rule.chess,
-                      Setup.parseFen(_defaultStartFen),
-                    );
-                for (final m in currentState.allMoves) {
-                  finalPos = finalPos.play(m);
-                }
-
-                final extraMove = Move.parse(liveUci);
-                if (extraMove != null && finalPos.isLegal(extraMove)) {
-                  final sanResult = finalPos.makeSan(extraMove);
-                  final candidatePos = finalPos.play(extraMove);
-
-                  if (_normalizeFen(candidatePos.fen) ==
-                      _normalizeFen(liveFen)) {
-                    _releaseLog(
-                      '⚡ FAST PATH: Appending incremental move $liveUci without full PGN parse',
-                    );
-
-                    final newAllMoves = [...currentState.allMoves, extraMove];
-                    final newMoveSans = [
-                      ...currentState.moveSans,
-                      sanResult.$2,
-                    ];
-                    final newMoveTimes = [...currentState.moveTimes, ''];
-
-                    final wasViewingLastMove =
-                        currentState.currentMoveIndex ==
-                        currentState.allMoves.length - 1;
-                    final isFollowing =
-                        game.gameStatus.isOngoing
-                            ? _isFollowingLive
-                            : wasViewingLastMove;
-                    final newMoveIndex =
-                        isFollowing
-                            ? newAllMoves.length - 1
-                            : currentState.currentMoveIndex;
-
-                    Position displayPosition =
-                        currentState.startingPosition ??
-                        Position.setupPosition(
-                          Rule.chess,
-                          Setup.parseFen(_defaultStartFen),
-                        );
-                    Move? displayLastMove;
-                    if (newMoveIndex >= 0 &&
-                        newMoveIndex < newAllMoves.length) {
-                      for (int i = 0; i <= newMoveIndex; i++) {
-                        displayLastMove = newAllMoves[i];
-                        displayPosition = displayPosition.play(newAllMoves[i]);
-                      }
-                    }
-
-                    final newState = currentState.copyWith(
-                      game: game,
-                      position: candidatePos,
-                      lastMove: extraMove,
-                      allMoves: newAllMoves,
-                      moveSans: newMoveSans,
-                      moveTimes: newMoveTimes,
-                      currentMoveIndex: newMoveIndex,
-                      pgnData: newPgn,
-                      analysisState: currentState.analysisState.copyWith(
-                        position: displayPosition,
-                        lastMove: displayLastMove,
-                        currentMoveIndex: newMoveIndex,
-                        allMoves: newAllMoves,
-                        moveSans: newMoveSans,
-                      ),
-                      hasUnseenMoves: !isFollowing,
-                      evaluation: null,
-                      isEvaluating: true,
-                    );
-
-                    state = AsyncValue.data(newState);
-
-                    if (isFollowing) {
-                      _updateLastSeenMoveCount(newMoveSans.length);
-                      _analysisNavigator?.updateWithLatestGame(
-                        _createChessGameFromPgn(newPgn),
-                        goToTail: true,
-                      );
-
-                      final currentVisiblePage = ref.read(
-                        currentlyVisiblePageIndexProvider,
-                      );
-                      if (index == currentVisiblePage) {
-                        _updateEvaluation(force: true);
-                      }
-                    }
-
-                    fastPathSuccess = true;
-                  }
-                }
-              } catch (_) {
-                // Fast path failed, fallback to full parse
-              }
-            }
-
-            if (!fastPathSuccess) {
-              _releaseLog(
-                '🆕 NEW MOVES: Reparsing PGN for game ${game.gameId}',
-              );
-              _hasParsedMoves = false;
-              parseMoves(pgnOverride: newPgn);
-            }
-          }
+          _handleGameStreamUpdate(gameData, source: 'stream');
         });
       });
+
+      // If the list/card view already has a live stream subscription for this
+      // game, Riverpod may hand us the cached latest row without triggering the
+      // listener immediately. Seed from that cached value so reopening the
+      // board does not wait for yet another move to catch up.
+      final seededGameData =
+          ref.read(gameUpdatesStreamProvider(game.gameId)).valueOrNull;
+      if (seededGameData != null) {
+        _releaseLog('🌱 STREAM SEED for game ${game.gameId}');
+        _handleGameStreamUpdate(seededGameData, source: 'seed');
+      }
     }
   }
 
@@ -1767,45 +1783,8 @@ class ChessBoardScreenNotifierNew
   }
 
   Future<void> promoteBranchToMainVariant(ChessMovePointer pointer) async {
-    if (_analysisNavigator == null) return;
-    final currentState = state.value;
-    if (currentState == null) return;
-
-    final sourceGame =
-        currentState.analysisState.game ?? _analysisNavigator!.state.game;
-    final branchLine = _extractMainlineFromPointer(sourceGame, pointer);
-    if (branchLine == null || branchLine.isEmpty) {
-      _releaseLog(
-        '🎯 PROMOTE BRANCH: Failed to extract branch for pointer $pointer',
-      );
-      return;
-    }
-
-    final newGame = sourceGame.copyWith(mainline: branchLine);
-    final movePointer =
-        branchLine.isEmpty ? const <Number>[] : <Number>[branchLine.length - 1];
-
-    _analysisNavigator!.replaceState(
-      ChessGameNavigatorState(game: newGame, movePointer: movePointer),
-    );
-
-    final newPgn = exportGameToPgn(newGame);
-    final cleared = _clearVariantSelection(currentState);
-    state = AsyncValue.data(
-      cleared.copyWith(
-        pgnData: newPgn,
-        principalVariations: const [],
-        selectedVariantIndex: null,
-        variantMovePointer: const [],
-        variantBaseFen: null,
-      ),
-    );
-
-    _syncAnalysisFromNavigator(_analysisNavigator!.state);
-    await _persistAnalysisState();
-    _updateEvaluation(force: true);
-    HapticFeedback.heavyImpact();
-    _releaseLog('🎯 PROMOTE BRANCH: Completed promotion for pointer $pointer');
+    _releaseLog('🎯 PROMOTE BRANCH: Promoting variant at pointer $pointer');
+    await promoteVariationAtPointer(pointer);
   }
 
   Future<void> clearUserAnalysis() async {
@@ -2465,57 +2444,6 @@ class ChessBoardScreenNotifierNew
     _releaseLog('🎯 PROMOTE PREVIEW: Promotion complete');
   }
 
-  ChessLine? _extractMainlineFromPointer(
-    ChessGame game,
-    ChessMovePointer pointer,
-  ) {
-    if (game.mainline.isEmpty) {
-      return const <ChessMove>[];
-    }
-    ChessLine? currentLine = game.mainline;
-    final branch = <ChessMove>[];
-    var pointerIndex = 0;
-    var lastIncludedIndex = -1;
-
-    while (currentLine != null) {
-      if (pointerIndex >= pointer.length) {
-        for (var i = lastIncludedIndex + 1; i < currentLine.length; i++) {
-          branch.add(_stripVariations(currentLine[i]));
-        }
-        break;
-      }
-
-      final index = pointer[pointerIndex].toInt();
-      if (pointerIndex.isEven) {
-        if (index >= currentLine.length) {
-          return null;
-        }
-        for (var i = lastIncludedIndex + 1; i <= index; i++) {
-          branch.add(_stripVariations(currentLine[i]));
-        }
-        lastIncludedIndex = index;
-        pointerIndex++;
-      } else {
-        if (lastIncludedIndex < 0 || lastIncludedIndex >= currentLine.length) {
-          return null;
-        }
-        final variations = currentLine[lastIncludedIndex].variations;
-        if (variations == null || index >= variations.length) {
-          return null;
-        }
-        currentLine = variations[index];
-        lastIncludedIndex = -1;
-        pointerIndex++;
-      }
-    }
-
-    return branch;
-  }
-
-  ChessMove _stripVariations(ChessMove move) {
-    return move.copyWith(variations: null, overrideVariations: true);
-  }
-
   void navigateLockedPvForward() {
     final currentState = state.value;
     if (currentState == null) {
@@ -3097,10 +3025,30 @@ class ChessBoardScreenNotifierNew
   }
 
   Future<void> moveForward() async {
+    final currentState = state.value;
+    if (currentState == null || _isProcessingMove) return;
+
+    final canAdvance =
+        currentState.isAnalysisMode
+            ? _canAnalysisNavigatorMoveForward()
+            : currentState.canMoveForward;
+
+    if (!canAdvance) return;
+
     await _queueNavigation(1);
   }
 
   Future<void> moveBackward() async {
+    final currentState = state.value;
+    if (currentState == null || _isProcessingMove) return;
+
+    final canAdvance =
+        currentState.isAnalysisMode
+            ? _canAnalysisNavigatorMoveBackward()
+            : currentState.canMoveBackward;
+
+    if (!canAdvance) return;
+
     await _queueNavigation(-1);
   }
 
@@ -3159,27 +3107,28 @@ class ChessBoardScreenNotifierNew
     }
 
     _exitPvPreviewIfActive();
+    final freshState = state.value;
     // Bottom nav arrows should navigate within the active context
     // (analysis variation or main game) without forcing a mode change
-    if (currentState == null || _isProcessingMove) {
+    if (freshState == null || _isProcessingMove) {
       return false;
     }
 
     final canAdvance =
-        currentState.isAnalysisMode
+        freshState.isAnalysisMode
             ? _canAnalysisNavigatorMoveForward()
-            : currentState.canMoveForward;
+            : freshState.canMoveForward;
 
     if (!canAdvance) {
       return false;
     }
 
-    if (currentState.isAnalysisMode) {
+    if (freshState.isAnalysisMode) {
       analysisStepForward();
       return true;
     }
 
-    await goToMove(currentState.currentMoveIndex + 1);
+    await goToMove(freshState.currentMoveIndex + 1);
     return true;
   }
 
@@ -3200,25 +3149,26 @@ class ChessBoardScreenNotifierNew
     }
 
     _exitPvPreviewIfActive();
-    if (currentState == null || _isProcessingMove) {
+    final freshState = state.value;
+    if (freshState == null || _isProcessingMove) {
       return false;
     }
 
     final canRetreat =
-        currentState.isAnalysisMode
+        freshState.isAnalysisMode
             ? _canAnalysisNavigatorMoveBackward()
-            : currentState.canMoveBackward;
+            : freshState.canMoveBackward;
 
     if (!canRetreat) {
       return false;
     }
 
-    if (currentState.isAnalysisMode) {
+    if (freshState.isAnalysisMode) {
       analysisStepBackward();
       return true;
     }
 
-    await goToMove(currentState.currentMoveIndex - 1);
+    await goToMove(freshState.currentMoveIndex - 1);
     return true;
   }
 
@@ -4005,24 +3955,29 @@ class ChessBoardScreenNotifierNew
     }
 
     _exitPvPreviewIfActive();
-    if (state.value?.isAnalysisMode != true) {
-      _releaseLog('🎯 ANALYSIS STEP FORWARD: Not in analysis mode');
-      return;
-    }
-    if (_analysisGame == null) {
-      _releaseLog('🎯 ANALYSIS STEP FORWARD: ERROR - _analysisGame is null');
-      return;
-    }
-    if (_analysisNavigator == null) {
-      _releaseLog(
-        '🎯 ANALYSIS STEP FORWARD: ERROR - _analysisNavigator is null',
-      );
+
+    // CRITICAL: Re-read state after exiting preview as it may have changed
+    final freshState = state.value;
+    if (freshState == null || freshState.isAnalysisMode != true) {
+      _releaseLog('🎯 ANALYSIS STEP FORWARD: Not in analysis mode after preview exit');
       return;
     }
 
-    if (currentState.selectedVariantIndex != null ||
-        currentState.variantMovePointer.isNotEmpty) {
-      state = AsyncValue.data(_clearVariantSelection(currentState));
+    if (_analysisGame == null || _analysisNavigator == null) {
+      _releaseLog('🎯 ANALYSIS STEP FORWARD: ERROR - Navigator unavailable');
+      return;
+    }
+
+    // DEFENSIVE: Verify we can actually move forward before proceeding.
+    // Tapping quickly beyond the end should be a NO-OP to avoid disrupting ongoing evaluations.
+    if (!_canAnalysisNavigatorMoveForward()) {
+      _releaseLog('🎯 ANALYSIS STEP FORWARD: Already at the end, bailing out');
+      return;
+    }
+
+    if (freshState.selectedVariantIndex != null ||
+        freshState.variantMovePointer.isNotEmpty) {
+      state = AsyncValue.data(_clearVariantSelection(freshState));
     }
 
     // CRITICAL: Reset cancellation flag before navigation to ensure evaluation happens
@@ -4082,24 +4037,29 @@ class ChessBoardScreenNotifierNew
     }
 
     _exitPvPreviewIfActive();
-    if (state.value?.isAnalysisMode != true) {
-      _releaseLog('🎯 ANALYSIS STEP BACKWARD: Not in analysis mode');
-      return;
-    }
-    if (_analysisGame == null) {
-      _releaseLog('🎯 ANALYSIS STEP BACKWARD: ERROR - _analysisGame is null');
-      return;
-    }
-    if (_analysisNavigator == null) {
-      _releaseLog(
-        '🎯 ANALYSIS STEP BACKWARD: ERROR - _analysisNavigator is null',
-      );
+
+    // CRITICAL: Re-read state after exiting preview as it may have changed
+    final freshState = state.value;
+    if (freshState == null || freshState.isAnalysisMode != true) {
+      _releaseLog('🎯 ANALYSIS STEP BACKWARD: Not in analysis mode after preview exit');
       return;
     }
 
-    if (currentState.selectedVariantIndex != null ||
-        currentState.variantMovePointer.isNotEmpty) {
-      state = AsyncValue.data(_clearVariantSelection(currentState));
+    if (_analysisGame == null || _analysisNavigator == null) {
+      _releaseLog('🎯 ANALYSIS STEP BACKWARD: ERROR - Navigator unavailable');
+      return;
+    }
+
+    // DEFENSIVE: Verify we can actually move backward before proceeding.
+    // Tapping quickly beyond the start should be a NO-OP to avoid disrupting ongoing evaluations.
+    if (!_canAnalysisNavigatorMoveBackward()) {
+      _releaseLog('🎯 ANALYSIS STEP BACKWARD: Already at the beginning, bailing out');
+      return;
+    }
+
+    if (freshState.selectedVariantIndex != null ||
+        freshState.variantMovePointer.isNotEmpty) {
+      state = AsyncValue.data(_clearVariantSelection(freshState));
     }
 
     // CRITICAL: Reset cancellation flag before navigation to ensure evaluation happens
@@ -5322,28 +5282,38 @@ class ChessBoardScreenNotifierNew
 
       final depthTracker = ref.read(engineDepthTrackerProvider.notifier);
 
-      // CHECKMATE DETECTION: If position is checkmate, set mate=0 and high eval immediately
-      if (currentPosition!.isCheckmate) {
-        _releaseLog('🎯 EVAL: Position is checkmate, setting mate=0');
+      if (currentPosition!.isGameOver) {
+        final bool isCheckmate = currentPosition.isCheckmate;
+        _releaseLog(
+          '🎯 EVAL: Position is game over (${isCheckmate ? "checkmate" : "draw"}), stopping evaluation',
+        );
         depthTracker.clear(
           EngineComponent.evaluationGauge,
-          reason: 'checkmate',
+          reason: 'game over',
         );
         depthTracker.clear(
           EngineComponent.principalVariation,
-          reason: 'checkmate',
+          reason: 'game over',
         );
-        depthTracker.clear(EngineComponent.cascadeEval, reason: 'checkmate');
-        final checkmateEval =
-            currentPosition.turn == Side.white
-                ? -100.0
-                : 100.0; // Side that got mated loses
+        depthTracker.clear(EngineComponent.cascadeEval, reason: 'game over');
+
+        double? evaluation;
+        int? mate;
+
+        if (isCheckmate) {
+          evaluation = currentPosition.turn == Side.white ? -100.0 : 100.0;
+          mate = 0;
+        } else {
+          evaluation = 0.0;
+          mate = null;
+        }
+
         state = AsyncValue.data(
           initialState.copyWith(
-            evaluation: checkmateEval,
-            mate: 0, // Checkmate delivered
+            evaluation: evaluation,
+            mate: mate,
             isEvaluating: false,
-            principalVariations: const [], // No variations in checkmate
+            principalVariations: const [],
             principalVariationsBaseFen: null,
           ),
         );
@@ -5703,7 +5673,7 @@ class ChessBoardScreenNotifierNew
             return;
           }
 
-          // If we already showed a cached evaluation, don't let Stockfish 
+          // If we already showed a cached evaluation, don't let Stockfish
           // overwrite the UI with shallower/less accurate early searches.
           if (depth <= startingDepth) return;
 
@@ -5728,7 +5698,7 @@ class ChessBoardScreenNotifierNew
             return;
           }
 
-          // If we already showed a cached evaluation, don't let Stockfish 
+          // If we already showed a cached evaluation, don't let Stockfish
           // overwrite the UI with shallower/less accurate early searches.
           if (depth <= startingDepth) return;
 
@@ -5942,44 +5912,59 @@ class ChessBoardScreenNotifierNew
               fenToAnalyze,
               stockfishResult.pvs,
             );
-            if (finalLines.isNotEmpty && mounted) {
-              if (finalLines.length > configuredMultiPV) {
-                finalLines = finalLines
-                    .take(configuredMultiPV)
-                    .toList(growable: false);
-              }
-              pvLines = _mergePvProgress(pvLines, finalLines);
+            if (mounted) {
               final currentState = state.value;
               if (currentState != null) {
-                final basePointer =
-                    currentState.isAnalysisMode
-                        ? currentState.analysisState.movePointer
-                        : null;
-                final updatedState = currentState.copyWith(
-                  evaluation: _evaluationFromPv(
-                    stockfishResult.pvs.first,
-                    fenToAnalyze,
-                  ),
-                  mate: _mateFromPv(stockfishResult.pvs.first, fenToAnalyze),
-                  isEvaluating: false,
-                  principalVariations: pvLines,
-                  principalVariationsBaseFen: fen,
-                  analysisState: currentState.analysisState.copyWith(
-                    suggestionLines: pvLines,
-                  ),
-                );
-                state = AsyncValue.data(updatedState);
-                final currentPositionFinal =
-                    updatedState.isAnalysisMode
-                        ? updatedState.analysisState.position
-                        : updatedState.position!;
-                _applyPrincipalVariationResults(
-                  currentState: updatedState,
-                  currentPosition: currentPositionFinal,
-                  baseFen: fen,
-                  baseMovePointer: basePointer,
-                  pvLines: pvLines,
-                );
+                if (finalLines.isNotEmpty) {
+                  if (finalLines.length > configuredMultiPV) {
+                    finalLines = finalLines
+                        .take(configuredMultiPV)
+                        .toList(growable: false);
+                  }
+                  pvLines = _mergePvProgress(pvLines, finalLines);
+                  final basePointer =
+                      currentState.isAnalysisMode
+                          ? currentState.analysisState.movePointer
+                          : null;
+                  final updatedState = currentState.copyWith(
+                    evaluation: _evaluationFromPv(
+                      stockfishResult.pvs.first,
+                      fenToAnalyze,
+                    ),
+                    mate: _mateFromPv(stockfishResult.pvs.first, fenToAnalyze),
+                    isEvaluating: false,
+                    principalVariations: pvLines,
+                    principalVariationsBaseFen: fen,
+                    analysisState: currentState.analysisState.copyWith(
+                      suggestionLines: pvLines,
+                    ),
+                  );
+                  state = AsyncValue.data(updatedState);
+                  final currentPositionFinal =
+                      updatedState.isAnalysisMode
+                          ? updatedState.analysisState.position
+                          : updatedState.position!;
+                  _applyPrincipalVariationResults(
+                    currentState: updatedState,
+                    currentPosition: currentPositionFinal,
+                    baseFen: fen,
+                    baseMovePointer: basePointer,
+                    pvLines: pvLines,
+                  );
+                } else {
+                  // PV building failed or returned empty (e.g. terminal position)
+                  // Still update evaluation and stop loading shimmer
+                  state = AsyncValue.data(
+                    currentState.copyWith(
+                      evaluation: _evaluationFromPv(
+                        stockfishResult.pvs.first,
+                        fenToAnalyze,
+                      ),
+                      mate: _mateFromPv(stockfishResult.pvs.first, fenToAnalyze),
+                      isEvaluating: false,
+                    ),
+                  );
+                }
               }
             }
           }
@@ -6165,6 +6150,14 @@ class ChessBoardScreenNotifierNew
               }
             } else {
               _releaseLog('❌ RETRY FAILED: Still no PVs after retry');
+              if (mounted) {
+                final latestState = state.value;
+                if (latestState != null && latestState.isEvaluating) {
+                  state = AsyncValue.data(
+                    latestState.copyWith(isEvaluating: false),
+                  );
+                }
+              }
             }
           }
         });
@@ -6373,6 +6366,12 @@ class ChessBoardScreenNotifierNew
         _activeEvalRequestId = null;
         _activeEvalKey = null;
         _activeEvalStartTime = null; // Clear start time on completion
+
+        // FINAL SAFETY: Ensure loading spinner stops when the search completes
+        final finalState = state.value;
+        if (finalState != null && finalState.isEvaluating) {
+          state = AsyncValue.data(finalState.copyWith(isEvaluating: false));
+        }
       }
       if (lastEvaluatedFen != null) {
         _resolvePendingEvaluation(lastEvaluatedFen);
@@ -6397,10 +6396,25 @@ class ChessBoardScreenNotifierNew
     final currentFen = current.analysisState.position.fen;
     final targetFen = navigatorState.currentFen;
     final gameAlreadySet = current.analysisState.game != null;
+
+    // Already at target position with matching FEN and game is set?
     if (gameAlreadySet &&
         listEquals(currentPointer, targetPointer) &&
         currentFen == targetFen) {
-      // Already at target position with matching FEN and game is set, skip redundant sync
+      // CRITICAL FIX: Even if position matches, verify we aren't stuck in a "dead" evaluating state.
+      // This can happen during rapid tapping if a previous evaluation was cancelled but the UI
+      // is still showing a loading shimmer (isEvaluating: true).
+      final isStuckEvaluating =
+          current.isEvaluating &&
+          current.evaluation == null &&
+          current.mate == null &&
+          current.principalVariations.isEmpty;
+
+      if (isStuckEvaluating) {
+        _releaseLog('🎯 SYNC FROM NAVIGATOR: Redundant sync but stuck evaluating, refreshing...');
+        _cancelEvaluation = false;
+        _updateEvaluation();
+      }
       return;
     }
 
@@ -6840,7 +6854,15 @@ class ChessBoardScreenNotifierNew
     }
 
     void scheduleEvaluation() {
-      if (_cancelEvaluation || !mounted) return;
+      if (_cancelEvaluation || !mounted) {
+        // SAFETY: Clear isEvaluating state if evaluation was cancelled
+        // This prevents the UI from being stuck in a loading state
+        final lastState = state.value;
+        if (lastState != null && lastState.isEvaluating) {
+          state = AsyncValue.data(lastState.copyWith(isEvaluating: false));
+        }
+        return;
+      }
       if (state.value == null) return;
 
       _releaseLog(
@@ -6939,11 +6961,12 @@ class ChessBoardScreenNotifierNew
   void stopLongPress() {
     _longPressTimer?.cancel();
     _longPressTimer = null;
-    _cancelEvaluation = true;
     if (_isLongPressing) {
       _isLongPressing = false;
+      _cancelEvaluation = true;
+      StockfishSingleton().cancelEvaluationsForOwner(_stockfishOwnerId);
       _cancelEvaluation = false;
-      _updateEvaluation();
+      _updateEvaluation(force: true);
     }
   }
 

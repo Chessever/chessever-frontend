@@ -164,4 +164,36 @@ class TourRepository extends BaseRepository {
       return (response as List).map((json) => Tour.fromJson(json)).toList();
     });
   }
+
+  /// Search players within a specific tour using Supabase.
+  /// This ensures search works correctly regardless of client-side pagination.
+  Future<List<TournamentPlayer>> searchPlayersInTour(
+    String tourId,
+    String query,
+  ) async {
+    return handleApiCall(() async {
+      if (query.trim().isEmpty) return [];
+
+      // Note: Since players are stored in a JSONB array, performing a partial
+      // text search directly in Supabase without an RPC requires fetching the
+      // array and filtering. If an RPC 'search_tour_players' is added later,
+      // it should be used here.
+      final response = await supabase
+          .from('tours')
+          .select('players')
+          .eq('id', tourId)
+          .single();
+
+      final playersRaw = response['players'];
+      final playersList = playersRaw is List ? playersRaw : const <dynamic>[];
+      final players = parsePlayersFromJson(playersList);
+
+      final lowerQuery = query.toLowerCase().trim();
+      return players.where((p) {
+        return p.name.toLowerCase().contains(lowerQuery) ||
+            (p.title?.toLowerCase().contains(lowerQuery) ?? false) ||
+            (p.federation?.toLowerCase().contains(lowerQuery) ?? false);
+      }).toList();
+    });
+  }
 }

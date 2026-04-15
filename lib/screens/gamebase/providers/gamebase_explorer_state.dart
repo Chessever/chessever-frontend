@@ -50,6 +50,7 @@ class GamebaseFilters with GamebaseFiltersMappable {
     this.selectedPlayers = const [],
     this.playerColor,
     this.gameResult,
+    this.isOnline,
     this.yearFrom,
     this.yearTo,
     this.sortBy = GamebaseSortField.date,
@@ -76,6 +77,8 @@ class GamebaseFilters with GamebaseFiltersMappable {
 
   /// Game result filter (null = all results)
   final GamebaseGameResult? gameResult;
+
+  final bool? isOnline;
 
   /// Minimum game year filter
   final int? yearFrom;
@@ -129,8 +132,7 @@ class GamebaseExplorerState with GamebaseExplorerStateMappable {
   final ChessMovePointer movePointer;
 
   /// Check if at initial position
-  bool get isAtInitialPosition =>
-      game != null ? movePointer.isEmpty : true;
+  bool get isAtInitialPosition => game != null ? movePointer.isEmpty : true;
 
   /// Check if can go back
   bool get canGoBack => game != null ? movePointer.isNotEmpty : false;
@@ -169,11 +171,13 @@ class GamebaseExplorerState with GamebaseExplorerStateMappable {
       filters.playerColor != null ||
       filters.gameResult != null ||
       filters.yearFrom != null ||
-      filters.yearTo != null;
+      filters.yearTo != null ||
+      filters.isOnline != null;
 
   // Helper methods to replicate navigator logic within state
   static int _pointerToPly(ChessGame game, ChessMovePointer pointer) {
-    if (pointer.isEmpty) return 0; // Assuming start from ply 0 for now or calculate from FEN
+    if (pointer.isEmpty)
+      return 0; // Assuming start from ply 0 for now or calculate from FEN
     // For simplicity, let's just count moves in the pointer path
     // Actually ply should be depth in tree if we count properly.
     // A pointer like [5] is ply 5 (if starting from 0).
@@ -183,7 +187,10 @@ class GamebaseExplorerState with GamebaseExplorerStateMappable {
     return _pointerToUciPath(game, pointer).length;
   }
 
-  static List<String> _pointerToUciPath(ChessGame game, ChessMovePointer pointer) {
+  static List<String> _pointerToUciPath(
+    ChessGame game,
+    ChessMovePointer pointer,
+  ) {
     final path = <String>[];
     if (pointer.isEmpty) return path;
 
@@ -194,14 +201,16 @@ class GamebaseExplorerState with GamebaseExplorerStateMappable {
       final index = pointer[i];
       if (i.isEven) {
         if (currentList == null || index >= currentList.length) break;
-        for (var j = 0; j <= index; j++) {
+        final limit = (i + 1 < pointer.length) ? index : index + 1;
+        for (var j = 0; j < limit; j++) {
           path.add(currentList![j].uci);
         }
         currentMove = currentList![index];
       } else {
         if (currentMove == null ||
             currentMove.variations == null ||
-            index >= currentMove.variations!.length) break;
+            index >= currentMove.variations!.length)
+          break;
         currentList = currentMove.variations![index];
         // After switching to a variation, we don't add the move yet,
         // it will be added in the next (even) iteration.
@@ -210,7 +219,10 @@ class GamebaseExplorerState with GamebaseExplorerStateMappable {
     return path;
   }
 
-  static ChessMovePointer? _nextPointerInGame(ChessGame game, ChessMovePointer pointer) {
+  static ChessMovePointer? _nextPointerInGame(
+    ChessGame game,
+    ChessMovePointer pointer,
+  ) {
     // Replicate _nextPointerInGame from ChessGameNavigator for canGoForward logic
     if (game.mainline.isEmpty) return null;
     if (pointer.isEmpty) return [0];
@@ -264,8 +276,14 @@ extension GameFilterToGamebaseFilters on GameFilter {
     }
 
     // Explorer slider range is absoluteMinRating–absoluteMaxRating. Clamp and null-out when at boundary.
-    final clampedMin = minRating.clamp(GameFilter.absoluteMinRating, GameFilter.absoluteMaxRating);
-    final clampedMax = maxRating.clamp(GameFilter.absoluteMinRating, GameFilter.absoluteMaxRating);
+    final clampedMin = minRating.clamp(
+      GameFilter.absoluteMinRating,
+      GameFilter.absoluteMaxRating,
+    );
+    final clampedMax = maxRating.clamp(
+      GameFilter.absoluteMinRating,
+      GameFilter.absoluteMaxRating,
+    );
 
     final GamebasePlayerColor? playerColor;
     switch (color) {

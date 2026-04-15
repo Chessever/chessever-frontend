@@ -3,6 +3,7 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/back_drop_filter_widget.dart';
+import 'package:chessever2/widgets/game_filter/eco_filter_dropdown.dart';
 import 'package:chessever2/widgets/game_filter/expandable_filter_dropdown.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:chessever2/widgets/game_filter/wheel_range_filter.dart';
@@ -22,16 +23,21 @@ class GamebaseFilter {
     this.result = GameResultFilter.all,
     this.color = GameColorFilter.all,
     this.timeControl = GameTimeControlFilter.all,
+    this.isOnline = GameOnlineFilter.all,
+    GameEcoFilter? eco,
     this.minYear = GameFilter.defaultMinYear,
     int? maxYear,
     this.minRating = GameFilter.defaultMinRating,
     this.maxRating = GameFilter.absoluteMaxRating,
-  }) : maxYear = maxYear ?? DateTime.now().year;
+  }) : eco = eco ?? GameEcoFilter.all,
+       maxYear = maxYear ?? DateTime.now().year;
 
   final GameTournamentTypeFilter tournamentType;
   final GameResultFilter result;
   final GameColorFilter color;
   final GameTimeControlFilter timeControl;
+  final GameOnlineFilter isOnline;
+  final GameEcoFilter eco;
   final int minYear;
   final int maxYear;
   final int minRating;
@@ -43,6 +49,8 @@ class GamebaseFilter {
       result != GameResultFilter.all ||
       color != GameColorFilter.all ||
       timeControl != GameTimeControlFilter.all ||
+      isOnline != GameOnlineFilter.all ||
+      !eco.isAll ||
       minYear != GameFilter.defaultMinYear ||
       maxYear != DateTime.now().year ||
       minRating != GameFilter.defaultMinRating ||
@@ -55,6 +63,8 @@ class GamebaseFilter {
     if (result != GameResultFilter.all) count++;
     if (color != GameColorFilter.all) count++;
     if (timeControl != GameTimeControlFilter.all) count++;
+    if (isOnline != GameOnlineFilter.all) count++;
+    if (!eco.isAll) count++;
     if (minYear != GameFilter.defaultMinYear || maxYear != DateTime.now().year) count++;
     if (minRating != GameFilter.defaultMinRating || maxRating != GameFilter.absoluteMaxRating) count++;
     return count;
@@ -65,6 +75,8 @@ class GamebaseFilter {
     GameResultFilter? result,
     GameColorFilter? color,
     GameTimeControlFilter? timeControl,
+    GameOnlineFilter? isOnline,
+    GameEcoFilter? eco,
     int? minYear,
     int? maxYear,
     int? minRating,
@@ -75,6 +87,8 @@ class GamebaseFilter {
       result: result ?? this.result,
       color: color ?? this.color,
       timeControl: timeControl ?? this.timeControl,
+      isOnline: isOnline ?? this.isOnline,
+      eco: eco ?? this.eco,
       minYear: minYear ?? this.minYear,
       maxYear: maxYear ?? this.maxYear,
       minRating: minRating ?? this.minRating,
@@ -122,6 +136,18 @@ class GamebaseFilter {
     }
   }
 
+  /// Convert online filter to Gamebase API format
+  bool? get isOnlineApiValue {
+    switch (isOnline) {
+      case GameOnlineFilter.all:
+        return null;
+      case GameOnlineFilter.online:
+        return true;
+      case GameOnlineFilter.otb:
+        return false;
+    }
+  }
+
   @override
   bool operator ==(Object other) {
     if (identical(this, other)) return true;
@@ -130,6 +156,8 @@ class GamebaseFilter {
         other.result == result &&
         other.color == color &&
         other.timeControl == timeControl &&
+        other.isOnline == isOnline &&
+        other.eco == eco &&
         other.minYear == minYear &&
         other.maxYear == maxYear &&
         other.minRating == minRating &&
@@ -142,6 +170,8 @@ class GamebaseFilter {
     result,
     color,
     timeControl,
+    isOnline,
+    eco,
     minYear,
     maxYear,
     minRating,
@@ -177,6 +207,8 @@ class _LibraryGamebaseFilterDialogState
   late GameResultFilter _result;
   late GameColorFilter _color;
   late GameTimeControlFilter _timeControl;
+  late GameOnlineFilter _isOnline;
+  late GameEcoFilter _eco;
   late RangeValues _yearRange;
   late RangeValues _ratingRange;
 
@@ -190,6 +222,8 @@ class _LibraryGamebaseFilterDialogState
     _result = widget.initialFilter.result;
     _color = widget.initialFilter.color;
     _timeControl = widget.initialFilter.timeControl;
+    _isOnline = widget.initialFilter.isOnline;
+    _eco = widget.initialFilter.eco;
     _yearRange = RangeValues(
       widget.initialFilter.minYear.toDouble(),
       widget.initialFilter.maxYear.toDouble(),
@@ -309,6 +343,26 @@ class _LibraryGamebaseFilterDialogState
                       ),
                       SizedBox(height: 20.h),
 
+                      // Online filter
+                      _sectionLabel('Format'),
+                      SizedBox(height: 8.h),
+                      ExpandableFilterDropdown<GameOnlineFilter>(
+                        value: _isOnline,
+                        items: GameOnlineFilter.values,
+                        itemLabel: (v) => v.displayText,
+                        onChanged: (v) => setState(() => _isOnline = v),
+                      ),
+                      SizedBox(height: 20.h),
+
+                      // ECO filter
+                      _sectionLabel('Opening'),
+                      SizedBox(height: 8.h),
+                      EcoFilterDropdown(
+                        value: _eco,
+                        onChanged: (v) => setState(() => _eco = v),
+                      ),
+                      SizedBox(height: 20.h),
+
                       // Year range slider
                       _sectionLabel('Year'),
                       SizedBox(height: 8.h),
@@ -392,6 +446,16 @@ class _LibraryGamebaseFilterDialogState
     if (_timeControl != GameTimeControlFilter.all) {
       activeChipWidgets.add(buildChip('TC: ${_timeControl.displayText}', () {
         setState(() => _timeControl = GameTimeControlFilter.all);
+      }));
+    }
+    if (_isOnline != GameOnlineFilter.all) {
+      activeChipWidgets.add(buildChip('Format: ${_isOnline.displayText}', () {
+        setState(() => _isOnline = GameOnlineFilter.all);
+      }));
+    }
+    if (!_eco.isAll) {
+      activeChipWidgets.add(buildChip('ECO: ${_eco.code}', () {
+        setState(() => _eco = GameEcoFilter.all);
       }));
     }
     if (_yearRange.start > GameFilter.defaultMinYear || _yearRange.end < DateTime.now().year) {
@@ -494,12 +558,15 @@ class _LibraryGamebaseFilterDialogState
   }
 
   void _applyFilters() {
+    FocusScope.of(context).unfocus();
     HapticFeedbackService.buttonPress();
     final newFilter = GamebaseFilter(
       tournamentType: _tournamentType,
       result: _result,
       color: _color,
       timeControl: _timeControl,
+      isOnline: _isOnline,
+      eco: _eco,
       minYear: _yearRange.start.round(),
       maxYear: _yearRange.end.round(),
       minRating: _ratingRange.start.round(),

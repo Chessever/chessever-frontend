@@ -58,6 +58,12 @@ class GamebaseFiltersMapper extends ClassMapperBase<GamebaseFilters> {
     _$gameResult,
     opt: true,
   );
+  static bool? _$isOnline(GamebaseFilters v) => v.isOnline;
+  static const Field<GamebaseFilters, bool> _f$isOnline = Field(
+    'isOnline',
+    _$isOnline,
+    opt: true,
+  );
   static int? _$yearFrom(GamebaseFilters v) => v.yearFrom;
   static const Field<GamebaseFilters, int> _f$yearFrom = Field(
     'yearFrom',
@@ -96,6 +102,7 @@ class GamebaseFiltersMapper extends ClassMapperBase<GamebaseFilters> {
     #selectedPlayers: _f$selectedPlayers,
     #playerColor: _f$playerColor,
     #gameResult: _f$gameResult,
+    #isOnline: _f$isOnline,
     #yearFrom: _f$yearFrom,
     #yearTo: _f$yearTo,
     #sortBy: _f$sortBy,
@@ -111,6 +118,7 @@ class GamebaseFiltersMapper extends ClassMapperBase<GamebaseFilters> {
       selectedPlayers: data.dec(_f$selectedPlayers),
       playerColor: data.dec(_f$playerColor),
       gameResult: data.dec(_f$gameResult),
+      isOnline: data.dec(_f$isOnline),
       yearFrom: data.dec(_f$yearFrom),
       yearTo: data.dec(_f$yearTo),
       sortBy: data.dec(_f$sortBy),
@@ -197,6 +205,7 @@ abstract class GamebaseFiltersCopyWith<$R, $In extends GamebaseFilters, $Out>
     List<GamebasePlayer>? selectedPlayers,
     GamebasePlayerColor? playerColor,
     GamebaseGameResult? gameResult,
+    bool? isOnline,
     int? yearFrom,
     int? yearTo,
     GamebaseSortField? sortBy,
@@ -249,6 +258,7 @@ class _GamebaseFiltersCopyWithImpl<$R, $Out>
     List<GamebasePlayer>? selectedPlayers,
     Object? playerColor = $none,
     Object? gameResult = $none,
+    Object? isOnline = $none,
     Object? yearFrom = $none,
     Object? yearTo = $none,
     GamebaseSortField? sortBy,
@@ -262,6 +272,7 @@ class _GamebaseFiltersCopyWithImpl<$R, $Out>
       if (selectedPlayers != null) #selectedPlayers: selectedPlayers,
       if (playerColor != $none) #playerColor: playerColor,
       if (gameResult != $none) #gameResult: gameResult,
+      if (isOnline != $none) #isOnline: isOnline,
       if (yearFrom != $none) #yearFrom: yearFrom,
       if (yearTo != $none) #yearTo: yearTo,
       if (sortBy != null) #sortBy: sortBy,
@@ -277,6 +288,7 @@ class _GamebaseFiltersCopyWithImpl<$R, $Out>
     selectedPlayers: data.get(#selectedPlayers, or: $value.selectedPlayers),
     playerColor: data.get(#playerColor, or: $value.playerColor),
     gameResult: data.get(#gameResult, or: $value.gameResult),
+    isOnline: data.get(#isOnline, or: $value.isOnline),
     yearFrom: data.get(#yearFrom, or: $value.yearFrom),
     yearTo: data.get(#yearTo, or: $value.yearTo),
     sortBy: data.get(#sortBy, or: $value.sortBy),

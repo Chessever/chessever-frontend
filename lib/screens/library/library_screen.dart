@@ -42,6 +42,11 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   void initState() {
     super.initState();
     _searchFocusNode.addListener(_onSearchFocusChange);
+
+    // Ensure default folders for new users
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(libraryRepositoryProvider).ensureDefaultFolders();
+    });
   }
 
   void _onSearchFocusChange() {
@@ -95,12 +100,13 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     }
 
     if (!mounted) return;
-    final name = await showCreateFolderDialog(context);
-    if (name == null || name.isEmpty) return;
+    final data = await showCreateFolderDialog(context);
+    if (data == null || data.name.isEmpty) return;
 
     try {
       final repository = ref.read(libraryRepositoryProvider);
-      final newFolder = await repository.createFolder(name: name);
+      final newFolder =
+          await repository.createFolder(name: data.name, parentId: data.parentId);
 
       // Force refresh folders provider to ensure immediate UI update
       // (Supabase streams may have slight delay)
@@ -112,7 +118,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'Database "$name" created',
+              'Database "${data.name}" created',
               style: TextStyle(color: kWhiteColor),
             ),
             backgroundColor: kBlack2Color.withValues(alpha: 0.95),
@@ -319,10 +325,19 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
         ownedFoldersAsync.valueOrNull ?? const <LibraryFolder>[];
     final subscribedFolders =
         subscribedFoldersAsync.valueOrNull ?? const <LibraryFolder>[];
+
+    // Filter logic:
+    // 1. If searching, show all matching folders regardless of hierarchy.
+    // 2. If not searching, show only root-level folders (parentId == null).
     final combinedFolders = <LibraryFolder>[
       ...ownedFolders,
       ...subscribedFolders,
-    ];
+    ].where((f) {
+      if (_searchQuery.isNotEmpty) {
+        return f.name.toLowerCase().contains(_searchQuery);
+      }
+      return f.parentId == null;
+    }).toList();
 
     // Keep the page in loading until the initial async surface is truly settled.
     // This prevents brief provider errors from flashing the full-page error UI.

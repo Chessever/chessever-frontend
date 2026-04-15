@@ -14,6 +14,7 @@ class LibraryFolder with LibraryFolderMappable {
   final DateTime updatedAt;
   final String? shareToken;
   final String? ownerDisplayName;
+  final String? parentId;
 
   /// Client-side only — true when this folder was fetched via subscription.
   /// Not stored in DB; set by the provider layer.
@@ -30,10 +31,11 @@ class LibraryFolder with LibraryFolderMappable {
     required this.updatedAt,
     this.shareToken,
     this.ownerDisplayName,
+    this.parentId,
     this.isSubscribed = false,
   });
 
-  /// Create LibraryFolder from Supabase response
+  /// Convert Supabase JSON to LibraryFolder
   factory LibraryFolder.fromSupabase(Map<String, dynamic> json) {
     return LibraryFolder(
       id: json['id'] as String,
@@ -45,22 +47,8 @@ class LibraryFolder with LibraryFolderMappable {
       createdAt: DateTime.parse(json['created_at'] as String),
       updatedAt: DateTime.parse(json['updated_at'] as String),
       shareToken: json['share_token'] as String?,
-      ownerDisplayName: json['owner_display_name'] as String?,
+      parentId: json['parent_id'] as String?,
     );
-  }
-
-  /// Convert to Supabase format (for updates)
-  Map<String, dynamic> toSupabase() {
-    return {
-      'id': id,
-      'user_id': userId,
-      'name': name,
-      'color': color,
-      'icon': icon,
-      'order_index': orderIndex,
-      'created_at': createdAt.toIso8601String(),
-      'updated_at': updatedAt.toIso8601String(),
-    };
   }
 
   /// Convert to Supabase format for insert (without id, timestamps auto-generated)
@@ -71,6 +59,22 @@ class LibraryFolder with LibraryFolderMappable {
       'color': color,
       'icon': icon,
       'order_index': orderIndex,
+      'parent_id': parentId,
+    };
+  }
+
+  /// Convert to regular map for other uses
+  Map<String, dynamic> toSupabaseMap() {
+    return {
+      'id': id,
+      'user_id': userId,
+      'name': name,
+      'color': color,
+      'icon': icon,
+      'order_index': orderIndex,
+      'created_at': createdAt.toIso8601String(),
+      'updated_at': updatedAt.toIso8601String(),
+      'parent_id': parentId,
     };
   }
 }

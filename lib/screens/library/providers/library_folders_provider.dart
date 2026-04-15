@@ -53,6 +53,32 @@ final combinedLibraryFoldersProvider =
       return [...owned, ...subscribed];
     });
 
+/// Top-level (root) folders only
+final rootLibraryFoldersProvider = Provider.autoDispose<List<LibraryFolder>>((
+  ref,
+) {
+  final all = ref.watch(combinedLibraryFoldersProvider).valueOrNull ?? [];
+  return all.where((f) => f.parentId == null).toList();
+});
+
+/// Children of a specific folder
+final childLibraryFoldersProvider =
+    Provider.autoDispose.family<List<LibraryFolder>, String>((ref, parentId) {
+      final all = ref.watch(combinedLibraryFoldersProvider).valueOrNull ?? [];
+      return all.where((f) => f.parentId == parentId).toList();
+    });
+
+/// Top 3 most recently updated databases for quick selection
+final recentDatabasesProvider = Provider.autoDispose<List<LibraryFolder>>((
+  ref,
+) {
+  final all = ref.watch(combinedLibraryFoldersProvider).valueOrNull ?? [];
+  // Exclude TWIC and sort by updatedAt desc
+  final owned = all.where((f) => f.id != kTwicBookId).toList();
+  owned.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+  return owned.take(3).toList();
+});
+
 /// Preview data for a shared book by its share token (for deep link landing).
 final sharedBookPreviewProvider = FutureProvider.autoDispose
     .family<SharedBookPreview?, String>((ref, shareToken) async {

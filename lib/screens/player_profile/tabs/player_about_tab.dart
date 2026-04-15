@@ -32,6 +32,7 @@ typedef PlayerGamesOpenCallback =
       GameTimeControlFilter? timeControl,
       GameColorFilter? color,
       GameEcoFilter? eco,
+      GameOnlineFilter? online,
       PlayerResultFilter? playerResultFilter,
       String? searchQuery,
     });
@@ -327,6 +328,7 @@ class _PlayerAboutTabState extends ConsumerState<PlayerAboutTab>
                                       filter: currentFilter,
                                       totalGames: allGames.length,
                                       filteredGames: filteredGames.length,
+                                      showFormat: widget.dataSource == PlayerProfileDataSource.twic,
                                     ),
                                   )
                                   : const SizedBox.shrink(),
@@ -681,6 +683,7 @@ class _PlayerAboutTabState extends ConsumerState<PlayerAboutTab>
                       filter: currentFilter,
                       totalGames: base.resultStats.totalGames,
                       filteredGames: filtered.resultStats.totalGames,
+                      showFormat: true,
                     ),
                   )
                   : const SizedBox.shrink(),
@@ -785,11 +788,13 @@ class _FilterActiveBanner extends StatelessWidget {
     required this.filter,
     required this.totalGames,
     required this.filteredGames,
+    this.showFormat = true,
   });
 
   final GameFilter filter;
   final int totalGames;
   final int filteredGames;
+  final bool showFormat;
 
   static const _filterRedColor = Color(0xFFEF4444);
 
@@ -801,6 +806,9 @@ class _FilterActiveBanner extends StatelessWidget {
     }
     if (filter.color != GameColorFilter.all) {
       parts.add(filter.color == GameColorFilter.white ? 'White' : 'Black');
+    }
+    if (showFormat && filter.online != GameOnlineFilter.all) {
+      parts.add(filter.online.displayText);
     }
     if (!filter.eco.isAll) {
       parts.add(filter.eco.code ?? 'Opening');

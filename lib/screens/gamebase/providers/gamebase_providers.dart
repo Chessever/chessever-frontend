@@ -40,31 +40,33 @@ int _pliesFromFen(String fen) {
 /// StateNotifier for managing Gamebase explorer state.
 class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
   GamebaseExplorerNotifier(this.ref)
-      : super(
-          GamebaseExplorerState(
-            currentFen:
+    : super(
+        GamebaseExplorerState(
+          currentFen:
+              'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+          game: ChessGame(
+            gameId: 'explorer_initial',
+            startingFen:
                 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
-            game: ChessGame(
-              gameId: 'explorer_initial',
-              startingFen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
-              metadata: {
-                'Event': 'Opening Explorer',
-                'Site': 'ChessEver',
-                'Date': DateTime.now().toIso8601String().split('T')[0],
-                'White': 'White',
-                'Black': 'Black',
-                'Result': '*',
-              },
-              mainline: const [],
-            ),
-            movePointer: const [],
+            metadata: {
+              'Event': 'Opening Explorer',
+              'Site': 'ChessEver',
+              'Date': DateTime.now().toIso8601String().split('T')[0],
+              'White': 'White',
+              'Black': 'Black',
+              'Result': '*',
+            },
+            mainline: const [],
           ),
-        );
+          movePointer: const [],
+        ),
+      );
 
   final Ref ref;
 
   /// Internal position tracking using dartchess (consistent with ChessGame)
-  Position get currentPosition => Position.setupPosition(Rule.chess, Setup.parseFen(state.currentFen));
+  Position get currentPosition =>
+      Position.setupPosition(Rule.chess, Setup.parseFen(state.currentFen));
 
   /// Debounce timer for network fetches
   Timer? _debounceTimer;
@@ -117,7 +119,10 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
     return f.playerIds.length == 1 &&
         f.timeControls.isEmpty &&
         f.minRating == null &&
-        f.maxRating == null;
+        f.maxRating == null &&
+        f.yearFrom == null &&
+        f.yearTo == null &&
+        f.isOnline == null;
   }
 
   bool _hasActiveFilters(GamebaseFilters f) {
@@ -125,8 +130,11 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
         f.timeControls.isNotEmpty ||
         f.minRating != null ||
         f.maxRating != null ||
+        f.yearFrom != null ||
+        f.yearTo != null ||
         f.playerColor != null ||
-        f.gameResult != null;
+        f.gameResult != null ||
+        f.isOnline != null;
   }
 
   Future<List<MoveAggregate>> _getOrStartAggregatesRequest({
@@ -161,6 +169,7 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
         result: resultFilter,
         yearFrom: filters.yearFrom,
         yearTo: filters.yearTo,
+        isOnline: filters.isOnline,
       );
 
       final aggregates = response.data.moves
@@ -266,7 +275,10 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
     for (var i = 0; i < candidates.length; i++) {
       final a = candidates[i];
       try {
-        final position = Position.setupPosition(Rule.chess, Setup.parseFen(baseFen));
+        final position = Position.setupPosition(
+          Rule.chess,
+          Setup.parseFen(baseFen),
+        );
         final move = NormalMove.fromUci(a.uci);
         if (move == null) continue;
         if (!position.isLegal(move)) continue;
@@ -356,7 +368,9 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
     if (!_uciRegex.hasMatch(normalizedUci)) return;
 
     if (!_isLegalUciForFen(normalizedUci, state.currentFen)) {
-      debugPrint('[GamebaseExplorer] Ignoring stale/illegal move: $normalizedUci');
+      debugPrint(
+        '[GamebaseExplorer] Ignoring stale/illegal move: $normalizedUci',
+      );
       return;
     }
 
@@ -368,7 +382,8 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
       final playedMove = NormalMove.fromUci(normalizedUci)!;
       final currentLine = _lineForPointerInGame(state.game!, state.movePointer);
       final currentMove = _moveForPointerInGame(state.game!, state.movePointer);
-      final currentIndex = state.movePointer.isEmpty ? -1 : state.movePointer.last;
+      final currentIndex =
+          state.movePointer.isEmpty ? -1 : state.movePointer.last;
 
       if (currentLine != null && currentIndex < currentLine.length - 1) {
         final nextMove = currentLine[currentIndex + 1];
@@ -388,7 +403,8 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
         for (var i = 0; i < currentMove!.variations!.length; i++) {
           final variation = currentMove.variations![i];
           if (variation.isNotEmpty && variation[0].uci == normalizedUci) {
-            final newPointer = state.movePointer.isEmpty ? [0] : [...state.movePointer, i, 0];
+            final newPointer =
+                state.movePointer.isEmpty ? [0] : [...state.movePointer, i, 0];
             state = state.copyWith(
               currentFen: variation[0].fen,
               movePointer: newPointer,
@@ -402,12 +418,17 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
       // Create new move/variation
       final position = currentPosition;
       final (newPosition, sanActual) = position.makeSan(playedMove);
-      final movingColor = position.turn == Side.white ? ChessColor.white : ChessColor.black;
-      final nextToMove = newPosition.turn == Side.white ? ChessColor.white : ChessColor.black;
+      final movingColor =
+          position.turn == Side.white ? ChessColor.white : ChessColor.black;
+      final nextToMove =
+          newPosition.turn == Side.white ? ChessColor.white : ChessColor.black;
 
-      final moveNumber = currentMove != null
-          ? (currentMove.turn == ChessColor.black ? currentMove.num + 1 : currentMove.num)
-          : (movingColor == ChessColor.white ? 1 : 1);
+      final moveNumber =
+          currentMove != null
+              ? (currentMove.turn == ChessColor.black
+                  ? currentMove.num + 1
+                  : currentMove.num)
+              : (movingColor == ChessColor.white ? 1 : 1);
 
       final newChessMove = ChessMove(
         num: moveNumber,
@@ -426,13 +447,18 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
           );
         } else {
           final firstMove = state.game!.mainline.first;
-          final updatedVariations = List<ChessLine>.of(firstMove.variations ?? <ChessLine>[]);
+          final updatedVariations = List<ChessLine>.of(
+            firstMove.variations ?? <ChessLine>[],
+          );
           updatedVariations.add([newChessMove]);
 
           state = state.copyWith(
             game: state.game!.copyWith(
               mainline: [
-                firstMove.copyWith(variations: updatedVariations, overrideVariations: true),
+                firstMove.copyWith(
+                  variations: updatedVariations,
+                  overrideVariations: true,
+                ),
                 ...state.game!.mainline.sublist(1),
               ],
             ),
@@ -441,7 +467,12 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
           );
         }
       } else if (currentIndex == currentLine!.length - 1) {
-        final updatedMainline = _appendMoveAfterPointer(state.game!.mainline, state.movePointer, 0, newChessMove);
+        final updatedMainline = _appendMoveAfterPointer(
+          state.game!.mainline,
+          state.movePointer,
+          0,
+          newChessMove,
+        );
         final newPointer = List<int>.of(state.movePointer);
         newPointer.last = currentIndex + 1;
         state = state.copyWith(
@@ -509,7 +540,12 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
     return move;
   }
 
-  ChessLine _appendMoveAfterPointer(ChessLine source, ChessMovePointer pointer, int pointerIndex, ChessMove newMove) {
+  ChessLine _appendMoveAfterPointer(
+    ChessLine source,
+    ChessMovePointer pointer,
+    int pointerIndex,
+    ChessMove newMove,
+  ) {
     if (pointer.isEmpty) return [...source, newMove];
     final moveIndex = pointer[pointerIndex];
     if (pointerIndex == pointer.length - 1) {
@@ -524,13 +560,27 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
     final variationIndex = pointer[pointerIndex + 1];
     final move = source[moveIndex];
     final variations = List<ChessLine>.of(move.variations!);
-    variations[variationIndex] = _appendMoveAfterPointer(variations[variationIndex], pointer, pointerIndex + 2, newMove);
+    variations[variationIndex] = _appendMoveAfterPointer(
+      variations[variationIndex],
+      pointer,
+      pointerIndex + 2,
+      newMove,
+    );
     final newLine = List<ChessMove>.of(source);
-    newLine[moveIndex] = move.copyWith(variations: variations, overrideVariations: true);
+    newLine[moveIndex] = move.copyWith(
+      variations: variations,
+      overrideVariations: true,
+    );
     return newLine;
   }
 
-  ChessLine _addVariationToPointer(ChessLine source, ChessMovePointer pointer, int pointerIndex, ChessMove newMove, void Function(int index) onAdded) {
+  ChessLine _addVariationToPointer(
+    ChessLine source,
+    ChessMovePointer pointer,
+    int pointerIndex,
+    ChessMove newMove,
+    void Function(int index) onAdded,
+  ) {
     if (pointer.isEmpty) return source;
     final moveIndex = pointer[pointerIndex];
     if (pointerIndex == pointer.length - 1) {
@@ -539,15 +589,27 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
       variations.add([newMove]);
       onAdded(variations.length - 1);
       final newLine = List<ChessMove>.of(source);
-      newLine[moveIndex] = move.copyWith(variations: variations, overrideVariations: true);
+      newLine[moveIndex] = move.copyWith(
+        variations: variations,
+        overrideVariations: true,
+      );
       return newLine;
     }
     final variationIndex = pointer[pointerIndex + 1];
     final move = source[moveIndex];
     final variations = List<ChessLine>.of(move.variations!);
-    variations[variationIndex] = _addVariationToPointer(variations[variationIndex], pointer, pointerIndex + 2, newMove, onAdded);
+    variations[variationIndex] = _addVariationToPointer(
+      variations[variationIndex],
+      pointer,
+      pointerIndex + 2,
+      newMove,
+      onAdded,
+    );
     final newLine = List<ChessMove>.of(source);
-    newLine[moveIndex] = move.copyWith(variations: variations, overrideVariations: true);
+    newLine[moveIndex] = move.copyWith(
+      variations: variations,
+      overrideVariations: true,
+    );
     return newLine;
   }
 
@@ -583,7 +645,7 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
     if (previous.length >= 3) {
       previous.removeLast(); // move index
       previous.removeLast(); // variation index
-      return previous;
+      return _previousPointer(previous);
     }
     return const [];
   }
@@ -592,7 +654,10 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
   void goForward() {
     if (!state.canGoForward) return;
 
-    final nextPointer = state.game != null ? _nextPointerInGame(state.game!, state.movePointer) : null;
+    final nextPointer =
+        state.game != null
+            ? _nextPointerInGame(state.game!, state.movePointer)
+            : null;
 
     if (nextPointer != null) {
       final move = _moveForPointerInGame(state.game!, nextPointer);
@@ -609,7 +674,10 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
     }
   }
 
-  ChessMovePointer? _nextPointerInGame(ChessGame game, ChessMovePointer pointer) {
+  ChessMovePointer? _nextPointerInGame(
+    ChessGame game,
+    ChessMovePointer pointer,
+  ) {
     if (game.mainline.isEmpty) return null;
     if (pointer.isEmpty) return [0];
     final currentLine = _lineForPointerInGame(game, pointer);
@@ -681,7 +749,7 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
     if (move == null && pointer.isNotEmpty) return;
 
     final fen = move?.fen ?? state.game!.startingFen;
-    
+
     state = state.copyWith(
       movePointer: pointer,
       currentFen: normalizeFenForGamebase(fen),
@@ -689,7 +757,6 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
     _playSfx('');
     _scheduleFetch(Duration.zero);
   }
-
 
   /// Initialize the explorer pre-filtered to a specific player.
   ///
@@ -804,37 +871,54 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
           .map((m) => m.trim().toLowerCase())
           .where((m) => RegExp(r'^[a-h][1-8][a-h][1-8][qrbn]?$').hasMatch(m))
           .toList(growable: false);
-      
-      // If we already have a game tree and the moves match a path in it, 
+
+      // If we already have a game tree and the moves match a path in it,
       // we should just update the pointer.
       // But usually this is called when opening the explorer.
-      
+
       // Build a simple ChessGame from these moves if current game is empty or different starting position
       final currentExploredMoves = state.exploredMoves;
-      if (listEquals(currentExploredMoves, sanitizedMoves) && state.currentFen == normalized) {
+      if (listEquals(currentExploredMoves, sanitizedMoves) &&
+          state.currentFen == normalized) {
         return;
       }
 
-      debugPrint('[GamebaseExplorer] setPosition: ${normalized.split(' ').take(2).join(' ')}...');
+      debugPrint(
+        '[GamebaseExplorer] setPosition: ${normalized.split(' ').take(2).join(' ')}...',
+      );
 
       // Build a new ChessGame with these moves as mainline
       final mainline = <ChessMove>[];
-      var currentPosition = Position.setupPosition(Rule.chess, Setup.parseFen('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'));
-      
+      var currentPosition = Position.setupPosition(
+        Rule.chess,
+        Setup.parseFen(
+          'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+        ),
+      );
+
       for (final uci in sanitizedMoves) {
         final move = NormalMove.fromUci(uci);
         if (move == null || !currentPosition.isLegal(move)) break;
         final (nextPos, san) = currentPosition.makeSan(move);
-        final movingColor = currentPosition.turn == Side.white ? ChessColor.white : ChessColor.black;
-        final nextToMove = nextPos.turn == Side.white ? ChessColor.white : ChessColor.black;
-        
-        mainline.add(ChessMove(
-          num: movingColor == ChessColor.white ? currentPosition.fullmoves : currentPosition.fullmoves,
-          fen: nextPos.fen,
-          san: san,
-          uci: uci,
-          turn: nextToMove,
-        ));
+        final movingColor =
+            currentPosition.turn == Side.white
+                ? ChessColor.white
+                : ChessColor.black;
+        final nextToMove =
+            nextPos.turn == Side.white ? ChessColor.white : ChessColor.black;
+
+        mainline.add(
+          ChessMove(
+            num:
+                movingColor == ChessColor.white
+                    ? currentPosition.fullmoves
+                    : currentPosition.fullmoves,
+            fen: nextPos.fen,
+            san: san,
+            uci: uci,
+            turn: nextToMove,
+          ),
+        );
         currentPosition = nextPos;
       }
 
@@ -842,7 +926,8 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
         currentFen: normalized,
         game: ChessGame(
           gameId: 'explorer_sync_${DateTime.now().millisecondsSinceEpoch}',
-          startingFen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+          startingFen:
+              'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
           metadata: {
             'Event': 'Opening Explorer',
             'Site': 'ChessEver',
@@ -893,9 +978,7 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
   void togglePlayerColor(GamebasePlayerColor color) {
     final current = state.filters.playerColor;
     updateFilters(
-      state.filters.copyWith(
-        playerColor: current == color ? null : color,
-      ),
+      state.filters.copyWith(playerColor: current == color ? null : color),
     );
   }
 
@@ -903,9 +986,7 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
   void toggleGameResult(GamebaseGameResult result) {
     final current = state.filters.gameResult;
     updateFilters(
-      state.filters.copyWith(
-        gameResult: current == result ? null : result,
-      ),
+      state.filters.copyWith(gameResult: current == result ? null : result),
     );
   }
 
@@ -1025,6 +1106,9 @@ final gamebaseExplorerProvider = StateNotifierProvider.autoDispose<
   GamebaseExplorerState
 >((ref) => GamebaseExplorerNotifier(ref));
 
+/// Provider for managing the current page index of the opening explorer panels (0: Moves, 1: Notation).
+final explorerPageIndexProvider = StateProvider.autoDispose<int>((ref) => 0);
+
 /// Provider for searching players.
 final playerSearchProvider = FutureProvider.autoDispose
     .family<List<GamebasePlayer>, String>((ref, query) async {
@@ -1093,6 +1177,7 @@ class GamebasePositionGamesQuery {
   final String? playerId;
   final String? color;
   final String? result;
+  final bool? isOnline;
   final int? minRating;
   final int? maxRating;
   final int? yearFrom;
@@ -1110,6 +1195,7 @@ class GamebasePositionGamesQuery {
     this.playerId,
     this.color,
     this.result,
+    this.isOnline,
     this.minRating,
     this.maxRating,
     this.yearFrom,
@@ -1130,6 +1216,7 @@ class GamebasePositionGamesQuery {
         other.playerId == playerId &&
         other.color == color &&
         other.result == result &&
+        other.isOnline == isOnline &&
         other.minRating == minRating &&
         other.maxRating == maxRating &&
         other.yearFrom == yearFrom &&
@@ -1149,6 +1236,7 @@ class GamebasePositionGamesQuery {
     playerId,
     color,
     result,
+    isOnline,
     minRating,
     maxRating,
     yearFrom,
@@ -1174,6 +1262,7 @@ final positionGamesProvider = FutureProvider.autoDispose
         playerId: query.playerId,
         color: query.color,
         result: query.result,
+        isOnline: query.isOnline,
         minRating: query.minRating,
         maxRating: query.maxRating,
         yearFrom: query.yearFrom,

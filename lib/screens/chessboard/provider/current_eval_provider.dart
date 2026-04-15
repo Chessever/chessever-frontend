@@ -39,10 +39,10 @@ class CascadeEvalParams {
   int get hashCode => Object.hash(fen, multiPV, isCurrentPosition);
 }
 
-const int _minPersistDepth = 25;
+const int _minPersistDepth = 20;
 const int _minPersistFullMoves = 8;
 const int _gameCardFallbackDepth = 12;
-const int boardEvalSufficientDepth = 25;
+const int boardEvalSufficientDepth = 20;
 const Duration _localEvalLookupTimeout = Duration(milliseconds: 120);
 
 bool _shouldPersistCloudEval(CloudEval eval) {

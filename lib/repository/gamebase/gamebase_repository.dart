@@ -75,6 +75,7 @@ class GamebaseRepository {
     String? result,
     int? yearFrom,
     int? yearTo,
+    bool? isOnline,
   }) async {
     try {
       final normalizedFen = _normalizeFenForLookup(fen);
@@ -91,6 +92,7 @@ class GamebaseRepository {
         if (result != null) 'result': result,
         if (yearFrom != null) 'yearFrom': yearFrom,
         if (yearTo != null) 'yearTo': yearTo,
+        if (isOnline != null) 'isOnline': isOnline,
       };
 
       if (kDebugMode) {
@@ -401,6 +403,7 @@ class GamebaseRepository {
     int? yearTo,
     int? ratingFrom,
     int? ratingTo,
+    bool? isOnline,
   }) async {
     try {
       final queryParams = {
@@ -415,6 +418,7 @@ class GamebaseRepository {
         if (yearTo != null) 'yearTo': yearTo,
         if (ratingFrom != null) 'ratingFrom': ratingFrom,
         if (ratingTo != null) 'ratingTo': ratingTo,
+        if (isOnline != null) 'isOnline': isOnline,
       };
 
       if (kDebugMode) {
@@ -464,6 +468,7 @@ class GamebaseRepository {
     int? yearTo,
     int? ratingFrom,
     int? ratingTo,
+    bool? isOnline,
   }) async {
     try {
       final queryParams = {
@@ -477,6 +482,7 @@ class GamebaseRepository {
         if (yearTo != null) 'yearTo': yearTo,
         if (ratingFrom != null) 'ratingFrom': ratingFrom,
         if (ratingTo != null) 'ratingTo': ratingTo,
+        if (isOnline != null) 'isOnline': isOnline,
       };
 
       final response = await _dio.get(
@@ -530,6 +536,7 @@ class GamebaseRepository {
     String? opponentId,
     int? ratingFrom,
     int? ratingTo,
+    bool? isOnline,
     int pageNumber = 0,
     int pageSize = 100,
   }) async {
@@ -550,6 +557,7 @@ class GamebaseRepository {
       if (opponentId != null) 'opponentId': opponentId,
       if (ratingFrom != null) 'ratingFrom': ratingFrom,
       if (ratingTo != null) 'ratingTo': ratingTo,
+      if (isOnline != null) 'isOnline': isOnline,
     };
 
     if (kDebugMode) {
@@ -587,6 +595,7 @@ class GamebaseRepository {
     String? opponentId,
     int? ratingFrom,
     int? ratingTo,
+    bool? isOnline,
   }) async {
     final queryParams = <String, dynamic>{
       'color': color,
@@ -603,6 +612,7 @@ class GamebaseRepository {
       if (opponentId != null) 'opponentId': opponentId,
       if (ratingFrom != null) 'ratingFrom': ratingFrom,
       if (ratingTo != null) 'ratingTo': ratingTo,
+      if (isOnline != null) 'isOnline': isOnline,
     };
 
     final response = await _dio.get(
@@ -633,6 +643,7 @@ class GamebaseRepository {
     int? yearTo,
     GamebaseSortField? sortBy,
     GamebaseSortDirection? sortDirection,
+    bool? isOnline,
     int pageNumber = 0,
     int pageSize = 20,
   }) async {

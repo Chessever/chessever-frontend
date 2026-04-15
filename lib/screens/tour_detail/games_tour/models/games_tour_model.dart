@@ -81,6 +81,7 @@ class GamesTourModel {
   final String? openingName;
   final String?
   timeControl; // From group_broadcasts: 'standard', 'rapid', 'blitz'
+  final bool isOnline;
 
   GamesTourModel({
     required this.gameId,
@@ -106,6 +107,7 @@ class GamesTourModel {
     this.eco,
     this.openingName,
     this.timeControl,
+    this.isOnline = false,
   });
 
   GamesTourModel copyWith({
@@ -132,6 +134,7 @@ class GamesTourModel {
     String? eco,
     String? openingName,
     String? timeControl,
+    bool? isOnline,
   }) {
     return GamesTourModel(
       gameId: gameId ?? this.gameId,
@@ -159,6 +162,7 @@ class GamesTourModel {
       eco: eco ?? this.eco,
       openingName: openingName ?? this.openingName,
       timeControl: timeControl ?? this.timeControl,
+      isOnline: isOnline ?? this.isOnline,
     );
   }
 

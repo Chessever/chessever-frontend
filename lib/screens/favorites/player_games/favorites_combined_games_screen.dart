@@ -441,6 +441,7 @@ class _FavoritesCombinedGamesScreenState
     final result = await showGameFilterDialog(
       context: context,
       currentFilter: state.filter,
+      showFormatFilter: false,
     );
     if (result != null && mounted) {
       ref.read(favoritesCombinedGamesProvider.notifier).applyFilter(result);
