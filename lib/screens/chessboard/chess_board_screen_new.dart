@@ -6619,18 +6619,31 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard> {
   /// maintain branchPointMoveIndex/analysisMoves fields, making isInAnalysisVariation unreliable.
   /// movePointer: [] = initial pos, [n] = mainline move n, [n,v,m,...] = variation
   bool _isAtGameEnd(AnalysisBoardState s) {
-    if (!s.isAtEnd || s.movePointer.length != 1 || s.allMoves.isEmpty) {
+    final game = s.game;
+    if (game == null) return false;
+
+    // Must be on the mainline.
+    if (s.movePointer.length != 1) return false;
+
+    // Must be at the very last move of the mainline.
+    // (Bypassing s.isAtEnd because allMoves dynamically resizes in analysis mode)
+    final currentMainlineIndex = s.movePointer[0];
+    final totalMainlineMoves = game.mainline.length;
+    if (totalMainlineMoves == 0 ||
+        currentMainlineIndex != totalMainlineMoves - 1) {
       return false;
     }
 
-    // Safety: if the game status is finished but we are at a very early move (e.g. before move 12)
-    // and it's not a terminal position (mate/stalemate/draw), it's likely a truncated PGN
-    // or a preview position from the opening explorer. Don't show the king leaning effect yet.
-    // Index 22 is move 12 (white move 12 is index 22, black is 23).
-    if (s.currentMoveIndex < 22) {
-      if (!s.position.isGameOver) {
-        return false;
-      }
+    // If a live game, it must NEVER appear!
+    if (game.isLiveGame) {
+      return false;
+    }
+
+    // For Opening Explorer / Gamebase games, PGNs are often truncated.
+    // To prevent false positives, we require a true terminal position.
+    if (widget.game.source == GameSource.gamebase ||
+        widget.game.source == GameSource.openingExplorer) {
+      return s.position.isGameOver;
     }
 
     return true;
