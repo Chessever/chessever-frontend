@@ -126,7 +126,7 @@ class GamebaseRepository {
     } on DioException catch (e) {
       // Treat "no data for this position" as an empty result, not an error.
       // This is common for uncommon/midgame positions.
-      if (e.response?.statusCode == 404 || e.response?.statusCode == 500) {
+      if (e.response?.statusCode == 404) {
         return const GamebaseResponse(
           status: 'success',
           data: GamebaseData(moves: []),
