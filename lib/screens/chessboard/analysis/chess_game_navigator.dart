@@ -73,6 +73,52 @@ class ChessGameNavigatorState {
     return currentLine;
   }
 
+  /// Returns the complete sequence of moves from the start of the game
+  /// to the current position, correctly following variations.
+  List<ChessMove> get fullMovePath {
+    final path = <ChessMove>[];
+    if (movePointer.isEmpty) return path;
+
+    List<ChessMove>? currentList = game.mainline;
+    ChessMove? currentMove;
+
+    for (var i = 0; i < movePointer.length; i++) {
+      final index = movePointer[i];
+
+      if (i.isEven) {
+        if (currentList == null || index >= currentList.length) {
+          break;
+        }
+        // All moves in the current list up to and including the index
+        // are part of the path (either leading to a variation or the current move).
+        path.addAll(currentList.take(index + 1));
+        currentMove = currentList[index];
+        // If this is the last element, we are done.
+        if (i == movePointer.length - 1) {
+          break;
+        }
+      } else {
+        // Switching to a variation at currentMove.
+        if (currentMove == null ||
+            currentMove.variations == null ||
+            index >= currentMove.variations!.length) {
+          break;
+        }
+        final variation = currentMove.variations![index];
+        if (variation.isNotEmpty) {
+          // If the variation move is played by the same color as the current move,
+          // it's an alternative TO the current move (e.g. playing d4 instead of e4 at ply 0).
+          // Otherwise, it's an alternative to the continuation AFTER the current move.
+          if (variation.first.turn == currentMove.turn) {
+            path.removeLast();
+          }
+        }
+        currentList = variation;
+      }
+    }
+    return path;
+  }
+
   ChessColor? get currentTurn {
     if (movePointer.isEmpty) {
       return ChessColor.white;

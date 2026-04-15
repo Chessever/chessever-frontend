@@ -201,17 +201,27 @@ class GamebaseExplorerState with GamebaseExplorerStateMappable {
       final index = pointer[i];
       if (i.isEven) {
         if (currentList == null || index >= currentList.length) break;
-        final limit = (i + 1 < pointer.length) ? index : index + 1;
-        for (var j = 0; j < limit; j++) {
+        // Take all moves up to and including the index
+        for (var j = 0; j <= index; j++) {
           path.add(currentList![j].uci);
         }
         currentMove = currentList![index];
+        // If this is the last element, we are done.
+        if (i == pointer.length - 1) {
+          break;
+        }
       } else {
         if (currentMove == null ||
             currentMove.variations == null ||
             index >= currentMove.variations!.length)
           break;
-        currentList = currentMove.variations![index];
+        final variation = currentMove.variations![index];
+        if (variation.isNotEmpty) {
+          if (variation.first.turn == currentMove.turn) {
+            path.removeLast();
+          }
+        }
+        currentList = variation;
         // After switching to a variation, we don't add the move yet,
         // it will be added in the next (even) iteration.
       }

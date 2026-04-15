@@ -6618,8 +6618,23 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard> {
   /// Uses movePointer.length == 1 because the navigator code path doesn't
   /// maintain branchPointMoveIndex/analysisMoves fields, making isInAnalysisVariation unreliable.
   /// movePointer: [] = initial pos, [n] = mainline move n, [n,v,m,...] = variation
-  bool _isAtGameEnd(AnalysisBoardState s) =>
-      s.isAtEnd && s.movePointer.length == 1;
+  bool _isAtGameEnd(AnalysisBoardState s) {
+    if (!s.isAtEnd || s.movePointer.length != 1 || s.allMoves.isEmpty) {
+      return false;
+    }
+
+    // Safety: if the game status is finished but we are at a very early move (e.g. before move 12)
+    // and it's not a terminal position (mate/stalemate/draw), it's likely a truncated PGN
+    // or a preview position from the opening explorer. Don't show the king leaning effect yet.
+    // Index 22 is move 12 (white move 12 is index 22, black is 23).
+    if (s.currentMoveIndex < 22) {
+      if (!s.position.isGameOver) {
+        return false;
+      }
+    }
+
+    return true;
+  }
 
   LichessMoveAnnotationType? _mapNagToAnnotationType(int nag) {
     switch (nag) {
