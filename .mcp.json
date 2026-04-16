@@ -3,6 +3,10 @@
     "supabase_chessever": {
       "type": "http",
       "url": "https://mcp.supabase.com/mcp?project_ref=oelbsuggrzyqwzmvidju"
+    },
+    "supabase": {
+      "type": "http",
+      "url": "https://mcp.supabase.com/mcp?project_ref=oelbsuggrzyqwzmvidju"
     }
   }
 }

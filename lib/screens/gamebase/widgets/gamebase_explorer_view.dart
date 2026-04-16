@@ -33,6 +33,7 @@ class GamebaseExplorerView extends HookConsumerWidget {
     // library game, live game, etc.).
     final currentPosition = state.analysisState.position;
     final currentFen = currentPosition.fen;
+    final startingFen = state.analysisState.startingPosition?.fen;
     final combinedMoves = state.analysisState.combinedMoves;
     final currentMoveIndex = state.analysisState.currentMoveIndex;
     final movesToCurrentCount =
@@ -55,10 +56,14 @@ class GamebaseExplorerView extends HookConsumerWidget {
       Future.microtask(() {
         ref
             .read(gamebaseExplorerProvider.notifier)
-            .setPositionWithMoves(currentFen, lineToCurrent);
+            .setPositionWithMoves(
+              currentFen,
+              lineToCurrent,
+              startingFen: startingFen,
+            );
       });
       return null;
-    }, [currentFen, lineKey]);
+    }, [currentFen, lineKey, startingFen]);
 
     final gamebaseState = ref.watch(gamebaseExplorerProvider);
 

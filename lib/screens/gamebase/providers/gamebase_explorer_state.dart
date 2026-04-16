@@ -176,8 +176,9 @@ class GamebaseExplorerState with GamebaseExplorerStateMappable {
 
   // Helper methods to replicate navigator logic within state
   static int _pointerToPly(ChessGame game, ChessMovePointer pointer) {
-    if (pointer.isEmpty)
+    if (pointer.isEmpty) {
       return 0; // Assuming start from ply 0 for now or calculate from FEN
+    }
     // For simplicity, let's just count moves in the pointer path
     // Actually ply should be depth in tree if we count properly.
     // A pointer like [5] is ply 5 (if starting from 0).
@@ -200,25 +201,32 @@ class GamebaseExplorerState with GamebaseExplorerStateMappable {
     for (var i = 0; i < pointer.length; i++) {
       final index = pointer[i];
       if (i.isEven) {
-        if (currentList == null || index >= currentList.length) break;
+        final line = currentList;
+        if (line == null || index >= line.length) {
+          break;
+        }
         // Take all moves up to and including the index
         for (var j = 0; j <= index; j++) {
-          path.add(currentList![j].uci);
+          path.add(line[j].uci);
         }
-        currentMove = currentList![index];
+        currentMove = line[index];
         // If this is the last element, we are done.
         if (i == pointer.length - 1) {
           break;
         }
       } else {
+        final variations = currentMove?.variations;
         if (currentMove == null ||
-            currentMove.variations == null ||
-            index >= currentMove.variations!.length)
+            variations == null ||
+            index >= variations.length) {
           break;
-        final variation = currentMove.variations![index];
+        }
+        final variation = variations[index];
         if (variation.isNotEmpty) {
           if (variation.first.turn == currentMove.turn) {
-            path.removeLast();
+            if (path.isNotEmpty) {
+              path.removeLast();
+            }
           }
         }
         currentList = variation;
