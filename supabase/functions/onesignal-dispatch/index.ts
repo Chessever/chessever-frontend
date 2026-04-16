@@ -1534,21 +1534,29 @@ async function markLiveSubscriptionEvent(args: {
 async function resolveRecursiveBookSubscribers(
   folderId: string,
 ): Promise<string[]> {
-  const { data: folder } = await supabase
-    .from("user_folders")
-    .select("parent_id")
-    .eq("id", folderId)
-    .maybeSingle();
+  const allFolderIds = new Set<string>();
+  let currentId: string | null = folderId;
 
-  const folderIds = [folderId];
-  if (folder?.parent_id) {
-    folderIds.push(folder.parent_id);
+  // Traverse up the folder hierarchy to collect all parent folder IDs
+  while (currentId) {
+    allFolderIds.add(currentId);
+    const { data, error } = await supabase
+      .from("user_folders")
+      .select("parent_id")
+      .eq("id", currentId)
+      .maybeSingle();
+
+    if (error || !data?.parent_id) {
+      currentId = null;
+    } else {
+      currentId = data.parent_id as string;
+    }
   }
 
   const { data: subs } = await supabase
     .from("book_subscriptions")
     .select("subscriber_id")
-    .in("folder_id", folderIds);
+    .in("folder_id", Array.from(allFolderIds));
 
   return [...new Set((subs ?? []).map((s) => s.subscriber_id as string))];
 }

@@ -129,7 +129,6 @@ class _ValidatedNetworkImageState extends State<_ValidatedNetworkImage> {
       height: widget.size,
       fit: BoxFit.cover,
       memCacheWidth: cacheSize,
-      memCacheHeight: cacheSize,
       fadeInDuration: const Duration(milliseconds: 200),
       fadeOutDuration: const Duration(milliseconds: 200),
       placeholder:
@@ -324,7 +323,6 @@ class _ValidatedNetworkImageCompactState
       height: widget.size,
       fit: BoxFit.cover,
       memCacheWidth: cacheSize,
-      memCacheHeight: cacheSize,
       fadeInDuration: const Duration(milliseconds: 150),
       fadeOutDuration: const Duration(milliseconds: 150),
       placeholder:

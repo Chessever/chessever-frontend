@@ -114,7 +114,6 @@ class UserAvatar extends HookConsumerWidget {
         width: size.w,
         height: size.h,
         memCacheWidth: cacheSize,
-        memCacheHeight: cacheSize,
         placeholder: (context, url) => _buildFallback(initials),
         errorWidget: (context, url, error) => _buildFallback(initials),
       );
