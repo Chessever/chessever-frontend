@@ -199,10 +199,10 @@ class _AboutTourScreenState extends ConsumerState<AboutTourScreen> {
                           flag:
                               countryCode.isNotEmpty
                                   ? CountryFlag.fromCountryCode(
-                                    countryCode,
-                                    width: 16.w,
-                                    height: 12.h,
-                                  )
+countryCode,
+  theme: ImageTheme(width: 16.w,
+                                    height: 12.h,),
+)
                                   : null,
                           description: aboutModel.location,
                         ),

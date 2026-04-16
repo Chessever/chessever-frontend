@@ -491,10 +491,10 @@ class _EventImage extends ConsumerWidget {
             ),
           ),
           CountryFlag.fromCountryCode(
-            countryCode,
-            height: double.infinity,
-            width: double.infinity,
-          ),
+countryCode,
+  theme: ImageTheme(height: double.infinity,
+            width: double.infinity,),
+),
           Positioned.fill(
             child: DecoratedBox(
               decoration: BoxDecoration(
@@ -573,10 +573,10 @@ class _FlagEventImage extends StatelessWidget {
                   ),
                   if (countryCode != null)
                     CountryFlag.fromCountryCode(
-                      countryCode!,
-                      height: double.infinity,
-                      width: double.infinity,
-                    ),
+countryCode!,
+  theme: ImageTheme(height: double.infinity,
+                      width: double.infinity,),
+),
                   Positioned.fill(
                     child: DecoratedBox(
                       decoration: BoxDecoration(
@@ -673,10 +673,10 @@ class _TabletEventBackground extends ConsumerWidget {
         ),
         if (countryCode != null && countryCode.isNotEmpty)
           CountryFlag.fromCountryCode(
-            countryCode,
-            height: double.infinity,
-            width: double.infinity,
-          ),
+countryCode,
+  theme: ImageTheme(height: double.infinity,
+            width: double.infinity,),
+),
         if (countryCode == null || countryCode.isEmpty)
           const LogoPatternFallback(),
       ],

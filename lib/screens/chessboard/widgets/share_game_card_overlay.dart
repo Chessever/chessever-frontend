@@ -1523,10 +1523,10 @@ class _ShareCard extends ConsumerWidget {
             SizedBox(width: elementSpacing.w),
           ] else if (playerCountry.isNotEmpty) ...[
             CountryFlag.fromCountryCode(
-              playerCountry,
-              height: flagHeight.h,
-              width: flagWidth.w,
-            ),
+playerCountry,
+  theme: ImageTheme(height: flagHeight.h,
+              width: flagWidth.w,),
+),
             SizedBox(width: elementSpacing.w),
           ] else
             SizedBox(width: elementSpacing.w),

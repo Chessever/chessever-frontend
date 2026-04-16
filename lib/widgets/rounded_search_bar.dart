@@ -133,10 +133,10 @@ class _RoundedSearchBarState extends ConsumerState<RoundedSearchBar> {
                             return DropdownMenuItem<String>(
                               value: country.countryCode,
                               child: CountryFlag.fromCountryCode(
-                                country.countryCode,
-                                width: 12.w,
-                                height: 9.h,
-                              ),
+country.countryCode,
+  theme: ImageTheme(width: 12.w,
+                                height: 9.h,),
+),
                             );
                           }).toList(),
                     ),

@@ -1030,10 +1030,10 @@ class _PlayerHeaderSectionState extends ConsumerState<_PlayerHeaderSection> {
                 ClipRRect(
                   borderRadius: BorderRadius.circular(2.br),
                   child: CountryFlag.fromCountryCode(
-                    countryCode,
-                    height: 20.h,
-                    width: 28.w,
-                  ),
+countryCode,
+  theme: ImageTheme(height: 20.h,
+                    width: 28.w,),
+),
                 ),
                 SizedBox(width: 10.w),
                 Expanded(

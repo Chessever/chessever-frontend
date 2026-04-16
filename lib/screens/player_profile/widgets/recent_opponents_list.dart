@@ -33,6 +33,7 @@ class RecentOpponentsList extends StatelessWidget {
         itemBuilder: (context, index) {
           final opponent = opponents[index];
           return _buildOpponentRow(
+            context: context,
             index: index + 1,
             opponent: opponent,
             isFirst: index == 0,
@@ -44,6 +45,7 @@ class RecentOpponentsList extends StatelessWidget {
   }
 
   Widget _buildOpponentRow({
+    required BuildContext context,
     required int index,
     required RecentOpponent opponent,
     required bool isFirst,
@@ -87,8 +89,7 @@ class RecentOpponentsList extends StatelessWidget {
               )
               : CountryFlag.fromCountryCode(
                 opponent.countryCode,
-                height: 14.h,
-                width: 20.w,
+                theme: ImageTheme(height: 14.h, width: 20.w),
               ),
 
           SizedBox(width: 8.w),

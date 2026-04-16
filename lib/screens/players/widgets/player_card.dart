@@ -155,10 +155,10 @@ class _PlayerCardState extends State<PlayerCard>
                         cacheHeight: 36,
                       )
                       : CountryFlag.fromCountryCode(
-                        widget.countryCode,
-                        height: 14.h,
-                        width: 20.w,
-                      ),
+widget.countryCode,
+  theme: ImageTheme(height: 14.h,
+                        width: 20.w,),
+),
             ),
 
             // GM prefix and player name

@@ -590,10 +590,10 @@ class _FlagFullBackground extends StatelessWidget {
               child: FittedBox(
                 fit: BoxFit.cover,
                 child: CountryFlag.fromCountryCode(
-                  country.countryCode,
-                  width: 200,
-                  height: 150,
-                ),
+country.countryCode,
+  theme: ImageTheme(width: 200,
+                  height: 150,),
+),
               ),
             ),
           ),
