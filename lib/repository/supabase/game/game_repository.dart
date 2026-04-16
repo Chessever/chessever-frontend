@@ -62,7 +62,10 @@ const String _gameListSelectColumns = '''
           last_clock_black,
           eco,
           opening_name,
-          tours!games_tour_id_fkey(group_broadcasts!tours_group_broadcast_id_fkey(time_control))
+          tours!games_tour_id_fkey(
+            avg_elo,
+            group_broadcasts!tours_group_broadcast_id_fkey(time_control)
+          )
         ''';
 
 class GameRepository extends BaseRepository {

@@ -81,6 +81,7 @@ class GamesTourModel {
   final String? openingName;
   final String?
   timeControl; // From group_broadcasts: 'standard', 'rapid', 'blitz'
+  final int? avgElo; // New: average ELO of the tournament
   final bool isOnline;
 
   GamesTourModel({
@@ -107,6 +108,7 @@ class GamesTourModel {
     this.eco,
     this.openingName,
     this.timeControl,
+    this.avgElo,
     this.isOnline = false,
   });
 
@@ -134,6 +136,7 @@ class GamesTourModel {
     String? eco,
     String? openingName,
     String? timeControl,
+    int? avgElo,
     bool? isOnline,
   }) {
     return GamesTourModel(
@@ -162,6 +165,7 @@ class GamesTourModel {
       eco: eco ?? this.eco,
       openingName: openingName ?? this.openingName,
       timeControl: timeControl ?? this.timeControl,
+      avgElo: avgElo ?? this.avgElo,
       isOnline: isOnline ?? this.isOnline,
     );
   }
@@ -293,6 +297,7 @@ class GamesTourModel {
         eco: resolvedEco,
         openingName: resolvedOpening,
         timeControl: game.timeControl,
+        avgElo: game.avgElo,
       );
     } catch (e) {
       throw ArgumentError(
