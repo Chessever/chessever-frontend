@@ -252,14 +252,24 @@ List<NotationDisplayToken> buildNotationTokens(
     // Add PGN comments
     if (node.move.comments != null) {
       for (final comment in node.move.comments!) {
-        // Skip clock and eval comments as they are handled elsewhere in UI
-        if (comment.startsWith('[%clk') || comment.startsWith('[%eval')) {
+        // Strip out Lichess extension tags from the comment text
+        String cleanText = comment
+            .replaceAll(RegExp(r'\[%clk\s+[^\]]+\]'), '')
+            .replaceAll(RegExp(r'\[%eval\s+[^\]]+\]'), '')
+            .replaceAll(RegExp(r'\[%cal\s+[^\]]+\]'), '')
+            .replaceAll(RegExp(r'\[%csl\s+[^\]]+\]'), '')
+            .replaceAll(RegExp(r'\[%emt\s+[^\]]+\]'), '')
+            .replaceAll(RegExp(r'\[%tag\s+[^\]]+\]'), '')
+            .trim();
+
+        if (cleanText.isEmpty) {
           continue;
         }
+
         tokens.add(
           NotationDisplayToken(
             type: NotationTokenType.comment,
-            text: comment,
+            text: cleanText,
             depth: depth,
             pointerId: pointerId,
             variation: variationContext,
