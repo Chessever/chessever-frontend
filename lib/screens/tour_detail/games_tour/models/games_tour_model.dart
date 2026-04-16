@@ -1,4 +1,5 @@
 import 'package:chessever2/repository/supabase/game/games.dart';
+import 'package:chessever2/utils/pgn_clock_utils.dart';
 import 'package:dartchess/dartchess.dart';
 
 enum GameDisplayMode { all, hideFinishedGames, showfinishedGame }
@@ -344,20 +345,12 @@ class GamesTourModel {
       return (whiteSeconds: null, blackSeconds: null);
     }
 
-    final regex = RegExp(r'\[%clk (\d+:\d{2}:\d{2})\]');
-    final matches = regex.allMatches(pgn);
-
     int? lastWhite;
     int? lastBlack;
     var index = 0;
 
-    for (final match in matches) {
-      final timeString = match.group(1);
-      if (timeString == null) {
-        index++;
-        continue;
-      }
-      final seconds = _parseClockStringToSeconds(timeString);
+    for (final timeString in extractPgnClockStringsFromText(pgn)) {
+      final seconds = parsePgnClockToSeconds(timeString);
       if (seconds != null) {
         if (index.isEven) {
           lastWhite = seconds;
@@ -383,28 +376,6 @@ class GamesTourModel {
     final opening = _normalizeOpeningName(openingMatch?.group(1));
 
     return (eco: eco, opening: opening);
-  }
-
-  static int? _parseClockStringToSeconds(String timeString) {
-    final parts = timeString.split(':');
-    if (parts.length == 3) {
-      final hours = int.tryParse(parts[0]);
-      final minutes = int.tryParse(parts[1]);
-      final seconds = int.tryParse(parts[2]);
-      if (hours == null || minutes == null || seconds == null) {
-        return null;
-      }
-      return (hours * 3600) + (minutes * 60) + seconds;
-    }
-    if (parts.length == 2) {
-      final minutes = int.tryParse(parts[0]);
-      final seconds = int.tryParse(parts[1]);
-      if (minutes == null || seconds == null) {
-        return null;
-      }
-      return (minutes * 60) + seconds;
-    }
-    return null;
   }
 
   static String _formatTime(int? clockTimeCentiseconds) {

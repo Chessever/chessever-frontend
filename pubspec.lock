@@ -925,6 +925,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "5.1.1"
+  logarte:
+    dependency: "direct main"
+    description:
+      name: logarte
+      sha256: c9b6dd8b766be9fc77ecbca2898db1e8560fc626e8c25d6fbd67e49d858373b3
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.4.0"
   logger:
     dependency: "direct main"
     description:

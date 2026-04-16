@@ -1,6 +1,8 @@
 import 'package:chessever2/repository/lichess/cloud_eval/cloud_eval.dart';
 import 'package:dio/dio.dart';
 import 'package:chessever2/e2e/e2e_config.dart';
+import 'package:chessever2/main.dart';
+import 'package:logarte/logarte.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -742,5 +744,6 @@ final gamebaseRepositoryProvider = Provider<GamebaseRepository>((ref) {
       receiveTimeout: const Duration(seconds: 30),
     ),
   );
+  dio.interceptors.add(LogarteDioInterceptor(logarte));
   return GamebaseRepository(dio);
 });
