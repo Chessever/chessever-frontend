@@ -150,11 +150,11 @@ async function fetchFideProfilePhoto(fideId: string): Promise<PhotoResult> {
   return { success: false, reason: lastReason, transient: lastTransient };
 }
 
-async function readCacheRow(supabase: ReturnType<typeof createClient>, fideId: string) {
+async function readCacheRow(supabase: ReturnType<typeof createClient>, cacheKey: string) {
   const { data, error } = await supabase
     .from(CACHE_TABLE)
     .select("fide_id,status,reason,storage_path,retry_after")
-    .eq("fide_id", fideId)
+    .eq("fide_id", cacheKey)
     .maybeSingle();
   if (error) return null;
   return data as CacheRow | null;
@@ -162,14 +162,14 @@ async function readCacheRow(supabase: ReturnType<typeof createClient>, fideId: s
 
 async function upsertCacheRow(
   supabase: ReturnType<typeof createClient>,
-  fideId: string,
+  cacheKey: string,
   status: CacheStatus,
   reason: string | null,
   storagePath: string | null,
   retryAfterIso: string,
 ) {
   await supabase.from(CACHE_TABLE).upsert({
-    fide_id: fideId,
+    fide_id: cacheKey,
     status,
     reason,
     storage_path: storagePath,
@@ -214,11 +214,13 @@ Deno.serve(async (req: Request) => {
       .getPublicUrl(storagePath);
       
     // Transform original public URL to use the image transformation API
-    // Adding width=300 and quality=80 significantly reduces size and leverages WebP delivery.
-    const optimizedWebpUrl = publicUrlData.publicUrl.replace('/object/public/', '/render/image/public/') + '?width=300&quality=80';
+    // width=300&height=300&resize=cover ensures we get a perfectly square cropped image from the CDN
+    const optimizedWebpUrl = publicUrlData.publicUrl.replace('/object/public/', '/render/image/public/') + '?width=300&height=300&resize=cover&quality=80';
+
+    const cacheKey = `${fideId}_webp`;
 
     if (!forceRefresh) {
-      const cacheRow = await readCacheRow(supabase, fideId);
+      const cacheRow = await readCacheRow(supabase, cacheKey);
       if (cacheRow && new Date(cacheRow.retry_after).getTime() > Date.now()) {
         if (cacheRow.status === "photo") {
           return jsonResponse({
@@ -248,7 +250,7 @@ Deno.serve(async (req: Request) => {
         } else {
           await upsertCacheRow(
             supabase,
-            fideId,
+            cacheKey,
             "photo",
             "storage_hit",
             storagePath,
@@ -270,7 +272,7 @@ Deno.serve(async (req: Request) => {
       const retryAfterIso = toIsoAfter(
         result.transient ? UPSTREAM_FAILURE_TTL_MS : NO_PHOTO_TTL_MS,
       );
-      await upsertCacheRow(supabase, fideId, status, result.reason, null, retryAfterIso);
+      await upsertCacheRow(supabase, cacheKey, status, result.reason, null, retryAfterIso);
       return jsonResponse({
         url: null,
         fide_id: fideId,
@@ -291,7 +293,7 @@ Deno.serve(async (req: Request) => {
       const retryAfterIso = toIsoAfter(UPSTREAM_FAILURE_TTL_MS);
       await upsertCacheRow(
         supabase,
-        fideId,
+        cacheKey,
         "fetch_failed",
         `storage_upload_failed:${uploadError.message}`,
         null,
@@ -307,7 +309,7 @@ Deno.serve(async (req: Request) => {
 
     await upsertCacheRow(
       supabase,
-      fideId,
+      cacheKey,
       "photo",
       "fetched_from_fide",
       storagePath,
