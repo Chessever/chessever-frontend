@@ -725,10 +725,10 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
                     ClipRRect(
                       borderRadius: BorderRadius.circular(2.br),
                       child: CountryFlag.fromCountryCode(
-                        countryCode,
-                        height: 16.h,
-                        width: 22.w,
-                      ),
+countryCode,
+  theme: ImageTheme(height: 16.h,
+                        width: 22.w,),
+),
                     ),
 
                   if (countryCode.isNotEmpty ||

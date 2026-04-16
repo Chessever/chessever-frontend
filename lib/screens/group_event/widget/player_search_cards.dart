@@ -254,10 +254,10 @@ class _PlayerSearchCard extends ConsumerWidget {
                           ClipRRect(
                             borderRadius: BorderRadius.circular(2.br),
                             child: CountryFlag.fromCountryCode(
-                              countryCode,
-                              width: isCompact ? 14.sp : 16.sp,
-                              height: isCompact ? 10.sp : 12.sp,
-                            ),
+countryCode,
+  theme: ImageTheme(width: isCompact ? 14.sp : 16.sp,
+                              height: isCompact ? 10.sp : 12.sp,),
+),
                           ),
                           SizedBox(width: 5.sp),
                         ],
@@ -332,10 +332,10 @@ class _FlagBackground extends StatelessWidget {
         child: FittedBox(
           fit: BoxFit.cover,
           child: CountryFlag.fromCountryCode(
-            countryCode,
-            width: 300,
-            height: 200,
-          ),
+countryCode,
+  theme: ImageTheme(width: 300,
+            height: 200,),
+),
         ),
       ),
     );

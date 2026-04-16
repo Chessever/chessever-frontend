@@ -92,10 +92,10 @@ class GroupEventMatchCard extends ConsumerWidget {
                       children: [
                         if (country1.isNotEmpty) ...[
                           CountryFlag.fromCountryCode(
-                            country1,
-                            height: 12.h,
-                            width: 16.w,
-                          ),
+country1,
+  theme: ImageTheme(height: 12.h,
+                            width: 16.w,),
+),
                           SizedBox(width: 4.w),
                         ],
                         Expanded(
@@ -172,10 +172,10 @@ class GroupEventMatchCard extends ConsumerWidget {
                         if (country2.isNotEmpty) ...[
                           SizedBox(width: 4.w),
                           CountryFlag.fromCountryCode(
-                            country2,
-                            height: 12.h,
-                            width: 16.w,
-                          ),
+country2,
+  theme: ImageTheme(height: 12.h,
+                            width: 16.w,),
+),
                         ],
                       ],
                     ),

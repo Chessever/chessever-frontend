@@ -109,10 +109,10 @@ class StandingScoreCard extends ConsumerWidget {
                       )
                       : validCountryCode.isNotEmpty
                       ? CountryFlag.fromCountryCode(
-                        validCountryCode,
-                        height: 12.h,
-                        width: 16.w,
-                      )
+validCountryCode,
+  theme: ImageTheme(height: 12.h,
+                        width: 16.w,),
+)
                       : null,
             ),
             SizedBox(width: 8.w), // Gap between flag and name

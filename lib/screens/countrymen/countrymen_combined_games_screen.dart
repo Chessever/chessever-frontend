@@ -174,10 +174,11 @@ class _CountrymenCombinedGamesScreenState
                 ],
               ),
               child: CountryFlag.fromCountryCode(
-                countryCode,
-                height: 18.h,
+countryCode,
+  theme: ImageTheme(height: 18.h,
                 width: 26.w,
                 shape: RoundedRectangle(4.br),
+),
               ),
             ),
             SizedBox(width: 10.w),

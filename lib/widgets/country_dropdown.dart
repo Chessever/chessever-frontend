@@ -112,10 +112,10 @@ class _CountryDropdownState extends ConsumerState<CountryDropdown> {
                 children: [
                   if (!widget.isLoading && selectedCountryCode.isNotEmpty)
                     CountryFlag.fromCountryCode(
-                      selectedCountryCode,
-                      width: isCompact ? 20.w : 16.w,
-                      height: isCompact ? 14.h : 12.h,
-                    ),
+selectedCountryCode,
+  theme: ImageTheme(width: isCompact ? 20.w : 16.w,
+                      height: isCompact ? 14.h : 12.h,),
+),
                   SizedBox(width: isCompact ? 8.w : 12.w),
                   Expanded(
                     child:
@@ -302,10 +302,10 @@ class _CountryDropdownState extends ConsumerState<CountryDropdown> {
                             children: [
                               SizedBox(width: 16.w),
                               CountryFlag.fromCountryCode(
-                                country.countryCode,
-                                width: 16.w,
-                                height: 12.h,
-                              ),
+country.countryCode,
+  theme: ImageTheme(width: 16.w,
+                                height: 12.h,),
+),
                               SizedBox(width: 8.w),
                               Expanded(
                                 child: Text(

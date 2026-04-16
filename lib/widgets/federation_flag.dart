@@ -76,10 +76,10 @@ class FederationFlag extends StatelessWidget {
     }
 
     final child = CountryFlag.fromCountryCode(
-      iso2,
-      width: width,
-      height: height,
-    );
+iso2,
+  theme: ImageTheme(width: width,
+      height: height,),
+);
 
     final radius = borderRadius ?? BorderRadius.circular(3);
     return ClipRRect(borderRadius: radius, child: child);

@@ -12301,10 +12301,10 @@ class _EventInfoSheet extends ConsumerWidget {
             SizedBox(width: 8.w),
           ] else if (validCountryCode.isNotEmpty) ...[
             CountryFlag.fromCountryCode(
-              validCountryCode,
-              width: 20.w,
-              height: 14.h,
-            ),
+validCountryCode,
+  theme: ImageTheme(width: 20.w,
+              height: 14.h,),
+),
             SizedBox(width: 8.w),
           ],
           // Title
@@ -12527,7 +12527,10 @@ class _EventInfoSheet extends ConsumerWidget {
 
   Widget? _buildCountryFlag(String countryCode) {
     if (countryCode.isEmpty) return null;
-    return CountryFlag.fromCountryCode(countryCode, width: 20.w, height: 14.h);
+    return CountryFlag.fromCountryCode(
+countryCode,
+  theme: ImageTheme(width: 20.w, height: 14.h),
+);
   }
 }
 

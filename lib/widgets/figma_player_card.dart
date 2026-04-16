@@ -160,10 +160,11 @@ class FigmaPlayerCard extends ConsumerWidget {
                                     )
                                     : validCountryCode.isNotEmpty
                                     ? CountryFlag.fromCountryCode(
-                                      validCountryCode,
-                                      height: 12.h,
+validCountryCode,
+  theme: ImageTheme(height: 12.h,
                                       width: 18.w,
                                       shape: RoundedRectangle(2.br),
+),
                                     )
                                     : null,
                           ),

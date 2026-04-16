@@ -156,10 +156,10 @@ class CalendarEventDetailScreen extends StatelessWidget {
                         event.countryCode != null &&
                                 event.countryCode!.isNotEmpty
                             ? CountryFlag.fromCountryCode(
-                              event.countryCode!,
-                              width: 16.w,
-                              height: 12.h,
-                            )
+event.countryCode!,
+  theme: ImageTheme(width: 16.w,
+                              height: 12.h,),
+)
                             : null,
                     description: event.location ?? 'TBA',
                   ),
@@ -185,14 +185,14 @@ class CalendarEventDetailScreen extends StatelessWidget {
         fadeInDuration: const Duration(milliseconds: 300),
         fadeOutDuration: const Duration(milliseconds: 200),
         alignment: Alignment.topCenter,
-        placeholder: (context, url) => _buildPlaceholder(),
-        errorWidget: (context, url, error) => _buildPlaceholder(),
+        placeholder: (context, url) => _buildPlaceholder(context),
+        errorWidget: (context, url, error) => _buildPlaceholder(context),
       );
     }
-    return _buildPlaceholder();
+    return _buildPlaceholder(context);
   }
 
-  Widget _buildPlaceholder() {
+  Widget _buildPlaceholder(BuildContext context) {
     // Show country flag as placeholder if available
     if (event.countryCode != null && event.countryCode!.isNotEmpty) {
       return Container(
@@ -203,8 +203,9 @@ class CalendarEventDetailScreen extends StatelessWidget {
           width: 120.w,
           height: 80.h,
           child: CountryFlag.fromCountryCode(
-            event.countryCode!,
-            shape: const RoundedRectangle(12),
+event.countryCode!,
+  theme: ImageTheme(shape: const RoundedRectangle(12),
+),
           ),
         ),
       );

@@ -326,8 +326,8 @@ Widget? _playerFlag(WidgetRef ref, PlayerCard? player) {
   if (validCountryCode.isEmpty) return null;
 
   return CountryFlag.fromCountryCode(
-    validCountryCode,
-    height: 12.h,
-    width: 16.w,
-  );
+validCountryCode,
+  theme: ImageTheme(height: 12.h,
+    width: 16.w,),
+);
 }

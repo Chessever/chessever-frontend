@@ -137,10 +137,8 @@ class SvgAsset {
     ];
 
     for (final asset in assets) {
-      precachePicture(
-        ExactAssetPicture(SvgPicture.svgStringDecoderBuilder, asset),
-        context,
-      );
+      final loader = SvgAssetLoader(asset);
+      svg.cache.putIfAbsent(loader.cacheKey(null), () => loader.loadBytes(null));
     }
   }
 }
