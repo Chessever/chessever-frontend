@@ -59,10 +59,7 @@ List<Pv> normalizeStockfishPvsToWhitePerspective(List<Pv> pvs, String fen) {
           moves: pv.moves,
           cp: isWhiteToMove ? pv.cp : -pv.cp,
           isMate: pv.isMate,
-          mate:
-              pv.mate == null
-                  ? null
-                  : (isWhiteToMove ? pv.mate : -pv.mate!),
+          mate: pv.mate == null ? null : (isWhiteToMove ? pv.mate : -pv.mate!),
           whitePerspective: true,
         ),
       )

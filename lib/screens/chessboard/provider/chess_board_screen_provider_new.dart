@@ -3959,7 +3959,9 @@ class ChessBoardScreenNotifierNew
     // CRITICAL: Re-read state after exiting preview as it may have changed
     final freshState = state.value;
     if (freshState == null || freshState.isAnalysisMode != true) {
-      _releaseLog('🎯 ANALYSIS STEP FORWARD: Not in analysis mode after preview exit');
+      _releaseLog(
+        '🎯 ANALYSIS STEP FORWARD: Not in analysis mode after preview exit',
+      );
       return;
     }
 
@@ -4041,7 +4043,9 @@ class ChessBoardScreenNotifierNew
     // CRITICAL: Re-read state after exiting preview as it may have changed
     final freshState = state.value;
     if (freshState == null || freshState.isAnalysisMode != true) {
-      _releaseLog('🎯 ANALYSIS STEP BACKWARD: Not in analysis mode after preview exit');
+      _releaseLog(
+        '🎯 ANALYSIS STEP BACKWARD: Not in analysis mode after preview exit',
+      );
       return;
     }
 
@@ -4053,7 +4057,9 @@ class ChessBoardScreenNotifierNew
     // DEFENSIVE: Verify we can actually move backward before proceeding.
     // Tapping quickly beyond the start should be a NO-OP to avoid disrupting ongoing evaluations.
     if (!_canAnalysisNavigatorMoveBackward()) {
-      _releaseLog('🎯 ANALYSIS STEP BACKWARD: Already at the beginning, bailing out');
+      _releaseLog(
+        '🎯 ANALYSIS STEP BACKWARD: Already at the beginning, bailing out',
+      );
       return;
     }
 
@@ -5960,7 +5966,10 @@ class ChessBoardScreenNotifierNew
                         stockfishResult.pvs.first,
                         fenToAnalyze,
                       ),
-                      mate: _mateFromPv(stockfishResult.pvs.first, fenToAnalyze),
+                      mate: _mateFromPv(
+                        stockfishResult.pvs.first,
+                        fenToAnalyze,
+                      ),
                       isEvaluating: false,
                     ),
                   );
@@ -6411,7 +6420,9 @@ class ChessBoardScreenNotifierNew
           current.principalVariations.isEmpty;
 
       if (isStuckEvaluating) {
-        _releaseLog('🎯 SYNC FROM NAVIGATOR: Redundant sync but stuck evaluating, refreshing...');
+        _releaseLog(
+          '🎯 SYNC FROM NAVIGATOR: Redundant sync but stuck evaluating, refreshing...',
+        );
         _cancelEvaluation = false;
         _updateEvaluation();
       }

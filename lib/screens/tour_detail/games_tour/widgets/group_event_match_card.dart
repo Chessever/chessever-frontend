@@ -231,8 +231,7 @@ class GroupEventMatchCard extends ConsumerWidget {
   Widget _buildChessBoardGridView(BuildContext context, WidgetRef ref) {
     final fullGamesList = gamesData.gamesTourModels;
     final gameIndexMap = {
-      for (int i = 0; i < fullGamesList.length; i++)
-        fullGamesList[i].gameId: i,
+      for (int i = 0; i < fullGamesList.length; i++) fullGamesList[i].gameId: i,
     };
 
     return ListView.builder(
@@ -251,10 +250,22 @@ class GroupEventMatchCard extends ConsumerWidget {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Expanded(
-                child: _buildGridChessBoard(context, ref, matchWithComparison, gameIndexMap[matchWithComparison.game.gameId] ?? -1),
+                child: _buildGridChessBoard(
+                  context,
+                  ref,
+                  matchWithComparison,
+                  gameIndexMap[matchWithComparison.game.gameId] ?? -1,
+                ),
               ),
               if (game2 != null) ...[
-                Expanded(child: _buildGridChessBoard(context, ref, game2, gameIndexMap[game2.game.gameId] ?? -1)),
+                Expanded(
+                  child: _buildGridChessBoard(
+                    context,
+                    ref,
+                    game2,
+                    gameIndexMap[game2.game.gameId] ?? -1,
+                  ),
+                ),
               ],
             ],
           ),
@@ -267,8 +278,7 @@ class GroupEventMatchCard extends ConsumerWidget {
     // Use the games list from widget data to maintain correct order for group events
     final fullGamesList = gamesData.gamesTourModels;
     final gameIndexMap = {
-      for (int i = 0; i < fullGamesList.length; i++)
-        fullGamesList[i].gameId: i,
+      for (int i = 0; i < fullGamesList.length; i++) fullGamesList[i].gameId: i,
     };
 
     return ListView.builder(

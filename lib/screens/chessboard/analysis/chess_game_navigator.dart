@@ -782,70 +782,68 @@ class ChessGameNavigator extends StateNotifier<ChessGameNavigatorState> {
 
     ChessMovePointer? promotedPointer;
 
-    final updatedMainline = _rebuildLine(
-      state.game.mainline,
-      parentPointer,
-      0,
-      (line, moveIndex) {
-        if (line.isEmpty || moveIndex >= line.length) {
-          return line;
+    final updatedMainline = _rebuildLine(state.game.mainline, parentPointer, 0, (
+      line,
+      moveIndex,
+    ) {
+      if (line.isEmpty || moveIndex >= line.length) {
+        return line;
+      }
+      final move = line[moveIndex];
+      final variations = move.variations;
+      if (variations == null || variationIndex >= variations.length) {
+        return line;
+      }
+
+      final promotedVariationLine = variations[variationIndex];
+
+      // 1. The part of the current line that comes after the junction move
+      // will now become a sub-variation.
+      final oldMainlineContinuation = line.sublist(moveIndex + 1);
+
+      // 2. Build the new variations list for the junction move.
+      // It will contain the old mainline continuation (if not empty),
+      // followed by all other existing variations.
+      final newVariations = <ChessLine>[];
+      if (oldMainlineContinuation.isNotEmpty) {
+        newVariations.add(oldMainlineContinuation);
+      }
+
+      for (int i = 0; i < variations.length; i++) {
+        if (i != variationIndex) {
+          newVariations.add(variations[i]);
         }
-        final move = line[moveIndex];
-        final variations = move.variations;
-        if (variations == null || variationIndex >= variations.length) {
-          return line;
-        }
+      }
 
-        final promotedVariationLine = variations[variationIndex];
+      // 3. Update the junction move with the new variations list.
+      final updatedMove = move.copyWith(
+        variations: newVariations.isNotEmpty ? newVariations : null,
+        overrideVariations: true,
+      );
 
-        // 1. The part of the current line that comes after the junction move
-        // will now become a sub-variation.
-        final oldMainlineContinuation = line.sublist(moveIndex + 1);
+      // 4. Construct the new line: prefix + updated junction move + promoted variation.
+      final newLine = List<ChessMove>.of(line.take(moveIndex));
+      newLine.add(updatedMove);
+      if (promotedVariationLine.isNotEmpty) {
+        newLine.addAll(promotedVariationLine);
+      }
 
-        // 2. Build the new variations list for the junction move.
-        // It will contain the old mainline continuation (if not empty),
-        // followed by all other existing variations.
-        final newVariations = <ChessLine>[];
-        if (oldMainlineContinuation.isNotEmpty) {
-          newVariations.add(oldMainlineContinuation);
-        }
-
-        for (int i = 0; i < variations.length; i++) {
-          if (i != variationIndex) {
-            newVariations.add(variations[i]);
-          }
-        }
-
-        // 3. Update the junction move with the new variations list.
-        final updatedMove = move.copyWith(
-          variations: newVariations.isNotEmpty ? newVariations : null,
-          overrideVariations: true,
-        );
-
-        // 4. Construct the new line: prefix + updated junction move + promoted variation.
-        final newLine = List<ChessMove>.of(line.take(moveIndex));
-        newLine.add(updatedMove);
-        if (promotedVariationLine.isNotEmpty) {
-          newLine.addAll(promotedVariationLine);
-        }
-
-        // 5. Update the pointer to point to the first move of the newly promoted line.
-        if (promotedVariationLine.isNotEmpty) {
-          final pointer = List<Number>.of(parentPointer);
-          if (pointer.isEmpty) {
-            // Should not happen given the length check, but for safety:
-            pointer.add(moveIndex + 1);
-          } else {
-            pointer[pointer.length - 1] = moveIndex + 1;
-          }
-          promotedPointer = pointer;
+      // 5. Update the pointer to point to the first move of the newly promoted line.
+      if (promotedVariationLine.isNotEmpty) {
+        final pointer = List<Number>.of(parentPointer);
+        if (pointer.isEmpty) {
+          // Should not happen given the length check, but for safety:
+          pointer.add(moveIndex + 1);
         } else {
-          promotedPointer = List<Number>.of(parentPointer);
+          pointer[pointer.length - 1] = moveIndex + 1;
         }
+        promotedPointer = pointer;
+      } else {
+        promotedPointer = List<Number>.of(parentPointer);
+      }
 
-        return newLine;
-      },
-    );
+      return newLine;
+    });
 
     if (promotedPointer == null) {
       debugPrint('🎯 NAVIGATOR promoteVariation: nothing to promote');
@@ -1176,10 +1174,7 @@ class ChessGameNavigator extends StateNotifier<ChessGameNavigatorState> {
     );
   }
 
-  void updateWithLatestGame(
-    ChessGame latestGame, {
-    bool goToTail = false,
-  }) {
+  void updateWithLatestGame(ChessGame latestGame, {bool goToTail = false}) {
     final newMainline = <ChessMove>[];
     final newPointer = List.of(state.movePointer);
 

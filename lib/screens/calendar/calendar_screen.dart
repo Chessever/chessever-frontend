@@ -120,7 +120,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                                       ]
                                       : [],
                             ),
-                              child: SimpleSearchBar(
+                            child: SimpleSearchBar(
                               key: e2eKey(E2eIds.calendarSearchField),
                               textFieldKey: e2eKey(E2eIds.calendarSearchField),
                               controller: searchController,

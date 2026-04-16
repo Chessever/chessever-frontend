@@ -65,8 +65,11 @@ class GamebaseFilter {
     if (timeControl != GameTimeControlFilter.all) count++;
     if (isOnline != GameOnlineFilter.all) count++;
     if (!eco.isAll) count++;
-    if (minYear != GameFilter.defaultMinYear || maxYear != DateTime.now().year) count++;
-    if (minRating != GameFilter.defaultMinRating || maxRating != GameFilter.absoluteMaxRating) count++;
+    if (minYear != GameFilter.defaultMinYear || maxYear != DateTime.now().year)
+      count++;
+    if (minRating != GameFilter.defaultMinRating ||
+        maxRating != GameFilter.absoluteMaxRating)
+      count++;
     return count;
   }
 
@@ -370,7 +373,8 @@ class _LibraryGamebaseFilterDialogState
                         values: _yearRange,
                         min: GameFilter.absoluteMinYear.toDouble(),
                         max: DateTime.now().year.toDouble(),
-                        divisions: DateTime.now().year - GameFilter.absoluteMinYear,
+                        divisions:
+                            DateTime.now().year - GameFilter.absoluteMinYear,
                         onChanged: (v) => setState(() => _yearRange = v),
                       ),
                       SizedBox(height: 20.h),
@@ -382,7 +386,10 @@ class _LibraryGamebaseFilterDialogState
                         values: _ratingRange,
                         min: GameFilter.absoluteMinRating.toDouble(),
                         max: GameFilter.absoluteMaxRating.toDouble(),
-                        divisions: (GameFilter.absoluteMaxRating - GameFilter.absoluteMinRating) ~/ 50,
+                        divisions:
+                            (GameFilter.absoluteMaxRating -
+                                GameFilter.absoluteMinRating) ~/
+                            50,
                         onChanged: (v) => setState(() => _ratingRange = v),
                       ),
                       SizedBox(height: 12.h),
@@ -419,14 +426,12 @@ class _LibraryGamebaseFilterDialogState
             children: [
               Text(
                 label,
-                style: AppTypography.textXsMedium.copyWith(color: kPrimaryColor),
+                style: AppTypography.textXsMedium.copyWith(
+                  color: kPrimaryColor,
+                ),
               ),
               SizedBox(width: 4.w),
-              Icon(
-                Icons.close_rounded,
-                color: kPrimaryColor,
-                size: 14.ic,
-              ),
+              Icon(Icons.close_rounded, color: kPrimaryColor, size: 14.ic),
             ],
           ),
         ),
@@ -434,39 +439,73 @@ class _LibraryGamebaseFilterDialogState
     }
 
     if (_result != GameResultFilter.all) {
-      activeChipWidgets.add(buildChip('Result: ${_result.displayText}', () {
-        setState(() => _result = GameResultFilter.all);
-      }));
+      activeChipWidgets.add(
+        buildChip('Result: ${_result.displayText}', () {
+          setState(() => _result = GameResultFilter.all);
+        }),
+      );
     }
     if (_color != GameColorFilter.all) {
-      activeChipWidgets.add(buildChip('Color: ${_color.displayText}', () {
-        setState(() => _color = GameColorFilter.all);
-      }));
+      activeChipWidgets.add(
+        buildChip('Color: ${_color.displayText}', () {
+          setState(() => _color = GameColorFilter.all);
+        }),
+      );
     }
     if (_timeControl != GameTimeControlFilter.all) {
-      activeChipWidgets.add(buildChip('TC: ${_timeControl.displayText}', () {
-        setState(() => _timeControl = GameTimeControlFilter.all);
-      }));
+      activeChipWidgets.add(
+        buildChip('TC: ${_timeControl.displayText}', () {
+          setState(() => _timeControl = GameTimeControlFilter.all);
+        }),
+      );
     }
     if (_isOnline != GameOnlineFilter.all) {
-      activeChipWidgets.add(buildChip('Format: ${_isOnline.displayText}', () {
-        setState(() => _isOnline = GameOnlineFilter.all);
-      }));
+      activeChipWidgets.add(
+        buildChip('Format: ${_isOnline.displayText}', () {
+          setState(() => _isOnline = GameOnlineFilter.all);
+        }),
+      );
     }
     if (!_eco.isAll) {
-      activeChipWidgets.add(buildChip('ECO: ${_eco.code}', () {
-        setState(() => _eco = GameEcoFilter.all);
-      }));
+      activeChipWidgets.add(
+        buildChip('ECO: ${_eco.code}', () {
+          setState(() => _eco = GameEcoFilter.all);
+        }),
+      );
     }
-    if (_yearRange.start > GameFilter.defaultMinYear || _yearRange.end < DateTime.now().year) {
-      activeChipWidgets.add(buildChip('Year: ${_yearRange.start.round()}-${_yearRange.end.round()}', () {
-        setState(() => _yearRange = RangeValues(GameFilter.defaultMinYear.toDouble(), DateTime.now().year.toDouble()));
-      }));
+    if (_yearRange.start > GameFilter.defaultMinYear ||
+        _yearRange.end < DateTime.now().year) {
+      activeChipWidgets.add(
+        buildChip(
+          'Year: ${_yearRange.start.round()}-${_yearRange.end.round()}',
+          () {
+            setState(
+              () =>
+                  _yearRange = RangeValues(
+                    GameFilter.defaultMinYear.toDouble(),
+                    DateTime.now().year.toDouble(),
+                  ),
+            );
+          },
+        ),
+      );
     }
-    if (_ratingRange.start > GameFilter.defaultMinRating || _ratingRange.end < GameFilter.absoluteMaxRating) {
-      activeChipWidgets.add(buildChip('ELO: ${_ratingRange.start.round()}-${_ratingRange.end.round()}', () {
-        setState(() => _ratingRange = RangeValues(GameFilter.defaultMinRating.toDouble(), GameFilter.absoluteMaxRating.toDouble()));
-      }));
+    if (_ratingRange.start > GameFilter.defaultMinRating ||
+        _ratingRange.end < GameFilter.absoluteMaxRating) {
+      activeChipWidgets.add(
+        buildChip(
+          'ELO: ${_ratingRange.start.round()}-${_ratingRange.end.round()}',
+          () {
+            setState(
+              () =>
+                  _ratingRange = RangeValues(
+                    GameFilter.defaultMinRating.toDouble(),
+                    GameFilter.absoluteMaxRating.toDouble(),
+                  ),
+            );
+          },
+        ),
+      );
     }
 
     return Padding(
@@ -493,11 +532,7 @@ class _LibraryGamebaseFilterDialogState
           ),
           if (activeChipWidgets.isNotEmpty) ...[
             SizedBox(height: 8.h),
-            Wrap(
-              spacing: 6.w,
-              runSpacing: 6.h,
-              children: activeChipWidgets,
-            ),
+            Wrap(spacing: 6.w, runSpacing: 6.h, children: activeChipWidgets),
             SizedBox(height: 4.h),
           ],
         ],

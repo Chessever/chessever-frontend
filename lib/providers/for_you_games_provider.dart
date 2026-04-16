@@ -394,7 +394,6 @@ final forYouEventsProvider =
       return ForYouNotifier(ref);
     });
 
-
 abstract class ForYouPinStorage {
   Future<List<String>> getPinnedGameIds(String tourId);
 
@@ -826,7 +825,6 @@ Future<ForYouEventGamesSnapshot> _computeForYouEventGamesSnapshot({
   );
   return snapshot;
 }
-
 
 Future<_ForYouResolvedEventData?> _loadForYouResolvedEventData({
   required Ref ref,

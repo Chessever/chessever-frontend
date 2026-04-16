@@ -208,7 +208,8 @@ class ScoreCardScreen extends ConsumerWidget {
 
     double ratingDiff = (opponentRating - playerRating).clamp(-400.0, 400.0);
     double expectedScore = 1 / (1 + math.pow(10, ratingDiff / 400.0));
-    final playerTitle = isWhite ? game.whitePlayer.title : game.blackPlayer.title;
+    final playerTitle =
+        isWhite ? game.whitePlayer.title : game.blackPlayer.title;
     int kFactor = _getKFactor(
       playerRating,
       title: playerTitle,
@@ -314,11 +315,11 @@ class ScoreCardScreen extends ConsumerWidget {
       // Use mergedTournamentGamesProvider to ensure games from all related
       // pagination categories (e.g. "Boards 67-126") are included.
       final mergedGames = ref.watch(mergedTournamentGamesProvider);
-      
-      // If the merged provider is empty, we still want to check if the 
+
+      // If the merged provider is empty, we still want to check if the
       // underlying data is loading to show the skeleton loader
       final gamesTourAsync = ref.watch(gamesTourScreenProvider);
-      
+
       allGames = gamesTourAsync.when(
         data: (_) => mergedGames,
         loading: () {
@@ -1163,9 +1164,7 @@ class _SliverScoreboardAppBarState
             .maybeWhen(
               data:
                   (players) =>
-                      players.any(
-                        (p) => p.fideId == player.fideId?.toString(),
-                      ),
+                      players.any((p) => p.fideId == player.fideId?.toString()),
               orElse: () => false,
             );
         if (!currentlyFavorited) {

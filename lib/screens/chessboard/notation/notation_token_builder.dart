@@ -253,14 +253,15 @@ List<NotationDisplayToken> buildNotationTokens(
     if (node.move.comments != null) {
       for (final comment in node.move.comments!) {
         // Strip out Lichess extension tags from the comment text
-        String cleanText = comment
-            .replaceAll(RegExp(r'\[%clk\s+[^\]]+\]'), '')
-            .replaceAll(RegExp(r'\[%eval\s+[^\]]+\]'), '')
-            .replaceAll(RegExp(r'\[%cal\s+[^\]]+\]'), '')
-            .replaceAll(RegExp(r'\[%csl\s+[^\]]+\]'), '')
-            .replaceAll(RegExp(r'\[%emt\s+[^\]]+\]'), '')
-            .replaceAll(RegExp(r'\[%tag\s+[^\]]+\]'), '')
-            .trim();
+        String cleanText =
+            comment
+                .replaceAll(RegExp(r'\[%clk\s+[^\]]+\]'), '')
+                .replaceAll(RegExp(r'\[%eval\s+[^\]]+\]'), '')
+                .replaceAll(RegExp(r'\[%cal\s+[^\]]+\]'), '')
+                .replaceAll(RegExp(r'\[%csl\s+[^\]]+\]'), '')
+                .replaceAll(RegExp(r'\[%emt\s+[^\]]+\]'), '')
+                .replaceAll(RegExp(r'\[%tag\s+[^\]]+\]'), '')
+                .trim();
 
         if (cleanText.isEmpty) {
           continue;

@@ -89,6 +89,14 @@ class _FullscreenPlayerAvatar extends StatelessWidget {
                             width: imageSize,
                             height: imageSize,
                             fit: BoxFit.cover,
+                            memCacheWidth:
+                                (imageSize *
+                                        MediaQuery.devicePixelRatioOf(context))
+                                    .toInt(),
+                            memCacheHeight:
+                                (imageSize *
+                                        MediaQuery.devicePixelRatioOf(context))
+                                    .toInt(),
                             placeholder:
                                 (context, url) => _InitialsDisplay(
                                   initials: initials,

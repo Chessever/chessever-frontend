@@ -126,9 +126,10 @@ class _NotifCategoryTileState extends State<NotifCategoryTile>
               value: widget.enabled,
               thumbColor: WidgetStatePropertyAll(kPrimaryColor),
               trackColor: WidgetStateProperty.resolveWith(
-                (states) => states.contains(WidgetState.selected)
-                    ? kPrimaryColor.withValues(alpha: 0.35)
-                    : kDividerColor.withValues(alpha: 0.5),
+                (states) =>
+                    states.contains(WidgetState.selected)
+                        ? kPrimaryColor.withValues(alpha: 0.35)
+                        : kDividerColor.withValues(alpha: 0.5),
               ),
               onChanged: widget.interactive ? (_) => widget.onToggle() : null,
             ),
@@ -140,44 +141,45 @@ class _NotifCategoryTileState extends State<NotifCategoryTile>
           duration: const Duration(milliseconds: 250),
           curve: Curves.easeInOut,
           alignment: Alignment.topCenter,
-          child: widget.enabled
-              ? Padding(
-                  padding: EdgeInsets.only(top: 12.h),
-                  child: Row(
-                    children: [
-                      _TcCard(
-                        assetPath: PngAsset.classicalIcon,
-                        label: 'Classical',
-                        selected: widget.classical,
-                        onTap: widget.onClassical,
-                        enabled: chipInteractive,
-                        fade: _fade0,
-                        slide: _slide0,
-                      ),
-                      SizedBox(width: 8.sp),
-                      _TcCard(
-                        assetPath: PngAsset.rapidIcon,
-                        label: 'Rapid',
-                        selected: widget.rapid,
-                        onTap: widget.onRapid,
-                        enabled: chipInteractive,
-                        fade: _fade1,
-                        slide: _slide1,
-                      ),
-                      SizedBox(width: 8.sp),
-                      _TcCard(
-                        assetPath: PngAsset.blitzIcon,
-                        label: 'Blitz',
-                        selected: widget.blitz,
-                        onTap: widget.onBlitz,
-                        enabled: chipInteractive,
-                        fade: _fade2,
-                        slide: _slide2,
-                      ),
-                    ],
-                  ),
-                )
-              : const SizedBox.shrink(),
+          child:
+              widget.enabled
+                  ? Padding(
+                    padding: EdgeInsets.only(top: 12.h),
+                    child: Row(
+                      children: [
+                        _TcCard(
+                          assetPath: PngAsset.classicalIcon,
+                          label: 'Classical',
+                          selected: widget.classical,
+                          onTap: widget.onClassical,
+                          enabled: chipInteractive,
+                          fade: _fade0,
+                          slide: _slide0,
+                        ),
+                        SizedBox(width: 8.sp),
+                        _TcCard(
+                          assetPath: PngAsset.rapidIcon,
+                          label: 'Rapid',
+                          selected: widget.rapid,
+                          onTap: widget.onRapid,
+                          enabled: chipInteractive,
+                          fade: _fade1,
+                          slide: _slide1,
+                        ),
+                        SizedBox(width: 8.sp),
+                        _TcCard(
+                          assetPath: PngAsset.blitzIcon,
+                          label: 'Blitz',
+                          selected: widget.blitz,
+                          onTap: widget.onBlitz,
+                          enabled: chipInteractive,
+                          fade: _fade2,
+                          slide: _slide2,
+                        ),
+                      ],
+                    ),
+                  )
+                  : const SizedBox.shrink(),
         ),
       ],
     );
@@ -219,23 +221,25 @@ class _TcCard extends StatelessWidget {
               curve: Curves.easeInOut,
               padding: EdgeInsets.symmetric(vertical: 10.sp),
               decoration: BoxDecoration(
-                color: selected
-                    ? kPrimaryColor.withValues(alpha: 0.08)
-                    : const Color(0xFF1E1E1E),
+                color:
+                    selected
+                        ? kPrimaryColor.withValues(alpha: 0.08)
+                        : const Color(0xFF1E1E1E),
                 borderRadius: BorderRadius.circular(10.br),
                 border: Border.all(
                   color: selected ? kPrimaryColor : const Color(0xFF333333),
                   width: selected ? 1.5 : 1.0,
                 ),
-                boxShadow: selected
-                    ? [
-                        BoxShadow(
-                          color: kPrimaryColor.withValues(alpha: 0.18),
-                          blurRadius: 8,
-                          spreadRadius: 0,
-                        ),
-                      ]
-                    : [],
+                boxShadow:
+                    selected
+                        ? [
+                          BoxShadow(
+                            color: kPrimaryColor.withValues(alpha: 0.18),
+                            blurRadius: 8,
+                            spreadRadius: 0,
+                          ),
+                        ]
+                        : [],
               ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -282,8 +286,7 @@ class _TcCard extends StatelessWidget {
                     style: AppTypography.textSmRegular.copyWith(
                       fontSize: 10.f,
                       color: selected ? kWhiteColor : const Color(0xFF888888),
-                      fontWeight:
-                          selected ? FontWeight.w600 : FontWeight.w400,
+                      fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
                     ),
                   ),
                 ],

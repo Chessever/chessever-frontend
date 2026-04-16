@@ -20,10 +20,11 @@ Future<GameFilter?> showGameFilterDialog({
   return showDialog<GameFilter>(
     context: context,
     barrierColor: Colors.transparent,
-    builder: (_) => GameFilterDialog(
-      initialFilter: currentFilter,
-      showFormatFilter: showFormatFilter,
-    ),
+    builder:
+        (_) => GameFilterDialog(
+          initialFilter: currentFilter,
+          showFormatFilter: showFormatFilter,
+        ),
   );
 }
 
@@ -212,7 +213,8 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
                         values: _yearRange,
                         min: GameFilter.absoluteMinYear.toDouble(),
                         max: DateTime.now().year.toDouble(),
-                        divisions: DateTime.now().year - GameFilter.absoluteMinYear,
+                        divisions:
+                            DateTime.now().year - GameFilter.absoluteMinYear,
                         onChanged: (v) => setState(() => _yearRange = v),
                       ),
                       // Rating range slider
@@ -223,7 +225,10 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
                         values: _ratingRange,
                         min: GameFilter.absoluteMinRating.toDouble(),
                         max: GameFilter.absoluteMaxRating.toDouble(),
-                        divisions: (GameFilter.absoluteMaxRating - GameFilter.absoluteMinRating) ~/ 50,
+                        divisions:
+                            (GameFilter.absoluteMaxRating -
+                                GameFilter.absoluteMinRating) ~/
+                            50,
                         onChanged: (v) => setState(() => _ratingRange = v),
                       ),
                       SizedBox(height: 12.h),

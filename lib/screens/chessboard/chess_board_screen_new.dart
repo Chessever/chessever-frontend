@@ -6800,9 +6800,11 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard> {
             ],
           ),
           padding: EdgeInsets.all(badgeSize * 0.18),
-          child: SvgPicture.asset(
-            annotation.type.iconAssetPath,
-            fit: BoxFit.contain,
+          child: RepaintBoundary(
+            child: SvgPicture.asset(
+              annotation.type.iconAssetPath,
+              fit: BoxFit.contain,
+            ),
           ),
         ),
       ),
@@ -8044,9 +8046,11 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
                 borderRadius: BorderRadius.circular(999),
               ),
               padding: EdgeInsets.all(2.sp),
-              child: SvgPicture.asset(
-                annotation.type.iconAssetPath,
-                fit: BoxFit.contain,
+              child: RepaintBoundary(
+                child: SvgPicture.asset(
+                  annotation.type.iconAssetPath,
+                  fit: BoxFit.contain,
+                ),
               ),
             )
             : null;
@@ -12353,6 +12357,10 @@ class _EventInfoSheet extends ConsumerWidget {
               child: CachedNetworkImage(
                 imageUrl: aboutModel.imageUrl,
                 fit: BoxFit.cover,
+                memCacheWidth:
+                    (MediaQuery.sizeOf(context).width *
+                            MediaQuery.devicePixelRatioOf(context))
+                        .toInt(),
                 alignment: Alignment.topCenter,
                 placeholder:
                     (_, __) => Container(

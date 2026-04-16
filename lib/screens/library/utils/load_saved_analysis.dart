@@ -227,17 +227,25 @@ GamesTourModel convertSavedAnalysisToGame(SavedAnalysis analysis) {
 
   final whiteTimeDisplay = md['WhiteTimeDisplay']?.toString() ?? '--:--';
   final blackTimeDisplay = md['BlackTimeDisplay']?.toString() ?? '--:--';
-  final whiteClockSeconds = md['WhiteClockSeconds'] != null ? int.tryParse(md['WhiteClockSeconds'].toString()) : null;
-  final blackClockSeconds = md['BlackClockSeconds'] != null ? int.tryParse(md['BlackClockSeconds'].toString()) : null;
-  final boardNr = md['BoardNr'] != null ? int.tryParse(md['BoardNr'].toString()) : null;
+  final whiteClockSeconds =
+      md['WhiteClockSeconds'] != null
+          ? int.tryParse(md['WhiteClockSeconds'].toString())
+          : null;
+  final blackClockSeconds =
+      md['BlackClockSeconds'] != null
+          ? int.tryParse(md['BlackClockSeconds'].toString())
+          : null;
+  final boardNr =
+      md['BoardNr'] != null ? int.tryParse(md['BoardNr'].toString()) : null;
   final tourSlug = md['TourSlug']?.toString();
   final roundSlug = md['RoundSlug']?.toString();
 
   // Determine tournament ID: prefer the saved UUID from sourceTournamentId
   // which allows fetching full event info (images, website, etc.)
-  final tourId = (analysis.sourceTournamentId?.isNotEmpty == true)
-      ? analysis.sourceTournamentId!
-      : event;
+  final tourId =
+      (analysis.sourceTournamentId?.isNotEmpty == true)
+          ? analysis.sourceTournamentId!
+          : event;
 
   // Use analysis.id as gameId to avoid conflicts with live games
   // The original source game ID is preserved in analysis.sourceGameId

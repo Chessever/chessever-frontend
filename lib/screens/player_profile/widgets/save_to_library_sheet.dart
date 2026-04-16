@@ -136,8 +136,7 @@ class _SaveToLibrarySheetState extends ConsumerState<_SaveToLibrarySheet> {
 
   String _buildSaveAllSubtitle(PlayerProfileGamesState state) {
     final loaded = state.allGames.length;
-    final isTwic =
-        state.playerKey.source == PlayerProfileDataSource.twic;
+    final isTwic = state.playerKey.source == PlayerProfileDataSource.twic;
 
     if (_isLoadingAll) {
       final total = state.totalCount ?? widget.knownTotalCount;

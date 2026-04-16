@@ -178,11 +178,12 @@ class TourRepository extends BaseRepository {
       // text search directly in Supabase without an RPC requires fetching the
       // array and filtering. If an RPC 'search_tour_players' is added later,
       // it should be used here.
-      final response = await supabase
-          .from('tours')
-          .select('players')
-          .eq('id', tourId)
-          .single();
+      final response =
+          await supabase
+              .from('tours')
+              .select('players')
+              .eq('id', tourId)
+              .single();
 
       final playersRaw = response['players'];
       final playersList = playersRaw is List ? playersRaw : const <dynamic>[];

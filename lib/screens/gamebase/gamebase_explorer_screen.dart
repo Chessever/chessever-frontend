@@ -558,10 +558,7 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
               ),
             )
           else
-            _ExplorerSegmentedTitle(
-              currentPage: currentPage,
-              isLarge: true,
-            ),
+            _ExplorerSegmentedTitle(currentPage: currentPage, isLarge: true),
         ],
       ),
       actions: [
@@ -1924,8 +1921,7 @@ class _ExplorerBottomPanelsState extends ConsumerState<_ExplorerBottomPanels> {
   Widget build(BuildContext context) {
     // Sync external page changes (e.g. from AppBar toggle) to PageView
     ref.listen(explorerPageIndexProvider, (previous, next) {
-      if (_pageController.hasClients &&
-          _pageController.page?.round() != next) {
+      if (_pageController.hasClients && _pageController.page?.round() != next) {
         _pageController.animateToPage(
           next,
           duration: const Duration(milliseconds: 300),
@@ -1936,15 +1932,14 @@ class _ExplorerBottomPanelsState extends ConsumerState<_ExplorerBottomPanels> {
 
     return PageView(
       controller: _pageController,
-      onPageChanged: (page) => ref.read(explorerPageIndexProvider.notifier).state = page,
+      onPageChanged:
+          (page) => ref.read(explorerPageIndexProvider.notifier).state = page,
       children: [
         const MoveStatisticsPanel(
           key: PageStorageKey<String>('opening-explorer-moves-panel'),
         ),
         _ExplorerNotationView(
-          key: const PageStorageKey<String>(
-            'opening-explorer-notation-panel',
-          ),
+          key: const PageStorageKey<String>('opening-explorer-notation-panel'),
           isActive: ref.watch(explorerPageIndexProvider) == 1,
         ),
       ],
@@ -2038,7 +2033,8 @@ class _SegmentLabel extends StatelessWidget {
     return AnimatedDefaultTextStyle(
       duration: const Duration(milliseconds: 200),
       style: TextStyle(
-        color: isActive ? kWhiteColor : kSecondaryTextColor.withValues(alpha: 0.7),
+        color:
+            isActive ? kWhiteColor : kSecondaryTextColor.withValues(alpha: 0.7),
         fontSize: isLarge ? 17.f : 13.f,
         fontWeight: FontWeight.w600, // Constant weight to prevent layout shift
         letterSpacing: -0.2,

@@ -38,14 +38,17 @@ class LibraryGameCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final rawName = eventName ?? game.tourSlug ?? game.tourId;
-    final cleanedName = rawName.replaceAll('-', ' ').replaceAll('_', ' ').trim();
-    final isGeneric = cleanedName.isEmpty ||
+    final cleanedName =
+        rawName.replaceAll('-', ' ').replaceAll('_', ' ').trim();
+    final isGeneric =
+        cleanedName.isEmpty ||
         cleanedName.toLowerCase() == 'gamebase' ||
         cleanedName.toLowerCase() == 'search' ||
         cleanedName.toLowerCase() == 'library';
-        
-    final displayEventName = isGeneric ? 'Library' : StringUtils.slugToTitle(rawName);
-    
+
+    final displayEventName =
+        isGeneric ? 'Library' : StringUtils.slugToTitle(rawName);
+
     final timeControlIcon = _getTimeControlIcon(game, displayEventName);
     final displayEco = eco ?? game.eco ?? ''; // Only ECO code, never round info
     final displayDate = _formatDate(date ?? game.lastMoveTime);

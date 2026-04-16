@@ -457,17 +457,24 @@ class _TypeButton extends StatelessWidget {
         duration: const Duration(milliseconds: 200),
         padding: EdgeInsets.symmetric(vertical: 10.h),
         decoration: BoxDecoration(
-          color: isSelected ? kWhiteColor.withValues(alpha: 0.08) : Colors.transparent,
+          color:
+              isSelected
+                  ? kWhiteColor.withValues(alpha: 0.08)
+                  : Colors.transparent,
           borderRadius: BorderRadius.circular(10.br),
           border: Border.all(
-            color: isSelected ? kWhiteColor.withValues(alpha: 0.1) : Colors.transparent,
+            color:
+                isSelected
+                    ? kWhiteColor.withValues(alpha: 0.1)
+                    : Colors.transparent,
           ),
         ),
         child: Center(
           child: Text(
             label,
             style: AppTypography.textXsBold.copyWith(
-              color: isSelected ? kWhiteColor : kWhiteColor.withValues(alpha: 0.4),
+              color:
+                  isSelected ? kWhiteColor : kWhiteColor.withValues(alpha: 0.4),
             ),
           ),
         ),

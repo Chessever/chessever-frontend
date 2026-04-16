@@ -61,7 +61,9 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
         baseGameModel.gameStatus.isOngoing;
     final liveGameData =
         shouldWatchDirectLiveClock
-            ? ref.watch(gameUpdatesStreamProvider(baseGameModel.gameId)).valueOrNull
+            ? ref
+                .watch(gameUpdatesStreamProvider(baseGameModel.gameId))
+                .valueOrNull
             : null;
     final effectiveGameModel =
         liveGameData != null
@@ -69,7 +71,8 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
               pgn: liveGameData['pgn'] as String? ?? baseGameModel.pgn,
               fen: liveGameData['fen'] as String? ?? baseGameModel.fen,
               lastMove:
-                  liveGameData['last_move'] as String? ?? baseGameModel.lastMove,
+                  liveGameData['last_move'] as String? ??
+                  baseGameModel.lastMove,
               lastMoveTime:
                   liveGameData['last_move_time'] != null
                       ? (DateTime.tryParse(
@@ -673,7 +676,9 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
               federation:
                   effectivePlayerCard.countryCode.trim().isNotEmpty
                       ? effectivePlayerCard.countryCode
-                      : (validCountryCode.isNotEmpty ? validCountryCode : 'FID'),
+                      : (validCountryCode.isNotEmpty
+                          ? validCountryCode
+                          : 'FID'),
               height: flagHeight,
               width: flagWidth,
               borderRadius: BorderRadius.circular(2.br),
@@ -839,7 +844,10 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
               SizedBox(width: playerView == PlayerView.gridView ? 3.w : 4.w),
             ],
             // Always show clock/time on the right - simplified structure to prevent overflow
-            if (showClock && moveTime != '--:--' && moveTime != '-:--:--' && moveTime != '-')
+            if (showClock &&
+                moveTime != '--:--' &&
+                moveTime != '-:--:--' &&
+                moveTime != '-')
               Container(
                 padding: EdgeInsets.symmetric(
                   horizontal: clockPadding,

@@ -6,6 +6,7 @@ import 'package:chessever2/services/deep_link_service.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/notification_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/screen_wrapper.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart';
@@ -31,6 +32,8 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
     if (!E2eConfig.isEnabled) {
       unawaited(NotificationService.initialize());
     }
+    // Pre-cache SVGs to improve performance in the app
+    unawaited(SvgAsset.preCacheAll(context));
     _runInitialization();
   }
 
@@ -97,7 +100,18 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
           fit: StackFit.expand,
           children: [
             // Same background as native splash
-            Image.asset('assets/launch.jpg', fit: BoxFit.cover),
+            Image.asset(
+              'assets/launch.webp',
+              fit: BoxFit.cover,
+              cacheWidth:
+                  (MediaQuery.sizeOf(context).width *
+                          MediaQuery.devicePixelRatioOf(context))
+                      .toInt(),
+              cacheHeight:
+                  (MediaQuery.sizeOf(context).height *
+                          MediaQuery.devicePixelRatioOf(context))
+                      .toInt(),
+            ),
 
             // Error UI overlay (only visible when there's an error)
             if (_errorMessage != null)

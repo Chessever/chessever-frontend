@@ -716,6 +716,10 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
                       height: 16.h,
                       width: 22.w,
                       fit: BoxFit.cover,
+                      cacheWidth:
+                          (22 * MediaQuery.devicePixelRatioOf(context)).toInt(),
+                      cacheHeight:
+                          (16 * MediaQuery.devicePixelRatioOf(context)).toInt(),
                     )
                   else if (countryCode.isNotEmpty)
                     ClipRRect(
@@ -1402,7 +1406,10 @@ class _ActionCardState extends State<_ActionCard> {
                         maxWidth: double.infinity,
                         alignment: Alignment.centerLeft,
                         child: SizedBox(
-                          width: constraints.maxWidth.clamp(160.w, double.infinity),
+                          width: constraints.maxWidth.clamp(
+                            160.w,
+                            double.infinity,
+                          ),
                           child: Row(
                             children: [
                               // Icon badge
@@ -1457,12 +1464,17 @@ class _ActionCardState extends State<_ActionCard> {
                                       widget.subtitle,
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
-                                      style: AppTypography.textXsRegular.copyWith(
-                                        color:
-                                            widget.isHighlighted
-                                                ? _filterRed.withValues(alpha: 0.9)
-                                                : kWhiteColor.withValues(alpha: 0.5),
-                                      ),
+                                      style: AppTypography.textXsRegular
+                                          .copyWith(
+                                            color:
+                                                widget.isHighlighted
+                                                    ? _filterRed.withValues(
+                                                      alpha: 0.9,
+                                                    )
+                                                    : kWhiteColor.withValues(
+                                                      alpha: 0.5,
+                                                    ),
+                                          ),
                                     ),
                                   ],
                                 ),

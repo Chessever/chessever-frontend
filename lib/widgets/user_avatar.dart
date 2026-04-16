@@ -74,7 +74,7 @@ class UserAvatar extends HookConsumerWidget {
           ),
         ],
       ),
-      child: ClipOval(child: _buildAvatarContent(avatarUrl, initials)),
+      child: ClipOval(child: _buildAvatarContent(context, avatarUrl, initials)),
     );
 
     // Wrap with premium border if subscribed
@@ -100,13 +100,21 @@ class UserAvatar extends HookConsumerWidget {
     return GestureDetector(onTap: onTap, child: avatarWidget);
   }
 
-  Widget _buildAvatarContent(String? avatarUrl, String initials) {
+  Widget _buildAvatarContent(
+    BuildContext context,
+    String? avatarUrl,
+    String initials,
+  ) {
     if (avatarUrl != null && avatarUrl.isNotEmpty) {
+      final cacheSize =
+          (size.w * MediaQuery.devicePixelRatioOf(context)).toInt();
       return CachedNetworkImage(
         imageUrl: avatarUrl,
         fit: BoxFit.cover,
         width: size.w,
         height: size.h,
+        memCacheWidth: cacheSize,
+        memCacheHeight: cacheSize,
         placeholder: (context, url) => _buildFallback(initials),
         errorWidget: (context, url, error) => _buildFallback(initials),
       );

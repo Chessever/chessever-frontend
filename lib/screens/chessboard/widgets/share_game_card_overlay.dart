@@ -143,12 +143,15 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
         withScope: (scope) {
           scope.setTag('area', 'share_game');
           scope.setTag('stage', stage);
-          scope.setContexts('share_game', {
-            'gameId': widget.gameId,
-            'shareUrl': resolvedShareUrl,
-            'hasShareUrl': resolvedShareUrl?.isNotEmpty == true,
-            ...?extras,
-          }.map((key, value) => MapEntry(key, value?.toString())));
+          scope.setContexts(
+            'share_game',
+            {
+              'gameId': widget.gameId,
+              'shareUrl': resolvedShareUrl,
+              'hasShareUrl': resolvedShareUrl?.isNotEmpty == true,
+              ...?extras,
+            }.map((key, value) => MapEntry(key, value?.toString())),
+          );
         },
       ).timeout(const Duration(seconds: 2));
     } catch (_) {}
@@ -170,12 +173,15 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
         withScope: (scope) {
           scope.setTag('area', 'share_game');
           scope.setTag('stage', stage);
-          scope.setContexts('share_game', {
-            'gameId': widget.gameId,
-            'shareUrl': resolvedShareUrl,
-            'hasShareUrl': resolvedShareUrl?.isNotEmpty == true,
-            ...?extras,
-          }.map((key, value) => MapEntry(key, value?.toString())));
+          scope.setContexts(
+            'share_game',
+            {
+              'gameId': widget.gameId,
+              'shareUrl': resolvedShareUrl,
+              'hasShareUrl': resolvedShareUrl?.isNotEmpty == true,
+              ...?extras,
+            }.map((key, value) => MapEntry(key, value?.toString())),
+          );
         },
       ).timeout(const Duration(seconds: 2));
     } catch (_) {}
@@ -324,10 +330,7 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
 
   Future<void> _shareImage() async {
     unawaited(
-      _captureShareMessage(
-        'share image started',
-        stage: 'share_image_started',
-      ),
+      _captureShareMessage('share image started', stage: 'share_image_started'),
     );
     final imageBytes = await _captureCard();
     if (imageBytes == null) {
@@ -358,9 +361,7 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
           e,
           stackTrace,
           stage: 'share_image',
-          extras: {
-            'imageSize': imageBytes.length,
-          },
+          extras: {'imageSize': imageBytes.length},
         ),
       );
       _showMessage('Failed to share image', isError: true);

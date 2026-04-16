@@ -223,7 +223,10 @@ class _EvaluationBarWidgetState extends State<EvaluationBarWidget> {
 }
 
 /// Provider to cache checkmate detection results to avoid expensive calculations during scroll
-final _checkmateCacheProvider = Provider.autoDispose.family<bool?, String>((ref, fen) {
+final _checkmateCacheProvider = Provider.autoDispose.family<bool?, String>((
+  ref,
+  fen,
+) {
   // Delay disposal by 3 seconds to prevent thrashing during fast scrolling
   final link = ref.keepAlive();
   final timer = Timer(const Duration(seconds: 3), () {
@@ -235,7 +238,7 @@ final _checkmateCacheProvider = Provider.autoDispose.family<bool?, String>((ref,
   try {
     final setup = Setup.parseFen(fen);
     final position = Chess.fromSetup(setup);
-    
+
     // Fast path: if king is not in check, it cannot be checkmate.
     if (!position.isCheck) return null;
 

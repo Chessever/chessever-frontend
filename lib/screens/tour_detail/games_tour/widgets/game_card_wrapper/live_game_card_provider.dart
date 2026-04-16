@@ -6,8 +6,9 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 /// Stores the base game model for each game, keyed by gameId.
 /// Non-auto-dispose so it persists across provider rebuilds.
-final baseGameProvider =
-    StateProvider.family<GamesTourModel?, String>((ref, gameId) => null);
+final baseGameProvider = StateProvider.family<GamesTourModel?, String>(
+  (ref, gameId) => null,
+);
 
 /// Provider that combines the base game model with real-time updates from the stream.
 /// This is used by game cards to show live updates without entering the game screen.
@@ -17,8 +18,10 @@ final baseGameProvider =
 ///
 /// Auto-disposes when the widget is scrolled out of view, which automatically
 /// cleans up the Supabase Realtime subscription for this game.
-final liveGameCardProvider =
-    AutoDisposeProvider.family<GamesTourModel?, String>((ref, gameId) {
+final liveGameCardProvider = AutoDisposeProvider.family<
+  GamesTourModel?,
+  String
+>((ref, gameId) {
   final baseGame = ref.watch(baseGameProvider(gameId));
   if (baseGame == null) return null;
 

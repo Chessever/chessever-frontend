@@ -5,10 +5,10 @@ import 'package:chessever2/repository/local_storage/auto_pin_preferences/auto_pi
 import 'package:chessever2/repository/sqlite/app_database.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-final autoPinPreferencesProvider = AsyncNotifierProvider<
-  AutoPinPreferencesNotifier,
-  AutoPinPreferences
->(AutoPinPreferencesNotifier.new);
+final autoPinPreferencesProvider =
+    AsyncNotifierProvider<AutoPinPreferencesNotifier, AutoPinPreferences>(
+      AutoPinPreferencesNotifier.new,
+    );
 
 class AutoPinPreferencesNotifier extends AsyncNotifier<AutoPinPreferences> {
   bool _listening = false;

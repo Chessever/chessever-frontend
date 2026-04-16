@@ -62,7 +62,8 @@ class DatabaseGamesPaginationState {
 
 /// Notifier for paginated database games
 bool _hasYearFilter(GamebaseFilter filter) =>
-    filter.minYear != GameFilter.absoluteMinYear || filter.maxYear != DateTime.now().year;
+    filter.minYear != GameFilter.absoluteMinYear ||
+    filter.maxYear != DateTime.now().year;
 
 List<String> _libraryExactGameSelectColumns() => const [
   'id',
@@ -166,7 +167,8 @@ bool shouldUseExactLibraryGameQuery(String query, GamebaseFilter filter) {
 
   // Use exact query only if we have selective structured filters (year or rating).
   final hasYear = _hasYearFilter(filter);
-  final hasRating = filter.minRating > GameFilter.absoluteMinRating ||
+  final hasRating =
+      filter.minRating > GameFilter.absoluteMinRating ||
       filter.maxRating < GameFilter.absoluteMaxRating;
 
   if (!hasYear && !hasRating) return false;
@@ -316,10 +318,19 @@ class DatabaseGamesPaginationNotifier
         color: _filter.colorApiValue,
         timeControl: _filter.timeControlApiValue,
         isOnline: _filter.isOnlineApiValue,
-        yearFrom: _filter.minYear != GameFilter.absoluteMinYear ? _filter.minYear : null,
+        yearFrom:
+            _filter.minYear != GameFilter.absoluteMinYear
+                ? _filter.minYear
+                : null,
         yearTo: _filter.maxYear != DateTime.now().year ? _filter.maxYear : null,
-        ratingFrom: _filter.minRating > GameFilter.absoluteMinRating ? _filter.minRating : null,
-        ratingTo: _filter.maxRating < GameFilter.absoluteMaxRating ? _filter.maxRating : null,
+        ratingFrom:
+            _filter.minRating > GameFilter.absoluteMinRating
+                ? _filter.minRating
+                : null,
+        ratingTo:
+            _filter.maxRating < GameFilter.absoluteMaxRating
+                ? _filter.maxRating
+                : null,
       );
       rawRows = _rowsFromGlobalSearchResponse(response);
       totalCount = response.metadata.totalCount ?? 0;
@@ -500,10 +511,11 @@ class DatabaseGamesPaginationNotifier
           final formatCode =
               (eco.trim().isNotEmpty) ? eco.trim() : (timeControl ?? '');
 
-          final tourId = (preview['tour_id']?.toString() ??
-                  preview['tournament_id']?.toString() ??
-                  event.trim())
-              .trim();
+          final tourId =
+              (preview['tour_id']?.toString() ??
+                      preview['tournament_id']?.toString() ??
+                      event.trim())
+                  .trim();
 
           return GamesTourModel(
             gameId: safeId,
@@ -525,9 +537,10 @@ class DatabaseGamesPaginationNotifier
             pgn: pgn,
             lastMoveTime: date,
             eco: eco.trim().isNotEmpty ? eco.trim() : null,
-            openingName: (preview['opening']?.toString() ?? '').trim().isNotEmpty
-                ? preview['opening'].toString().trim()
-                : null,
+            openingName:
+                (preview['opening']?.toString() ?? '').trim().isNotEmpty
+                    ? preview['opening'].toString().trim()
+                    : null,
           );
         })
         .toList(growable: false);
@@ -644,10 +657,19 @@ final gamebaseDatabaseGamesProvider = FutureProvider.autoDispose<
         color: filter.colorApiValue,
         timeControl: filter.timeControlApiValue,
         isOnline: filter.isOnlineApiValue,
-        yearFrom: filter.minYear != GameFilter.absoluteMinYear ? filter.minYear : null,
+        yearFrom:
+            filter.minYear != GameFilter.absoluteMinYear
+                ? filter.minYear
+                : null,
         yearTo: filter.maxYear != DateTime.now().year ? filter.maxYear : null,
-        ratingFrom: filter.minRating > GameFilter.absoluteMinRating ? filter.minRating : null,
-        ratingTo: filter.maxRating < GameFilter.absoluteMaxRating ? filter.maxRating : null,
+        ratingFrom:
+            filter.minRating > GameFilter.absoluteMinRating
+                ? filter.minRating
+                : null,
+        ratingTo:
+            filter.maxRating < GameFilter.absoluteMaxRating
+                ? filter.maxRating
+                : null,
       );
       rawRows = _rowsFromGlobalSearchResponse(response);
     }
@@ -841,10 +863,11 @@ final gamebaseDatabaseGamesProvider = FutureProvider.autoDispose<
           final formatCode =
               (eco.trim().isNotEmpty) ? eco.trim() : (timeControl ?? '');
 
-          final tourId = (row['tour_id']?.toString() ??
-                  row['tournament_id']?.toString() ??
-                  event.trim())
-              .trim();
+          final tourId =
+              (row['tour_id']?.toString() ??
+                      row['tournament_id']?.toString() ??
+                      event.trim())
+                  .trim();
 
           return GamesTourModel(
             gameId: safeId,
@@ -866,9 +889,10 @@ final gamebaseDatabaseGamesProvider = FutureProvider.autoDispose<
             pgn: pgn,
             lastMoveTime: date,
             eco: eco.trim().isNotEmpty ? eco.trim() : null,
-            openingName: (row['opening']?.toString() ?? '').trim().isNotEmpty
-                ? row['opening'].toString().trim()
-                : null,
+            openingName:
+                (row['opening']?.toString() ?? '').trim().isNotEmpty
+                    ? row['opening'].toString().trim()
+                    : null,
           );
         })
         .toList(growable: false);

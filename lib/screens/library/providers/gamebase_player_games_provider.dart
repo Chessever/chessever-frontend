@@ -270,10 +270,11 @@ class GamebasePlayerGamesNotifier
                   ? eco.trim()
                   : (timeControl ?? '');
 
-          final tourId = (row['tour_id']?.toString() ??
-                  row['tournament_id']?.toString() ??
-                  event)
-              .trim();
+          final tourId =
+              (row['tour_id']?.toString() ??
+                      row['tournament_id']?.toString() ??
+                      event)
+                  .trim();
 
           return GamesTourModel(
             gameId: id,

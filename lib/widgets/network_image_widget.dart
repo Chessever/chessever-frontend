@@ -18,6 +18,9 @@ class NetworkImageWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cacheHeight =
+        (height * MediaQuery.devicePixelRatioOf(context)).toInt();
+
     return SizedBox(
       height: height,
       child: CachedNetworkImage(
@@ -25,6 +28,7 @@ class NetworkImageWidget extends StatelessWidget {
         height: height,
         width: double.infinity,
         fit: BoxFit.contain,
+        memCacheHeight: cacheHeight,
         imageBuilder: (context, imageProvider) {
           return Container(
             alignment: Alignment.topCenter,
@@ -53,6 +57,7 @@ class NetworkImageWidget extends StatelessWidget {
                   height: height,
                   width: double.infinity,
                   fit: BoxFit.cover,
+                  cacheHeight: cacheHeight,
                 ),
               ),
             ),

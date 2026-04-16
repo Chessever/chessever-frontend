@@ -220,10 +220,11 @@ class GameFilter {
     if (online != GameOnlineFilter.all) count++;
     if (!eco.isAll) count++;
     if (minYear != defaultMinYear || maxYear != DateTime.now().year) count++;
-    if (minRating != defaultMinRating || maxRating != GameFilter.absoluteMaxRating) count++;
+    if (minRating != defaultMinRating ||
+        maxRating != GameFilter.absoluteMaxRating)
+      count++;
     return count;
   }
-
 
   GameFilter copyWith({
     GameResultFilter? result,

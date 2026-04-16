@@ -63,10 +63,7 @@ class NotifToggleTile extends StatelessWidget {
                           fontSize: 13.f,
                         ),
                       ),
-                      if (badge != null) ...[
-                        SizedBox(width: 6.sp),
-                        badge!,
-                      ],
+                      if (badge != null) ...[SizedBox(width: 6.sp), badge!],
                     ],
                   ),
                   SizedBox(height: 4.h),
@@ -98,10 +95,7 @@ class NotifToggleTile extends StatelessWidget {
             ),
           ],
         ),
-        if (trailing != null) ...[
-          SizedBox(height: 12.h),
-          trailing!,
-        ],
+        if (trailing != null) ...[SizedBox(height: 12.h), trailing!],
       ],
     );
 

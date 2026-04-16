@@ -1,5 +1,3 @@
-
-
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
@@ -122,11 +120,16 @@ class _ValidatedNetworkImageState extends State<_ValidatedNetworkImage> {
       return _InitialsPlaceholder(initials: widget.initials, size: widget.size);
     }
 
+    final cacheSize =
+        (widget.size * MediaQuery.devicePixelRatioOf(context)).toInt();
+
     return CachedNetworkImage(
       imageUrl: widget.imageUrl,
       width: widget.size,
       height: widget.size,
       fit: BoxFit.cover,
+      memCacheWidth: cacheSize,
+      memCacheHeight: cacheSize,
       fadeInDuration: const Duration(milliseconds: 200),
       fadeOutDuration: const Duration(milliseconds: 200),
       placeholder:
@@ -190,8 +193,6 @@ class _ValidatedNetworkImageState extends State<_ValidatedNetworkImage> {
               _setFallback();
               return;
             }
-
-
           },
           onError: (exception, stackTrace) {
             _setFallback();
@@ -209,7 +210,8 @@ class _ValidatedNetworkImageState extends State<_ValidatedNetworkImage> {
         _showFallback = true;
       });
     }
-  }}
+  }
+}
 
 /// Clean initials placeholder using the app's theme gradient.
 class _InitialsPlaceholder extends StatelessWidget {
@@ -313,11 +315,16 @@ class _ValidatedNetworkImageCompactState
       );
     }
 
+    final cacheSize =
+        (widget.size * MediaQuery.devicePixelRatioOf(context)).toInt();
+
     return CachedNetworkImage(
       imageUrl: widget.imageUrl,
       width: widget.size,
       height: widget.size,
       fit: BoxFit.cover,
+      memCacheWidth: cacheSize,
+      memCacheHeight: cacheSize,
       fadeInDuration: const Duration(milliseconds: 150),
       fadeOutDuration: const Duration(milliseconds: 150),
       placeholder:
@@ -379,8 +386,6 @@ class _ValidatedNetworkImageCompactState
               _setFallback();
               return;
             }
-
-
           },
           onError: (exception, stackTrace) {
             _setFallback();
@@ -398,7 +403,8 @@ class _ValidatedNetworkImageCompactState
         _showFallback = true;
       });
     }
-  }}
+  }
+}
 
 /// A cleaner initials placeholder for compact/list contexts.
 class _CompactInitialsPlaceholder extends StatelessWidget {

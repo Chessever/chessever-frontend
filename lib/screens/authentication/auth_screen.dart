@@ -87,10 +87,13 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                     child: Center(
                       child: Hero(
                         tag: 'premium-icon',
-                        child: Image(
-                          image: const AssetImage(PngAsset.chesseverIcon),
+                        child: Image.asset(
+                          PngAsset.chesseverIcon,
                           height: 180.sp,
                           width: 340.sp,
+                          cacheWidth:
+                              (340 * MediaQuery.devicePixelRatioOf(context))
+                                  .toInt(),
                         ),
                       ),
                     ),
@@ -135,10 +138,13 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                   children: [
                     Hero(
                       tag: 'premium-icon',
-                      child: Image(
-                        image: const AssetImage(PngAsset.chesseverIcon),
+                      child: Image.asset(
+                        PngAsset.chesseverIcon,
                         height: 160.sp,
                         width: 300.sp,
+                        cacheWidth:
+                            (300 * MediaQuery.devicePixelRatioOf(context))
+                                .toInt(),
                       ),
                     ),
                   ],
@@ -182,10 +188,13 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                 children: [
                   Hero(
                     tag: 'premium-icon',
-                    child: Image(
-                      image: const AssetImage(PngAsset.chesseverIcon),
+                    child: Image.asset(
+                      PngAsset.chesseverIcon,
                       height: 156,
                       width: 295,
+                      cacheWidth:
+                          (295 * MediaQuery.devicePixelRatioOf(context))
+                              .toInt(),
                     ),
                   ),
                 ],

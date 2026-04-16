@@ -353,7 +353,7 @@ class _WheelInputState extends State<_WheelInput> {
                     final normalizedIndex =
                         (index % _values.length + _values.length) %
                         _values.length;
-                    
+
                     if (normalizedIndex == _selectedIndex) return;
 
                     HapticFeedbackService.selection();

@@ -182,7 +182,8 @@ class _BookGamesFilterDialogState extends State<BookGamesFilterDialog> {
                       values: _yearRange,
                       min: GameFilter.absoluteMinYear.toDouble(),
                       max: DateTime.now().year.toDouble(),
-                      divisions: DateTime.now().year - GameFilter.absoluteMinYear,
+                      divisions:
+                          DateTime.now().year - GameFilter.absoluteMinYear,
                       onChanged: (v) => setState(() => _yearRange = v),
                     ),
                     SizedBox(height: 16.h),
@@ -193,7 +194,10 @@ class _BookGamesFilterDialogState extends State<BookGamesFilterDialog> {
                       values: _ratingRange,
                       min: GameFilter.absoluteMinRating.toDouble(),
                       max: GameFilter.absoluteMaxRating.toDouble(),
-                      divisions: (GameFilter.absoluteMaxRating - GameFilter.absoluteMinRating) ~/ 50,
+                      divisions:
+                          (GameFilter.absoluteMaxRating -
+                              GameFilter.absoluteMinRating) ~/
+                          50,
                       onChanged: (v) => setState(() => _ratingRange = v),
                     ),
                     SizedBox(height: 16.h),

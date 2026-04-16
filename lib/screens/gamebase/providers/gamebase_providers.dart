@@ -24,6 +24,7 @@ String normalizeFenForGamebase(String fen) {
   final parts = fen.trim().split(RegExp(r'\s+'));
   if (parts.length < 4) return fen.trim();
   if (parts.length == 4) return '${parts.join(' ')} 0 1';
+  if (parts.length == 5) return '${parts.join(' ')} 1';
   return parts.take(6).join(' ');
 }
 
@@ -204,7 +205,8 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
 
     final startsFromInitial =
         state.game != null && _isInitialFen(state.game!.startingFen);
-    final exploredMoves = startsFromInitial ? state.exploredMoves : const <String>[];
+    final exploredMoves =
+        startsFromInitial ? state.exploredMoves : const <String>[];
 
     final cacheKey = _buildCacheKey(
       fen: requestedFen,
@@ -221,7 +223,13 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
       return;
     }
 
-    state = state.copyWith(isLoading: true, error: null);
+    // Clear stale aggregates while loading to prevent accidental clicks on
+    // moves that are illegal in the NEW position.
+    state = state.copyWith(
+      isLoading: true,
+      error: null,
+      moveAggregates: const [],
+    );
 
     try {
       final repository = ref.read(gamebaseRepositoryProvider);
@@ -391,31 +399,48 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
       final currentIndex =
           state.movePointer.isEmpty ? -1 : state.movePointer.last;
 
+      // 1. Check if the move is the next move in the current mainline
       if (currentLine != null && currentIndex < currentLine.length - 1) {
         final nextMove = currentLine[currentIndex + 1];
         if (nextMove.uci == normalizedUci) {
           final pointer = List<int>.of(state.movePointer);
-          pointer.last = currentIndex + 1;
+          if (pointer.isEmpty) {
+            pointer.add(0);
+          } else {
+            pointer.last = currentIndex + 1;
+          }
           state = state.copyWith(
             currentFen: normalizeFenForGamebase(nextMove.fen),
             movePointer: pointer,
           );
-          _scheduleFetch(); // Use default debounce
+          _scheduleFetch();
           return;
         }
       }
 
-      if (currentMove?.variations != null) {
-        for (var i = 0; i < currentMove!.variations!.length; i++) {
-          final variation = currentMove.variations![i];
+      // 2. Check if the move is an existing variation of the current position
+      // For root variations, we check firstMove.variations.
+      // For others, we check currentMove.variations.
+      final variationsToSearch =
+          currentIndex == -1
+              ? (state.game!.mainline.isNotEmpty
+                  ? state.game!.mainline.first.variations
+                  : null)
+              : currentMove?.variations;
+
+      if (variationsToSearch != null) {
+        for (var i = 0; i < variationsToSearch.length; i++) {
+          final variation = variationsToSearch[i];
           if (variation.isNotEmpty && variation[0].uci == normalizedUci) {
             final newPointer =
-                state.movePointer.isEmpty ? [0] : [...state.movePointer, i, 0];
+                state.movePointer.isEmpty
+                    ? [0, i, 0]
+                    : [...state.movePointer, i, 0];
             state = state.copyWith(
               currentFen: normalizeFenForGamebase(variation[0].fen),
               movePointer: newPointer,
             );
-            _scheduleFetch(); // Use default debounce
+            _scheduleFetch();
             return;
           }
         }
@@ -651,7 +676,7 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
     if (previous.length >= 3) {
       previous.removeLast(); // move index
       previous.removeLast(); // variation index
-      return _previousPointer(previous);
+      return previous;
     }
     return const [];
   }
@@ -886,9 +911,24 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
           startingFen ??
           'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 
-      // If we already have a game tree and the moves match a path in it,
-      // we should just update the pointer.
-      // But usually this is called when opening the explorer.
+      if (state.game != null && state.game!.startingFen == actualStartingFen) {
+        final existingPointer = _findPointerForPath(
+          state.game!.mainline,
+          sanitizedMoves,
+        );
+        if (existingPointer != null) {
+          if (state.currentFen == normalized &&
+              listEquals(state.movePointer, existingPointer)) {
+            return;
+          }
+          state = state.copyWith(
+            currentFen: normalized,
+            movePointer: existingPointer,
+          );
+          _scheduleFetch();
+          return;
+        }
+      }
 
       // Build a simple ChessGame from these moves if current game is empty or different starting position
       final currentExploredMoves = state.exploredMoves;
@@ -918,19 +958,12 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
           break;
         }
         final (nextPos, san) = currentPosition.makeSan(move);
-        final movingColor =
-            currentPosition.turn == Side.white
-                ? ChessColor.white
-                : ChessColor.black;
         final nextToMove =
             nextPos.turn == Side.white ? ChessColor.white : ChessColor.black;
 
         mainline.add(
           ChessMove(
-            num:
-                movingColor == ChessColor.white
-                    ? currentPosition.fullmoves
-                    : currentPosition.fullmoves,
+            num: currentPosition.fullmoves,
             fen: nextPos.fen,
             san: san,
             uci: uci,
@@ -967,12 +1000,69 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
     }
   }
 
+  /// Recursively find a pointer for a UCI path in a game tree.
+  ChessMovePointer? _findPointerForPath(ChessLine line, List<String> path) {
+    if (path.isEmpty) return const [];
+
+    // 1. Try to find in the current line
+    for (var i = 0; i < line.length; i++) {
+      if (line[i].uci == path[0]) {
+        // Found first move. Check if the rest of the path matches this line.
+        bool matchesLine = true;
+        for (var j = 1; j < path.length; j++) {
+          if (i + j >= line.length || line[i + j].uci != path[j]) {
+            matchesLine = false;
+            break;
+          }
+        }
+        if (matchesLine) {
+          return [i + path.length - 1];
+        }
+
+        // Rest of the path didn't match the mainline. Check variations of the
+        // moves we DID match.
+        // We matched line[i...i+matchedCount-1].
+        // Try to branch off from each of those.
+        for (
+          var matchedCount = 1;
+          matchedCount <= path.length;
+          matchedCount++
+        ) {
+          if (i + matchedCount - 1 >= line.length) break;
+          final moveAtBranch = line[i + matchedCount - 1];
+          if (moveAtBranch.uci != path[matchedCount - 1]) break;
+
+          if (moveAtBranch.variations != null) {
+            final remainingPath = path.sublist(matchedCount);
+            if (remainingPath.isEmpty) {
+              // Path ended exactly at this move
+              return [i + matchedCount - 1];
+            }
+
+            for (var v = 0; v < moveAtBranch.variations!.length; v++) {
+              final variation = moveAtBranch.variations![v];
+              final subPointer = _findPointerForPath(variation, remainingPath);
+              if (subPointer != null) {
+                return [i + matchedCount - 1, v, ...subPointer];
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // Also check variations of the branching position if it matched the START
+    // of our path but with a DIFFERENT first move.
+    // (This is rare for ChessLine because it usually represents a continuation)
+
+    return null;
+  }
+
   /// Update filters and refetch data
   void updateFilters(GamebaseFilters filters) {
     state = state.copyWith(filters: filters);
     _scheduleFetch();
   }
-
 
   /// Toggle a time control filter
   void toggleTimeControl(TimeControl timeControl) {

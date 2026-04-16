@@ -1739,10 +1739,7 @@ class _ViewModeSelector extends StatelessWidget {
                     : Colors.transparent,
             borderRadius: BorderRadius.circular(8.br),
             border: Border.all(
-              color:
-                  isSelected
-                      ? kPrimaryColor
-                      : Colors.transparent,
+              color: isSelected ? kPrimaryColor : Colors.transparent,
               width: isSelected ? 1.5 : 1.0,
             ),
             boxShadow:

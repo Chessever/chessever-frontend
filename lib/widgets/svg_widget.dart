@@ -22,14 +22,16 @@ class SvgWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SvgPicture.asset(
-      path,
-      semanticsLabel: semanticsLabel,
-      height: height,
-      width: width,
-      colorFilter: colorFilter,
-      errorBuilder:
-          (context, obj, _) => fallback ?? AnalysisBoardIcon(size: height),
+    return RepaintBoundary(
+      child: SvgPicture.asset(
+        path,
+        semanticsLabel: semanticsLabel,
+        height: height,
+        width: width,
+        colorFilter: colorFilter,
+        errorBuilder:
+            (context, obj, _) => fallback ?? AnalysisBoardIcon(size: height),
+      ),
     );
   }
 }

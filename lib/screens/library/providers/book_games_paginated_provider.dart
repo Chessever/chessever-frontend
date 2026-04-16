@@ -38,10 +38,7 @@ class BookPaginationKey {
   final String folderId;
   final bool isSubscribed;
 
-  const BookPaginationKey({
-    required this.folderId,
-    this.isSubscribed = false,
-  });
+  const BookPaginationKey({required this.folderId, this.isSubscribed = false});
 
   @override
   bool operator ==(Object other) =>
@@ -59,12 +56,14 @@ class BookPaginationKey {
 /// Loads [kBookPageSize] games at a time. Supports infinite scroll via
 /// [BookGamesNotifier.loadMore] and pull-to-refresh via [BookGamesNotifier.refresh].
 final bookGamesPaginatedProvider = AutoDisposeAsyncNotifierProvider.family<
-    BookGamesNotifier, PaginatedBookState, BookPaginationKey>(
-  BookGamesNotifier.new,
-);
+  BookGamesNotifier,
+  PaginatedBookState,
+  BookPaginationKey
+>(BookGamesNotifier.new);
 
-class BookGamesNotifier extends AutoDisposeFamilyAsyncNotifier<
-    PaginatedBookState, BookPaginationKey> {
+class BookGamesNotifier
+    extends
+        AutoDisposeFamilyAsyncNotifier<PaginatedBookState, BookPaginationKey> {
   @override
   Future<PaginatedBookState> build(BookPaginationKey arg) async {
     final repo = ref.watch(libraryRepositoryProvider);
@@ -90,9 +89,7 @@ class BookGamesNotifier extends AutoDisposeFamilyAsyncNotifier<
         if (offset == 0) repo.getSharedFolderAnalysisCount(key.folderId),
       ]);
       page = results[0] as List<SavedAnalysis>;
-      count = offset == 0
-          ? results[1] as int
-          : (existing?.totalCount ?? 0);
+      count = offset == 0 ? results[1] as int : (existing?.totalCount ?? 0);
     } else {
       final results = await Future.wait([
         repo.getSavedAnalysesPaginated(
@@ -103,14 +100,11 @@ class BookGamesNotifier extends AutoDisposeFamilyAsyncNotifier<
         if (offset == 0) repo.getAnalysisCountInFolder(key.folderId),
       ]);
       page = results[0] as List<SavedAnalysis>;
-      count = offset == 0
-          ? results[1] as int
-          : (existing?.totalCount ?? 0);
+      count = offset == 0 ? results[1] as int : (existing?.totalCount ?? 0);
     }
 
-    final List<SavedAnalysis> allGames = offset == 0
-        ? page
-        : [...existing?.games ?? <SavedAnalysis>[], ...page];
+    final List<SavedAnalysis> allGames =
+        offset == 0 ? page : [...existing?.games ?? <SavedAnalysis>[], ...page];
 
     return PaginatedBookState(
       games: allGames,

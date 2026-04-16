@@ -43,20 +43,17 @@ class AutoPinPreferencesRepository {
 
   Future<AutoPinPreferences> loadPreferences(String? userId) async {
     try {
-      final entry = await _db.getCache(
-        key: _prefsKey,
-        userId: userId,
-      );
+      final entry = await _db.getCache(key: _prefsKey, userId: userId);
       if (entry == null) return AutoPinPreferences.defaults;
 
       final map = jsonDecode(entry.value) as Map<String, dynamic>;
       return AutoPinPreferences(
         favoritePlayersAutoPinEnabled:
             map['favoritePlayersAutoPinEnabled'] as bool? ??
-                AutoPinPreferences.defaults.favoritePlayersAutoPinEnabled,
+            AutoPinPreferences.defaults.favoritePlayersAutoPinEnabled,
         countrymenAutoPinEnabled:
             map['countrymenAutoPinEnabled'] as bool? ??
-                AutoPinPreferences.defaults.countrymenAutoPinEnabled,
+            AutoPinPreferences.defaults.countrymenAutoPinEnabled,
       );
     } catch (e) {
       debugPrint('[AutoPinPrefs] Error loading: $e');
@@ -79,10 +76,7 @@ class AutoPinPreferencesRepository {
     }
   }
 
-  Future<void> setFavoritePlayersAutoPin(
-    bool enabled,
-    String? userId,
-  ) async {
+  Future<void> setFavoritePlayersAutoPin(bool enabled, String? userId) async {
     final current = await loadPreferences(userId);
     await _savePreferences(
       current.copyWith(favoritePlayersAutoPinEnabled: enabled),
@@ -100,11 +94,9 @@ class AutoPinPreferencesRepository {
 
   // ---- Per-tournament auto-pin disable (user-scoped) ----
 
-  String _tourDisabledKey(String tourId) =>
-      '$_tourDisabledKeyPrefix$tourId';
+  String _tourDisabledKey(String tourId) => '$_tourDisabledKeyPrefix$tourId';
 
-  String _legacyTourKey(String tourId) =>
-      '$_legacyTourKeyPrefix$tourId';
+  String _legacyTourKey(String tourId) => '$_legacyTourKeyPrefix$tourId';
 
   Future<bool> getTournamentAutoPinDisabled(
     String tourId,

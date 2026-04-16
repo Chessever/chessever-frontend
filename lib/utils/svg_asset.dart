@@ -1,3 +1,6 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
+
 class SvgAsset {
   static const favouriteIcon = 'assets/svgs/favorites.svg';
   static const favouriteIcon2 = 'assets/svgs/heart.svg';
@@ -46,7 +49,6 @@ class SvgAsset {
   static const tour_list = 'assets/svgs/tour_list.svg';
 
   static const libary_book = 'assets/svgs/libary_book.svg';
-  static const images = 'assets/svgs/image.svg';
   static const laptop = 'assets/svgs/laptop.svg';
 
   static const stop = 'assets/svgs/stop.svg';
@@ -68,4 +70,77 @@ class SvgAsset {
   static const privacyPolicy = 'assets/svgs/hamburger/privacy_policy.svg';
   static const settings = 'assets/svgs/hamburger/settings.svg';
   static const versionIcon = 'assets/svgs/hamburger/version_icon.svg';
+
+  static Future<void> preCacheAll(BuildContext context) async {
+    final List<String> assets = [
+      favouriteIcon,
+      favouriteIcon2,
+      favouriteRedIcon,
+      starIcon,
+      starFilledIcon,
+      listFilterIcon,
+      searchIcon,
+      headsetIcon,
+      appleIcon,
+      googleIcon,
+      playersIcon,
+      threeDots,
+      boardSettings,
+      languageIcon,
+      timezoneIcon,
+      boardColorDefault,
+      boardColorBrown,
+      boardColorGreen,
+      boardColorGrey,
+      boardColorOrange,
+      boardColorPurple,
+      boardColorBlue,
+      boardColorPink,
+      bookIcon,
+      addToLibraryIcon,
+      tournamentPgnIcon,
+      calendarIcon,
+      tournamentIcon,
+      calendarNavIcon,
+      libraryNavIcon,
+      websiteIcon,
+      infoIcon,
+      premiumSelected,
+      premiumUnselected,
+      selectedSvg,
+      chase_grid,
+      boat,
+      countryMan,
+      pin,
+      unpine,
+      active,
+      share,
+      zero_ads,
+      tour_list,
+      libary_book,
+      laptop,
+      stop,
+      refresh,
+      left_arrow,
+      right_arrow,
+      chat,
+      check,
+      twemoji_notebook,
+      folderOutline,
+      analysisBoard,
+      email,
+      leaveFeedback,
+      openingExplorer,
+      privacyPolicy,
+      settings,
+      versionIcon,
+    ];
+
+    for (final asset in assets) {
+      precachePicture(
+        ExactAssetPicture(SvgPicture.svgStringDecoderBuilder, asset),
+        context,
+      );
+    }
+  }
 }

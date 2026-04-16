@@ -30,7 +30,7 @@ class GamesTourContentBody extends ConsumerWidget {
     if (groupedData.isLoading) {
       return const TourLoadingWidget();
     }
-    
+
     final gamesByRound = groupedData.gamesByRound;
     final effectiveRounds = groupedData.filteredRounds;
     final matchFormatHeader = groupedData.matchFormatHeader;
@@ -39,7 +39,7 @@ class GamesTourContentBody extends ConsumerWidget {
     final rounds = groupedData.rounds;
     final allGames = groupedData.allGames;
     final providerGameCount = groupedData.providerGameCount;
-    
+
     final gamesAppBar = ref.watch(gamesAppBarProvider);
     final selectedRoundId = gamesAppBar.value?.selectedId;
     final userSelected = gamesAppBar.value?.userSelectedId ?? false;
@@ -288,8 +288,6 @@ void _attemptScrollToRound(
     scrollNotifier.endProgrammaticScroll();
   }
 }
-
-
 
 List<GamesAppBarModel> _sortRoundsByStartAsc(List<GamesAppBarModel> rounds) {
   rounds.sort((a, b) {

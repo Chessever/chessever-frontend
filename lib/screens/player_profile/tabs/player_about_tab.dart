@@ -328,7 +328,9 @@ class _PlayerAboutTabState extends ConsumerState<PlayerAboutTab>
                                       filter: currentFilter,
                                       totalGames: allGames.length,
                                       filteredGames: filteredGames.length,
-                                      showFormat: widget.dataSource == PlayerProfileDataSource.twic,
+                                      showFormat:
+                                          widget.dataSource ==
+                                          PlayerProfileDataSource.twic,
                                     ),
                                   )
                                   : const SizedBox.shrink(),

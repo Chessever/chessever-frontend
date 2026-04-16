@@ -534,7 +534,7 @@ void _initializePostStartupServices() {
         // On Android this prevents the OS from aggressively killing the app
         // due to background native thread activity. The engine will lazily
         // reinitialize on the next evaluatePosition() call after resume.
-        // 
+        //
         // IMPORTANT: Skip this in debug mode to prevent hot-restarts from
         // triggering native FFI teardowns that crash the VM (Service disappeared).
         if (!kDebugMode) {
@@ -660,7 +660,7 @@ class _StartupGateState extends ConsumerState<StartupGate> {
   /// isolates/threads from blocking Flutter's reassemble mechanism.
   @override
   void reassemble() {
-    // SIGNAL native engines to quit. 
+    // SIGNAL native engines to quit.
     // We now use non-blocking background isolates for these calls in
     // StockfishSingleton to avoid hanging the main thread during restart.
     StockfishSingleton().prepareForHotRestart();
@@ -762,7 +762,18 @@ class _StartupLoadingApp extends StatelessWidget {
         body: Stack(
           fit: StackFit.expand,
           children: [
-            Image.asset('assets/launch.jpg', fit: BoxFit.cover),
+            Image.asset(
+              'assets/launch.webp',
+              fit: BoxFit.cover,
+              cacheWidth:
+                  (MediaQuery.sizeOf(context).width *
+                          MediaQuery.devicePixelRatioOf(context))
+                      .toInt(),
+              cacheHeight:
+                  (MediaQuery.sizeOf(context).height *
+                          MediaQuery.devicePixelRatioOf(context))
+                      .toInt(),
+            ),
             const Align(
               alignment: Alignment.bottomCenter,
               child: Padding(
@@ -796,7 +807,18 @@ class _StartupFailureApp extends StatelessWidget {
         body: Stack(
           fit: StackFit.expand,
           children: [
-            Image.asset('assets/launch.jpg', fit: BoxFit.cover),
+            Image.asset(
+              'assets/launch.webp',
+              fit: BoxFit.cover,
+              cacheWidth:
+                  (MediaQuery.sizeOf(context).width *
+                          MediaQuery.devicePixelRatioOf(context))
+                      .toInt(),
+              cacheHeight:
+                  (MediaQuery.sizeOf(context).height *
+                          MediaQuery.devicePixelRatioOf(context))
+                      .toInt(),
+            ),
             Align(
               alignment: Alignment.bottomCenter,
               child: Padding(
@@ -870,10 +892,12 @@ class MyApp extends HookConsumerWidget {
     // Also ensure status bar is visible and UI is edge-to-edge
     useEffect(() {
       SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-      SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
-        statusBarColor: Colors.transparent,
-        systemNavigationBarColor: Colors.transparent,
-      ));
+      SystemChrome.setSystemUIOverlayStyle(
+        const SystemUiOverlayStyle(
+          statusBarColor: Colors.transparent,
+          systemNavigationBarColor: Colors.transparent,
+        ),
+      );
 
       if (ResponsiveHelper.isTablet) {
         SystemChrome.setPreferredOrientations([

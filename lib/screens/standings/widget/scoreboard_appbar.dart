@@ -119,9 +119,7 @@ class _ScoreboardAppbarState extends ConsumerState<ScoreboardAppbar>
           favoritesAsync.maybeWhen(
             data:
                 (players) =>
-                    players.any(
-                      (p) => p.fideId == player.fideId?.toString(),
-                    ),
+                    players.any((p) => p.fideId == player.fideId?.toString()),
             orElse: () => false,
             skipLoadingOnRefresh: true,
             skipLoadingOnReload: true,

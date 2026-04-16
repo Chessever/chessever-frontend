@@ -625,7 +625,9 @@ void showFolderOverlayMenu({
               HapticFeedbackService.error();
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
-                  content: Text('only root-level database can be shared with others'),
+                  content: Text(
+                    'only root-level database can be shared with others',
+                  ),
                   behavior: SnackBarBehavior.floating,
                 ),
               );
@@ -670,7 +672,9 @@ void showSharedFolderOverlayMenu({
               HapticFeedbackService.error();
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
-                  content: Text('only root-level database can be shared with others'),
+                  content: Text(
+                    'only root-level database can be shared with others',
+                  ),
                   behavior: SnackBarBehavior.floating,
                 ),
               );
@@ -935,9 +939,7 @@ class _OverlayMenuItemState extends State<_OverlayMenuItem> {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTapDown:
-          (_) => setState(
-            () => _isPressed = widget.isEnabled ? true : false,
-          ),
+          (_) => setState(() => _isPressed = widget.isEnabled ? true : false),
       onTapUp: (_) => setState(() => _isPressed = false),
       onTapCancel: () => setState(() => _isPressed = false),
       onTap: widget.onTap,

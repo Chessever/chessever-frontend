@@ -279,9 +279,7 @@ class _GameResultChips extends ConsumerWidget {
               icon: _getResultIcon(r),
               isSelected: isSelected,
               onTap: () {
-                ref
-                    .read(gamebaseExplorerProvider.notifier)
-                    .toggleGameResult(r);
+                ref.read(gamebaseExplorerProvider.notifier).toggleGameResult(r);
               },
             );
           }).toList(),
@@ -377,7 +375,8 @@ class _FilterChip extends StatelessWidget {
             Icon(
               icon,
               size: 16.sp,
-              color: iconColor ?? (isSelected ? kWhiteColor : kSecondaryTextColor),
+              color:
+                  iconColor ?? (isSelected ? kWhiteColor : kSecondaryTextColor),
             ),
             SizedBox(width: 6.w),
             Text(
@@ -491,18 +490,12 @@ class _PlayerSearchField extends HookConsumerWidget {
         ),
         child: Row(
           children: [
-            Icon(
-              Icons.person_rounded,
-              size: 20.sp,
-              color: kWhiteColor,
-            ),
+            Icon(Icons.person_rounded, size: 20.sp, color: kWhiteColor),
             SizedBox(width: 8.w),
             Expanded(
               child: Text(
                 selectedPlayer.titleAndName,
-                style: AppTypography.textSmMedium.copyWith(
-                  color: kWhiteColor,
-                ),
+                style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
@@ -760,4 +753,3 @@ class _PlayerSearchResult extends StatelessWidget {
     );
   }
 }
-

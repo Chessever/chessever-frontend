@@ -12,7 +12,7 @@ class FidePhotoService {
   FidePhotoService._();
 
   static const String _functionUrl =
-      'https://oelbsuggrzyqwzmvidju.supabase.co/functions/v1/fetch-fide-photo';
+      'https://oelbsuggrzyqwzmvidju.supabase.co/functions/v1/fetch-fide-photo-webp';
   static const String _anonKey =
       'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9lbGJzdWdncnp5cXd6bXZpZGp1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDk5MDgyODYsImV4cCI6MjA2NTQ4NDI4Nn0.YpIEGIVCN2yUmh4ALnuF0i4jKI3ld1VHNVSCN2J7R30';
 
