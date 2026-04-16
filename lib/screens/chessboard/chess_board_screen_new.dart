@@ -6711,44 +6711,50 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard> {
     }
 
     for (final comment in move.comments!) {
-      // Parse [%cal ...]
-      final calMatch = RegExp(r'\[%cal\s+([^\]]+)\]').firstMatch(comment);
-      if (calMatch != null) {
-        final items = calMatch.group(1)!.split(',');
-        for (final item in items) {
-          final trimmed = item.trim();
-          if (trimmed.length == 5) {
-            // e.g. Gg8g7
-            final colorCode = trimmed[0];
-            final origStr = trimmed.substring(1, 3);
-            final destStr = trimmed.substring(3, 5);
+      // Parse all [%cal ...] blocks in the comment
+      final calMatches = RegExp(r'\[%cal\s+([^\]]+)\]').allMatches(comment);
+      for (final match in calMatches) {
+        final content = match.group(1);
+        if (content != null) {
+          final items = content.split(',');
+          for (final item in items) {
+            final trimmed = item.trim();
+            if (trimmed.length == 5) {
+              // e.g. Gg8g7
+              final colorCode = trimmed[0];
+              final origStr = trimmed.substring(1, 3);
+              final destStr = trimmed.substring(3, 5);
 
-            try {
-              final orig = Square.fromName(origStr);
-              final dest = Square.fromName(destStr);
-              shapes.add(
-                Arrow(color: getColor(colorCode), orig: orig, dest: dest),
-              );
-            } catch (_) {}
+              try {
+                final orig = Square.fromName(origStr);
+                final dest = Square.fromName(destStr);
+                shapes.add(
+                  Arrow(color: getColor(colorCode), orig: orig, dest: dest),
+                );
+              } catch (_) {}
+            }
           }
         }
       }
 
-      // Parse [%csl ...]
-      final cslMatch = RegExp(r'\[%csl\s+([^\]]+)\]').firstMatch(comment);
-      if (cslMatch != null) {
-        final items = cslMatch.group(1)!.split(',');
-        for (final item in items) {
-          final trimmed = item.trim();
-          if (trimmed.length == 3) {
-            // e.g. Re2
-            final colorCode = trimmed[0];
-            final sqStr = trimmed.substring(1, 3);
+      // Parse all [%csl ...] blocks in the comment
+      final cslMatches = RegExp(r'\[%csl\s+([^\]]+)\]').allMatches(comment);
+      for (final match in cslMatches) {
+        final content = match.group(1);
+        if (content != null) {
+          final items = content.split(',');
+          for (final item in items) {
+            final trimmed = item.trim();
+            if (trimmed.length == 3) {
+              // e.g. Re2
+              final colorCode = trimmed[0];
+              final sqStr = trimmed.substring(1, 3);
 
-            try {
-              final sq = Square.fromName(sqStr);
-              shapes.add(Circle(color: getColor(colorCode), orig: sq));
-            } catch (_) {}
+              try {
+                final sq = Square.fromName(sqStr);
+                shapes.add(Circle(color: getColor(colorCode), orig: sq));
+              } catch (_) {}
+            }
           }
         }
       }
@@ -6925,20 +6931,22 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard> {
           final currentMovePointer = navigatorState.movePointer;
           final isOnMainline =
               currentMovePointer.isEmpty || currentMovePointer.length == 1;
-          if (!isOnMainline) return null;
-          final currentMoveIndex =
-              currentMovePointer.isEmpty ? -1 : currentMovePointer[0];
-          if (currentMoveIndex < 0) return null;
 
-          // 1. Try Lichess annotations first
-          if (lichessAnnotations.isNotEmpty) {
-            // Only show annotations on mainline, not variations or PV previews.
-            if (widget.chessBoardState.isPvPreviewActive) return null;
-            final annotation = lichessAnnotations[currentMoveIndex];
-            if (annotation != null) return annotation;
+          // 1. Try Lichess annotations first (Mainline only)
+          if (isOnMainline) {
+            final currentMoveIndex =
+                currentMovePointer.isEmpty ? -1 : currentMovePointer[0];
+            if (currentMoveIndex >= 0 && lichessAnnotations.isNotEmpty) {
+              // Only show annotations on mainline, not variations or PV previews.
+              if (!widget.chessBoardState.isPvPreviewActive) {
+                final annotation = lichessAnnotations[currentMoveIndex];
+                if (annotation != null) return annotation;
+              }
+            }
           }
 
           // 2. Fallback to NAGs from the move itself (e.g. for pasted PGNs)
+          // This enables annotations like "??", "!", etc. for both mainline and variations.
           final currentMove = navigatorState.currentMove;
           if (currentMove != null &&
               currentMove.nags != null &&
