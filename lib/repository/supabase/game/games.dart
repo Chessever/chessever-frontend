@@ -24,6 +24,7 @@ class Games {
   final String? openingName;
   final String?
   timeControl; // From group_broadcasts: 'standard', 'rapid', 'blitz'
+  final int? avgElo; // From tours: average ELO of the tournament
 
   Games({
     required this.id,
@@ -48,6 +49,7 @@ class Games {
     this.eco,
     this.openingName,
     this.timeControl,
+    this.avgElo,
   });
 
   Games copyWith({
@@ -73,6 +75,7 @@ class Games {
     String? eco,
     String? openingName,
     String? timeControl,
+    int? avgElo,
   }) {
     return Games(
       id: id ?? this.id,
@@ -97,22 +100,28 @@ class Games {
       eco: eco ?? this.eco,
       openingName: openingName ?? this.openingName,
       timeControl: timeControl ?? this.timeControl,
+      avgElo: avgElo ?? this.avgElo,
     );
   }
 
   factory Games.fromJson(Map<String, dynamic> json) {
     try {
-      // Extract time_control from nested tours.group_broadcasts join
+      // Extract data from nested tours.group_broadcasts join
       String? timeControl;
+      int? avgElo;
       final tours = json['tours'];
       if (tours is Map<String, dynamic>) {
+        avgElo =
+            tours['avg_elo'] != null ? (tours['avg_elo'] as num).toInt() : null;
         final groupBroadcasts = tours['group_broadcasts'];
         if (groupBroadcasts is Map<String, dynamic>) {
           timeControl = groupBroadcasts['time_control'] as String?;
         }
       }
-      // Also check direct time_control field (for backwards compatibility)
+      // Also check direct fields (for backwards compatibility)
       timeControl ??= json['time_control'] as String?;
+      avgElo ??=
+          json['avg_elo'] != null ? (json['avg_elo'] as num).toInt() : null;
 
       return Games(
         id: json['id'] as String,
@@ -167,6 +176,7 @@ class Games {
         eco: json['eco'] as String?,
         openingName: json['opening_name'] as String?,
         timeControl: timeControl,
+        avgElo: avgElo,
       );
     } catch (e, _) {
       rethrow;

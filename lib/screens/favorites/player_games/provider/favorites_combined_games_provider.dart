@@ -493,11 +493,23 @@ class FavoritesCombinedGamesNotifier
     final dayCmp = bDayOnly.compareTo(aDayOnly);
     if (dayCmp != 0) return dayCmp;
 
-    // Secondary sort: by exact lastMoveTime (hours/minutes) within the same day
+    // Secondary sort: by event average ELO (highest first)
+    // This groups games from stronger events together on top
+    final aAvgElo = a.avgElo ?? 0;
+    final bAvgElo = b.avgElo ?? 0;
+    if (aAvgElo != bAvgElo) return bAvgElo.compareTo(aAvgElo);
+
+    // Tertiary sort: by board number (lowest first, Board 1 ahead of Board 8)
+    // NULL board numbers go to the end of the event group
+    final aBoard = a.boardNr ?? 999;
+    final bBoard = b.boardNr ?? 999;
+    if (aBoard != bBoard) return aBoard.compareTo(bBoard);
+
+    // Quaternary sort: by exact lastMoveTime (hours/minutes) within the same day
     final timeCmp = bDate.compareTo(aDate);
     if (timeCmp != 0) return timeCmp;
 
-    // Tertiary sort: by round number descending (latest round first)
+    // Quinary sort: by round number descending (latest round first)
     final aRound = _extractRoundNumber(a.roundSlug ?? a.roundId);
     final bRound = _extractRoundNumber(b.roundSlug ?? b.roundId);
     if (aRound != bRound) return bRound.compareTo(aRound);

@@ -500,6 +500,16 @@ class CountrymenCombinedGamesNotifier
       return dayCompare;
     }
 
+    // Secondary sort: by event average ELO (highest first)
+    final aAvgElo = a.avgElo ?? 0;
+    final bAvgElo = b.avgElo ?? 0;
+    if (aAvgElo != bAvgElo) return bAvgElo.compareTo(aAvgElo);
+
+    // Tertiary sort: by board number (lowest first, Board 1 ahead of Board 8)
+    final aBoard = a.boardNr ?? 999;
+    final bBoard = b.boardNr ?? 999;
+    if (aBoard != bBoard) return aBoard.compareTo(bBoard);
+
     final aTime = a.lastMoveTime ?? DateTime(1900);
     final bTime = b.lastMoveTime ?? DateTime(1900);
     final timeCompare = bTime.compareTo(aTime);
