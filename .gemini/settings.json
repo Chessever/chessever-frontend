@@ -7,7 +7,7 @@
       ]
     },
     "supabase-chessever": {
-      "url": "https://mcp.supabase.com/mcp?project_ref=oelbsuggrzyqwzmvidju&read_only=true",
+      "url": "https://mcp.supabase.com/mcp?project_ref=oelbsuggrzyqwzmvidju",
       "type": "http"
     }
   }

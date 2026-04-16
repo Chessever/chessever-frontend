@@ -39,15 +39,16 @@ int _pliesFromFen(String fen) {
 
 /// StateNotifier for managing Gamebase explorer state.
 class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
+  static const String _kInitialFen =
+      'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+
   GamebaseExplorerNotifier(this.ref)
     : super(
         GamebaseExplorerState(
-          currentFen:
-              'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+          currentFen: _kInitialFen,
           game: ChessGame(
             gameId: 'explorer_initial',
-            startingFen:
-                'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+            startingFen: _kInitialFen,
             metadata: {
               'Event': 'Opening Explorer',
               'Site': 'ChessEver',
@@ -92,7 +93,6 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
   String? _getSanForUci(String uci) {
     try {
       final playedMove = NormalMove.fromUci(uci);
-      if (playedMove == null) return null;
       if (!currentPosition.isLegal(playedMove)) return null;
       final (_, san) = currentPosition.makeSan(playedMove);
       return san;
@@ -146,10 +146,8 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
     final playerIdFilter =
         filters.playerIds.isNotEmpty ? filters.playerIds.first : null;
 
-    final colorFilter =
-        filters.playerColor != null ? filters.playerColor!.name : null;
-    final resultFilter =
-        filters.gameResult != null ? filters.gameResult!.apiValue : null;
+    final colorFilter = filters.playerColor?.name;
+    final resultFilter = filters.gameResult?.apiValue;
 
     final future = () async {
       final response = await repository.getMoveAggregates(
@@ -185,13 +183,28 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
     return future;
   }
 
+  bool _isInitialFen(String fen) {
+    final normalized = normalizeFenForGamebase(fen);
+    final initialNormalized = normalizeFenForGamebase(_kInitialFen);
+    // Ignore halfmove/fullmove for comparison
+    final parts1 = normalized.split(' ');
+    final parts2 = initialNormalized.split(' ');
+    if (parts1.length < 4 || parts2.length < 4) return false;
+    for (var i = 0; i < 4; i++) {
+      if (parts1[i] != parts2[i]) return false;
+    }
+    return true;
+  }
+
   /// Fetch move aggregates for current position
   Future<void> _fetchMoveAggregates() async {
     final fetchId = ++_fetchToken;
     final requestedFen = state.currentFen;
     final filtersSnapshot = state.filters;
 
-    final exploredMoves = state.exploredMoves;
+    final startsFromInitial =
+        state.game != null && _isInitialFen(state.game!.startingFen);
+    final exploredMoves = startsFromInitial ? state.exploredMoves : const <String>[];
 
     final cacheKey = _buildCacheKey(
       fen: requestedFen,
@@ -274,7 +287,6 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
           Setup.parseFen(baseFen),
         );
         final move = NormalMove.fromUci(a.uci);
-        if (move == null) continue;
         if (!position.isLegal(move)) continue;
 
         final nextPosition = position.play(move);
@@ -312,7 +324,7 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
               final reply = prefetched.first;
               final replyPosition = nextPosition;
               final replyMove = NormalMove.fromUci(reply.uci);
-              if (replyMove != null && replyPosition.isLegal(replyMove)) {
+              if (replyPosition.isLegal(replyMove)) {
                 final nextReplyPosition = replyPosition.play(replyMove);
                 final replyFen = normalizeFenForGamebase(nextReplyPosition.fen);
                 final replyMoves = <String>[...nextMoves, reply.uci];
@@ -350,7 +362,7 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
     try {
       final position = Position.setupPosition(Rule.chess, Setup.parseFen(fen));
       final move = NormalMove.fromUci(uci);
-      return move != null && position.isLegal(move);
+      return position.isLegal(move);
     } catch (_) {
       return false;
     }
@@ -373,7 +385,7 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
       if (san != null) _playSfx(san);
 
       // Replicate Navigator logic
-      final playedMove = NormalMove.fromUci(normalizedUci)!;
+      final playedMove = NormalMove.fromUci(normalizedUci);
       final currentLine = _lineForPointerInGame(state.game!, state.movePointer);
       final currentMove = _moveForPointerInGame(state.game!, state.movePointer);
       final currentIndex =
@@ -388,7 +400,7 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
             currentFen: normalizeFenForGamebase(nextMove.fen),
             movePointer: pointer,
           );
-          _scheduleFetch(Duration.zero);
+          _scheduleFetch(); // Use default debounce
           return;
         }
       }
@@ -403,7 +415,7 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
               currentFen: normalizeFenForGamebase(variation[0].fen),
               movePointer: newPointer,
             );
-            _scheduleFetch(Duration.zero);
+            _scheduleFetch(); // Use default debounce
             return;
           }
         }
@@ -493,7 +505,7 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
         }
       }
 
-      _scheduleFetch(Duration.zero);
+      _scheduleFetch(); // Use default debounce
     } catch (e) {
       debugPrint('[GamebaseExplorer] makeMove error for $normalizedUci: $e');
     }
@@ -626,7 +638,7 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
       currentFen: normalizeFenForGamebase(fen),
     );
 
-    _scheduleFetch(Duration.zero);
+    _scheduleFetch();
   }
 
   ChessMovePointer? _previousPointer(ChessMovePointer pointer) {
@@ -661,7 +673,7 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
           movePointer: nextPointer,
           currentFen: normalizeFenForGamebase(move.fen),
         );
-        _scheduleFetch(Duration.zero);
+        _scheduleFetch();
       }
     } else if (!state.isLoading && state.moveAggregates.isNotEmpty) {
       makeMove(state.moveAggregates.first.uci);
@@ -692,7 +704,7 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
       currentFen: state.game!.startingFen,
     );
     _playSfx('');
-    _scheduleFetch(Duration.zero);
+    _scheduleFetch();
   }
 
   /// Go to last position.
@@ -714,7 +726,7 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
         currentFen: normalizeFenForGamebase(move.fen),
       );
       _playSfx('');
-      _scheduleFetch(Duration.zero);
+      _scheduleFetch();
     }
   }
 
@@ -734,7 +746,7 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
       currentFen: normalizeFenForGamebase(move.fen),
     );
     _playSfx('');
-    _scheduleFetch(Duration.zero);
+    _scheduleFetch();
   }
 
   /// Go to specific move pointer
@@ -749,7 +761,7 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
       currentFen: normalizeFenForGamebase(fen),
     );
     _playSfx('');
-    _scheduleFetch(Duration.zero);
+    _scheduleFetch();
   }
 
   /// Initialize the explorer pre-filtered to a specific player.
@@ -759,10 +771,10 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
   /// and [addPlayerFilter] were called separately.
   void initializeWithPlayer(GamebasePlayer player) {
     state = GamebaseExplorerState(
-      currentFen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+      currentFen: _kInitialFen,
       game: ChessGame(
         gameId: 'explorer_player_${player.id}',
-        startingFen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+        startingFen: _kInitialFen,
         metadata: {
           'Event': 'Opening Explorer',
           'Site': 'ChessEver',
@@ -779,7 +791,7 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
         selectedPlayers: [player],
       ),
     );
-    _scheduleFetch(Duration.zero);
+    _scheduleFetch();
   }
 
   /// Initialize the explorer pre-filtered to a specific player with additional
@@ -789,10 +801,10 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
     GamebaseFilters filters,
   ) {
     state = GamebaseExplorerState(
-      currentFen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+      currentFen: _kInitialFen,
       game: ChessGame(
         gameId: 'explorer_player_${player.id}',
-        startingFen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+        startingFen: _kInitialFen,
         metadata: {
           'Event': 'Opening Explorer',
           'Site': 'ChessEver',
@@ -816,7 +828,7 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
         yearTo: filters.yearTo,
       ),
     );
-    _scheduleFetch(Duration.zero);
+    _scheduleFetch();
   }
 
   /// Reset to initial position.
@@ -828,10 +840,10 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
     // Invalidate any in-flight response from a previous position.
     _fetchToken++;
     state = GamebaseExplorerState(
-      currentFen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+      currentFen: _kInitialFen,
       game: ChessGame(
         gameId: 'explorer_reset',
-        startingFen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+        startingFen: _kInitialFen,
         metadata: {
           'Event': 'Opening Explorer',
           'Site': 'ChessEver',
@@ -845,26 +857,34 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
       movePointer: const [],
     );
     if (fetch) {
-      _scheduleFetch(Duration.zero);
+      _scheduleFetch();
     }
   }
 
   /// Set position from FEN (for loading a specific position)
-  void setPosition(String fen) {
-    setPositionWithMoves(fen, const <String>[]);
+  void setPosition(String fen, {String? startingFen}) {
+    setPositionWithMoves(fen, const <String>[], startingFen: startingFen);
   }
 
   /// Set position from board FEN and full explored move line (UCI).
   ///
   /// This keeps the explorer aligned with the board and enables backend deep
   /// line aggregation beyond the indexed opening window.
-  void setPositionWithMoves(String fen, List<String> moves) {
+  void setPositionWithMoves(
+    String fen,
+    List<String> moves, {
+    String? startingFen,
+  }) {
     try {
       final normalized = normalizeFenForGamebase(fen);
       final sanitizedMoves = moves
           .map((m) => m.trim().toLowerCase())
           .where((m) => RegExp(r'^[a-h][1-8][a-h][1-8][qrbn]?$').hasMatch(m))
           .toList(growable: false);
+
+      final actualStartingFen =
+          startingFen ??
+          'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 
       // If we already have a game tree and the moves match a path in it,
       // we should just update the pointer.
@@ -873,7 +893,8 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
       // Build a simple ChessGame from these moves if current game is empty or different starting position
       final currentExploredMoves = state.exploredMoves;
       if (listEquals(currentExploredMoves, sanitizedMoves) &&
-          state.currentFen == normalized) {
+          state.currentFen == normalized &&
+          state.game?.startingFen == actualStartingFen) {
         return;
       }
 
@@ -885,14 +906,17 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
       final mainline = <ChessMove>[];
       var currentPosition = Position.setupPosition(
         Rule.chess,
-        Setup.parseFen(
-          'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
-        ),
+        Setup.parseFen(actualStartingFen),
       );
 
       for (final uci in sanitizedMoves) {
         final move = NormalMove.fromUci(uci);
-        if (move == null || !currentPosition.isLegal(move)) break;
+        if (!currentPosition.isLegal(move)) {
+          debugPrint(
+            '[GamebaseExplorer] setPosition found illegal move $uci in path. Truncating.',
+          );
+          break;
+        }
         final (nextPos, san) = currentPosition.makeSan(move);
         final movingColor =
             currentPosition.turn == Side.white
@@ -916,12 +940,17 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
         currentPosition = nextPos;
       }
 
+      if (currentPosition.fen != normalized) {
+        debugPrint(
+          '[GamebaseExplorer] setPosition FEN mismatch. Target: $normalized, Replayed: ${currentPosition.fen}',
+        );
+      }
+
       state = state.copyWith(
         currentFen: normalized,
         game: ChessGame(
           gameId: 'explorer_sync_${DateTime.now().millisecondsSinceEpoch}',
-          startingFen:
-              'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+          startingFen: actualStartingFen,
           metadata: {
             'Event': 'Opening Explorer',
             'Site': 'ChessEver',
@@ -931,7 +960,7 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
         ),
         movePointer: mainline.isEmpty ? const [] : [mainline.length - 1],
       );
-      _scheduleFetch(Duration.zero);
+      _scheduleFetch();
     } catch (e) {
       debugPrint('[GamebaseExplorer] setPosition error: $e');
       state = state.copyWith(error: 'Invalid FEN: $fen');
@@ -941,8 +970,9 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
   /// Update filters and refetch data
   void updateFilters(GamebaseFilters filters) {
     state = state.copyWith(filters: filters);
-    _scheduleFetch(Duration.zero);
+    _scheduleFetch();
   }
+
 
   /// Toggle a time control filter
   void toggleTimeControl(TimeControl timeControl) {
@@ -1072,7 +1102,6 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
   }
 
   void _putCacheEntry(String key, List<MoveAggregate> moves) {
-    if (moves.isEmpty) return;
     _positionCache.remove(key);
     _positionCache[key] = _PositionAggregateCacheEntry(
       moves: List<MoveAggregate>.unmodifiable(moves),
