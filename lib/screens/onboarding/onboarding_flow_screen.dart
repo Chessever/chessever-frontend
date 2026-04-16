@@ -848,6 +848,18 @@ class _AuthenticatedUserStep extends HookWidget {
                                     PngAsset.newAppLogoCircle,
                                     height: 20.h,
                                     width: 20.w,
+                                    cacheWidth:
+                                        (20 *
+                                                MediaQuery.devicePixelRatioOf(
+                                                  context,
+                                                ))
+                                            .toInt(),
+                                    cacheHeight:
+                                        (20 *
+                                                MediaQuery.devicePixelRatioOf(
+                                                  context,
+                                                ))
+                                            .toInt(),
                                   ),
                                   SizedBox(width: 8.w),
                                   Text(
@@ -1217,6 +1229,10 @@ class _WelcomeStep extends HookWidget {
                     PngAsset.newAppLogoCircle,
                     height: 120.h,
                     width: 120.w,
+                    cacheWidth:
+                        (120 * MediaQuery.devicePixelRatioOf(context)).toInt(),
+                    cacheHeight:
+                        (120 * MediaQuery.devicePixelRatioOf(context)).toInt(),
                   )
                   .animate()
                   .fadeIn(duration: 600.ms, curve: _gentleSpring)

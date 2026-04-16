@@ -131,10 +131,13 @@ Future<CloudEval?> _readGamebaseEvalFast({
               .save(
                 fen,
                 gamebaseEval,
-                multiPV: gamebaseEval.requestedMultiPv ?? gamebaseEval.pvs.length,
+                multiPV:
+                    gamebaseEval.requestedMultiPv ?? gamebaseEval.pvs.length,
               )
               .catchError((e) {
-                debugPrint('⚠️ $sourceTag: Background local save failed for $fen: $e');
+                debugPrint(
+                  '⚠️ $sourceTag: Background local save failed for $fen: $e',
+                );
               }),
         );
       } else {
@@ -144,7 +147,8 @@ Future<CloudEval?> _readGamebaseEvalFast({
               .save(
                 fen,
                 gamebaseEval,
-                multiPV: gamebaseEval.requestedMultiPv ?? gamebaseEval.pvs.length,
+                multiPV:
+                    gamebaseEval.requestedMultiPv ?? gamebaseEval.pvs.length,
               )
               .catchError((_) => null),
         );
@@ -299,10 +303,10 @@ final cascadeEvalProvider = FutureProvider.family.autoDispose<
               multiPV: cloudFromSf.requestedMultiPv ?? cloudFromSf.pvs.length,
             )
             .catchError((error) {
-          debugPrint(
-            '⚠️ cascadeEval: Background local save failed for $fen: $error',
-          );
-        }),
+              debugPrint(
+                '⚠️ cascadeEval: Background local save failed for $fen: $error',
+              );
+            }),
       );
     }
 
@@ -543,10 +547,10 @@ final gameCardEvalWithStockfishFallbackProvider = FutureProvider.family.autoDisp
               multiPV: cloudFromSf.requestedMultiPv ?? cloudFromSf.pvs.length,
             )
             .catchError((error) {
-          debugPrint(
-            '⚠️ gameCardEval: Background local save failed for $fen: $error',
-          );
-        }),
+              debugPrint(
+                '⚠️ gameCardEval: Background local save failed for $fen: $error',
+              );
+            }),
       );
     }
 

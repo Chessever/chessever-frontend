@@ -648,10 +648,11 @@ Future<List<GamesTourModel>> _getTwicGamesViaPlayerEndpoint(
           gamebasePlayerId: row['blackPlayerId']?.toString().trim(),
         );
 
-        final tourId = (row['tour_id']?.toString() ??
-                row['tournament_id']?.toString() ??
-                event)
-            .trim();
+        final tourId =
+            (row['tour_id']?.toString() ??
+                    row['tournament_id']?.toString() ??
+                    event)
+                .trim();
 
         return GamesTourModel(
           gameId: safeId,
@@ -839,10 +840,11 @@ Future<List<GamesTourModel>> _getTwicGamesFromGamebase(
           gamebasePlayerId: row['blackPlayerId']?.toString().trim(),
         );
 
-        final tourId = (row['tour_id']?.toString() ??
-                row['tournament_id']?.toString() ??
-                event)
-            .trim();
+        final tourId =
+            (row['tour_id']?.toString() ??
+                    row['tournament_id']?.toString() ??
+                    event)
+                .trim();
 
         return GamesTourModel(
           gameId: safeId,

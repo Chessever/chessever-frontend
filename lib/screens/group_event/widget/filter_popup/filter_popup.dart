@@ -185,10 +185,12 @@ class FilterPopup extends ConsumerWidget {
                               maxValue: 3200,
                               currentStart: filterState.eloRange.start,
                               currentEnd: filterState.eloRange.end,
-                              divisions: (3200 - GameFilter.absoluteMinRating) ~/ 50,
-                              onChanged: (v) => ref
-                                  .read(filterPopupProvider.notifier)
-                                  .setEloRange(v),
+                              divisions:
+                                  (3200 - GameFilter.absoluteMinRating) ~/ 50,
+                              onChanged:
+                                  (v) => ref
+                                      .read(filterPopupProvider.notifier)
+                                      .setEloRange(v),
                             ),
                             SizedBox(height: 16.h),
                           ],

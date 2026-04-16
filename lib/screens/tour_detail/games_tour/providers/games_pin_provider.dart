@@ -72,9 +72,10 @@ List<String> mergeEffectivePins({
   required List<String> unpinnedOverrides,
 }) {
   final overrideSet = unpinnedOverrides.toSet();
-  return mergePinListsPreservingOrder([manualPins, autoPins])
-      .where((gameId) => !overrideSet.contains(gameId))
-      .toList(growable: false);
+  return mergePinListsPreservingOrder([
+    manualPins,
+    autoPins,
+  ]).where((gameId) => !overrideSet.contains(gameId)).toList(growable: false);
 }
 
 PinToggleMode resolvePinToggleMode({
@@ -228,19 +229,19 @@ class _GamesPinController extends StateNotifier<GamesPinState> {
   }
 
   void _listenToAutoPinPreferences() {
-    ref.listen<AsyncValue<AutoPinPreferences>>(
-      autoPinPreferencesProvider,
-      (previous, next) {
-        final prev = previous?.valueOrNull;
-        final curr = next.valueOrNull;
-        if (curr == null) return;
-        if (prev?.favoritePlayersAutoPinEnabled !=
-                curr.favoritePlayersAutoPinEnabled ||
-            prev?.countrymenAutoPinEnabled != curr.countrymenAutoPinEnabled) {
-          computeAutoPins();
-        }
-      },
-    );
+    ref.listen<AsyncValue<AutoPinPreferences>>(autoPinPreferencesProvider, (
+      previous,
+      next,
+    ) {
+      final prev = previous?.valueOrNull;
+      final curr = next.valueOrNull;
+      if (curr == null) return;
+      if (prev?.favoritePlayersAutoPinEnabled !=
+              curr.favoritePlayersAutoPinEnabled ||
+          prev?.countrymenAutoPinEnabled != curr.countrymenAutoPinEnabled) {
+        computeAutoPins();
+      }
+    });
   }
 
   bool _didGameListChange(
@@ -271,7 +272,9 @@ class _GamesPinController extends StateNotifier<GamesPinState> {
     final relatedTourIds = _getRelatedTourIds();
     final pinResults = await Future.wait<Object?>([
       Future.wait(
-        relatedTourIds.map((relatedTourId) => storage.getPinnedGameIds(relatedTourId)),
+        relatedTourIds.map(
+          (relatedTourId) => storage.getPinnedGameIds(relatedTourId),
+        ),
       ),
       Future.wait(
         relatedTourIds.map(

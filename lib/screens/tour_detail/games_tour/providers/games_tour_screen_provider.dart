@@ -387,11 +387,17 @@ class GamesTourScreenProvider
     }
   }
 
-  Future<void> togglePinGame(String gameId, {required String sourceTourId}) async {
+  Future<void> togglePinGame(
+    String gameId, {
+    required String sourceTourId,
+  }) async {
     await ref
         .read(gamesPinprovider(aboutTourModel!.id).notifier)
         .togglePin(gameId: gameId, sourceTourId: sourceTourId);
-    bumpEventPinRefreshSignal(ref, ref.read(selectedBroadcastModelProvider)?.id);
+    bumpEventPinRefreshSignal(
+      ref,
+      ref.read(selectedBroadcastModelProvider)?.id,
+    );
   }
 
   void clearSearch() {

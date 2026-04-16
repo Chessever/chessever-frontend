@@ -450,10 +450,11 @@ class _GamesList extends ConsumerWidget {
                     : null,
           );
 
-          final tourId = (row['tour_id']?.toString() ??
-                  row['tournament_id']?.toString() ??
-                  event.trim())
-              .trim();
+          final tourId =
+              (row['tour_id']?.toString() ??
+                      row['tournament_id']?.toString() ??
+                      event.trim())
+                  .trim();
 
           return GamesTourModel(
             gameId: safeId,

@@ -56,7 +56,8 @@ class _PremiumGamesFilterDialogState
         widget.initialFilter.minElo != null ||
         widget.initialFilter.maxElo != null;
     _eloRange = RangeValues(
-      widget.initialFilter.minElo?.toDouble() ?? GameFilter.defaultMinRating.toDouble(),
+      widget.initialFilter.minElo?.toDouble() ??
+          GameFilter.defaultMinRating.toDouble(),
       widget.initialFilter.maxElo?.toDouble() ?? 3000,
     );
   }
@@ -180,11 +181,14 @@ class _PremiumGamesFilterDialogState
                               child: IgnorePointer(
                                 ignoring: !_eloFilterEnabled,
                                 child: WheelRangeFilter(
-                                  minValue: GameFilter.absoluteMinRating.toDouble(),
+                                  minValue:
+                                      GameFilter.absoluteMinRating.toDouble(),
                                   maxValue: 3200,
                                   currentStart: _eloRange.start,
                                   currentEnd: _eloRange.end,
-                                  divisions: (3200 - GameFilter.absoluteMinRating) ~/ 50,
+                                  divisions:
+                                      (3200 - GameFilter.absoluteMinRating) ~/
+                                      50,
                                   onChanged: (values) {
                                     setState(() => _eloRange = values);
                                   },

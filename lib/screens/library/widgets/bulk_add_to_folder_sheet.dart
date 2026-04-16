@@ -537,9 +537,10 @@ class _BulkAddToFolderPageState extends ConsumerState<_BulkAddToFolderPage> {
     final List<LibraryFolder> selectedFolders =
         foldersAsync.whenOrNull(
           data:
-              (folders) => folders
-                  .where((f) => _selectedFolderIds.contains(f.id))
-                  .toList(),
+              (folders) =>
+                  folders
+                      .where((f) => _selectedFolderIds.contains(f.id))
+                      .toList(),
         ) ??
         [];
 
@@ -826,4 +827,3 @@ class _BulkFolderSelectionTile extends StatelessWidget {
     );
   }
 }
-

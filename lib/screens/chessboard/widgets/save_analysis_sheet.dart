@@ -177,7 +177,9 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
     _eventController = TextEditingController(
       text: metadata['Event']?.toString() ?? '',
     );
-    _ecoController = TextEditingController(text: metadata['ECO']?.toString() ?? '');
+    _ecoController = TextEditingController(
+      text: metadata['ECO']?.toString() ?? '',
+    );
     _whiteEloController = TextEditingController(
       text: metadata['WhiteElo']?.toString() ?? '',
     );
@@ -197,7 +199,8 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
     final dateStr = metadata['Date']?.toString() ?? '';
     final dateParts = dateStr.split('.');
     _yearController = TextEditingController(
-      text: (dateParts.isNotEmpty && dateParts[0] != '????') ? dateParts[0] : '',
+      text:
+          (dateParts.isNotEmpty && dateParts[0] != '????') ? dateParts[0] : '',
     );
     _monthController = TextEditingController(
       text: (dateParts.length > 1 && dateParts[1] != '??') ? dateParts[1] : '',
@@ -301,23 +304,31 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
 
       // Update metadata with form values
       final updatedMetadata = Map<String, dynamic>.from(analysisGame.metadata);
-      
+
       // Combine names: Surname, First Name
       final whiteSurname = _whiteSurnameController.text.trim();
       final whiteFirst = _whiteFirstNameController.text.trim();
-      final whiteFull = whiteFirst.isEmpty ? whiteSurname : '$whiteSurname, $whiteFirst';
+      final whiteFull =
+          whiteFirst.isEmpty ? whiteSurname : '$whiteSurname, $whiteFirst';
       updatedMetadata['White'] = whiteFull.isEmpty ? '?' : whiteFull;
-      
+
       final blackSurname = _blackSurnameController.text.trim();
       final blackFirst = _blackFirstNameController.text.trim();
-      final blackFull = blackFirst.isEmpty ? blackSurname : '$blackSurname, $blackFirst';
+      final blackFull =
+          blackFirst.isEmpty ? blackSurname : '$blackSurname, $blackFirst';
       updatedMetadata['Black'] = blackFull.isEmpty ? '?' : blackFull;
-      
-      updatedMetadata['Event'] = _eventController.text.trim().isEmpty ? '?' : _eventController.text.trim();
+
+      updatedMetadata['Event'] =
+          _eventController.text.trim().isEmpty
+              ? '?'
+              : _eventController.text.trim();
       updatedMetadata['ECO'] = _ecoController.text.trim();
       updatedMetadata['WhiteElo'] = _whiteEloController.text.trim();
       updatedMetadata['BlackElo'] = _blackEloController.text.trim();
-      updatedMetadata['Round'] = _roundController.text.trim().isEmpty ? '?' : _roundController.text.trim();
+      updatedMetadata['Round'] =
+          _roundController.text.trim().isEmpty
+              ? '?'
+              : _roundController.text.trim();
       updatedMetadata['Subround'] = _subroundController.text.trim();
       updatedMetadata['Result'] = _selectedResult;
 
@@ -756,30 +767,52 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
           ),
           if (_showGameDetails) ...[
             SizedBox(height: 16.h),
-            
+
             // White Player
-            _buildPlayerSection('White', _whiteSurnameController, _whiteFirstNameController),
+            _buildPlayerSection(
+              'White',
+              _whiteSurnameController,
+              _whiteFirstNameController,
+            ),
             SizedBox(height: 16.h),
-            
+
             // Black Player
-            _buildPlayerSection('Black', _blackSurnameController, _blackFirstNameController),
+            _buildPlayerSection(
+              'Black',
+              _blackSurnameController,
+              _blackFirstNameController,
+            ),
             SizedBox(height: 16.h),
-            
+
             _buildMetadataField('Tournament', _eventController),
             SizedBox(height: 12.h),
             Row(
               children: [
                 Expanded(child: _buildMetadataField('ECO', _ecoController)),
                 SizedBox(width: 12.w),
-                Expanded(child: _buildMetadataField('Result', null, isResult: true)),
+                Expanded(
+                  child: _buildMetadataField('Result', null, isResult: true),
+                ),
               ],
             ),
             SizedBox(height: 12.h),
             Row(
               children: [
-                Expanded(child: _buildMetadataField('White Elo', _whiteEloController, isNumeric: true)),
+                Expanded(
+                  child: _buildMetadataField(
+                    'White Elo',
+                    _whiteEloController,
+                    isNumeric: true,
+                  ),
+                ),
                 SizedBox(width: 12.w),
-                Expanded(child: _buildMetadataField('Black Elo', _blackEloController, isNumeric: true)),
+                Expanded(
+                  child: _buildMetadataField(
+                    'Black Elo',
+                    _blackEloController,
+                    isNumeric: true,
+                  ),
+                ),
               ],
             ),
             SizedBox(height: 12.h),
@@ -787,22 +820,30 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
               children: [
                 Expanded(child: _buildMetadataField('Round', _roundController)),
                 SizedBox(width: 12.w),
-                Expanded(child: _buildMetadataField('Subround', _subroundController)),
+                Expanded(
+                  child: _buildMetadataField('Subround', _subroundController),
+                ),
               ],
             ),
             SizedBox(height: 12.h),
             _buildDateField(),
             SizedBox(height: 16.h),
-            
+
             // Reset button
             Align(
               alignment: Alignment.centerRight,
               child: TextButton.icon(
                 onPressed: _isSaving ? null : _resetControllers,
-                icon: Icon(Icons.refresh_rounded, size: 14.sp, color: kWhiteColor.withValues(alpha: 0.4)),
+                icon: Icon(
+                  Icons.refresh_rounded,
+                  size: 14.sp,
+                  color: kWhiteColor.withValues(alpha: 0.4),
+                ),
                 label: Text(
                   'Reset Details',
-                  style: AppTypography.textXsMedium.copyWith(color: kWhiteColor.withValues(alpha: 0.4)),
+                  style: AppTypography.textXsMedium.copyWith(
+                    color: kWhiteColor.withValues(alpha: 0.4),
+                  ),
                 ),
               ),
             ),
@@ -812,7 +853,11 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
     );
   }
 
-  Widget _buildPlayerSection(String label, TextEditingController surname, TextEditingController first) {
+  Widget _buildPlayerSection(
+    String label,
+    TextEditingController surname,
+    TextEditingController first,
+  ) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -849,7 +894,9 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
         style: AppTypography.textSmRegular.copyWith(color: kWhiteColor),
         decoration: InputDecoration(
           hintText: hint,
-          hintStyle: AppTypography.textXsRegular.copyWith(color: kWhiteColor.withValues(alpha: 0.2)),
+          hintStyle: AppTypography.textXsRegular.copyWith(
+            color: kWhiteColor.withValues(alpha: 0.2),
+          ),
           border: InputBorder.none,
           contentPadding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 8.h),
         ),
@@ -880,17 +927,29 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
             borderRadius: BorderRadius.circular(10.br),
             border: Border.all(color: kWhiteColor.withValues(alpha: 0.06)),
           ),
-          child: isResult ? _buildResultDropdown() : TextField(
-            controller: controller,
-            enabled: !_isSaving,
-            keyboardType: isNumeric ? TextInputType.number : TextInputType.text,
-            inputFormatters: isNumeric ? [FilteringTextInputFormatter.digitsOnly] : null,
-            style: AppTypography.textSmRegular.copyWith(color: kWhiteColor),
-            decoration: InputDecoration(
-              border: InputBorder.none,
-              contentPadding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 10.h),
-            ),
-          ),
+          child:
+              isResult
+                  ? _buildResultDropdown()
+                  : TextField(
+                    controller: controller,
+                    enabled: !_isSaving,
+                    keyboardType:
+                        isNumeric ? TextInputType.number : TextInputType.text,
+                    inputFormatters:
+                        isNumeric
+                            ? [FilteringTextInputFormatter.digitsOnly]
+                            : null,
+                    style: AppTypography.textSmRegular.copyWith(
+                      color: kWhiteColor,
+                    ),
+                    decoration: InputDecoration(
+                      border: InputBorder.none,
+                      contentPadding: EdgeInsets.symmetric(
+                        horizontal: 12.w,
+                        vertical: 10.h,
+                      ),
+                    ),
+                  ),
         ),
       ],
     );
@@ -905,17 +964,25 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
           value: _selectedResult,
           isExpanded: true,
           dropdownColor: const Color(0xFF1A1A1C),
-          icon: Icon(Icons.arrow_drop_down, color: kWhiteColor.withValues(alpha: 0.4)),
+          icon: Icon(
+            Icons.arrow_drop_down,
+            color: kWhiteColor.withValues(alpha: 0.4),
+          ),
           style: AppTypography.textSmRegular.copyWith(color: kWhiteColor),
-          onChanged: _isSaving ? null : (String? newValue) {
-            if (newValue != null) setState(() => _selectedResult = newValue);
-          },
-          items: results.map<DropdownMenuItem<String>>((String value) {
-            return DropdownMenuItem<String>(
-              value: value,
-              child: Text(value),
-            );
-          }).toList(),
+          onChanged:
+              _isSaving
+                  ? null
+                  : (String? newValue) {
+                    if (newValue != null)
+                      setState(() => _selectedResult = newValue);
+                  },
+          items:
+              results.map<DropdownMenuItem<String>>((String value) {
+                return DropdownMenuItem<String>(
+                  value: value,
+                  child: Text(value),
+                );
+              }).toList(),
         ),
       ),
     );
@@ -934,32 +1001,48 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
         SizedBox(height: 6.h),
         Row(
           children: [
-            Expanded(flex: 2, child: _buildSmallTextField('YYYY', _yearController)),
+            Expanded(
+              flex: 2,
+              child: _buildSmallTextField('YYYY', _yearController),
+            ),
             SizedBox(width: 6.w),
             Expanded(child: _buildSmallTextField('MM', _monthController)),
             SizedBox(width: 6.w),
             Expanded(child: _buildSmallTextField('DD', _dayController)),
             SizedBox(width: 8.w),
             GestureDetector(
-              onTap: _isSaving ? null : () {
-                final now = DateTime.now();
-                setState(() {
-                  _yearController.text = now.year.toString();
-                  _monthController.text = now.month.toString().padLeft(2, '0');
-                  _dayController.text = now.day.toString().padLeft(2, '0');
-                });
-                HapticFeedback.lightImpact();
-              },
+              onTap:
+                  _isSaving
+                      ? null
+                      : () {
+                        final now = DateTime.now();
+                        setState(() {
+                          _yearController.text = now.year.toString();
+                          _monthController.text = now.month.toString().padLeft(
+                            2,
+                            '0',
+                          );
+                          _dayController.text = now.day.toString().padLeft(
+                            2,
+                            '0',
+                          );
+                        });
+                        HapticFeedback.lightImpact();
+                      },
               child: Container(
                 padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 10.h),
                 decoration: BoxDecoration(
                   color: kPrimaryColor.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(8.br),
-                  border: Border.all(color: kPrimaryColor.withValues(alpha: 0.2)),
+                  border: Border.all(
+                    color: kPrimaryColor.withValues(alpha: 0.2),
+                  ),
                 ),
                 child: Text(
                   'Today',
-                  style: AppTypography.textXsMedium.copyWith(color: kPrimaryColor),
+                  style: AppTypography.textXsMedium.copyWith(
+                    color: kPrimaryColor,
+                  ),
                 ),
               ),
             ),
@@ -1378,7 +1461,6 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
     );
   }
 
-
   Widget _buildFolderListLoading({Key? key}) {
     return Container(
       key: key,
@@ -1762,7 +1844,6 @@ class _FolderListItem extends StatelessWidget {
       ),
     );
   }
-
 }
 
 /// Provider to fetch folders for the current user

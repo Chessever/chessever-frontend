@@ -105,8 +105,10 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
 
     try {
       final repository = ref.read(libraryRepositoryProvider);
-      final newFolder =
-          await repository.createFolder(name: data.name, parentId: data.parentId);
+      final newFolder = await repository.createFolder(
+        name: data.name,
+        parentId: data.parentId,
+      );
 
       // Force refresh folders provider to ensure immediate UI update
       // (Supabase streams may have slight delay)
@@ -329,15 +331,13 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     // Filter logic:
     // 1. If searching, show all matching folders regardless of hierarchy.
     // 2. If not searching, show only root-level folders (parentId == null).
-    final combinedFolders = <LibraryFolder>[
-      ...ownedFolders,
-      ...subscribedFolders,
-    ].where((f) {
-      if (_searchQuery.isNotEmpty) {
-        return f.name.toLowerCase().contains(_searchQuery);
-      }
-      return f.parentId == null;
-    }).toList();
+    final combinedFolders =
+        <LibraryFolder>[...ownedFolders, ...subscribedFolders].where((f) {
+          if (_searchQuery.isNotEmpty) {
+            return f.name.toLowerCase().contains(_searchQuery);
+          }
+          return f.parentId == null;
+        }).toList();
 
     // Keep the page in loading until the initial async surface is truly settled.
     // This prevents brief provider errors from flashing the full-page error UI.

@@ -29,8 +29,10 @@ class _AutoPinLogController {
   String? get _userId => ref.read(currentUserProvider)?.id;
 
   Future<(bool, List<String>)> getAutoPinnedGames(String tourId) async {
-    final shouldHidePin =
-        await _repo.getTournamentAutoPinDisabled(tourId, _userId);
+    final shouldHidePin = await _repo.getTournamentAutoPinDisabled(
+      tourId,
+      _userId,
+    );
     if (shouldHidePin) {
       return (true, <String>[]);
     }
@@ -51,29 +53,28 @@ class _AutoPinLogController {
     // Favorite players auto-pin
     if (prefs.favoritePlayersAutoPinEnabled) {
       final players = await ref.read(tournamentFavoritePlayersProvider.future);
-      final favPlayers =
-          gamesList
-              .where((games) {
-                return players.any(
-                      (player) =>
-                          player.name == games.whitePlayer.name &&
-                          (player.countryCode.isEmpty ||
-                              CountryCodeMatcher.matches(
-                                games.whitePlayer.countryCode,
-                                player.countryCode,
-                              )),
-                    ) ||
-                    players.any(
-                      (player) =>
-                          player.name == games.blackPlayer.name &&
-                          (player.countryCode.isEmpty ||
-                              CountryCodeMatcher.matches(
-                                games.blackPlayer.countryCode,
-                                player.countryCode,
-                              )),
-                    );
-              })
-              .map((e) => e.gameId);
+      final favPlayers = gamesList
+          .where((games) {
+            return players.any(
+                  (player) =>
+                      player.name == games.whitePlayer.name &&
+                      (player.countryCode.isEmpty ||
+                          CountryCodeMatcher.matches(
+                            games.whitePlayer.countryCode,
+                            player.countryCode,
+                          )),
+                ) ||
+                players.any(
+                  (player) =>
+                      player.name == games.blackPlayer.name &&
+                      (player.countryCode.isEmpty ||
+                          CountryCodeMatcher.matches(
+                            games.blackPlayer.countryCode,
+                            player.countryCode,
+                          )),
+                );
+          })
+          .map((e) => e.gameId);
       allPinIds.addAll(favPlayers);
     }
 

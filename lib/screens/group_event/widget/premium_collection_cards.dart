@@ -400,6 +400,12 @@ class _PlayerPhotoCell extends ConsumerWidget {
                       ? CachedNetworkImage(
                         imageUrl: photoUrl,
                         fit: BoxFit.cover,
+                        memCacheWidth:
+                            (size * MediaQuery.devicePixelRatioOf(context))
+                                .toInt(),
+                        memCacheHeight:
+                            (size * MediaQuery.devicePixelRatioOf(context))
+                                .toInt(),
                         placeholder: (_, __) => _buildPlaceholder(),
                         errorWidget: (_, __, ___) => _buildInitials(),
                       )

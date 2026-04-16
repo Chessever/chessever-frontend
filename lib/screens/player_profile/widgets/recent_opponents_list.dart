@@ -80,6 +80,10 @@ class RecentOpponentsList extends StatelessWidget {
                 height: 14.h,
                 width: 20.w,
                 fit: BoxFit.cover,
+                cacheWidth:
+                    (20 * MediaQuery.devicePixelRatioOf(context)).toInt(),
+                cacheHeight:
+                    (14 * MediaQuery.devicePixelRatioOf(context)).toInt(),
               )
               : CountryFlag.fromCountryCode(
                 opponent.countryCode,

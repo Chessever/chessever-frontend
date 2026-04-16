@@ -128,10 +128,9 @@ GamesTourModel _mapPlayerGameRowToModel(
 
   final event = (row['event']?.toString() ?? 'Gamebase').trim();
 
-  final tourId = (row['tour_id']?.toString() ??
-          row['tournament_id']?.toString() ??
-          event)
-      .trim();
+  final tourId =
+      (row['tour_id']?.toString() ?? row['tournament_id']?.toString() ?? event)
+          .trim();
 
   final whiteName =
       (row['white']?.toString() ?? row['whiteName']?.toString() ?? 'White')

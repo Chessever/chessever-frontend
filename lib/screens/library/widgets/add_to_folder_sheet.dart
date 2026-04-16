@@ -271,9 +271,12 @@ class _AddToFolderPageState extends ConsumerState<_AddToFolderPage> {
 
   String _humanizeSlug(String value) {
     if (!value.contains('-') && !value.contains('_')) return value;
-    final words = value.split(RegExp(r'[-_]+')).where((s) => s.isNotEmpty).toList();
+    final words =
+        value.split(RegExp(r'[-_]+')).where((s) => s.isNotEmpty).toList();
     if (words.isEmpty) return value;
-    return words.map((w) => w[0].toUpperCase() + w.substring(1).toLowerCase()).join(' ');
+    return words
+        .map((w) => w[0].toUpperCase() + w.substring(1).toLowerCase())
+        .join(' ');
   }
 
   Future<void> _handleAddToSelected(List<LibraryFolder> selected) async {
@@ -367,8 +370,10 @@ class _AddToFolderPageState extends ConsumerState<_AddToFolderPage> {
   Widget build(BuildContext context) {
     final recentDatabases = ref.watch(recentDatabasesProvider);
     final rootFolders = ref.watch(rootLibraryFoldersProvider);
-    final allFolders = ref.watch(combinedLibraryFoldersProvider).valueOrNull ?? [];
-    final selectedFolders = allFolders.where((f) => _selectedFolderIds.contains(f.id)).toList();
+    final allFolders =
+        ref.watch(combinedLibraryFoldersProvider).valueOrNull ?? [];
+    final selectedFolders =
+        allFolders.where((f) => _selectedFolderIds.contains(f.id)).toList();
 
     return Material(
       type: MaterialType.transparency,
@@ -385,7 +390,7 @@ class _AddToFolderPageState extends ConsumerState<_AddToFolderPage> {
                 style: AppTypography.textLgBold.copyWith(color: kWhiteColor),
               ),
             ),
-            
+
             // Recent Databases
             if (recentDatabases.isNotEmpty) ...[
               SizedBox(height: 16.h),
@@ -393,38 +398,45 @@ class _AddToFolderPageState extends ConsumerState<_AddToFolderPage> {
             ],
 
             SizedBox(height: 16.h),
-            
+
             Flexible(
               child: IgnorePointer(
                 ignoring: _isSaving,
-                child: rootFolders.isEmpty 
-                  ? Padding(
-                      padding: EdgeInsets.all(24.sp),
-                      child: Text(
-                        'No databases yet.',
-                        style: AppTypography.textSmRegular.copyWith(
-                          color: kWhiteColor.withValues(alpha: 0.5),
+                child:
+                    rootFolders.isEmpty
+                        ? Padding(
+                          padding: EdgeInsets.all(24.sp),
+                          child: Text(
+                            'No databases yet.',
+                            style: AppTypography.textSmRegular.copyWith(
+                              color: kWhiteColor.withValues(alpha: 0.5),
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        )
+                        : ListView.builder(
+                          shrinkWrap: true,
+                          padding: EdgeInsets.symmetric(horizontal: 16.w),
+                          itemCount: rootFolders.length,
+                          itemBuilder: (context, index) {
+                            final folder = rootFolders[index];
+                            return _ExpandableFolderTile(
+                              folder: folder,
+                              isSelected: _selectedFolderIds.contains(
+                                folder.id,
+                              ),
+                              isExpanded: _expandedFolderIds.contains(
+                                folder.id,
+                              ),
+                              selectedIds: _selectedFolderIds,
+                              onToggleSelect:
+                                  () => _toggleFolderSelection(folder),
+                              onToggleExpand:
+                                  () => _toggleFolderExpansion(folder.id),
+                              onToggleChildSelect: _toggleFolderSelection,
+                            );
+                          },
                         ),
-                        textAlign: TextAlign.center,
-                      ),
-                    )
-                  : ListView.builder(
-                      shrinkWrap: true,
-                      padding: EdgeInsets.symmetric(horizontal: 16.w),
-                      itemCount: rootFolders.length,
-                      itemBuilder: (context, index) {
-                        final folder = rootFolders[index];
-                        return _ExpandableFolderTile(
-                          folder: folder,
-                          isSelected: _selectedFolderIds.contains(folder.id),
-                          isExpanded: _expandedFolderIds.contains(folder.id),
-                          selectedIds: _selectedFolderIds,
-                          onToggleSelect: () => _toggleFolderSelection(folder),
-                          onToggleExpand: () => _toggleFolderExpansion(folder.id),
-                          onToggleChildSelect: _toggleFolderSelection,
-                        );
-                      },
-                    ),
               ),
             ),
 
@@ -467,14 +479,16 @@ class _AddToFolderPageState extends ConsumerState<_AddToFolderPage> {
                 child: Container(
                   padding: EdgeInsets.symmetric(horizontal: 12.w),
                   decoration: BoxDecoration(
-                    color: isSelected 
-                      ? kPrimaryColor.withValues(alpha: 0.2) 
-                      : kWhiteColor.withValues(alpha: 0.05),
+                    color:
+                        isSelected
+                            ? kPrimaryColor.withValues(alpha: 0.2)
+                            : kWhiteColor.withValues(alpha: 0.05),
                     borderRadius: BorderRadius.circular(20.br),
                     border: Border.all(
-                      color: isSelected 
-                        ? kPrimaryColor.withValues(alpha: 0.6) 
-                        : kWhiteColor.withValues(alpha: 0.1),
+                      color:
+                          isSelected
+                              ? kPrimaryColor.withValues(alpha: 0.6)
+                              : kWhiteColor.withValues(alpha: 0.1),
                     ),
                   ),
                   child: Row(
@@ -482,13 +496,19 @@ class _AddToFolderPageState extends ConsumerState<_AddToFolderPage> {
                       Icon(
                         Icons.history_rounded,
                         size: 14.sp,
-                        color: isSelected ? kPrimaryColor : kWhiteColor.withValues(alpha: 0.6),
+                        color:
+                            isSelected
+                                ? kPrimaryColor
+                                : kWhiteColor.withValues(alpha: 0.6),
                       ),
                       SizedBox(width: 6.w),
                       Text(
                         folder.name,
                         style: AppTypography.textXsMedium.copyWith(
-                          color: isSelected ? kWhiteColor : kWhiteColor.withValues(alpha: 0.8),
+                          color:
+                              isSelected
+                                  ? kWhiteColor
+                                  : kWhiteColor.withValues(alpha: 0.8),
                         ),
                       ),
                     ],
@@ -545,13 +565,9 @@ class _AddToFolderPageState extends ConsumerState<_AddToFolderPage> {
           SizedBox(width: 10.w),
           Expanded(
             child: GestureDetector(
-              onTap:
-                  _isSaving
-                      ? null
-                      : () => _handleAddToSelected(selected),
+              onTap: _isSaving ? null : () => _handleAddToSelected(selected),
               child: Opacity(
-                opacity:
-                    (_isSaving || selected.isEmpty) ? 0.6 : 1,
+                opacity: (_isSaving || selected.isEmpty) ? 0.6 : 1,
                 child: Container(
                   padding: EdgeInsets.symmetric(vertical: 14.h),
                   decoration: BoxDecoration(
@@ -580,9 +596,7 @@ class _AddToFolderPageState extends ConsumerState<_AddToFolderPage> {
                         SizedBox(width: 8.w),
                       ],
                       Text(
-                        selected.isEmpty
-                            ? 'Add'
-                            : 'Add (${selected.length})',
+                        selected.isEmpty ? 'Add' : 'Add (${selected.length})',
                         style: AppTypography.textSmMedium.copyWith(
                           color: kWhiteColor,
                         ),
@@ -630,25 +644,32 @@ class _ExpandableFolderTile extends ConsumerWidget {
           folder: folder,
           selected: isSelected,
           onTap: onToggleSelect,
-          trailing: hasChildren ? IconButton(
-            onPressed: onToggleExpand,
-            icon: Icon(
-              isExpanded ? Icons.keyboard_arrow_up_rounded : Icons.keyboard_arrow_down_rounded,
-              color: kWhiteColor.withValues(alpha: 0.5),
-            ),
-          ) : null,
+          trailing:
+              hasChildren
+                  ? IconButton(
+                    onPressed: onToggleExpand,
+                    icon: Icon(
+                      isExpanded
+                          ? Icons.keyboard_arrow_up_rounded
+                          : Icons.keyboard_arrow_down_rounded,
+                      color: kWhiteColor.withValues(alpha: 0.5),
+                    ),
+                  )
+                  : null,
         ),
         if (hasChildren && isExpanded) ...[
           SizedBox(height: 4.h),
-          ...children.map((child) => Padding(
-            padding: EdgeInsets.only(left: 24.w, bottom: 4.h),
-            child: _FolderSelectionTile(
-              folder: child,
-              selected: selectedIds.contains(child.id),
-              onTap: () => onToggleChildSelect(child),
-              isSmall: true,
+          ...children.map(
+            (child) => Padding(
+              padding: EdgeInsets.only(left: 24.w, bottom: 4.h),
+              child: _FolderSelectionTile(
+                folder: child,
+                selected: selectedIds.contains(child.id),
+                onTap: () => onToggleChildSelect(child),
+                isSmall: true,
+              ),
             ),
-          )),
+          ),
         ],
         SizedBox(height: 8.h),
       ],
@@ -679,7 +700,7 @@ class _FolderSelectionTile extends StatelessWidget {
       onTap: onTap,
       child: Container(
         padding: EdgeInsets.symmetric(
-          horizontal: 16.w, 
+          horizontal: 16.w,
           vertical: isSmall ? 10.h : 14.h,
         ),
         decoration: BoxDecoration(
@@ -706,17 +727,22 @@ class _FolderSelectionTile extends StatelessWidget {
               SizedBox(width: 8.w),
             ],
             Icon(
-              folder.parentId == null ? Icons.folder_rounded : Icons.folder_open_rounded, 
-              color: kWhiteColor.withValues(alpha: isSmall ? 0.6 : 1.0), 
+              folder.parentId == null
+                  ? Icons.folder_rounded
+                  : Icons.folder_open_rounded,
+              color: kWhiteColor.withValues(alpha: isSmall ? 0.6 : 1.0),
               size: isSmall ? 20.sp : 24.sp,
             ),
             SizedBox(width: 12.w),
             Expanded(
               child: Text(
                 folder.name,
-                style: (isSmall ? AppTypography.textSmMedium : AppTypography.textSmMedium).copyWith(
-                  color: kWhiteColor.withValues(alpha: isSmall ? 0.8 : 1.0),
-                ),
+                style: (isSmall
+                        ? AppTypography.textSmMedium
+                        : AppTypography.textSmMedium)
+                    .copyWith(
+                      color: kWhiteColor.withValues(alpha: isSmall ? 0.8 : 1.0),
+                    ),
               ),
             ),
             if (trailing != null) trailing!,
@@ -736,5 +762,4 @@ class _FolderSelectionTile extends StatelessWidget {
       ),
     );
   }
-
 }

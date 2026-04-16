@@ -90,12 +90,11 @@ class LibraryRepository extends BaseRepository {
     if (userId == null) return;
 
     // Check if user already has any folders
-    final existing =
-        await supabase
-            .from('user_folders')
-            .select('id')
-            .eq('user_id', userId)
-            .limit(1);
+    final existing = await supabase
+        .from('user_folders')
+        .select('id')
+        .eq('user_id', userId)
+        .limit(1);
 
     if ((existing as List).isNotEmpty) return;
 
@@ -548,30 +547,29 @@ class LibraryRepository extends BaseRepository {
       });
 
   /// Get count of analyses in a folder (including sub-folders)
-  Future<int> getAnalysisCountInFolder(String folderId) =>
-      handleApiCall(() async {
-        // Fetch subfolder IDs - removed user_id filter to allow subscribers to count
-        final subfoldersResponse =
-            await supabase.from('user_folders').select('id').eq(
-              'parent_id',
-              folderId,
-            );
+  Future<int> getAnalysisCountInFolder(
+    String folderId,
+  ) => handleApiCall(() async {
+    // Fetch subfolder IDs - removed user_id filter to allow subscribers to count
+    final subfoldersResponse = await supabase
+        .from('user_folders')
+        .select('id')
+        .eq('parent_id', folderId);
 
-        final folderIds = [folderId];
-        for (final row in subfoldersResponse) {
-          final id = row['id'] as String?;
-          if (id != null) folderIds.add(id);
-        }
+    final folderIds = [folderId];
+    for (final row in subfoldersResponse) {
+      final id = row['id'] as String?;
+      if (id != null) folderIds.add(id);
+    }
 
-        // Count analyses in these folders - removed user_id filter to allow subscribers to count
-        final count =
-            await supabase
-                .from('user_saved_analyses')
-                .count(CountOption.exact)
-                .inFilter('folder_id', folderIds);
+    // Count analyses in these folders - removed user_id filter to allow subscribers to count
+    final count = await supabase
+        .from('user_saved_analyses')
+        .count(CountOption.exact)
+        .inFilter('folder_id', folderIds);
 
-        return count;
-      });
+    return count;
+  });
 
   // ============ PAGINATED QUERIES ============
 
@@ -620,11 +618,10 @@ class LibraryRepository extends BaseRepository {
   Future<int> getSharedFolderAnalysisCount(String folderId) =>
       handleApiCall(() async {
         // Fetch subfolder IDs
-        final subfoldersResponse =
-            await supabase
-                .from('user_folders')
-                .select('id')
-                .eq('parent_id', folderId);
+        final subfoldersResponse = await supabase
+            .from('user_folders')
+            .select('id')
+            .eq('parent_id', folderId);
 
         final folderIds = [folderId];
         for (final row in subfoldersResponse) {

@@ -105,35 +105,37 @@ bool _shouldShowEvalBar(WidgetRef ref) {
 }
 
 /// Resolved FEN provider that caches the resolution logic for a game model
-final _resolvedFenProvider = Provider.autoDispose.family<String, GamesTourModel>((ref, game) {
-  // Delay disposal by 3 seconds to prevent thrashing during fast scrolling
-  final link = ref.keepAlive();
-  final timer = Timer(const Duration(seconds: 3), () {
-    link.close();
-  });
-  ref.onDispose(() => timer.cancel());
+final _resolvedFenProvider = Provider.autoDispose
+    .family<String, GamesTourModel>((ref, game) {
+      // Delay disposal by 3 seconds to prevent thrashing during fast scrolling
+      final link = ref.keepAlive();
+      final timer = Timer(const Duration(seconds: 3), () {
+        link.close();
+      });
+      ref.onDispose(() => timer.cancel());
 
-  // 1. Try local FEN first (already normalized in model usually)
-  final localFen = (game.fen ?? '').trim();
-  if (localFen.isNotEmpty && _tryParseFen(localFen) != null) {
-    return localFen;
-  }
+      // 1. Try local FEN first (already normalized in model usually)
+      final localFen = (game.fen ?? '').trim();
+      if (localFen.isNotEmpty && _tryParseFen(localFen) != null) {
+        return localFen;
+      }
 
-  // 2. Try PGN if FEN is missing
-  final pgn = (game.pgn ?? '').trim();
-  if (pgn.isNotEmpty) {
-    final pgnFen = _finalFenFromPgn(pgn);
-    if (pgnFen != null) return pgnFen;
-  }
+      // 2. Try PGN if FEN is missing
+      final pgn = (game.pgn ?? '').trim();
+      if (pgn.isNotEmpty) {
+        final pgnFen = _finalFenFromPgn(pgn);
+        if (pgnFen != null) return pgnFen;
+      }
 
-  // 3. Gamebase async fallback
-  if (_isGamebasePreviewGame(game) && !pgnHasMoves(game.pgn)) {
-    final remoteFen = ref.watch(_gamebaseFinalFenProvider(game.gameId)).valueOrNull;
-    if (remoteFen != null) return remoteFen;
-  }
+      // 3. Gamebase async fallback
+      if (_isGamebasePreviewGame(game) && !pgnHasMoves(game.pgn)) {
+        final remoteFen =
+            ref.watch(_gamebaseFinalFenProvider(game.gameId)).valueOrNull;
+        if (remoteFen != null) return remoteFen;
+      }
 
-  return _kStartFen;
-});
+      return _kStartFen;
+    });
 
 /// Shows the share overlay for a game from the grid/list view.
 ///

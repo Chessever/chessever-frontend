@@ -246,6 +246,10 @@ class _AboutTourScreenState extends ConsumerState<AboutTourScreen> {
       return CachedNetworkImage(
         imageUrl: aboutModel.imageUrl,
         fit: BoxFit.cover,
+        memCacheWidth:
+            (MediaQuery.sizeOf(context).width *
+                    MediaQuery.devicePixelRatioOf(context))
+                .toInt(),
         fadeInDuration: const Duration(milliseconds: 300),
         fadeOutDuration: const Duration(milliseconds: 200),
         alignment: Alignment.topCenter,
@@ -266,6 +270,7 @@ class _AboutTourScreenState extends ConsumerState<AboutTourScreen> {
         PngAsset.premiumIcon,
         height: 100.h,
         fit: BoxFit.contain,
+        cacheHeight: (100 * MediaQuery.devicePixelRatioOf(context)).toInt(),
       ),
     );
   }

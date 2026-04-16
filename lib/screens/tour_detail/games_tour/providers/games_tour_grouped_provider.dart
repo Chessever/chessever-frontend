@@ -56,9 +56,11 @@ final gamesTourGroupedProvider = Provider.autoDispose<GroupedGamesData>((ref) {
   final isKnockoutTournament = knockoutState.isKnockout;
 
   final screenModelAsync = ref.watch(gamesTourScreenProvider);
-  final allGamesScreenModel = screenModelAsync.valueOrNull?.gamesTourModels ?? [];
+  final allGamesScreenModel =
+      screenModelAsync.valueOrNull?.gamesTourModels ?? [];
   final isSearchMode = screenModelAsync.valueOrNull?.isSearchMode ?? false;
-  final displayMode = screenModelAsync.valueOrNull?.gameDisplayMode ?? GameDisplayMode.all;
+  final displayMode =
+      screenModelAsync.valueOrNull?.gameDisplayMode ?? GameDisplayMode.all;
 
   final gamesAsync = ref.watch(gamesTourProvider(tourId ?? ''));
   final providerGameCount = gamesAsync.valueOrNull?.length ?? 0;
@@ -94,14 +96,23 @@ final gamesTourGroupedProvider = Provider.autoDispose<GroupedGamesData>((ref) {
   if (!isKnockoutTournament) {
     final tourDetail = ref.read(tourDetailScreenProvider).valueOrNull;
     final allTours = tourDetail?.tours ?? [];
-    final currentTour = allTours.where((t) => t.tour.id == tourId).firstOrNull?.tour;
+    final currentTour =
+        allTours.where((t) => t.tour.id == tourId).firstOrNull?.tour;
     final formatString = currentTour?.info.format;
 
-    if (KnockoutMatchDetector.isMatchFormat(formatString, allGamesScreenModel)) {
-      final matches = KnockoutMatchDetector.groupByMatchesAcrossAllRounds(allGamesScreenModel);
+    if (KnockoutMatchDetector.isMatchFormat(
+      formatString,
+      allGamesScreenModel,
+    )) {
+      final matches = KnockoutMatchDetector.groupByMatchesAcrossAllRounds(
+        allGamesScreenModel,
+      );
       if (matches.isNotEmpty) {
         final entry = matches.entries.first;
-        matchFormatHeader = KnockoutMatchDetector.createMatchHeader(entry.key, entry.value);
+        matchFormatHeader = KnockoutMatchDetector.createMatchHeader(
+          entry.key,
+          entry.value,
+        );
       }
     }
   }
@@ -127,27 +138,33 @@ final gamesTourGroupedProvider = Provider.autoDispose<GroupedGamesData>((ref) {
     ensureRoundEntry(round.id);
   }
 
-  final isMultiStageKnockout = isKnockoutTournament && rounds.any((r) => r.id.startsWith('knockout-stage-'));
-  final isRoundSlugDerivedStages = isMultiStageKnockout &&
+  final isMultiStageKnockout =
+      isKnockoutTournament &&
+      rounds.any((r) => r.id.startsWith('knockout-stage-'));
+  final isRoundSlugDerivedStages =
+      isMultiStageKnockout &&
       tourId != null &&
       rounds.any((r) {
         if (!r.id.startsWith('knockout-stage-')) return false;
         final suffix = r.id.replaceFirst('knockout-stage-', '');
-        return suffix.startsWith('$tourId-') && suffix.length > tourId.length + 1;
+        return suffix.startsWith('$tourId-') &&
+            suffix.length > tourId.length + 1;
       });
 
   if (isMultiStageKnockout && !isRoundSlugDerivedStages) {
     if (!isSearchMode) {
-      final stageTourIds = rounds
-          .where((r) => r.id.startsWith('knockout-stage-'))
-          .map((r) => r.id.replaceFirst('knockout-stage-', ''))
-          .toList();
-      
+      final stageTourIds =
+          rounds
+              .where((r) => r.id.startsWith('knockout-stage-'))
+              .map((r) => r.id.replaceFirst('knockout-stage-', ''))
+              .toList();
+
       final stageTourGames = <String, List<GamesTourModel>>{};
       for (final stageTourId in stageTourIds) {
         final stageAsync = ref.read(gamesTourProvider(stageTourId));
         final rawStageGames = stageAsync.valueOrNull ?? [];
-        stageTourGames[stageTourId] = rawStageGames.map((g) => GamesTourModel.fromGame(g)).toList();
+        stageTourGames[stageTourId] =
+            rawStageGames.map((g) => GamesTourModel.fromGame(g)).toList();
       }
 
       for (final round in rounds) {
@@ -179,7 +196,8 @@ final gamesTourGroupedProvider = Provider.autoDispose<GroupedGamesData>((ref) {
     }
   } else {
     for (final game in allGamesScreenModel) {
-      if (!isKnockoutTournament && !_shouldIncludeGame(displayMode, game)) continue;
+      if (!isKnockoutTournament && !_shouldIncludeGame(displayMode, game))
+        continue;
       final isGameInAnyRound = rounds.any((r) => r.id == game.roundId);
       if (isGameInAnyRound) {
         addGameToRound(game.roundId, game);
@@ -208,9 +226,10 @@ final gamesTourGroupedProvider = Provider.autoDispose<GroupedGamesData>((ref) {
     }
   }
 
-  final filteredRounds = rounds
-      .where((round) => (gamesByRound[round.id]?.isNotEmpty ?? false))
-      .toList();
+  final filteredRounds =
+      rounds
+          .where((round) => (gamesByRound[round.id]?.isNotEmpty ?? false))
+          .toList();
 
   return GroupedGamesData(
     filteredRounds: filteredRounds,
@@ -224,7 +243,6 @@ final gamesTourGroupedProvider = Provider.autoDispose<GroupedGamesData>((ref) {
     providerGameCount: providerGameCount,
   );
 });
-
 
 bool _shouldIncludeGame(GameDisplayMode mode, GamesTourModel game) {
   switch (mode) {

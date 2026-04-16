@@ -40,9 +40,7 @@ class MiniEvalBar extends ConsumerWidget {
         final whiteRatio = _normalizedEvalToRatio(effectiveEval);
 
         final evalText =
-            isMate && mate != 0
-                ? '#$mate'
-                : _formatSignedEval(eval);
+            isMate && mate != 0 ? '#$mate' : _formatSignedEval(eval);
 
         return SizedBox(
           height: 16.h,

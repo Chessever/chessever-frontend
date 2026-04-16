@@ -486,7 +486,10 @@ class _ForYouEventSection extends ConsumerWidget {
       duration: const Duration(milliseconds: 300),
       curve: Curves.easeInOut,
       alignment: Alignment.topCenter,
-      child: shouldHide ? const SizedBox.shrink() : _buildContent(context, ref, snapshotAsync),
+      child:
+          shouldHide
+              ? const SizedBox.shrink()
+              : _buildContent(context, ref, snapshotAsync),
     );
   }
 
@@ -560,7 +563,10 @@ class _ForYouTabletEventColumn extends ConsumerWidget {
       duration: const Duration(milliseconds: 300),
       curve: Curves.easeInOut,
       alignment: Alignment.topCenter,
-      child: shouldHide ? const SizedBox.shrink() : _buildContent(context, ref, snapshotAsync),
+      child:
+          shouldHide
+              ? const SizedBox.shrink()
+              : _buildContent(context, ref, snapshotAsync),
     );
   }
 

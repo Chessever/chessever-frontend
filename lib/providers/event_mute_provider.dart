@@ -10,8 +10,8 @@ import 'auth_state_provider.dart';
 /// (keyed by groupBroadcastId). Returns `true` if muted.
 final eventMuteProvider =
     AutoDisposeAsyncNotifierProvider.family<EventMuteNotifier, bool, String>(
-  EventMuteNotifier.new,
-);
+      EventMuteNotifier.new,
+    );
 
 class EventMuteNotifier extends AutoDisposeFamilyAsyncNotifier<bool, String> {
   SupabaseClient get _supabase => Supabase.instance.client;
@@ -44,12 +44,13 @@ class EventMuteNotifier extends AutoDisposeFamilyAsyncNotifier<bool, String> {
     if (userId == null) return false;
 
     try {
-      final response = await _supabase
-          .from('user_muted_events')
-          .select('id')
-          .eq('user_id', userId)
-          .eq('group_broadcast_id', _groupBroadcastId)
-          .maybeSingle();
+      final response =
+          await _supabase
+              .from('user_muted_events')
+              .select('id')
+              .eq('user_id', userId)
+              .eq('group_broadcast_id', _groupBroadcastId)
+              .maybeSingle();
 
       return response != null;
     } catch (e) {

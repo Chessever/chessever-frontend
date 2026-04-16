@@ -99,7 +99,9 @@ class GamesLocalStorage {
 
   String _getCacheKey(String tourId) => 'games_$tourId';
 
-  Future<({bool found, List<Games> games})> _readCachedGames(String tourId) async {
+  Future<({bool found, List<Games> games})> _readCachedGames(
+    String tourId,
+  ) async {
     final db = ref.read(appDatabaseProvider);
     final entry = await db.getCache(key: _getCacheKey(tourId));
     if (entry == null) {

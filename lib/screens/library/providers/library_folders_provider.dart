@@ -62,8 +62,8 @@ final rootLibraryFoldersProvider = Provider.autoDispose<List<LibraryFolder>>((
 });
 
 /// Children of a specific folder
-final childLibraryFoldersProvider =
-    Provider.autoDispose.family<List<LibraryFolder>, String>((ref, parentId) {
+final childLibraryFoldersProvider = Provider.autoDispose
+    .family<List<LibraryFolder>, String>((ref, parentId) {
       final all = ref.watch(combinedLibraryFoldersProvider).valueOrNull ?? [];
       return all.where((f) => f.parentId == parentId).toList();
     });
@@ -85,4 +85,3 @@ final sharedBookPreviewProvider = FutureProvider.autoDispose
       final repository = ref.watch(libraryRepositoryProvider);
       return repository.getBookByShareToken(shareToken);
     });
-

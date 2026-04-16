@@ -17,75 +17,81 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 /// Provides a merged list of games for the tournament, automatically combining
 /// games across pagination-purposed categories (e.g. "Boards 1-66" and "Boards 67-126").
 /// This ensures components like the ScoreCardScreen have the full context.
-final mergedTournamentGamesProvider = AutoDisposeProvider<List<GamesTourModel>>((ref) {
-  final tourDetailAsync = ref.watch(tourDetailScreenProvider);
-  final gamesTourAsync = ref.watch(gamesTourScreenProvider);
+final mergedTournamentGamesProvider = AutoDisposeProvider<List<GamesTourModel>>(
+  (ref) {
+    final tourDetailAsync = ref.watch(tourDetailScreenProvider);
+    final gamesTourAsync = ref.watch(gamesTourScreenProvider);
 
-  if (tourDetailAsync.isLoading ||
-      tourDetailAsync.hasError ||
-      gamesTourAsync.isLoading ||
-      gamesTourAsync.hasError) {
-    return const [];
-  }
+    if (tourDetailAsync.isLoading ||
+        tourDetailAsync.hasError ||
+        gamesTourAsync.isLoading ||
+        gamesTourAsync.hasError) {
+      return const [];
+    }
 
-  final tourDetail = tourDetailAsync.value!;
-  final aboutTourModel = tourDetail.aboutTourModel;
-  if (aboutTourModel.id.isEmpty) {
-    return const [];
-  }
+    final tourDetail = tourDetailAsync.value!;
+    final aboutTourModel = tourDetail.aboutTourModel;
+    if (aboutTourModel.id.isEmpty) {
+      return const [];
+    }
 
-  bool isPaginationCategory(String name) {
-    return RegExp(
-      r'Boards?\s+\d+[\-\+]?\d*\+?$',
-      caseSensitive: false,
-    ).hasMatch(name);
-  }
+    bool isPaginationCategory(String name) {
+      return RegExp(
+        r'Boards?\s+\d+[\-\+]?\d*\+?$',
+        caseSensitive: false,
+      ).hasMatch(name);
+    }
 
-  String getCategoryBaseName(String name) {
-    return name
-        .replaceAll(
-          RegExp(r'\s*Boards?\s+\d+[\-\+]?\d*\+?$', caseSensitive: false),
-          '',
-        )
-        .trim();
-  }
+    String getCategoryBaseName(String name) {
+      return name
+          .replaceAll(
+            RegExp(r'\s*Boards?\s+\d+[\-\+]?\d*\+?$', caseSensitive: false),
+            '',
+          )
+          .trim();
+    }
 
-  final allGames = <GamesTourModel>[];
+    final allGames = <GamesTourModel>[];
 
-  if (isPaginationCategory(aboutTourModel.name)) {
-    final baseName = getCategoryBaseName(aboutTourModel.name);
-    final relatedTours =
-        tourDetail.tours
-            .where(
-              (t) =>
-                  isPaginationCategory(t.tour.name) &&
-                  getCategoryBaseName(t.tour.name) == baseName,
-            )
-            .toList();
+    if (isPaginationCategory(aboutTourModel.name)) {
+      final baseName = getCategoryBaseName(aboutTourModel.name);
+      final relatedTours =
+          tourDetail.tours
+              .where(
+                (t) =>
+                    isPaginationCategory(t.tour.name) &&
+                    getCategoryBaseName(t.tour.name) == baseName,
+              )
+              .toList();
 
-    if (relatedTours.length > 1) {
-      for (final tourModel in relatedTours) {
-        final tourGamesAsync = ref.watch(gamesTourProvider(tourModel.tour.id));
-        if (tourGamesAsync.hasValue) {
-          for (final g in tourGamesAsync.value!) {
-            try {
-              allGames.add(GamesTourModel.fromGame(g));
-            } catch (_) {}
+      if (relatedTours.length > 1) {
+        for (final tourModel in relatedTours) {
+          final tourGamesAsync = ref.watch(
+            gamesTourProvider(tourModel.tour.id),
+          );
+          if (tourGamesAsync.hasValue) {
+            for (final g in tourGamesAsync.value!) {
+              try {
+                allGames.add(GamesTourModel.fromGame(g));
+              } catch (_) {}
+            }
           }
         }
+      } else {
+        allGames.addAll(gamesTourAsync.value?.gamesTourModels ?? []);
       }
     } else {
       allGames.addAll(gamesTourAsync.value?.gamesTourModels ?? []);
     }
-  } else {
-    allGames.addAll(gamesTourAsync.value?.gamesTourModels ?? []);
-  }
 
-  return allGames;
-});
+    return allGames;
+  },
+);
 
 /// Search query for the standings tab
-final standingsSearchQueryProvider = StateProvider.autoDispose<String>((ref) => '');
+final standingsSearchQueryProvider = StateProvider.autoDispose<String>(
+  (ref) => '',
+);
 
 final playerTourScreenProvider = AutoDisposeAsyncNotifierProvider<
   PlayerTourScreenNotifier,
@@ -101,7 +107,8 @@ class PlayerTourScreenNotifier
 
     final selectedBroadcast = ref.watch(selectedBroadcastModelProvider);
     final tourDetailAsync = ref.watch(tourDetailScreenProvider);
-    final searchQuery = ref.watch(standingsSearchQueryProvider).toLowerCase().trim();
+    final searchQuery =
+        ref.watch(standingsSearchQueryProvider).toLowerCase().trim();
 
     if (selectedBroadcast == null ||
         selectedBroadcast.id.isEmpty ||
@@ -117,7 +124,9 @@ class PlayerTourScreenNotifier
     }
 
     final List<TournamentPlayer> allPlayers;
-    final List<GamesTourModel> allGames = ref.watch(mergedTournamentGamesProvider);
+    final List<GamesTourModel> allGames = ref.watch(
+      mergedTournamentGamesProvider,
+    );
 
     // Detect if this is a pagination-purposed category (e.g. "Boards 1-66")
     final List<TourModel> relatedTours;
@@ -132,7 +141,10 @@ class PlayerTourScreenNotifier
               )
               .toList();
     } else {
-      relatedTours = tourDetail.tours.where((e) => e.tour.id == aboutTourModel.id).toList();
+      relatedTours =
+          tourDetail.tours
+              .where((e) => e.tour.id == aboutTourModel.id)
+              .toList();
     }
 
     if (searchQuery.isNotEmpty) {
@@ -140,7 +152,9 @@ class PlayerTourScreenNotifier
       // as local data might be paginated or incomplete.
       final tourRepo = ref.read(tourRepositoryProvider);
       final searchResults = await Future.wait(
-        relatedTours.map((t) => tourRepo.searchPlayersInTour(t.tour.id, searchQuery)),
+        relatedTours.map(
+          (t) => tourRepo.searchPlayersInTour(t.tour.id, searchQuery),
+        ),
       );
       allPlayers = searchResults.expand((list) => list).toList();
     } else {
@@ -159,7 +173,7 @@ class PlayerTourScreenNotifier
       return standings;
     }
 
-    // We must filter again locally, primarily for tournaments that have no player 
+    // We must filter again locally, primarily for tournaments that have no player
     // roster and generate their standings dynamically from the games fallback.
     return standings.where((p) {
       return p.name.toLowerCase().contains(searchQuery) ||
@@ -300,7 +314,9 @@ class PlayerTourScreenNotifier
             ) ??
             _positive(updatedPlayer.rating)?.toDouble();
         final opponentCard =
-            gameRef.isWhite ? gameRef.game.blackPlayer : gameRef.game.whitePlayer;
+            gameRef.isWhite
+                ? gameRef.game.blackPlayer
+                : gameRef.game.whitePlayer;
         final opponentRating = _getPlayerRating(
           gameRef.game,
           playerCard: opponentCard,

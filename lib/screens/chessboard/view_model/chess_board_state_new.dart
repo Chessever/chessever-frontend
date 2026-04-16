@@ -385,7 +385,8 @@ class ChessBoardStateNew {
 
   bool get isAtStart => currentMoveIndex == -1;
 
-  bool get isAtEnd => allMoves.isNotEmpty && currentMoveIndex == allMoves.length - 1;
+  bool get isAtEnd =>
+      allMoves.isNotEmpty && currentMoveIndex == allMoves.length - 1;
 
   int get totalMoves => allMoves.length;
 

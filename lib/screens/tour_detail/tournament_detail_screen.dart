@@ -307,7 +307,11 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
                 // Expanding Search Bar
                 Positioned(
                   right: 0,
-                  left: (1 - value) * (MediaQuery.of(context).size.width - horizontalPadding * 2 - 40.w),
+                  left:
+                      (1 - value) *
+                      (MediaQuery.of(context).size.width -
+                          horizontalPadding * 2 -
+                          40.w),
                   child: Opacity(
                     opacity: value.clamp(0.0, 1.0),
                     child: IgnorePointer(
@@ -331,20 +335,13 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
       decoration: BoxDecoration(
         color: const Color(0xFF1A1A1C),
         borderRadius: BorderRadius.circular(12.br),
-        border: Border.all(
-          color: kDarkBlue.withValues(alpha: 0.3),
-          width: 1.w,
-        ),
+        border: Border.all(color: kDarkBlue.withValues(alpha: 0.3), width: 1.w),
       ),
       child: Row(
         children: [
           GestureDetector(
             onTap: _closeStandingsSearch,
-            child: Icon(
-              Icons.arrow_back,
-              size: 20.sp,
-              color: kWhiteColor,
-            ),
+            child: Icon(Icons.arrow_back, size: 20.sp, color: kWhiteColor),
           ),
           SizedBox(width: 8.w),
           Expanded(

@@ -46,11 +46,12 @@ class BookSavedGameCard extends StatelessWidget {
 
     final eco = md['ECO']?.toString() ?? '';
     final openingName = md['Opening']?.toString() ?? '';
-    final event = md['Event']?.toString() ?? md['Site']?.toString() ?? 'library';
+    final event =
+        md['Event']?.toString() ?? md['Site']?.toString() ?? 'library';
     final round = md['Round']?.toString() ?? 'saved_analysis';
     final timeControl = md['TimeControl']?.toString();
     final dateStr = md['Date']?.toString();
-    
+
     DateTime? parsedDate;
     if (dateStr != null && dateStr.isNotEmpty) {
       try {

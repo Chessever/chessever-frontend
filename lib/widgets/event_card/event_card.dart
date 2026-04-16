@@ -420,9 +420,13 @@ class _EventImage extends ConsumerWidget {
                 data: (imageData) {
                   // If we have an image URL, show it
                   if (imageData.hasImage) {
+                    final cacheWidth =
+                        (imageWidth * MediaQuery.devicePixelRatioOf(context))
+                            .toInt();
                     return CachedNetworkImage(
                       imageUrl: imageData.imageUrl!,
                       fit: BoxFit.cover,
+                      memCacheWidth: cacheWidth,
                       fadeInDuration: const Duration(milliseconds: 300),
                       fadeOutDuration: const Duration(milliseconds: 200),
                       placeholder:
@@ -619,9 +623,14 @@ class _TabletEventBackground extends ConsumerWidget {
     return imageAsync.when(
       data: (imageData) {
         if (imageData.hasImage) {
+          final cacheWidth =
+              (MediaQuery.sizeOf(context).width *
+                      MediaQuery.devicePixelRatioOf(context))
+                  .toInt();
           return CachedNetworkImage(
             imageUrl: imageData.imageUrl!,
             fit: BoxFit.cover,
+            memCacheWidth: cacheWidth,
             fadeInDuration: const Duration(milliseconds: 300),
             fadeOutDuration: const Duration(milliseconds: 200),
             placeholder: (context, url) => _buildLoadingBackground(),

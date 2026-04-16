@@ -29,11 +29,10 @@ class _GroupEventGamesCardState extends ConsumerState<GroupEventGamesCard> {
   Widget build(BuildContext buildCxt) {
     // Use the games list from widget data to maintain correct order for group events
     final fullGamesList = widget.gamesData.gamesTourModels;
-    
+
     // Audit optimization: Precompute indices to avoid O(N^2) indexWhere lookups
     final gameIndexMap = {
-      for (int i = 0; i < fullGamesList.length; i++)
-        fullGamesList[i].gameId: i,
+      for (int i = 0; i < fullGamesList.length; i++) fullGamesList[i].gameId: i,
     };
 
     return ListView.separated(

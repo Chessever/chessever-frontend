@@ -202,28 +202,30 @@ class PushNotificationsService {
       // Ensure a row exists with app-intended defaults (no-op if row exists).
       // This prevents the DB column defaults (which disagree with the app for
       // live_game_updates and daily_digest) from taking effect on a fresh row.
-      await client.from('user_notification_preferences').upsert(
-        {
-          'user_id': userId,
-          'push_enabled': enabled,
-          'favorite_event_alerts': true,
-          'favorite_player_alerts': true,
-          'heads_up_alerts': false,
-          'live_game_updates': false,
-          'daily_digest': false,
-          'call_to_action_alerts': false,
-          'book_update_alerts': true,
-          'fp_classical': true,
-          'fp_rapid': true,
-          'fp_blitz': true,
-          'se_classical': true,
-          'se_rapid': true,
-          'se_blitz': true,
-          'heads_up_lead_minutes': 30,
-        },
-        onConflict: 'user_id',
-        ignoreDuplicates: true,
-      );
+      await client
+          .from('user_notification_preferences')
+          .upsert(
+            {
+              'user_id': userId,
+              'push_enabled': enabled,
+              'favorite_event_alerts': true,
+              'favorite_player_alerts': true,
+              'heads_up_alerts': false,
+              'live_game_updates': false,
+              'daily_digest': false,
+              'call_to_action_alerts': false,
+              'book_update_alerts': true,
+              'fp_classical': true,
+              'fp_rapid': true,
+              'fp_blitz': true,
+              'se_classical': true,
+              'se_rapid': true,
+              'se_blitz': true,
+              'heads_up_lead_minutes': 30,
+            },
+            onConflict: 'user_id',
+            ignoreDuplicates: true,
+          );
 
       // Always update push_enabled (covers existing rows without touching
       // other columns the user may have customised).

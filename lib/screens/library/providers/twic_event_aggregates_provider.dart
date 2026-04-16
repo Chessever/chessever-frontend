@@ -163,10 +163,19 @@ class TwicEventAggregatesNotifier
       result: _filter.resultApiValue,
       color: _filter.colorApiValue,
       timeControl: _filter.timeControlApiValue,
-      yearFrom: _filter.minYear != GameFilter.absoluteMinYear ? _filter.minYear : null,
+      yearFrom:
+          _filter.minYear != GameFilter.absoluteMinYear
+              ? _filter.minYear
+              : null,
       yearTo: _filter.maxYear != DateTime.now().year ? _filter.maxYear : null,
-      ratingFrom: _filter.minRating > GameFilter.absoluteMinRating ? _filter.minRating : null,
-      ratingTo: _filter.maxRating < GameFilter.absoluteMaxRating ? _filter.maxRating : null,
+      ratingFrom:
+          _filter.minRating > GameFilter.absoluteMinRating
+              ? _filter.minRating
+              : null,
+      ratingTo:
+          _filter.maxRating < GameFilter.absoluteMaxRating
+              ? _filter.maxRating
+              : null,
     );
 
     final events = response.events

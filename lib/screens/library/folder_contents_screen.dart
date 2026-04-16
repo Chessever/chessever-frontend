@@ -41,13 +41,14 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
   void initState() {
     super.initState();
     _paginationKey = BookPaginationKey(
-      folderId: widget.folder.id, 
+      folderId: widget.folder.id,
       isSubscribed: _isSubscribed,
     );
     _scrollController = ScrollController()..addListener(_onScroll);
-    _searchController = TextEditingController()..addListener(() {
-      setState(() {});
-    });
+    _searchController =
+        TextEditingController()..addListener(() {
+          setState(() {});
+        });
 
     // Reset pagination state for this folder
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -265,11 +266,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
               alignment: Alignment.centerRight,
               child: IconButton(
                 onPressed: _handleCreateSubfolder,
-                icon: Icon(
-                  Icons.add_rounded,
-                  color: kWhiteColor,
-                  size: 28.ic,
-                ),
+                icon: Icon(Icons.add_rounded, color: kWhiteColor, size: 28.ic),
               ),
             ),
           Padding(

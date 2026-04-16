@@ -388,6 +388,8 @@ class _PlayerPhotoOverlay extends ConsumerWidget {
               child: CachedNetworkImage(
                 imageUrl: photoUrl,
                 fit: BoxFit.cover,
+                memCacheHeight:
+                    (200 * MediaQuery.devicePixelRatioOf(context)).toInt(),
                 placeholder: (_, __) => _buildPlaceholder(),
                 errorWidget: (_, __, ___) => _buildPlaceholder(),
               ),

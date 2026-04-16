@@ -39,7 +39,7 @@ class FederationFlag extends StatelessWidget {
     final normalized = raw.toUpperCase();
 
     if (raw.isEmpty) {
-      return _fallback();
+      return _fallback(context);
     }
 
     final lowerRaw = raw.toLowerCase();
@@ -48,16 +48,16 @@ class FederationFlag extends StatelessWidget {
     // Check both 3-letter FIDE codes and full country names from Gamebase API.
     if (_restrictedFideCodes.contains(normalized) ||
         _restrictedCountryNames.contains(lowerRaw)) {
-      return _fideLogo();
+      return _fideLogo(context);
     }
 
     // Handle UK subdivisions (England, Scotland, Wales) with their own flags.
     if (_ukSubdivisions.containsKey(normalized)) {
-      return _ukSubdivisionFlag(normalized);
+      return _ukSubdivisionFlag(context, normalized);
     }
-    if (lowerRaw == 'england') return _ukSubdivisionFlag('ENG');
-    if (lowerRaw == 'scotland') return _ukSubdivisionFlag('SCO');
-    if (lowerRaw == 'wales') return _ukSubdivisionFlag('WLS');
+    if (lowerRaw == 'england') return _ukSubdivisionFlag(context, 'ENG');
+    if (lowerRaw == 'scotland') return _ukSubdivisionFlag(context, 'SCO');
+    if (lowerRaw == 'wales') return _ukSubdivisionFlag(context, 'WLS');
 
     String? iso2;
     if (normalized.length == 2) {
@@ -72,7 +72,7 @@ class FederationFlag extends StatelessWidget {
     }
 
     if (iso2 == null || iso2.length != 2) {
-      return _fallback();
+      return _fallback(context);
     }
 
     final child = CountryFlag.fromCountryCode(
@@ -85,9 +85,9 @@ class FederationFlag extends StatelessWidget {
     return ClipRRect(borderRadius: radius, child: child);
   }
 
-  Widget _ukSubdivisionFlag(String fideCode) {
+  Widget _ukSubdivisionFlag(BuildContext context, String fideCode) {
     final country = _ukSubdivisions[fideCode];
-    if (country == null) return _fallback();
+    if (country == null) return _fallback(context);
 
     final radius = borderRadius ?? BorderRadius.circular(3);
     return ClipRRect(
@@ -100,9 +100,13 @@ class FederationFlag extends StatelessWidget {
     );
   }
 
-  Widget _fideLogo() {
+  Widget _fideLogo(BuildContext context) {
     final w = width;
     final h = height;
+    final pixelRatio = MediaQuery.devicePixelRatioOf(context);
+    final cacheW = w != null ? (w * pixelRatio).toInt() : null;
+    final cacheH = h != null ? (h * pixelRatio).toInt() : null;
+
     return ClipRRect(
       borderRadius: borderRadius ?? BorderRadius.circular(3),
       child: Image.asset(
@@ -110,12 +114,14 @@ class FederationFlag extends StatelessWidget {
         width: w,
         height: h,
         fit: BoxFit.cover,
+        cacheWidth: cacheW,
+        cacheHeight: cacheH,
         errorBuilder: (_, __, ___) => SizedBox(width: w, height: h),
       ),
     );
   }
 
-  Widget _fallback() {
-    return _fideLogo();
+  Widget _fallback(BuildContext context) {
+    return _fideLogo(context);
   }
 }

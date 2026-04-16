@@ -246,7 +246,7 @@ class TournamentMenuButton extends ConsumerWidget {
               return;
             }
             ref.read(eventMuteProvider(groupBroadcastId).notifier).toggleMute();
-            
+
             ScaffoldMessenger.of(context).hideCurrentSnackBar();
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(

@@ -641,26 +641,29 @@ class AuthController extends AutoDisposeAsyncNotifier<AppAuthState> {
 
         // Deduplicate by fide_id
         if (fideId.isNotEmpty) {
-          final existing = await _supabase
-              .from('user_favorite_players')
-              .select('id')
-              .eq('user_id', newUserId)
-              .eq('fide_id', fideId)
-              .maybeSingle();
+          final existing =
+              await _supabase
+                  .from('user_favorite_players')
+                  .select('id')
+                  .eq('user_id', newUserId)
+                  .eq('fide_id', fideId)
+                  .maybeSingle();
           if (existing != null) continue;
         }
 
         // Upsert with player_name conflict resolution as fallback
-        await _supabase.from('user_favorite_players').upsert(
-          {
-            'user_id': newUserId,
-            'fide_id': fideId.isNotEmpty ? fideId : null,
-            'player_name': playerName,
-            'metadata': row['metadata'],
-          },
-          onConflict: 'user_id,player_name',
-          ignoreDuplicates: true,
-        );
+        await _supabase
+            .from('user_favorite_players')
+            .upsert(
+              {
+                'user_id': newUserId,
+                'fide_id': fideId.isNotEmpty ? fideId : null,
+                'player_name': playerName,
+                'metadata': row['metadata'],
+              },
+              onConflict: 'user_id,player_name',
+              ignoreDuplicates: true,
+            );
       }
 
       debugPrint(
@@ -685,8 +688,9 @@ class AuthController extends AutoDisposeAsyncNotifier<AppAuthState> {
     // Capture anonymous favorites before switching user —
     // signInWithIdToken may switch to a different user_id,
     // orphaning the anonymous user's data.
-    _anonymousFavoritesSnapshot =
-        await _snapshotAnonymousFavorites(currentUser.id);
+    _anonymousFavoritesSnapshot = await _snapshotAnonymousFavorites(
+      currentUser.id,
+    );
 
     // For Google, we use the native flow to avoid stuck webviews
     if (provider == OAuthProvider.google) {
@@ -972,7 +976,9 @@ class AuthController extends AutoDisposeAsyncNotifier<AppAuthState> {
     String? value;
     final releaseValue = _releaseEnvValues[key]?.trim();
 
-    if (E2eConfig.isEnabled && releaseValue != null && releaseValue.isNotEmpty) {
+    if (E2eConfig.isEnabled &&
+        releaseValue != null &&
+        releaseValue.isNotEmpty) {
       value = releaseValue;
     } else if (kDebugMode) {
       value = dotenv.env[key]?.trim();

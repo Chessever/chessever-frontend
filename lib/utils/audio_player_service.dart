@@ -155,7 +155,7 @@ class AudioPlayerService with WidgetsBindingObserver {
     if (!player.isInitialized) {
       await SoLoud.instance.init();
       // Re-apply after init just in case SoLoud native layer reset the category
-      _audioSessionConfigured = false; 
+      _audioSessionConfigured = false;
       await _configureAudioSession();
     }
 
@@ -222,10 +222,14 @@ class AudioPlayerService with WidgetsBindingObserver {
       if (player.isInitialized) {
         // PERFORMANCE: Run deinit in a background isolate to avoid blocking
         // the main thread, which can cause hangs during hot-restart teardown.
-        unawaited(Isolate.run(() {
-          player.deinit();
-        }));
-        debugPrint('🎧 AudioPlayerService: SoLoud deinit triggered in background');
+        unawaited(
+          Isolate.run(() {
+            player.deinit();
+          }),
+        );
+        debugPrint(
+          '🎧 AudioPlayerService: SoLoud deinit triggered in background',
+        );
       }
     } catch (e, s) {
       debugPrint('⚠️ Audio teardown failed: $e\n$s');

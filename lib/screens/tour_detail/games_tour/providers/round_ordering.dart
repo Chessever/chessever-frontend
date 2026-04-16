@@ -46,11 +46,15 @@ List<GamesAppBarModel> sortRoundsForDisplay(
   final others = models.where((m) => m.id != focusRound.id).toList();
 
   final startedOthers =
-      others.where((m) => _isStartedRound(m, effectiveNow, resolveDate)).toList()
+      others
+          .where((m) => _isStartedRound(m, effectiveNow, resolveDate))
+          .toList()
         ..sort((a, b) => _compareByStart(a, b, false, resolveDate));
 
   final futureOthers =
-      others.where((m) => !_isStartedRound(m, effectiveNow, resolveDate)).toList()
+      others
+          .where((m) => !_isStartedRound(m, effectiveNow, resolveDate))
+          .toList()
         ..sort((a, b) => _compareByStart(a, b, true, resolveDate));
 
   return [focusRound, ...startedOthers, ...futureOthers];
@@ -80,24 +84,27 @@ GamesAppBarModel? pickPreferredRoundForSelection(
 
   if (allHaveStartTimes) {
     final soonUpcoming =
-        models
-            .where((m) {
-              if (m.roundStatus != RoundStatus.upcoming || !include(m)) {
-                return false;
-              }
-              final starts = resolveDate(m);
-              if (starts == null) return false;
-              final delta = starts.difference(effectiveNow);
-              return delta >= Duration.zero && delta <= const Duration(hours: 2);
-            })
-            .toList()
+        models.where((m) {
+            if (m.roundStatus != RoundStatus.upcoming || !include(m)) {
+              return false;
+            }
+            final starts = resolveDate(m);
+            if (starts == null) return false;
+            final delta = starts.difference(effectiveNow);
+            return delta >= Duration.zero && delta <= const Duration(hours: 2);
+          }).toList()
           ..sort((a, b) => _compareByStart(a, b, true, resolveDate));
     if (soonUpcoming.isNotEmpty) {
       return soonUpcoming.first;
     }
 
     final startedRounds =
-        models.where((m) => _isStartedRound(m, effectiveNow, resolveDate) && include(m)).toList()
+        models
+            .where(
+              (m) =>
+                  _isStartedRound(m, effectiveNow, resolveDate) && include(m),
+            )
+            .toList()
           ..sort((a, b) => _compareByStart(a, b, false, resolveDate));
     if (startedRounds.isNotEmpty) {
       return startedRounds.first;

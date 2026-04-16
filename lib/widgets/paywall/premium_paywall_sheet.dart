@@ -183,7 +183,12 @@ class _PaywallContent extends HookConsumerWidget {
           ),
           // Hero Icon
           Center(
-            child: Image.asset('assets/pngs/new_app_logo.png', height: 80.h),
+            child: Image.asset(
+              'assets/pngs/new_app_logo.webp',
+              height: 80.h,
+              cacheHeight:
+                  (80 * MediaQuery.devicePixelRatioOf(context)).toInt(),
+            ),
           ),
           SizedBox(height: 16.h),
           // Title
