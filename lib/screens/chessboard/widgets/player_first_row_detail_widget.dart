@@ -15,6 +15,7 @@ import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/chess_title_utils.dart';
 import 'package:chessever2/utils/location_service_provider.dart';
+import 'package:chessever2/utils/pgn_clock_utils.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/twic_player_enrichment.dart';
 import 'package:chessever2/widgets/atomic_countdown_text.dart';
@@ -202,33 +203,16 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
     final moveTime = useMemoized(() {
       String? calculatedMoveTime;
 
-      // In analysis mode, use the analysis state's current move index to show clock time
-      // Otherwise use the main state's current move index
       final effectiveMoveIndex =
           chessBoardState?.isAnalysisMode == true
               ? chessBoardState!.analysisState.currentMoveIndex
               : chessBoardState?.currentMoveIndex ?? -1;
 
-      // For past moves or when in analysis mode: Show the clock time at the current position
-      if (chessBoardState != null && !chessBoardState!.isAtEnd) {
-        if (chessBoardState!.moveTimes.isNotEmpty) {
-          // Find this player's most recent move up to current position
-          for (int i = effectiveMoveIndex; i >= 0; i--) {
-            final wasMoveByThisPlayer =
-                (i % 2 == 0 && isWhitePlayer) || (i % 2 == 1 && !isWhitePlayer);
-
-            if (wasMoveByThisPlayer && i < chessBoardState!.moveTimes.length) {
-              calculatedMoveTime = chessBoardState!.moveTimes[i];
-              break;
-            }
-          }
-        }
-      }
-      // For latest move in normal mode: use live data (handled by clockSeconds)
-      else if (chessBoardState != null &&
+      if (chessBoardState != null &&
           chessBoardState!.moveTimes.isNotEmpty &&
           effectiveMoveIndex >= 0) {
-        // Look for this player's most recent move
+        // Historical clock display is tied to the last move made by this player
+        // up to the currently navigated mainline ply.
         for (int i = effectiveMoveIndex; i >= 0; i--) {
           final wasMoveByThisPlayer =
               (i % 2 == 0 && isWhitePlayer) || (i % 2 == 1 && !isWhitePlayer);
@@ -246,8 +230,20 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
               ? effectiveGameModel.whiteTimeDisplay
               : effectiveGameModel.blackTimeDisplay;
 
+      if (calculatedMoveTime.trim().isEmpty) {
+        calculatedMoveTime = null;
+      }
+
       return calculatedMoveTime;
     }, [chessBoardState, isWhitePlayer, effectiveGameModel]);
+
+    final hasClockData =
+        hasUsableClockDisplay(moveTime) ||
+        (isWhitePlayer
+            ? effectiveGameModel.whiteClockSeconds != null ||
+                effectiveGameModel.whiteClockCentiseconds > 0
+            : effectiveGameModel.blackClockSeconds != null ||
+                effectiveGameModel.blackClockCentiseconds > 0);
 
     // Harmonized text styles for consistent visual hierarchy
     final rankStyle =
@@ -844,10 +840,7 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
               SizedBox(width: playerView == PlayerView.gridView ? 3.w : 4.w),
             ],
             // Always show clock/time on the right - simplified structure to prevent overflow
-            if (showClock &&
-                moveTime != '--:--' &&
-                moveTime != '-:--:--' &&
-                moveTime != '-')
+            if (showClock && hasClockData)
               Container(
                 padding: EdgeInsets.symmetric(
                   horizontal: clockPadding,
@@ -959,36 +952,29 @@ class _PlayerClock extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    String normalizeFen(String? fen) {
-      if (fen == null) return '';
-      return fen.trim().split(RegExp(r'\s+')).take(4).join(' ');
-    }
-
     final effectiveGameModel = chessBoardState?.game ?? gamesTourModel;
     final currentPosition =
         chessBoardState?.isAnalysisMode == true
             ? chessBoardState?.analysisState.position
             : chessBoardState?.position;
-    final currentPositionFen =
-        currentPosition == null ? '' : normalizeFen(currentPosition.fen);
-    final liveFen = normalizeFen(effectiveGameModel.fen);
-    final bool isAtLatestPosition = () {
-      final state = chessBoardState;
-      if (state == null) return true;
-
-      if (state.isAnalysisMode) {
-        // In analysis mode rely on analysis state's pointer to know if we're at the live position.
-        return state.analysisState.isAtEnd &&
-            !(state.analysisState.isInAnalysisVariation);
-      }
-
-      return state.isAtEnd;
-    }();
+    final effectiveMoveIndex =
+        chessBoardState?.isAnalysisMode == true
+            ? chessBoardState!.analysisState.currentMoveIndex
+            : chessBoardState?.currentMoveIndex ?? -1;
+    final latestMainlineIndex =
+        chessBoardState == null ? -1 : chessBoardState!.moveSans.length - 1;
     final isShowingLivePosition =
-        isAtLatestPosition ||
-        (currentPositionFen.isNotEmpty &&
-            liveFen.isNotEmpty &&
-            currentPositionFen == liveFen);
+        chessBoardState == null
+            ? true
+            : isShowingLiveBoardPosition(
+              currentFen: currentPosition?.fen,
+              liveFen: effectiveGameModel.fen,
+              currentMoveIndex: effectiveMoveIndex,
+              latestMainlineIndex: latestMainlineIndex,
+              isInAnalysisVariation:
+                  chessBoardState!.analysisState.isInAnalysisVariation,
+            );
+
     final liveActivePlayer = effectiveGameModel.activePlayer;
     final isLiveCurrentPlayer =
         liveActivePlayer != null &&

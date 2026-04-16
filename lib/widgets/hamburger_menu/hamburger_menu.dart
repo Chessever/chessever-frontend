@@ -16,6 +16,9 @@ import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:chessever2/widgets/user_avatar.dart';
 import 'package:chessever2/services/review_prompt_service.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_hooks/flutter_hooks.dart';
+import 'package:logarte/logarte.dart';
+import 'package:chessever2/main.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -62,13 +65,14 @@ void _showAboutDialog(BuildContext context, String version) {
   );
 }
 
-class HamburgerMenu extends ConsumerWidget {
+class HamburgerMenu extends HookConsumerWidget {
   final HamburgerMenuCallbacks callbacks;
 
   const HamburgerMenu({super.key, required this.callbacks});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final logarteTapCount = useState(0);
     final isTablet = ResponsiveHelper.isTablet;
     final drawerWidth = isTablet ? 320.0 : 260.w;
     final version = ref.watch(appVersionProvider);
@@ -79,10 +83,29 @@ class HamburgerMenu extends ConsumerWidget {
       child: Drawer(
         key: e2eKey(E2eIds.homeDrawer),
         backgroundColor: kBackgroundColor,
-        child: SafeArea(
-          bottom: true,
-          child: Column(
-            children: [
+        child: GestureDetector(
+          behavior: HitTestBehavior.translucent,
+          onTap: () {
+            logarteTapCount.value++;
+            if (logarteTapCount.value >= 7) {
+              logarteTapCount.value = 0;
+              if (logarte.isOverlayAttached) {
+                logarte.detachOverlay();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Logarte Debug Console Disabled')),
+                );
+              } else {
+                logarte.attach(context: context, visible: true);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Logarte Debug Console Enabled')),
+                );
+              }
+            }
+          },
+          child: SafeArea(
+            bottom: true,
+            child: Column(
+              children: [
               Expanded(
                 child: ListView(
                   padding: EdgeInsets.zero,
@@ -301,6 +324,7 @@ class HamburgerMenu extends ConsumerWidget {
             ],
           ),
         ),
+      ),
       ),
     );
   }

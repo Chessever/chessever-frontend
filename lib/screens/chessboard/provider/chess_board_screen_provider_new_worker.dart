@@ -1,4 +1,5 @@
 import 'package:dartchess/dartchess.dart';
+import 'package:chessever2/utils/pgn_clock_utils.dart';
 
 class PgnParseResult {
   final List<Move> allMoves;
@@ -40,36 +41,20 @@ PgnParseResult parsePgnWorker(String pgn) {
 
   // Parse times
   final times = <String>[];
-  String workerFormatDisplayTime(String timeString) {
-    final parts = timeString.split(':');
-    if (parts.length == 3) {
-      final hours = int.parse(parts[0]);
-      final minutes = parts[1];
-      final seconds = parts[2];
-      if (hours == 0) {
-        return '$minutes:$seconds';
-      }
-      return '$hours:$minutes:$seconds';
-    }
-    return timeString;
-  }
 
   try {
     for (final nodeData in gameData.moves.mainline()) {
       String? timeString;
       if (nodeData.comments != null) {
         for (String comment in nodeData.comments!) {
-          final timeMatch = RegExp(
-            r'\[%clk (\d+:\d+:\d+)\]',
-          ).firstMatch(comment);
-          if (timeMatch != null) {
-            timeString = timeMatch.group(1);
+          timeString = extractPgnClockStringFromComment(comment);
+          if (timeString != null) {
             break;
           }
         }
       }
       if (timeString != null) {
-        times.add(workerFormatDisplayTime(timeString));
+        times.add(formatPgnClockForDisplay(timeString));
       } else {
         times.add('-:--:--');
       }
@@ -77,11 +62,8 @@ PgnParseResult parsePgnWorker(String pgn) {
   } catch (e) {
     // Fallback if iteration fails
     try {
-      final regex = RegExp(r'\{ \[%clk (\d+:\d+:\d+)\] \}');
-      final matches = regex.allMatches(pgn);
-      for (final match in matches) {
-        final timeString = match.group(1) ?? '0:00:00';
-        times.add(workerFormatDisplayTime(timeString));
+      for (final timeString in extractPgnClockStringsFromText(pgn)) {
+        times.add(formatPgnClockForDisplay(timeString));
       }
     } catch (_) {}
   }

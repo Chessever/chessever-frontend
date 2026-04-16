@@ -22,6 +22,7 @@ import 'package:chessever2/screens/library/utils/gamebase_pgn_builder.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/audio_player_service.dart';
+import 'package:chessever2/utils/pgn_clock_utils.dart';
 import 'package:chessground/chessground.dart';
 import 'package:collection/collection.dart';
 import 'package:dartchess/dartchess.dart';
@@ -776,7 +777,13 @@ class ChessBoardScreenNotifierNew
 
               final newAllMoves = [...currentState.allMoves, extraMove];
               final newMoveSans = [...currentState.moveSans, sanResult.$2];
-              final newMoveTimes = [...currentState.moveTimes, ''];
+
+              final isWhiteMove = newAllMoves.length % 2 == 1;
+              final timeStr = _resolveMoveTimeFromGameSnapshot(
+                game,
+                isWhiteMove: isWhiteMove,
+              );
+              final newMoveTimes = [...currentState.moveTimes, timeStr];
 
               final wasViewingLastMove =
                   currentState.currentMoveIndex ==
@@ -1182,7 +1189,15 @@ class ChessBoardScreenNotifierNew
               if (_normalizeFen(candidate.fen) == targetFen) {
                 allMoves.add(extraMove);
                 moveSans.add(sanResult.$2);
-                moveTimes.add('');
+
+                final isWhiteMove = allMoves.length % 2 == 1;
+                moveTimes.add(
+                  _resolveMoveTimeFromGameSnapshot(
+                    game,
+                    isWhiteMove: isWhiteMove,
+                  ),
+                );
+
                 lastMove = extraMove;
                 finalPos = candidate;
                 lastMoveIndex = allMoves.length - 1;
@@ -1427,11 +1442,8 @@ class ChessBoardScreenNotifierNew
         if (nodeData.comments != null) {
           // Extract time if it exists in any comment
           for (String comment in nodeData.comments!) {
-            final timeMatch = RegExp(
-              r'\[%clk (\d+:\d+:\d+)\]',
-            ).firstMatch(comment);
-            if (timeMatch != null) {
-              timeString = timeMatch.group(1);
+            timeString = extractPgnClockStringFromComment(comment);
+            if (timeString != null) {
               break; // Found time, no need to check other comments for this move
             }
           }
@@ -1439,7 +1451,7 @@ class ChessBoardScreenNotifierNew
 
         // Add formatted time or default if no time found
         if (timeString != null) {
-          times.add(_formatDisplayTime(timeString));
+          times.add(formatPgnClockForDisplay(timeString));
         } else {
           times.add('-:--:--'); // Default for moves without time
         }
@@ -1455,34 +1467,30 @@ class ChessBoardScreenNotifierNew
 
   // Fallback method using the original regex approach
   List<String> _parseMoveTimesFromPgnFallback(String pgn) {
-    final List<String> times = [];
-    final regex = RegExp(r'\{ \[%clk (\d+:\d+:\d+)\] \}');
-    final matches = regex.allMatches(pgn);
-
-    for (final match in matches) {
-      final timeString = match.group(1) ?? '0:00:00';
-      times.add(_formatDisplayTime(timeString));
-    }
-
-    return times;
+    return extractPgnClockStringsFromText(
+      pgn,
+    ).map(formatPgnClockForDisplay).toList();
   }
 
-  String _formatDisplayTime(String timeString) {
-    // Convert "1:40:57" to display format
-    final parts = timeString.split(':');
-    if (parts.length == 3) {
-      final hours = int.parse(parts[0]);
-      final minutes = parts[1];
-      final seconds = parts[2];
-
-      // If less than an hour, show MM:SS format
-      if (hours == 0) {
-        return '$minutes:$seconds';
-      }
-      // Otherwise show H:MM:SS format
-      return '$hours:$minutes:$seconds';
+  String _resolveMoveTimeFromGameSnapshot(
+    GamesTourModel game, {
+    required bool isWhiteMove,
+  }) {
+    final clockSeconds =
+        isWhiteMove ? game.whiteClockSeconds : game.blackClockSeconds;
+    if (clockSeconds != null) {
+      return formatClockDisplayFromSeconds(clockSeconds);
     }
-    return timeString;
+
+    final clockCentiseconds =
+        isWhiteMove ? game.whiteClockCentiseconds : game.blackClockCentiseconds;
+    if (clockCentiseconds > 0) {
+      return formatClockDisplayFromSeconds((clockCentiseconds / 100).floor());
+    }
+
+    final fallbackDisplay =
+        isWhiteMove ? game.whiteTimeDisplay : game.blackTimeDisplay;
+    return hasUsableClockDisplay(fallbackDisplay) ? fallbackDisplay : '';
   }
 
   /// Mark all moves as seen (clear the unseen indicator)

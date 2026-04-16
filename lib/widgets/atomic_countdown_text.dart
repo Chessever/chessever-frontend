@@ -179,7 +179,7 @@ class AtomicCountdownText extends ConsumerWidget {
       final minutes = int.parse(timeParts[0]);
       final seconds = int.parse(timeParts[1]);
 
-      // If less than 60 minutes, return as MM:SS
+      // If less than 60 minutes, return as MM:SS (with zero padding if missing)
       if (minutes < 60) {
         return timeString;
       }

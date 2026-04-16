@@ -1,10 +1,10 @@
 import 'package:dartchess/dartchess.dart';
+import 'package:chessever2/utils/pgn_clock_utils.dart';
 
 typedef Number = int;
 
 typedef ChessLine = List<ChessMove>;
 
-final RegExp _timeRegex = RegExp(r'\[%clk (\d+:\d+:\d+)\]');
 final RegExp _evalRegex = RegExp(r'\[%eval ([^\]]+)\]');
 
 class ChessGame {
@@ -121,9 +121,9 @@ class ChessGame {
     String? eval;
     if (data.comments != null) {
       for (final comment in data.comments!) {
-        final timeMatch = _timeRegex.firstMatch(comment);
-        if (timeMatch != null) {
-          clockTime = timeMatch.group(1);
+        final parsedClock = extractPgnClockStringFromComment(comment);
+        if (parsedClock != null) {
+          clockTime = parsedClock;
         }
         final evalMatch = _evalRegex.firstMatch(comment);
         if (evalMatch != null) {

@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:ui';
+import 'package:logarte/logarte.dart';
 import 'package:chessever2/e2e/e2e_config.dart';
 import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/localization/locale_provider.dart';
@@ -174,6 +176,23 @@ Future<void> main() async {
       FlutterNativeSplash.preserve(widgetsBinding: widgetsBinding);
       _e2eStartupLog('native splash preserved');
 
+      FlutterError.onError = (details) {
+        logarte.log(
+          'FLUTTER ERROR: ${details.exception}',
+          stackTrace: details.stack,
+          source: 'FlutterError.onError',
+        );
+        FlutterError.presentError(details);
+      };
+      PlatformDispatcher.instance.onError = (error, stack) {
+        logarte.log(
+          'PLATFORM ERROR: $error',
+          stackTrace: stack,
+          source: 'PlatformDispatcher.onError',
+        );
+        return false; // Return false so the error continues to Sentry / runZonedGuarded
+      };
+
       // Load environment variables only for local debug runs.
       // Patrol E2E uses --dart-define values because dotenv asset loading can
       // block under the test host before the widget tree is ready.
@@ -253,6 +272,11 @@ Future<void> main() async {
       }
     },
     (error, stackTrace) {
+      logarte.log(
+        'GLOBAL ERROR: $error',
+        stackTrace: stackTrace,
+        source: 'runZonedGuarded',
+      );
       // Wrap in try-catch to prevent recursive errors if Sentry itself fails
       try {
         // Use unawaited to make error capture non-blocking
@@ -875,6 +899,12 @@ class _StartupFailureApp extends StatelessWidget {
     );
   }
 }
+
+// Initialize logarte globally
+final logarte = Logarte(
+  password: 'devr0ll',
+  disableDebugConsoleLogs: false,
+);
 
 class MyApp extends HookConsumerWidget {
   const MyApp({super.key});
