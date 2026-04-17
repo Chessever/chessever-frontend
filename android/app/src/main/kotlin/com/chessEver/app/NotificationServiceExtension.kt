@@ -171,8 +171,23 @@ class NotificationServiceExtension : INotificationServiceExtension {
       builder.setProgress(100, progress, false)
     }
 
-    // Add big picture style for expanded view
-    if (bigPictureBitmap != null) {
+    if (Build.VERSION.SDK_INT >= 35) {
+      builder.setStyle(
+        NotificationCompat.BigTextStyle()
+          .bigText(
+            buildPromotedBigText(
+              eventName = prettyEventName,
+              lastMove = lastMove,
+              evalText = evalText,
+              whiteClockSeconds = whiteClockSeconds,
+              blackClockSeconds = blackClockSeconds,
+            )
+          )
+          .setSummaryText("$lastMove  $evalText")
+      )
+    } else if (bigPictureBitmap != null) {
+      // BigPictureStyle is visually richer on older Android versions, but it
+      // does not qualify for Android 15 promoted ongoing notifications.
       builder.setStyle(
         NotificationCompat.BigPictureStyle()
           .bigPicture(bigPictureBitmap)
@@ -182,9 +197,9 @@ class NotificationServiceExtension : INotificationServiceExtension {
     }
 
     // Request promoted ongoing for Android 15+ (Live Updates on lock screen)
+    /*
     if (eventType != "end" && Build.VERSION.SDK_INT >= 35) {
       builder.addExtras(Bundle().apply {
-        // EXTRA_REQUEST_PROMOTED_ONGOING = "android.requestPromotedOngoing"
         putBoolean("android.requestPromotedOngoing", true)
       })
       // Ensure the notification is seen as prominent
@@ -192,6 +207,7 @@ class NotificationServiceExtension : INotificationServiceExtension {
         builder.setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
       }
     }
+    */
 
     // Add action to end updates
     if (eventType != "end") {
@@ -752,6 +768,30 @@ class NotificationServiceExtension : INotificationServiceExtension {
     } else {
       String.format("%d:%02d", minutes, secs)
     }
+  }
+
+  private fun buildPromotedBigText(
+    eventName: String,
+    lastMove: String,
+    evalText: String,
+    whiteClockSeconds: Int?,
+    blackClockSeconds: Int?
+  ): String {
+    val parts = mutableListOf<String>()
+    if (eventName.isNotBlank()) {
+      parts += eventName
+    }
+    parts += "$lastMove  $evalText"
+
+    val clockText = listOfNotNull(
+      whiteClockSeconds?.let(::formatClock),
+      blackClockSeconds?.let(::formatClock),
+    )
+    if (clockText.isNotEmpty()) {
+      parts += "Clocks ${clockText.joinToString(" - ")}"
+    }
+
+    return parts.joinToString("\n")
   }
 
   private fun fetchBitmap(url: String): Bitmap? {

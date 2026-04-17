@@ -2,6 +2,7 @@ import Flutter
 import UIKit
 import UserNotifications
 import AVFoundation
+import ActivityKit
 import app_links
 import OneSignalFramework
 import OneSignalLiveActivities
@@ -54,6 +55,7 @@ import OneSignalLiveActivities
     // registration must happen here exactly once.
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
     setupAudioSessionChannel(binaryMessenger: engineBridge.applicationRegistrar.messenger())
+    setupLiveActivitiesChannel(binaryMessenger: engineBridge.applicationRegistrar.messenger())
   }
 
   private func setupAudioSessionChannel(binaryMessenger: FlutterBinaryMessenger) {
@@ -70,6 +72,117 @@ import OneSignalLiveActivities
         result(FlutterMethodNotImplemented)
       }
     }
+  }
+
+  private func setupLiveActivitiesChannel(binaryMessenger: FlutterBinaryMessenger) {
+    let liveActivitiesChannel = FlutterMethodChannel(
+      name: "com.chessever/live_activities",
+      binaryMessenger: binaryMessenger
+    )
+
+    liveActivitiesChannel.setMethodCallHandler { [weak self] (call, result) in
+      switch call.method {
+      case "startDefaultVerified":
+        self?.startDefaultVerified(call: call, result: result)
+      case "getLiveActivityDebugState":
+        self?.getLiveActivityDebugState(result: result)
+      default:
+        result(FlutterMethodNotImplemented)
+      }
+    }
+  }
+
+  private func getLiveActivityDebugState(result: @escaping FlutterResult) {
+    guard #available(iOS 16.1, *) else {
+      result([
+        "supported": false,
+        "enabled": false,
+        "activities": [],
+      ])
+      return
+    }
+
+    let authorizationInfo = ActivityAuthorizationInfo()
+    let activities = Activity<DefaultLiveActivityAttributes>.activities.map { activity in
+      serializeDefaultLiveActivity(activity)
+    }
+
+    result([
+      "supported": true,
+      "enabled": authorizationInfo.areActivitiesEnabled,
+      "activities": activities,
+    ])
+  }
+
+  private func startDefaultVerified(call: FlutterMethodCall, result: @escaping FlutterResult) {
+    guard #available(iOS 16.1, *) else {
+      result(FlutterError(
+        code: "LIVE_ACTIVITY_UNAVAILABLE",
+        message: "Live Activities require iOS 16.1+",
+        details: nil
+      ))
+      return
+    }
+
+    guard
+      let args = call.arguments as? [String: Any],
+      let activityId = args["activityId"] as? String,
+      let attributes = args["attributes"] as? [String: Any],
+      let content = args["content"] as? [String: Any]
+    else {
+      result(FlutterError(
+        code: "INVALID_ARGUMENTS",
+        message: "Missing activityId, attributes, or content",
+        details: nil
+      ))
+      return
+    }
+
+    // ALWAYS use the public OneSignal wrapper, NOT the internal Obj-C class.
+    OneSignal.LiveActivities.startDefault(
+      activityId,
+      attributes: attributes,
+      content: content
+    )
+
+    Task { @MainActor in
+      // Wait up to 2 seconds for ActivityKit to register the activity
+      for _ in 0..<20 {
+        if let activity = Activity<DefaultLiveActivityAttributes>.activities.first(
+          where: { $0.attributes.onesignal.activityId == activityId }
+        ) {
+          result([
+            "ok": true,
+            "enabled": ActivityAuthorizationInfo().areActivitiesEnabled,
+            "activity": serializeDefaultLiveActivity(activity),
+          ])
+          return
+        }
+        try? await Task.sleep(nanoseconds: 100_000_000)
+      }
+
+      // If we reach here, it failed to start.
+      result([
+        "ok": false,
+        "enabled": ActivityAuthorizationInfo().areActivitiesEnabled,
+        "message": "ActivityKit did not persist a matching live activity after startDefault",
+        "activities": Activity<DefaultLiveActivityAttributes>.activities.map {
+          serializeDefaultLiveActivity($0)
+        },
+      ])
+    }
+  }
+
+  @available(iOS 16.1, *)
+  private func serializeDefaultLiveActivity(
+    _ activity: Activity<DefaultLiveActivityAttributes>
+  ) -> [String: Any] {
+    return [
+      "systemId": activity.id,
+      "activityId": activity.attributes.onesignal.activityId,
+      "state": String(describing: activity.activityState),
+      "gameId": activity.attributes.data["game_id"]?.asString() ?? NSNull(),
+    ]
   }
 
   /// Configure audio session for ambient mode - doesn't interrupt other audio
