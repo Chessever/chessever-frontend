@@ -73,6 +73,8 @@
 		<string>This app needs permission to access your photo library to save chess game images.</string>
 		<key>NSSupportsLiveActivities</key>
 		<true/>
+		<key>NSSupportsLiveActivitiesFrequentUpdates</key>
+		<true/>
 		<key>UIApplicationSupportsIndirectInputEvents</key>
 		<true/>
 		<key>UIBackgroundModes</key>
