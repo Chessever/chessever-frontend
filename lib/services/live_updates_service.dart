@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:onesignal_flutter/onesignal_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -6,6 +7,9 @@ class LiveUpdatesService {
   LiveUpdatesService._();
 
   static final LiveUpdatesService instance = LiveUpdatesService._();
+  static const MethodChannel _liveActivitiesChannel = MethodChannel(
+    'com.chessever/live_activities',
+  );
 
   bool _setupDone = false;
   String? _activeGameId;
@@ -34,6 +38,7 @@ class LiveUpdatesService {
     required Map<String, dynamic> attributes,
     required Map<String, dynamic> content,
   }) async {
+    /*
     await setup();
     if (kIsWeb) return;
 
@@ -44,14 +49,27 @@ class LiveUpdatesService {
     if (defaultTargetPlatform == TargetPlatform.iOS) {
       try {
         debugPrint('[LiveUpdates] Starting iOS Live Activity: $activityId');
-        await OneSignal.LiveActivities.startDefault(
-          activityId,
-          attributes,
-          content,
-        );
-        _activeGameId = gameId;
-        started = true;
-        debugPrint('[LiveUpdates] iOS Live Activity started for game: $gameId');
+        final response = await _liveActivitiesChannel
+            .invokeMethod<Map<Object?, Object?>>('startDefaultVerified', {
+              'activityId': activityId,
+              'attributes': attributes,
+              'content': content,
+            });
+
+        final startedOnDevice = response?['ok'] == true;
+        if (startedOnDevice) {
+          _activeGameId = gameId;
+          started = true;
+          debugPrint(
+            '[LiveUpdates] iOS Live Activity persisted for game: $gameId',
+          );
+          debugPrint('[LiveUpdates] Native state: ${response?['activity']}');
+        } else {
+          debugPrint(
+            '[LiveUpdates] iOS Live Activity did not persist for game: $gameId',
+          );
+          debugPrint('[LiveUpdates] Native debug state: $response');
+        }
       } catch (e, st) {
         debugPrint('[LiveUpdates] iOS Live Activity failed: $e');
         debugPrintStack(stackTrace: st);
@@ -70,9 +88,11 @@ class LiveUpdatesService {
     if (started) {
       await _registerSubscription(gameId, enabled: true);
     }
+    */
   }
 
   Future<void> endLiveActivity(String activityId) async {
+    /*
     if (kIsWeb) return;
 
     final gameId = _activeGameId;
@@ -89,6 +109,7 @@ class LiveUpdatesService {
 
     _activeGameId = null;
     await _registerSubscription(gameId, enabled: false);
+    */
   }
 
   /// Convenience method to start live updates for a game when app goes to background.
@@ -117,8 +138,10 @@ class LiveUpdatesService {
   }) async {
     try {
       final activityId = 'live:$gameId:$userId';
-      debugPrint('[LiveUpdates] Preparing to start live activity for game: $gameId (activityId: $activityId)');
-      
+      debugPrint(
+        '[LiveUpdates] Preparing to start live activity for game: $gameId (activityId: $activityId)',
+      );
+
       final attributes = {
         'game_id': gameId,
         'player_white': playerWhite,
@@ -136,7 +159,7 @@ class LiveUpdatesService {
         if (whiteFideId != null) 'white_fide_id': whiteFideId,
         if (blackFideId != null) 'black_fide_id': blackFideId,
       };
-      final content = {
+      final content = <String, dynamic>{
         'game_id': gameId,
         'player_white': playerWhite,
         'player_black': playerBlack,
@@ -155,10 +178,10 @@ class LiveUpdatesService {
           'last_move_time': lastMoveTime.toUtc().toIso8601String(),
         if (whiteClockSeconds != null) 'white_clock_seconds': whiteClockSeconds,
         if (blackClockSeconds != null) 'black_clock_seconds': blackClockSeconds,
-        'event_name': eventName,
-        'round_name': roundName,
-        'white_fide_id': whiteFideId,
-        'black_fide_id': blackFideId,
+        if (eventName != null) 'event_name': eventName,
+        if (roundName != null) 'round_name': roundName,
+        if (whiteFideId != null) 'white_fide_id': whiteFideId,
+        if (blackFideId != null) 'black_fide_id': blackFideId,
       };
 
       await startLiveActivity(

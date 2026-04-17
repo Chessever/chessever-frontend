@@ -232,6 +232,7 @@ class _ChessBoardNotificationSettingsPageState
                           ),
                         ),
                       ),
+                      /*
                       Divider(
                         height: 1,
                         color: kDividerColor.withValues(alpha: 0.4),
@@ -262,6 +263,7 @@ class _ChessBoardNotificationSettingsPageState
                                   },
                         ),
                       ),
+                      */
                     ],
                   ),
                 ),

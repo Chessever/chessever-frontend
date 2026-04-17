@@ -1412,8 +1412,11 @@ async function filterLiveUpdateEnabled(userIds: string[]) {
   }
   for (const id of userIds) {
     const prefs = prefsMap.get(id);
-    if (!prefs || prefs.push_enabled === false) continue;
-    if (prefs.live_game_updates !== true) continue;
+    // Per-game live subscriptions are explicit, user-initiated opt-ins created
+    // when someone backgrounds an active board. Respect the master push toggle,
+    // but don't re-gate those explicit subscriptions behind the broader
+    // live_game_updates category flag, which defaults to false.
+    if (prefs?.push_enabled === false) continue;
     filtered.add(id);
   }
   return filtered;

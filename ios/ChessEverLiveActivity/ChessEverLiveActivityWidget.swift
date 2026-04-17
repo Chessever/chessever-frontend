@@ -401,7 +401,7 @@ struct ChessEverLiveActivityWidget: Widget {
   var body: some WidgetConfiguration {
     ActivityConfiguration(for: DefaultLiveActivityAttributes.self) { context in
       let state = LiveGameState(context: context)
-      LockScreenView(state: state)
+      SafeLockScreenView(state: state)
         .activityBackgroundTint(ChessDesign.background)
         .widgetURL(state.widgetURL)
     } dynamicIsland: { context in
@@ -1184,16 +1184,10 @@ private struct MiniBoard: View {
                 }
 
                 if let piece = board.pieceAt(rank: rank, file: file) {
-                  if let uiImage = PieceImageProvider.image(for: piece, pieceSetDirectory: pieceSetDirectory) {
-                    Image(uiImage: uiImage)
-                      .resizable()
-                      .scaledToFit()
-                      .padding(sq * 0.08)
-                  } else {
-                    Text(piece.displayLetter)
-                      .font(.system(size: sq * 0.48, weight: .bold, design: .rounded))
-                      .foregroundStyle(piece.isWhite ? ChessDesign.whitePiece : ChessDesign.blackPiece)
-                  }
+                  // Text fallback to prevent Watchdog termination from sync file I/O
+                  Text(piece.displayLetter)
+                    .font(.system(size: sq * 0.48, weight: .bold, design: .rounded))
+                    .foregroundStyle(piece.isWhite ? ChessDesign.whitePiece : ChessDesign.blackPiece)
                 }
               }
               .frame(width: sq, height: sq)

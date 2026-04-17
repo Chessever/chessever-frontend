@@ -183,7 +183,6 @@ DEPENDENCIES:
   - in_app_review (from `.symlinks/plugins/in_app_review/ios`)
   - objective_c (from `.symlinks/plugins/objective_c/ios`)
   - onesignal_flutter (from `.symlinks/plugins/onesignal_flutter/ios`)
-  - OneSignalXCFramework
   - package_info_plus (from `.symlinks/plugins/package_info_plus/ios`)
   - path_provider_foundation (from `.symlinks/plugins/path_provider_foundation/darwin`)
   - patrol (from `.symlinks/plugins/patrol/darwin`)
@@ -322,6 +321,6 @@ SPEC CHECKSUMS:
   terminate_restart: 7afc8cc5b5afc86871cdb1206a584c43262702ac
   url_launcher_ios: 694010445543906933d732453a59da0a173ae33d
 
-PODFILE CHECKSUM: 8952f8051b0cf94dabb2096b0175ea94f0e4c917
+PODFILE CHECKSUM: 3e484f5b39c255e4597c427de2b672ededf67b88
 
 COCOAPODS: 1.16.2

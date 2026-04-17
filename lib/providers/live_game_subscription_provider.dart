@@ -1,6 +1,5 @@
 import 'package:chessever2/providers/auth_state_provider.dart';
 import 'package:chessever2/providers/board_settings_provider_new.dart';
-import 'package:chessever2/providers/notification_preferences_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/services/live_updates_service.dart';
 import 'package:chessever2/services/push_notifications_service.dart';
@@ -50,13 +49,6 @@ class LiveGameSubscriptionNotifier
     state = const AsyncLoading();
 
     if (enabled) {
-      // Respect global live game updates preference
-      final prefs = ref.read(notificationPreferencesProvider).valueOrNull;
-      if (prefs != null && !prefs.liveGameUpdates) {
-        state = const AsyncData(false);
-        return;
-      }
-
       final granted =
           await PushNotificationsService.instance.requestPermissionWithDialog();
       if (!granted) {
