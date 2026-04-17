@@ -1127,8 +1127,9 @@ private struct BoardSquare: Hashable {
     guard square.count >= 2 else { return nil }
     let chars = Array(square.lowercased())
     guard let fileChar = chars.first,
-          let fileValue = fileChar.asciiValue else { return nil }
-    let file = Int(fileValue - Character("a").asciiValue!)
+          let fileValue = fileChar.asciiValue,
+          let aValue = Character("a").asciiValue else { return nil }
+    let file = Int(fileValue) - Int(aValue)
     let rankValue = Int(String(chars[1])) ?? -1
     guard file >= 0, file < 8, rankValue >= 1, rankValue <= 8 else { return nil }
     let rank = 8 - rankValue
