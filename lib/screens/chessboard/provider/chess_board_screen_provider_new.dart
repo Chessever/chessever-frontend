@@ -1531,11 +1531,6 @@ class ChessBoardScreenNotifierNew
       final updatedState = ref.read(chessGameNavigatorProvider(_analysisGame!));
       _syncAnalysisFromNavigator(updatedState);
 
-      // Update live-follow flag based on whether user navigated to the last move
-      if (game.gameStatus.isOngoing) {
-        final allMoveCount = updatedState.currentLine?.length ?? 0;
-        _isFollowingLive = moveIndex >= 0 && moveIndex == allMoveCount - 1;
-      }
       return;
     }
 
@@ -1682,20 +1677,6 @@ class ChessBoardScreenNotifierNew
     // The ref.listen callback may not fire synchronously.
     final updatedState = ref.read(chessGameNavigatorProvider(_analysisGame!));
     _syncAnalysisFromNavigator(updatedState);
-
-    // Update live-follow flag based on whether the user landed on the last mainline move.
-    // Only resume when on the mainline (movePointer.length == 1), not at the end of a variation,
-    // otherwise the next incoming live move would yank the user out of their variation.
-    if (game.gameStatus.isOngoing) {
-      final navState = ref.read(chessGameNavigatorProvider(_analysisGame!));
-      final line = navState.currentLine;
-      final isAtTail =
-          line != null &&
-          navState.movePointer.isNotEmpty &&
-          navState.movePointer.length == 1 &&
-          navState.movePointer.last == line.length - 1;
-      _isFollowingLive = isAtTail;
-    }
   }
 
   ChessGameNavigatorState? navigatorStateSnapshot() {
@@ -4008,21 +3989,6 @@ class ChessBoardScreenNotifierNew
     // (it watches navigator directly) while the board state lags behind.
     final updatedState = ref.read(chessGameNavigatorProvider(_analysisGame!));
     _syncAnalysisFromNavigator(updatedState);
-
-    // If user stepped forward to the last move of the mainline, resume auto-following live moves.
-    // Only resume when on the mainline (movePointer.length == 1), not at the end of a variation,
-    // otherwise the next incoming live move would yank the user out of their variation.
-    if (game.gameStatus.isOngoing) {
-      final line = updatedState.currentLine;
-      final isAtTail =
-          line != null &&
-          updatedState.movePointer.isNotEmpty &&
-          updatedState.movePointer.length == 1 &&
-          updatedState.movePointer.last == line.length - 1;
-      if (isAtTail) {
-        _isFollowingLive = true;
-      }
-    }
   }
 
   /// Navigate backward in analysis mode (through main line when no variant selected)
@@ -4078,9 +4044,7 @@ class ChessBoardScreenNotifierNew
 
     // CRITICAL: Reset cancellation flag before navigation to ensure evaluation happens
     _cancelEvaluation = false;
-    // User manually navigated backwards — stop auto-following live moves
-    _isFollowingLive = false;
-
+    // User manually navigated backwards
     final navigatorState = ref.read(chessGameNavigatorProvider(_analysisGame!));
     _releaseLog(
       '🎯 ANALYSIS STEP BACKWARD: Current movePointer=${navigatorState.movePointer}',
@@ -4103,8 +4067,7 @@ class ChessBoardScreenNotifierNew
   void jumpToStart() {
     _releaseLog('🎯 JUMP TO START called');
     _exitPvPreviewIfActive();
-    // User manually navigated to start — stop auto-following live moves
-    _isFollowingLive = false;
+    // User manually navigated to start
     final currentState = state.value;
     if (currentState == null) return;
 
@@ -4149,9 +4112,6 @@ class ChessBoardScreenNotifierNew
     if (currentState.isAnalysisMode) {
       // Check if variant is selected
       if (currentState.selectedVariantIndex != null) {
-        // Jumping within a variant — do NOT auto-follow live mainline moves,
-        // otherwise the next incoming move would yank the user out of the variant.
-        _isFollowingLive = false;
         _releaseLog(
           '🎯 JUMP TO END: Variant selected, playing all variant moves',
         );
@@ -4180,8 +4140,7 @@ class ChessBoardScreenNotifierNew
           ),
         );
       } else {
-        // Jumping to mainline tail — resume auto-following live moves
-        _isFollowingLive = true;
+        // Jumping to mainline tail
         _releaseLog('🎯 JUMP TO END: No variant, jumping to game end');
         _analysisNavigator?.goToTail();
       }
@@ -6478,6 +6437,19 @@ class ChessBoardScreenNotifierNew
 
       final currentMoveIndex = movesFromNavigator.length - 1;
 
+      // Determine if we are at the mainline tail to clear unseen indicator
+      final line = navigatorState.currentLine;
+      final isAtMainlineTail =
+          line != null &&
+          navigatorState.movePointer.isNotEmpty &&
+          navigatorState.movePointer.length == 1 &&
+          navigatorState.movePointer.last == line.length - 1;
+
+      // Update live-follow flag based on whether the user landed on the last mainline move.
+      if (game.gameStatus.isOngoing) {
+        _isFollowingLive = isAtMainlineTail;
+      }
+
       final nextState = current.copyWith(
         analysisState: current.analysisState.copyWith(
           game: navigatorState.game,
@@ -6495,6 +6467,8 @@ class ChessBoardScreenNotifierNew
         ),
         evaluation: sameFenAsCurrent ? current.evaluation : null,
         isEvaluating: sameFenAsCurrent ? current.isEvaluating : true,
+        // Clear unseen indicator if navigating to the last mainline move
+        hasUnseenMoves: isAtMainlineTail ? false : current.hasUnseenMoves,
       );
 
       var progressedState = _setVariantProgress(
@@ -6503,6 +6477,11 @@ class ChessBoardScreenNotifierNew
       );
 
       state = AsyncValue.data(progressedState);
+
+      // Update last seen move count if we just cleared unseen indicator
+      if (isAtMainlineTail && current.hasUnseenMoves) {
+        _updateLastSeenMoveCount(progressedState.analysisState.moveSans.length);
+      }
 
       final shouldRefreshEvaluation =
           !sameFenAsCurrent ||
