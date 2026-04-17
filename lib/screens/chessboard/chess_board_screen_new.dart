@@ -1443,7 +1443,8 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     if (!mounted) return;
     if (state == AppLifecycleState.resumed) {
       _handleLifecycleResume();
-    } else if (state == AppLifecycleState.paused ||
+    } else if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused ||
         state == AppLifecycleState.detached) {
       _handleLifecyclePaused();
     }
