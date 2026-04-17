@@ -160,7 +160,7 @@ class NotificationServiceExtension : INotificationServiceExtension {
       .setOngoing(eventType != "end")
       .setAutoCancel(eventType == "end")
       .setCategory(NotificationCompat.CATEGORY_STATUS)
-      .setPriority(NotificationCompat.PRIORITY_LOW)
+      .setPriority(NotificationCompat.PRIORITY_DEFAULT)
       .setContentIntent(pendingIntent)
       .setGroup("live_games")
       .setGroupAlertBehavior(NotificationCompat.GROUP_ALERT_SUMMARY)
@@ -181,11 +181,16 @@ class NotificationServiceExtension : INotificationServiceExtension {
       )
     }
 
-    // Request promoted ongoing for Android 16+ (Live Updates on lock screen)
-    if (eventType != "end" && Build.VERSION.SDK_INT >= 36) {
+    // Request promoted ongoing for Android 15+ (Live Updates on lock screen)
+    if (eventType != "end" && Build.VERSION.SDK_INT >= 35) {
       builder.addExtras(Bundle().apply {
+        // EXTRA_REQUEST_PROMOTED_ONGOING = "android.requestPromotedOngoing"
         putBoolean("android.requestPromotedOngoing", true)
       })
+      // Ensure the notification is seen as prominent
+      if (Build.VERSION.SDK_INT >= 35) {
+        builder.setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
+      }
     }
 
     // Add action to end updates

@@ -31,8 +31,8 @@ class PushNotificationsService {
       OneSignal.Debug.setLogLevel(OSLogLevel.verbose);
     }
 
-    OneSignal.initialize(appId);
     await LiveUpdatesService.instance.setup();
+    OneSignal.initialize(appId);
 
     // Apply opt-in state based on local preference and current OS permission.
     // This prevents release builds from forcing users into opt-out when iOS

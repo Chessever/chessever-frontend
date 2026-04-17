@@ -43,12 +43,18 @@ class LiveUpdatesService {
 
     if (defaultTargetPlatform == TargetPlatform.iOS) {
       try {
-        OneSignal.LiveActivities.startDefault(activityId, attributes, content);
+        debugPrint('[LiveUpdates] Starting iOS Live Activity: $activityId');
+        await OneSignal.LiveActivities.startDefault(
+          activityId,
+          attributes,
+          content,
+        );
         _activeGameId = gameId;
         started = true;
         debugPrint('[LiveUpdates] iOS Live Activity started for game: $gameId');
-      } catch (e) {
+      } catch (e, st) {
         debugPrint('[LiveUpdates] iOS Live Activity failed: $e');
+        debugPrintStack(stackTrace: st);
       }
     } else if (defaultTargetPlatform == TargetPlatform.android) {
       // Android: We register the subscription in Supabase
@@ -73,10 +79,11 @@ class LiveUpdatesService {
 
     if (defaultTargetPlatform == TargetPlatform.iOS) {
       try {
-        OneSignal.LiveActivities.exitLiveActivity(activityId);
+        debugPrint('[LiveUpdates] Ending iOS Live Activity: $activityId');
+        await OneSignal.LiveActivities.exitLiveActivity(activityId);
         debugPrint('[LiveUpdates] iOS Live Activity ended');
-      } catch (_) {
-        // Ignore failures.
+      } catch (e) {
+        debugPrint('[LiveUpdates] iOS Live Activity end failed: $e');
       }
     }
 
@@ -108,54 +115,61 @@ class LiveUpdatesService {
     int? boardThemeIndex,
     int? pieceStyleIndex,
   }) async {
-    final activityId = 'live:$gameId:$userId';
-    final attributes = {
-      'game_id': gameId,
-      'player_white': playerWhite,
-      'player_black': playerBlack,
-      if (boardThemeIndex != null) 'board_theme_index': boardThemeIndex,
-      if (pieceStyleIndex != null) 'piece_style_index': pieceStyleIndex,
-      if (whiteTitle != null) 'white_title': whiteTitle,
-      if (blackTitle != null) 'black_title': blackTitle,
-      if (whiteFed != null) 'white_fed': whiteFed,
-      if (blackFed != null) 'black_fed': blackFed,
-      if (whitePhoto != null) 'white_photo': whitePhoto,
-      if (blackPhoto != null) 'black_photo': blackPhoto,
-      if (eventName != null) 'event_name': eventName,
-      if (roundName != null) 'round_name': roundName,
-      if (whiteFideId != null) 'white_fide_id': whiteFideId,
-      if (blackFideId != null) 'black_fide_id': blackFideId,
-    };
-    final content = {
-      'game_id': gameId,
-      'player_white': playerWhite,
-      'player_black': playerBlack,
-      if (boardThemeIndex != null) 'board_theme_index': boardThemeIndex,
-      if (pieceStyleIndex != null) 'piece_style_index': pieceStyleIndex,
-      if (whiteTitle != null) 'white_title': whiteTitle,
-      if (blackTitle != null) 'black_title': blackTitle,
-      if (whiteFed != null) 'white_fed': whiteFed,
-      if (blackFed != null) 'black_fed': blackFed,
-      if (whitePhoto != null) 'white_photo': whitePhoto,
-      if (blackPhoto != null) 'black_photo': blackPhoto,
-      'fen': fen ?? '',
-      'last_move': lastMove ?? '',
-      'last_move_uci': lastMove ?? '',
-      if (lastMoveTime != null)
-        'last_move_time': lastMoveTime.toUtc().toIso8601String(),
-      if (whiteClockSeconds != null) 'white_clock_seconds': whiteClockSeconds,
-      if (blackClockSeconds != null) 'black_clock_seconds': blackClockSeconds,
-      'event_name': eventName,
-      'round_name': roundName,
-      'white_fide_id': whiteFideId,
-      'black_fide_id': blackFideId,
-    };
+    try {
+      final activityId = 'live:$gameId:$userId';
+      debugPrint('[LiveUpdates] Preparing to start live activity for game: $gameId (activityId: $activityId)');
+      
+      final attributes = {
+        'game_id': gameId,
+        'player_white': playerWhite,
+        'player_black': playerBlack,
+        if (boardThemeIndex != null) 'board_theme_index': boardThemeIndex,
+        if (pieceStyleIndex != null) 'piece_style_index': pieceStyleIndex,
+        if (whiteTitle != null) 'white_title': whiteTitle,
+        if (blackTitle != null) 'black_title': blackTitle,
+        if (whiteFed != null) 'white_fed': whiteFed,
+        if (blackFed != null) 'black_fed': blackFed,
+        if (whitePhoto != null) 'white_photo': whitePhoto,
+        if (blackPhoto != null) 'black_photo': blackPhoto,
+        if (eventName != null) 'event_name': eventName,
+        if (roundName != null) 'round_name': roundName,
+        if (whiteFideId != null) 'white_fide_id': whiteFideId,
+        if (blackFideId != null) 'black_fide_id': blackFideId,
+      };
+      final content = {
+        'game_id': gameId,
+        'player_white': playerWhite,
+        'player_black': playerBlack,
+        if (boardThemeIndex != null) 'board_theme_index': boardThemeIndex,
+        if (pieceStyleIndex != null) 'piece_style_index': pieceStyleIndex,
+        if (whiteTitle != null) 'white_title': whiteTitle,
+        if (blackTitle != null) 'black_title': blackTitle,
+        if (whiteFed != null) 'white_fed': whiteFed,
+        if (blackFed != null) 'black_fed': blackFed,
+        if (whitePhoto != null) 'white_photo': whitePhoto,
+        if (blackPhoto != null) 'black_photo': blackPhoto,
+        'fen': fen ?? '',
+        'last_move': lastMove ?? '',
+        'last_move_uci': lastMove ?? '',
+        if (lastMoveTime != null)
+          'last_move_time': lastMoveTime.toUtc().toIso8601String(),
+        if (whiteClockSeconds != null) 'white_clock_seconds': whiteClockSeconds,
+        if (blackClockSeconds != null) 'black_clock_seconds': blackClockSeconds,
+        'event_name': eventName,
+        'round_name': roundName,
+        'white_fide_id': whiteFideId,
+        'black_fide_id': blackFideId,
+      };
 
-    await startLiveActivity(
-      activityId: activityId,
-      attributes: attributes,
-      content: content,
-    );
+      await startLiveActivity(
+        activityId: activityId,
+        attributes: attributes,
+        content: content,
+      );
+    } catch (e, st) {
+      debugPrint('[LiveUpdates] Error in startForGame: $e');
+      debugPrintStack(stackTrace: st);
+    }
   }
 
   /// Stop live updates for the current game.

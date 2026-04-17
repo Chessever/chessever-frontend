@@ -3,6 +3,8 @@ import UIKit
 import UserNotifications
 import AVFoundation
 import app_links
+import OneSignalFramework
+import OneSignalLiveActivities
 
 @main
 @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
@@ -10,6 +12,8 @@ import app_links
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
+    OneSignal.LiveActivities.setupDefault()
+
     // Forward deep link URL from launch options to app_links plugin.
     // On cold start (app killed), iOS puts the URL in launchOptions instead of
     // calling application(_:open:options:), so we must extract it manually.
