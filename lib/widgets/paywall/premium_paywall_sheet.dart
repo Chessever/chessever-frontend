@@ -5,6 +5,7 @@ import 'package:chessever2/revenue_cat_service/revenue_cat_service.dart';
 import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
+import 'package:chessever2/utils/extensioms/string_extensions.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/paywall/premium_celebration_overlay.dart';
 import 'package:flutter/material.dart';
@@ -668,6 +669,9 @@ class _PurchaseButton extends HookWidget {
     final freePhase = storeProduct?.defaultOption?.freePhase;
     final hasAndroidFreeTrial = freePhase != null;
 
+    final priceString = storeProduct?.priceString ?? '';
+    final periodSuffix = selectedPlan == PlanType.annual ? 'year' : 'month';
+
     String buttonText;
     if (hasIosFreeTrial) {
       // iOS trial info from introductoryPrice
@@ -675,10 +679,12 @@ class _PurchaseButton extends HookWidget {
       final periodUnit = introPrice.periodUnit;
       final unitString = _getPeriodUnitString(periodUnit, trialCount);
 
-      buttonText =
-          trialCount > 0
-              ? 'Start $trialCount $unitString free trial'
-              : 'Start free trial';
+      if (trialCount > 0) {
+        buttonText =
+            'Try $trialCount ${unitString.capitalize()} Free, then $priceString/$periodSuffix';
+      } else {
+        buttonText = 'Try 1 Week Free, then $priceString/$periodSuffix';
+      }
     } else if (hasAndroidFreeTrial) {
       // Android trial info from freePhase.billingPeriod
       final billingPeriod = freePhase.billingPeriod;
@@ -687,12 +693,14 @@ class _PurchaseButton extends HookWidget {
         final periodUnit = billingPeriod.unit;
         final unitString = _getPeriodUnitString(periodUnit, trialCount);
 
-        buttonText =
-            trialCount > 0
-                ? 'Start $trialCount $unitString free trial'
-                : 'Start free trial';
+        if (trialCount > 0) {
+          buttonText =
+              'Try $trialCount ${unitString.capitalize()} Free, then $priceString/$periodSuffix';
+        } else {
+          buttonText = 'Try 1 Week Free, then $priceString/$periodSuffix';
+        }
       } else {
-        buttonText = 'Start free trial';
+        buttonText = 'Try 1 Week Free, then $priceString/$periodSuffix';
       }
     } else {
       buttonText = 'Continue';
@@ -737,11 +745,18 @@ class _PurchaseButton extends HookWidget {
                         valueColor: AlwaysStoppedAnimation<Color>(kBlackColor),
                       ),
                     )
-                    : Text(
-                      buttonText,
-                      style: AppTypography.textLgBold.copyWith(
-                        color: kBlackColor,
-                        letterSpacing: 0.5,
+                    : Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 16.w),
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(
+                          buttonText,
+                          textAlign: TextAlign.center,
+                          style: AppTypography.textLgBold.copyWith(
+                            color: kBlackColor,
+                            letterSpacing: 0.2,
+                          ),
+                        ),
                       ),
                     ),
           ),
