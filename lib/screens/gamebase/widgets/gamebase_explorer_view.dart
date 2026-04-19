@@ -582,7 +582,7 @@ class _MoveRow extends ConsumerWidget {
             Expanded(
               flex: 3,
               child: Text(
-                NumberFormat.compact().format(total),
+                NumberFormat.decimalPattern().format(total),
                 style: AppTypography.textSmRegular.copyWith(
                   color: kWhiteColor.withValues(alpha: 0.7),
                 ),
