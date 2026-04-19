@@ -11,9 +11,7 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:motor/motor.dart';
 
 import '../providers/gamebase_explorer_state.dart';
 import '../providers/gamebase_providers.dart';
@@ -39,7 +37,7 @@ class PositionGamesSheet extends ConsumerStatefulWidget {
 }
 
 class _PositionGamesSheetState extends ConsumerState<PositionGamesSheet> {
-  static const int _pageSize = 50;
+  static const int _pageSize = 20;
   static const double _scrollPrefetchExtent = 640;
   final ScrollController _scrollController = ScrollController();
 

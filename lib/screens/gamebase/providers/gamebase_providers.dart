@@ -28,6 +28,9 @@ String normalizeFenForGamebase(String fen) {
   return parts.take(6).join(' ');
 }
 
+String _positionKeyForComparison(String fen) =>
+    normalizeFenForGamebase(fen).split(RegExp(r'\s+')).take(4).join(' ');
+
 /// Convert a 6-field FEN into number of played plies.
 int _pliesFromFen(String fen) {
   final parts = fen.trim().split(RegExp(r'\s+'));
@@ -902,6 +905,7 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
   }) {
     try {
       final normalized = normalizeFenForGamebase(fen);
+      final targetPositionKey = _positionKeyForComparison(normalized);
       final sanitizedMoves = moves
           .map((m) => m.trim().toLowerCase())
           .where((m) => RegExp(r'^[a-h][1-8][a-h][1-8][qrbn]?$').hasMatch(m))
@@ -917,7 +921,8 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
           sanitizedMoves,
         );
         if (existingPointer != null) {
-          if (state.currentFen == normalized &&
+          if (_positionKeyForComparison(state.currentFen) ==
+                  targetPositionKey &&
               listEquals(state.movePointer, existingPointer)) {
             return;
           }
@@ -933,7 +938,7 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
       // Build a simple ChessGame from these moves if current game is empty or different starting position
       final currentExploredMoves = state.exploredMoves;
       if (listEquals(currentExploredMoves, sanitizedMoves) &&
-          state.currentFen == normalized &&
+          _positionKeyForComparison(state.currentFen) == targetPositionKey &&
           state.game?.startingFen == actualStartingFen) {
         return;
       }
@@ -973,9 +978,13 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
         currentPosition = nextPos;
       }
 
-      if (currentPosition.fen != normalized) {
+      final replayedFen = normalizeFenForGamebase(currentPosition.fen);
+      final pathMatchesTarget =
+          _positionKeyForComparison(replayedFen) == targetPositionKey;
+
+      if (!pathMatchesTarget) {
         debugPrint(
-          '[GamebaseExplorer] setPosition FEN mismatch. Target: $normalized, Replayed: ${currentPosition.fen}',
+          '[GamebaseExplorer] setPosition dropping mismatched move path. Target: $normalized, Replayed: $replayedFen',
         );
       }
 
@@ -983,15 +992,18 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
         currentFen: normalized,
         game: ChessGame(
           gameId: 'explorer_sync_${DateTime.now().millisecondsSinceEpoch}',
-          startingFen: actualStartingFen,
+          startingFen: pathMatchesTarget ? actualStartingFen : normalized,
           metadata: {
             'Event': 'Opening Explorer',
             'Site': 'ChessEver',
             'Date': DateTime.now().toIso8601String().split('T')[0],
           },
-          mainline: mainline,
+          mainline: pathMatchesTarget ? mainline : const [],
         ),
-        movePointer: mainline.isEmpty ? const [] : [mainline.length - 1],
+        movePointer:
+            pathMatchesTarget && mainline.isNotEmpty
+                ? [mainline.length - 1]
+                : const [],
       );
       _scheduleFetch();
     } catch (e) {

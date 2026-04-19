@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:dart_mappable/dart_mappable.dart';
+import 'package:dartchess/dartchess.dart';
 import 'package:chessever2/screens/gamebase/models/models.dart';
 import 'package:chessever2/repository/gamebase/search/gamebase_search_models.dart';
 import 'package:chessever2/repository/gamebase/search/gamebase_search_models_extra.dart';
@@ -81,11 +82,19 @@ class GamebaseRepository {
   }) async {
     try {
       final normalizedFen = _normalizeFenForLookup(fen);
+      final normalizedMoves = _sanitizeMovesForFen(normalizedFen, moves);
+
+      if (kDebugMode &&
+          moves.isNotEmpty &&
+          normalizedMoves.length != moves.length) {
+        debugPrint(
+          '[GamebaseRepository] Dropping mismatched move path for aggregates query',
+        );
+      }
+
       final body = <String, dynamic>{
         'fen': normalizedFen,
-        'moves': moves
-            .map((m) => m.trim().toLowerCase())
-            .toList(growable: false),
+        'moves': normalizedMoves,
         if (playerId != null && playerId.isNotEmpty) 'playerId': playerId,
         if (timeControl != null) 'timeControl': timeControl.name.toUpperCase(),
         if (minRating != null) 'minRating': minRating,
@@ -155,6 +164,65 @@ class GamebaseRepository {
 
     if (parts.length == 4) return '${parts.join(' ')} 0 1';
     return parts.take(6).join(' ');
+  }
+
+  static int _pliesFromFen(String fen) {
+    final parts = fen.trim().split(RegExp(r'\s+'));
+    if (parts.length < 6) return 0;
+    final turn = parts[1];
+    final fullMove = int.tryParse(parts[5]) ?? 1;
+    final base = (fullMove - 1).clamp(0, 1 << 30) * 2;
+    return base + (turn == 'b' ? 1 : 0);
+  }
+
+  static String _positionKey(String fen) =>
+      fen.trim().split(RegExp(r'\s+')).take(4).join(' ');
+
+  static NormalMove? _normalMoveFromUci(String uci) {
+    if (uci.length < 4) return null;
+
+    final from = Square.fromName(uci.substring(0, 2));
+    final to = Square.fromName(uci.substring(2, 4));
+
+    Role? promotion;
+    if (uci.length > 4) {
+      promotion = Role.fromChar(uci[4]);
+      if (promotion == null) return null;
+    }
+
+    return NormalMove(from: from, to: to, promotion: promotion);
+  }
+
+  static List<String> _sanitizeMovesForFen(String fen, List<String> moves) {
+    final fenPlyCount = _pliesFromFen(fen);
+    if (fenPlyCount <= 0 || moves.isEmpty) return const [];
+
+    final normalizedMoves = moves
+        .map((m) => m.trim().toLowerCase())
+        .where((m) => RegExp(r'^[a-h][1-8][a-h][1-8][qrbn]?$').hasMatch(m))
+        .take(fenPlyCount)
+        .toList(growable: false);
+
+    if (normalizedMoves.length != fenPlyCount) {
+      return const [];
+    }
+
+    try {
+      Position position = Chess.initial;
+      for (final uci in normalizedMoves) {
+        final move = _normalMoveFromUci(uci);
+        if (move == null || !position.isLegal(move)) {
+          return const [];
+        }
+        position = position.play(move);
+      }
+
+      return _positionKey(position.fen) == _positionKey(fen)
+          ? normalizedMoves
+          : const [];
+    } catch (_) {
+      return const [];
+    }
   }
 
   /// Search players by name.
@@ -651,10 +719,15 @@ class GamebaseRepository {
   }) async {
     try {
       final normalizedFen = _normalizeFenForLookup(fen);
-      final normalizedMoves = moves
-          .map((m) => m.trim().toLowerCase())
-          .where((m) => RegExp(r'^[a-h][1-8][a-h][1-8][qrbn]?$').hasMatch(m))
-          .toList(growable: false);
+      final normalizedMoves = _sanitizeMovesForFen(normalizedFen, moves);
+
+      if (kDebugMode &&
+          moves.isNotEmpty &&
+          normalizedMoves.length != moves.length) {
+        debugPrint(
+          '[GamebaseRepository] Dropping mismatched move path for games query',
+        );
+      }
 
       final orderBy =
           sortBy != null
@@ -689,6 +762,7 @@ class GamebaseRepository {
                   if (result != null) 'result': result,
                   if (yearFrom != null) 'yearFrom': yearFrom,
                   if (yearTo != null) 'yearTo': yearTo,
+                  if (isOnline != null) 'isOnline': isOnline,
                   if (orderBy != null) 'orderBy': orderBy,
                   if (sortBy != null) 'sortBy': sortBy.name,
                   if (sortDirection != null)
@@ -715,6 +789,7 @@ class GamebaseRepository {
                   if (result != null) 'result': result,
                   if (yearFrom != null) 'yearFrom': yearFrom,
                   if (yearTo != null) 'yearTo': yearTo,
+                  if (isOnline != null) 'isOnline': isOnline,
                   if (sortBy != null) 'sortBy': sortBy.name,
                   if (sortDirection != null)
                     'sortDirection': sortDirection.name,

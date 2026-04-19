@@ -5790,7 +5790,7 @@ class _AnalysisGameBody extends ConsumerWidget {
                   final positionQuery = GamebasePositionGamesQuery(
                     fen: currentFen,
                     moves: lineToCurrent,
-                    pageSize: 50,
+                    pageSize: 20,
                   );
 
                   final results = await Future.wait([
