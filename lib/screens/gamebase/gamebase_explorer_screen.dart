@@ -2856,11 +2856,14 @@ class _ExplorerSwipeTutorialOverlayState
                 height: MediaQuery.sizeOf(context).height,
                 width: MediaQuery.sizeOf(context).width,
                 color: kBlackColor.withValues(alpha: 0.8),
-                child: Center(
+                // Anchor the finger over the notation/moves swipe area rather
+                // than the vertical center: card stays near the top, finger
+                // is pushed to the bottom zone where the PageView lives.
+                child: SafeArea(
                   child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
+                      SizedBox(height: 80.h),
                       SizedBox(
                         width: 280.w,
                         child: Stack(
@@ -2964,7 +2967,9 @@ class _ExplorerSwipeTutorialOverlayState
                           ],
                         ),
                       ),
-                      SizedBox(height: 48.h),
+                      // Flexible gap — push the finger hint down toward the
+                      // notation swipe area at the bottom of the screen.
+                      const Spacer(),
                       SizedBox(
                         height: 120.h,
                         width: double.infinity,
@@ -3031,7 +3036,7 @@ class _ExplorerSwipeTutorialOverlayState
                           },
                         ),
                       ),
-                      SizedBox(height: 48.h),
+                      SizedBox(height: 24.h),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
@@ -3070,6 +3075,7 @@ class _ExplorerSwipeTutorialOverlayState
                           ),
                         ],
                       ),
+                      SizedBox(height: 32.h),
                     ],
                   ),
                 ),
