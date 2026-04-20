@@ -100,7 +100,7 @@ class _PlayerScreenState extends ConsumerState<PlayerListScreen> {
                     child: RoundedSearchBar(
                       showProfile: false,
                       controller: _searchController,
-                      hintText: 'Search',
+                      hintText: 'Search Player',
                       onFilterTap: () {},
                       onProfileTap: () {},
                       textFieldKey: e2eKey(E2eIds.playersSearchField),

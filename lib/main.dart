@@ -53,11 +53,13 @@ import 'package:upgrader/upgrader.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
 import 'revenue_cat_service/revenue_cat_service.dart';
 import 'services/analytics/analytics_service.dart';
+import 'services/appsflyer_service.dart';
 import 'services/deep_link_service.dart';
 import 'services/push_notifications_service.dart';
 import 'theme/app_theme.dart';
 import 'theme/theme_provider.dart';
-import 'providers/push_token_sync_provider.dart';
+import 'package:chessever2/repository/authentication/auth_repository.dart';
+import 'package:chessever2/providers/push_token_sync_provider.dart';
 
 final RouteObserver<ModalRoute<void>> routeObserver =
     RouteObserver<ModalRoute<void>>();
@@ -124,6 +126,10 @@ const Map<String, String> _releaseEnvValues = {
   ),
   'ONESIGNAL_APP_ID': String.fromEnvironment(
     'ONESIGNAL_APP_ID',
+    defaultValue: '',
+  ),
+  'APPSFLYER_DEV_KEY': String.fromEnvironment(
+    'APPSFLYER_DEV_KEY',
     defaultValue: '',
   ),
 };
@@ -680,14 +686,33 @@ class _StartupGateState extends ConsumerState<StartupGate> {
     _startInitialization();
   }
 
-  /// Tear down native FFI engines before hot restart to prevent orphaned
+  /// Tear down native resources before hot restart to prevent orphaned
   /// isolates/threads from blocking Flutter's reassemble mechanism.
+  ///
+  /// Any open Supabase Realtime WebSocket keeps a native socket + its Dart
+  /// stream callback alive across the isolate swap — which is exactly what
+  /// hangs "Performing hot restart…". Tear everything down synchronously
+  /// before super.reassemble().
+  /// Runs on both hot reload and hot restart (Flutter framework doesn't
+  /// distinguish here). Must be safe for hot reload — any aggressive cleanup
+  /// (provider invalidation, refresh cancellation flags, etc.) will visibly
+  /// reset state that hot reload is supposed to preserve.
+  ///
+  /// Hot restart on mobile is a known Flutter limitation (issue #69949):
+  /// widgets are NOT disposed, so native resources (Supabase WebSockets,
+  /// Stockfish FFI, etc.) leak. We disconnect Supabase's realtime socket as
+  /// a best-effort mitigation — Supabase Flutter itself does this on web via
+  /// `hot_restart_cleanup_web.dart` but has a no-op stub on mobile.
   @override
   void reassemble() {
-    // SIGNAL native engines to quit.
-    // We now use non-blocking background isolates for these calls in
-    // StockfishSingleton to avoid hanging the main thread during restart.
     StockfishSingleton().prepareForHotRestart();
+    try {
+      // Terminates the realtime WebSocket. On hot reload, a new socket gets
+      // opened lazily when any `from().stream()` call fires again. On hot
+      // restart, this prevents the old socket from lingering and causing
+      // duplicate realtime events.
+      Supabase.instance.client.realtime.disconnect();
+    } catch (_) {}
     super.reassemble();
   }
 
@@ -915,6 +940,14 @@ class MyApp extends HookConsumerWidget {
     final locale = ref.watch(localeProvider);
     ref.watch(pushTokenSyncProvider);
 
+    // Listen to auth state changes to set AppsFlyer Customer User ID
+    ref.listen(authStateProvider, (previous, next) {
+      final user = next.value?.user;
+      if (user != null) {
+        AppsflyerService.instance.setCustomerUserId(user.id);
+      }
+    });
+
     /// Initializing Responsive Unit
     ResponsiveHelper.init(context);
 
@@ -1001,9 +1034,11 @@ class MyApp extends HookConsumerWidget {
         // Initialize deep link handling for game sharing URLs
         try {
           await DeepLinkService.instance.initialize(navigatorKey, ref);
+          // Initialize AppsFlyer for marketing attribution and OneLink
+          await AppsflyerService.instance.initialize(navigatorKey, ref);
         } catch (e, st) {
           if (kDebugMode) {
-            debugPrint('Failed to initialize deep link service: $e');
+            debugPrint('Failed to initialize deep link or appsflyer service: $e');
             debugPrintStack(stackTrace: st);
           }
         }

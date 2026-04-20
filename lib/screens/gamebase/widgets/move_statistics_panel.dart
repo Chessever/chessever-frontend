@@ -20,7 +20,13 @@ const double _kColumnGap = 6;
 /// Panel displaying move statistics for the current position.
 /// Shows each possible move with game count and win/draw/loss bar.
 class MoveStatisticsPanel extends ConsumerWidget {
-  const MoveStatisticsPanel({super.key});
+  const MoveStatisticsPanel({super.key, this.onMove});
+
+  /// Optional handler for move taps. When supplied, taps invoke this callback
+  /// instead of advancing the gamebase explorer's internal state — used when
+  /// embedding the panel in the chess board screen so taps play on the user's
+  /// game rather than diverging into the explorer's standalone exploration.
+  final void Function(String uci)? onMove;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -141,9 +147,13 @@ class MoveStatisticsPanel extends ConsumerWidget {
                 exploredMoves: state.exploredMoves,
                 filters: state.filters,
                 onTap: () {
-                  ref
-                      .read(gamebaseExplorerProvider.notifier)
-                      .makeMove(aggregate.uci);
+                  if (onMove != null) {
+                    onMove!(aggregate.uci);
+                  } else {
+                    ref
+                        .read(gamebaseExplorerProvider.notifier)
+                        .makeMove(aggregate.uci);
+                  }
                 },
               );
             },

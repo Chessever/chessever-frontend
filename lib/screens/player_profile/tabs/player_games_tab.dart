@@ -26,6 +26,7 @@ import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/game_filter/game_filter.dart';
 import 'package:chessever2/widgets/scroll_to_top_button.dart';
+import 'package:chessever2/widgets/simple_search_bar.dart' show SpringHintWord;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -61,6 +62,19 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
   bool _isLoadingAllPagesForSelection = false;
   final Set<String> _selectedGameIds = <String>{};
 
+  // Rotating "Search <word>" hint — mirrors the home and TWIC search bars so
+  // the animated second word is consistent across the app.
+  static const List<String> _rotatingHints = <String>[
+    'event',
+    'opponent',
+    'opening',
+  ];
+  static const Duration _hintRotationInterval = Duration(seconds: 2);
+  Timer? _hintRotationTimer;
+  int _hintIndex = 0;
+  // Rotation runs a single full pass, then collapses back to plain "Search".
+  bool _hintCycleDone = false;
+
   @override
   bool get wantKeepAlive => true;
 
@@ -68,6 +82,46 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
   void initState() {
     super.initState();
     _scrollController.addListener(_onScroll);
+    _searchFocusNode.addListener(_onSearchFocusChange);
+    _searchController.addListener(_onSearchTextChange);
+    _restartHintRotation();
+  }
+
+  void _onSearchFocusChange() {
+    if (!mounted) return;
+    setState(() {});
+    if (_searchFocusNode.hasFocus) {
+      _hintRotationTimer?.cancel();
+    } else {
+      _restartHintRotation();
+    }
+  }
+
+  void _onSearchTextChange() {
+    if (!mounted) return;
+    final hasText = _searchController.text.isNotEmpty;
+    final running = _hintRotationTimer?.isActive ?? false;
+    if (hasText && running) {
+      _hintRotationTimer?.cancel();
+    } else if (!hasText && !running && !_searchFocusNode.hasFocus) {
+      _restartHintRotation();
+    }
+  }
+
+  void _restartHintRotation() {
+    _hintRotationTimer?.cancel();
+    if (_hintCycleDone || _rotatingHints.length <= 1) return;
+    if (_searchController.text.isNotEmpty || _searchFocusNode.hasFocus) return;
+    _hintRotationTimer = Timer.periodic(_hintRotationInterval, (_) {
+      if (!mounted) return;
+      final next = _hintIndex + 1;
+      if (next >= _rotatingHints.length) {
+        _hintRotationTimer?.cancel();
+        setState(() => _hintCycleDone = true);
+      } else {
+        setState(() => _hintIndex = next);
+      }
+    });
   }
 
   /// Get the player profile key for provider lookups
@@ -81,8 +135,11 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
   @override
   void dispose() {
     _debounceTimer?.cancel();
+    _hintRotationTimer?.cancel();
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
+    _searchFocusNode.removeListener(_onSearchFocusChange);
+    _searchController.removeListener(_onSearchTextChange);
     _searchController.dispose();
     _searchFocusNode.dispose();
     super.dispose();
@@ -510,6 +567,22 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
     );
   }
 
+  Widget _buildRotatingSearchHint() {
+    final word = _rotatingHints[_hintIndex % _rotatingHints.length];
+    final style = AppTypography.textSmRegular.copyWith(
+      color: const Color(0xFFA1A1AA),
+    );
+    return IgnorePointer(
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text('Search ', style: style),
+          Flexible(child: SpringHintWord(word: word, style: style)),
+        ],
+      ),
+    );
+  }
+
   Widget _buildSearchBar(PlayerProfileGamesState state) {
     final hasActiveFilters = state.hasActiveFilters;
     final activeFilterCount = state.activeFilterCount;
@@ -537,23 +610,41 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
                   ),
                   SizedBox(width: 8.w),
                   Expanded(
-                    child: TextField(
-                      key: e2eKey(E2eIds.playerGamesSearchField),
-                      controller: _searchController,
-                      focusNode: _searchFocusNode,
-                      style: AppTypography.textSmRegular.copyWith(
-                        color: const Color(0xFFFAFAFA),
-                      ),
-                      onChanged: _onSearchChanged,
-                      decoration: InputDecoration(
-                        isDense: true,
-                        hintText: 'Search',
-                        hintStyle: AppTypography.textSmRegular.copyWith(
-                          color: const Color(0xFFA1A1AA),
-                        ),
-                        border: InputBorder.none,
-                        contentPadding: EdgeInsets.symmetric(vertical: 14.h),
-                      ),
+                    child: Builder(
+                      builder: (_) {
+                        final showRotating =
+                            !_hintCycleDone &&
+                            _searchController.text.isEmpty &&
+                            !_searchFocusNode.hasFocus;
+                        return Stack(
+                          alignment: Alignment.centerLeft,
+                          children: [
+                            if (showRotating) _buildRotatingSearchHint(),
+                            TextField(
+                              key: e2eKey(E2eIds.playerGamesSearchField),
+                              controller: _searchController,
+                              focusNode: _searchFocusNode,
+                              style: AppTypography.textSmRegular.copyWith(
+                                color: const Color(0xFFFAFAFA),
+                              ),
+                              onChanged: _onSearchChanged,
+                              decoration: InputDecoration(
+                                isDense: true,
+                                // The TextField owns the "Search" hint except
+                                // while the rotating overlay is driving it.
+                                hintText: showRotating ? null : 'Search',
+                                hintStyle: AppTypography.textSmRegular.copyWith(
+                                  color: const Color(0xFFA1A1AA),
+                                ),
+                                border: InputBorder.none,
+                                contentPadding: EdgeInsets.symmetric(
+                                  vertical: 14.h,
+                                ),
+                              ),
+                            ),
+                          ],
+                        );
+                      },
                     ),
                   ),
                   if (_searchController.text.isNotEmpty ||

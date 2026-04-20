@@ -638,7 +638,7 @@ void showFolderOverlayMenu({
       ),
       _OverlayMenuItemData(
         Icons.edit_rounded,
-        'Rename Folder',
+        'Rename Database',
         onRename,
         _MenuItemPosition.middle,
       ),
@@ -692,7 +692,7 @@ void showSharedFolderOverlayMenu({
       ),
       _OverlayMenuItemData(
         Icons.edit_rounded,
-        'Rename Folder',
+        'Rename Database',
         onRename,
         _MenuItemPosition.middle,
       ),

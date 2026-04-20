@@ -196,19 +196,50 @@ class _FavoritePlayersGridBackground extends HookConsumerWidget {
         final cardWidth = constraints.maxWidth;
         final cardHeight = constraints.maxHeight;
 
-        return AnimatedBuilder(
-          animation: animationController,
-          builder: (context, child) {
-            return ClipRect(
-              child: _IrregularPlayerGrid(
+        const cellSpacing = 4.0;
+        final rowHeight =
+            (cardHeight - (gridConfig.rows - 1) * cellSpacing) /
+                gridConfig.rows;
+        final actualCellSize =
+            math.min(gridConfig.baseCellSize, rowHeight - 2);
+        final verticalPadding = (rowHeight - actualCellSize) / 2;
+        final cellWithSpacing = actualCellSize + cellSpacing;
+
+        // Pattern repeats every `favorites.length` cells.
+        final period = favorites.length * cellWithSpacing;
+        // Scroll exactly 2 pattern periods per cycle so the wrap is seamless
+        // (controller resets 1.0 → 0.0 and the image is pixel-identical).
+        const scrollPeriods = 2;
+        final scrollDistance = scrollPeriods * period;
+        final stripCellsPerRow =
+            ((cardWidth + scrollDistance) / cellWithSpacing).ceil() + 2;
+
+        // Build the cell grid ONCE and pass as `child` to AnimatedBuilder.
+        // The inner RepaintBoundary caches the grid to a layer, so per-frame
+        // work collapses to a cheap GPU transform of a pre-rasterized image.
+        // No ClipRect here: the parent _PremiumCollectionCard already wraps
+        // everything in a ClipRRect, so off-card cells are already clipped.
+        return RepaintBoundary(
+          child: AnimatedBuilder(
+            animation: animationController,
+            builder: (context, child) {
+              return Transform.translate(
+                offset: Offset(-animationController.value * scrollDistance, 0),
+                child: child,
+              );
+            },
+            child: RepaintBoundary(
+              child: _StaticPlayerGrid(
                 favorites: favorites,
-                scrollProgress: animationController.value,
-                gridConfig: gridConfig,
-                cardWidth: cardWidth,
-                cardHeight: cardHeight,
+                rows: gridConfig.rows,
+                cellsPerRow: stripCellsPerRow,
+                cellSize: actualCellSize,
+                cellSpacing: cellSpacing,
+                cellWithSpacing: cellWithSpacing,
+                verticalPadding: verticalPadding,
               ),
-            );
-          },
+            ),
+          ),
         );
       },
     );
@@ -253,105 +284,66 @@ class _GridConfig {
   final int maxVisibleCells;
 }
 
-/// Renders the scrolling grid of player photos
-class _IrregularPlayerGrid extends StatelessWidget {
-  const _IrregularPlayerGrid({
+/// Renders the grid of player photos at fixed positions. The parent wraps
+/// this in an AnimatedBuilder + Transform.translate, so this widget is built
+/// once per layout and reused across all animation frames.
+class _StaticPlayerGrid extends StatelessWidget {
+  const _StaticPlayerGrid({
     required this.favorites,
-    required this.scrollProgress,
-    required this.gridConfig,
-    required this.cardWidth,
-    required this.cardHeight,
+    required this.rows,
+    required this.cellsPerRow,
+    required this.cellSize,
+    required this.cellSpacing,
+    required this.cellWithSpacing,
+    required this.verticalPadding,
   });
 
   final List<FavoritePlayer> favorites;
-  final double scrollProgress;
-  final _GridConfig gridConfig;
-  final double cardWidth;
-  final double cardHeight;
+  final int rows;
+  final int cellsPerRow;
+  final double cellSize;
+  final double cellSpacing;
+  final double cellWithSpacing;
+  final double verticalPadding;
 
   @override
   Widget build(BuildContext context) {
-    // Calculate cell sizes with slight variation for irregular look
-    final cellSize = gridConfig.baseCellSize;
-    final cellSpacing = 4.0;
-    final rowHeight =
-        (cardHeight - (gridConfig.rows - 1) * cellSpacing) / gridConfig.rows;
-    final actualCellSize = math.min(cellSize, rowHeight - 2);
-    final verticalPadding = (rowHeight - actualCellSize) / 2;
-
-    // Calculate total strip width needed for seamless looping
-    final cellWithSpacing = actualCellSize + cellSpacing;
-    final visibleCellsPerRow = (cardWidth / cellWithSpacing).ceil() + 2;
-
-    // Total cells needed: enough to show all favorites at least twice for seamless loop
-    final totalCellsNeeded = math.max(
-      visibleCellsPerRow * 2,
-      favorites.length * 3,
-    );
-    final stripWidth = totalCellsNeeded * cellWithSpacing;
-
-    // Calculate scroll offset
-    final scrollOffset = scrollProgress * stripWidth * 0.5;
-
-    return Stack(
-      clipBehavior: Clip.hardEdge,
-      children: [
-        // Scrolling player photos
-        for (int row = 0; row < gridConfig.rows; row++)
-          ...List.generate(totalCellsNeeded, (index) {
-            final playerIndex = index % favorites.length;
-            final player = favorites[playerIndex];
-
-            // Stagger odd rows for irregular hexagonal-like pattern
-            final rowStagger = row.isOdd ? cellWithSpacing * 0.5 : 0.0;
-
-            // Base position
-            final baseX = index * cellWithSpacing + rowStagger;
-
-            // Apply scroll offset (wrapping for seamless loop)
-            var x = baseX - scrollOffset;
-
-            // Wrap around for seamless infinite scroll
-            while (x < -cellWithSpacing) {
-              x += stripWidth;
-            }
-            while (x > stripWidth) {
-              x -= stripWidth;
-            }
-
-            // Skip cells outside visible range (with buffer)
-            if (x < -cellWithSpacing * 2 || x > cardWidth + cellWithSpacing) {
-              return const SizedBox.shrink();
-            }
-
-            final y = row * (actualCellSize + cellSpacing) + verticalPadding;
-
-            // Add slight size variation for visual interest
-            final sizeVariation = _getSizeVariation(playerIndex, row);
-            final finalCellSize = actualCellSize * sizeVariation;
-            final sizeOffset = (actualCellSize - finalCellSize) / 2;
-
-            return Positioned(
-              left: x + sizeOffset,
-              top: y + sizeOffset,
-              child: _PlayerPhotoCell(
-                key: ValueKey(
-                  '${player.fideId ?? player.playerName}_${row}_$index',
-                ),
-                player: player,
-                size: finalCellSize,
-              ),
-            );
-          }),
-      ],
-    );
+    final cells = <Widget>[];
+    for (int row = 0; row < rows; row++) {
+      final rowStagger = row.isOdd ? cellWithSpacing * 0.5 : 0.0;
+      final y = row * (cellSize + cellSpacing) + verticalPadding;
+      for (int i = 0; i < cellsPerRow; i++) {
+        final playerIndex = i % favorites.length;
+        final player = favorites[playerIndex];
+        final sizeVariation = _getSizeVariation(playerIndex, row);
+        final finalCellSize = cellSize * sizeVariation;
+        final sizeOffset = (cellSize - finalCellSize) / 2;
+        final x = i * cellWithSpacing + rowStagger + sizeOffset;
+        cells.add(
+          Positioned(
+            key: ValueKey(
+              '${player.fideId ?? player.playerName}_${row}_$i',
+            ),
+            left: x,
+            top: y + sizeOffset,
+            child: _PlayerPhotoCell(
+              player: player,
+              size: finalCellSize,
+            ),
+          ),
+        );
+      }
+    }
+    // Clip.none: cells extend beyond the Stack's card-width constraints (up
+    // to stripWidth). The RepaintBoundary must cache all of them so the
+    // Transform.translate can slide them into view. The outer ClipRRect on
+    // _PremiumCollectionCard handles the final visible clip.
+    return Stack(clipBehavior: Clip.none, children: cells);
   }
 
-  /// Creates slight size variation based on position for organic feel
+  /// Deterministic size variation (0.88–1.0) for organic feel.
   double _getSizeVariation(int playerIndex, int row) {
-    // Use a deterministic pseudo-random based on position
     final seed = (playerIndex * 7 + row * 13) % 10;
-    // Variation between 0.88 and 1.0 for subtle effect
     return 0.88 + (seed / 10) * 0.12;
   }
 }
@@ -365,7 +357,7 @@ final _playerPhotoUrlProvider = FutureProvider.family
 
 /// Individual player photo cell with loading and error states
 class _PlayerPhotoCell extends ConsumerWidget {
-  const _PlayerPhotoCell({super.key, required this.player, required this.size});
+  const _PlayerPhotoCell({required this.player, required this.size});
 
   final FavoritePlayer player;
   final double size;
@@ -381,16 +373,9 @@ class _PlayerPhotoCell extends ConsumerWidget {
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         border: Border.all(
-          color: kWhiteColor.withValues(alpha: 0.3),
+          color: kWhiteColor.withValues(alpha: 0.35),
           width: 1.5,
         ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.3),
-            blurRadius: 4,
-            offset: const Offset(0, 2),
-          ),
-        ],
       ),
       child: ClipOval(
         child: photoUrlAsync.when(

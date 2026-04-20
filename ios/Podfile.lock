@@ -12,6 +12,8 @@ PODS:
     - Flutter
   - app_settings (6.1.2):
     - Flutter
+  - app_tracking_transparency (0.0.1):
+    - Flutter
   - AppAuth (2.0.0):
     - AppAuth/Core (= 2.0.0)
     - AppAuth/ExternalUserAgent (= 2.0.0)
@@ -22,6 +24,14 @@ PODS:
     - GoogleUtilities/Environment (~> 8.0)
     - GoogleUtilities/UserDefaults (~> 8.0)
     - PromisesObjC (~> 2.4)
+  - appsflyer_sdk (6.17.9):
+    - appsflyer_sdk/Core (= 6.17.9)
+  - appsflyer_sdk/Core (6.17.9):
+    - AppsFlyerFramework (= 6.17.9)
+    - Flutter
+  - AppsFlyerFramework (6.17.9):
+    - AppsFlyerFramework/Main (= 6.17.9)
+  - AppsFlyerFramework/Main (6.17.9)
   - CocoaAsyncSocket (7.6.5)
   - device_info_plus (0.0.1):
     - Flutter
@@ -37,8 +47,6 @@ PODS:
   - FirebaseCoreInternal (11.15.0):
     - "GoogleUtilities/NSData+zlib (~> 8.1)"
   - Flutter (1.0.0)
-  - flutter_local_notifications (0.0.1):
-    - Flutter
   - flutter_native_splash (2.4.3):
     - Flutter
   - flutter_soloud (0.0.1):
@@ -76,8 +84,6 @@ PODS:
   - GTMSessionFetcher/Full (3.5.0):
     - GTMSessionFetcher/Core
   - in_app_review (2.0.0):
-    - Flutter
-  - objective_c (0.0.1):
     - Flutter
   - onesignal_flutter (5.3.4):
     - Flutter
@@ -146,11 +152,11 @@ PODS:
   - PurchasesHybridCommon (17.41.1):
     - RevenueCat (= 5.59.2)
   - RevenueCat (5.59.2)
-  - Sentry/HybridSDK (8.56.2)
-  - sentry_flutter (9.7.0):
+  - Sentry/HybridSDK (8.58.1)
+  - sentry_flutter (9.18.0):
     - Flutter
     - FlutterMacOS
-    - Sentry/HybridSDK (= 8.56.2)
+    - Sentry/HybridSDK (= 8.58.1)
   - share_plus (0.0.1):
     - Flutter
   - shared_preferences_foundation (0.0.1):
@@ -161,9 +167,9 @@ PODS:
   - sqflite_darwin (0.0.4):
     - Flutter
     - FlutterMacOS
-  - stockfish (1.7.2):
+  - stockfish (1.8.1):
     - Flutter
-  - terminate_restart (1.0.9):
+  - terminate_restart (1.1.0):
     - Flutter
   - url_launcher_ios (0.0.1):
     - Flutter
@@ -172,16 +178,16 @@ DEPENDENCIES:
   - amplitude_flutter (from `.symlinks/plugins/amplitude_flutter/darwin`)
   - app_links (from `.symlinks/plugins/app_links/ios`)
   - app_settings (from `.symlinks/plugins/app_settings/ios`)
+  - app_tracking_transparency (from `.symlinks/plugins/app_tracking_transparency/ios`)
+  - appsflyer_sdk (from `.symlinks/plugins/appsflyer_sdk/ios`)
   - device_info_plus (from `.symlinks/plugins/device_info_plus/ios`)
   - firebase_core (from `.symlinks/plugins/firebase_core/ios`)
   - Flutter (from `Flutter`)
-  - flutter_local_notifications (from `.symlinks/plugins/flutter_local_notifications/ios`)
   - flutter_native_splash (from `.symlinks/plugins/flutter_native_splash/ios`)
   - flutter_soloud (from `.symlinks/plugins/flutter_soloud/ios`)
   - gal (from `.symlinks/plugins/gal/darwin`)
   - google_sign_in_ios (from `.symlinks/plugins/google_sign_in_ios/darwin`)
   - in_app_review (from `.symlinks/plugins/in_app_review/ios`)
-  - objective_c (from `.symlinks/plugins/objective_c/ios`)
   - onesignal_flutter (from `.symlinks/plugins/onesignal_flutter/ios`)
   - package_info_plus (from `.symlinks/plugins/package_info_plus/ios`)
   - path_provider_foundation (from `.symlinks/plugins/path_provider_foundation/darwin`)
@@ -204,6 +210,7 @@ SPEC REPOS:
     - AnalyticsConnector
     - AppAuth
     - AppCheckCore
+    - AppsFlyerFramework
     - CocoaAsyncSocket
     - Firebase
     - FirebaseCore
@@ -225,14 +232,16 @@ EXTERNAL SOURCES:
     :path: ".symlinks/plugins/app_links/ios"
   app_settings:
     :path: ".symlinks/plugins/app_settings/ios"
+  app_tracking_transparency:
+    :path: ".symlinks/plugins/app_tracking_transparency/ios"
+  appsflyer_sdk:
+    :path: ".symlinks/plugins/appsflyer_sdk/ios"
   device_info_plus:
     :path: ".symlinks/plugins/device_info_plus/ios"
   firebase_core:
     :path: ".symlinks/plugins/firebase_core/ios"
   Flutter:
     :path: Flutter
-  flutter_local_notifications:
-    :path: ".symlinks/plugins/flutter_local_notifications/ios"
   flutter_native_splash:
     :path: ".symlinks/plugins/flutter_native_splash/ios"
   flutter_soloud:
@@ -243,8 +252,6 @@ EXTERNAL SOURCES:
     :path: ".symlinks/plugins/google_sign_in_ios/darwin"
   in_app_review:
     :path: ".symlinks/plugins/in_app_review/ios"
-  objective_c:
-    :path: ".symlinks/plugins/objective_c/ios"
   onesignal_flutter:
     :path: ".symlinks/plugins/onesignal_flutter/ios"
   package_info_plus:
@@ -281,8 +288,11 @@ SPEC CHECKSUMS:
   AnalyticsConnector: 3def11199b4ddcad7202c778bde982ec5da0ebb3
   app_links: 3dbc685f76b1693c66a6d9dd1e9ab6f73d97dc0a
   app_settings: 0341ec6daa4f0c50f5a421bf0ad7c36084db6e90
+  app_tracking_transparency: 3d84f147f67ca82d3c15355c36b1fa6b66ca7c92
   AppAuth: 1c1a8afa7e12f2ec3a294d9882dfa5ab7d3cb063
   AppCheckCore: cc8fd0a3a230ddd401f326489c99990b013f0c4f
+  appsflyer_sdk: df7fed59a464949334c9daf4decbdad221ac32d1
+  AppsFlyerFramework: 4f9a8237d40e9093941aef760cd77d606238aedd
   CocoaAsyncSocket: 065fd1e645c7abab64f7a6a2007a48038fdc6a99
   device_info_plus: 21fcca2080fbcd348be798aa36c3e5ed849eefbe
   Firebase: d99ac19b909cd2c548339c2241ecd0d1599ab02e
@@ -290,9 +300,8 @@ SPEC CHECKSUMS:
   FirebaseCore: efb3893e5b94f32b86e331e3bd6dadf18b66568e
   FirebaseCoreInternal: 9afa45b1159304c963da48addb78275ef701c6b4
   Flutter: cabc95a1d2626b1b06e7179b784ebcf0c0cde467
-  flutter_local_notifications: a5a732f069baa862e728d839dd2ebb904737effb
   flutter_native_splash: c32d145d68aeda5502d5f543ee38c192065986cf
-  flutter_soloud: 82912d2a91398e5254cd1c252ecf5ce1ebf5809b
+  flutter_soloud: 36ce2187d963af39574624a05fb03a62cdbac976
   gal: baecd024ebfd13c441269ca7404792a7152fde89
   google_sign_in_ios: 00dfa94252eb10278b64828c81bcb7158a81a53a
   GoogleSignIn: fcee2257188d5eda57a5e2b6a715550ffff9206d
@@ -300,7 +309,6 @@ SPEC CHECKSUMS:
   GTMAppAuth: 217a876b249c3c585a54fd6f73e6b58c4f5c4238
   GTMSessionFetcher: 5aea5ba6bd522a239e236100971f10cb71b96ab6
   in_app_review: 7dd1ea365263f834b8464673f9df72c80c17c937
-  objective_c: 89e720c30d716b036faf9c9684022048eee1eee2
   onesignal_flutter: 6822b73de41c2286b17b6e8af3924a0e9d236aff
   OneSignalXCFramework: 95b6391df5a91b448003149c1a633ade42ceca1e
   package_info_plus: af8e2ca6888548050f16fa2f1938db7b5a5df499
@@ -311,16 +319,16 @@ SPEC CHECKSUMS:
   purchases_flutter: 64e28fe4f41a5898e50b896b698daeb276101062
   PurchasesHybridCommon: 8eb130ab98f8dab600dea932a2599dee79304bb5
   RevenueCat: f352b3661288080bd8bf30bbb96e331940e73c88
-  Sentry: b53951377b78e21a734f5dc8318e333dbfc682d7
-  sentry_flutter: 7f88e12d1882ec6e648644a7c0ff5b1466f07f99
+  Sentry: 958d9619ceccf6abb8c4736003fa336dac1a80a7
+  sentry_flutter: 8c688f0657eef5c6faf4985c57ca0f48ffb2b7b5
   share_plus: 50da8cb520a8f0f65671c6c6a99b3617ed10a58a
   shared_preferences_foundation: 9e1978ff2562383bd5676f64ec4e9aa8fa06a6f7
   sign_in_with_apple: c5dcc141574c8c54d5ac99dd2163c0c72ad22418
   sqflite_darwin: 20b2a3a3b70e43edae938624ce550a3cbf66a3d0
-  stockfish: 7fab38aee83e5c9f0245b486239d074b23be1e5f
-  terminate_restart: 7afc8cc5b5afc86871cdb1206a584c43262702ac
+  stockfish: b4eb49218804f8fa1ee5fef01e5e760c54df0436
+  terminate_restart: 0fc748d0a297afebc179251b11b8d47771918601
   url_launcher_ios: 694010445543906933d732453a59da0a173ae33d
 
-PODFILE CHECKSUM: 3e484f5b39c255e4597c427de2b672ededf67b88
+PODFILE CHECKSUM: 6ff84d74c8496973511c796126c1e1614464add8
 
 COCOAPODS: 1.16.2

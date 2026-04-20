@@ -90,7 +90,7 @@ class DeepLinkService {
           'cold-start link received',
           data: _sanitizedUriData(initialLink),
         );
-        _handleDeepLink(initialLink, navigatorKey, ref);
+        handleDeepLink(initialLink, navigatorKey, ref);
       }
     } catch (e, stackTrace) {
       debugPrint('DeepLinkService: Error getting initial link: $e');
@@ -104,7 +104,7 @@ class DeepLinkService {
           'warm-start link received',
           data: _sanitizedUriData(uri),
         );
-        _handleDeepLink(uri, navigatorKey, ref);
+        handleDeepLink(uri, navigatorKey, ref);
       },
       onError: (Object error, StackTrace stackTrace) {
         debugPrint('DeepLinkService: Error listening to links: $error');
@@ -114,7 +114,7 @@ class DeepLinkService {
   }
 
   /// Parse and handle incoming deep link
-  void _handleDeepLink(
+  void handleDeepLink(
     Uri uri,
     GlobalKey<NavigatorState> navigatorKey,
     WidgetRef ref,

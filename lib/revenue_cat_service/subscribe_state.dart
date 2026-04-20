@@ -1,6 +1,8 @@
 import 'dart:async';
 
 import 'package:chessever2/revenue_cat_service/revenue_cat_service.dart';
+import 'package:chessever2/services/analytics/analytics_service.dart';
+import 'package:chessever2/services/appsflyer_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:purchases_flutter/purchases_flutter.dart'
@@ -256,6 +258,31 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
 
       if (result.success) {
         state = state.copyWith(isSubscribed: true, isLoading: false);
+
+        final productId = package.storeProduct.identifier;
+        final price = package.storeProduct.price;
+        final currency = package.storeProduct.currencyCode;
+        final packageType = package.packageType.toString();
+
+        AnalyticsService.instance.trackEventDetached(
+          'Subscription Purchased',
+          properties: {
+            'product_id': productId,
+            'package_type': packageType,
+            'price': price,
+            'currency_code': currency,
+          },
+        );
+
+        // AppsFlyer predefined revenue event — drives partner payout reporting
+        // and store-level ROAS dashboards. Sent alongside the generic analytics
+        // event above so Amplitude and AppsFlyer both receive the purchase.
+        unawaited(AppsflyerService.instance.logSubscriptionPurchase(
+          productId: productId,
+          price: price,
+          currency: currency,
+          packageType: packageType,
+        ));
       } else if (result.wasCancelled) {
         // User cancelled - not an error, just reset loading state
         state = state.copyWith(isLoading: false);

@@ -12,6 +12,7 @@ import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../repository/authentication/model/app_user.dart';
+import 'package:chessever2/services/appsflyer_service.dart';
 
 /// Centralized Amplitude wrapper to keep event names/metadata consistent.
 class AnalyticsService {
@@ -173,6 +174,9 @@ class AnalyticsService {
 
     try {
       await client.track(event);
+
+      // Also log to AppsFlyer for affiliate marketing tracking
+      unawaited(AppsflyerService.instance.logEvent(eventName, eventProps));
     } catch (e, st) {
       if (kDebugMode) {
         debugPrint('[Analytics] Failed to send $eventName: $e');
@@ -220,7 +224,6 @@ class AnalyticsService {
       'build_number': buildNumber,
       'platform': platformName,
       'os_version': osVersion,
-      'locale': locale?.toLanguageTag(),
       'user_id': _userId,
     });
   }

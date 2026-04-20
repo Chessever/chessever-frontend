@@ -5,6 +5,8 @@
    <uses-permission android:name="android.permission.POST_PROMOTED_NOTIFICATIONS" />
    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
    <uses-permission android:name="android.permission.INTERNET" />
+   <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+   <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
 
 
    <!-- Gal: WRITE permission only for Android 10 and below (API <= 29) -->
@@ -73,6 +75,31 @@
                <data
                    android:scheme="https"
                    android:host="www.chessever.com" />
+           </intent-filter>
+           <!-- AppsFlyer OneLink Branded Domain — accept both apex and www hosts. -->
+           <intent-filter android:autoVerify="true">
+               <action android:name="android.intent.action.VIEW" />
+               <category android:name="android.intent.category.DEFAULT" />
+               <category android:name="android.intent.category.BROWSABLE" />
+               <data
+                   android:scheme="https"
+                   android:host="get.chessever.com" />
+           </intent-filter>
+           <intent-filter android:autoVerify="true">
+               <action android:name="android.intent.action.VIEW" />
+               <category android:name="android.intent.category.DEFAULT" />
+               <category android:name="android.intent.category.BROWSABLE" />
+               <data
+                   android:scheme="https"
+                   android:host="www.get.chessever.com" />
+           </intent-filter>
+           <intent-filter android:autoVerify="true">
+               <action android:name="android.intent.action.VIEW" />
+               <category android:name="android.intent.category.DEFAULT" />
+               <category android:name="android.intent.category.BROWSABLE" />
+               <data
+                   android:scheme="https"
+                   android:host="chessever.onelink.me" />
            </intent-filter>
        </activity>
        <!-- Don't delete the meta-data below.
@@ -143,6 +170,8 @@
            <action android:name="android.intent.action.VIEW" />
            <data android:scheme="mailto" />
        </intent>
+       <!-- Required for AppsFlyer install attribution -->
+       <package android:name="com.android.vending" />
    </queries>
     <!-- Provide required visibility configuration for API level 30 and above -->
 </manifest>
