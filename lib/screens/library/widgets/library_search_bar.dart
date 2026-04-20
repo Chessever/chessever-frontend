@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:chessever2/repository/library/models/library_folder.dart';
 import 'package:chessever2/repository/library/models/saved_analysis.dart';
 import 'package:chessever2/screens/gamebase/models/models.dart';
@@ -7,6 +9,7 @@ import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
+import 'package:chessever2/widgets/simple_search_bar.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
 
 import 'package:easy_debounce/easy_debounce.dart';
@@ -28,6 +31,12 @@ class LibrarySearchBar extends ConsumerStatefulWidget {
   final String hintText;
   final FocusNode? focusNode;
   final List<String>? hintPhrases;
+
+  /// Words cycled after [hintText] (e.g. "Search player" → "Search event").
+  /// When set, only the trailing word animates with a spring swap — matching
+  /// the home-page search. Takes precedence over [hintPhrases].
+  final List<String>? rotatingHints;
+  final Duration rotationInterval;
   final Key? textFieldKey;
   final Key? filterButtonKey;
   final int filterBadgeCount;
@@ -47,6 +56,8 @@ class LibrarySearchBar extends ConsumerStatefulWidget {
     this.hintText = 'Search',
     this.focusNode,
     this.hintPhrases,
+    this.rotatingHints,
+    this.rotationInterval = const Duration(seconds: 2),
     this.textFieldKey,
     this.filterButtonKey,
     this.filterBadgeCount = 0,
@@ -61,21 +72,73 @@ class _LibrarySearchBarState extends ConsumerState<LibrarySearchBar> {
   final FocusNode _internalFocusNode = FocusNode();
   late final FocusNode _effectiveFocusNode;
 
+  Timer? _rotationTimer;
+  int _hintIndex = 0;
+  // One full pass through [rotatingHints], then we freeze on plain hintText.
+  bool _cycleDone = false;
+
   @override
   void initState() {
     super.initState();
     _effectiveFocusNode = widget.focusNode ?? _internalFocusNode;
     _effectiveFocusNode.addListener(_onFocusChange);
     widget.controller.addListener(_onTextChange);
+    _restartRotation();
+  }
+
+  @override
+  void didUpdateWidget(covariant LibrarySearchBar oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!_listsEqual(oldWidget.rotatingHints, widget.rotatingHints) ||
+        oldWidget.rotationInterval != widget.rotationInterval) {
+      _hintIndex = 0;
+      _cycleDone = false;
+      _restartRotation();
+    }
   }
 
   @override
   void dispose() {
+    _rotationTimer?.cancel();
     _effectiveFocusNode.removeListener(_onFocusChange);
     if (widget.focusNode == null) _internalFocusNode.dispose();
     widget.controller.removeListener(_onTextChange);
     EasyDebounce.cancel('lib_search_debounce');
     super.dispose();
+  }
+
+  bool _listsEqual(List<String>? a, List<String>? b) {
+    if (identical(a, b)) return true;
+    if (a == null || b == null) return false;
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
+  }
+
+  bool get _canRotate {
+    final h = widget.rotatingHints;
+    return h != null && h.length > 1 && !_cycleDone;
+  }
+
+  void _restartRotation() {
+    _rotationTimer?.cancel();
+    if (!_canRotate ||
+        widget.controller.text.isNotEmpty ||
+        _effectiveFocusNode.hasFocus) {
+      return;
+    }
+    _rotationTimer = Timer.periodic(widget.rotationInterval, (_) {
+      if (!mounted) return;
+      final next = _hintIndex + 1;
+      if (next >= widget.rotatingHints!.length) {
+        _rotationTimer?.cancel();
+        setState(() => _cycleDone = true);
+      } else {
+        setState(() => _hintIndex = next);
+      }
+    });
   }
 
   void _onFocusChange() {
@@ -85,6 +148,13 @@ class _LibrarySearchBarState extends ConsumerState<LibrarySearchBar> {
           _effectiveFocusNode.hasFocus &&
           widget.controller.text.isNotEmpty;
     });
+    // Rotation pauses while the field is focused so the hint is stable
+    // under the caret, and resumes once focus leaves an empty field.
+    if (_effectiveFocusNode.hasFocus) {
+      _rotationTimer?.cancel();
+    } else {
+      _restartRotation();
+    }
   }
 
   void _onTextChange() {
@@ -94,6 +164,13 @@ class _LibrarySearchBarState extends ConsumerState<LibrarySearchBar> {
 
     if (shouldShowOverlay != _showOverlay) {
       setState(() => _showOverlay = shouldShowOverlay);
+    }
+
+    final isRunning = _rotationTimer?.isActive ?? false;
+    if (hasText && isRunning) {
+      _rotationTimer?.cancel();
+    } else if (!hasText && !isRunning && !_effectiveFocusNode.hasFocus) {
+      _restartRotation();
     }
 
     EasyDebounce.debounce(
@@ -197,6 +274,22 @@ class _LibrarySearchBarState extends ConsumerState<LibrarySearchBar> {
     );
   }
 
+  Widget _buildRotatingHint() {
+    final hints = widget.rotatingHints!;
+    final word = hints[_hintIndex % hints.length];
+    final prefix = widget.hintText.isEmpty ? '' : '${widget.hintText} ';
+    final style = AppTypography.textXsRegular.copyWith(
+      color: const Color(0xFFFFFFFF).withValues(alpha: 0.7),
+    );
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (prefix.isNotEmpty) Text(prefix, style: style),
+        Flexible(child: SpringHintWord(word: word, style: style)),
+      ],
+    );
+  }
+
   Widget _buildInputRow() {
     final isEmpty = widget.controller.text.isEmpty;
 
@@ -219,7 +312,9 @@ class _LibrarySearchBarState extends ConsumerState<LibrarySearchBar> {
               children: [
                 // Animated hint text (shown when empty and not focused)
                 if (isEmpty && !_effectiveFocusNode.hasFocus)
-                  if (widget.hintPhrases != null &&
+                  if (_canRotate)
+                    _buildRotatingHint()
+                  else if (widget.hintPhrases != null &&
                       widget.hintPhrases!.length > 1)
                     AnimatedSearchHint(
                       textColor: const Color(0xFFFFFFFF).withValues(alpha: 0.7),

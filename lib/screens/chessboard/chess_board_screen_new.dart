@@ -71,16 +71,11 @@ import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provide
 import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
 import 'package:motor/motor.dart';
-import 'package:chessever2/screens/gamebase/widgets/gamebase_explorer_view.dart';
+import 'package:chessever2/screens/gamebase/widgets/board_opening_explorer_panel.dart';
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
-import 'package:chessever2/repository/gamebase/search/gamebase_search_models.dart';
-import 'package:chessever2/screens/gamebase/models/models.dart';
-import 'package:chessever2/screens/gamebase/providers/gamebase_providers.dart';
 import 'package:chessever2/screens/chessboard/utils/game_share_utils.dart';
 import 'package:chessever2/screens/library/utils/gamebase_pgn_builder.dart';
-import 'package:chessever2/screens/library/utils/gamebase_game_to_games_tour_model.dart';
 import 'package:chessever2/screens/player_profile/player_profile_data_source.dart';
-import 'package:chessever2/utils/chess_title_utils.dart';
 import 'package:showcaseview/showcaseview.dart';
 import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
 import 'package:chessever2/services/lichess_move_annotations_service.dart';
@@ -5490,11 +5485,9 @@ class _AnalysisGameBody extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // PERF: Use .select() to only rebuild when the enabled state changes
-    final gamebaseEnabled = ref.watch(
-      gamebaseOverlayEnabledProvider.select((s) => s.valueOrNull ?? true),
-    );
-    final isGamebaseActive = showGamebaseButton ? gamebaseEnabled : false;
+    // The notation/explorer swap moved into `_AnalysisSwipePanels` which
+    // owns its own page state and (where applicable) syncs with the
+    // gamebase toggle provider — no need to rebuild this body on toggle.
 
     // Check for tablet landscape mode for side-by-side layout
     final isTabletLandscape =
@@ -5503,7 +5496,6 @@ class _AnalysisGameBody extends ConsumerWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         final isVisiblePage = index == currentPageIndex;
-        final isGamebaseActiveForPage = isGamebaseActive && isVisiblePage;
         final availableHeight =
             constraints.maxHeight.isFinite
                 ? constraints.maxHeight
@@ -5513,9 +5505,10 @@ class _AnalysisGameBody extends ConsumerWidget {
             availableHeight < compactThreshold && !isTabletLandscape;
 
         final pvSection = <Widget>[];
-        // Hide standard PV section if Gamebase is active (it has its own)
-        if (!isGamebaseActiveForPage &&
-            state.isAnalysisMode &&
+        // PV section sits above the swipeable panels and renders on both
+        // pages. The explorer panel suppresses its own internal PV via
+        // `showHorizontalPvLines: false` so we don't duplicate.
+        if (state.isAnalysisMode &&
             state.showEngineAnalysis &&
             state.showPrincipalVariations) {
           pvSection.add(SizedBox(height: 2.h));
@@ -5592,7 +5585,7 @@ class _AnalysisGameBody extends ConsumerWidget {
             return movesDisplay;
           }
 
-          final gamebaseDisplay = GamebaseExplorerView(
+          final gamebaseDisplay = BoardOpeningExplorerPanel(
             state: state,
             onMoveSelected: (uci) {
               final params = ChessBoardProviderParams(game: game, index: index);
@@ -5617,398 +5610,17 @@ class _AnalysisGameBody extends ConsumerWidget {
                 debugPrint('Error making move from UCI: $e');
               }
             },
-            onGameSelected: (gameId) {
-              unawaited(() async {
-                try {
-                  final preview = await ref.read(
-                    gamePreviewByIdProvider(gameId).future,
-                  );
-                  if (preview == null) {
-                    if (!context.mounted) return;
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Game not found in Gamebase.'),
-                      ),
-                    );
-                    return;
-                  }
-
-                  final repo = ref.read(gamebaseRepositoryProvider);
-
-                  final whitePlayerId =
-                      preview['whitePlayerId']?.toString().trim();
-                  final blackPlayerId =
-                      preview['blackPlayerId']?.toString().trim();
-
-                  final players = await Future.wait([
-                    if (whitePlayerId != null && whitePlayerId.isNotEmpty)
-                      repo.getPlayerById(whitePlayerId)
-                    else
-                      Future<GamebasePlayer?>.value(null),
-                    if (blackPlayerId != null && blackPlayerId.isNotEmpty)
-                      repo.getPlayerById(blackPlayerId)
-                    else
-                      Future<GamebasePlayer?>.value(null),
-                  ]);
-
-                  final whitePlayer = players[0];
-                  final blackPlayer = players[1];
-
-                  int ratingFor(GamebasePlayer? p, String? timeControl) {
-                    if (p == null) return 0;
-                    final tc = (timeControl ?? '').toUpperCase();
-                    switch (tc) {
-                      case 'RAPID':
-                        return p.ratingRapid ?? p.highestRating ?? 0;
-                      case 'BLITZ':
-                        return p.ratingBlitz ?? p.highestRating ?? 0;
-                      case 'CLASSICAL':
-                      default:
-                        return p.ratingClassical ?? p.highestRating ?? 0;
-                    }
-                  }
-
-                  DateTime? parseDate(Object? raw) {
-                    if (raw == null) return null;
-                    return DateTime.tryParse(raw.toString());
-                  }
-
-                  String coalesce(
-                    Map<String, dynamic> row,
-                    String primary,
-                    String fallback,
-                    String defaultValue,
-                  ) {
-                    final a = (row[primary]?.toString() ?? '').trim();
-                    if (a.isNotEmpty) return a;
-                    final b = (row[fallback]?.toString() ?? '').trim();
-                    return b.isNotEmpty ? b : defaultValue;
-                  }
-
-                  final timeControl = preview['timeControl']?.toString();
-                  final date = parseDate(preview['date']);
-                  final result = (preview['result']?.toString() ?? '*').trim();
-
-                  final whiteName = coalesce(
-                    preview,
-                    'white',
-                    'whiteName',
-                    'White',
-                  );
-                  final blackName = coalesce(
-                    preview,
-                    'black',
-                    'blackName',
-                    'Black',
-                  );
-
-                  final event =
-                      (preview['event']?.toString() ?? 'Gamebase').trim();
-                  final site = preview['site']?.toString();
-                  final eco = (preview['eco']?.toString() ?? '').trim();
-                  final opening = (preview['opening']?.toString() ?? '').trim();
-                  final variation =
-                      (preview['variation']?.toString() ?? '').trim();
-
-                  final pgn = buildHeaderOnlyPgn(
-                    whiteName: whiteName,
-                    blackName: blackName,
-                    result: result,
-                    event: event.isNotEmpty ? event : 'Gamebase',
-                    site: site,
-                    date: date,
-                    eco: eco,
-                    opening: opening,
-                    variation: variation,
-                  );
-
-                  final resolvedId =
-                      (preview['id']?.toString() ?? gameId).trim();
-
-                  final whiteTitle = ChessTitleUtils.normalize(
-                    preview['whiteTitle']?.toString() ?? whitePlayer?.title,
-                  );
-                  final blackTitle = ChessTitleUtils.normalize(
-                    preview['blackTitle']?.toString() ?? blackPlayer?.title,
-                  );
-
-                  final resolvedGame = GamesTourModel(
-                    gameId: resolvedId.isNotEmpty ? resolvedId : gameId,
-                    source: GameSource.gamebase,
-                    whitePlayer: PlayerCard(
-                      name: whiteName,
-                      federation: '',
-                      title: whiteTitle,
-                      rating: ratingFor(whitePlayer, timeControl),
-                      countryCode: whitePlayer?.fed ?? '',
-                      team: null,
-                      fideId: int.tryParse(whitePlayer?.fideId ?? ''),
-                    ),
-                    blackPlayer: PlayerCard(
-                      name: blackName,
-                      federation: '',
-                      title: blackTitle,
-                      rating: ratingFor(blackPlayer, timeControl),
-                      countryCode: blackPlayer?.fed ?? '',
-                      team: null,
-                      fideId: int.tryParse(blackPlayer?.fideId ?? ''),
-                    ),
-                    whiteTimeDisplay: '--:--',
-                    blackTimeDisplay: '--:--',
-                    whiteClockCentiseconds: 0,
-                    blackClockCentiseconds: 0,
-                    gameStatus: GameStatus.fromString(result),
-                    roundId: 'gamebase_overlay',
-                    roundSlug: eco.isNotEmpty ? eco : timeControl,
-                    tourId: event.isNotEmpty ? event : 'Gamebase',
-                    pgn: pgn,
-                    lastMoveTime: date,
-                  );
-
-                  // Fetch the full game AND all position games in parallel
-                  // so the user can swipe between games in context.
-                  final currentFen = state.analysisState.position.fen;
-                  final combinedMoves = state.analysisState.combinedMoves;
-                  final currentMoveIndex = state.analysisState.currentMoveIndex;
-                  final movesToCurrentCount =
-                      currentMoveIndex < 0
-                          ? 0
-                          : (currentMoveIndex + 1).clamp(
-                            0,
-                            combinedMoves.length,
-                          );
-                  final lineToCurrent = combinedMoves
-                      .take(movesToCurrentCount)
-                      .map((m) => m.uci.trim().toLowerCase())
-                      .where(
-                        (uci) => RegExp(
-                          r'^[a-h][1-8][a-h][1-8][qrbn]?$',
-                        ).hasMatch(uci),
-                      )
-                      .toList(growable: false);
-
-                  final positionQuery = GamebasePositionGamesQuery(
-                    fen: currentFen,
-                    moves: lineToCurrent,
-                    pageSize: 20,
-                  );
-
-                  final results = await Future.wait([
-                    // 1) Full game payload (best-effort)
-                    repo
-                        .getGameById(gameId)
-                        .timeout(
-                          const Duration(seconds: 2),
-                          onTimeout: () => null,
-                        ),
-                    // 2) All position games for swiping context
-                    ref
-                        .read(positionGamesProvider(positionQuery).future)
-                        .then<GamebaseSearchQueryResponse?>((v) => v)
-                        .timeout(
-                          const Duration(seconds: 3),
-                          onTimeout: () => null,
-                        ),
-                  ]);
-
-                  final full = results[0] as GamebaseGame?;
-                  final positionGamesResponse =
-                      results[1] as GamebaseSearchQueryResponse?;
-
-                  GamesTourModel resolvedForOpen = resolvedGame;
-                  if (full != null) {
-                    final mapped = mapGamebaseGameToGamesTourModel(full);
-                    final merged = mapped.copyWith(
-                      whitePlayer: mapped.whitePlayer.copyWith(
-                        title:
-                            whiteTitle.isNotEmpty
-                                ? whiteTitle
-                                : mapped.whitePlayer.title,
-                        rating:
-                            whitePlayer != null
-                                ? ratingFor(whitePlayer, timeControl)
-                                : mapped.whitePlayer.rating,
-                        countryCode:
-                            whitePlayer?.fed.isNotEmpty == true
-                                ? whitePlayer!.fed
-                                : mapped.whitePlayer.countryCode,
-                      ),
-                      blackPlayer: mapped.blackPlayer.copyWith(
-                        title:
-                            blackTitle.isNotEmpty
-                                ? blackTitle
-                                : mapped.blackPlayer.title,
-                        rating:
-                            blackPlayer != null
-                                ? ratingFor(blackPlayer, timeControl)
-                                : mapped.blackPlayer.rating,
-                        countryCode:
-                            blackPlayer?.fed.isNotEmpty == true
-                                ? blackPlayer!.fed
-                                : mapped.blackPlayer.countryCode,
-                      ),
-                    );
-                    resolvedForOpen = merged;
-                  }
-
-                  // Build the game list for swiping. If position games
-                  // were fetched, map them and replace the selected game
-                  // with the fully resolved version.
-                  List<GamesTourModel> allGames;
-                  int openIndex;
-
-                  if (positionGamesResponse != null &&
-                      positionGamesResponse.data.isNotEmpty) {
-                    GamesTourModel mapRow(Map<String, dynamic> row) {
-                      final id = (row['id']?.toString() ?? '').trim();
-                      final safeId = id.isNotEmpty ? id : 'unknown';
-                      DateTime? d;
-                      final rawDate = row['date'];
-                      if (rawDate != null) {
-                        d = DateTime.tryParse(rawDate.toString());
-                      }
-                      final r = row['result']?.toString() ?? '*';
-                      final tc = row['timeControl']?.toString();
-                      final ec = row['eco']?.toString() ?? '';
-                      final op = row['opening']?.toString() ?? '';
-                      final va = row['variation']?.toString() ?? '';
-                      final ev = row['event']?.toString() ?? '';
-                      final wn = (row['white']?.toString() ?? '').trim();
-                      final bn = (row['black']?.toString() ?? '').trim();
-                      final we = (row['whiteElo'] as num?)?.toInt() ?? 0;
-                      final be = (row['blackElo'] as num?)?.toInt() ?? 0;
-                      final wf = row['whiteFed']?.toString() ?? '';
-                      final bf = row['blackFed']?.toString() ?? '';
-                      final wpId = row['whitePlayerId']?.toString().trim();
-                      final bpId = row['blackPlayerId']?.toString().trim();
-                      final fmt = ec.trim().isNotEmpty ? ec.trim() : (tc ?? '');
-                      final opName =
-                          va.trim().isNotEmpty
-                              ? '$op: $va'
-                              : (op.trim().isNotEmpty ? op : null);
-                      return GamesTourModel(
-                        gameId: safeId,
-                        source: GameSource.gamebase,
-                        whitePlayer: PlayerCard(
-                          name: wn.isNotEmpty ? wn : 'White',
-                          federation: '',
-                          title: '',
-                          rating: we,
-                          countryCode: wf,
-                          team: null,
-                          fideId: null,
-                          gamebasePlayerId:
-                              (wpId != null && wpId.isNotEmpty) ? wpId : null,
-                        ),
-                        blackPlayer: PlayerCard(
-                          name: bn.isNotEmpty ? bn : 'Black',
-                          federation: '',
-                          title: '',
-                          rating: be,
-                          countryCode: bf,
-                          team: null,
-                          fideId: null,
-                          gamebasePlayerId:
-                              (bpId != null && bpId.isNotEmpty) ? bpId : null,
-                        ),
-                        whiteTimeDisplay: '--:--',
-                        blackTimeDisplay: '--:--',
-                        whiteClockCentiseconds: 0,
-                        blackClockCentiseconds: 0,
-                        gameStatus: GameStatus.fromString(r),
-                        roundId: 'opening_explorer',
-                        roundSlug: fmt.isNotEmpty ? fmt : null,
-                        tourId: ev.trim().isNotEmpty ? ev.trim() : 'Gamebase',
-                        tourSlug: null,
-                        lastMoveTime: d,
-                        eco: ec.trim().isNotEmpty ? ec.trim() : null,
-                        openingName: opName,
-                        timeControl: tc,
-                      );
-                    }
-
-                    allGames = positionGamesResponse.data.map(mapRow).toList();
-
-                    // Replace the selected game with the fully resolved version
-                    openIndex = allGames.indexWhere(
-                      (g) => g.gameId == resolvedForOpen.gameId,
-                    );
-                    if (openIndex >= 0) {
-                      allGames[openIndex] = resolvedForOpen;
-                    } else {
-                      // Selected game not in first page — prepend it
-                      allGames.insert(0, resolvedForOpen);
-                      openIndex = 0;
-                    }
-                  } else {
-                    // Fallback: single game (position games fetch failed)
-                    allGames = [resolvedForOpen];
-                    openIndex = 0;
-                  }
-
-                  if (!context.mounted) return;
-                  ref.read(chessboardViewFromProviderNew.notifier).state =
-                      ChessboardView.tour;
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder:
-                          (_) => ChessBoardScreenNew(
-                            games: allGames,
-                            currentIndex: openIndex,
-                            hideEventInfo:
-                                playerProfileDataSource !=
-                                PlayerProfileDataSource.twic,
-                            playerProfileDataSource: playerProfileDataSource,
-                            showGamebaseButton: true,
-                            disableGamebaseOverlayByDefault: true,
-                            showClock: false,
-                          ),
-                    ),
-                  );
-                } catch (e) {
-                  debugPrint('[Gamebase] Failed to open game: $e');
-                  if (!context.mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Could not open game: $e')),
-                  );
-                }
-              }());
-            },
           );
 
-          // Animate switching between move list and Gamebase explorer.
-          // Only build Gamebase while visible/animating to avoid background fetches.
-          return SingleMotionBuilder(
-            motion: const CupertinoMotion.smooth(),
-            value: isGamebaseActiveForPage ? 1.0 : 0.0,
-            builder: (context, t, _) {
-              final showGamebase = isGamebaseActiveForPage || t > 0.01;
-              final showMoves = !isGamebaseActiveForPage || t < 0.99;
-
-              return Stack(
-                children: [
-                  if (showMoves)
-                    IgnorePointer(
-                      ignoring: t > 0.05,
-                      child: Opacity(
-                        opacity: (1.0 - t).clamp(0.0, 1.0),
-                        child: movesDisplay,
-                      ),
-                    ),
-                  if (showGamebase)
-                    IgnorePointer(
-                      ignoring: t < 0.95,
-                      child: Opacity(
-                        opacity: t.clamp(0.0, 1.0),
-                        child: Transform.translate(
-                          offset: Offset(0, (1.0 - t) * 8.h),
-                          child: gamebaseDisplay,
-                        ),
-                      ),
-                    ),
-                ],
-              );
-            },
+          // Notation (page 0) and Opening Explorer (page 1) live in a
+          // PageView — swipe right on the notation reveals the explorer.
+          // Replaces the previous toggle-driven crossfade so the explorer is
+          // available everywhere the chess board screen is mounted, not just
+          // where `showGamebaseButton: true` was passed.
+          return _AnalysisSwipePanels(
+            movesDisplay: movesDisplay,
+            gamebaseDisplay: gamebaseDisplay,
+            syncWithGamebaseToggle: showGamebaseButton,
           );
         }
 
@@ -7412,6 +7024,90 @@ class _SkeletonContainer extends StatelessWidget {
         color: kWhiteColor.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(borderRadius),
       ),
+    );
+  }
+}
+
+/// Two-page swipeable bottom panel: notation (page 0) and opening explorer
+/// (page 1). Mirrors the gamebase explorer screen's `_ExplorerBottomPanels`
+/// pattern but kept screen-local: each chess board screen instance has its
+/// own page controller so swiping in one game doesn't bleed into another.
+///
+/// When [syncWithGamebaseToggle] is true (passed by tour-game contexts that
+/// also surface the explicit "open Gamebase" toggle button), the page index
+/// stays in sync with [gamebaseOverlayEnabledProvider] in both directions.
+class _AnalysisSwipePanels extends ConsumerStatefulWidget {
+  const _AnalysisSwipePanels({
+    required this.movesDisplay,
+    required this.gamebaseDisplay,
+    required this.syncWithGamebaseToggle,
+  });
+
+  final Widget movesDisplay;
+  final Widget gamebaseDisplay;
+  final bool syncWithGamebaseToggle;
+
+  @override
+  ConsumerState<_AnalysisSwipePanels> createState() =>
+      _AnalysisSwipePanelsState();
+}
+
+class _AnalysisSwipePanelsState extends ConsumerState<_AnalysisSwipePanels> {
+  late final PageController _pageController;
+  int _currentPage = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.syncWithGamebaseToggle) {
+      final enabled =
+          ref.read(gamebaseOverlayEnabledProvider).valueOrNull ?? false;
+      _currentPage = enabled ? 1 : 0;
+    }
+    _pageController = PageController(initialPage: _currentPage);
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.syncWithGamebaseToggle) {
+      ref.listen<AsyncValue<bool>>(gamebaseOverlayEnabledProvider, (
+        previous,
+        next,
+      ) {
+        final enabled = next.valueOrNull ?? false;
+        final targetPage = enabled ? 1 : 0;
+        if (targetPage == _currentPage || !_pageController.hasClients) return;
+        _pageController.animateToPage(
+          targetPage,
+          duration: const Duration(milliseconds: 280),
+          curve: Curves.easeOutCubic,
+        );
+      });
+    }
+
+    return PageView(
+      controller: _pageController,
+      physics: const ClampingScrollPhysics(),
+      onPageChanged: (page) {
+        _currentPage = page;
+        if (!widget.syncWithGamebaseToggle) return;
+        // Keep the toggle button reflection in sync with the swipe so the
+        // button label/icon doesn't lie about the visible panel.
+        final notifier = ref.read(gamebaseOverlayEnabledProvider.notifier);
+        final currentEnabled =
+            ref.read(gamebaseOverlayEnabledProvider).valueOrNull ?? false;
+        final shouldEnable = page == 1;
+        if (currentEnabled != shouldEnable) {
+          notifier.setEnabled(shouldEnable);
+        }
+      },
+      children: [widget.movesDisplay, widget.gamebaseDisplay],
     );
   }
 }

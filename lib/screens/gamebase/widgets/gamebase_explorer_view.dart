@@ -20,11 +20,24 @@ class GamebaseExplorerView extends HookConsumerWidget {
     required this.state,
     required this.onMoveSelected,
     this.onGameSelected,
+    this.showHorizontalPvLines = true,
+    this.showFilterPanel = true,
   });
 
   final ChessBoardStateNew state;
   final Function(String uci) onMoveSelected;
   final void Function(String gameId)? onGameSelected;
+
+  /// When false, suppress the internal `_HorizontalPvLines` row at the top.
+  /// Used when this view sits inside a layout that already renders engine PVs
+  /// above (e.g. the chess board screen's swipeable analysis panel — its header
+  /// already shows `_PrincipalVariationList`, so the internal one would dupe).
+  final bool showHorizontalPvLines;
+
+  /// When false, suppress the `GamebaseFilterPanel` row. Used inside the
+  /// chess board screen's swipeable explorer panel where filters would
+  /// crowd the small bottom area; the standalone gamebase screen keeps them.
+  final bool showFilterPanel;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -73,21 +86,22 @@ class GamebaseExplorerView extends HookConsumerWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             // Horizontal PV Lines (Engine Analysis)
-            if (state.showEngineAnalysis)
+            if (showHorizontalPvLines && state.showEngineAnalysis)
               _HorizontalPvLines(state: state, onMoveSelected: onMoveSelected),
 
             // Filter Panel - scrollable when expanded to prevent overflow
-            Flexible(
-              flex: 0,
-              child: ConstrainedBox(
-                constraints: BoxConstraints(
-                  maxHeight: constraints.maxHeight * 0.6,
-                ),
-                child: const SingleChildScrollView(
-                  child: GamebaseFilterPanel(),
+            if (showFilterPanel)
+              Flexible(
+                flex: 0,
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxHeight: constraints.maxHeight * 0.6,
+                  ),
+                  child: const SingleChildScrollView(
+                    child: GamebaseFilterPanel(),
+                  ),
                 ),
               ),
-            ),
 
             // Moves Table
             Expanded(child: _buildContent(ref, gamebaseState, currentPosition)),

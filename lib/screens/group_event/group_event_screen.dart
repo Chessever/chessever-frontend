@@ -211,6 +211,12 @@ class GroupEventScreen extends HookConsumerWidget {
                       textFieldKey: e2eKey(E2eIds.eventsSearchField),
                       filterButtonKey: e2eKey(E2eIds.eventsFilterButton),
                       hintText: 'Search',
+                      rotatingHints: const [
+                        'player',
+                        'tournament',
+                        'openings',
+                        'FIDE country',
+                      ],
                       showProfile: !isSearching.value,
                       filterBadgeCount: filterBadgeCount,
                       onChanged: (value) {

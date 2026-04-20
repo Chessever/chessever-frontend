@@ -122,14 +122,15 @@ class AudioPlayerService with WidgetsBindingObserver {
   Future<void> _playWithRecovery(SfxType type) async {
     try {
       await initializeAndLoadAllAssets();
-      await player.play(_resolve(type));
+      // soloud 4.x: play() is sync — no await.
+      player.play(_resolve(type));
     } catch (e, s) {
       debugPrint('⚠️ Audio playback failed, recovering SoLoud: $e\n$s');
       _teardownPlayer();
       try {
         await initializeAndLoadAllAssets(force: true);
         // _resolve reads the freshly-loaded field — no stale handles.
-        await player.play(_resolve(type));
+        player.play(_resolve(type));
       } catch (err, st) {
         debugPrint('⚠️ Audio playback failed after recovery: $err\n$st');
       }

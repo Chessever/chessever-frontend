@@ -1,9 +1,12 @@
+import 'dart:io';
+
 import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/repository/library/library_repository.dart';
 import 'package:chessever2/repository/library/models/library_folder.dart';
 import 'package:chessever2/repository/library/models/saved_analysis.dart';
 import 'package:chessever2/screens/library/providers/book_games_paginated_provider.dart';
 import 'package:chessever2/screens/library/providers/library_folders_provider.dart';
+import 'package:chessever2/screens/library/utils/folder_pgn_exporter.dart';
 import 'package:chessever2/screens/library/utils/load_saved_analysis.dart';
 import 'package:chessever2/screens/library/widgets/book_saved_game_card.dart';
 import 'package:chessever2/screens/library/widgets/create_folder_dialog.dart';
@@ -18,6 +21,8 @@ import 'package:chessever2/widgets/screen_wrapper.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 
 class FolderContentsScreen extends ConsumerStatefulWidget {
   final LibraryFolder folder;
@@ -34,8 +39,13 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
   late final TextEditingController _searchController;
   late final BookPaginationKey _paginationKey;
   final Set<String> _removingIds = {};
+  // Overrides widget.folder.name after an in-place rename so the header
+  // reflects the new name without needing to pop/reopen.
+  String? _overrideFolderName;
 
   bool get _isSubscribed => widget.folder.isSubscribed;
+
+  String get _currentFolderName => _overrideFolderName ?? widget.folder.name;
 
   @override
   void initState() {
@@ -176,6 +186,137 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
     }
   }
 
+  Future<void> _handleRename() async {
+    HapticFeedbackService.light();
+    final nextName = await showRenameFolderDialog(
+      context,
+      currentName: _currentFolderName,
+    );
+    final name = nextName?.trim();
+    if (name == null || name.isEmpty || name == _currentFolderName) return;
+
+    try {
+      final repo = ref.read(libraryRepositoryProvider);
+      await repo.updateFolder(
+        widget.folder.copyWith(name: name, updatedAt: DateTime.now()),
+      );
+      ref.invalidate(libraryFoldersStreamProvider);
+      if (!mounted) return;
+      HapticFeedbackService.success();
+      setState(() {
+        _overrideFolderName = name;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Renamed to "$name"',
+            style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+          ),
+          backgroundColor: kBlack2Color.withValues(alpha: 0.95),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      HapticFeedbackService.error();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Failed to rename: $e',
+            style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+          ),
+          backgroundColor: kRedColor,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
+  Future<void> _handleExportPgn() async {
+    HapticFeedbackService.medium();
+
+    final repo = ref.read(libraryRepositoryProvider);
+    final dialogController = _ExportProgressController();
+
+    // Show the progress dialog (non-dismissible) while export runs.
+    final dialogFuture = showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => _ExportProgressDialog(controller: dialogController),
+    );
+
+    String? pgn;
+    Object? error;
+    try {
+      pgn = await exportFolderAsPgn(
+        repo: repo,
+        folderId: widget.folder.id,
+        folderName: widget.folder.name,
+        isSubscribed: _isSubscribed,
+        shareToken: widget.folder.shareToken,
+        onProgress: (processed, total) {
+          dialogController.update(processed: processed, total: total);
+        },
+      );
+    } catch (e) {
+      error = e;
+    }
+
+    // Dismiss the progress dialog.
+    dialogController.close();
+    await dialogFuture;
+
+    if (!mounted) return;
+
+    if (error != null || pgn == null || pgn.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            error != null
+                ? 'Export failed: $error'
+                : 'Nothing to export in this database',
+            style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+          ),
+          backgroundColor: kRedColor,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    try {
+      final tempDir = await getTemporaryDirectory();
+      final filename = suggestedExportFilename(widget.folder.name);
+      final file = File('${tempDir.path}/$filename');
+      await file.writeAsString(pgn);
+
+      final box = context.findRenderObject() as RenderBox?;
+      final origin =
+          box != null
+              ? box.localToGlobal(Offset.zero) & box.size
+              : const Rect.fromLTWH(0, 0, 1, 1);
+
+      await Share.shareXFiles(
+        [XFile(file.path, mimeType: 'application/x-chess-pgn')],
+        subject: '${widget.folder.name} - Chessever PGN',
+        sharePositionOrigin: origin,
+      );
+      HapticFeedbackService.success();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Share failed: $e',
+            style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+          ),
+          backgroundColor: kRedColor,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final bookAsync = ref.watch(bookGamesPaginatedProvider(_paginationKey));
@@ -260,22 +401,54 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
               ),
             ),
           ),
-          // Only show '+' button if this is a root folder (to enforce 2-layer hierarchy)
-          if (widget.folder.parentId == null && !_isSubscribed)
-            Align(
-              alignment: Alignment.centerRight,
-              child: IconButton(
-                onPressed: _handleCreateSubfolder,
-                icon: Icon(Icons.add_rounded, color: kWhiteColor, size: 28.ic),
-              ),
+          Align(
+            alignment: Alignment.centerRight,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if ((bookAsync.valueOrNull?.totalCount ?? 0) > 0)
+                  IconButton(
+                    onPressed: _handleExportPgn,
+                    tooltip: 'Export as PGN',
+                    icon: Icon(
+                      Icons.ios_share_rounded,
+                      color: kWhiteColor,
+                      size: 22.ic,
+                    ),
+                  ),
+                // Rename is only available for owned databases (subscribed
+                // folders are read-only — you can't rename someone else's book).
+                if (!_isSubscribed)
+                  IconButton(
+                    onPressed: _handleRename,
+                    tooltip: 'Rename Database',
+                    icon: Icon(
+                      Icons.edit_rounded,
+                      color: kWhiteColor,
+                      size: 22.ic,
+                    ),
+                  ),
+                // Only show '+' for root folders (2-layer hierarchy) and
+                // owned folders (can't create sub-folders in a subscribed book).
+                if (widget.folder.parentId == null && !_isSubscribed)
+                  IconButton(
+                    onPressed: _handleCreateSubfolder,
+                    icon: Icon(
+                      Icons.add_rounded,
+                      color: kWhiteColor,
+                      size: 28.ic,
+                    ),
+                  ),
+              ],
             ),
+          ),
           Padding(
             padding: EdgeInsets.symmetric(horizontal: 56.w),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  widget.folder.name,
+                  _currentFolderName,
                   style: AppTypography.textLgBold.copyWith(
                     color: kWhiteColor,
                     height: 1.1,
@@ -557,6 +730,145 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Shared state for the export progress dialog. The dialog listens to a
+/// `ValueListenable<_ExportProgress>` so progress updates from the export
+/// pipeline don't rebuild the whole screen.
+class _ExportProgress {
+  final int processed;
+  final int total;
+  final bool done;
+  const _ExportProgress({
+    required this.processed,
+    required this.total,
+    this.done = false,
+  });
+
+  double get fraction {
+    if (total <= 0) return 0;
+    return (processed / total).clamp(0.0, 1.0);
+  }
+}
+
+class _ExportProgressController extends ValueNotifier<_ExportProgress> {
+  _ExportProgressController()
+    : super(const _ExportProgress(processed: 0, total: 0));
+
+  void update({required int processed, required int total}) {
+    value = _ExportProgress(processed: processed, total: total);
+  }
+
+  void close() {
+    value = _ExportProgress(
+      processed: value.processed,
+      total: value.total,
+      done: true,
+    );
+  }
+}
+
+class _ExportProgressDialog extends StatefulWidget {
+  const _ExportProgressDialog({required this.controller});
+
+  final _ExportProgressController controller;
+
+  @override
+  State<_ExportProgressDialog> createState() => _ExportProgressDialogState();
+}
+
+class _ExportProgressDialogState extends State<_ExportProgressDialog> {
+  @override
+  void initState() {
+    super.initState();
+    widget.controller.addListener(_onChange);
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_onChange);
+    super.dispose();
+  }
+
+  void _onChange() {
+    if (!mounted) return;
+    final progress = widget.controller.value;
+    if (progress.done) {
+      Navigator.of(context, rootNavigator: true).maybePop();
+    } else {
+      setState(() {});
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final progress = widget.controller.value;
+    final label =
+        progress.total > 0
+            ? 'Exporting ${progress.processed} / ${progress.total} games...'
+            : 'Preparing export...';
+
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      elevation: 0,
+      insetPadding: EdgeInsets.symmetric(horizontal: 24.w),
+      child: Container(
+        padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 20.h),
+        decoration: BoxDecoration(
+          color: kBlack2Color,
+          borderRadius: BorderRadius.circular(16.br),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                SizedBox(
+                  width: 16.sp,
+                  height: 16.sp,
+                  child: const CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: kPrimaryColor,
+                  ),
+                ),
+                SizedBox(width: 10.w),
+                Expanded(
+                  child: Text(
+                    label,
+                    style: AppTypography.textSmMedium.copyWith(
+                      color: kWhiteColor,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: 14.h),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(4.br),
+              child: LinearProgressIndicator(
+                value: progress.total > 0 ? progress.fraction : null,
+                backgroundColor: kWhiteColor.withValues(alpha: 0.08),
+                valueColor:
+                    const AlwaysStoppedAnimation<Color>(kPrimaryColor),
+                minHeight: 6.h,
+              ),
+            ),
+            SizedBox(height: 8.h),
+            Text(
+              progress.total > 0
+                  ? '${(progress.fraction * 100).toStringAsFixed(0)}%'
+                  : '',
+              style: AppTypography.textXsRegular.copyWith(
+                color: kWhiteColor.withValues(alpha: 0.55),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

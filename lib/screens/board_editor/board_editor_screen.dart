@@ -6,9 +6,11 @@ import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/chessboard/provider/current_eval_provider.dart';
 import 'package:chessever2/screens/chessboard/widgets/evaluation_bar_widget.dart';
+import 'package:chessever2/screens/library/pgn_import_preview_screen.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
+import 'package:chessever2/utils/pgn_multi_parser.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessground/chessground.dart';
 import 'package:dartchess/dartchess.dart' hide Board;
@@ -186,6 +188,31 @@ class _BoardEditorScreenState extends ConsumerState<BoardEditorScreen> {
     final pgn = clipboard?.text?.trim();
     if (pgn == null || pgn.isEmpty) {
       _showSnack('Clipboard is empty');
+      return;
+    }
+
+    // If the blob contains multiple PGNs, route through the import preview
+    // screen so the user can review the full list and save them in bulk.
+    final split = splitPgnGames(pgn);
+    if (split.length > 1) {
+      final parsed = parsePgnsToChessGames(pgn);
+      if (parsed.isEmpty) {
+        _showSnack(
+          'Failed to parse PGN',
+          backgroundColor: kRedColor.withValues(alpha: 0.9),
+        );
+        return;
+      }
+      if (!mounted) return;
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder:
+              (_) => PgnImportPreviewScreen(
+                games: parsed.map((e) => e.chessGame).toList(),
+                sourceLabel: 'clipboard',
+              ),
+        ),
+      );
       return;
     }
 

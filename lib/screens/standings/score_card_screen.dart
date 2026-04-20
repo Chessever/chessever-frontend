@@ -156,21 +156,20 @@ class ScoreCardScreen extends ConsumerWidget {
     return 1500.0;
   }
 
-  // Calculate K-factor
-  int _getKFactor(double rating, {String? title, String? timeControl}) {
-    // FIDE Rapid and Blitz Rating Regulations: K is 20 for all players.
-    if (timeControl == 'rapid' || timeControl == 'blitz') {
+  // Heuristic K-factor fallback used only when FIDE's per-time-control K is
+  // unavailable. FIDE's authoritative K (sticky 2400 → 10, U18 < 2300 → 40,
+  // default 20) is stored in `chess_players.{k,rapid_k,blitz_k}` and should
+  // be preferred via `fideK` in `_calculateFideRatingChange`.
+  int _heuristicKFactor(double rating, {String? title, String? timeControl}) {
+    final tc = timeControl?.toLowerCase();
+    if (tc == 'rapid' || tc == 'blitz') {
       return 20;
     }
 
-    // FIDE Standard Rating Regulations:
-    // K = 10 once a player's rating has reached 2400 and remains at that level subsequently,
-    // even if the rating drops below 2400.
     if (rating >= 2400) {
       return 10;
     }
 
-    // Check for GM/IM titles as reliable indicators of having reached 2400 in the past.
     if (title != null) {
       final t = title.toUpperCase();
       if (t == 'GM' || t == 'IM') {
@@ -181,14 +180,19 @@ class ScoreCardScreen extends ConsumerWidget {
     return 20;
   }
 
-  // Calculate FIDE Elo rating change
+  // Calculate FIDE Elo rating change.
+  // Pass [fideK] from `chess_players` for the event's time control to use
+  // FIDE's authoritative K. Pass [playerRatingOverride] to use the player's
+  // FIDE rating for that same time control instead of the per-game PGN value.
   double _calculateFideRatingChange(
     double playerRating,
     double opponentRating,
     GameStatus gameStatus,
     String playerName,
-    GamesTourModel game,
-  ) {
+    GamesTourModel game, {
+    int? fideK,
+    double? playerRatingOverride,
+  }) {
     double actualScore;
     final isWhite = game.whitePlayer.name == playerName;
 
@@ -206,15 +210,18 @@ class ScoreCardScreen extends ConsumerWidget {
         return 0;
     }
 
-    double ratingDiff = (opponentRating - playerRating).clamp(-400.0, 400.0);
+    final effectivePlayerRating = playerRatingOverride ?? playerRating;
+    double ratingDiff =
+        (opponentRating - effectivePlayerRating).clamp(-400.0, 400.0);
     double expectedScore = 1 / (1 + math.pow(10, ratingDiff / 400.0));
     final playerTitle =
         isWhite ? game.whitePlayer.title : game.blackPlayer.title;
-    int kFactor = _getKFactor(
-      playerRating,
-      title: playerTitle,
-      timeControl: game.timeControl,
-    );
+    final int kFactor = fideK ??
+        _heuristicKFactor(
+          effectivePlayerRating,
+          title: playerTitle,
+          timeControl: game.timeControl,
+        );
     double ratingChange = kFactor * (actualScore - expectedScore);
 
     return ratingChange;
@@ -243,6 +250,17 @@ class ScoreCardScreen extends ConsumerWidget {
       backfilledStandingPlayerProvider(selectedPlayer),
     );
     final player = backfilledPlayerAsync.valueOrNull ?? selectedPlayer;
+
+    // FIDE per-time-control rating + K-factor for the selected player.
+    // Used to drive correct Elo change calculations: a 2410 standard player
+    // can have K=10 standard but K=40 rapid (e.g. U18 with rapid_rating < 2300),
+    // so we must match the K to the event's time control, not guess.
+    final playerRatingsAsync = ref.watch(
+      allRatingsProvider(
+        AllRatingsRequest(fideId: player.fideId, playerName: player.name),
+      ),
+    );
+    final playerRatings = playerRatingsAsync.valueOrNull;
 
     final selectedBroadcast = ref.watch(selectedBroadcastModelProvider);
     final gamesContext = ref.watch(scoreCardGamesContextProvider);
@@ -510,14 +528,24 @@ class ScoreCardScreen extends ConsumerWidget {
               break;
           }
 
-          // Calculate rating change for this game and add to total
+          // Calculate rating change for this game and add to total.
+          // Prefer FIDE per-time-control rating + K from chess_players over
+          // the per-game PGN rating; PGN values often reflect a different
+          // time control than the event (e.g. standard rating in a blitz PGN).
           if (playerRating > 0) {
+            final tc = game.timeControl;
+            final fideK = tc != null ? playerRatings?.getK(tc) : null;
+            final fidePlayerRating = tc != null
+                ? playerRatings?.getRating(tc)?.toDouble()
+                : null;
             final ratingChange = _calculateFideRatingChange(
               playerRating,
               opponentRating,
               game.gameStatus,
               player.name,
               game,
+              fideK: fideK,
+              playerRatingOverride: fidePlayerRating,
             );
             totalRatingDiff += ratingChange;
           }
@@ -747,12 +775,20 @@ class ScoreCardScreen extends ConsumerWidget {
 
                       double ratingChange = 0.0;
                       if (playerRating > 0 && opponentRating > 0) {
+                        final tc = game.timeControl;
+                        final fideK =
+                            tc != null ? playerRatings?.getK(tc) : null;
+                        final fidePlayerRating = tc != null
+                            ? playerRatings?.getRating(tc)?.toDouble()
+                            : null;
                         ratingChange = _calculateFideRatingChange(
                           playerRating,
                           opponentRating,
                           game.gameStatus,
                           player.name,
                           game,
+                          fideK: fideK,
+                          playerRatingOverride: fidePlayerRating,
                         );
                       }
 

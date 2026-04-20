@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:chessever2/repository/supabase/supabase.dart';
 import 'package:chessever2/repository/supabase/tour/tour_repository.dart';
 import 'package:chessever2/repository/local_storage/favorite/favourate_standings_player_services.dart';
 import 'package:chessever2/repository/supabase/tour/tour.dart';
@@ -9,6 +10,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_p
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
+import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 /// Provides player standings for the tournament detail "Players" tab.
@@ -200,6 +202,37 @@ class PlayerTourScreenNotifier
         .trim();
   }
 
+  Future<Map<int, _FideEloRow>> _fetchFideEloBatch(List<int> fideIds) async {
+    if (fideIds.isEmpty) return const {};
+    try {
+      final supabase = ref.read(supabaseProvider);
+      final rows = await supabase
+          .from('chess_players')
+          .select(
+            'fideid, rating, rapid_rating, blitz_rating, k, rapid_k, blitz_k',
+          )
+          .inFilter('fideid', fideIds);
+
+      final map = <int, _FideEloRow>{};
+      for (final row in rows) {
+        final id = row['fideid'];
+        if (id is! int) continue;
+        map[id] = _FideEloRow(
+          standard: row['rating'] as int?,
+          rapid: row['rapid_rating'] as int?,
+          blitz: row['blitz_rating'] as int?,
+          standardK: row['k'] as int?,
+          rapidK: row['rapid_k'] as int?,
+          blitzK: row['blitz_k'] as int?,
+        );
+      }
+      return map;
+    } catch (e) {
+      debugPrint('Error fetching FIDE Elo batch: $e');
+      return const {};
+    }
+  }
+
   Future<List<PlayerStandingModel>> _buildStandingsFromData({
     required List<TournamentPlayer> tournamentPlayers,
     required List<GamesTourModel> gamesTourModels,
@@ -251,6 +284,25 @@ class PlayerTourScreenNotifier
         gamesByPlayerKey.putIfAbsent(ref.key, () => []).add(ref);
       }
     }
+
+    // Batch-fetch FIDE per-time-control ratings + K-factors for every player
+    // with a fideId. This lets us apply the authoritative K (e.g. rapid_k=10
+    // for someone who hit 2400 in rapid, not the hardcoded 20) instead of
+    // guessing. One round-trip, all players at once.
+    final fideIds = <int>{};
+    for (final player in players) {
+      final id = player.fideId;
+      if (id != null && id > 0) fideIds.add(id);
+    }
+    // Also include opponents discovered via gamesByPlayerKey, since the
+    // opponent's rating feeds into the expected-score calc.
+    for (final game in gamesTourModels) {
+      for (final card in [game.whitePlayer, game.blackPlayer]) {
+        final id = card.fideId;
+        if (id != null && id > 0) fideIds.add(id);
+      }
+    }
+    final fideEloByFideId = await _fetchFideEloBatch(fideIds.toList());
 
     // Enrich player data and compute match results
     final enrichedPlayers = <TournamentPlayer>[];
@@ -324,13 +376,32 @@ class PlayerTourScreenNotifier
         );
 
         if (playerRating != null && opponentRating != null) {
+          final tc = gameRef.game.timeControl;
+          final playerFide =
+              updatedPlayer.fideId != null
+                  ? fideEloByFideId[updatedPlayer.fideId!]
+                  : null;
+          final opponentFideId = opponentCard.fideId;
+          final opponentFide =
+              opponentFideId != null ? fideEloByFideId[opponentFideId] : null;
+
+          // Prefer FIDE per-time-control rating + K from chess_players.
+          // A 2405 standard player can have rapid_k=10 while our old heuristic
+          // hardcoded K=20 for rapid — causing 2x the real rating change.
+          final fideK = tc != null ? playerFide?.getK(tc) : null;
+          final fidePlayerRating =
+              tc != null ? playerFide?.getRating(tc)?.toDouble() : null;
+          final fideOpponentRating =
+              tc != null ? opponentFide?.getRating(tc)?.toDouble() : null;
+
           totalRatingDiff += _calculateFideRatingChange(
-            playerRating,
-            opponentRating,
+            fidePlayerRating ?? playerRating,
+            fideOpponentRating ?? opponentRating,
             status,
             gameRef.isWhite,
             title: gameRef.playerCard.title,
-            timeControl: gameRef.game.timeControl,
+            timeControl: tc,
+            fideK: fideK,
           );
           hasCalculatedRatingDiff = true;
         }
@@ -347,12 +418,54 @@ class PlayerTourScreenNotifier
       );
     }
 
-    // Sort by ABSOLUTE SCORE (not percentage!)
+    // Buchholz Cut-1 tiebreaker: sum of opponents' final scores minus the
+    // single lowest opponent score. Requires every player's score to be known,
+    // so it runs as a second pass after the enrichment loop above.
+    final scoreByKey = <String, double>{};
+    for (final player in enrichedPlayers) {
+      scoreByKey[_canonicalName(player.name)] = player.score ?? 0.0;
+    }
+
+    final buchholzByKey = <String, double>{};
+    for (final player in enrichedPlayers) {
+      final key = _canonicalName(player.name);
+      final playerGames = gamesByPlayerKey[key] ?? const <_PlayerGameRef>[];
+
+      final opponentScores = <double>[];
+      for (final gameRef in playerGames) {
+        final status = gameRef.game.gameStatus;
+        if (status == GameStatus.ongoing || status == GameStatus.unknown) {
+          continue;
+        }
+        final opponentCard = gameRef.isWhite
+            ? gameRef.game.blackPlayer
+            : gameRef.game.whitePlayer;
+        final opponentKey = _canonicalGameKey(opponentCard.name);
+        if (opponentKey.isEmpty) continue;
+        opponentScores.add(scoreByKey[opponentKey] ?? 0.0);
+      }
+
+      double buchholz;
+      if (opponentScores.isEmpty) {
+        buchholz = 0.0;
+      } else {
+        final sum = opponentScores.fold<double>(0.0, (a, b) => a + b);
+        final lowest = opponentScores.reduce((a, b) => a < b ? a : b);
+        buchholz = sum - lowest;
+      }
+      buchholzByKey[key] = buchholz;
+    }
+
+    // Sort by absolute score, then Buchholz Cut-1, then current rating.
     enrichedPlayers.sort((a, b) {
       final aScore = a.score ?? 0.0;
       final bScore = b.score ?? 0.0;
-
       if (bScore != aScore) return bScore.compareTo(aScore);
+
+      final aBuch = buchholzByKey[_canonicalName(a.name)] ?? 0.0;
+      final bBuch = buchholzByKey[_canonicalName(b.name)] ?? 0.0;
+      if (bBuch != aBuch) return bBuch.compareTo(aBuch);
+
       return (b.rating ?? 0).compareTo(a.rating ?? 0);
     });
 
@@ -435,20 +548,20 @@ class PlayerTourScreenNotifier
     return null;
   }
 
-  int _getKFactor(double rating, {String? title, String? timeControl}) {
-    // FIDE Rapid and Blitz Rating Regulations: K is 20 for all players.
-    if (timeControl == 'rapid' || timeControl == 'blitz') {
+  // Heuristic K-factor fallback used only when FIDE's per-time-control K is
+  // unavailable. FIDE's authoritative K (sticky 2400 → 10, U18 < 2300 → 40,
+  // default 20) lives in `chess_players.{k,rapid_k,blitz_k}` and must be
+  // preferred; see [_calculateFideRatingChange].
+  int _heuristicKFactor(double rating, {String? title, String? timeControl}) {
+    final tc = timeControl?.toLowerCase();
+    if (tc == 'rapid' || tc == 'blitz') {
       return 20;
     }
 
-    // FIDE Standard Rating Regulations:
-    // K = 10 once a player's rating has reached 2400 and remains at that level subsequently,
-    // even if the rating drops below 2400.
     if (rating >= 2400) {
       return 10;
     }
 
-    // Check for GM/IM titles as reliable indicators of having reached 2400 in the past.
     if (title != null) {
       final t = title.toUpperCase();
       if (t == 'GM' || t == 'IM') {
@@ -466,6 +579,7 @@ class PlayerTourScreenNotifier
     bool isWhite, {
     String? title,
     String? timeControl,
+    int? fideK,
   }) {
     double actualScore;
 
@@ -485,12 +599,57 @@ class PlayerTourScreenNotifier
 
     final ratingDiff = (opponentRating - playerRating).clamp(-400.0, 400.0);
     final expectedScore = 1 / (1 + math.pow(10, ratingDiff / 400.0));
-    final kFactor = _getKFactor(
-      playerRating,
-      title: title,
-      timeControl: timeControl,
-    );
+    final kFactor = fideK ??
+        _heuristicKFactor(
+          playerRating,
+          title: title,
+          timeControl: timeControl,
+        );
     return kFactor * (actualScore - expectedScore);
+  }
+}
+
+/// One player's FIDE per-time-control ratings + K-factors, as stored in
+/// `chess_players`. Source of truth for Elo change calculations.
+class _FideEloRow {
+  const _FideEloRow({
+    this.standard,
+    this.rapid,
+    this.blitz,
+    this.standardK,
+    this.rapidK,
+    this.blitzK,
+  });
+
+  final int? standard;
+  final int? rapid;
+  final int? blitz;
+  final int? standardK;
+  final int? rapidK;
+  final int? blitzK;
+
+  int? getRating(String timeControl) {
+    final tc = timeControl.toLowerCase();
+    final raw = switch (tc) {
+      'standard' || 'classical' => standard,
+      'rapid' => rapid,
+      'blitz' => blitz,
+      _ => standard,
+    };
+    if (raw == null || raw <= 0) return null;
+    return raw;
+  }
+
+  int? getK(String timeControl) {
+    final tc = timeControl.toLowerCase();
+    final raw = switch (tc) {
+      'standard' || 'classical' => standardK,
+      'rapid' => rapidK,
+      'blitz' => blitzK,
+      _ => standardK,
+    };
+    if (raw == null || raw <= 0) return null;
+    return raw;
   }
 }
 

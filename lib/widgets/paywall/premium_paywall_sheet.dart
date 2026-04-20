@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 import 'package:chessever2/revenue_cat_service/revenue_cat_service.dart';
 import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
+import 'package:chessever2/services/appsflyer_service.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/extensioms/string_extensions.dart';
@@ -19,6 +20,9 @@ import 'package:url_launcher/url_launcher.dart';
 Future<bool> showPremiumPaywallSheet({required BuildContext context}) async {
   // Sync purchases when paywall opens (user might have subscribed externally)
   unawaited(RevenueCatService().syncPurchases());
+
+  // AppsFlyer funnel: paywall view counts as checkout intent.
+  unawaited(AppsflyerService.instance.logInitiatedCheckout());
 
   final result = await showModalBottomSheet<bool>(
     context: context,

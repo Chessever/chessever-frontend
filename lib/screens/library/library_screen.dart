@@ -3,6 +3,7 @@ import 'package:chessever2/repository/library/library_repository.dart';
 import 'package:chessever2/repository/library/models/library_folder.dart';
 import 'package:chessever2/screens/library/folder_contents_screen.dart';
 import 'package:chessever2/screens/gamebase/gamebase_explorer_screen.dart';
+import 'package:chessever2/screens/library/pgn_import_preview_screen.dart';
 import 'package:chessever2/screens/library/providers/library_folders_provider.dart';
 import 'package:chessever2/screens/board_editor/board_editor_screen.dart';
 import 'package:chessever2/screens/library/twic_contents_screen.dart';
@@ -14,6 +15,7 @@ import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/library_utils.dart';
+import 'package:chessever2/utils/pgn_multi_parser.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
@@ -84,9 +86,66 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
         .toList();
   }
 
-  Future<void> _handleCreateFolder() async {
+  Future<void> _handlePlusButton() async {
     HapticFeedback.mediumImpact();
+    final choice = await _showAddSourceSheet(context);
+    if (choice == null || !mounted) return;
 
+    switch (choice) {
+      case _AddSourceChoice.createDatabase:
+        await _handleCreateFolder();
+      case _AddSourceChoice.importPgn:
+        await _handleImportPgnFromClipboard();
+    }
+  }
+
+  Future<void> _handleImportPgnFromClipboard() async {
+    final clipboard = await Clipboard.getData(Clipboard.kTextPlain);
+    final text = clipboard?.text?.trim();
+    if (text == null || text.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Clipboard is empty. Copy a PGN first.',
+            style: TextStyle(color: kWhiteColor),
+          ),
+          backgroundColor: kBlack2Color.withValues(alpha: 0.95),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    final parsed = parsePgnsToChessGames(text);
+    if (parsed.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Clipboard does not contain a valid PGN',
+            style: TextStyle(color: kWhiteColor),
+          ),
+          backgroundColor: kRedColor.withValues(alpha: 0.9),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    if (!mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder:
+            (_) => PgnImportPreviewScreen(
+              games: parsed.map((e) => e.chessGame).toList(),
+              sourceLabel: 'clipboard',
+            ),
+      ),
+    );
+  }
+
+  Future<void> _handleCreateFolder() async {
     final isPremium = ref.read(subscriptionProvider).isSubscribed;
     if (!isPremium) {
       final folders = await ref.read(libraryFoldersStreamProvider.future);
@@ -247,7 +306,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                                 KeyedSubtree(
                                   key: e2eKey(E2eIds.libraryCreateFolderButton),
                                   child: _PlusButton(
-                                    onTap: _handleCreateFolder,
+                                    onTap: _handlePlusButton,
                                   ),
                                 ),
                               ],
@@ -812,6 +871,132 @@ class _LibraryFolderLoadingCard extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+enum _AddSourceChoice { createDatabase, importPgn }
+
+Future<_AddSourceChoice?> _showAddSourceSheet(BuildContext context) {
+  return showModalBottomSheet<_AddSourceChoice>(
+    context: context,
+    backgroundColor: Colors.transparent,
+    barrierColor: Colors.black.withValues(alpha: 0.6),
+    builder:
+        (context) => SafeArea(
+          top: false,
+          child: Container(
+            margin: EdgeInsets.all(12.w),
+            decoration: BoxDecoration(
+              color: const Color(0xFF121214),
+              borderRadius: BorderRadius.circular(20.br),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Padding(
+                  padding: EdgeInsets.fromLTRB(20.w, 18.h, 20.w, 6.h),
+                  child: Row(
+                    children: [
+                      Text(
+                        'Add to Library',
+                        style: AppTypography.textLgBold.copyWith(
+                          color: kWhiteColor,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                _AddSourceTile(
+                  icon: Icons.create_new_folder_outlined,
+                  title: 'Create Database',
+                  subtitle: 'New empty database or sub-database',
+                  onTap:
+                      () => Navigator.of(
+                        context,
+                      ).pop(_AddSourceChoice.createDatabase),
+                ),
+                Divider(
+                  height: 1,
+                  thickness: 0.5,
+                  color: kWhiteColor.withValues(alpha: 0.05),
+                ),
+                _AddSourceTile(
+                  icon: Icons.content_paste_go_rounded,
+                  title: 'Import PGN',
+                  subtitle: 'Paste one or more games from clipboard',
+                  onTap:
+                      () =>
+                          Navigator.of(context).pop(_AddSourceChoice.importPgn),
+                ),
+                SizedBox(height: 8.h),
+              ],
+            ),
+          ),
+        ),
+  );
+}
+
+class _AddSourceTile extends StatelessWidget {
+  const _AddSourceTile({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 14.h),
+        child: Row(
+          children: [
+            Container(
+              width: 40.sp,
+              height: 40.sp,
+              decoration: BoxDecoration(
+                color: kPrimaryColor.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(10.br),
+              ),
+              child: Icon(icon, color: kPrimaryColor, size: 22.sp),
+            ),
+            SizedBox(width: 14.w),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: AppTypography.textSmMedium.copyWith(
+                      color: kWhiteColor,
+                    ),
+                  ),
+                  SizedBox(height: 2.h),
+                  Text(
+                    subtitle,
+                    style: AppTypography.textXsRegular.copyWith(
+                      color: kWhiteColor.withValues(alpha: 0.55),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(
+              Icons.chevron_right_rounded,
+              color: kWhiteColor.withValues(alpha: 0.35),
+              size: 20.sp,
+            ),
+          ],
+        ),
       ),
     );
   }

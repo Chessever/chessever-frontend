@@ -50,13 +50,28 @@ post_install do |installer|
   installer.pods_project.targets.each do |target|
     flutter_additional_ios_build_settings(target)
 
-    # Fix deployment target warnings
     target.build_configurations.each do |config|
-      if target.name == 'Pods-ChessEverLiveActivity'
-        config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '16.1'
-      else
-        config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '16.1'
+      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '16.1'
+    end
+
+  end
+
+  # Xcode 16+ / clang 21 regression: inline asm `.incbin` in Stockfish's
+  # NNUE loader loses its -I search path when combined with -flto=full at
+  # link-time codegen, so device Release builds fail with
+  # "Could not find incbin file 'nn-*.nnue'". The stockfish pod's flags live
+  # in its xcconfig files (not the pbxproj), so patch those directly: strip
+  # LTO and forward the include path to the integrated assembler.
+  stockfish_xcconfig_dir = File.join(installer.sandbox.target_support_files_root, 'stockfish')
+  if File.directory?(stockfish_xcconfig_dir)
+    Dir.glob(File.join(stockfish_xcconfig_dir, 'stockfish.*.xcconfig')).each do |path|
+      contents = File.read(path)
+      patched = contents.gsub(/\s-flto(?:=full|=thin)?\b/, '')
+      extra = ' -Wa,-I,"${PODS_TARGET_SRCROOT}/Stockfish/src"'
+      patched = patched.gsub(/^(OTHER_CPLUSPLUSFLAGS(?:\[[^\]]+\])?\s*=.*)$/) do |line|
+        line.include?(extra.strip) ? line : "#{line}#{extra}"
       end
+      File.write(path, patched) if patched != contents
     end
   end
 end

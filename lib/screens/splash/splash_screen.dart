@@ -4,7 +4,6 @@ import 'package:chessever2/e2e/e2e_config.dart';
 import 'package:chessever2/screens/splash/splash_screen_provider.dart';
 import 'package:chessever2/services/deep_link_service.dart';
 import 'package:chessever2/theme/app_theme.dart';
-import 'package:chessever2/utils/notification_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/screen_wrapper.dart';
@@ -29,9 +28,6 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
   @override
   void initState() {
     super.initState();
-    if (!E2eConfig.isEnabled) {
-      unawaited(NotificationService.initialize());
-    }
     // Pre-cache SVGs to improve performance in the app
     unawaited(SvgAsset.preCacheAll(context));
     _runInitialization();

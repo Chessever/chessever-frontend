@@ -10,6 +10,7 @@ import 'package:chessever2/repository/authentication/model/exceptions.dart';
 import 'package:chessever2/repository/local_storage/sesions_manager/session_manager.dart';
 import 'package:chessever2/repository/migration/settings_migration_service.dart';
 import 'package:chessever2/services/analytics/analytics_service.dart';
+import 'package:chessever2/services/appsflyer_service.dart';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
@@ -89,6 +90,33 @@ class AuthController extends AutoDisposeAsyncNotifier<AppAuthState> {
     return const AppAuthState.unauthenticated();
   }
 
+  /// Fire `af_complete_registration` once, on the very first signIn event for
+  /// a freshly-created Supabase user. Gated on `createdAt` within the last
+  /// 2 minutes so session restores and repeat logins never re-fire it.
+  ///
+  /// Must stay idempotent — AppsFlyer counts this event toward the partner
+  /// commission funnel and double-fires inflate attribution.
+  void _maybeFireRegistrationEvent(User supabaseUser, AppUser appUser) {
+    try {
+      final createdAt = DateTime.tryParse(supabaseUser.createdAt);
+      if (createdAt == null) return;
+      final age = DateTime.now().toUtc().difference(createdAt.toUtc());
+      if (age.isNegative || age.inMinutes > 2) return;
+
+      final provider =
+          supabaseUser.appMetadata['provider']?.toString() ??
+              (supabaseUser.isAnonymous ? 'anonymous' : 'unknown');
+      unawaited(
+        AppsflyerService.instance.logSignUp(
+          method: provider,
+          userId: appUser.id,
+        ),
+      );
+    } catch (_) {
+      // Never let telemetry break the auth flow.
+    }
+  }
+
   void _startAuthListener() {
     _authSubscription?.cancel();
     _authSubscription = _supabase.auth.onAuthStateChange.listen(
@@ -119,6 +147,10 @@ class AuthController extends AutoDisposeAsyncNotifier<AppAuthState> {
           final appUser = AppUser.fromSupabaseUser(supabaseUser);
           await _sessionManager.saveSession(session, supabaseUser);
           state = AsyncValue.data(AppAuthState.authenticated(appUser));
+
+          if (data.event == AuthChangeEvent.signedIn) {
+            _maybeFireRegistrationEvent(supabaseUser, appUser);
+          }
 
           // Trigger migration/sync of local settings to Supabase
           // This runs in the background and doesn't block the auth flow

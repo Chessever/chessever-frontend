@@ -3623,9 +3623,13 @@ class ChessBoardScreenNotifierNew
             (move.to.rank == Rank.eighth && pos.turn == Side.white));
   }
 
-  void onAnalysisMove(NormalMove move, {bool? isDrop, bool? isPremove}) {
+  void onAnalysisMove(Move rawMove, {bool? viaDragAndDrop}) {
+    // chessground 9 passes the base Move type. Standard chess only produces
+    // NormalMove (no drops), so narrow here. Keep the rest of the body untouched.
+    if (rawMove is! NormalMove) return;
+    final NormalMove move = rawMove;
     _releaseLog(
-      '🎯 ANALYSIS MOVE: Received move ${move.uci}, isDrop=$isDrop, isPremove=$isPremove',
+      '🎯 ANALYSIS MOVE: Received move ${move.uci}, viaDragAndDrop=$viaDragAndDrop',
     );
     if (_isEditingBlockedByPreview(reason: 'board move')) {
       return;

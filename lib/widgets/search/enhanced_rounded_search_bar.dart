@@ -26,6 +26,7 @@ class EnhancedRoundedSearchBar extends ConsumerStatefulWidget {
   final int filterBadgeCount;
   final Key? textFieldKey;
   final Key? filterButtonKey;
+  final List<String>? rotatingHints;
 
   const EnhancedRoundedSearchBar({
     super.key,
@@ -44,6 +45,7 @@ class EnhancedRoundedSearchBar extends ConsumerStatefulWidget {
     this.filterBadgeCount = 0,
     this.textFieldKey,
     this.filterButtonKey,
+    this.rotatingHints,
   });
 
   @override
@@ -279,7 +281,8 @@ class _EnhancedRoundedSearchBarState
             child: SimpleSearchBar(
               textFieldKey: widget.textFieldKey,
               filterButtonKey: widget.filterButtonKey,
-              hintText: 'Search',
+              hintText: widget.hintText,
+              rotatingHints: widget.rotatingHints,
               controller: widget.controller,
               focusNode: _effectiveNode,
               onCloseTap: _clearSearchAndHide,

@@ -284,6 +284,7 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen> {
         focusNode: _searchFocusNode,
         enableOverlay: false,
         hintText: 'Search',
+        rotatingHints: const ['player', 'event', 'opening'],
         onChanged: _onSearchChanged,
         onFilterTap: _openFilters,
         filterButtonKey: e2eKey(E2eIds.libraryFilterButton),

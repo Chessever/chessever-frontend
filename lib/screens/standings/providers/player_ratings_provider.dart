@@ -282,13 +282,26 @@ class AllRatingsRequest {
   int get hashCode => fideId.hashCode ^ playerName.hashCode;
 }
 
-/// Result containing all three rating types
+/// Result containing all three rating types and their FIDE-published K-factors.
+/// K-factors are sourced from `chess_players` (`k`, `rapid_k`, `blitz_k`)
+/// and reflect FIDE's authoritative rules per time control (sticky 2400+ → 10,
+/// U18 with rating < 2300 → 40, default 20). Use these instead of guessing.
 class AllRatingsResult {
   final int? standard;
   final int? rapid;
   final int? blitz;
+  final int? standardK;
+  final int? rapidK;
+  final int? blitzK;
 
-  const AllRatingsResult({this.standard, this.rapid, this.blitz});
+  const AllRatingsResult({
+    this.standard,
+    this.rapid,
+    this.blitz,
+    this.standardK,
+    this.rapidK,
+    this.blitzK,
+  });
 
   int? getRating(String timeControlType) {
     switch (timeControlType.toLowerCase()) {
@@ -302,6 +315,18 @@ class AllRatingsResult {
       default:
         return standard;
     }
+  }
+
+  /// Returns FIDE-published K for the given time control, or null if missing/0.
+  int? getK(String timeControlType) {
+    final raw = switch (timeControlType.toLowerCase()) {
+      'standard' || 'classical' => standardK,
+      'rapid' => rapidK,
+      'blitz' => blitzK,
+      _ => standardK,
+    };
+    if (raw == null || raw <= 0) return null;
+    return raw;
   }
 
   bool get hasAnyRating => standard != null || rapid != null || blitz != null;
@@ -324,7 +349,9 @@ final allRatingsProvider = FutureProvider.family.autoDispose<
       final response =
           await supabase
               .from('chess_players')
-              .select('rating, rapid_rating, blitz_rating')
+              .select(
+                'rating, rapid_rating, blitz_rating, k, rapid_k, blitz_k',
+              )
               .eq('fideid', request.fideId!)
               .maybeSingle();
 
@@ -339,6 +366,9 @@ final allRatingsProvider = FutureProvider.family.autoDispose<
             standard: standard != null && standard > 0 ? standard : null,
             rapid: rapid != null && rapid > 0 ? rapid : null,
             blitz: blitz != null && blitz > 0 ? blitz : null,
+            standardK: _parseRating(response['k']),
+            rapidK: _parseRating(response['rapid_k']),
+            blitzK: _parseRating(response['blitz_k']),
           );
         }
       }
@@ -353,7 +383,9 @@ final allRatingsProvider = FutureProvider.family.autoDispose<
       final response =
           await supabase
               .from('chess_players')
-              .select('rating, rapid_rating, blitz_rating')
+              .select(
+                'rating, rapid_rating, blitz_rating, k, rapid_k, blitz_k',
+              )
               .ilike('name', '%$normalizedName%')
               .limit(1)
               .maybeSingle();
@@ -369,6 +401,9 @@ final allRatingsProvider = FutureProvider.family.autoDispose<
             standard: standard != null && standard > 0 ? standard : null,
             rapid: rapid != null && rapid > 0 ? rapid : null,
             blitz: blitz != null && blitz > 0 ? blitz : null,
+            standardK: _parseRating(response['k']),
+            rapidK: _parseRating(response['rapid_k']),
+            blitzK: _parseRating(response['blitz_k']),
           );
         }
       }
