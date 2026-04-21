@@ -73,9 +73,15 @@ class _LibrarySearchBarState extends ConsumerState<LibrarySearchBar> {
   late final FocusNode _effectiveFocusNode;
 
   Timer? _rotationTimer;
+  Timer? _fadeOutTimer;
   int _hintIndex = 0;
   // One full pass through [rotatingHints], then we freeze on plain hintText.
   bool _cycleDone = false;
+  // Brief window after the final tick where SpringHintWord is given an
+  // empty word so the last entry spring-fades out before we hand back to
+  // the static hintText — fixes the abrupt "snap" at cycle end.
+  bool _cycleFadingOut = false;
+  static const Duration _cycleFadeOutDuration = Duration(milliseconds: 460);
 
   @override
   void initState() {
@@ -93,6 +99,8 @@ class _LibrarySearchBarState extends ConsumerState<LibrarySearchBar> {
         oldWidget.rotationInterval != widget.rotationInterval) {
       _hintIndex = 0;
       _cycleDone = false;
+      _cycleFadingOut = false;
+      _fadeOutTimer?.cancel();
       _restartRotation();
     }
   }
@@ -100,6 +108,7 @@ class _LibrarySearchBarState extends ConsumerState<LibrarySearchBar> {
   @override
   void dispose() {
     _rotationTimer?.cancel();
+    _fadeOutTimer?.cancel();
     _effectiveFocusNode.removeListener(_onFocusChange);
     if (widget.focusNode == null) _internalFocusNode.dispose();
     widget.controller.removeListener(_onTextChange);
@@ -122,11 +131,14 @@ class _LibrarySearchBarState extends ConsumerState<LibrarySearchBar> {
     return h != null && h.length > 1 && !_cycleDone;
   }
 
+  bool get _showRotatingOverlay => _canRotate || _cycleFadingOut;
+
   void _restartRotation() {
     _rotationTimer?.cancel();
     if (!_canRotate ||
         widget.controller.text.isNotEmpty ||
-        _effectiveFocusNode.hasFocus) {
+        _effectiveFocusNode.hasFocus ||
+        _cycleFadingOut) {
       return;
     }
     _rotationTimer = Timer.periodic(widget.rotationInterval, (_) {
@@ -134,7 +146,12 @@ class _LibrarySearchBarState extends ConsumerState<LibrarySearchBar> {
       final next = _hintIndex + 1;
       if (next >= widget.rotatingHints!.length) {
         _rotationTimer?.cancel();
-        setState(() => _cycleDone = true);
+        setState(() => _cycleFadingOut = true);
+        _fadeOutTimer?.cancel();
+        _fadeOutTimer = Timer(_cycleFadeOutDuration, () {
+          if (!mounted) return;
+          setState(() => _cycleDone = true);
+        });
       } else {
         setState(() => _hintIndex = next);
       }
@@ -276,7 +293,10 @@ class _LibrarySearchBarState extends ConsumerState<LibrarySearchBar> {
 
   Widget _buildRotatingHint() {
     final hints = widget.rotatingHints!;
-    final word = hints[_hintIndex % hints.length];
+    // Empty word during fade-out lets SpringHintWord animate the last entry
+    // away before the hint reverts to static text.
+    final word =
+        _cycleFadingOut ? '' : hints[_hintIndex % hints.length];
     final prefix = widget.hintText.isEmpty ? '' : '${widget.hintText} ';
     final style = AppTypography.textXsRegular.copyWith(
       color: const Color(0xFFFFFFFF).withValues(alpha: 0.7),
@@ -312,7 +332,7 @@ class _LibrarySearchBarState extends ConsumerState<LibrarySearchBar> {
               children: [
                 // Animated hint text (shown when empty and not focused)
                 if (isEmpty && !_effectiveFocusNode.hasFocus)
-                  if (_canRotate)
+                  if (_showRotatingOverlay)
                     _buildRotatingHint()
                   else if (widget.hintPhrases != null &&
                       widget.hintPhrases!.length > 1)

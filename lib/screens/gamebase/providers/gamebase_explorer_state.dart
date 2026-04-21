@@ -325,12 +325,23 @@ extension GameFilterToGamebaseFilters on GameFilter {
         gameResult = null;
     }
 
+    final bool? isOnline;
+    switch (online) {
+      case GameOnlineFilter.online:
+        isOnline = true;
+      case GameOnlineFilter.otb:
+        isOnline = false;
+      case GameOnlineFilter.all:
+        isOnline = null;
+    }
+
     return GamebaseFilters(
       timeControls: timeControls,
       minRating: clampedMin > GameFilter.absoluteMinRating ? clampedMin : null,
       maxRating: clampedMax < GameFilter.absoluteMaxRating ? clampedMax : null,
       playerColor: playerColor,
       gameResult: gameResult,
+      isOnline: isOnline,
       yearFrom: minYear > GameFilter.absoluteMinYear ? minYear : null,
       yearTo: maxYear < DateTime.now().year ? maxYear : null,
     );
@@ -341,6 +352,7 @@ extension GameFilterToGamebaseFilters on GameFilter {
       timeControl != GameTimeControlFilter.all ||
       color != GameColorFilter.all ||
       result != GameResultFilter.all ||
+      online != GameOnlineFilter.all ||
       minRating != GameFilter.defaultMinRating ||
       maxRating != GameFilter.absoluteMaxRating ||
       minYear != GameFilter.absoluteMinYear ||

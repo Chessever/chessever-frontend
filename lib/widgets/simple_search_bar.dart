@@ -49,11 +49,18 @@ class SimpleSearchBar extends StatefulWidget {
 
 class _SimpleSearchBarState extends State<SimpleSearchBar> {
   Timer? _rotationTimer;
+  Timer? _fadeOutTimer;
   int _hintIndex = 0;
   // Rotation runs exactly one full cycle through [rotatingHints] and then
   // stops, leaving the plain static hintText — this keeps the affordance
   // subtle on first view without drawing the eye forever.
   bool _cycleDone = false;
+  // Set between the last word and _cycleDone: SpringHintWord receives an
+  // empty string so the final word spring-fades out instead of snapping.
+  bool _cycleFadingOut = false;
+  // Must comfortably cover SpringHintWord's 420ms spring so the word has
+  // fully settled before the plain hintText takes over.
+  static const Duration _cycleFadeOutDuration = Duration(milliseconds: 460);
 
   @override
   void initState() {
@@ -73,6 +80,8 @@ class _SimpleSearchBarState extends State<SimpleSearchBar> {
         oldWidget.rotationInterval != widget.rotationInterval) {
       _hintIndex = 0;
       _cycleDone = false;
+      _cycleFadingOut = false;
+      _fadeOutTimer?.cancel();
       _restartRotation();
     }
   }
@@ -80,6 +89,7 @@ class _SimpleSearchBarState extends State<SimpleSearchBar> {
   @override
   void dispose() {
     _rotationTimer?.cancel();
+    _fadeOutTimer?.cancel();
     widget.controller.removeListener(_onTextChanged);
     super.dispose();
   }
@@ -101,13 +111,26 @@ class _SimpleSearchBarState extends State<SimpleSearchBar> {
 
   void _restartRotation() {
     _rotationTimer?.cancel();
-    if (!_canRotate || widget.controller.text.isNotEmpty || _cycleDone) return;
+    if (!_canRotate ||
+        widget.controller.text.isNotEmpty ||
+        _cycleDone ||
+        _cycleFadingOut) {
+      return;
+    }
     _rotationTimer = Timer.periodic(widget.rotationInterval, (_) {
       if (!mounted) return;
       final next = _hintIndex + 1;
       if (next >= widget.rotatingHints!.length) {
         _rotationTimer?.cancel();
-        setState(() => _cycleDone = true);
+        // Kick off the spring fade of the final word, then flip to the
+        // static hintText once the spring has settled — prevents the
+        // abrupt "snap" the user reported at cycle end.
+        setState(() => _cycleFadingOut = true);
+        _fadeOutTimer?.cancel();
+        _fadeOutTimer = Timer(_cycleFadeOutDuration, () {
+          if (!mounted) return;
+          setState(() => _cycleDone = true);
+        });
       } else {
         setState(() => _hintIndex = next);
       }
@@ -128,7 +151,10 @@ class _SimpleSearchBarState extends State<SimpleSearchBar> {
     if (_cycleDone) return null;
     final hints = widget.rotatingHints;
     if (hints == null || hints.isEmpty) return null;
-    final word = hints[_hintIndex % hints.length];
+    // Empty string during fade-out lets SpringHintWord spring the last word
+    // away instead of popping it off in a single frame.
+    final word =
+        _cycleFadingOut ? '' : hints[_hintIndex % hints.length];
     final prefix = widget.hintText.isEmpty ? '' : '${widget.hintText} ';
     return Row(
       mainAxisSize: MainAxisSize.min,
