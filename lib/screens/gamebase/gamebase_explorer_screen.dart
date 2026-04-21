@@ -126,10 +126,13 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
     final hasRatingOrTimeFilters =
         state.filters.timeControls.isNotEmpty ||
         state.filters.minRating != null ||
-        state.filters.maxRating != null;
+        state.filters.maxRating != null ||
+        state.filters.yearFrom != null ||
+        state.filters.yearTo != null;
 
     final hasColorFilter = state.filters.playerColor != null;
     final hasResultFilter = state.filters.gameResult != null;
+    final hasFormatFilter = state.filters.isOnline != null;
 
     final hasDifferentPlayerScope =
         state.filters.playerIds.length != 1 ||
@@ -140,6 +143,7 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
     return hasRatingOrTimeFilters ||
         hasColorFilter ||
         hasResultFilter ||
+        hasFormatFilter ||
         hasDifferentPlayerScope;
   }
 
@@ -1108,6 +1112,14 @@ class _FilterSheetState extends ConsumerState<_FilterSheet> {
     });
   }
 
+  void _toggleOnline(bool value) {
+    setState(() {
+      _draftFilters = _draftFilters.copyWith(
+        isOnline: _draftFilters.isOnline == value ? null : value,
+      );
+    });
+  }
+
   void _apply() {
     final canUsePlayerFilter = _canUsePlayerFilter(
       ref.read(subscriptionProvider).isSubscribed,
@@ -1144,15 +1156,18 @@ class _FilterSheetState extends ConsumerState<_FilterSheet> {
         _effectiveYearTo != null;
     final hasColor = filters.playerColor != null;
     final hasResult = filters.gameResult != null;
+    final hasFormat = filters.isOnline != null;
     if (widget.scopedPlayer == null) {
       return hasTimeOrRatingOrYear ||
           hasColor ||
           hasResult ||
+          hasFormat ||
           filters.playerIds.isNotEmpty;
     }
     return hasTimeOrRatingOrYear ||
         hasColor ||
         hasResult ||
+        hasFormat ||
         !_isScopedPlayerDraft(filters);
   }
 
@@ -1248,7 +1263,7 @@ class _FilterSheetState extends ConsumerState<_FilterSheet> {
                           selected: isSelected,
                           onSelected: (_) => _toggleTimeControl(tc),
                           selectedColor: kPrimaryColor.withValues(alpha: 0.2),
-                          checkmarkColor: kPrimaryColor,
+                          showCheckmark: false,
                           labelStyle: TextStyle(
                             color: isSelected ? kPrimaryColor : kWhiteColor,
                             fontSize: 12.f,
@@ -1282,7 +1297,7 @@ class _FilterSheetState extends ConsumerState<_FilterSheet> {
                           selected: isSelected,
                           onSelected: (_) => _toggleResult(r),
                           selectedColor: kPrimaryColor.withValues(alpha: 0.2),
-                          checkmarkColor: kPrimaryColor,
+                          showCheckmark: false,
                           labelStyle: TextStyle(
                             color: isSelected ? kPrimaryColor : kWhiteColor,
                             fontSize: 12.f,
@@ -1323,7 +1338,7 @@ class _FilterSheetState extends ConsumerState<_FilterSheet> {
                         onSelected:
                             (_) => _toggleColor(GamebasePlayerColor.white),
                         selectedColor: kPrimaryColor.withValues(alpha: 0.2),
-                        checkmarkColor: kPrimaryColor,
+                        showCheckmark: false,
                         labelStyle: TextStyle(
                           color:
                               filters.playerColor == GamebasePlayerColor.white
@@ -1351,7 +1366,7 @@ class _FilterSheetState extends ConsumerState<_FilterSheet> {
                         onSelected:
                             (_) => _toggleColor(GamebasePlayerColor.black),
                         selectedColor: kPrimaryColor.withValues(alpha: 0.2),
-                        checkmarkColor: kPrimaryColor,
+                        showCheckmark: false,
                         labelStyle: TextStyle(
                           color:
                               filters.playerColor == GamebasePlayerColor.black
@@ -1363,6 +1378,85 @@ class _FilterSheetState extends ConsumerState<_FilterSheet> {
                         side: BorderSide(
                           color:
                               filters.playerColor == GamebasePlayerColor.black
+                                  ? kPrimaryColor
+                                  : kDividerColor,
+                        ),
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: 16.sp),
+                ],
+
+                // Format filter (OTB / Online) — only when launched from a
+                // scoped player (i.e. the TWIC player profile), matching the
+                // "Format" filter in the player profile games tab.
+                if (widget.scopedPlayer != null) ...[
+                  Text(
+                    'Format',
+                    style: TextStyle(
+                      color: kSecondaryTextColor,
+                      fontSize: 12.f,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  SizedBox(height: 8.sp),
+                  Wrap(
+                    spacing: 8.sp,
+                    children: [
+                      FilterChip(
+                        label: const Text('OTB Only'),
+                        avatar: Icon(
+                          Icons.public_off_rounded,
+                          size: 14.sp,
+                          color:
+                              filters.isOnline == false
+                                  ? kPrimaryColor
+                                  : kWhiteColor,
+                        ),
+                        selected: filters.isOnline == false,
+                        onSelected: (_) => _toggleOnline(false),
+                        selectedColor: kPrimaryColor.withValues(alpha: 0.2),
+                        showCheckmark: false,
+                        labelStyle: TextStyle(
+                          color:
+                              filters.isOnline == false
+                                  ? kPrimaryColor
+                                  : kWhiteColor,
+                          fontSize: 12.f,
+                        ),
+                        backgroundColor: kBlack2Color,
+                        side: BorderSide(
+                          color:
+                              filters.isOnline == false
+                                  ? kPrimaryColor
+                                  : kDividerColor,
+                        ),
+                      ),
+                      FilterChip(
+                        label: const Text('Online Only'),
+                        avatar: Icon(
+                          Icons.public_rounded,
+                          size: 14.sp,
+                          color:
+                              filters.isOnline == true
+                                  ? kPrimaryColor
+                                  : kWhiteColor,
+                        ),
+                        selected: filters.isOnline == true,
+                        onSelected: (_) => _toggleOnline(true),
+                        selectedColor: kPrimaryColor.withValues(alpha: 0.2),
+                        showCheckmark: false,
+                        labelStyle: TextStyle(
+                          color:
+                              filters.isOnline == true
+                                  ? kPrimaryColor
+                                  : kWhiteColor,
+                          fontSize: 12.f,
+                        ),
+                        backgroundColor: kBlack2Color,
+                        side: BorderSide(
+                          color:
+                              filters.isOnline == true
                                   ? kPrimaryColor
                                   : kDividerColor,
                         ),
@@ -1985,19 +2079,9 @@ class _ExplorerBottomPanelsState extends ConsumerState<_ExplorerBottomPanels>
       TweenSequenceItem(tween: ConstantTween(0.0), weight: 5),
     ]).animate(_swipeController);
 
-    _swipeController.addListener(() {
-      if (!_pageController.hasClients) return;
-
-      final width = _pageController.position.viewportDimension;
-      final canGoNext = _currentPageIndex < _totalPages - 1;
-      final direction = canGoNext ? 1.0 : -1.0;
-      // Keep max drag < 0.5 so onPageChanged doesn't flip mid-animation.
-      final maxDrag = width * 0.45;
-      final delta = _swipeMoveAnimation.value * maxDrag * direction;
-      final baseOffset = _currentPageIndex * width;
-
-      _pageController.position.jumpTo(baseOffset + delta);
-    });
+    // Intentionally NOT driving `_pageController` during the tutorial:
+    // sliding the notation/explorer panel underneath the overlay looks like
+    // the dialog box itself is animating. Only the finger hint animates here.
   }
 
   Future<void> _checkAndShowWalkthrough() async {
@@ -3255,15 +3339,21 @@ class _TapTitleSegment extends StatelessWidget {
       alignment: Alignment.center,
       children: [
         if (pulseStrength > 0)
-          IgnorePointer(
-            child: Container(
-              width: 36.sp + pulseStrength * 18,
-              height: 24.sp + pulseStrength * 12,
-              decoration: BoxDecoration(
-                shape: BoxShape.rectangle,
-                borderRadius: BorderRadius.circular(20.br),
-                color: kPrimaryColor.withValues(
-                  alpha: (1 - pulseStrength) * 0.45,
+          Positioned.fill(
+            child: IgnorePointer(
+              child: OverflowBox(
+                maxWidth: double.infinity,
+                maxHeight: double.infinity,
+                child: Container(
+                  width: 36.sp + pulseStrength * 18,
+                  height: 24.sp + pulseStrength * 12,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.rectangle,
+                    borderRadius: BorderRadius.circular(20.br),
+                    color: kPrimaryColor.withValues(
+                      alpha: (1 - pulseStrength) * 0.45,
+                    ),
+                  ),
                 ),
               ),
             ),

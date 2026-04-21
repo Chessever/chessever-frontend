@@ -70,10 +70,18 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
     'opening',
   ];
   static const Duration _hintRotationInterval = Duration(seconds: 2);
+  // Must comfortably cover SpringHintWord's 420ms spring so the last word
+  // finishes animating out before we collapse back to plain "Search".
+  static const Duration _hintCycleFadeOutDuration = Duration(milliseconds: 460);
   Timer? _hintRotationTimer;
+  Timer? _hintFadeOutTimer;
   int _hintIndex = 0;
   // Rotation runs a single full pass, then collapses back to plain "Search".
   bool _hintCycleDone = false;
+  // Transient: after the final tick we pass '' to SpringHintWord so it
+  // spring-fades the last word out before the overlay disappears — fixes
+  // the abrupt "snap" at cycle end.
+  bool _hintCycleFadingOut = false;
 
   @override
   bool get wantKeepAlive => true;
@@ -110,14 +118,23 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
 
   void _restartHintRotation() {
     _hintRotationTimer?.cancel();
-    if (_hintCycleDone || _rotatingHints.length <= 1) return;
+    if (_hintCycleDone ||
+        _hintCycleFadingOut ||
+        _rotatingHints.length <= 1) {
+      return;
+    }
     if (_searchController.text.isNotEmpty || _searchFocusNode.hasFocus) return;
     _hintRotationTimer = Timer.periodic(_hintRotationInterval, (_) {
       if (!mounted) return;
       final next = _hintIndex + 1;
       if (next >= _rotatingHints.length) {
         _hintRotationTimer?.cancel();
-        setState(() => _hintCycleDone = true);
+        setState(() => _hintCycleFadingOut = true);
+        _hintFadeOutTimer?.cancel();
+        _hintFadeOutTimer = Timer(_hintCycleFadeOutDuration, () {
+          if (!mounted) return;
+          setState(() => _hintCycleDone = true);
+        });
       } else {
         setState(() => _hintIndex = next);
       }
@@ -136,6 +153,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
   void dispose() {
     _debounceTimer?.cancel();
     _hintRotationTimer?.cancel();
+    _hintFadeOutTimer?.cancel();
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
     _searchFocusNode.removeListener(_onSearchFocusChange);
@@ -568,7 +586,12 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
   }
 
   Widget _buildRotatingSearchHint() {
-    final word = _rotatingHints[_hintIndex % _rotatingHints.length];
+    // Pass an empty word during the fade-out phase so SpringHintWord animates
+    // the final entry out instead of disappearing in a single frame.
+    final word =
+        _hintCycleFadingOut
+            ? ''
+            : _rotatingHints[_hintIndex % _rotatingHints.length];
     final style = AppTypography.textSmRegular.copyWith(
       color: const Color(0xFFA1A1AA),
     );

@@ -11,7 +11,9 @@ import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 class FavoritesTabScreen extends ConsumerStatefulWidget {
-  const FavoritesTabScreen({super.key});
+  const FavoritesTabScreen({super.key, this.initialMode});
+
+  final FavoritesScreenMode? initialMode;
 
   @override
   ConsumerState<FavoritesTabScreen> createState() => _FavoritesTabScreenState();
@@ -23,10 +25,20 @@ class _FavoritesTabScreenState extends ConsumerState<FavoritesTabScreen> {
   @override
   void initState() {
     super.initState();
-    final initialPage = FavoritesScreenMode.values.indexOf(
-      ref.read(selectedFavoritesModeProvider),
+    final initialMode = widget.initialMode;
+    final FavoritesScreenMode mode =
+        initialMode ?? ref.read(selectedFavoritesModeProvider);
+    if (initialMode != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        ref
+            .read(selectedFavoritesModeProvider.notifier)
+            .update((_) => initialMode);
+      });
+    }
+    _pageController = PageController(
+      initialPage: FavoritesScreenMode.values.indexOf(mode),
     );
-    _pageController = PageController(initialPage: initialPage);
   }
 
   @override

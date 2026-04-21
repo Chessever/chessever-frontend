@@ -28,6 +28,7 @@ class HamburgerMenuCallbacks {
   final VoidCallback onPlayersPressed;
   final VoidCallback onAnalysisBoardPressed;
   final VoidCallback onOpeningExplorerPressed;
+  final VoidCallback onFavoritesPressed;
   final VoidCallback onSupportPressed;
   final VoidCallback onPremiumPressed;
   final VoidCallback onLogoutPressed;
@@ -36,6 +37,7 @@ class HamburgerMenuCallbacks {
     required this.onPlayersPressed,
     required this.onAnalysisBoardPressed,
     required this.onOpeningExplorerPressed,
+    required this.onFavoritesPressed,
     required this.onSupportPressed,
     required this.onPremiumPressed,
     required this.onLogoutPressed,
@@ -191,6 +193,19 @@ class HamburgerMenu extends HookConsumerWidget {
                       showChevron: true,
                     ),
                     _MenuItem(
+                      icon: Icons.favorite_border,
+                      title: 'Favorites',
+                      textStyle: AppTypography.textSmRegular.copyWith(
+                        color: kWhiteColor,
+                        height: 20.h / 14.h,
+                      ),
+                      onPressed: () {
+                        Navigator.of(context).pop();
+                        callbacks.onFavoritesPressed();
+                      },
+                      showChevron: true,
+                    ),
+                    _MenuItem(
                       key: e2eKey(E2eIds.drawerSettings),
                       customIcon: SvgWidget(
                         SvgAsset.settings,
@@ -244,25 +259,6 @@ class HamburgerMenu extends HookConsumerWidget {
                       ),
                       onPressed: () {
                         _launchPrivacyPolicy();
-                      },
-                      showChevron: true,
-                    ),
-                    _MenuItem(
-                      customIcon: SvgWidget(
-                        SvgAsset.email,
-                        semanticsLabel: 'Email Icon',
-                        height: 20.h,
-                        width: 20.w,
-                      ),
-                      icon: Icons.email_outlined,
-                      title: 'info@chessever.com',
-                      textStyle: AppTypography.textSmRegular.copyWith(
-                        color: kWhiteColor,
-                        decoration: TextDecoration.underline,
-                        decorationColor: kWhiteColor.withValues(alpha: 0.5),
-                      ),
-                      onPressed: () {
-                        _launchEmail();
                       },
                       showChevron: true,
                     ),
@@ -838,6 +834,17 @@ class _AboutDialog extends StatelessWidget {
                         },
                         delay: 500,
                       ),
+                      SizedBox(height: 12.h),
+                      _LinkButton(
+                        icon: Icons.email_outlined,
+                        label: 'Contact us',
+                        subtitle: 'info@chessever.com',
+                        onTap: () {
+                          HapticFeedbackService.buttonPress();
+                          _launchEmail();
+                        },
+                        delay: 600,
+                      ),
                     ],
                   ),
                 ),
@@ -873,7 +880,7 @@ class _AboutDialog extends StatelessWidget {
                       ),
                     )
                     .animate()
-                    .fadeIn(delay: 600.ms, duration: 400.ms)
+                    .fadeIn(delay: 700.ms, duration: 400.ms)
                     .slideY(begin: 0.3, end: 0),
               ],
             ),

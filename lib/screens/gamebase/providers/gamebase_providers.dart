@@ -852,6 +852,7 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
         maxRating: filters.maxRating,
         playerColor: filters.playerColor,
         gameResult: filters.gameResult,
+        isOnline: filters.isOnline,
         yearFrom: filters.yearFrom,
         yearTo: filters.yearTo,
       ),
@@ -1178,6 +1179,7 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
     final result = filters.gameResult?.apiValue ?? 'any';
     final yearFrom = filters.yearFrom?.toString() ?? 'any';
     final yearTo = filters.yearTo?.toString() ?? 'any';
+    final isOnline = filters.isOnline?.toString() ?? 'any';
 
     return [
       fen,
@@ -1190,6 +1192,7 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
       result,
       yearFrom,
       yearTo,
+      isOnline,
     ].join('|');
   }
 
