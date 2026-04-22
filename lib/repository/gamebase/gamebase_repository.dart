@@ -166,15 +166,6 @@ class GamebaseRepository {
     return parts.take(6).join(' ');
   }
 
-  static int _pliesFromFen(String fen) {
-    final parts = fen.trim().split(RegExp(r'\s+'));
-    if (parts.length < 6) return 0;
-    final turn = parts[1];
-    final fullMove = int.tryParse(parts[5]) ?? 1;
-    final base = (fullMove - 1).clamp(0, 1 << 30) * 2;
-    return base + (turn == 'b' ? 1 : 0);
-  }
-
   static String _positionKey(String fen) =>
       fen.trim().split(RegExp(r'\s+')).take(4).join(' ');
 
@@ -194,35 +185,76 @@ class GamebaseRepository {
   }
 
   static List<String> _sanitizeMovesForFen(String fen, List<String> moves) {
-    final fenPlyCount = _pliesFromFen(fen);
-    if (fenPlyCount <= 0 || moves.isEmpty) return const [];
+    if (moves.isEmpty) return const [];
 
     final normalizedMoves = moves
         .map((m) => m.trim().toLowerCase())
         .where((m) => RegExp(r'^[a-h][1-8][a-h][1-8][qrbn]?$').hasMatch(m))
-        .take(fenPlyCount)
         .toList(growable: false);
 
-    if (normalizedMoves.length != fenPlyCount) {
-      return const [];
-    }
+    if (normalizedMoves.isEmpty) return const [];
 
     try {
       Position position = Chess.initial;
+      final replayed = <String>[];
       for (final uci in normalizedMoves) {
         final move = _normalMoveFromUci(uci);
         if (move == null || !position.isLegal(move)) {
           return const [];
         }
+        // dartchess encodes castling king-to-rook (e1h1), but the backend
+        // (chess.js) only accepts the standard king-to-g/c UCI. Emit the
+        // standard form so deep-path queries (ply > indexed boundary) can
+        // replay the move line server-side.
+        replayed.add(_toStandardCastlingUci(position, move));
         position = position.play(move);
       }
 
+      // Only require the replayed position to match the target FEN (first 4
+      // fields — piece placement / turn / castling / en passant). Do NOT
+      // compare move count against _pliesFromFen: variation paths that
+      // replace a mainline move result in a move list shorter than the FEN's
+      // fullmove-derived ply count, and the old strict equality silently
+      // dropped the whole line at depth ≥ 21, collapsing the backend to the
+      // position-only path which returns empty past the indexed boundary.
       return _positionKey(position.fen) == _positionKey(fen)
-          ? normalizedMoves
+          ? List<String>.unmodifiable(replayed)
           : const [];
     } catch (_) {
       return const [];
     }
+  }
+
+  /// Returns the standard king-to-target UCI for a castling move, or the
+  /// original [move]'s UCI for any non-castling move.
+  ///
+  /// dartchess normalizes castling to the Chess960 king-to-rook form (e.g.
+  /// `e1h1`), but the Gamebase backend uses chess.js which only recognizes the
+  /// classical king-to-g/c form (`e1g1`, `e1c1`, `e8g8`, `e8c8`). Without this
+  /// rewrite, any move line containing a castle fails server-side replay and
+  /// deep-path queries return empty aggregates.
+  static String _toStandardCastlingUci(Position position, NormalMove move) {
+    final piece = position.board.pieceAt(move.from);
+    if (piece == null || piece.role != Role.king) return move.uci;
+
+    final fromFile = move.from.file;
+    final toFile = move.to.file;
+    final fileDelta = (fromFile - toFile).abs();
+
+    final targetPiece = position.board.pieceAt(move.to);
+    final capturesOwnRook = targetPiece != null &&
+        targetPiece.role == Role.rook &&
+        targetPiece.color == piece.color;
+
+    // File delta of 2+ (standard e1→g1/c1) or capturing own rook (Chess960
+    // form e1→h1/a1) both indicate castling. For everything else (e1→f1,
+    // e1→e2, etc.) fall through to the original UCI.
+    if (fileDelta < 2 && !capturesOwnRook) return move.uci;
+
+    final isKingSide = toFile > fromFile;
+    final targetFile = isKingSide ? File.g : File.c;
+    final targetSquare = Square.fromCoords(targetFile, move.from.rank);
+    return move.from.name + targetSquare.name;
   }
 
   /// Search players by name.
