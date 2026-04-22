@@ -139,9 +139,10 @@ class ScoreCardScreen extends ConsumerWidget {
     return null;
   }
 
-  // Get player rating from game
-  double _getPlayerRating(GamesTourModel game, String playerName) {
-    final isWhite = game.whitePlayer.name == playerName;
+  // Get player rating from game. `isWhite` must be resolved by the caller
+  // (via fide/fuzzy-name matching) since some broadcasts emit the same
+  // player under different name spellings across rounds.
+  double _getPlayerRatingForSide(GamesTourModel game, bool isWhite) {
     final playerCard = isWhite ? game.whitePlayer : game.blackPlayer;
 
     if (playerCard.rating > 0) {
@@ -188,13 +189,12 @@ class ScoreCardScreen extends ConsumerWidget {
     double playerRating,
     double opponentRating,
     GameStatus gameStatus,
-    String playerName,
+    bool isWhite,
     GamesTourModel game, {
     int? fideK,
     double? playerRatingOverride,
   }) {
     double actualScore;
-    final isWhite = game.whitePlayer.name == playerName;
 
     switch (gameStatus) {
       case GameStatus.whiteWins:
@@ -296,22 +296,7 @@ class ScoreCardScreen extends ConsumerWidget {
         hasExplicitContextEvent &&
         profileDataSource != PlayerProfileDataSource.twic;
 
-    if (shouldFetchFullEventGames) {
-      // Event context from non-tournament routes (e.g. For You, Countryman)
-      // Fetch full event games by tourId to include all rounds.
-      final fullGamesAsync = ref.watch(gamesTourProvider(contextEvent));
-      allGames = fullGamesAsync.when(
-        data: (games) {
-          final converted = _toGamesTourModels(games);
-          return converted.isNotEmpty ? converted : (gamesContext ?? []);
-        },
-        loading: () {
-          isLoadingGames = true;
-          return gamesContext ?? [];
-        },
-        error: (_, __) => gamesContext ?? [],
-      );
-    } else if (shouldFetchFullTwicEventGames) {
+    if (shouldFetchFullTwicEventGames) {
       // TWIC event context: fetch full player event history from backend.
       final request = TwicScorecardEventGamesRequest(
         playerId: playerGamebaseId,
@@ -329,9 +314,12 @@ class ScoreCardScreen extends ConsumerWidget {
         error: (_, __) => gamesContext ?? [],
       );
     } else if (selectedBroadcast != null) {
-      // Tournament context fallback when no explicit event context is available.
-      // Use mergedTournamentGamesProvider to ensure games from all related
-      // pagination categories (e.g. "Boards 67-126") are included.
+      // Tournament broadcast context — always prefer the merged provider so
+      // games across pagination-purposed sub-tours (e.g. EICC "Boards 1-66" +
+      // "Boards 67-126") are unified. This must win over shouldFetchFullEventGames:
+      // a caller may populate gamesContext with a single sub-tour's game, which
+      // would otherwise cause gamesTourProvider(subTourId) to miss the player's
+      // games in sibling sub-tours.
       final mergedGames = ref.watch(mergedTournamentGamesProvider);
 
       // If the merged provider is empty, we still want to check if the
@@ -345,6 +333,23 @@ class ScoreCardScreen extends ConsumerWidget {
           return [];
         },
         error: (_, __) => [],
+      );
+    } else if (shouldFetchFullEventGames) {
+      // Non-broadcast event context (e.g. For You, Countryman) — these flows
+      // clear selectedBroadcastModelProvider so we can't rely on the merged
+      // tournament provider. Fetch full event games by tourId to include all
+      // rounds for the player.
+      final fullGamesAsync = ref.watch(gamesTourProvider(contextEvent));
+      allGames = fullGamesAsync.when(
+        data: (games) {
+          final converted = _toGamesTourModels(games);
+          return converted.isNotEmpty ? converted : (gamesContext ?? []);
+        },
+        loading: () {
+          isLoadingGames = true;
+          return gamesContext ?? [];
+        },
+        error: (_, __) => gamesContext ?? [],
       );
     } else if (gamesContext != null && gamesContext.isNotEmpty) {
       // Games context provided (from favorites, countrymen, player profile, etc.)
@@ -504,10 +509,19 @@ class ScoreCardScreen extends ConsumerWidget {
           continue;
         }
 
-        final isWhite = game.whitePlayer.name == player.name;
+        // Use fuzzy/fide-aware matching: some broadcasts emit the same
+        // player with different name spellings across rounds
+        // (e.g. "IM Sargsyan, Anna" on one board, "Sargsyan, Anna" on
+        // another). Exact equality would mis-classify such rows.
+        final isWhite = playerUtils.isSamePlayerWithFideId(
+          game.whitePlayer.name,
+          player.name,
+          fideId1: game.whitePlayer.fideId,
+          fideId2: player.fideId,
+        );
         final opponent = isWhite ? game.blackPlayer : game.whitePlayer;
-        final playerRating = _getPlayerRating(game, player.name);
-        final opponentRating = _getPlayerRating(game, opponent.name);
+        final playerRating = _getPlayerRatingForSide(game, isWhite);
+        final opponentRating = _getPlayerRatingForSide(game, !isWhite);
 
         if (opponentRating > 0) {
           totalOpponentRating += opponentRating;
@@ -542,7 +556,7 @@ class ScoreCardScreen extends ConsumerWidget {
               playerRating,
               opponentRating,
               game.gameStatus,
-              player.name,
+              isWhite,
               game,
               fideK: fideK,
               playerRatingOverride: fidePlayerRating,
@@ -762,15 +776,25 @@ class ScoreCardScreen extends ConsumerWidget {
                   SliverList(
                     delegate: SliverChildBuilderDelegate((context, index) {
                       final game = playerGames[index];
-                      final isWhite = game.whitePlayer.name == player.name;
+                      // Fide-first, fuzzy-name-fallback match — see note in
+                      // the performance loop above.
+                      final isWhite = playerUtils.isSamePlayerWithFideId(
+                        game.whitePlayer.name,
+                        player.name,
+                        fideId1: game.whitePlayer.fideId,
+                        fideId2: player.fideId,
+                      );
                       final opponent =
                           isWhite ? game.blackPlayer : game.whitePlayer;
-                      final result = _getPlayerResult(game, player.name);
+                      final result = _getPlayerResult(game, isWhite);
 
-                      final playerRating = _getPlayerRating(game, player.name);
-                      final opponentRating = _getPlayerRating(
+                      final playerRating = _getPlayerRatingForSide(
                         game,
-                        opponent.name,
+                        isWhite,
+                      );
+                      final opponentRating = _getPlayerRatingForSide(
+                        game,
+                        !isWhite,
                       );
 
                       double ratingChange = 0.0;
@@ -785,7 +809,7 @@ class ScoreCardScreen extends ConsumerWidget {
                           playerRating,
                           opponentRating,
                           game.gameStatus,
-                          player.name,
+                          isWhite,
                           game,
                           fideK: fideK,
                           playerRatingOverride: fidePlayerRating,
@@ -861,8 +885,7 @@ class ScoreCardScreen extends ConsumerWidget {
     return (null, null);
   }
 
-  String _getPlayerResult(GamesTourModel game, String playerName) {
-    final isWhite = game.whitePlayer.name == playerName;
+  String _getPlayerResult(GamesTourModel game, bool isWhite) {
     switch (game.gameStatus) {
       case GameStatus.whiteWins:
         return isWhite ? '1' : '0';

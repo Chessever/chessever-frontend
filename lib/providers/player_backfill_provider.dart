@@ -1,5 +1,6 @@
 import 'package:chessever2/repository/supabase/chess_player/chess_player_repository.dart';
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
+import 'package:chessever2/screens/gamebase/models/gamebase_player.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/utils/chess_title_utils.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -105,6 +106,67 @@ final backfilledStandingPlayerProvider = FutureProvider.family
             }
           } catch (_) {
             // Best effort only.
+          }
+        }
+      }
+
+      // Last-resort: look the player up in the gamebase (TWIC) by name.
+      // Some broadcasts (e.g. Bill Wright Saint Louis Open 2026) arrive
+      // with null fideId/fed/rating on a player's game rows, so neither the
+      // game payload nor `chess_players` can resolve them. The gamebase is
+      // the canonical source, so a name hit there hydrates fideId and lets
+      // the rest of the profile pipeline work as if we had it from the start.
+      if (resolvedFideId == null) {
+        final query = player.name.trim();
+        if (query.isNotEmpty) {
+          try {
+            final matches = await ref
+                .read(gamebaseRepositoryProvider)
+                .getPlayers(name: query, pageSize: 10);
+            final target = _normalizePlayerName(query);
+            GamebasePlayer? best;
+            for (final candidate in matches) {
+              final candidateNorm = _normalizePlayerName(candidate.name);
+              if (candidateNorm == target) {
+                best = candidate;
+                break;
+              }
+              if (best == null &&
+                  (candidateNorm.contains(target) ||
+                      target.contains(candidateNorm))) {
+                best = candidate;
+              }
+            }
+            if (best != null) {
+              final parsedFide = int.tryParse(best.fideId);
+              if (parsedFide != null && parsedFide > 0) {
+                resolvedFideId = parsedFide;
+              }
+              final normalizedTitle = ChessTitleUtils.normalize(best.title);
+              mergedPlayer = mergedPlayer.copyWith(
+                fideId: resolvedFideId,
+                gamebasePlayerId:
+                    (mergedPlayer.gamebasePlayerId?.trim().isNotEmpty ?? false)
+                        ? mergedPlayer.gamebasePlayerId
+                        : best.id,
+                title:
+                    (mergedPlayer.title?.trim().isNotEmpty ?? false)
+                        ? mergedPlayer.title
+                        : (normalizedTitle.isNotEmpty ? normalizedTitle : null),
+                countryCode:
+                    mergedPlayer.countryCode.trim().isNotEmpty
+                        ? mergedPlayer.countryCode
+                        : best.fed,
+                score:
+                    mergedPlayer.score > 0
+                        ? mergedPlayer.score
+                        : (best.ratingClassical ??
+                            best.highestRating ??
+                            mergedPlayer.score),
+              );
+            }
+          } catch (_) {
+            // Best effort only — never fail the backfill on network errors.
           }
         }
       }

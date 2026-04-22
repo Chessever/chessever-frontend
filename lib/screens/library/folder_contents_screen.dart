@@ -4,10 +4,12 @@ import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/repository/library/library_repository.dart';
 import 'package:chessever2/repository/library/models/library_folder.dart';
 import 'package:chessever2/repository/library/models/saved_analysis.dart';
+import 'package:chessever2/screens/library/pgn_import_preview_screen.dart';
 import 'package:chessever2/screens/library/providers/book_games_paginated_provider.dart';
 import 'package:chessever2/screens/library/providers/library_folders_provider.dart';
 import 'package:chessever2/screens/library/utils/folder_pgn_exporter.dart';
 import 'package:chessever2/screens/library/utils/load_saved_analysis.dart';
+import 'package:chessever2/screens/library/widgets/add_to_library_sheet.dart';
 import 'package:chessever2/screens/library/widgets/book_saved_game_card.dart';
 import 'package:chessever2/screens/library/widgets/create_folder_dialog.dart';
 import 'package:chessever2/screens/library/widgets/folder_card.dart';
@@ -15,10 +17,12 @@ import 'package:chessever2/screens/library/widgets/swipe_action_card.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
+import 'package:chessever2/utils/pgn_multi_parser.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:chessever2/widgets/screen_wrapper.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
@@ -145,8 +149,79 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
     }
   }
 
-  void _handleCreateSubfolder() async {
+  Future<void> _handlePlusButton() async {
     HapticFeedbackService.light();
+    // Sub-databases can't nest further (2-layer hierarchy), so only offer
+    // "Create Sub-Database" on root folders.
+    final isRootFolder = widget.folder.parentId == null;
+    final choice = await showAddToLibrarySheet(
+      context,
+      title: 'Add to "$_currentFolderName"',
+      showCreateDatabase: isRootFolder,
+      createDatabaseTitle: 'Create Sub-Database',
+      createDatabaseSubtitle: 'New empty sub-database under this one',
+    );
+    if (choice == null || !mounted) return;
+
+    switch (choice) {
+      case AddToLibraryChoice.createDatabase:
+        await _handleCreateSubfolder();
+      case AddToLibraryChoice.importPgn:
+        await _handleImportPgnFromClipboard();
+    }
+  }
+
+  Future<void> _handleImportPgnFromClipboard() async {
+    final clipboard = await Clipboard.getData(Clipboard.kTextPlain);
+    final text = clipboard?.text?.trim();
+    if (text == null || text.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Clipboard is empty. Copy a PGN first.',
+            style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+          ),
+          backgroundColor: kBlack2Color.withValues(alpha: 0.95),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    final parsed = parsePgnsToChessGames(text);
+    if (parsed.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Clipboard does not contain a valid PGN',
+            style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+          ),
+          backgroundColor: kRedColor.withValues(alpha: 0.9),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    if (!mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder:
+            (_) => PgnImportPreviewScreen(
+              games: parsed.map((e) => e.chessGame).toList(),
+              initialFolderId: widget.folder.id,
+              sourceLabel: 'clipboard',
+            ),
+      ),
+    );
+    if (!mounted) return;
+    // Refresh in case games were saved into this folder from the sheet.
+    ref.read(bookGamesPaginatedProvider(_paginationKey).notifier).refresh();
+  }
+
+  Future<void> _handleCreateSubfolder() async {
     final data = await showCreateFolderDialog(
       context,
       initialParentId: widget.folder.id,
@@ -428,11 +503,12 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
                       size: 22.ic,
                     ),
                   ),
-                // Only show '+' for root folders (2-layer hierarchy) and
-                // owned folders (can't create sub-folders in a subscribed book).
-                if (widget.folder.parentId == null && !_isSubscribed)
+                // Shown for owned databases at both root and sub levels.
+                // The sheet itself hides "Create Sub-Database" on sub-level
+                // folders since 2-layer hierarchy doesn't allow deeper nesting.
+                if (!_isSubscribed)
                   IconButton(
-                    onPressed: _handleCreateSubfolder,
+                    onPressed: _handlePlusButton,
                     icon: Icon(
                       Icons.add_rounded,
                       color: kWhiteColor,
