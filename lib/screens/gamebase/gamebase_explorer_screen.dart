@@ -1387,84 +1387,85 @@ class _FilterSheetState extends ConsumerState<_FilterSheet> {
                   SizedBox(height: 16.sp),
                 ],
 
-                // Format filter (OTB / Online) — only when launched from a
-                // scoped player (i.e. the TWIC player profile), matching the
-                // "Format" filter in the player profile games tab.
-                if (widget.scopedPlayer != null) ...[
-                  Text(
-                    'Format',
-                    style: TextStyle(
-                      color: kSecondaryTextColor,
-                      fontSize: 12.f,
-                      fontWeight: FontWeight.w500,
+                // Format filter (OTB / Online). Available in every
+                // explorer scope — player-scoped (matches the "Format"
+                // filter in the player profile games tab) and the
+                // sidebar-accessed global explorer. The backend honors
+                // the `isOnline` flag the same way regardless of whether
+                // a player is selected.
+                Text(
+                  'Format',
+                  style: TextStyle(
+                    color: kSecondaryTextColor,
+                    fontSize: 12.f,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                SizedBox(height: 8.sp),
+                Wrap(
+                  spacing: 8.sp,
+                  children: [
+                    FilterChip(
+                      label: const Text('OTB Only'),
+                      avatar: Icon(
+                        Icons.public_off_rounded,
+                        size: 14.sp,
+                        color:
+                            filters.isOnline == false
+                                ? kPrimaryColor
+                                : kWhiteColor,
+                      ),
+                      selected: filters.isOnline == false,
+                      onSelected: (_) => _toggleOnline(false),
+                      selectedColor: kPrimaryColor.withValues(alpha: 0.2),
+                      showCheckmark: false,
+                      labelStyle: TextStyle(
+                        color:
+                            filters.isOnline == false
+                                ? kPrimaryColor
+                                : kWhiteColor,
+                        fontSize: 12.f,
+                      ),
+                      backgroundColor: kBlack2Color,
+                      side: BorderSide(
+                        color:
+                            filters.isOnline == false
+                                ? kPrimaryColor
+                                : kDividerColor,
+                      ),
                     ),
-                  ),
-                  SizedBox(height: 8.sp),
-                  Wrap(
-                    spacing: 8.sp,
-                    children: [
-                      FilterChip(
-                        label: const Text('OTB Only'),
-                        avatar: Icon(
-                          Icons.public_off_rounded,
-                          size: 14.sp,
-                          color:
-                              filters.isOnline == false
-                                  ? kPrimaryColor
-                                  : kWhiteColor,
-                        ),
-                        selected: filters.isOnline == false,
-                        onSelected: (_) => _toggleOnline(false),
-                        selectedColor: kPrimaryColor.withValues(alpha: 0.2),
-                        showCheckmark: false,
-                        labelStyle: TextStyle(
-                          color:
-                              filters.isOnline == false
-                                  ? kPrimaryColor
-                                  : kWhiteColor,
-                          fontSize: 12.f,
-                        ),
-                        backgroundColor: kBlack2Color,
-                        side: BorderSide(
-                          color:
-                              filters.isOnline == false
-                                  ? kPrimaryColor
-                                  : kDividerColor,
-                        ),
+                    FilterChip(
+                      label: const Text('Online Only'),
+                      avatar: Icon(
+                        Icons.public_rounded,
+                        size: 14.sp,
+                        color:
+                            filters.isOnline == true
+                                ? kPrimaryColor
+                                : kWhiteColor,
                       ),
-                      FilterChip(
-                        label: const Text('Online Only'),
-                        avatar: Icon(
-                          Icons.public_rounded,
-                          size: 14.sp,
-                          color:
-                              filters.isOnline == true
-                                  ? kPrimaryColor
-                                  : kWhiteColor,
-                        ),
-                        selected: filters.isOnline == true,
-                        onSelected: (_) => _toggleOnline(true),
-                        selectedColor: kPrimaryColor.withValues(alpha: 0.2),
-                        showCheckmark: false,
-                        labelStyle: TextStyle(
-                          color:
-                              filters.isOnline == true
-                                  ? kPrimaryColor
-                                  : kWhiteColor,
-                          fontSize: 12.f,
-                        ),
-                        backgroundColor: kBlack2Color,
-                        side: BorderSide(
-                          color:
-                              filters.isOnline == true
-                                  ? kPrimaryColor
-                                  : kDividerColor,
-                        ),
+                      selected: filters.isOnline == true,
+                      onSelected: (_) => _toggleOnline(true),
+                      selectedColor: kPrimaryColor.withValues(alpha: 0.2),
+                      showCheckmark: false,
+                      labelStyle: TextStyle(
+                        color:
+                            filters.isOnline == true
+                                ? kPrimaryColor
+                                : kWhiteColor,
+                        fontSize: 12.f,
                       ),
-                    ],
-                  ),
-                  SizedBox(height: 16.sp),
-                ],
+                      backgroundColor: kBlack2Color,
+                      side: BorderSide(
+                        color:
+                            filters.isOnline == true
+                                ? kPrimaryColor
+                                : kDividerColor,
+                      ),
+                    ),
+                  ],
+                ),
+                SizedBox(height: 16.sp),
 
                 // Rating range
                 Text(
