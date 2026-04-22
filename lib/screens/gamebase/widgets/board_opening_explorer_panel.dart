@@ -1,9 +1,6 @@
 import 'package:chessever2/screens/chessboard/view_model/chess_board_state_new.dart';
 import 'package:chessever2/screens/gamebase/providers/gamebase_providers.dart';
 import 'package:chessever2/screens/gamebase/widgets/move_statistics_panel.dart';
-import 'package:chessever2/theme/app_theme.dart';
-import 'package:chessever2/utils/app_typography.dart';
-import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -59,108 +56,6 @@ class BoardOpeningExplorerPanel extends HookConsumerWidget {
       return null;
     }, [currentFen, lineKey, startingFen]);
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const _InlineFormatChips(),
-        Expanded(child: MoveStatisticsPanel(onMove: onMoveSelected)),
-      ],
-    );
-  }
-}
-
-/// Compact Online / OTB toggle row for the board-level explorer panel.
-///
-/// The full `GamebaseFilterPanel` (with time control, rating range, etc.)
-/// is suppressed in this context because the swipeable bottom area is
-/// short on vertical space. Format is the one filter that's genuinely
-/// useful here — flipping between OTB and Online repertoires is a
-/// common mid-analysis action — so we expose just those two chips.
-/// Tapping the currently-selected chip clears back to "all formats",
-/// matching the behavior of the standalone filter panel's
-/// `_FormatChips` / `toggleFormat` handler.
-class _InlineFormatChips extends ConsumerWidget {
-  const _InlineFormatChips();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final selectedIsOnline = ref.watch(
-      gamebaseExplorerProvider.select((s) => s.filters.isOnline),
-    );
-
-    return Padding(
-      padding: EdgeInsets.fromLTRB(12.sp, 6.sp, 12.sp, 4.sp),
-      child: Row(
-        children: [
-          _InlineFormatChip(
-            label: 'OTB',
-            icon: Icons.location_on_outlined,
-            isSelected: selectedIsOnline == false,
-            onTap: () {
-              ref.read(gamebaseExplorerProvider.notifier).toggleFormat(false);
-            },
-          ),
-          SizedBox(width: 6.w),
-          _InlineFormatChip(
-            label: 'Online',
-            icon: Icons.language_rounded,
-            isSelected: selectedIsOnline == true,
-            onTap: () {
-              ref.read(gamebaseExplorerProvider.notifier).toggleFormat(true);
-            },
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _InlineFormatChip extends StatelessWidget {
-  const _InlineFormatChip({
-    required this.label,
-    required this.icon,
-    required this.isSelected,
-    required this.onTap,
-  });
-
-  final String label;
-  final IconData icon;
-  final bool isSelected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
-        padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 5.h),
-        decoration: BoxDecoration(
-          color: isSelected ? kWhiteColor.withOpacity(0.12) : kBlack3Color,
-          borderRadius: BorderRadius.circular(6.br),
-          border: Border.all(
-            color:
-                isSelected ? kWhiteColor.withOpacity(0.25) : Colors.transparent,
-            width: 1,
-          ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              icon,
-              size: 13.sp,
-              color: isSelected ? kWhiteColor : kSecondaryTextColor,
-            ),
-            SizedBox(width: 4.w),
-            Text(
-              label,
-              style: AppTypography.textXsMedium.copyWith(color: kWhiteColor),
-            ),
-          ],
-        ),
-      ),
-    );
+    return MoveStatisticsPanel(onMove: onMoveSelected);
   }
 }
