@@ -7,6 +7,8 @@
    <uses-permission android:name="android.permission.INTERNET" />
    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+   <!-- Required by AppsFlyer for advertising ID on Android 13+ (API 33+) -->
+   <uses-permission android:name="com.google.android.gms.permission.AD_ID" />
 
 
    <!-- Gal: WRITE permission only for Android 10 and below (API <= 29) -->

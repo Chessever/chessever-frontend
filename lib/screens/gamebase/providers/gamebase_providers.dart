@@ -916,6 +916,14 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
           startingFen ??
           'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 
+      // Fetch if we've never loaded aggregates for this position — otherwise a
+      // freshly-constructed notifier that happens to already hold the target
+      // position (e.g. initial chess position) would sit with an empty list
+      // forever, and the embedded board explorer panel would render a bogus
+      // "No games found" at the opening position.
+      final needsInitialFetch =
+          state.moveAggregates.isEmpty && !state.isLoading;
+
       if (state.game != null && state.game!.startingFen == actualStartingFen) {
         final existingPointer = _findPointerForPath(
           state.game!.mainline,
@@ -925,6 +933,7 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
           if (_positionKeyForComparison(state.currentFen) ==
                   targetPositionKey &&
               listEquals(state.movePointer, existingPointer)) {
+            if (needsInitialFetch) _scheduleFetch();
             return;
           }
           state = state.copyWith(
@@ -941,6 +950,7 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
       if (listEquals(currentExploredMoves, sanitizedMoves) &&
           _positionKeyForComparison(state.currentFen) == targetPositionKey &&
           state.game?.startingFen == actualStartingFen) {
+        if (needsInitialFetch) _scheduleFetch();
         return;
       }
 
@@ -1114,6 +1124,15 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
     final current = state.filters.gameResult;
     updateFilters(
       state.filters.copyWith(gameResult: current == result ? null : result),
+    );
+  }
+
+  /// Toggle format filter. [isOnline] = true means Online only, false means OTB
+  /// only. Passing the currently-selected value toggles back to "all".
+  void toggleFormat(bool isOnline) {
+    final current = state.filters.isOnline;
+    updateFilters(
+      state.filters.copyWith(isOnline: current == isOnline ? null : isOnline),
     );
   }
 

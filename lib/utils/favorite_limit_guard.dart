@@ -9,10 +9,10 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 /// Checks whether the user can add another favorite player.
 ///
-/// For premium users (or debug mode), always returns `true`.
-/// For free users at or above [kFreeFavoriteLimit]:
-///   - [isOnboarding] = true  → shows a toast and returns `false`
-///   - [isOnboarding] = false → shows the premium paywall and returns `false`
+/// Onboarding enforces a hard cap of [kFreeFavoriteLimit] with a friendly
+/// "add more after signing in" toast — never a paywall, because there's no
+/// account yet. In-app, premium bypasses the cap and free users get the
+/// paywall at the limit.
 ///
 /// When [currentSelectedCount] is provided (e.g. during onboarding where
 /// selections are local), it is used instead of the provider count.
@@ -22,23 +22,15 @@ Future<bool> canAddMoreFavorites(
   bool isOnboarding = false,
   int? currentSelectedCount,
 }) async {
-  final isSubscribed = ref.read(subscriptionProvider).isSubscribed;
-
-  if (isSubscribed) return true;
-
-  final currentCount =
-      currentSelectedCount ??
-      (ref.read(favoritePlayersProviderNew).valueOrNull?.length ?? 0);
-
-  if (currentCount < kFreeFavoriteLimit) return true;
-
-  // At limit — block the add
   if (isOnboarding) {
+    final currentCount = currentSelectedCount ?? 0;
+    if (currentCount < kFreeFavoriteLimit) return true;
+
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Subscribe to choose more favorites',
+            'You can follow more players after signing in',
             style: AppTypography.textSmRegular.copyWith(color: kWhiteColor),
           ),
           backgroundColor: kBlack2Color.withValues(alpha: 0.95),
@@ -49,7 +41,15 @@ Future<bool> canAddMoreFavorites(
     return false;
   }
 
-  // Non-onboarding: show paywall
+  final isSubscribed = ref.read(subscriptionProvider).isSubscribed;
+  if (isSubscribed) return true;
+
+  final currentCount =
+      currentSelectedCount ??
+      (ref.read(favoritePlayersProviderNew).valueOrNull?.length ?? 0);
+
+  if (currentCount < kFreeFavoriteLimit) return true;
+
   if (!context.mounted) return false;
   return await showPremiumPaywallSheet(context: context);
 }

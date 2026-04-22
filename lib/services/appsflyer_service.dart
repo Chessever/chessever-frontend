@@ -92,8 +92,11 @@ class AppsflyerService {
       afDevKey: devKey,
       appId: appId,
       showDebug: kDebugMode,
-      timeToWaitForATTUserAuthorization: 60, // seconds — covers cold-start delay
-      disableAdvertisingIdentifier: false,
+      // ATT prompt disabled — influencer OneLink attribution rides on af_sub1
+      // via onInstallConversionData and does not need IDFA. Keep the SDK from
+      // waiting on a dialog that will never appear.
+      timeToWaitForATTUserAuthorization: 0,
+      disableAdvertisingIdentifier: true,
       disableCollectASA: false,
       manualStart: true, // required to set CUID before first launch event
     );
@@ -129,13 +132,12 @@ class AppsflyerService {
         }
       });
 
-      // On iOS, defer the ATT prompt until the app is fully foregrounded.
-      // Requesting during init can silently fail (no dialog, status stays
-      // notDetermined) if the app scene isn't active yet. A short scheduler
-      // delay is the community-recommended workaround.
-      if (Platform.isIOS) {
-        await _requestAttWhenReady();
-      }
+      // ATT prompt intentionally disabled for affiliate-only attribution.
+      // Re-enable if we start running paid ad campaigns that need IDFA-level
+      // ROAS; otherwise SKAN + af_sub1 covers influencer links.
+      // if (Platform.isIOS) {
+      //   await _requestAttWhenReady();
+      // }
 
       // Set CUID before startSDK if the user is already authenticated, so the
       // install / first-launch event carries the identifier.
@@ -163,11 +165,9 @@ class AppsflyerService {
   }
 
   /// Request ATT after the current frame and a brief scene-active delay.
-  ///
-  /// iOS silently ignores `requestTrackingAuthorization` if the app hasn't
-  /// finished becoming active; waiting one scheduler tick plus ~400ms makes
-  /// the dialog reliable on cold start. Safe no-op if ATT was already
-  /// answered.
+  /// Currently unused — kept so the prompt can be re-enabled if we ever run
+  /// paid ad campaigns that need IDFA-level attribution.
+  // ignore: unused_element
   Future<void> _requestAttWhenReady() async {
     try {
       final current = await AppTrackingTransparency.trackingAuthorizationStatus;

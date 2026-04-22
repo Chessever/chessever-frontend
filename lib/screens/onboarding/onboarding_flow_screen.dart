@@ -154,7 +154,7 @@ class OnboardingFlowScreen extends HookConsumerWidget {
                     ),
                     child: PlayerSelectionContent(
                       title: 'Follow 3 players to get started',
-                      subtitle: 'Follow 3+ players to personalize your feed.',
+                      subtitle: 'Pick up to 3 now — add more after signing in.',
                       actionLabel: 'Continue',
                       badgeLabel: null,
                       onComplete: () => goToPage(3),
