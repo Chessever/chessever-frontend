@@ -35,6 +35,40 @@ PODS:
   - CocoaAsyncSocket (7.6.5)
   - device_info_plus (0.0.1):
     - Flutter
+  - DKImagePickerController/Core (4.3.9):
+    - DKImagePickerController/ImageDataManager
+    - DKImagePickerController/Resource
+  - DKImagePickerController/ImageDataManager (4.3.9)
+  - DKImagePickerController/PhotoGallery (4.3.9):
+    - DKImagePickerController/Core
+    - DKPhotoGallery
+  - DKImagePickerController/Resource (4.3.9)
+  - DKPhotoGallery (0.0.19):
+    - DKPhotoGallery/Core (= 0.0.19)
+    - DKPhotoGallery/Model (= 0.0.19)
+    - DKPhotoGallery/Preview (= 0.0.19)
+    - DKPhotoGallery/Resource (= 0.0.19)
+    - SDWebImage
+    - SwiftyGif
+  - DKPhotoGallery/Core (0.0.19):
+    - DKPhotoGallery/Model
+    - DKPhotoGallery/Preview
+    - SDWebImage
+    - SwiftyGif
+  - DKPhotoGallery/Model (0.0.19):
+    - SDWebImage
+    - SwiftyGif
+  - DKPhotoGallery/Preview (0.0.19):
+    - DKPhotoGallery/Model
+    - DKPhotoGallery/Resource
+    - SDWebImage
+    - SwiftyGif
+  - DKPhotoGallery/Resource (0.0.19):
+    - SDWebImage
+    - SwiftyGif
+  - file_picker (0.0.1):
+    - DKImagePickerController/PhotoGallery
+    - Flutter
   - Firebase/CoreOnly (11.15.0):
     - FirebaseCore (~> 11.15.0)
   - firebase_core (3.15.2):
@@ -151,7 +185,12 @@ PODS:
     - PurchasesHybridCommon (= 17.41.1)
   - PurchasesHybridCommon (17.41.1):
     - RevenueCat (= 5.59.2)
+  - receive_sharing_intent (1.8.1):
+    - Flutter
   - RevenueCat (5.59.2)
+  - SDWebImage (5.21.7):
+    - SDWebImage/Core (= 5.21.7)
+  - SDWebImage/Core (5.21.7)
   - Sentry/HybridSDK (8.58.1)
   - sentry_flutter (9.18.0):
     - Flutter
@@ -169,6 +208,7 @@ PODS:
     - FlutterMacOS
   - stockfish (1.8.1):
     - Flutter
+  - SwiftyGif (5.4.5)
   - terminate_restart (1.1.0):
     - Flutter
   - url_launcher_ios (0.0.1):
@@ -181,6 +221,7 @@ DEPENDENCIES:
   - app_tracking_transparency (from `.symlinks/plugins/app_tracking_transparency/ios`)
   - appsflyer_sdk (from `.symlinks/plugins/appsflyer_sdk/ios`)
   - device_info_plus (from `.symlinks/plugins/device_info_plus/ios`)
+  - file_picker (from `.symlinks/plugins/file_picker/ios`)
   - firebase_core (from `.symlinks/plugins/firebase_core/ios`)
   - Flutter (from `Flutter`)
   - flutter_native_splash (from `.symlinks/plugins/flutter_native_splash/ios`)
@@ -194,6 +235,7 @@ DEPENDENCIES:
   - patrol (from `.symlinks/plugins/patrol/darwin`)
   - permission_handler_apple (from `.symlinks/plugins/permission_handler_apple/ios`)
   - purchases_flutter (from `.symlinks/plugins/purchases_flutter/ios`)
+  - receive_sharing_intent (from `.symlinks/plugins/receive_sharing_intent/ios`)
   - sentry_flutter (from `.symlinks/plugins/sentry_flutter/ios`)
   - share_plus (from `.symlinks/plugins/share_plus/ios`)
   - shared_preferences_foundation (from `.symlinks/plugins/shared_preferences_foundation/darwin`)
@@ -212,6 +254,8 @@ SPEC REPOS:
     - AppCheckCore
     - AppsFlyerFramework
     - CocoaAsyncSocket
+    - DKImagePickerController
+    - DKPhotoGallery
     - Firebase
     - FirebaseCore
     - FirebaseCoreInternal
@@ -223,7 +267,9 @@ SPEC REPOS:
     - PromisesObjC
     - PurchasesHybridCommon
     - RevenueCat
+    - SDWebImage
     - Sentry
+    - SwiftyGif
 
 EXTERNAL SOURCES:
   amplitude_flutter:
@@ -238,6 +284,8 @@ EXTERNAL SOURCES:
     :path: ".symlinks/plugins/appsflyer_sdk/ios"
   device_info_plus:
     :path: ".symlinks/plugins/device_info_plus/ios"
+  file_picker:
+    :path: ".symlinks/plugins/file_picker/ios"
   firebase_core:
     :path: ".symlinks/plugins/firebase_core/ios"
   Flutter:
@@ -264,6 +312,8 @@ EXTERNAL SOURCES:
     :path: ".symlinks/plugins/permission_handler_apple/ios"
   purchases_flutter:
     :path: ".symlinks/plugins/purchases_flutter/ios"
+  receive_sharing_intent:
+    :path: ".symlinks/plugins/receive_sharing_intent/ios"
   sentry_flutter:
     :path: ".symlinks/plugins/sentry_flutter/ios"
   share_plus:
@@ -295,6 +345,9 @@ SPEC CHECKSUMS:
   AppsFlyerFramework: 4f9a8237d40e9093941aef760cd77d606238aedd
   CocoaAsyncSocket: 065fd1e645c7abab64f7a6a2007a48038fdc6a99
   device_info_plus: 21fcca2080fbcd348be798aa36c3e5ed849eefbe
+  DKImagePickerController: 946cec48c7873164274ecc4624d19e3da4c1ef3c
+  DKPhotoGallery: b3834fecb755ee09a593d7c9e389d8b5d6deed60
+  file_picker: a0560bc09d61de87f12d246fc47d2119e6ef37be
   Firebase: d99ac19b909cd2c548339c2241ecd0d1599ab02e
   firebase_core: 995454a784ff288be5689b796deb9e9fa3601818
   FirebaseCore: efb3893e5b94f32b86e331e3bd6dadf18b66568e
@@ -318,7 +371,9 @@ SPEC CHECKSUMS:
   PromisesObjC: f5707f49cb48b9636751c5b2e7d227e43fba9f47
   purchases_flutter: 64e28fe4f41a5898e50b896b698daeb276101062
   PurchasesHybridCommon: 8eb130ab98f8dab600dea932a2599dee79304bb5
+  receive_sharing_intent: 222384f00ffe7e952bbfabaa9e3967cb87e5fe00
   RevenueCat: f352b3661288080bd8bf30bbb96e331940e73c88
+  SDWebImage: e9fc87c1aab89a8ab1bbd74eba378c6f53be8abf
   Sentry: 958d9619ceccf6abb8c4736003fa336dac1a80a7
   sentry_flutter: 8c688f0657eef5c6faf4985c57ca0f48ffb2b7b5
   share_plus: 50da8cb520a8f0f65671c6c6a99b3617ed10a58a
@@ -326,6 +381,7 @@ SPEC CHECKSUMS:
   sign_in_with_apple: c5dcc141574c8c54d5ac99dd2163c0c72ad22418
   sqflite_darwin: 20b2a3a3b70e43edae938624ce550a3cbf66a3d0
   stockfish: b4eb49218804f8fa1ee5fef01e5e760c54df0436
+  SwiftyGif: 706c60cf65fa2bc5ee0313beece843c8eb8194d4
   terminate_restart: 0fc748d0a297afebc179251b11b8d47771918601
   url_launcher_ios: 694010445543906933d732453a59da0a173ae33d
 

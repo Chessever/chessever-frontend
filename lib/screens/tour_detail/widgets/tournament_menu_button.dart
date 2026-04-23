@@ -13,10 +13,11 @@ import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/utils/tablet_safe_menu.dart';
+import 'package:chessever2/widgets/event_card/event_context_menu.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:share_plus/share_plus.dart';
 
 enum TournamentMenuAction {
   focusLiveGames,
@@ -27,6 +28,7 @@ enum TournamentMenuAction {
   expandAllRounds,
   disableNotifications,
   enableNotifications,
+  shareEvent,
 }
 
 class TournamentMenuButton extends ConsumerWidget {
@@ -79,6 +81,7 @@ class TournamentMenuButton extends ConsumerWidget {
               borderRadius: BorderRadius.circular(12.br),
             ),
             color: kBlack2Color,
+            constraints: BoxConstraints.tightFor(width: 208.w),
             items: _buildRedesignedMenuItems(
               ref,
               context,
@@ -274,6 +277,35 @@ class TournamentMenuButton extends ConsumerWidget {
       );
     }
 
+    // 5. Share event
+    final shareId =
+        tourData.aboutTourModel.groupBroadcastId ?? tourData.aboutTourModel.id;
+    if (shareId.isNotEmpty && tourData.aboutTourModel.name.isNotEmpty) {
+      items.add(
+        PopupMenuItem<TournamentMenuAction>(
+          value: TournamentMenuAction.shareEvent,
+          padding: EdgeInsets.zero,
+          height: 36.h,
+          onTap: () {
+            final url = buildEventShareUrl(
+              id: shareId,
+              title: tourData.aboutTourModel.name,
+            );
+            final box = context.findRenderObject() as RenderBox?;
+            final origin =
+                box != null
+                    ? box.localToGlobal(Offset.zero) & box.size
+                    : const Rect.fromLTWH(0, 0, 1, 1);
+            Share.share(url, sharePositionOrigin: origin);
+          },
+          child: _MenuDropDownItem(
+            text: "Share event",
+            icon: Icon(Icons.ios_share, color: kWhiteColor, size: 16),
+          ),
+        ),
+      );
+    }
+
     return items;
   }
 }
@@ -318,9 +350,9 @@ class _MenuDropDownItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 176.w,
+      width: double.infinity,
       height: 40.h,
-      padding: EdgeInsets.symmetric(horizontal: 12.w),
+      padding: EdgeInsets.symmetric(horizontal: 14.w),
       decoration: BoxDecoration(
         color: kBlack2Color,
         border:
@@ -334,12 +366,15 @@ class _MenuDropDownItem extends StatelessWidget {
                 : null,
       ),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
+          SizedBox(width: 16.w, height: 16.h, child: icon),
+          SizedBox(width: 10.w),
           Expanded(
             child: Text(
               text,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: TextStyle(
                 fontFamily: fontFamily,
                 fontSize: 12.sp,
@@ -348,8 +383,6 @@ class _MenuDropDownItem extends StatelessWidget {
               ),
             ),
           ),
-          SizedBox(width: 8.w),
-          SizedBox(width: 16, height: 16, child: icon),
         ],
       ),
     );

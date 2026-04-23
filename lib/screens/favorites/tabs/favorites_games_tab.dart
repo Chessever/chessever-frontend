@@ -116,7 +116,9 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
     const unknownDateKey = '0000-00-00'; // Sort to end
 
     for (final game in games) {
-      final date = game.lastMoveTime;
+      // Bucket by dateStart (stable scheduled day) when available — last_move_time
+      // can be clobbered by sync refreshes and misreport old games as "today".
+      final date = game.bucketDate;
       final dateKey =
           date != null ? DateFormat('yyyy-MM-dd').format(date) : unknownDateKey;
       grouped.putIfAbsent(dateKey, () => []).add(game);

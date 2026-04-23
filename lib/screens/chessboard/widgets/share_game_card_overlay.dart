@@ -1106,52 +1106,45 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
       return const SizedBox.shrink();
     }
 
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      child: GestureDetector(
-        onTap: () => _copyShareUrl(),
-        child: Container(
-          width: 370.w,
-          padding: EdgeInsets.symmetric(horizontal: 18.w, vertical: 14.h),
-          decoration: BoxDecoration(
-            color: const Color(0xFF141A20),
-            borderRadius: BorderRadius.circular(22.br),
+    return Container(
+      width: 370.w,
+      padding: EdgeInsets.symmetric(horizontal: 18.w, vertical: 8.h),
+      decoration: BoxDecoration(
+        color: const Color(0xFF141A20),
+        borderRadius: BorderRadius.circular(22.br),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              shareUrl,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: kWhiteColor,
+                fontSize: 15.sp,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
           ),
-          child: Row(
-            children: [
-              Expanded(
-                child: Text(
-                  shareUrl,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: kWhiteColor,
-                    fontSize: 15.sp,
-                    fontWeight: FontWeight.w500,
-                  ),
+          SizedBox(width: 12.w),
+          Material(
+            color: kWhiteColor.withValues(alpha: 0.08),
+            shape: const CircleBorder(),
+            child: InkWell(
+              onTap: _copyShareUrl,
+              customBorder: const CircleBorder(),
+              child: Padding(
+                padding: EdgeInsets.all(8.sp),
+                child: Icon(
+                  Icons.copy_rounded,
+                  size: 18.sp,
+                  color: kWhiteColor,
                 ),
               ),
-              SizedBox(width: 12.w),
-              SizedBox(
-                width: 28.w,
-                height: 28.w,
-                child: CustomPaint(
-                  painter: _ShareLinkBadgePainter(),
-                  child: Center(
-                    child: Text(
-                      '1',
-                      style: TextStyle(
-                        color: kWhiteColor,
-                        fontSize: 13.sp,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ],
+            ),
           ),
-        ),
+        ],
       ),
     );
   }
@@ -1523,10 +1516,9 @@ class _ShareCard extends ConsumerWidget {
             SizedBox(width: elementSpacing.w),
           ] else if (playerCountry.isNotEmpty) ...[
             CountryFlag.fromCountryCode(
-playerCountry,
-  theme: ImageTheme(height: flagHeight.h,
-              width: flagWidth.w,),
-),
+              playerCountry,
+              theme: ImageTheme(height: flagHeight.h, width: flagWidth.w),
+            ),
             SizedBox(width: elementSpacing.w),
           ] else
             SizedBox(width: elementSpacing.w),
@@ -1922,44 +1914,6 @@ class _ShareGameEndingData {
     required this.loserKingSquare,
     required this.loserSide,
   });
-}
-
-class _ShareLinkBadgePainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final strokeWidth = math.max(1.8, size.width * 0.08);
-    final radius = (math.min(size.width, size.height) - strokeWidth) / 2;
-    final center = Offset(size.width / 2, size.height / 2);
-    final rect = Rect.fromCircle(center: center, radius: radius);
-
-    final solidPaint =
-        Paint()
-          ..color = kWhiteColor
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = strokeWidth
-          ..strokeCap = StrokeCap.round;
-
-    final dottedPaint =
-        Paint()
-          ..color = kWhiteColor
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = strokeWidth
-          ..strokeCap = StrokeCap.round;
-
-    canvas.drawArc(rect, math.pi / 2, math.pi, false, solidPaint);
-
-    const dotCount = 7;
-    final step = math.pi / dotCount;
-    final dashSweep = step * 0.28;
-    var start = -math.pi / 2;
-    for (int i = 0; i < dotCount; i++) {
-      canvas.drawArc(rect, start, dashSweep, false, dottedPaint);
-      start += step;
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
 /// Calculate game ending visual data for share card

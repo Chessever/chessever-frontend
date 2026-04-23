@@ -546,6 +546,18 @@ class LibraryRepository extends BaseRepository {
             .eq('user_id', userId);
       });
 
+  /// Count of analyses saved **directly** in [folderId], not counting
+  /// sub-folders. Used by the tree PGN export so every folder level gets
+  /// its own file and the progress total matches the streamed game count.
+  Future<int> getDirectAnalysisCountInFolder(String folderId) =>
+      handleApiCall(() async {
+        final count = await supabase
+            .from('user_saved_analyses')
+            .count(CountOption.exact)
+            .eq('folder_id', folderId);
+        return count;
+      });
+
   /// Get count of analyses in a folder (including sub-folders)
   Future<int> getAnalysisCountInFolder(
     String folderId,

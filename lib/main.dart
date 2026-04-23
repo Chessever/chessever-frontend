@@ -55,6 +55,7 @@ import 'revenue_cat_service/revenue_cat_service.dart';
 import 'services/analytics/analytics_service.dart';
 import 'services/appsflyer_service.dart';
 import 'services/deep_link_service.dart';
+import 'services/pgn_file_intake_service.dart';
 import 'services/push_notifications_service.dart';
 import 'theme/app_theme.dart';
 import 'theme/theme_provider.dart';
@@ -1034,6 +1035,8 @@ class MyApp extends HookConsumerWidget {
         // Initialize deep link handling for game sharing URLs
         try {
           await DeepLinkService.instance.initialize(navigatorKey, ref);
+          // Handle PGN files opened from Files / file managers / share sheet.
+          await PgnFileIntakeService.instance.initialize(navigatorKey, ref);
           // Initialize AppsFlyer for marketing attribution and OneLink
           await AppsflyerService.instance.initialize(navigatorKey, ref);
         } catch (e, st) {
@@ -1044,7 +1047,10 @@ class MyApp extends HookConsumerWidget {
         }
       });
 
-      return () => DeepLinkService.instance.dispose();
+      return () {
+        DeepLinkService.instance.dispose();
+        PgnFileIntakeService.instance.dispose();
+      };
     }, const []);
 
     return AuthStateListener(

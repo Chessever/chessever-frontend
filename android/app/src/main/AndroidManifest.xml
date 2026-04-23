@@ -78,8 +78,12 @@
                    android:scheme="https"
                    android:host="www.chessever.com" />
            </intent-filter>
-           <!-- AppsFlyer OneLink Branded Domain — accept both apex and www hosts. -->
-           <intent-filter android:autoVerify="true">
+           <!-- AppsFlyer OneLink branded and default domains. Intentionally
+                NOT autoVerify: AppsFlyer doesn't host assetlinks.json for these
+                subdomains, so verification would always fail. OneLink taps
+                render the AppsFlyer landing page, which redirects into the app
+                via the com.chessever.app:// scheme + AppsFlyer SDK. -->
+           <intent-filter>
                <action android:name="android.intent.action.VIEW" />
                <category android:name="android.intent.category.DEFAULT" />
                <category android:name="android.intent.category.BROWSABLE" />
@@ -87,21 +91,61 @@
                    android:scheme="https"
                    android:host="get.chessever.com" />
            </intent-filter>
-           <intent-filter android:autoVerify="true">
-               <action android:name="android.intent.action.VIEW" />
-               <category android:name="android.intent.category.DEFAULT" />
-               <category android:name="android.intent.category.BROWSABLE" />
-               <data
-                   android:scheme="https"
-                   android:host="www.get.chessever.com" />
-           </intent-filter>
-           <intent-filter android:autoVerify="true">
+           <intent-filter>
                <action android:name="android.intent.action.VIEW" />
                <category android:name="android.intent.category.DEFAULT" />
                <category android:name="android.intent.category.BROWSABLE" />
                <data
                    android:scheme="https"
                    android:host="chessever.onelink.me" />
+           </intent-filter>
+           <!-- "Open with ChessEver" for .pgn files from the OS file picker,
+                file managers, Drive, Dropbox, Gmail, etc. Gmail and some file
+                managers use application/octet-stream for .pgn, so we match on
+                both MIME type and file extension (via pathPattern). -->
+           <intent-filter>
+               <action android:name="android.intent.action.VIEW" />
+               <category android:name="android.intent.category.DEFAULT" />
+               <category android:name="android.intent.category.BROWSABLE" />
+               <data android:scheme="content" />
+               <data android:scheme="file" />
+               <data android:mimeType="application/x-chess-pgn" />
+               <data android:mimeType="application/vnd.chess-pgn" />
+               <data android:mimeType="application/pgn" />
+               <data android:mimeType="text/x-pgn" />
+               <data android:mimeType="text/pgn" />
+           </intent-filter>
+           <intent-filter>
+               <action android:name="android.intent.action.VIEW" />
+               <category android:name="android.intent.category.DEFAULT" />
+               <category android:name="android.intent.category.BROWSABLE" />
+               <data android:scheme="content" />
+               <data android:scheme="file" />
+               <data android:host="*" />
+               <data android:mimeType="*/*" />
+               <data android:pathPattern=".*\\.pgn" />
+               <data android:pathPattern=".*\\..*\\.pgn" />
+               <data android:pathPattern=".*\\..*\\..*\\.pgn" />
+               <data android:pathPattern=".*\\..*\\..*\\..*\\.pgn" />
+           </intent-filter>
+           <!-- Share-sheet receive for .pgn attachments. -->
+           <intent-filter>
+               <action android:name="android.intent.action.SEND" />
+               <category android:name="android.intent.category.DEFAULT" />
+               <data android:mimeType="application/x-chess-pgn" />
+               <data android:mimeType="application/vnd.chess-pgn" />
+               <data android:mimeType="application/pgn" />
+               <data android:mimeType="text/x-pgn" />
+               <data android:mimeType="text/pgn" />
+           </intent-filter>
+           <intent-filter>
+               <action android:name="android.intent.action.SEND_MULTIPLE" />
+               <category android:name="android.intent.category.DEFAULT" />
+               <data android:mimeType="application/x-chess-pgn" />
+               <data android:mimeType="application/vnd.chess-pgn" />
+               <data android:mimeType="application/pgn" />
+               <data android:mimeType="text/x-pgn" />
+               <data android:mimeType="text/pgn" />
            </intent-filter>
        </activity>
        <!-- Don't delete the meta-data below.

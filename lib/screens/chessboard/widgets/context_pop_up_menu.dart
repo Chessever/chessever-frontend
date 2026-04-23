@@ -97,7 +97,7 @@ class ContextPopupMenu extends StatelessWidget {
       borderRadius: BorderRadius.circular(12.br),
       boxShadow: [
         BoxShadow(
-          color: Colors.black.withOpacity(0.3),
+          color: Colors.black.withValues(alpha: 0.3),
           blurRadius: 10,
           offset: const Offset(0, 5),
         ),
@@ -140,16 +140,21 @@ class MenuItemContent extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
+        SizedBox(
+          width: 13.w,
+          height: 13.h,
+          child: SvgPicture.asset(iconAsset, height: 13.h, width: 13.w),
+        ),
+        SizedBox(width: 10.w),
         Expanded(
           child: Text(
             text,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
             style: AppTypography.textXsMedium.copyWith(color: kWhiteColor),
           ),
         ),
-        SizedBox(width: 8.w),
-        SvgPicture.asset(iconAsset, height: 13.h, width: 13.w),
       ],
     );
   }
@@ -192,7 +197,7 @@ class PinIconOverlay extends StatelessWidget {
       bottom: bottom,
       child: SvgPicture.asset(
         SvgAsset.pin,
-        color: kpinColor,
+        colorFilter: const ColorFilter.mode(kpinColor, BlendMode.srcIn),
         height: 12.h,
         width: 12.w,
       ),

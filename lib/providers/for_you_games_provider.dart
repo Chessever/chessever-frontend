@@ -95,6 +95,35 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
 
     // Listen to favorite player cache updates (affects heart counts)
     ref.listen(eventFavoritePlayersCacheProvider, (_, __) => _reSortList());
+
+    // Match the Current tab's behavior: when a tour transitions ongoing→live
+    // (or live→completed), re-derive tourEventCategory on every existing card
+    // so the _NextRoundLine flips from "starts in…" to "LIVE" without waiting
+    // for a full refetch.
+    ref.listen<AsyncValue<List<String>>>(liveGroupBroadcastIdsProvider, (
+      _,
+      next,
+    ) {
+      next.whenData(_refreshLiveCategories);
+    });
+  }
+
+  void _refreshLiveCategories(List<String> liveIds) {
+    final current = state.events;
+    if (current.isEmpty) return;
+
+    final updated = current.map((e) => e.withLiveIds(liveIds)).toList();
+
+    bool changed = false;
+    for (var i = 0; i < current.length; i++) {
+      if (current[i].tourEventCategory != updated[i].tourEventCategory) {
+        changed = true;
+        break;
+      }
+    }
+    if (!changed) return;
+
+    if (mounted) state = state.copyWith(events: updated);
   }
 
   Future<void> _reSortList() async {

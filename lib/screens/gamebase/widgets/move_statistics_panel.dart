@@ -1,6 +1,11 @@
+import 'dart:ui' show ImageFilter;
 import 'package:chessever2/providers/board_settings_provider_new.dart';
+import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
+import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/figurine_notation.dart';
+import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:dartchess/dartchess.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -16,6 +21,11 @@ const double _kMoveColumnWidth = 74;
 const double _kGamesColumnWidth = 84;
 const double _kLastColumnWidth = 56;
 const double _kColumnGap = 6;
+
+/// Free users see explorer aggregates up to and including the 10th full move
+/// (ply 20). `currentMoveNumber` is `ply + 1`, so anything above 20 means the
+/// current position is *past* move 10 and premium is required.
+const int _kFreeMoveNumberLimit = 20;
 
 /// Panel displaying move statistics for the current position.
 /// Shows each possible move with game count and win/draw/loss bar.
@@ -33,13 +43,21 @@ class MoveStatisticsPanel extends ConsumerWidget {
     final state = ref.watch(gamebaseExplorerProvider);
     final hasStaleData = state.moveAggregates.isNotEmpty;
 
-    if (state.isLoading && !hasStaleData) {
+    final isSubscribed = ref.watch(
+      subscriptionProvider.select((s) => s.isSubscribed),
+    );
+    // Mirror `requirePremiumGuard`: bypass in debug so engineers can exercise
+    // deep positions without a live RevenueCat subscription.
+    final pastFreeLimit = state.currentMoveNumber > _kFreeMoveNumberLimit;
+    final showGate = pastFreeLimit && !isSubscribed && !kDebugMode;
+
+    if (state.isLoading && !hasStaleData && !showGate) {
       return const Center(
         child: CircularProgressIndicator(color: kWhiteColor, strokeWidth: 2),
       );
     }
 
-    if (state.error != null) {
+    if (state.error != null && !showGate) {
       return Center(
         child: Padding(
           padding: EdgeInsets.all(16.sp),
@@ -52,7 +70,7 @@ class MoveStatisticsPanel extends ConsumerWidget {
       );
     }
 
-    if (state.moveAggregates.isEmpty) {
+    if (state.moveAggregates.isEmpty && !showGate && !state.isLoading) {
       return Center(
         child: Padding(
           padding: EdgeInsets.all(16.sp),
@@ -65,7 +83,7 @@ class MoveStatisticsPanel extends ConsumerWidget {
       );
     }
 
-    return Column(
+    final Widget mainContent = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if (state.isLoading)
@@ -135,11 +153,17 @@ class MoveStatisticsPanel extends ConsumerWidget {
         Expanded(
           child: ListView.separated(
             padding: EdgeInsets.zero,
-            itemCount: state.moveAggregates.length,
+            itemCount:
+                state.moveAggregates.isEmpty && showGate
+                    ? 5
+                    : state.moveAggregates.length,
             separatorBuilder:
                 (_, __) =>
                     Divider(color: kDividerColor, height: 1, indent: 12.sp),
             itemBuilder: (context, index) {
+              if (state.moveAggregates.isEmpty && showGate) {
+                return const _MoveStatisticsPlaceholderRow();
+              }
               final aggregate = state.moveAggregates[index];
               return _MoveStatisticsRow(
                 aggregate: aggregate,
@@ -147,6 +171,10 @@ class MoveStatisticsPanel extends ConsumerWidget {
                 exploredMoves: state.exploredMoves,
                 filters: state.filters,
                 onTap: () {
+                  if (showGate) {
+                    requirePremiumGuard(context, ref);
+                    return;
+                  }
                   if (onMove != null) {
                     onMove!(aggregate.uci);
                   } else {
@@ -160,6 +188,99 @@ class MoveStatisticsPanel extends ConsumerWidget {
           ),
         ),
       ],
+    );
+
+    if (showGate) {
+      return Stack(
+        children: [
+          mainContent,
+          Positioned.fill(
+            child: ClipRRect(
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
+                child: Container(
+                  color: Colors.black.withOpacity(0.4),
+                  child: GestureDetector(
+                    onTap: () => requirePremiumGuard(context, ref),
+                    behavior: HitTestBehavior.opaque,
+                    child: const _ExplorerPremiumGate(),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
+    return mainContent;
+  }
+}
+
+/// Placeholder row for blurred stats teaser.
+class _MoveStatisticsPlaceholderRow extends StatelessWidget {
+  const _MoveStatisticsPlaceholderRow();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 10.sp),
+      child: Row(
+        children: [
+          SizedBox(
+            width: _kMoveColumnWidth.w,
+            child: Row(
+              children: [
+                Container(
+                  width: 20.w,
+                  height: 12.h,
+                  decoration: BoxDecoration(
+                    color: kSecondaryTextColor.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(2.br),
+                  ),
+                ),
+                SizedBox(width: 4.w),
+                Container(
+                  width: 30.w,
+                  height: 14.h,
+                  decoration: BoxDecoration(
+                    color: kSecondaryTextColor.withValues(alpha: 0.25),
+                    borderRadius: BorderRadius.circular(2.br),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          SizedBox(width: _kColumnGap.sp),
+          Expanded(
+            child: Container(
+              height: 14.h,
+              decoration: BoxDecoration(
+                color: kSecondaryTextColor.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(16.br),
+              ),
+            ),
+          ),
+          SizedBox(width: _kColumnGap.sp),
+          Container(
+            width: _kGamesColumnWidth.w,
+            height: 12.h,
+            decoration: BoxDecoration(
+              color: kSecondaryTextColor.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(2.br),
+            ),
+          ),
+          SizedBox(width: _kColumnGap.sp),
+          Container(
+            width: _kLastColumnWidth.w,
+            height: 12.h,
+            decoration: BoxDecoration(
+              color: kSecondaryTextColor.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(2.br),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -461,6 +582,79 @@ class _StatisticsBar extends StatelessWidget {
                           : null,
                 ),
               ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// CTA shown in place of the move-aggregate table when the current position
+/// is past the 10th full move and the user is not subscribed.
+class _ExplorerPremiumGate extends ConsumerWidget {
+  const _ExplorerPremiumGate();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return Center(
+      child: Padding(
+        padding: EdgeInsets.symmetric(horizontal: 24.sp, vertical: 24.sp),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 56.w,
+              height: 56.h,
+              decoration: BoxDecoration(
+                color: kPrimaryColor.withValues(alpha: 0.12),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.lock_rounded,
+                color: kPrimaryColor,
+                size: 28.ic,
+              ),
+            ),
+            SizedBox(height: 16.h),
+            Text(
+              'Explore beyond move 10',
+              textAlign: TextAlign.center,
+              style: AppTypography.textLgBold.copyWith(color: kWhiteColor),
+            ),
+            SizedBox(height: 8.h),
+            Text(
+              'Unlock Premium to browse opening stats past the 10th full move.',
+              textAlign: TextAlign.center,
+              style: AppTypography.textSmMedium.copyWith(
+                color: kSecondaryTextColor,
+                height: 1.35,
+              ),
+            ),
+            SizedBox(height: 20.h),
+            GestureDetector(
+              onTap: () => requirePremiumGuard(context, ref),
+              child: Container(
+                padding: EdgeInsets.symmetric(
+                  horizontal: 24.w,
+                  vertical: 12.h,
+                ),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(12.br),
+                  gradient: LinearGradient(
+                    colors: [kPrimaryColor, kDarkBlue],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                ),
+                child: Text(
+                  'Unlock Premium',
+                  style: AppTypography.textMdBold.copyWith(
+                    color: kBlackColor,
+                    letterSpacing: 0.2,
+                  ),
+                ),
+              ),
+            ),
           ],
         ),
       ),

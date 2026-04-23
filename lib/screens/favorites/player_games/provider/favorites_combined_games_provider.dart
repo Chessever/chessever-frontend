@@ -482,16 +482,19 @@ class FavoritesCombinedGamesNotifier
   }
 
   int _compareByDateDesc(GamesTourModel a, GamesTourModel b) {
-    // Primary sort: by date (most recent first)
-    // Use lastMoveTime's date portion, falling back to DateTime(1900) for NULL
-    final aDate = a.lastMoveTime ?? DateTime(1900);
-    final bDate = b.lastMoveTime ?? DateTime(1900);
-
-    // Compare by day only (ignore time for grouping purposes)
-    final aDayOnly = DateTime(aDate.year, aDate.month, aDate.day);
-    final bDayOnly = DateTime(bDate.year, bDate.month, bDate.day);
+    // Primary sort: by day (most recent first). Use the UI bucket date
+    // (prefers stable date_start over clobberable last_move_time) so sort and
+    // UI grouping agree — otherwise a sync-bumped last_move_time would pull a
+    // week-old game to the top of the list.
+    final aBucket = a.bucketDate ?? DateTime(1900);
+    final bBucket = b.bucketDate ?? DateTime(1900);
+    final aDayOnly = DateTime(aBucket.year, aBucket.month, aBucket.day);
+    final bDayOnly = DateTime(bBucket.year, bBucket.month, bBucket.day);
     final dayCmp = bDayOnly.compareTo(aDayOnly);
     if (dayCmp != 0) return dayCmp;
+
+    final aDate = a.lastMoveTime ?? DateTime(1900);
+    final bDate = b.lastMoveTime ?? DateTime(1900);
 
     // Secondary sort: by event average ELO (highest first)
     // This groups games from stronger events together on top

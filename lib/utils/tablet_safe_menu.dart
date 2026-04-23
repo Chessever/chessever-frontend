@@ -40,6 +40,7 @@ Future<T?> showTabletSafeMenu<T>({
   double? elevation,
   Color? color,
   ShapeBorder? shape,
+  BoxConstraints? constraints,
   bool useRootNavigator = false,
 }) async {
   if (!ResponsiveHelper.isTablet) {
@@ -52,6 +53,7 @@ Future<T?> showTabletSafeMenu<T>({
       elevation: elevation,
       color: color,
       shape: shape,
+      constraints: constraints,
       useRootNavigator: useRootNavigator,
     );
   }
@@ -64,6 +66,7 @@ Future<T?> showTabletSafeMenu<T>({
     elevation: elevation,
     color: color,
     shape: shape,
+    constraints: constraints,
   );
 }
 
@@ -74,6 +77,7 @@ Future<T?> _showTabletOverlayMenu<T>({
   double? elevation,
   Color? color,
   ShapeBorder? shape,
+  BoxConstraints? constraints,
 }) {
   final completer = Completer<T?>();
 
@@ -81,7 +85,12 @@ Future<T?> _showTabletOverlayMenu<T>({
 
   // Calculate menu position with bounds checking for tablets
   final screenWidth = MediaQuery.of(context).size.width;
-  const menuWidth = 240.0; // Approximate menu width (200 content + padding)
+  final menuWidth =
+      constraints != null &&
+              constraints.minWidth == constraints.maxWidth &&
+              constraints.maxWidth.isFinite
+          ? constraints.maxWidth
+          : 240.0;
   const horizontalPadding = 16.0;
 
   // Calculate the right edge of where the menu would be if left-aligned to button
@@ -202,37 +211,37 @@ Future<T?> _showTabletOverlayMenu<T>({
                         : BorderRadius.circular(12),
                 color: color ?? const Color(0xFF2A2A2A),
                 clipBehavior: Clip.antiAlias,
-                child: IntrinsicWidth(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children:
-                        items.map((item) {
-                          if (item is PopupMenuItem<T>) {
-                            return InkWell(
-                              onTap: () {
-                                if (item.onTap != null) {
-                                  item.onTap!();
-                                }
-                                closeMenu(item.value);
-                              },
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 4,
-                                  vertical: 0,
+                child: ConstrainedBox(
+                  constraints: constraints ?? const BoxConstraints(),
+                  child: IntrinsicWidth(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children:
+                          items.map((item) {
+                            if (item is PopupMenuItem<T>) {
+                              return InkWell(
+                                onTap: () {
+                                  if (item.onTap != null) {
+                                    item.onTap!();
+                                  }
+                                  closeMenu(item.value);
+                                },
+                                child: Padding(
+                                  padding: item.padding ?? EdgeInsets.zero,
+                                  child: item.child,
                                 ),
-                                child: item.child,
-                              ),
-                            );
-                          } else if (item is PopupMenuDivider) {
-                            return Divider(
-                              height: item.height,
-                              thickness: 0.5,
-                              color: Colors.white.withValues(alpha: 0.1),
-                            );
-                          }
-                          return const SizedBox.shrink();
-                        }).toList(),
+                              );
+                            } else if (item is PopupMenuDivider) {
+                              return Divider(
+                                height: item.height,
+                                thickness: 0.5,
+                                color: Colors.white.withValues(alpha: 0.1),
+                              );
+                            }
+                            return const SizedBox.shrink();
+                          }).toList(),
+                    ),
                   ),
                 ),
               ),

@@ -185,5 +185,49 @@
 		<true/>
 		<key>FlutterDeepLinkingEnabled</key>
 		<false/>
+		<!-- Claim "Open With…" for .pgn files. The declared UTI below conforms
+		     to public.plain-text so mail/Files/Safari offer ChessEver as an
+		     editor; receive_sharing_intent delivers the file path to Dart. -->
+		<key>CFBundleDocumentTypes</key>
+		<array>
+			<dict>
+				<key>CFBundleTypeName</key>
+				<string>Portable Game Notation</string>
+				<key>CFBundleTypeRole</key>
+				<string>Editor</string>
+				<key>LSHandlerRank</key>
+				<string>Alternate</string>
+				<key>LSItemContentTypes</key>
+				<array>
+					<string>public.chess-pgn</string>
+					<string>public.plain-text</string>
+				</array>
+			</dict>
+		</array>
+		<key>UTImportedTypeDeclarations</key>
+		<array>
+			<dict>
+				<key>UTTypeIdentifier</key>
+				<string>public.chess-pgn</string>
+				<key>UTTypeDescription</key>
+				<string>Portable Game Notation</string>
+				<key>UTTypeConformsTo</key>
+				<array>
+					<string>public.plain-text</string>
+				</array>
+				<key>UTTypeTagSpecification</key>
+				<dict>
+					<key>public.filename-extension</key>
+					<array>
+						<string>pgn</string>
+					</array>
+					<key>public.mime-type</key>
+					<array>
+						<string>application/x-chess-pgn</string>
+						<string>application/vnd.chess-pgn</string>
+					</array>
+				</dict>
+			</dict>
+		</array>
 	</dict>
 </plist>

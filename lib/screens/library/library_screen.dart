@@ -15,9 +15,11 @@ import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
+import 'package:chessever2/services/pgn_file_intake_service.dart';
 import 'package:chessever2/utils/library_utils.dart';
 import 'package:chessever2/utils/pgn_multi_parser.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
@@ -97,7 +99,47 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
         await _handleCreateFolder();
       case AddToLibraryChoice.importPgn:
         await _handleImportPgnFromClipboard();
+      case AddToLibraryChoice.pickPgnFile:
+        await _handlePickPgnFile();
     }
+  }
+
+  Future<void> _handlePickPgnFile() async {
+    FilePickerResult? result;
+    try {
+      result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: const ['pgn'],
+        withData: false,
+      );
+    } catch (e) {
+      // Some platforms reject custom extensions — fall back to any-file picker.
+      try {
+        result = await FilePicker.platform.pickFiles(type: FileType.any);
+      } catch (e2) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Could not open file picker: $e2',
+              style: const TextStyle(color: kWhiteColor),
+            ),
+            backgroundColor: kRedColor.withValues(alpha: 0.9),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+        return;
+      }
+    }
+
+    final path = result?.files.singleOrNull?.path;
+    if (path == null || path.isEmpty) return;
+    if (!mounted) return;
+    await PgnFileIntakeService.instance.ingestPgnFileFromContext(
+      context: context,
+      path: path,
+      sourceLabel: 'device file',
+    );
   }
 
   Future<void> _handleImportPgnFromClipboard() async {

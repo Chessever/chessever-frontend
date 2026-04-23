@@ -73,6 +73,11 @@ class DeepLinkService {
     }
   }
 
+  /// Public access to the splash-complete gate so other services that need to
+  /// push routes from a cold-start intent (e.g. PGN file-open handler) can
+  /// wait instead of racing the navigator.
+  static Future<void> awaitAppReady() => _appReadyCompleter.future;
+
   /// Initialize the deep link service
   /// Should be called once after app startup when auth state is ready
   Future<void> initialize(
@@ -125,6 +130,7 @@ class DeepLinkService {
       String? gameId;
       String? bookShareToken;
       String? folderId;
+      String? broadcastId;
 
       // Universal link: https://chessever.com/games/<id>
       if (uri.pathSegments.length >= 2 && uri.pathSegments[0] == 'games') {
@@ -141,6 +147,16 @@ class DeepLinkService {
           (uri.pathSegments[0] == 'databases' ||
               uri.pathSegments[0] == 'folders')) {
         folderId = uri.pathSegments[1];
+      }
+
+      // Universal link: https://chessever.com/broadcast/<slug>/<id>
+      // Also accept /broadcast/<id> for links without a slug.
+      if (uri.pathSegments.isNotEmpty && uri.pathSegments[0] == 'broadcast') {
+        if (uri.pathSegments.length >= 3) {
+          broadcastId = uri.pathSegments[2];
+        } else if (uri.pathSegments.length == 2) {
+          broadcastId = uri.pathSegments[1];
+        }
       }
 
       // Custom scheme: com.chessever.app://games/<id>
@@ -164,6 +180,14 @@ class DeepLinkService {
         folderId = uri.pathSegments[0];
       }
 
+      // Custom scheme: com.chessever.app://broadcast/<slug>/<id>
+      // Also accept com.chessever.app://broadcast/<id>.
+      if (broadcastId == null &&
+          uri.host == 'broadcast' &&
+          uri.pathSegments.isNotEmpty) {
+        broadcastId = uri.pathSegments.last;
+      }
+
       _addBreadcrumb(
         'deep link parsed',
         data: {
@@ -171,6 +195,7 @@ class DeepLinkService {
           'gameId': _maskedValue(gameId),
           'bookShareToken': _maskedValue(bookShareToken),
           'folderId': _maskedValue(folderId),
+          'broadcastId': _maskedValue(broadcastId),
         },
       );
 
@@ -199,6 +224,12 @@ class DeepLinkService {
           data: {'folderId': _maskedValue(folderId)},
         );
         _navigateToFolder(folderId, navigatorKey, ref);
+      } else if (broadcastId != null && broadcastId.isNotEmpty) {
+        _addBreadcrumb(
+          'routing to broadcast event',
+          data: {'broadcastId': _maskedValue(broadcastId)},
+        );
+        _navigateToEvent(broadcastId, navigatorKey, ref);
       } else {
         _addBreadcrumb(
           'deep link ignored',

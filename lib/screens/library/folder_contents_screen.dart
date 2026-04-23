@@ -14,11 +14,13 @@ import 'package:chessever2/screens/library/widgets/book_saved_game_card.dart';
 import 'package:chessever2/screens/library/widgets/create_folder_dialog.dart';
 import 'package:chessever2/screens/library/widgets/folder_card.dart';
 import 'package:chessever2/screens/library/widgets/swipe_action_card.dart';
+import 'package:chessever2/services/pgn_file_intake_service.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/pgn_multi_parser.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:chessever2/widgets/screen_wrapper.dart';
 import 'package:flutter/material.dart';
@@ -168,7 +170,49 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
         await _handleCreateSubfolder();
       case AddToLibraryChoice.importPgn:
         await _handleImportPgnFromClipboard();
+      case AddToLibraryChoice.pickPgnFile:
+        await _handlePickPgnFile();
     }
+  }
+
+  Future<void> _handlePickPgnFile() async {
+    FilePickerResult? result;
+    try {
+      result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: const ['pgn'],
+        withData: false,
+      );
+    } catch (_) {
+      try {
+        result = await FilePicker.platform.pickFiles(type: FileType.any);
+      } catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Could not open file picker: $e',
+              style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+            ),
+            backgroundColor: kRedColor.withValues(alpha: 0.9),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+        return;
+      }
+    }
+
+    final path = result?.files.singleOrNull?.path;
+    if (path == null || path.isEmpty) return;
+    if (!mounted) return;
+    await PgnFileIntakeService.instance.ingestPgnFileFromContext(
+      context: context,
+      path: path,
+      sourceLabel: 'device file',
+      initialFolderId: widget.folder.id,
+    );
+    if (!mounted) return;
+    ref.read(bookGamesPaginatedProvider(_paginationKey).notifier).refresh();
   }
 
   Future<void> _handleImportPgnFromClipboard() async {
@@ -311,6 +355,12 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
     HapticFeedbackService.medium();
 
     final repo = ref.read(libraryRepositoryProvider);
+    // Children are sub-databases directly under this folder. Empty for
+    // leaf / sub-level folders, which cleanly degrades to a single-file
+    // export via the tree helper.
+    final childFolders = ref.read(
+      childLibraryFoldersProvider(widget.folder.id),
+    );
     final dialogController = _ExportProgressController();
 
     // Show the progress dialog (non-dismissible) while export runs.
@@ -320,15 +370,14 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
       builder: (_) => _ExportProgressDialog(controller: dialogController),
     );
 
-    String? pgn;
+    List<FolderPgnFile>? files;
     Object? error;
     try {
-      pgn = await exportFolderAsPgn(
+      files = await exportFolderTreeAsPgnFiles(
         repo: repo,
-        folderId: widget.folder.id,
-        folderName: widget.folder.name,
-        isSubscribed: _isSubscribed,
-        shareToken: widget.folder.shareToken,
+        rootFolder: widget.folder,
+        childFolders: childFolders,
+        rootShareToken: widget.folder.shareToken,
         onProgress: (processed, total) {
           dialogController.update(processed: processed, total: total);
         },
@@ -343,7 +392,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
 
     if (!mounted) return;
 
-    if (error != null || pgn == null || pgn.trim().isEmpty) {
+    if (error != null || files == null || files.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -361,19 +410,30 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
 
     try {
       final tempDir = await getTemporaryDirectory();
-      final filename = suggestedExportFilename(widget.folder.name);
-      final file = File('${tempDir.path}/$filename');
-      await file.writeAsString(pgn);
+      final xFiles = <XFile>[];
+      for (final entry in files) {
+        final file = File('${tempDir.path}/${entry.filename}');
+        await file.writeAsString(entry.pgn);
+        xFiles.add(
+          XFile(file.path, mimeType: 'application/x-chess-pgn'),
+        );
+      }
 
+      if (!mounted) return;
       final box = context.findRenderObject() as RenderBox?;
       final origin =
           box != null
               ? box.localToGlobal(Offset.zero) & box.size
               : const Rect.fromLTWH(0, 0, 1, 1);
 
+      final subject =
+          xFiles.length > 1
+              ? '${widget.folder.name} - Chessever PGN (${xFiles.length} files)'
+              : '${widget.folder.name} - Chessever PGN';
+
       await Share.shareXFiles(
-        [XFile(file.path, mimeType: 'application/x-chess-pgn')],
-        subject: '${widget.folder.name} - Chessever PGN',
+        xFiles,
+        subject: subject,
         sharePositionOrigin: origin,
       );
       HapticFeedbackService.success();
@@ -452,6 +512,17 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
     );
     final totalCount = bookAsync.valueOrNull?.totalCount;
 
+    final bool showExport = (bookAsync.valueOrNull?.totalCount ?? 0) > 0;
+    final bool showRename = !_isSubscribed;
+    final bool showAdd = !_isSubscribed;
+    final int rightIconCount =
+        (showExport ? 1 : 0) + (showRename ? 1 : 0) + (showAdd ? 1 : 0);
+    // IconButton default min tap target ≈ 48 logical px. Mirror the larger
+    // side's width as symmetric padding so the title stays centered and
+    // never overflows into the icon buttons.
+    final double titleSidePadding =
+        (rightIconCount > 1 ? rightIconCount * 48.w : 56.w);
+
     return Padding(
       padding: EdgeInsets.fromLTRB(
         horizontalPadding,
@@ -481,7 +552,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                if ((bookAsync.valueOrNull?.totalCount ?? 0) > 0)
+                if (showExport)
                   IconButton(
                     onPressed: _handleExportPgn,
                     tooltip: 'Export as PGN',
@@ -493,7 +564,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
                   ),
                 // Rename is only available for owned databases (subscribed
                 // folders are read-only — you can't rename someone else's book).
-                if (!_isSubscribed)
+                if (showRename)
                   IconButton(
                     onPressed: _handleRename,
                     tooltip: 'Rename Database',
@@ -506,7 +577,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
                 // Shown for owned databases at both root and sub levels.
                 // The sheet itself hides "Create Sub-Database" on sub-level
                 // folders since 2-layer hierarchy doesn't allow deeper nesting.
-                if (!_isSubscribed)
+                if (showAdd)
                   IconButton(
                     onPressed: _handlePlusButton,
                     icon: Icon(
@@ -519,7 +590,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
             ),
           ),
           Padding(
-            padding: EdgeInsets.symmetric(horizontal: 56.w),
+            padding: EdgeInsets.symmetric(horizontal: titleSidePadding),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [

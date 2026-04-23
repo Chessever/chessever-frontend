@@ -1065,19 +1065,20 @@ class _FallbackEventCard extends StatelessWidget {
           onTap: onTap,
           child: Column(
             children: [
-              // Main card - matches EventCard._buildPhoneCard layout
+            // Main card - matches EventCard._buildPhoneCard layout
               Container(
                 decoration: BoxDecoration(
                   color: kBlack2Color,
                   borderRadius: BorderRadius.circular(8.br),
                 ),
                 padding: EdgeInsets.all(6.sp),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    // Image placeholder - matches _EventImage dimensions
-                    _SkeletonEventImage(),
-                    SizedBox(width: 12.w),
+                child: IntrinsicHeight(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // Image placeholder - matches _EventImage dimensions
+                      _SkeletonEventImage(),
+                      SizedBox(width: 12.w),
 
                     // Content in the middle
                     Expanded(
@@ -1150,6 +1151,7 @@ class _FallbackEventCard extends StatelessWidget {
                     ),
                   ],
                 ),
+              ),
               ),
 
               // Player stats row - matches _PlayerEventCard layout
@@ -1265,8 +1267,10 @@ class _SkeletonEventImage extends StatelessWidget {
 
     return SizedBox(
       width: imageWidth,
-      child: AspectRatio(
-        aspectRatio: 3 / 2,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          minHeight: imageWidth * 4 / 5,
+        ),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(6.br),
           child: Skeletonizer(
