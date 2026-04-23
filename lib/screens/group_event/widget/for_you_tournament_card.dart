@@ -57,6 +57,7 @@ class ForYouTournamentCard extends ConsumerWidget {
       padding: EdgeInsets.only(top: isFirst ? 0 : 16.sp, bottom: 12.sp),
       child: EventCard(
         tourEventCardModel: model,
+        showHeartIndicator: true,
         heroTagSuffix: 'for-you-${model.id}',
         onTap: () => _onTournamentTap(context, ref),
       ),
@@ -99,6 +100,7 @@ class ForYouTournamentCard extends ConsumerWidget {
       padding: EdgeInsets.only(top: isFirst ? 0 : 16.sp, bottom: 12.sp),
       child: EventCard(
         tourEventCardModel: model,
+        showHeartIndicator: true,
         heroTagSuffix: 'for-you-${model.id}',
         onTap: () => _onTournamentTap(context, ref),
       ),
