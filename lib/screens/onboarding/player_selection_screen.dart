@@ -36,6 +36,14 @@ import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 final Curve _springCurve = Motion.smoothSpring().toCurve;
 final Curve _snappyCurve = Motion.snappySpring().toCurve;
 
+/// Selected fideIds during the onboarding player-selection step.
+///
+/// Lifted above the [PageView] so the set survives when the page is
+/// deactivated while the user swipes to another onboarding step.
+final onboardingSelectedFideIdsProvider = StateProvider<Set<String>>(
+  (ref) => <String>{},
+);
+
 class PlayerSelectionScreen extends HookConsumerWidget {
   const PlayerSelectionScreen({super.key});
 
@@ -83,7 +91,7 @@ class PlayerSelectionContent extends HookConsumerWidget {
     final searchController = useTextEditingController();
     final listController = useScrollController();
     final searchQuery = useState('');
-    final selectedIds = useState<Set<String>>({});
+    final selectedIds = ref.watch(onboardingSelectedFideIdsProvider);
 
     final playerState = ref.watch(onboardingPlayerProvider);
     final existingFavorites = ref.watch(favoritePlayersProviderNew);
@@ -144,12 +152,16 @@ class PlayerSelectionContent extends HookConsumerWidget {
 
     // Initialize selectedIds from existing Supabase favorites (for existing users)
     // We use the sorted string representation as dependency since Set reference
-    // equality doesn't work well with hooks - content changes won't trigger re-run
+    // equality doesn't work well with hooks - content changes won't trigger re-run.
+    // Only seed when the provider is currently empty: the provider persists across
+    // PageView swipes, so if the user already toggled during this onboarding
+    // session we must not stomp their choices (including deselections).
     final existingFavoriteIdsKey = existingFavoriteIds.toList()..sort();
     useEffect(() {
-      if (existingFavoriteIds.isNotEmpty) {
-        // Merge existing favorites with any current selections (don't replace)
-        selectedIds.value = {...selectedIds.value, ...existingFavoriteIds};
+      if (existingFavoriteIds.isEmpty) return null;
+      final notifier = ref.read(onboardingSelectedFideIdsProvider.notifier);
+      if (notifier.state.isEmpty) {
+        notifier.state = {...existingFavoriteIds};
       }
       return null;
     }, [existingFavoriteIdsKey.join(',')]);
@@ -175,7 +187,7 @@ class PlayerSelectionContent extends HookConsumerWidget {
     );
     final isSearching = searchQuery.value.isNotEmpty;
     final isLoading = playerState.isLoading && players.isEmpty;
-    final selectedCount = selectedIds.value.length;
+    final selectedCount = selectedIds.length;
 
     // Tablet-specific constraints
     final maxWidth = ResponsiveHelper.isTablet ? 600.0 : double.infinity;
@@ -297,12 +309,11 @@ class PlayerSelectionContent extends HookConsumerWidget {
                                   isSearching
                                       ? players
                                       : recommendedResult.players,
-                              selectedIds: selectedIds.value,
+                              selectedIds: selectedIds,
                               onToggle:
                                   (player) => _toggleFavorite(
                                     context,
                                     ref,
-                                    selectedIds,
                                     player,
                                     isOnboarding: true,
                                   ),
@@ -457,6 +468,8 @@ Future<void> markOnboardingComplete(BuildContext context, WidgetRef ref) async {
     }
   }
 
+  ref.invalidate(onboardingSelectedFideIdsProvider);
+
   if (context.mounted) {
     Navigator.pushReplacementNamed(context, '/home_screen');
   }
@@ -593,7 +606,6 @@ Widget _buildPlayerList(
 void _toggleFavorite(
   BuildContext context,
   WidgetRef ref,
-  ValueNotifier<Set<String>> selectedIds,
   Map<String, dynamic> player, {
   bool isOnboarding = false,
 }) {
@@ -604,7 +616,8 @@ void _toggleFavorite(
   final isFullyAuthenticated =
       supabaseUser != null && supabaseUser.isAnonymous != true;
 
-  final isAdding = !selectedIds.value.contains(fideId);
+  final currentSelected = ref.read(onboardingSelectedFideIdsProvider);
+  final isAdding = !currentSelected.contains(fideId);
 
   // Non-onboarding flow: check auth first, then toggle
   if (!isOnboarding) {
@@ -623,7 +636,6 @@ void _toggleFavorite(
 
       _performToggle(
         ref,
-        selectedIds,
         player,
         fideId,
         supabaseUser,
@@ -640,12 +652,11 @@ void _toggleFavorite(
       context,
       ref,
       isOnboarding: true,
-      currentSelectedCount: selectedIds.value.length,
+      currentSelectedCount: currentSelected.length,
     ).then((canAdd) {
       if (!canAdd) return;
       _performToggle(
         ref,
-        selectedIds,
         player,
         fideId,
         supabaseUser,
@@ -659,7 +670,6 @@ void _toggleFavorite(
   // Removing — always allowed
   _performToggle(
     ref,
-    selectedIds,
     player,
     fideId,
     supabaseUser,
@@ -671,7 +681,6 @@ void _toggleFavorite(
 /// Performs the actual toggle - all sync, async ops fire in background
 void _performToggle(
   WidgetRef ref,
-  ValueNotifier<Set<String>> selectedIds,
   Map<String, dynamic> player,
   String fideId,
   User? supabaseUser,
@@ -679,13 +688,14 @@ void _performToggle(
   required bool isOnboarding,
 }) {
   // INSTANT UI UPDATE - this is sync, happens immediately
-  final updated = Set<String>.from(selectedIds.value);
+  final notifier = ref.read(onboardingSelectedFideIdsProvider.notifier);
+  final updated = Set<String>.from(notifier.state);
   if (updated.contains(fideId)) {
     updated.remove(fideId);
   } else {
     updated.add(fideId);
   }
-  selectedIds.value = updated;
+  notifier.state = updated;
   final isSelected = updated.contains(fideId);
 
   // Analytics - fire and forget

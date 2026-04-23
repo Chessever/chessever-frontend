@@ -188,6 +188,8 @@
 		<!-- Claim "Open With…" for .pgn files. The declared UTI below conforms
 		     to public.plain-text so mail/Files/Safari offer ChessEver as an
 		     editor; receive_sharing_intent delivers the file path to Dart. -->
+		<key>LSSupportsOpeningDocumentsInPlace</key>
+		<true/>
 		<key>CFBundleDocumentTypes</key>
 		<array>
 			<dict>

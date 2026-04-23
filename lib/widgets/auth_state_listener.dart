@@ -8,6 +8,7 @@ import 'package:chessever2/providers/country_dropdown_provider.dart';
 import 'package:chessever2/providers/favorite_events_provider.dart';
 import 'package:chessever2/providers/favorite_players_provider.dart';
 import 'package:chessever2/providers/pending_favorite_players_provider.dart';
+import 'package:chessever2/screens/onboarding/player_selection_screen.dart';
 import 'package:chessever2/repository/local_storage/country_man/country_man_repository.dart';
 import 'package:chessever2/repository/local_storage/onboarding/onboarding_repository.dart';
 import 'package:chessever2/repository/local_storage/sesions_manager/session_manager.dart';
@@ -262,6 +263,7 @@ class AuthStateListener extends ConsumerWidget {
           ref.invalidate(favoriteEventsProvider);
           ref.invalidate(favoritePlayersProviderNew);
           ref.invalidate(pendingFavoriteSelectionsProvider);
+          ref.invalidate(onboardingSelectedFideIdsProvider);
 
           // Don't redirect if we're on splash, onboarding, or already on auth screen
           // Let splash screen handle initial navigation including onboarding check
