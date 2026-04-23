@@ -78,6 +78,7 @@ class GamesTourModel {
   final String tourId;
   final String? tourSlug;
   final DateTime? lastMoveTime;
+  final DateTime? dateStart;
   final String? eco;
   final String? openingName;
   final String?
@@ -106,12 +107,22 @@ class GamesTourModel {
     this.pgn,
     this.boardNr,
     this.lastMoveTime,
+    this.dateStart,
     this.eco,
     this.openingName,
     this.timeControl,
     this.avgElo,
     this.isOnline = false,
   });
+
+  /// Calendar day the game belongs to, for UI bucketing.
+  ///
+  /// Why: `last_move_time` and `game_day` can be clobbered by Lichess refresh
+  /// pushes (every game in a round gets its timestamp bumped to "now"), which
+  /// makes week-old games appear under "Today". `date_start` is written once
+  /// at ingestion from the round's scheduled start and is stable, so we prefer
+  /// it when present.
+  DateTime? get bucketDate => dateStart ?? lastMoveTime;
 
   GamesTourModel copyWith({
     String? gameId,
@@ -134,6 +145,7 @@ class GamesTourModel {
     String? tourId,
     String? tourSlug,
     DateTime? lastMoveTime,
+    DateTime? dateStart,
     String? eco,
     String? openingName,
     String? timeControl,
@@ -163,6 +175,7 @@ class GamesTourModel {
       tourId: tourId ?? this.tourId,
       tourSlug: tourSlug ?? this.tourSlug,
       lastMoveTime: lastMoveTime ?? this.lastMoveTime,
+      dateStart: dateStart ?? this.dateStart,
       eco: eco ?? this.eco,
       openingName: openingName ?? this.openingName,
       timeControl: timeControl ?? this.timeControl,
@@ -295,6 +308,7 @@ class GamesTourModel {
         boardNr: game.boardNr,
         // Prefer lastMoveTime, then gameDay (round start), then dateStart.
         lastMoveTime: game.lastMoveTime ?? game.gameDay ?? game.dateStart,
+        dateStart: game.dateStart,
         eco: resolvedEco,
         openingName: resolvedOpening,
         timeControl: game.timeControl,
@@ -556,6 +570,7 @@ class GamesTourModel {
         other.whiteClockSeconds == whiteClockSeconds &&
         other.blackClockSeconds == blackClockSeconds &&
         other.lastMoveTime == lastMoveTime &&
+        other.dateStart == dateStart &&
         other.gameStatus == gameStatus &&
         other.lastMove == lastMove &&
         other.fen == fen &&
@@ -579,6 +594,7 @@ class GamesTourModel {
         (whiteClockSeconds?.hashCode ?? 0) ^
         (blackClockSeconds?.hashCode ?? 0) ^
         (lastMoveTime?.hashCode ?? 0) ^
+        (dateStart?.hashCode ?? 0) ^
         gameStatus.hashCode ^
         (lastMove?.hashCode ?? 0) ^
         (fen?.hashCode ?? 0) ^

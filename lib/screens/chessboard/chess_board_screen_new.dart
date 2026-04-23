@@ -2571,6 +2571,61 @@ class _ResolvedAppBarShareData {
   });
 }
 
+bool _shareGameNeedsTerminalPosition(GameSource source) {
+  return source == GameSource.gamebase || source == GameSource.openingExplorer;
+}
+
+bool _isAnalysisAtFinishedSharePosition({
+  required AnalysisBoardState analysisState,
+  required GamesTourModel game,
+}) {
+  final analysisGame = analysisState.game;
+  if (analysisGame == null || !game.gameStatus.isFinished) return false;
+
+  // Result-based king effects are only valid on the original mainline.
+  if (analysisState.movePointer.length != 1) return false;
+
+  final currentMainlineIndex = analysisState.movePointer[0];
+  final totalMainlineMoves = analysisGame.mainline.length;
+  if (totalMainlineMoves == 0 ||
+      currentMainlineIndex != totalMainlineMoves - 1) {
+    return false;
+  }
+
+  // Live games must never show finished-result effects.
+  if (analysisGame.isLiveGame) return false;
+
+  // Some remote sources can report a finished result while the line/FEN is
+  // truncated, so require a true terminal position for those sources.
+  if (_shareGameNeedsTerminalPosition(game.source)) {
+    return analysisState.position.isGameOver;
+  }
+
+  return true;
+}
+
+bool _isSnapshotAtFinishedSharePosition({
+  required GameShareSnapshot snapshot,
+  required GamesTourModel game,
+}) {
+  if (!game.gameStatus.isFinished) return false;
+
+  if (snapshot.currentMoveIndex < 0 ||
+      snapshot.currentMoveIndex != snapshot.moveSans.length - 1) {
+    return false;
+  }
+
+  if (!_shareGameNeedsTerminalPosition(game.source)) {
+    return true;
+  }
+
+  try {
+    return Chess.fromSetup(Setup.parseFen(snapshot.positionFen)).isGameOver;
+  } catch (_) {
+    return false;
+  }
+}
+
 class _AppBarState extends ConsumerState<_AppBar> {
   Future<void> _showSaveAnalysisDialog() async {
     final allowed = await requireFullAuthGuard(context);
@@ -2794,11 +2849,14 @@ class _AppBarState extends ConsumerState<_AppBar> {
     final boardReady = state != null && !state.isLoadingMoves;
     final isAtGameEnd =
         boardReady
-            ? state.analysisState.isAtEnd &&
-                state.analysisState.movePointer.length == 1
-            : widget.game.gameStatus.isFinished &&
-                snapshot.currentMoveIndex >= 0 &&
-                snapshot.currentMoveIndex == snapshot.moveSans.length - 1;
+            ? _isAnalysisAtFinishedSharePosition(
+              analysisState: state.analysisState,
+              game: widget.game,
+            )
+            : _isSnapshotAtFinishedSharePosition(
+              snapshot: snapshot,
+              game: widget.game,
+            );
 
     return _ResolvedAppBarShareData(
       pgn: pgn,
@@ -6226,38 +6284,12 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard> {
   bool _wasAtEnd = false;
 
   /// True only at the end of the original game mainline (not analysis variations).
-  /// Uses movePointer.length == 1 because the navigator code path doesn't
-  /// maintain branchPointMoveIndex/analysisMoves fields, making isInAnalysisVariation unreliable.
   /// movePointer: [] = initial pos, [n] = mainline move n, [n,v,m,...] = variation
   bool _isAtGameEnd(AnalysisBoardState s) {
-    final game = s.game;
-    if (game == null) return false;
-
-    // Must be on the mainline.
-    if (s.movePointer.length != 1) return false;
-
-    // Must be at the very last move of the mainline.
-    // (Bypassing s.isAtEnd because allMoves dynamically resizes in analysis mode)
-    final currentMainlineIndex = s.movePointer[0];
-    final totalMainlineMoves = game.mainline.length;
-    if (totalMainlineMoves == 0 ||
-        currentMainlineIndex != totalMainlineMoves - 1) {
-      return false;
-    }
-
-    // If a live game, it must NEVER appear!
-    if (game.isLiveGame) {
-      return false;
-    }
-
-    // For Opening Explorer / Gamebase games, PGNs are often truncated.
-    // To prevent false positives, we require a true terminal position.
-    if (widget.game.source == GameSource.gamebase ||
-        widget.game.source == GameSource.openingExplorer) {
-      return s.position.isGameOver;
-    }
-
-    return true;
+    return _isAnalysisAtFinishedSharePosition(
+      analysisState: s,
+      game: widget.game,
+    );
   }
 
   LichessMoveAnnotationType? _mapNagToAnnotationType(int nag) {
@@ -11996,10 +12028,9 @@ class _EventInfoSheet extends ConsumerWidget {
             SizedBox(width: 8.w),
           ] else if (validCountryCode.isNotEmpty) ...[
             CountryFlag.fromCountryCode(
-validCountryCode,
-  theme: ImageTheme(width: 20.w,
-              height: 14.h,),
-),
+              validCountryCode,
+              theme: ImageTheme(width: 20.w, height: 14.h),
+            ),
             SizedBox(width: 8.w),
           ],
           // Title
@@ -12223,9 +12254,9 @@ validCountryCode,
   Widget? _buildCountryFlag(String countryCode) {
     if (countryCode.isEmpty) return null;
     return CountryFlag.fromCountryCode(
-countryCode,
-  theme: ImageTheme(width: 20.w, height: 14.h),
-);
+      countryCode,
+      theme: ImageTheme(width: 20.w, height: 14.h),
+    );
   }
 }
 

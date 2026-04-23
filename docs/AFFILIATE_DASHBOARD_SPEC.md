@@ -44,7 +44,7 @@ Both dashboards query the following tables in the `public` schema:
 2.  **Growth Analytics**:
     *   Daily/Weekly/Monthly charts for Installs and Conversions.
 3.  **Affiliate Tools**:
-    *   Display unique OneLinks: Branded (`www.get.chessever.com`) and Standard (`chessever.onelink.me`).
+    *   Display unique OneLinks: Branded (`get.chessever.com`) and Standard (`chessever.onelink.me`).
     *   One-click "Copy to Clipboard".
 4.  **Payout History**:
     *   A searchable table of all transactions, their status, and dates.

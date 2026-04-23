@@ -2080,9 +2080,28 @@ class _ExplorerBottomPanelsState extends ConsumerState<_ExplorerBottomPanels>
       TweenSequenceItem(tween: ConstantTween(0.0), weight: 5),
     ]).animate(_swipeController);
 
-    // Intentionally NOT driving `_pageController` during the tutorial:
-    // sliding the notation/explorer panel underneath the overlay looks like
-    // the dialog box itself is animating. Only the finger hint animates here.
+    // Sync _pageController with the tutorial animation.
+    // This makes the notation panel slide underneath the finger hint
+    // during the "Switch Views" walkthrough.
+    _swipeController.addListener(() {
+      if (!_pageController.hasClients) return;
+
+      final width = _pageController.position.viewportDimension;
+      bool canGoNext = _currentPageIndex < _totalPages - 1;
+      double direction = canGoNext ? 1.0 : -1.0;
+
+      // Sync with overlay's maxDrag (width * 0.5)
+      double maxDrag = width * 0.5;
+
+      // handTranslation in overlay is: -1 * moveValue * maxDrag * direction
+      // We want PageView to move by exactly that amount.
+      // PageView offset = baseOffset - handTranslation
+      double moveValue = _swipeMoveAnimation.value;
+      double handTranslation = -1 * moveValue * maxDrag * direction;
+      double baseOffset = _currentPageIndex * width;
+
+      _pageController.position.jumpTo(baseOffset - handTranslation);
+    });
   }
 
   Future<void> _checkAndShowWalkthrough() async {

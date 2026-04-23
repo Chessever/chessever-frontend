@@ -98,17 +98,17 @@ GifExportProfile planGifExport({
   late final List<int> frameIndices;
 
   if (moveCount <= 60) {
-    pixelRatio = 1.25;
+    pixelRatio = 2.0; // Increased from 1.25 for high-DPI sharpness
     frameIndices = List.generate(moveCount, (i) => i);
-  } else if (moveCount <= 100) {
-    pixelRatio = 1.0;
+  } else if (moveCount <= 120) {
+    pixelRatio = 1.5; // Increased from 1.0 for medium games
     frameIndices = List.generate(moveCount, (i) => i);
   } else {
-    pixelRatio = 1.0;
-    // 60 total output frames = 1 initial + 59 sampled moves
+    pixelRatio = 1.25; // Increased from 1.0 to avoid blurry text
+    // 80 total output frames = 1 initial + 79 sampled moves (smoother than 59)
     frameIndices = sampleFrameIndices(
       totalMoves: moveCount,
-      targetMoveFrames: 59,
+      targetMoveFrames: 79,
       currentMoveIndex: currentMoveIndex,
     );
   }
@@ -209,7 +209,12 @@ void gifEncoderWorker(SendPort mainSendPort) {
   // Single handshake: send our port inside GifWorkerReady.
   mainSendPort.send(GifWorkerReady(workerPort.sendPort));
 
-  final gif = img.GifEncoder(delay: 80);
+  final gif = img.GifEncoder(
+    delay: 80,
+    dither: img.DitherKernel.floydSteinberg,
+    quantizerType: img.QuantizerType.neural,
+    samplingFactor: 5,
+  );
 
   workerPort.listen((message) {
     if (message is GifWorkerFrameData) {
@@ -266,7 +271,12 @@ Uint8List? encodeGifFallback({
 }) {
   if (rgbaFrames.isEmpty) return null;
 
-  final gif = img.GifEncoder(delay: 80);
+  final gif = img.GifEncoder(
+    delay: 80,
+    dither: img.DitherKernel.floydSteinberg,
+    quantizerType: img.QuantizerType.neural,
+    samplingFactor: 5,
+  );
 
   for (int i = 0; i < rgbaFrames.length; i++) {
     final width = widths[i];

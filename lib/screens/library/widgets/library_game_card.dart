@@ -240,6 +240,17 @@ class _PlayerInfo extends StatelessWidget {
       if (rating.isNotEmpty) rating,
     ].join(' ');
 
+    // Match For-You / event games tab: always render a flag. FederationFlag
+    // falls back to the FIDE logo when the federation is empty or unknown,
+    // so imported PGNs without a [WhiteFed]/[BlackFed] tag still show a
+    // placeholder instead of visibly-missing flag space.
+    final flag = FederationFlag(
+      federation: federation.trim().isEmpty ? 'FID' : federation,
+      width: 14.sp,
+      height: 10.sp,
+      borderRadius: BorderRadius.circular(2.br),
+    );
+
     return Column(
       crossAxisAlignment: alignment,
       children: [
@@ -249,14 +260,8 @@ class _PlayerInfo extends StatelessWidget {
                   ? MainAxisAlignment.end
                   : MainAxisAlignment.start,
           children: [
-            if (alignment != CrossAxisAlignment.end &&
-                federation.trim().isNotEmpty) ...[
-              FederationFlag(
-                federation: federation,
-                width: 14.sp,
-                height: 10.sp,
-                borderRadius: BorderRadius.circular(2.br),
-              ),
+            if (alignment != CrossAxisAlignment.end) ...[
+              flag,
               SizedBox(width: 6.w),
             ],
             Flexible(
@@ -273,15 +278,9 @@ class _PlayerInfo extends StatelessWidget {
                         : TextAlign.left,
               ),
             ),
-            if (alignment == CrossAxisAlignment.end &&
-                federation.trim().isNotEmpty) ...[
+            if (alignment == CrossAxisAlignment.end) ...[
               SizedBox(width: 6.w),
-              FederationFlag(
-                federation: federation,
-                width: 14.sp,
-                height: 10.sp,
-                borderRadius: BorderRadius.circular(2.br),
-              ),
+              flag,
             ],
           ],
         ),

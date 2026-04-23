@@ -4,9 +4,10 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import '../../../utils/app_typography.dart';
 import '../../../theme/app_theme.dart';
 import '../../../utils/responsive_helper.dart';
-import '../../../utils/tablet_safe_menu.dart';
+import '../../../screens/group_event/model/tour_event_card_model.dart';
 import '../../../screens/tour_detail/provider/tour_detail_mode_provider.dart';
 import '../../../repository/supabase/group_broadcast/group_broadcast.dart';
+import '../../../widgets/event_card/event_context_menu.dart';
 import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 
 class EventFavoriteCard extends ConsumerWidget {
@@ -53,8 +54,12 @@ class EventFavoriteCard extends ConsumerWidget {
       child: GestureDetector(
         onTap: () => _navigateToEvent(context, ref),
         onLongPressStart: (details) {
-          HapticFeedback.lightImpact();
-          _showContextMenu(context, details.globalPosition, title);
+          onEventCardLongPress(
+            context: context,
+            ref: ref,
+            model: _asCardModel(),
+            globalPosition: details.globalPosition,
+          );
         },
         child: Container(
           decoration: BoxDecoration(
@@ -197,47 +202,18 @@ class EventFavoriteCard extends ConsumerWidget {
     }
   }
 
-  void _showContextMenu(
-    BuildContext context,
-    Offset position,
-    String eventTitle,
-  ) {
-    final RenderBox overlay =
-        Overlay.of(context).context.findRenderObject() as RenderBox;
-
-    showTabletSafeMenu(
-      context: context,
-      position: RelativeRect.fromRect(
-        position & const Size(40, 40),
-        Offset.zero & overlay.size,
-      ),
-      color: kBlack2Color,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8.br)),
-      items: [
-        PopupMenuItem(
-          value: 'delete',
-          child: Row(
-            children: [
-              Icon(Icons.delete_outline, color: kRedColor, size: 20.ic),
-              SizedBox(width: 12.w),
-              Text(
-                'Remove from favorites',
-                style: AppTypography.textSmRegular.copyWith(color: kRedColor),
-              ),
-            ],
-          ),
-        ),
-      ],
-    ).then((value) {
-      if (value == 'delete') {
-        _showDeleteConfirmation(context, eventTitle).then((confirmed) {
-          if (confirmed == true && onRemoveFavorite != null) {
-            HapticFeedback.mediumImpact();
-            onRemoveFavorite!();
-          }
-        });
-      }
-    });
+  GroupEventCardModel _asCardModel() {
+    return GroupEventCardModel(
+      id: eventData['id']?.toString() ?? '',
+      title: eventData['title'] as String? ?? 'Unknown Event',
+      dates: eventData['dates'] as String? ?? '',
+      maxAvgElo: eventData['maxAvgElo'] as int? ?? 0,
+      timeUntilStart: '',
+      tourEventCategory: TourEventCategory.ongoing,
+      timeControl: eventData['timeControl'] as String? ?? '',
+      endDate: null,
+      startDate: null,
+    );
   }
 
   Future<bool?> _showDeleteConfirmation(

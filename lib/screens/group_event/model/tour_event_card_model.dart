@@ -156,6 +156,34 @@ class GroupEventCardModel extends Equatable {
     return TourEventCategory.completed;
   }
 
+  /// Returns a copy of this model with [tourEventCategory] re-derived against
+  /// a fresh [liveGroupIds] list. Returns `this` when nothing changes, so
+  /// callers can cheaply skip state updates.
+  GroupEventCardModel withLiveIds(List<String> liveGroupIds) {
+    final refreshed = getCategory(
+      groupId: id,
+      groupName: title,
+      startDate: startDate,
+      endDate: endDate,
+      liveGroupIds: liveGroupIds,
+    );
+    if (refreshed == tourEventCategory) return this;
+    return GroupEventCardModel(
+      id: id,
+      title: title,
+      dates: dates,
+      maxAvgElo: maxAvgElo,
+      timeUntilStart: timeUntilStart,
+      tourEventCategory: refreshed,
+      timeControl: timeControl,
+      endDate: endDate,
+      startDate: startDate,
+      location: location,
+      searchTerms: searchTerms,
+      eventSource: eventSource,
+    );
+  }
+
   @override
   List<Object?> get props => [
     id,

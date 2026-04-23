@@ -48,46 +48,53 @@ class PlayerInitialsAvatar extends StatelessWidget {
         borderRadius ?? (isCircular ? size / 2 : 12.br);
     final hasPhoto = photoUrl != null && photoUrl!.isNotEmpty;
 
-    return Stack(
-      alignment: Alignment.bottomCenter,
-      children: [
-        ClipRRect(
-          borderRadius: BorderRadius.circular(effectiveBorderRadius),
-          child:
-              hasPhoto
-                  ? _ValidatedNetworkImage(
-                    imageUrl: photoUrl!,
-                    size: size,
-                    initials: initials,
-                  )
-                  : _InitialsPlaceholder(initials: initials, size: size),
-        ),
-        if (title != null && title!.isNotEmpty)
-          Positioned(
-            bottom: 0,
-            left: 0,
-            right: 0,
-            child: Container(
-              padding: EdgeInsets.symmetric(horizontal: 3.w, vertical: 1.5.h),
-              decoration: BoxDecoration(
-                color: getTitleBadgeColor(title!),
-                borderRadius: BorderRadius.only(
-                  bottomLeft: Radius.circular(effectiveBorderRadius - 2),
-                  bottomRight: Radius.circular(effectiveBorderRadius - 2),
+    // Transparent Material ancestor ensures Text descendants always have a
+    // Material parent — without this the widget renders with yellow-underline
+    // debug decorations while Heroine hoists it into the overlay during
+    // flight (no Scaffold/Material in the overlay tree).
+    return Material(
+      type: MaterialType.transparency,
+      child: Stack(
+        alignment: Alignment.bottomCenter,
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(effectiveBorderRadius),
+            child:
+                hasPhoto
+                    ? _ValidatedNetworkImage(
+                      imageUrl: photoUrl!,
+                      size: size,
+                      initials: initials,
+                    )
+                    : _InitialsPlaceholder(initials: initials, size: size),
+          ),
+          if (title != null && title!.isNotEmpty)
+            Positioned(
+              bottom: 0,
+              left: 0,
+              right: 0,
+              child: Container(
+                padding: EdgeInsets.symmetric(horizontal: 3.w, vertical: 1.5.h),
+                decoration: BoxDecoration(
+                  color: getTitleBadgeColor(title!),
+                  borderRadius: BorderRadius.only(
+                    bottomLeft: Radius.circular(effectiveBorderRadius - 2),
+                    bottomRight: Radius.circular(effectiveBorderRadius - 2),
+                  ),
                 ),
-              ),
-              child: Text(
-                title!,
-                textAlign: TextAlign.center,
-                style: AppTypography.textXsMedium.copyWith(
-                  color: Colors.white,
-                  fontSize: 9.sp,
-                  fontWeight: FontWeight.w600,
+                child: Text(
+                  title!,
+                  textAlign: TextAlign.center,
+                  style: AppTypography.textXsMedium.copyWith(
+                    color: Colors.white,
+                    fontSize: 9.sp,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
             ),
-          ),
-      ],
+        ],
+      ),
     );
   }
 }
@@ -269,16 +276,22 @@ class PlayerInitialsAvatarCompact extends StatelessWidget {
     final effectiveBorderRadius = borderRadius ?? 8.br;
     final hasPhoto = photoUrl != null && photoUrl!.isNotEmpty;
 
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(effectiveBorderRadius),
-      child:
-          hasPhoto
-              ? _ValidatedNetworkImageCompact(
-                imageUrl: photoUrl!,
-                size: size,
-                initials: initials,
-              )
-              : _CompactInitialsPlaceholder(initials: initials, size: size),
+    // Same rationale as PlayerInitialsAvatar — transparent Material ancestor
+    // prevents yellow-underline debug decoration during Heroine flight when
+    // the widget is hoisted into the overlay.
+    return Material(
+      type: MaterialType.transparency,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(effectiveBorderRadius),
+        child:
+            hasPhoto
+                ? _ValidatedNetworkImageCompact(
+                  imageUrl: photoUrl!,
+                  size: size,
+                  initials: initials,
+                )
+                : _CompactInitialsPlaceholder(initials: initials, size: size),
+      ),
     );
   }
 }

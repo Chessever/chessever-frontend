@@ -1,10 +1,9 @@
 import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
 import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
-import 'package:chessever2/screens/chessboard/notation/notation_tree.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/library/widgets/import_pgn_to_folder_sheet.dart';
 import 'package:chessever2/screens/library/widgets/library_game_card.dart';
-import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/services/pgn_file_intake_service.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
@@ -75,7 +74,8 @@ class _PgnImportPreviewScreenState
     HapticFeedbackService.cardTap();
     // Build a minimal GamesTourModel per game, embedding the full PGN so
     // ChessBoardScreenNew can render it without a Supabase lookup.
-    final games = widget.games.map(_chessGameToTourModel).toList();
+    final games =
+        widget.games.map(chessGameToImportedGamesTourModel).toList();
 
     ref.read(chessboardViewFromProviderNew.notifier).state =
         ChessboardView.tour;
@@ -91,75 +91,6 @@ class _PgnImportPreviewScreenState
             ),
       ),
     );
-  }
-
-  GamesTourModel _chessGameToTourModel(ChessGame game) {
-    final md = game.metadata;
-    final whiteName = (md['White']?.toString().trim() ?? '');
-    final blackName = (md['Black']?.toString().trim() ?? '');
-    final whiteTitle = (md['WhiteTitle']?.toString().trim() ?? '');
-    final blackTitle = (md['BlackTitle']?.toString().trim() ?? '');
-    final whiteElo =
-        int.tryParse(md['WhiteElo']?.toString().trim() ?? '') ?? 0;
-    final blackElo =
-        int.tryParse(md['BlackElo']?.toString().trim() ?? '') ?? 0;
-    final whiteFed = md['WhiteFed']?.toString().trim() ?? '';
-    final blackFed = md['BlackFed']?.toString().trim() ?? '';
-
-    final status = GameStatus.fromString(md['Result']?.toString() ?? '*');
-    final parsedDate = _parsePgnDate(md['Date']?.toString());
-
-    return GamesTourModel(
-      gameId: game.gameId,
-      source: GameSource.boardEditor,
-      whitePlayer: PlayerCard(
-        name: whiteName.isEmpty ? 'White' : whiteName,
-        federation: whiteFed,
-        title: whiteTitle,
-        rating: whiteElo,
-        countryCode: whiteFed,
-        team: null,
-      ),
-      blackPlayer: PlayerCard(
-        name: blackName.isEmpty ? 'Black' : blackName,
-        federation: blackFed,
-        title: blackTitle,
-        rating: blackElo,
-        countryCode: blackFed,
-        team: null,
-      ),
-      whiteTimeDisplay: '--:--',
-      blackTimeDisplay: '--:--',
-      whiteClockCentiseconds: 0,
-      blackClockCentiseconds: 0,
-      gameStatus: status,
-      roundId: md['Round']?.toString() ?? 'import_preview',
-      tourId: md['Event']?.toString() ?? 'import_preview',
-      pgn: exportGameToPgn(game),
-      eco: md['ECO']?.toString(),
-      openingName: md['Opening']?.toString(),
-      lastMoveTime: parsedDate,
-    );
-  }
-
-  DateTime? _parsePgnDate(String? date) {
-    if (date == null || date.isEmpty) return null;
-    try {
-      if (date.contains('.')) {
-        final parts = date.split('.');
-        if (parts.length == 3) {
-          final y = int.tryParse(parts[0]);
-          final m = int.tryParse(parts[1]);
-          final d = int.tryParse(parts[2]);
-          if (y != null && m != null && d != null) {
-            return DateTime(y, m, d);
-          }
-        }
-      }
-      return DateTime.tryParse(date);
-    } catch (_) {
-      return null;
-    }
   }
 
   bool _matches(ChessGame game, String query) {
@@ -381,7 +312,7 @@ class _PgnImportPreviewScreenState
       itemCount: filtered.length,
       itemBuilder: (context, index) {
         final entry = filtered[index];
-        final tourModel = _chessGameToTourModel(entry.game);
+        final tourModel = chessGameToImportedGamesTourModel(entry.game);
         final md = entry.game.metadata;
         final eventName = _eventNameFromMetadata(md);
 
