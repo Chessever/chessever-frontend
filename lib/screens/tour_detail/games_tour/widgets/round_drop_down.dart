@@ -1,5 +1,6 @@
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_view_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_grouped_provider.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
@@ -24,9 +25,26 @@ class RoundDropDown extends ConsumerWidget {
           .watch(gamesAppBarProvider)
           .when(
             data: (data) {
+              final groupedRounds =
+                  ref.watch(gamesTourGroupedProvider).filteredRounds;
+              final gameBackedRoundIds =
+                  groupedRounds.map((round) => round.id).toSet();
+              final dropdownRounds =
+                  gameBackedRoundIds.isEmpty
+                      ? data.gamesAppBarModels
+                      : data.gamesAppBarModels
+                          .where(
+                            (round) => gameBackedRoundIds.contains(round.id),
+                          )
+                          .toList(growable: false);
+              final selectedRoundId = _resolveSelectedRoundId(
+                dropdownRounds,
+                data.selectedId,
+              );
+
               return _RoundDropdown(
-                rounds: data.gamesAppBarModels,
-                selectedRoundId: data.selectedId,
+                rounds: dropdownRounds,
+                selectedRoundId: selectedRoundId,
                 onChanged: (model) {
                   ref.read(gamesAppBarProvider.notifier).select(model);
                 },
@@ -65,6 +83,19 @@ class RoundDropDown extends ConsumerWidget {
           ),
     );
   }
+}
+
+String _resolveSelectedRoundId(
+  List<GamesAppBarModel> rounds,
+  String selectedId,
+) {
+  if (rounds.any((round) => round.id == selectedId)) {
+    return selectedId;
+  }
+  if (rounds.isNotEmpty) {
+    return rounds.first.id;
+  }
+  return selectedId;
 }
 
 class _RoundDropdown extends HookConsumerWidget {
