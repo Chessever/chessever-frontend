@@ -10,6 +10,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/widgets/match_header_w
 import 'package:chessever2/screens/tour_detail/games_tour/utils/knockout_match_detector.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/knockout_tournament_state_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
+import 'package:chessever2/screens/tour_detail/widgets/event_search_bar.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/positioned_list_scrollbar.dart';
 import 'package:dartchess/dartchess.dart';
@@ -75,7 +76,7 @@ class GamesListView extends ConsumerWidget {
       matchGroupsByRound,
     );
 
-    final itemCount = _computeItemCount(
+    final rawItemCount = _computeItemCount(
       gamesListViewMode,
       rounds,
       gamesByRound,
@@ -88,8 +89,15 @@ class GamesListView extends ConsumerWidget {
       matchFormatHeader: matchFormatHeader,
     );
 
-    if (itemCount == 0) {
-      return const SizedBox.shrink();
+    // Reserve index 0 for the event-view search bar so it scrolls away with
+    // the games content instead of being pinned above the tabs.
+    final itemCount = rawItemCount + 1;
+
+    if (rawItemCount == 0) {
+      return Padding(
+        padding: EdgeInsets.only(top: 8.h),
+        child: const EventSearchBar(),
+      );
     }
 
     // Tablet-optimized horizontal padding
@@ -122,8 +130,11 @@ class GamesListView extends ConsumerWidget {
             itemPositionsListener: itemPositionsListener,
             itemCount: itemCount,
             itemBuilder: (context, index) {
+              if (index == 0) {
+                return const EventSearchBar();
+              }
               final lookup = _lookupItem(
-                index: index,
+                index: index - 1,
                 rounds: rounds,
                 gamesByRound: gamesByRound,
                 mode: gamesListViewMode,
@@ -417,8 +428,9 @@ class GamesListView extends ConsumerWidget {
       matchFormatHeader: matchFormatHeader,
     );
     if (listIndex != null) {
+      // +1 because item 0 of the positioned list is the EventSearchBar.
       itemScrollController.scrollTo(
-        index: listIndex,
+        index: listIndex + 1,
         duration: const Duration(milliseconds: 500),
         curve: Curves.easeInOut,
       );

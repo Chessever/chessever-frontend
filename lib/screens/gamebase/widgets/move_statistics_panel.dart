@@ -25,7 +25,7 @@ const double _kColumnGap = 6;
 /// Free users see explorer aggregates up to and including the 10th full move
 /// (ply 20). `currentMoveNumber` is `ply + 1`, so anything above 20 means the
 /// current position is *past* move 10 and premium is required.
-const int _kFreeMoveNumberLimit = 20;
+const int kFreeExplorerMoveNumberLimit = 20;
 
 /// Panel displaying move statistics for the current position.
 /// Shows each possible move with game count and win/draw/loss bar.
@@ -48,8 +48,16 @@ class MoveStatisticsPanel extends ConsumerWidget {
     );
     // Mirror `requirePremiumGuard`: bypass in debug so engineers can exercise
     // deep positions without a live RevenueCat subscription.
-    final pastFreeLimit = state.currentMoveNumber > _kFreeMoveNumberLimit;
+    final pastFreeLimit = state.currentMoveNumber > kFreeExplorerMoveNumberLimit;
     final showGate = pastFreeLimit && !isSubscribed && !kDebugMode;
+    // True when the current position is the last free step — the next ply
+    // would land past move 10. Used to paywall *before* navigating into the
+    // gated zone, rather than letting the user advance and then blurring the
+    // panel behind them.
+    final nextStepCrossesLimit =
+        !isSubscribed &&
+        !kDebugMode &&
+        state.currentMoveNumber >= kFreeExplorerMoveNumberLimit;
 
     if (state.isLoading && !hasStaleData && !showGate) {
       return const Center(
@@ -170,10 +178,14 @@ class MoveStatisticsPanel extends ConsumerWidget {
                 currentFen: state.currentFen,
                 exploredMoves: state.exploredMoves,
                 filters: state.filters,
-                onTap: () {
+                onTap: () async {
                   if (showGate) {
-                    requirePremiumGuard(context, ref);
+                    await requirePremiumGuard(context, ref);
                     return;
+                  }
+                  if (nextStepCrossesLimit) {
+                    final unlocked = await requirePremiumGuard(context, ref);
+                    if (!unlocked) return;
                   }
                   if (onMove != null) {
                     onMove!(aggregate.uci);
@@ -610,20 +622,23 @@ class _ExplorerPremiumGate extends ConsumerWidget {
                 shape: BoxShape.circle,
               ),
               child: Icon(
-                Icons.lock_rounded,
+                Icons.auto_stories_rounded,
                 color: kPrimaryColor,
                 size: 28.ic,
               ),
             ),
             SizedBox(height: 16.h),
             Text(
-              'Explore beyond move 10',
+              'Theory ends here. Prep doesn’t.',
               textAlign: TextAlign.center,
               style: AppTypography.textLgBold.copyWith(color: kWhiteColor),
             ),
             SizedBox(height: 8.h),
             Text(
-              'Unlock Premium to browse opening stats past the 10th full move.',
+              'Games are won past book. Unlock Premium to keep mining master '
+              'data deep into the middlegame — score trends, sideline '
+              'frequency, novelties, and the exact paths titled players take '
+              'beyond move 10.',
               textAlign: TextAlign.center,
               style: AppTypography.textSmMedium.copyWith(
                 color: kSecondaryTextColor,
@@ -647,7 +662,7 @@ class _ExplorerPremiumGate extends ConsumerWidget {
                   ),
                 ),
                 child: Text(
-                  'Unlock Premium',
+                  'Unlock deeper prep',
                   style: AppTypography.textMdBold.copyWith(
                     color: kBlackColor,
                     letterSpacing: 0.2,

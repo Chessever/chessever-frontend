@@ -22,7 +22,6 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/screen_wrapper.dart';
 import 'package:chessever2/widgets/segmented_switcher.dart';
-import 'package:chessever2/widgets/simple_search_bar.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -39,9 +38,6 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
     with RouteAware, WidgetsBindingObserver {
   late PageController pageController;
   late final String _scrollScopeId;
-  late final TextEditingController _searchController;
-  late final FocusNode _searchFocusNode;
-  Timer? _searchDebounce;
 
   @override
   void didPush() {
@@ -136,8 +132,6 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
     );
     pageController = PageController(initialPage: initialPage);
     _scrollScopeId = 'games_scroll_${UniqueKey()}';
-    _searchController = TextEditingController();
-    _searchFocusNode = FocusNode();
   }
 
   @override
@@ -167,33 +161,7 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     pageController.dispose();
-    _searchDebounce?.cancel();
-    _searchController.dispose();
-    _searchFocusNode.dispose();
     super.dispose();
-  }
-
-  void _handleSearchChanged(String query) {
-    _searchDebounce?.cancel();
-    _searchDebounce = Timer(const Duration(milliseconds: 300), () {
-      if (!mounted) return;
-      final trimmed = query.trim();
-      ref.read(standingsSearchQueryProvider.notifier).state = trimmed;
-      final gamesNotifier = ref.read(gamesTourScreenProvider.notifier);
-      if (trimmed.isEmpty) {
-        gamesNotifier.clearSearch();
-      } else {
-        gamesNotifier.searchGamesEnhanced(trimmed);
-      }
-    });
-  }
-
-  void _handleSearchCleared() {
-    _searchDebounce?.cancel();
-    _searchController.clear();
-    _searchFocusNode.unfocus();
-    ref.read(standingsSearchQueryProvider.notifier).state = '';
-    ref.read(gamesTourScreenProvider.notifier).clearSearch();
   }
 
   @override
@@ -272,39 +240,7 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
           selectedTourMode,
           (index) => _handleTabSelection(index),
         ),
-        SizedBox(height: 12.h),
-        _buildUnifiedSearchBar(),
       ],
-    );
-  }
-
-  Widget _buildUnifiedSearchBar() {
-    // Horizontal padding and corner radius are intentionally matched to the
-    // game/event cards immediately below (`16.sp`/`24.sp` gutters, `12.br`
-    // corners) so the search bar reads as the top of the same content column
-    // instead of a floating chip sitting above it.
-    final horizontalPadding = ResponsiveHelper.adaptive(
-      phone: 16.sp,
-      tablet: 24.sp,
-    );
-    return Padding(
-      padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
-      child: Container(
-        padding: EdgeInsets.symmetric(vertical: 6.h),
-        decoration: BoxDecoration(
-          color: kGrey900,
-          borderRadius: BorderRadius.circular(12.br),
-        ),
-        child: SimpleSearchBar(
-          controller: _searchController,
-          focusNode: _searchFocusNode,
-          hintText: 'Search',
-          rotatingHints: const ['player', 'openings', 'FIDE country code'],
-          onChanged: _handleSearchChanged,
-          onCloseTap: _handleSearchCleared,
-          onOpenFilter: null,
-        ),
-      ),
     );
   }
 

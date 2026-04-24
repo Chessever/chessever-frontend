@@ -66,16 +66,18 @@ class _KnockoutMatchDropdownContent extends HookConsumerWidget {
         .calculateMatchHeaderIndex(matchKey);
 
     if (scrollController.isAttached) {
+      // +1 because item 0 of the positioned list is the EventSearchBar.
+      final scrollIndex = itemIndex + 1;
       try {
         scrollController.scrollTo(
-          index: itemIndex,
+          index: scrollIndex,
           duration: const Duration(milliseconds: 400),
           curve: Curves.easeInOut,
           alignment: 0.0, // Position at top
         );
       } catch (e) {
         // Fallback to jumpTo
-        scrollController.jumpTo(index: itemIndex, alignment: 0.0);
+        scrollController.jumpTo(index: scrollIndex, alignment: 0.0);
       }
     }
   }
