@@ -68,6 +68,10 @@ class GamebaseEventSearchItem {
     required this.id,
     required this.event,
     required this.gameCount,
+    this.wins,
+    this.draws,
+    this.losses,
+    this.score,
     this.site,
     this.startDate,
     this.endDate,
@@ -79,6 +83,10 @@ class GamebaseEventSearchItem {
   final String id;
   final String event;
   final int gameCount;
+  final int? wins;
+  final int? draws;
+  final int? losses;
+  final double? score;
   final String? site;
   final DateTime? startDate;
   final DateTime? endDate;
@@ -96,6 +104,10 @@ class GamebaseEventSearchItem {
       id: json['id'] as String? ?? '',
       event: json['event'] as String? ?? '',
       gameCount: (json['gameCount'] as num?)?.toInt() ?? 0,
+      wins: (json['wins'] as num?)?.toInt(),
+      draws: (json['draws'] as num?)?.toInt(),
+      losses: (json['losses'] as num?)?.toInt(),
+      score: (json['score'] as num?)?.toDouble(),
       site: json['site'] as String?,
       startDate: parseDate(json['startDate']),
       endDate: parseDate(json['endDate']),

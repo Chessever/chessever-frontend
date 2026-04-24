@@ -9,6 +9,7 @@ import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/utils/time_utils.dart';
 import 'package:chessever2/widgets/event_card/event_card.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:flutter/material.dart';
@@ -43,7 +44,7 @@ class _PlayerEventsTabState extends ConsumerState<PlayerEventsTab>
   bool _twicIsLoading = false;
   bool _twicIsLoadingMore = false;
   bool _twicHasMore = true;
-  int _twicNextPage = 1;
+  int _twicNextPage = 0;
   int? _twicTotalEvents;
   String? _twicError;
   int _loadToken = 0;
@@ -102,7 +103,7 @@ class _PlayerEventsTabState extends ConsumerState<PlayerEventsTab>
     if (!_isTwic) return;
     if (reset) {
       _loadToken += 1;
-      _twicNextPage = 1;
+      _twicNextPage = 0;
       _twicHasMore = true;
       _twicTotalEvents = null;
       _twicError = null;
@@ -119,8 +120,9 @@ class _PlayerEventsTabState extends ConsumerState<PlayerEventsTab>
 
     final token = _loadToken;
     final repo = ref.read(gamebaseRepositoryProvider);
-    final escapedName = _playerKey.playerName.trim().replaceAll('"', r'\"');
-    if (escapedName.isEmpty) {
+    final playerId = await ref.read(twicPlayerIdProvider(_playerKey).future);
+    if (!mounted || token != _loadToken) return;
+    if (playerId == null || playerId.isEmpty) {
       _twicIsLoading = false;
       _twicIsLoadingMore = false;
       _twicHasMore = false;
@@ -129,8 +131,8 @@ class _PlayerEventsTabState extends ConsumerState<PlayerEventsTab>
     }
 
     try {
-      final response = await repo.searchEvents(
-        query: 'player:"$escapedName"',
+      final response = await repo.getPlayerEvents(
+        playerId: playerId,
         pageNumber: _twicNextPage,
         pageSize: _twicPageSize,
       );
@@ -138,21 +140,7 @@ class _PlayerEventsTabState extends ConsumerState<PlayerEventsTab>
 
       final incoming = response.events
           .where((item) => item.event.trim().isNotEmpty)
-          .map(
-            (item) => PlayerEventData(
-              tourId: item.event.trim(),
-              tourName: item.event.trim(),
-              tourSlug: item.event.trim(),
-              gamesPlayed: item.gameCount,
-              score: null,
-              startDate: item.startDate,
-              endDate: item.endDate,
-              site: item.site,
-              dominantTimeControl: item.dominantTimeControl,
-              avgElo: item.avgElo,
-              maxElo: item.maxElo,
-            ),
-          )
+          .map(playerEventDataFromGamebaseEvent)
           .toList(growable: false);
 
       final byTourId = <String, PlayerEventData>{
@@ -162,13 +150,13 @@ class _PlayerEventsTabState extends ConsumerState<PlayerEventsTab>
         byTourId[event.tourId] = event;
       }
       _twicEvents = byTourId.values.toList(growable: false)..sort((a, b) {
-        final aDate = a.startDate ?? DateTime(1900);
-        final bDate = b.startDate ?? DateTime(1900);
+        final aDate = a.endDate ?? a.startDate ?? DateTime(1900);
+        final bDate = b.endDate ?? b.startDate ?? DateTime(1900);
         return bDate.compareTo(aDate);
       });
 
       _twicHasMore = response.metadata.hasMore;
-      _twicTotalEvents ??= response.metadata.totalCount;
+      _twicTotalEvents = response.metadata.totalCount ?? _twicTotalEvents;
       if (response.events.isEmpty) {
         _twicHasMore = false;
       }
@@ -252,8 +240,8 @@ class _PlayerEventsTabState extends ConsumerState<PlayerEventsTab>
 
             final sortedEvents = List<PlayerEventData>.from(events)
               ..sort((a, b) {
-                final aDate = a.startDate ?? DateTime(1900);
-                final bDate = b.startDate ?? DateTime(1900);
+                final aDate = a.endDate ?? a.startDate ?? DateTime(1900);
+                final bDate = b.endDate ?? b.startDate ?? DateTime(1900);
                 return bDate.compareTo(aDate);
               });
 
@@ -469,6 +457,53 @@ class _EventsListContent extends ConsumerWidget {
   final int? totalEventsOverride;
   final Future<void> Function()? onLoadMore;
 
+  Map<String, GroupEventCardModel> _buildTwicEventCards(
+    List<PlayerEventData> events,
+  ) {
+    final cards = <String, GroupEventCardModel>{};
+    for (final event in events) {
+      final title = event.tourName.trim();
+      if (title.isEmpty) continue;
+
+      final id = 'twic_event_${event.tourId}';
+      cards[event.tourId] = GroupEventCardModel(
+        id: id,
+        title: title,
+        dates: TimeUtils.formatDateRange(event.startDate, event.endDate),
+        maxAvgElo: event.avgElo ?? event.maxElo ?? 0,
+        timeUntilStart: TimeUtils.timeUntilStart(event.startDate),
+        tourEventCategory: GroupEventCardModel.getCategory(
+          groupId: id,
+          groupName: title,
+          startDate: event.startDate,
+          endDate: event.endDate,
+          liveGroupIds: const [],
+        ),
+        timeControl: _formatTwicEventTimeControl(event.dominantTimeControl),
+        endDate: event.endDate,
+        startDate: event.startDate,
+        location: event.site,
+        searchTerms: [title],
+        eventSource: EventSource.communityEvent,
+      );
+    }
+    return cards;
+  }
+
+  String _formatTwicEventTimeControl(String? raw) {
+    final normalized = raw?.trim().toUpperCase();
+    switch (normalized) {
+      case 'CLASSICAL':
+        return 'Standard';
+      case 'RAPID':
+        return 'Rapid';
+      case 'BLITZ':
+        return 'Blitz';
+      default:
+        return 'Standard';
+    }
+  }
+
   /// Check if an event matches the time control filter
   bool _eventMatchesTimeControl(
     PlayerEventData event,
@@ -509,13 +544,6 @@ class _EventsListContent extends ConsumerWidget {
             )
             : const AsyncValue<PlayerAnalytics?>.data(null);
     final twicStats = twicStatsAsync.valueOrNull;
-
-    final eventCardsAsync =
-        dataSource == PlayerProfileDataSource.twic
-            ? ref.watch(playerTwicEventCardsProvider(playerKey))
-            : fideId != null
-            ? ref.watch(playerEventCardsProvider(fideId!))
-            : const AsyncValue<Map<String, GroupEventCardModel>>.data({});
 
     Widget buildEventList(Map<String, GroupEventCardModel> eventCards) {
       final filteredEvents =
@@ -629,6 +657,15 @@ class _EventsListContent extends ConsumerWidget {
         },
       );
     }
+
+    if (dataSource == PlayerProfileDataSource.twic) {
+      return buildEventList(_buildTwicEventCards(events));
+    }
+
+    final eventCardsAsync =
+        fideId != null
+            ? ref.watch(playerEventCardsProvider(fideId!))
+            : const AsyncValue<Map<String, GroupEventCardModel>>.data({});
 
     return eventCardsAsync.when(
       data: buildEventList,
@@ -1065,7 +1102,7 @@ class _FallbackEventCard extends StatelessWidget {
           onTap: onTap,
           child: Column(
             children: [
-            // Main card - matches EventCard._buildPhoneCard layout
+              // Main card - matches EventCard._buildPhoneCard layout
               Container(
                 decoration: BoxDecoration(
                   color: kBlack2Color,
@@ -1080,78 +1117,77 @@ class _FallbackEventCard extends StatelessWidget {
                       _SkeletonEventImage(),
                       SizedBox(width: 12.w),
 
-                    // Content in the middle
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          // Event name
-                          Text(
-                            event.tourName,
-                            style: AppTypography.textSmMedium.copyWith(
-                              color: kWhiteColor,
-                              fontSize: 14.sp,
-                              height: 1.2,
+                      // Content in the middle
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            // Event name
+                            Text(
+                              event.tourName,
+                              style: AppTypography.textSmMedium.copyWith(
+                                color: kWhiteColor,
+                                fontSize: 14.sp,
+                                height: 1.2,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: 1,
                             ),
-                            overflow: TextOverflow.ellipsis,
-                            maxLines: 1,
-                          ),
 
-                          SizedBox(height: 4.h),
+                            SizedBox(height: 4.h),
 
-                          // Event details placeholder (date, time control)
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              if (event.startDate != null) ...[
-                                Flexible(
-                                  child: Text(
-                                    _formatDate(event.startDate!),
-                                    style: AppTypography.textXsMedium.copyWith(
-                                      color: kWhiteColor70,
+                            // Event details placeholder (date, time control)
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (event.startDate != null) ...[
+                                  Flexible(
+                                    child: Text(
+                                      _formatDate(event.startDate!),
+                                      style: AppTypography.textXsMedium
+                                          .copyWith(color: kWhiteColor70),
+                                      overflow: TextOverflow.ellipsis,
+                                      maxLines: 1,
                                     ),
-                                    overflow: TextOverflow.ellipsis,
-                                    maxLines: 1,
                                   ),
-                                ),
-                              ] else ...[
-                                // Skeleton for date
-                                Container(
-                                  width: 60.w,
-                                  height: 12.h,
-                                  decoration: BoxDecoration(
-                                    color: kLightBlack,
-                                    borderRadius: BorderRadius.circular(4.br),
+                                ] else ...[
+                                  // Skeleton for date
+                                  Container(
+                                    width: 60.w,
+                                    height: 12.h,
+                                    decoration: BoxDecoration(
+                                      color: kLightBlack,
+                                      borderRadius: BorderRadius.circular(4.br),
+                                    ),
                                   ),
-                                ),
+                                ],
                               ],
-                            ],
-                          ),
-                        ],
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
 
-                    SizedBox(width: 8.w),
+                      SizedBox(width: 8.w),
 
-                    // Star placeholder - matches _StarWidget size
-                    SizedBox(
-                      width: 30.w,
-                      height: 40.h,
-                      child: Center(
-                        child: Container(
-                          width: 20.w,
-                          height: 20.h,
-                          decoration: BoxDecoration(
-                            color: kLightBlack,
-                            borderRadius: BorderRadius.circular(4.br),
+                      // Star placeholder - matches _StarWidget size
+                      SizedBox(
+                        width: 30.w,
+                        height: 40.h,
+                        child: Center(
+                          child: Container(
+                            width: 20.w,
+                            height: 20.h,
+                            decoration: BoxDecoration(
+                              color: kLightBlack,
+                              borderRadius: BorderRadius.circular(4.br),
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
               ),
 
               // Player stats row - matches _PlayerEventCard layout
@@ -1268,9 +1304,7 @@ class _SkeletonEventImage extends StatelessWidget {
     return SizedBox(
       width: imageWidth,
       child: ConstrainedBox(
-        constraints: BoxConstraints(
-          minHeight: imageWidth * 4 / 5,
-        ),
+        constraints: BoxConstraints(minHeight: imageWidth * 4 / 5),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(6.br),
           child: Skeletonizer(

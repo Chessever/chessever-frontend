@@ -31,6 +31,11 @@ String normalizeFenForGamebase(String fen) {
 String _positionKeyForComparison(String fen) =>
     normalizeFenForGamebase(fen).split(RegExp(r'\s+')).take(4).join(' ');
 
+/// Backend exact indexed coverage ends at positions after 60 played plies
+/// (30 full moves). The next position after this enters the replay-backed
+/// cold path, so broad prefetch should stop before crossing that boundary.
+const int _kExactIndexedExplorerMaxPly = 60;
+
 /// Convert a 6-field FEN into number of played plies.
 int _pliesFromFen(String fen) {
   final parts = fen.trim().split(RegExp(r'\s+'));
@@ -277,13 +282,17 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
     required GamebaseFilters filters,
   }) {
     // Keep this conservative: it's a perf win, but we don't want to DDOS our own API.
-    // With the current backend architecture (indexed through ~20 plies + rest),
-    // deep-node requests can be heavier. Reduce fanout once we enter deep lines.
+    // The backend now serves exact indexed explorer data through 30 full moves
+    // (60 played plies). Keep normal fanout inside that fast indexed window,
+    // then throttle once prefetching the next position would use replay.
     final playerScoped = _isPlayerScopedOnlyFilter(filters);
     final currentPly = _pliesFromFen(baseFen);
-    final isDeepRestZone = currentPly >= 20;
+    final nextPositionRequiresReplay =
+        currentPly >= _kExactIndexedExplorerMaxPly;
     final maxPrefetch =
-        isDeepRestZone ? (playerScoped ? 1 : 0) : (playerScoped ? 4 : 3);
+        nextPositionRequiresReplay
+            ? (playerScoped ? 1 : 0)
+            : (playerScoped ? 4 : 3);
     if (maxPrefetch <= 0) return;
     final candidates =
         aggregates.length <= maxPrefetch
@@ -327,8 +336,8 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
             _putCacheEntry(nextCacheKey, prefetched);
 
             // Prefetch one extra ply from top branches in player mode only.
-            // Skip this in deep rest zone to avoid overloading backend.
-            if (!isDeepRestZone &&
+            // Skip this in the replay zone to avoid overloading backend.
+            if (!nextPositionRequiresReplay &&
                 playerScoped &&
                 i < 2 &&
                 prefetched.isNotEmpty) {

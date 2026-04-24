@@ -6,8 +6,48 @@ import 'package:chessever2/screens/chessboard/widgets/gif_export_worker.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  group('computeGifExportWindow', () {
+    test('uses the selected move only as the GIF end position', () {
+      final moves = List.generate(20, (i) => 'move$i');
+
+      final window = computeGifExportWindow(
+        moveSans: moves,
+        currentMoveIndex: 5,
+        startingFen: 'custom start',
+      );
+
+      expect(window, isNotNull);
+      expect(window!.movesToAnimate, moves.take(6).toList());
+      expect(window.globalMoveOffset, 0);
+      expect(window.captureStartFen, 'custom start');
+    });
+
+    test('keeps the full selected prefix for long games', () {
+      final moves = List.generate(80, (i) => 'move$i');
+
+      final window = computeGifExportWindow(
+        moveSans: moves,
+        currentMoveIndex: 79,
+      );
+
+      expect(window, isNotNull);
+      expect(window!.movesToAnimate.length, 80);
+      expect(window.movesToAnimate.first, 'move0');
+      expect(window.movesToAnimate.last, 'move79');
+    });
+
+    test('returns null when the selected end is the initial position', () {
+      final window = computeGifExportWindow(
+        moveSans: const ['e4', 'e5'],
+        currentMoveIndex: -1,
+      );
+
+      expect(window, isNull);
+    });
+  });
+
   group('planGifExport', () {
-    test('short recap keeps all frames at sharp capture ratio', () {
+    test('captures every selected move at sharp capture ratio', () {
       final profile = planGifExport(moveCount: 12, currentMoveIndex: 11);
 
       expect(profile.pixelRatio, kGifCapturePixelRatio);
@@ -21,127 +61,38 @@ void main() {
       expect(profile.frameDurations[12], 160);
     });
 
-    test('boundary: max animated plies keeps all move frames', () {
-      final profile = planGifExport(
-        moveCount: kGifMaxAnimatedPlies,
-        currentMoveIndex: kGifMaxAnimatedPlies - 1,
-      );
-
-      expect(profile.pixelRatio, kGifCapturePixelRatio);
-      expect(profile.frameIndices.length, kGifMaxAnimatedPlies);
-      expect(profile.frameDurations.length, kGifMaxAnimatedPlies + 1);
-    });
-
-    test('boundary: one over max samples to the frame cap', () {
-      final profile = planGifExport(
-        moveCount: kGifMaxAnimatedPlies + 1,
-        currentMoveIndex: kGifMaxAnimatedPlies,
-      );
-
-      expect(profile.pixelRatio, kGifCapturePixelRatio);
-      expect(profile.frameIndices.length, kGifMaxAnimatedPlies);
-      expect(profile.frameDurations.length, kGifMaxAnimatedPlies + 1);
-    });
-
-    test('medium game caps to sampled move frames', () {
+    test('medium game keeps every move frame', () {
       final profile = planGifExport(moveCount: 80, currentMoveIndex: 79);
 
       expect(profile.pixelRatio, kGifCapturePixelRatio);
-      expect(profile.frameIndices.length, kGifMaxAnimatedPlies);
-      expect(profile.frameDurations.length, kGifMaxAnimatedPlies + 1);
+      expect(profile.frameIndices, List.generate(80, (i) => i));
+      expect(profile.frameDurations.length, 81);
     });
 
-    test('long game caps to sampled move frames', () {
+    test('long game keeps every move frame', () {
       final profile = planGifExport(moveCount: 150, currentMoveIndex: 149);
 
       expect(profile.pixelRatio, kGifCapturePixelRatio);
-      expect(profile.frameIndices.length, kGifMaxAnimatedPlies);
-      // Total output frames: 1 initial + sampled moves.
-      expect(profile.frameDurations.length, kGifMaxAnimatedPlies + 1);
+      expect(profile.frameIndices.length, 150);
+      expect(profile.frameIndices.first, 0);
+      expect(profile.frameIndices.last, 149);
+      expect(profile.frameDurations.length, 151);
     });
 
-    test('long game includes required indices', () {
-      final profile = planGifExport(moveCount: 150, currentMoveIndex: 149);
-      final indices = profile.frameIndices;
-
-      // Must include move 0
-      expect(indices.contains(0), isTrue);
-      // Must include currentMoveIndex
-      expect(indices.contains(149), isTrue);
-      // Must include previous 8 moves (141-148)
-      for (int i = 141; i <= 148; i++) {
-        expect(indices.contains(i), isTrue, reason: 'Missing index $i');
-      }
-      // Sorted
-      for (int i = 1; i < indices.length; i++) {
-        expect(indices[i], greaterThan(indices[i - 1]));
-      }
-    });
-
-    test('long game durations accumulate correctly for gaps', () {
+    test('long game durations accumulate correctly without sampling gaps', () {
       final profile = planGifExport(moveCount: 150, currentMoveIndex: 149);
 
-      // Non-last durations telescope: 50 * (lastIndex - (-1)) = 50 * 150.
+      // 150 transition frames from initial through move 149.
       // Last frame hold is 160cs.
       final totalDuration = profile.frameDurations.reduce((a, b) => a + b);
       expect(totalDuration, 50 * 150 + 160);
     });
 
-    test(
-      'edge case: currentMoveIndex < 9 includes available previous moves',
-      () {
-        final profile = planGifExport(moveCount: 120, currentMoveIndex: 5);
-        final indices = profile.frameIndices;
+    test('captures only through the selected current move', () {
+      final profile = planGifExport(moveCount: 6, currentMoveIndex: 5);
 
-        // Must include move 0 and move 5
-        expect(indices.contains(0), isTrue);
-        expect(indices.contains(5), isTrue);
-        // Includes moves 1-4 (all available before current)
-        for (int i = 1; i <= 4; i++) {
-          expect(indices.contains(i), isTrue, reason: 'Missing index $i');
-        }
-      },
-    );
-  });
-
-  group('sampleFrameIndices', () {
-    test('returns sorted, deduplicated list', () {
-      final indices = sampleFrameIndices(
-        totalMoves: 200,
-        targetMoveFrames: kGifMaxAnimatedPlies,
-        currentMoveIndex: 199,
-      );
-
-      // Sorted
-      for (int i = 1; i < indices.length; i++) {
-        expect(indices[i], greaterThan(indices[i - 1]));
-      }
-      // No duplicates
-      expect(indices.toSet().length, indices.length);
-    });
-
-    test('does not exceed target', () {
-      final indices = sampleFrameIndices(
-        totalMoves: 500,
-        targetMoveFrames: kGifMaxAnimatedPlies,
-        currentMoveIndex: 499,
-      );
-
-      expect(indices.length, lessThanOrEqualTo(kGifMaxAnimatedPlies));
-    });
-
-    test('includes must-have indices', () {
-      final indices = sampleFrameIndices(
-        totalMoves: 300,
-        targetMoveFrames: kGifMaxAnimatedPlies,
-        currentMoveIndex: 299,
-      );
-
-      expect(indices.contains(0), isTrue);
-      expect(indices.contains(299), isTrue);
-      for (int i = 291; i <= 298; i++) {
-        expect(indices.contains(i), isTrue);
-      }
+      expect(profile.frameIndices, [0, 1, 2, 3, 4, 5]);
+      expect(profile.frameDurations.length, 7);
     });
   });
 
