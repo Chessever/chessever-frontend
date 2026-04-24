@@ -1,6 +1,7 @@
 import 'package:chessever2/screens/chessboard/widgets/chess_board_from_fen_new.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/live_game_card_provider.dart';
+import 'package:dartchess/dartchess.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -16,6 +17,7 @@ class GridGameCardWrapperWidget extends ConsumerWidget {
   final int gameIndex;
   final List<String> pinnedIds;
   final void Function(GamesTourModel game) onPinToggle;
+  final Side? fixedBottomSide;
 
   const GridGameCardWrapperWidget({
     super.key,
@@ -25,6 +27,7 @@ class GridGameCardWrapperWidget extends ConsumerWidget {
     required this.gameIndex,
     required this.pinnedIds,
     required this.onPinToggle,
+    this.fixedBottomSide,
   });
 
   @override
@@ -48,6 +51,7 @@ class GridGameCardWrapperWidget extends ConsumerWidget {
       onChanged: () => onChangedWithLiveGames(getUpdatedGamesList()),
       pinnedIds: pinnedIds,
       onPinToggle: onPinToggle,
+      fixedBottomSide: fixedBottomSide,
     );
   }
 }

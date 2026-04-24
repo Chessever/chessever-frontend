@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/main.dart';
 import 'package:chessever2/screens/group_event/providers/group_event_screen_provider.dart';
@@ -20,11 +22,10 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/screen_wrapper.dart';
 import 'package:chessever2/widgets/segmented_switcher.dart';
+import 'package:chessever2/widgets/simple_search_bar.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-
-import 'package:motor/motor.dart';
 
 class TournamentDetailScreen extends ConsumerStatefulWidget {
   const TournamentDetailScreen({super.key});
@@ -38,9 +39,9 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
     with RouteAware, WidgetsBindingObserver {
   late PageController pageController;
   late final String _scrollScopeId;
-  bool isStandingsSearching = false;
-  late TextEditingController standingsSearchController;
-  late FocusNode standingsSearchFocusNode;
+  late final TextEditingController _searchController;
+  late final FocusNode _searchFocusNode;
+  Timer? _searchDebounce;
 
   @override
   void didPush() {
@@ -135,8 +136,8 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
     );
     pageController = PageController(initialPage: initialPage);
     _scrollScopeId = 'games_scroll_${UniqueKey()}';
-    standingsSearchController = TextEditingController();
-    standingsSearchFocusNode = FocusNode();
+    _searchController = TextEditingController();
+    _searchFocusNode = FocusNode();
   }
 
   @override
@@ -166,9 +167,33 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     pageController.dispose();
-    standingsSearchController.dispose();
-    standingsSearchFocusNode.dispose();
+    _searchDebounce?.cancel();
+    _searchController.dispose();
+    _searchFocusNode.dispose();
     super.dispose();
+  }
+
+  void _handleSearchChanged(String query) {
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 300), () {
+      if (!mounted) return;
+      final trimmed = query.trim();
+      ref.read(standingsSearchQueryProvider.notifier).state = trimmed;
+      final gamesNotifier = ref.read(gamesTourScreenProvider.notifier);
+      if (trimmed.isEmpty) {
+        gamesNotifier.clearSearch();
+      } else {
+        gamesNotifier.searchGamesEnhanced(trimmed);
+      }
+    });
+  }
+
+  void _handleSearchCleared() {
+    _searchDebounce?.cancel();
+    _searchController.clear();
+    _searchFocusNode.unfocus();
+    ref.read(standingsSearchQueryProvider.notifier).state = '';
+    ref.read(gamesTourScreenProvider.notifier).clearSearch();
   }
 
   @override
@@ -239,155 +264,48 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
   ) {
     return Column(
       children: [
-        selectedTourMode == TournamentDetailScreenMode.about
-            ? _TourDetailDropDownAppBar(data: data)
-            : selectedTourMode == TournamentDetailScreenMode.games
+        selectedTourMode == TournamentDetailScreenMode.games
             ? const GamesAppBarWidget()
-            : _buildStandingsAppBar(data),
+            : _TourDetailDropDownAppBar(data: data),
         SizedBox(height: 8.h),
         _buildSegmentedSwitcher(
           selectedTourMode,
           (index) => _handleTabSelection(index),
         ),
+        SizedBox(height: 12.h),
+        _buildUnifiedSearchBar(),
       ],
     );
   }
 
-  Widget _buildStandingsAppBar(TourDetailViewModel data) {
+  Widget _buildUnifiedSearchBar() {
+    // Horizontal padding and corner radius are intentionally matched to the
+    // game/event cards immediately below (`16.sp`/`24.sp` gutters, `12.br`
+    // corners) so the search bar reads as the top of the same content column
+    // instead of a floating chip sitting above it.
     final horizontalPadding = ResponsiveHelper.adaptive(
-      phone: 16.w,
-      tablet: 24.w,
+      phone: 16.sp,
+      tablet: 24.sp,
     );
-
-    return SizedBox(
-      height: 44.h,
-      child: Padding(
-        padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
-        child: SingleMotionBuilder(
-          motion: CupertinoMotion.snappy(),
-          value: isStandingsSearching ? 1.0 : 0.0,
-          builder: (context, value, child) {
-            return Stack(
-              alignment: Alignment.center,
-              children: [
-                // Normal App Bar Content (Back button + Dropdown + Search/Menu icons)
-                Opacity(
-                  opacity: (1.0 - value * 2).clamp(0.0, 1.0).toDouble(),
-                  child: IgnorePointer(
-                    ignoring: isStandingsSearching,
-                    child: Row(
-                      children: [
-                        IconButton(
-                          iconSize: 24.ic,
-                          padding: EdgeInsets.zero,
-                          onPressed: () => Navigator.of(context).pop(),
-                          icon: Icon(
-                            Icons.arrow_back_ios_new_outlined,
-                            size: 24.ic,
-                          ),
-                        ),
-                        Expanded(
-                          child: Center(
-                            child: CategoryDropdown(constrainWidth: false),
-                          ),
-                        ),
-                        IconButton(
-                          iconSize: 24.ic,
-                          padding: EdgeInsets.zero,
-                          icon: Icon(Icons.search, size: 24.ic),
-                          onPressed: () {
-                            setState(() => isStandingsSearching = true);
-                            standingsSearchFocusNode.requestFocus();
-                          },
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                // Expanding Search Bar
-                Positioned(
-                  right: 0,
-                  left:
-                      (1 - value) *
-                      (MediaQuery.of(context).size.width -
-                          horizontalPadding * 2 -
-                          40.w),
-                  child: Opacity(
-                    opacity: value.clamp(0.0, 1.0),
-                    child: IgnorePointer(
-                      ignoring: !isStandingsSearching,
-                      child: _buildStandingsSearchBar(),
-                    ),
-                  ),
-                ),
-              ],
-            );
-          },
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
+      child: Container(
+        padding: EdgeInsets.symmetric(vertical: 6.h),
+        decoration: BoxDecoration(
+          color: kGrey900,
+          borderRadius: BorderRadius.circular(12.br),
+        ),
+        child: SimpleSearchBar(
+          controller: _searchController,
+          focusNode: _searchFocusNode,
+          hintText: 'Search',
+          rotatingHints: const ['player', 'openings', 'FIDE country code'],
+          onChanged: _handleSearchChanged,
+          onCloseTap: _handleSearchCleared,
+          onOpenFilter: null,
         ),
       ),
     );
-  }
-
-  Widget _buildStandingsSearchBar() {
-    return Container(
-      height: 40.h,
-      padding: EdgeInsets.symmetric(horizontal: 12.w),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1A1A1C),
-        borderRadius: BorderRadius.circular(12.br),
-        border: Border.all(color: kDarkBlue.withValues(alpha: 0.3), width: 1.w),
-      ),
-      child: Row(
-        children: [
-          GestureDetector(
-            onTap: _closeStandingsSearch,
-            child: Icon(Icons.arrow_back, size: 20.sp, color: kWhiteColor),
-          ),
-          SizedBox(width: 8.w),
-          Expanded(
-            child: TextField(
-              controller: standingsSearchController,
-              focusNode: standingsSearchFocusNode,
-              style: AppTypography.textXsRegular.copyWith(color: kWhiteColor),
-              onChanged: (value) {
-                ref.read(standingsSearchQueryProvider.notifier).state = value;
-              },
-              decoration: InputDecoration(
-                hintText: 'Search players...',
-                hintStyle: AppTypography.textXsRegular.copyWith(
-                  color: const Color(0xFFFFFFFF).withValues(alpha: 0.5),
-                ),
-                border: InputBorder.none,
-                isDense: true,
-                contentPadding: EdgeInsets.zero,
-              ),
-            ),
-          ),
-          if (standingsSearchController.text.isNotEmpty)
-            GestureDetector(
-              onTap: () {
-                standingsSearchController.clear();
-                ref.read(standingsSearchQueryProvider.notifier).state = '';
-                setState(() {});
-              },
-              child: Icon(
-                Icons.close,
-                size: 16.sp,
-                color: const Color(0xFFFFFFFF).withValues(alpha: 0.7),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
-  void _closeStandingsSearch() {
-    standingsSearchFocusNode.unfocus();
-    setState(() {
-      isStandingsSearching = false;
-      standingsSearchController.clear();
-    });
-    ref.read(standingsSearchQueryProvider.notifier).state = '';
   }
 
   Widget _buildErrorAppBar(Object error) {
@@ -429,10 +347,6 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
 
   void _handleTabSelection(int index) {
     try {
-      // Close search when switching tabs
-      if (isStandingsSearching) {
-        _closeStandingsSearch();
-      }
       // Schedule the state change to avoid mutating provider state during
       // layout/semantics passes, which can trigger parentDataDirty assertions.
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -454,11 +368,6 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
 
   void _handlePageChanged(int index) {
     try {
-      // Close search if we move away from standings tab (index 2)
-      if (index != 2 && isStandingsSearching) {
-        _closeStandingsSearch();
-      }
-
       // Update the selected mode when page changes (from swiping)
       final currentModeIndex = TournamentDetailScreenMode.values.indexOf(
         ref.read(selectedTourModeProvider),

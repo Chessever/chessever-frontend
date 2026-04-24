@@ -261,12 +261,14 @@ class EvaluationBarWidgetForGames extends ConsumerWidget {
   final double height;
   final String fen;
   final PlayerView playerView;
+  final bool isFlipped;
 
   const EvaluationBarWidgetForGames({
     required this.width,
     required this.height,
     required this.fen,
     required this.playerView,
+    this.isFlipped = false,
     super.key,
   });
 
@@ -288,7 +290,7 @@ class EvaluationBarWidgetForGames extends ConsumerWidget {
         evaluation: eval,
         isCheckmate: true,
         playerView: playerView,
-        isFlipped: false,
+        isFlipped: isFlipped,
       );
     }
 
@@ -307,7 +309,7 @@ class EvaluationBarWidgetForGames extends ConsumerWidget {
                 isEvaluating: true,
                 hasEvaluationData: false,
                 playerView: playerView,
-                isFlipped: false,
+                isFlipped: isFlipped,
               ),
           error:
               (_, __) => _Bars(
@@ -318,7 +320,7 @@ class EvaluationBarWidgetForGames extends ConsumerWidget {
                 evaluation: 0.0,
                 hasEvaluationData: false,
                 playerView: playerView,
-                isFlipped: false,
+                isFlipped: isFlipped,
               ),
           data: (cloud) {
             final pv = cloud.pvs.firstOrNull;
@@ -331,7 +333,7 @@ class EvaluationBarWidgetForGames extends ConsumerWidget {
                 evaluation: 0.0,
                 hasEvaluationData: false,
                 playerView: playerView,
-                isFlipped: false,
+                isFlipped: isFlipped,
               );
             }
 
@@ -349,7 +351,7 @@ class EvaluationBarWidgetForGames extends ConsumerWidget {
               isMate: isMate,
               mate: mate,
               playerView: playerView,
-              isFlipped: false,
+              isFlipped: isFlipped,
             );
           },
         );

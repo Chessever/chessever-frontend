@@ -11,7 +11,7 @@ import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/string_utils_provider.dart';
 import 'package:chessever2/widgets/app_button.dart';
 import 'package:chessever2/widgets/atomic_countdown_text.dart';
-import 'package:chessever2/widgets/federation_flag.dart';
+import 'package:chessever2/widgets/backfilled_federation_flag.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -378,7 +378,7 @@ class _GamesRound extends ConsumerWidget {
     final federationForFlag =
         player.countryCode.trim().isNotEmpty
             ? player.countryCode
-            : (player.federation.trim().isNotEmpty ? player.federation : 'FID');
+            : player.federation;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -392,8 +392,9 @@ class _GamesRound extends ConsumerWidget {
         ),
         Row(
           children: [
-            FederationFlag(
+            BackfilledFederationFlag(
               federation: federationForFlag,
+              fideId: player.fideId,
               height: 12.h,
               width: 16.w,
               borderRadius: BorderRadius.circular(2.br),
