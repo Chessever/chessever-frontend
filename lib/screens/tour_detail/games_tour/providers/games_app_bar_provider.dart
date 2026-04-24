@@ -1,5 +1,7 @@
 import 'package:collection/collection.dart';
+import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_scroll_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_mode_provider.dart';
@@ -48,6 +50,20 @@ class _GamesAppBarNotifier
     );
 
     if (tourId != null) {
+      ref.listen<AsyncValue<List<Games>>>(gamesTourProvider(tourId!), (
+        previous,
+        next,
+      ) {
+        final games = next.valueOrNull;
+        if (games == null) return;
+
+        final signature = _roundCountSignature(games);
+        if (signature == _lastRoundCountSignature) return;
+
+        _lastRoundCountSignature = signature;
+        _refreshSelectionAfterGamesChange(games);
+      });
+
       ref.listen<KnockoutTournamentState>(
         knockoutTournamentStateProvider(tourId!),
         (previous, next) {
@@ -75,6 +91,8 @@ class _GamesAppBarNotifier
   final String? tourId;
   List<String> _liveRounds;
   final Map<String, _RoundSortMeta> _roundSortMeta;
+  String? _lastRoundCountSignature;
+  bool _selectionRefreshScheduled = false;
 
   Future<void> refresh() async {
     await _load();
@@ -1108,6 +1126,16 @@ class _GamesAppBarNotifier
       return {'$kKnockoutStagePrefix-${tourId ?? 'stage'}': games.length};
     } else {
       // Regular tournaments - count by actual round ID
+      final rawGames =
+          tourId == null ? null : ref.read(gamesTourProvider(tourId!)).value;
+      if (rawGames != null) {
+        final counts = <String, int>{};
+        for (final game in rawGames) {
+          counts.update(game.roundId, (value) => value + 1, ifAbsent: () => 1);
+        }
+        return counts;
+      }
+
       final games =
           ref.read(gamesTourScreenProvider).valueOrNull?.gamesTourModels ??
           const <GamesTourModel>[];
@@ -1189,6 +1217,34 @@ class _GamesAppBarNotifier
     models
       ..clear()
       ..addAll(sorted);
+  }
+
+  void _refreshSelectionAfterGamesChange(List<Games> games) {
+    if (_selectionRefreshScheduled) return;
+    _selectionRefreshScheduled = true;
+
+    Future.microtask(() async {
+      _selectionRefreshScheduled = false;
+      if (!mounted || tourId == null) return;
+
+      final current = state.valueOrNull;
+      if (current == null || current.gamesAppBarModels.isEmpty) return;
+
+      final knownRoundIds =
+          current.gamesAppBarModels.map((model) => model.id).toSet();
+      final hasNewGameBackedRound = games.any(
+        (game) => !knownRoundIds.contains(game.roundId),
+      );
+      if (hasNewGameBackedRound) {
+        await _load();
+        return;
+      }
+
+      await _applySelectionFrom(
+        List<GamesAppBarModel>.from(current.gamesAppBarModels),
+        tourId!,
+      );
+    });
   }
 
   /// Recompute statuses on live-rounds change, update selection only if the user
@@ -1488,4 +1544,17 @@ int? _parseGameNumber(String? value) {
     caseSensitive: false,
   ).firstMatch(value);
   return match != null ? int.tryParse(match.group(1)!) : null;
+}
+
+String _roundCountSignature(List<Games> games) {
+  if (games.isEmpty) return '';
+
+  final counts = <String, int>{};
+  for (final game in games) {
+    counts.update(game.roundId, (value) => value + 1, ifAbsent: () => 1);
+  }
+
+  final entries =
+      counts.entries.toList()..sort((a, b) => a.key.compareTo(b.key));
+  return entries.map((entry) => '${entry.key}:${entry.value}').join('|');
 }

@@ -152,41 +152,82 @@ void main() {
 
       expect(_ids(sorted), ['r4', 'r3', 'r2', 'r1']);
     });
-  });
 
-  group('pickPreferredRoundForSelection', () {
-    test('selects the same top round for the preconfigured upcoming-window case', () {
-      final now = DateTime(2026, 3, 30, 16);
+    test('orders started generic rounds by round number when dates jump', () {
+      final now = DateTime(2026, 4, 24, 16);
       final rounds = [
         _round(
-          id: 'r1',
-          name: 'Round 1',
-          startsAt: now.subtract(const Duration(hours: 4)),
-          status: RoundStatus.ongoing,
+          id: 'r10',
+          name: 'Round 10',
+          startsAt: DateTime(2026, 3, 22, 9, 15),
+          status: RoundStatus.completed,
         ),
         _round(
-          id: 'r2',
-          name: 'Round 2',
-          startsAt: now.add(const Duration(hours: 1)),
-          status: RoundStatus.upcoming,
+          id: 'r11',
+          name: 'Round 11',
+          startsAt: DateTime(2026, 1, 10, 13, 15),
+          status: RoundStatus.completed,
         ),
         _round(
-          id: 'r3',
-          name: 'Round 3',
-          startsAt: now.add(const Duration(days: 1)),
-          status: RoundStatus.upcoming,
+          id: 'r12',
+          name: 'Round 12',
+          startsAt: DateTime(2026, 1, 11, 9, 15),
+          status: RoundStatus.completed,
+        ),
+        _round(
+          id: 'r13',
+          name: 'Round 13',
+          startsAt: DateTime(2026, 4, 24, 14, 15),
+          status: RoundStatus.live,
         ),
       ];
 
-      final selected = pickPreferredRoundForSelection(
+      final sorted = sortRoundsForDisplay(
         rounds,
         resolveDate: (round) => round.startsAt,
-        hasGames: (_) => true,
         now: now,
       );
 
-      expect(selected?.id, 'r2');
+      expect(_ids(sorted), ['r13', 'r12', 'r11', 'r10']);
     });
+  });
+
+  group('pickPreferredRoundForSelection', () {
+    test(
+      'selects the same top round for the preconfigured upcoming-window case',
+      () {
+        final now = DateTime(2026, 3, 30, 16);
+        final rounds = [
+          _round(
+            id: 'r1',
+            name: 'Round 1',
+            startsAt: now.subtract(const Duration(hours: 4)),
+            status: RoundStatus.ongoing,
+          ),
+          _round(
+            id: 'r2',
+            name: 'Round 2',
+            startsAt: now.add(const Duration(hours: 1)),
+            status: RoundStatus.upcoming,
+          ),
+          _round(
+            id: 'r3',
+            name: 'Round 3',
+            startsAt: now.add(const Duration(days: 1)),
+            status: RoundStatus.upcoming,
+          ),
+        ];
+
+        final selected = pickPreferredRoundForSelection(
+          rounds,
+          resolveDate: (round) => round.startsAt,
+          hasGames: (_) => true,
+          now: now,
+        );
+
+        expect(selected?.id, 'r2');
+      },
+    );
 
     test('returns null when hasGames filters out every round', () {
       final now = DateTime(2026, 3, 30, 16);
@@ -215,26 +256,62 @@ void main() {
       expect(selected, isNull);
     });
 
-    test('prefers the most recent live round when multiple live rounds exist', () {
-      final now = DateTime(2026, 3, 30, 16);
+    test(
+      'prefers the most recent live round when multiple live rounds exist',
+      () {
+        final now = DateTime(2026, 3, 30, 16);
+        final rounds = [
+          _round(
+            id: 'r1',
+            name: 'Round 1',
+            startsAt: now.subtract(const Duration(hours: 3)),
+            status: RoundStatus.live,
+          ),
+          _round(
+            id: 'r2',
+            name: 'Round 2',
+            startsAt: now.subtract(const Duration(hours: 1)),
+            status: RoundStatus.live,
+          ),
+          _round(
+            id: 'r3',
+            name: 'Round 3',
+            startsAt: now.add(const Duration(hours: 2)),
+            status: RoundStatus.upcoming,
+          ),
+        ];
+
+        final selected = pickPreferredRoundForSelection(
+          rounds,
+          resolveDate: (round) => round.startsAt,
+          hasGames: (_) => true,
+          now: now,
+        );
+
+        expect(selected?.id, 'r2');
+      },
+    );
+
+    test('prefers highest generic started round when round dates jump', () {
+      final now = DateTime(2026, 4, 24, 16);
       final rounds = [
         _round(
-          id: 'r1',
-          name: 'Round 1',
-          startsAt: now.subtract(const Duration(hours: 3)),
-          status: RoundStatus.live,
+          id: 'r10',
+          name: 'Round 10',
+          startsAt: DateTime(2026, 3, 22, 9, 15),
+          status: RoundStatus.completed,
         ),
         _round(
-          id: 'r2',
-          name: 'Round 2',
-          startsAt: now.subtract(const Duration(hours: 1)),
-          status: RoundStatus.live,
+          id: 'r11',
+          name: 'Round 11',
+          startsAt: DateTime(2026, 1, 10, 13, 15),
+          status: RoundStatus.completed,
         ),
         _round(
-          id: 'r3',
-          name: 'Round 3',
-          startsAt: now.add(const Duration(hours: 2)),
-          status: RoundStatus.upcoming,
+          id: 'r12',
+          name: 'Round 12',
+          startsAt: DateTime(2026, 1, 11, 9, 15),
+          status: RoundStatus.completed,
         ),
       ];
 
@@ -245,7 +322,7 @@ void main() {
         now: now,
       );
 
-      expect(selected?.id, 'r2');
+      expect(selected?.id, 'r12');
     });
   });
 }
