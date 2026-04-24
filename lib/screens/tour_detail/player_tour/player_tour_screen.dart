@@ -5,6 +5,7 @@ import 'package:chessever2/screens/player_profile/player_profile_data_source.dar
 import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/screens/standings/score_card_screen.dart';
 import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen_provider.dart';
+import 'package:chessever2/screens/tour_detail/widgets/event_search_bar.dart';
 import 'package:chessever2/screens/group_event/widget/empty_widget.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/figma_player_card.dart';
@@ -80,15 +81,20 @@ class PlayerTourScreen extends ConsumerWidget {
                                             ).viewInsets.bottom +
                                             16.sp,
                                       ),
-                                      itemCount: data.length,
+                                      itemCount: data.length + 1,
                                       itemBuilder: (context, index) {
-                                        final player = data[index];
+                                        if (index == 0) {
+                                          return const EventSearchBar(
+                                            includeHorizontalPadding: false,
+                                          );
+                                        }
+                                        final player = data[index - 1];
                                         final isFav = favIds.contains(
                                           player.fideId,
                                         );
                                         return FigmaPlayerCard(
                                           player: player,
-                                          rank: index + 1,
+                                          rank: index,
                                           isFavorite: isFav,
                                           showFavoriteButton: false,
                                           onTap: () {

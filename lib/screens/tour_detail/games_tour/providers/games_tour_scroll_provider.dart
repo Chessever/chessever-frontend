@@ -170,17 +170,23 @@ class _GamesTourScrollProvider extends StateNotifier<ItemScrollController> {
       final positions = _itemPositionsListener.itemPositions.value;
       if (positions.isEmpty) return;
 
-      // Find the topmost visible item (considering items that are at least partially visible)
-      final topItem =
-          positions.where((pos) => pos.itemLeadingEdge < 0.3).firstOrNull;
+      // Find the topmost visible item (considering items that are at least partially visible).
+      // Skip index 0 — that's the EventSearchBar, not a list entry.
+      final topItem = positions
+          .where((pos) => pos.index > 0 && pos.itemLeadingEdge < 0.3)
+          .firstOrNull;
       if (topItem == null) return;
 
-      final gameId = _getGameIdFromItemIndex(topItem.index);
+      // Translate positioned-list index back to the internal items coordinate
+      // system (which does not know about the search header).
+      final internalIndex = topItem.index - 1;
+
+      final gameId = _getGameIdFromItemIndex(internalIndex);
       if (gameId != null && gameId != _lastVisibleGameId) {
         _lastVisibleGameId = gameId;
       }
 
-      final visibleRoundId = _getRoundIdFromItemIndex(topItem.index);
+      final visibleRoundId = _getRoundIdFromItemIndex(internalIndex);
       if (visibleRoundId != null && visibleRoundId != _lastVisibleRoundId) {
         _lastVisibleRoundId = visibleRoundId;
         _notifyRoundChange(visibleRoundId);
@@ -228,7 +234,8 @@ class _GamesTourScrollProvider extends StateNotifier<ItemScrollController> {
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!state.isAttached) return;
-      state.jumpTo(index: targetIndex, alignment: 0.1);
+      // +1 because item 0 of the positioned list is the EventSearchBar.
+      state.jumpTo(index: targetIndex + 1, alignment: 0.1);
     });
   }
 

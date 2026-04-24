@@ -12,6 +12,7 @@ import 'package:chessever2/screens/group_event/widget/tour_loading_widget.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_scroll_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/round_expansion_provider.dart';
+import 'package:chessever2/screens/tour_detail/widgets/event_search_bar.dart';
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 
 class GroupEventGamesTourContentBody extends ConsumerStatefulWidget {
@@ -61,7 +62,9 @@ class _GroupEventGamesTourContentBodyState
         }).toList();
 
     if (visibleRounds.isEmpty) {
-      return const SizedBox.shrink();
+      // Still show the search bar so users can search the tour even when no
+      // rounds are visible in the current filter.
+      return const SingleChildScrollView(child: EventSearchBar());
     }
 
     final orderedGamesData = ref
@@ -157,11 +160,14 @@ class _GroupEventGamesTourContentBodyState
       }
     }
 
-    // Build scrollable positioned list with all rounds
+    // Build scrollable positioned list with all rounds.
+    // Reserve index 0 for the event-view search bar so it scrolls away with
+    // the content instead of being pinned above the tabs.
+    final listItemCount = allItems.length + 1;
     return PositionedListScrollbar(
       itemPositionsListener: itemPositionsListener,
       itemScrollController: scrollController,
-      itemCount: allItems.length,
+      itemCount: listItemCount,
       thumbWidth: 4.sp,
       padding: EdgeInsets.only(
         top: 16.sp,
@@ -176,11 +182,14 @@ class _GroupEventGamesTourContentBodyState
           top: 16.sp,
           bottom: MediaQuery.of(context).viewPadding.bottom + 8.sp,
         ),
-        itemCount: allItems.length,
+        itemCount: listItemCount,
         itemBuilder: (context, index) {
-          final item = allItems[index];
-          final isLastItem = index == allItems.length - 1;
-          final nextIsHeader = !isLastItem && allItems[index + 1].isHeader;
+          if (index == 0) {
+            return const EventSearchBar();
+          }
+          final item = allItems[index - 1];
+          final isLastItem = index == listItemCount - 1;
+          final nextIsHeader = !isLastItem && allItems[index].isHeader;
 
           // Apply beautiful UI spacing with visual hierarchy
           EdgeInsets padding;

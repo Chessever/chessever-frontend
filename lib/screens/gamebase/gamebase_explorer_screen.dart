@@ -247,6 +247,14 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
         _stopLongPressForward();
         return;
       }
+      // About to cross the free-tier boundary — halt the auto-repeat and
+      // surface the paywall instead of silently parking the user on a
+      // blurred panel.
+      if (_forwardStepWouldCrossFreeLimit()) {
+        _stopLongPressForward();
+        unawaited(requirePremiumGuard(context, ref));
+        return;
+      }
       ref.read(gamebaseExplorerProvider.notifier).goForward();
     });
   }
@@ -254,6 +262,25 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
   void _stopLongPressForward() {
     _forwardLongPressTimer?.cancel();
     _forwardLongPressTimer = null;
+  }
+
+  /// Returns true when a single forward ply from the current explorer state
+  /// would land past the free-tier move limit for a non-subscriber.
+  bool _forwardStepWouldCrossFreeLimit() {
+    if (kDebugMode) return false;
+    if (ref.read(subscriptionProvider).isSubscribed) return false;
+    final currentMoveNumber =
+        ref.read(gamebaseExplorerProvider).currentMoveNumber;
+    return currentMoveNumber >= kFreeExplorerMoveNumberLimit;
+  }
+
+  /// Gate for any user action that advances the explorer by a single ply.
+  /// If the next step would cross the free-tier boundary, the paywall is
+  /// shown immediately and this returns whether the user just subscribed.
+  Future<bool> _ensureExplorerForwardAllowed() async {
+    if (!_forwardStepWouldCrossFreeLimit()) return true;
+    if (!mounted) return false;
+    return requirePremiumGuard(context, ref);
   }
 
   @override
@@ -290,8 +317,13 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
             },
             onRightMove:
                 state.canGoForward
-                    ? () =>
-                        ref.read(gamebaseExplorerProvider.notifier).goForward()
+                    ? () async {
+                      final allowed = await _ensureExplorerForwardAllowed();
+                      if (!allowed) return;
+                      ref
+                          .read(gamebaseExplorerProvider.notifier)
+                          .goForward();
+                    }
                     : null,
             onLeftMove:
                 state.canGoBack
@@ -781,7 +813,27 @@ class _GamebaseChessBoard extends ConsumerWidget {
                     sideToMove: position.turn,
                     isCheck: position.isCheck,
                     promotionMove: null,
-                    onMove: (Move move, {bool? viaDragAndDrop}) {
+                    onMove: (Move move, {bool? viaDragAndDrop}) async {
+                      // Playing this move would land past the free-tier
+                      // boundary — surface the paywall instead of advancing
+                      // and then blurring the panel. Chessground snaps the
+                      // piece back when state doesn't change.
+                      if (!kDebugMode &&
+                          !ref.read(subscriptionProvider).isSubscribed) {
+                        final currentMoveNumber =
+                            ref
+                                .read(gamebaseExplorerProvider)
+                                .currentMoveNumber;
+                        if (currentMoveNumber >=
+                            kFreeExplorerMoveNumberLimit) {
+                          if (!context.mounted) return;
+                          final unlocked = await requirePremiumGuard(
+                            context,
+                            ref,
+                          );
+                          if (!unlocked) return;
+                        }
+                      }
                       notifier.makeMove(move.uci);
                     },
                     onPromotionSelection: (_) {},
@@ -1771,10 +1823,22 @@ class _ExplorerEngineLines extends ConsumerWidget {
               startMoveNumber: startMoveNumber,
               useFigurine: useFigurine,
               pieceAssets: pieceAssets,
-              onTap: () {
+              onTap: () async {
                 if (lines[i].uciMoves.isEmpty) return;
                 final firstUci = lines[i].uciMoves.first.trim().toLowerCase();
                 if (!uciRegex.hasMatch(firstUci)) return;
+                if (!kDebugMode &&
+                    !ref.read(subscriptionProvider).isSubscribed) {
+                  final currentMoveNumber =
+                      ref
+                          .read(gamebaseExplorerProvider)
+                          .currentMoveNumber;
+                  if (currentMoveNumber >= kFreeExplorerMoveNumberLimit) {
+                    if (!context.mounted) return;
+                    final unlocked = await requirePremiumGuard(context, ref);
+                    if (!unlocked) return;
+                  }
+                }
                 notifier.makeMove(firstUci);
               },
             )
