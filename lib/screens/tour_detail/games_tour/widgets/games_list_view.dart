@@ -113,7 +113,7 @@ class GamesListView extends ConsumerWidget {
       itemCount: itemCount,
       thumbWidth: 4.sp,
       padding: EdgeInsets.only(
-        top: 16.sp,
+        top: 0,
         bottom: MediaQuery.of(context).viewPadding.bottom + 8.sp,
       ),
       child: LayoutBuilder(
@@ -259,7 +259,9 @@ class GamesListView extends ConsumerWidget {
             padding: EdgeInsets.only(
               left: horizontalPadding,
               right: horizontalPadding,
-              top: 16.sp,
+              // The search bar (item 0) provides its own top spacing so the
+              // field sits snug under the tab switcher.
+              top: 0,
               bottom: MediaQuery.of(context).viewPadding.bottom + 8.sp,
             ),
           );

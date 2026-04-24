@@ -145,6 +145,10 @@ class _SimpleSearchBarState extends State<SimpleSearchBar> {
     } else if (!isEmpty && isRunning) {
       _rotationTimer?.cancel();
     }
+    // Note: no setState here. The clear-icon slot watches the controller
+    // + focus node directly via ListenableBuilder so it can toggle without
+    // rebuilding the whole search bar (and blowing away keyboard focus on
+    // each keystroke).
   }
 
   Widget? _buildRotatingHint() {
@@ -211,21 +215,32 @@ class _SimpleSearchBarState extends State<SimpleSearchBar> {
               ),
             ),
           ),
-          // Show clear icon only when search bar has focus
-          if (widget.focusNode.hasFocus) ...[
-            GestureDetector(
-              onTap: widget.onCloseTap,
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 300),
-                padding: EdgeInsets.all(4.sp),
-                decoration: BoxDecoration(
-                  color: Colors.grey[700],
-                  shape: BoxShape.circle,
+          // Clear/reset suffix icon — visible while the field has focus OR
+          // contains text. Scoped to a ListenableBuilder so toggling it
+          // doesn't rebuild the TextField and cause IME / focus churn.
+          ListenableBuilder(
+            listenable: Listenable.merge([
+              widget.controller,
+              widget.focusNode,
+            ]),
+            builder: (context, _) {
+              final visible = widget.focusNode.hasFocus ||
+                  widget.controller.text.isNotEmpty;
+              if (!visible) return const SizedBox.shrink();
+              return GestureDetector(
+                onTap: widget.onCloseTap,
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 300),
+                  padding: EdgeInsets.all(4.sp),
+                  decoration: BoxDecoration(
+                    color: Colors.grey[700],
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(Icons.close, size: 16.ic, color: kWhiteColor),
                 ),
-                child: Icon(Icons.close, size: 16.ic, color: kWhiteColor),
-              ),
-            ),
-          ],
+              );
+            },
+          ),
 
           if (widget.onOpenFilter != null) ...[
             SizedBox(width: 8.w),
