@@ -27,6 +27,7 @@ import 'package:chessever2/screens/chessboard/widgets/evaluation_bar_widget.dart
 // DISABLED: Move annotation overlay (requires move impact analysis)
 // import 'package:chessever2/screens/chessboard/widgets/move_annotation_overlay.dart';
 import 'package:chessever2/screens/chessboard/widgets/share_game_card_overlay.dart';
+import 'package:chessever2/screens/chessboard/widgets/switch_views_tutorial_overlay.dart';
 import 'package:chessever2/screens/chessboard/chess_board_settings_page.dart';
 import 'package:chessever2/screens/chessboard/widgets/smooth_sheet_config.dart';
 import 'package:chessever2/screens/chessboard/widgets/save_analysis_sheet.dart';
@@ -85,6 +86,13 @@ import 'package:chessever2/providers/auth_state_provider.dart';
 import 'package:chessever2/providers/notifications_settings_provider.dart';
 
 const Color kGameEndingRedColor = Color(0xCCF53236);
+
+/// Counter bumped by [_ChessBoardScreenNewState] once the outer "Swipe to
+/// Browse" walkthrough (step 1/2) is dismissed. The visible analysis panel
+/// (`_AnalysisSwipePanels`) listens to this and runs the chained
+/// notation↔explorer "Switch Views" tutorial (step 2/2) so the two
+/// teachings feel like a single orchestrated flow.
+final analysisSwitchViewsTutorialRequestProvider = StateProvider<int>((_) => 0);
 
 /// Spring-based curve that mimics iOS snappy motion
 /// Quick, precise animation with subtle natural settling
@@ -841,9 +849,26 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     }
   }
 
+  /// Signals the visible `_AnalysisSwipePanels` to run its notation↔explorer
+  /// "Switch Views" walkthrough as step 2/2. Bumping the counter triggers
+  /// the listener in the nested state; the panel re-checks its own prefs
+  /// guard before showing, so this is safe to call unconditionally after
+  /// step 1 dismisses.
+  void _requestSwitchViewsTutorial() {
+    if (!mounted) return;
+    ref
+        .read(analysisSwitchViewsTutorialRequestProvider.notifier)
+        .update((v) => v + 1);
+  }
+
   Future<void> _suppressWalkthrough() async {
     final prefs = ref.read(sharedPreferencesRepository);
-    await prefs.setBool(_kWalkthroughDontShowKey, true);
+    // "Don't show again" on step 1 must also suppress step 2 so the user
+    // isn't immediately shown another tutorial they just opted out of.
+    await Future.wait([
+      prefs.setBool(_kWalkthroughDontShowKey, true),
+      prefs.setBool(kSwitchViewsWalkthroughDontShowKey, true),
+    ]);
   }
 
   GamesTourModel _preferFresherGameSnapshot({
@@ -1788,7 +1813,12 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
                             scaleAnimation: _swipeScaleAnimation,
                             currentPageIndex: _currentPageIndex,
                             totalItems: syncedGames.length,
-                            onDismiss: _onWalkthroughFinished,
+                            currentStep: 1,
+                            totalSteps: 2,
+                            onDismiss: () {
+                              _onWalkthroughFinished();
+                              _requestSwitchViewsTutorial();
+                            },
                             onDontShowAgain: () async {
                               await _suppressWalkthrough();
                               _onWalkthroughFinished();
@@ -1816,6 +1846,8 @@ class _SwipeTutorialOverlay extends StatefulWidget {
   final Animation<double> scaleAnimation;
   final int currentPageIndex;
   final int totalItems;
+  final int currentStep;
+  final int totalSteps;
 
   const _SwipeTutorialOverlay({
     super.key,
@@ -1827,6 +1859,8 @@ class _SwipeTutorialOverlay extends StatefulWidget {
     required this.scaleAnimation,
     required this.currentPageIndex,
     required this.totalItems,
+    this.currentStep = 0,
+    this.totalSteps = 0,
   });
 
   @override
@@ -1966,6 +2000,14 @@ class _SwipeTutorialOverlayState extends State<_SwipeTutorialOverlay>
                                       child: Column(
                                         mainAxisSize: MainAxisSize.min,
                                         children: [
+                                          if (widget.totalSteps > 1 &&
+                                              widget.currentStep > 0) ...[
+                                            TutorialStepIndicator(
+                                              currentStep: widget.currentStep,
+                                              totalSteps: widget.totalSteps,
+                                            ),
+                                            SizedBox(height: 10.h),
+                                          ],
                                           Text(
                                             'Swipe to Browse',
                                             style: AppTypography.textLgBold
@@ -7084,9 +7126,20 @@ class _AnalysisSwipePanels extends ConsumerStatefulWidget {
       _AnalysisSwipePanelsState();
 }
 
-class _AnalysisSwipePanelsState extends ConsumerState<_AnalysisSwipePanels> {
+class _AnalysisSwipePanelsState extends ConsumerState<_AnalysisSwipePanels>
+    with SingleTickerProviderStateMixin {
+  static const int _totalPages = 2;
+
   late final PageController _pageController;
   int _currentPage = 0;
+
+  late AnimationController _swipeController;
+  late Animation<double> _swipeFadeAnimation;
+  late Animation<double> _swipeScaleAnimation;
+  late Animation<double> _swipeMoveAnimation;
+  bool _showTutorialOverlay = false;
+  OverlayEntry? _tutorialEntry;
+  int _lastTutorialRequest = 0;
 
   @override
   void initState() {
@@ -7097,21 +7150,187 @@ class _AnalysisSwipePanelsState extends ConsumerState<_AnalysisSwipePanels> {
       _currentPage = enabled ? 1 : 0;
     }
     _pageController = PageController(initialPage: _currentPage);
+    _lastTutorialRequest =
+        ref.read(analysisSwitchViewsTutorialRequestProvider);
+    _setupSwipeAnimation();
   }
 
   @override
   void dispose() {
+    _removeTutorialOverlay();
+    _swipeController.dispose();
     _pageController.dispose();
     super.dispose();
   }
 
+  void _setupSwipeAnimation() {
+    _swipeController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2500),
+    );
+
+    _swipeFadeAnimation = TweenSequence<double>([
+      TweenSequenceItem(tween: Tween(begin: 0.0, end: 1.0), weight: 10),
+      TweenSequenceItem(tween: ConstantTween(1.0), weight: 80),
+      TweenSequenceItem(tween: Tween(begin: 1.0, end: 0.0), weight: 10),
+    ]).animate(_swipeController);
+
+    _swipeScaleAnimation = TweenSequence<double>([
+      TweenSequenceItem(tween: ConstantTween(1.0), weight: 10),
+      TweenSequenceItem(tween: Tween(begin: 1.0, end: 0.8), weight: 10),
+      TweenSequenceItem(tween: ConstantTween(0.8), weight: 60),
+      TweenSequenceItem(tween: Tween(begin: 0.8, end: 1.0), weight: 10),
+      TweenSequenceItem(tween: ConstantTween(1.0), weight: 10),
+    ]).animate(_swipeController);
+
+    _swipeMoveAnimation = TweenSequence<double>([
+      TweenSequenceItem(tween: ConstantTween(0.0), weight: 15),
+      TweenSequenceItem(
+        tween: Tween(
+          begin: 0.0,
+          end: 1.0,
+        ).chain(CurveTween(curve: Curves.easeInOutCubic)),
+        weight: 35,
+      ),
+      TweenSequenceItem(tween: ConstantTween(1.0), weight: 10),
+      TweenSequenceItem(
+        tween: Tween(
+          begin: 1.0,
+          end: 0.0,
+        ).chain(CurveTween(curve: Curves.easeInOutCubic)),
+        weight: 35,
+      ),
+      TweenSequenceItem(tween: ConstantTween(0.0), weight: 5),
+    ]).animate(_swipeController);
+
+    // Slide the notation panel underneath the finger hint so the user sees
+    // the view they'll land on as the hand sweeps.
+    _swipeController.addListener(() {
+      if (!_pageController.hasClients) return;
+      final width = _pageController.position.viewportDimension;
+      final canGoNext = _currentPage < _totalPages - 1;
+      final direction = canGoNext ? 1.0 : -1.0;
+      final maxDrag = width * 0.5;
+      final moveValue = _swipeMoveAnimation.value;
+      final handTranslation = -1 * moveValue * maxDrag * direction;
+      final baseOffset = _currentPage * width;
+      _pageController.position.jumpTo(baseOffset - handTranslation);
+    });
+  }
+
+  Future<void> _maybeStartSwitchViewsTutorial() async {
+    if (!mounted || _showTutorialOverlay) return;
+
+    final prefs = ref.read(sharedPreferencesRepository);
+    final dontShow =
+        await prefs.getBool(kSwitchViewsWalkthroughDontShowKey) ?? false;
+    if (dontShow || !mounted) return;
+
+    // Respect the shared 7-day cadence — if the user already saw this
+    // teaching in the standalone gamebase explorer recently, don't nag
+    // them with it again in the chained flow.
+    final lastShownMs =
+        await prefs.getInt(kSwitchViewsWalkthroughShownDateKey);
+    if (lastShownMs != null) {
+      final lastShown = DateTime.fromMillisecondsSinceEpoch(lastShownMs);
+      if (DateTime.now().difference(lastShown).inDays < 7) return;
+    }
+    if (!mounted) return;
+
+    _showTutorialOverlay = true;
+    _insertTutorialOverlay();
+
+    int count = 0;
+    void statusListener(AnimationStatus status) {
+      if (status != AnimationStatus.completed) return;
+      count++;
+      if (count < 1) {
+        _swipeController.forward(from: 0.0);
+      } else {
+        _swipeController.removeStatusListener(statusListener);
+        if (_pageController.hasClients) {
+          _pageController.jumpToPage(_currentPage);
+        }
+      }
+    }
+
+    _swipeController.addStatusListener(statusListener);
+    _swipeController.forward();
+
+    await prefs.setInt(
+      kSwitchViewsWalkthroughShownDateKey,
+      DateTime.now().millisecondsSinceEpoch,
+    );
+  }
+
+  void _insertTutorialOverlay() {
+    _tutorialEntry = OverlayEntry(
+      builder:
+          (_) => SwitchViewsTutorialOverlay(
+            animationController: _swipeController,
+            moveAnimation: _swipeMoveAnimation,
+            fadeAnimation: _swipeFadeAnimation,
+            scaleAnimation: _swipeScaleAnimation,
+            currentPageIndex: _currentPage,
+            totalItems: _totalPages,
+            currentStep: 2,
+            totalSteps: 2,
+            onDismiss: _onWalkthroughFinished,
+            onDontShowAgain: () async {
+              await _suppressWalkthrough();
+              _onWalkthroughFinished();
+            },
+          ),
+    );
+    Overlay.of(context, rootOverlay: true).insert(_tutorialEntry!);
+  }
+
+  void _removeTutorialOverlay() {
+    _tutorialEntry?.remove();
+    _tutorialEntry = null;
+  }
+
+  void _onWalkthroughFinished() {
+    _removeTutorialOverlay();
+    _swipeController.stop();
+    _swipeController.reset();
+    if (_pageController.hasClients) {
+      _pageController.jumpToPage(_currentPage);
+    }
+    if (mounted) {
+      setState(() {
+        _showTutorialOverlay = false;
+      });
+    } else {
+      _showTutorialOverlay = false;
+    }
+  }
+
+  Future<void> _suppressWalkthrough() async {
+    final prefs = ref.read(sharedPreferencesRepository);
+    await prefs.setBool(kSwitchViewsWalkthroughDontShowKey, true);
+  }
+
   @override
   Widget build(BuildContext context) {
+    // React to the parent's request to chain step 2 after step 1 dismisses.
+    // Using a monotonically increasing counter means the signal re-fires
+    // cleanly if the user reopens the chess board and the outer walkthrough
+    // runs again.
+    ref.listen<int>(analysisSwitchViewsTutorialRequestProvider, (_, next) {
+      if (next <= _lastTutorialRequest) return;
+      _lastTutorialRequest = next;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _maybeStartSwitchViewsTutorial();
+      });
+    });
+
     if (widget.syncWithGamebaseToggle) {
       ref.listen<AsyncValue<bool>>(gamebaseOverlayEnabledProvider, (
         previous,
         next,
       ) {
+        if (_showTutorialOverlay) return;
         final enabled = next.valueOrNull ?? false;
         final targetPage = enabled ? 1 : 0;
         if (targetPage == _currentPage || !_pageController.hasClients) return;
@@ -7127,6 +7346,7 @@ class _AnalysisSwipePanelsState extends ConsumerState<_AnalysisSwipePanels> {
       controller: _pageController,
       physics: const ClampingScrollPhysics(),
       onPageChanged: (page) {
+        if (_showTutorialOverlay) return;
         _currentPage = page;
         if (!widget.syncWithGamebaseToggle) return;
         // Keep the toggle button reflection in sync with the swipe so the

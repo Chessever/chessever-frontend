@@ -40,6 +40,8 @@ GamesTourModel chessGameToImportedGamesTourModel(ChessGame game) {
     md['BlackCountry'],
     md['BlackTeam'],
   ]);
+  final whiteFideId = _parseFideId(md['WhiteFideId']);
+  final blackFideId = _parseFideId(md['BlackFideId']);
 
   final status = GameStatus.fromString(md['Result']?.toString() ?? '*');
   final parsedDate = _parsePgnDate(md['Date']?.toString());
@@ -53,6 +55,7 @@ GamesTourModel chessGameToImportedGamesTourModel(ChessGame game) {
       title: whiteTitle,
       rating: whiteElo,
       countryCode: whiteFed,
+      fideId: whiteFideId,
       team: null,
     ),
     blackPlayer: PlayerCard(
@@ -61,6 +64,7 @@ GamesTourModel chessGameToImportedGamesTourModel(ChessGame game) {
       title: blackTitle,
       rating: blackElo,
       countryCode: blackFed,
+      fideId: blackFideId,
       team: null,
     ),
     whiteTimeDisplay: '--:--',
@@ -83,6 +87,13 @@ String _firstNonEmpty(List<dynamic> candidates) {
     if (s.isNotEmpty && s != '?') return s;
   }
   return '';
+}
+
+int? _parseFideId(dynamic raw) {
+  final s = raw?.toString().trim() ?? '';
+  if (s.isEmpty || s == '?' || s == '0') return null;
+  final parsed = int.tryParse(s);
+  return (parsed != null && parsed > 0) ? parsed : null;
 }
 
 DateTime? _parsePgnDate(String? date) {

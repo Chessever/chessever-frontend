@@ -9,7 +9,7 @@ import 'package:chessever2/utils/png_asset.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/string_utils.dart';
 import 'package:chessever2/widgets/app_button.dart';
-import 'package:chessever2/widgets/federation_flag.dart';
+import 'package:chessever2/widgets/backfilled_federation_flag.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -101,6 +101,7 @@ class LibraryGameCard extends ConsumerWidget {
                                 ? game.whitePlayer.displayRating
                                 : '',
                         federation: game.whitePlayer.countryCode,
+                        fideId: game.whitePlayer.fideId,
                         alignment: CrossAxisAlignment.start,
                       ),
                     ),
@@ -119,6 +120,7 @@ class LibraryGameCard extends ConsumerWidget {
                                 ? game.blackPlayer.displayRating
                                 : '',
                         federation: game.blackPlayer.countryCode,
+                        fideId: game.blackPlayer.fideId,
                         alignment: CrossAxisAlignment.end,
                       ),
                     ),
@@ -225,6 +227,7 @@ class _PlayerInfo extends StatelessWidget {
     required this.rating,
     required this.alignment,
     required this.federation,
+    required this.fideId,
   });
 
   final String name;
@@ -232,6 +235,7 @@ class _PlayerInfo extends StatelessWidget {
   final String rating;
   final CrossAxisAlignment alignment;
   final String federation;
+  final int? fideId;
 
   @override
   Widget build(BuildContext context) {
@@ -240,12 +244,13 @@ class _PlayerInfo extends StatelessWidget {
       if (rating.isNotEmpty) rating,
     ].join(' ');
 
-    // Match For-You / event games tab: always render a flag. FederationFlag
-    // falls back to the FIDE logo when the federation is empty or unknown,
-    // so imported PGNs without a [WhiteFed]/[BlackFed] tag still show a
-    // placeholder instead of visibly-missing flag space.
-    final flag = FederationFlag(
-      federation: federation.trim().isEmpty ? 'FID' : federation,
+    // Imported PGNs often omit [WhiteFed]/[BlackFed] but include FideId tags,
+    // so BackfilledFederationFlag resolves the country via Supabase's
+    // chess_players lookup and falls back to the FIDE logo only when no
+    // federation and no resolvable fideId are available.
+    final flag = BackfilledFederationFlag(
+      federation: federation,
+      fideId: fideId,
       width: 14.sp,
       height: 10.sp,
       borderRadius: BorderRadius.circular(2.br),

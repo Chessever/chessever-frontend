@@ -12,6 +12,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/knockout_tou
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/positioned_list_scrollbar.dart';
+import 'package:dartchess/dartchess.dart';
 import 'package:flutter/material.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -275,6 +276,7 @@ class GamesListView extends ConsumerWidget {
       item.globalIndex1,
       orderedGamesList,
       matchGroupsByRound,
+      item.fixedBottomSide1,
     );
 
     final game2Widget =
@@ -286,6 +288,7 @@ class GamesListView extends ConsumerWidget {
               item.globalIndex2!,
               orderedGamesList,
               matchGroupsByRound,
+              item.fixedBottomSide2,
             )
             : null;
 
@@ -317,6 +320,7 @@ class GamesListView extends ConsumerWidget {
     int globalIndex,
     List<GamesTourModel> orderedGamesList,
     Map<String, Map<String, List<GamesTourModel>>> matchGroupsByRound,
+    Side? fixedBottomSide,
   ) {
     return GridGameCardWrapperWidget(
       key: ValueKey('game_${game.gameId}'),
@@ -346,6 +350,7 @@ class GamesListView extends ConsumerWidget {
                 },
               ),
       pinnedIds: gamesData.pinnedGamedIs,
+      fixedBottomSide: fixedBottomSide,
       onPinToggle:
           (_) async => await ref
               .read(gamesTourScreenProvider.notifier)
@@ -371,6 +376,7 @@ class GamesListView extends ConsumerWidget {
       gamesData: modifiedGamesData,
       gameIndex: item.globalIndex1,
       isChessBoardVisible: gamesListViewMode == GamesListViewMode.chessBoard,
+      fixedBottomSide: item.fixedBottomSide1,
       onReturnFromChessboard: (returnedIndex) {
         final latestMatchExpansion = ref.read(matchExpansionProvider);
         final latestRoundExpansion = ref.read(roundExpansionProvider);
@@ -583,6 +589,7 @@ Object? _lookupItem({
               matchGames.where((game) {
                 return _shouldShowGame(displayMode, game);
               }).toList();
+          final fixedBottomPlayerName = _highestRatedPlayerName(matchGames);
 
           // Build index mapping from filtered to original
           final filteredToOriginalIndex = <int, int>{};
@@ -607,6 +614,10 @@ Object? _lookupItem({
                 game1: filteredGames[game1Index],
                 globalIndex1:
                     matchStartIndex + filteredToOriginalIndex[game1Index]!,
+                fixedBottomSide1: _sideForPlayer(
+                  filteredGames[game1Index],
+                  fixedBottomPlayerName,
+                ),
                 game2:
                     game2Index < filteredCount
                         ? filteredGames[game2Index]
@@ -614,6 +625,13 @@ Object? _lookupItem({
                 globalIndex2:
                     game2Index < filteredCount
                         ? matchStartIndex + filteredToOriginalIndex[game2Index]!
+                        : null,
+                fixedBottomSide2:
+                    game2Index < filteredCount
+                        ? _sideForPlayer(
+                          filteredGames[game2Index],
+                          fixedBottomPlayerName,
+                        )
                         : null,
                 isLastInSection: row == rowCount - 1,
               );
@@ -626,6 +644,10 @@ Object? _lookupItem({
                 game1: filteredGames[localIndex],
                 globalIndex1:
                     matchStartIndex + filteredToOriginalIndex[localIndex]!,
+                fixedBottomSide1: _sideForPlayer(
+                  filteredGames[localIndex],
+                  fixedBottomPlayerName,
+                ),
                 isLastInSection: localIndex == filteredCount - 1,
               );
             }
@@ -856,6 +878,65 @@ List<GamesTourModel> _buildOrderedGamesList(
   return orderedGames;
 }
 
+String? _highestRatedPlayerName(List<GamesTourModel> matchGames) {
+  if (matchGames.isEmpty) return null;
+
+  final playersByName = <String, ({String name, int rating, int order})>{};
+  var order = 0;
+
+  void addPlayer(PlayerCard player) {
+    final key = _normalizePlayerName(player.name);
+    if (key.isEmpty) return;
+
+    final current = playersByName[key];
+    if (current == null) {
+      playersByName[key] = (
+        name: player.name,
+        rating: player.rating,
+        order: order++,
+      );
+      return;
+    }
+
+    if (player.rating > current.rating) {
+      playersByName[key] = (
+        name: player.name,
+        rating: player.rating,
+        order: current.order,
+      );
+    }
+  }
+
+  for (final game in matchGames) {
+    addPlayer(game.whitePlayer);
+    addPlayer(game.blackPlayer);
+  }
+
+  if (playersByName.isEmpty) return null;
+
+  final players =
+      playersByName.values.toList()..sort((a, b) {
+        final ratingCompare = b.rating.compareTo(a.rating);
+        return ratingCompare != 0 ? ratingCompare : a.order.compareTo(b.order);
+      });
+
+  return players.first.name;
+}
+
+Side? _sideForPlayer(GamesTourModel game, String? playerName) {
+  final normalized = _normalizePlayerName(playerName);
+  if (normalized.isEmpty) return null;
+  if (_normalizePlayerName(game.whitePlayer.name) == normalized) {
+    return Side.white;
+  }
+  if (_normalizePlayerName(game.blackPlayer.name) == normalized) {
+    return Side.black;
+  }
+  return null;
+}
+
+String _normalizePlayerName(String? name) => (name ?? '').trim().toLowerCase();
+
 class _HeaderData {
   _HeaderData(this.round, this.roundGames);
 
@@ -881,6 +962,8 @@ class _GameRowData {
     required this.globalIndex1,
     this.game2,
     this.globalIndex2,
+    this.fixedBottomSide1,
+    this.fixedBottomSide2,
     required this.isLastInSection,
   });
 
@@ -888,5 +971,7 @@ class _GameRowData {
   final int globalIndex1;
   final GamesTourModel? game2;
   final int? globalIndex2;
+  final Side? fixedBottomSide1;
+  final Side? fixedBottomSide2;
   final bool isLastInSection;
 }

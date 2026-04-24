@@ -370,12 +370,14 @@ class ChessBoardFromFENNew extends ConsumerWidget {
     required this.onChanged,
     required this.pinnedIds,
     required this.onPinToggle,
+    this.fixedBottomSide,
   });
 
   final GamesTourModel gamesTourModel;
   final VoidCallback onChanged;
   final List<String> pinnedIds;
   final void Function(GamesTourModel game) onPinToggle;
+  final Side? fixedBottomSide;
 
   bool get isPinned => pinnedIds.contains(gamesTourModel.gameId);
 
@@ -426,6 +428,7 @@ class ChessBoardFromFENNew extends ConsumerWidget {
                     lastMove: _uciToMove(gamesTourModel.lastMove ?? ''),
                     boardSize: boardSize,
                     isPinned: isPinned,
+                    fixedBottomSide: fixedBottomSide,
                   ),
                 ),
 
@@ -438,6 +441,7 @@ class ChessBoardFromFENNew extends ConsumerWidget {
                       onPinToggle(gamesTourModel);
 
                       Future.microtask(() {
+                        if (!buildContext.mounted) return;
                         Navigator.pop(buildContext);
                       });
                     },
@@ -489,6 +493,7 @@ class ChessBoardFromFENNew extends ConsumerWidget {
               boardSize: boardSize,
               isPinned: isPinned,
               showEvalBar: showEvalBar,
+              fixedBottomSide: fixedBottomSide,
             ),
           );
         },
@@ -504,12 +509,14 @@ class GridChessBoardFromFENNew extends ConsumerWidget {
     required this.onChanged,
     required this.pinnedIds,
     required this.onPinToggle,
+    this.fixedBottomSide,
   });
 
   final GamesTourModel gamesTourModel;
   final VoidCallback onChanged;
   final List<String> pinnedIds;
   final void Function(GamesTourModel game) onPinToggle;
+  final Side? fixedBottomSide;
 
   bool get isPinned => pinnedIds.contains(gamesTourModel.gameId);
 
@@ -524,6 +531,8 @@ class GridChessBoardFromFENNew extends ConsumerWidget {
   }) {
     final boardRenderBox = context.findRenderObject() as RenderBox;
     final boardPosition = boardRenderBox.localToGlobal(Offset.zero);
+    final bottomSide = fixedBottomSide ?? Side.white;
+    final topSide = _oppositeSide(bottomSide);
 
     final screenHeight = MediaQuery.of(context).size.height;
     final popupHeight = 100.h;
@@ -567,6 +576,7 @@ class GridChessBoardFromFENNew extends ConsumerWidget {
                               onPinToggle(gamesTourModel);
 
                               Future.microtask(() {
+                                if (!buildContext.mounted) return;
                                 Navigator.pop(buildContext);
                               });
                             },
@@ -578,9 +588,8 @@ class GridChessBoardFromFENNew extends ConsumerWidget {
                         ),
                       _PlayerRow(
                         gamesTourModel: gamesTourModel,
-                        isWhitePlayer: false,
-                        isCurrentPlayer:
-                            gamesTourModel.activePlayer == Side.black,
+                        isWhitePlayer: topSide == Side.white,
+                        isCurrentPlayer: gamesTourModel.activePlayer == topSide,
                         isPinned: isPinned,
                         playerView: PlayerView.gridView,
                       ),
@@ -595,14 +604,15 @@ class GridChessBoardFromFENNew extends ConsumerWidget {
                           playerView: PlayerView.gridView,
                           showEvalBar: showEvalBar,
                           showCoordinates: false,
+                          orientation: bottomSide,
                         ),
                       ),
                       SizedBox(height: 4.h),
                       _PlayerRow(
                         gamesTourModel: gamesTourModel,
-                        isWhitePlayer: true,
+                        isWhitePlayer: bottomSide == Side.white,
                         isCurrentPlayer:
-                            gamesTourModel.activePlayer == Side.white,
+                            gamesTourModel.activePlayer == bottomSide,
                         isPinned: false,
                         playerView: PlayerView.gridView,
                       ),
@@ -616,6 +626,7 @@ class GridChessBoardFromFENNew extends ConsumerWidget {
                               onPinToggle(gamesTourModel);
 
                               Future.microtask(() {
+                                if (!buildContext.mounted) return;
                                 Navigator.pop(buildContext);
                               });
                             },
@@ -644,6 +655,8 @@ class GridChessBoardFromFENNew extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final showEvalBar = _shouldShowEvalBar(ref) && gamesTourModel.hasStarted;
     final sideBarWidth = showEvalBar ? 10.w : 0.w;
+    final bottomSide = fixedBottomSide ?? Side.white;
+    final topSide = _oppositeSide(bottomSide);
 
     // On phone, use the original fixed calculation for 2-column grid
     if (ResponsiveHelper.isPhone) {
@@ -673,8 +686,8 @@ class GridChessBoardFromFENNew extends ConsumerWidget {
             children: [
               _PlayerRow(
                 gamesTourModel: gamesTourModel,
-                isWhitePlayer: false,
-                isCurrentPlayer: gamesTourModel.activePlayer == Side.black,
+                isWhitePlayer: topSide == Side.white,
+                isCurrentPlayer: gamesTourModel.activePlayer == topSide,
                 isPinned: isPinned,
                 playerView: PlayerView.gridView,
               ),
@@ -687,12 +700,13 @@ class GridChessBoardFromFENNew extends ConsumerWidget {
                 playerView: PlayerView.gridView,
                 showEvalBar: showEvalBar,
                 showCoordinates: false,
+                orientation: bottomSide,
               ),
               SizedBox(height: 4.h),
               _PlayerRow(
                 gamesTourModel: gamesTourModel,
-                isWhitePlayer: true,
-                isCurrentPlayer: gamesTourModel.activePlayer == Side.white,
+                isWhitePlayer: bottomSide == Side.white,
+                isCurrentPlayer: gamesTourModel.activePlayer == bottomSide,
                 isPinned: false,
                 playerView: PlayerView.gridView,
               ),
@@ -730,8 +744,8 @@ class GridChessBoardFromFENNew extends ConsumerWidget {
             children: [
               _PlayerRow(
                 gamesTourModel: gamesTourModel,
-                isWhitePlayer: false,
-                isCurrentPlayer: gamesTourModel.activePlayer == Side.black,
+                isWhitePlayer: topSide == Side.white,
+                isCurrentPlayer: gamesTourModel.activePlayer == topSide,
                 isPinned: isPinned,
                 playerView: PlayerView.gridView,
               ),
@@ -744,12 +758,13 @@ class GridChessBoardFromFENNew extends ConsumerWidget {
                 playerView: PlayerView.gridView,
                 showEvalBar: showEvalBar,
                 showCoordinates: false,
+                orientation: bottomSide,
               ),
               SizedBox(height: 4.h),
               _PlayerRow(
                 gamesTourModel: gamesTourModel,
-                isWhitePlayer: true,
-                isCurrentPlayer: gamesTourModel.activePlayer == Side.white,
+                isWhitePlayer: bottomSide == Side.white,
+                isCurrentPlayer: gamesTourModel.activePlayer == bottomSide,
                 isPinned: false,
                 playerView: PlayerView.gridView,
               ),
@@ -777,6 +792,21 @@ Move? _uciToMove(String uci) {
 
 Square _square(String name) => Square.fromName(name);
 
+Side _oppositeSide(Side side) => side == Side.white ? Side.black : Side.white;
+
+({double left, double top}) _orientedSquareOffset(
+  Square square,
+  double squareSize,
+  Side orientation,
+) {
+  final file = square.file;
+  final rank = square.rank;
+  if (orientation == Side.black) {
+    return (left: (7 - file) * squareSize, top: rank * squareSize);
+  }
+  return (left: file * squareSize, top: (7 - rank) * squareSize);
+}
+
 class _ChessBoardLayout extends ConsumerWidget {
   const _ChessBoardLayout({
     required this.gamesTourModel,
@@ -785,6 +815,7 @@ class _ChessBoardLayout extends ConsumerWidget {
     required this.boardSize,
     required this.isPinned,
     required this.showEvalBar,
+    required this.fixedBottomSide,
   });
 
   final GamesTourModel gamesTourModel;
@@ -793,15 +824,19 @@ class _ChessBoardLayout extends ConsumerWidget {
   final double boardSize;
   final bool isPinned;
   final bool showEvalBar;
+  final Side? fixedBottomSide;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final bottomSide = fixedBottomSide ?? Side.white;
+    final topSide = _oppositeSide(bottomSide);
+
     return Column(
       children: [
         _PlayerRow(
           gamesTourModel: gamesTourModel,
-          isWhitePlayer: false,
-          isCurrentPlayer: gamesTourModel.activePlayer == Side.black,
+          isWhitePlayer: topSide == Side.white,
+          isCurrentPlayer: gamesTourModel.activePlayer == topSide,
           isPinned: isPinned,
           playerView: PlayerView.listView,
         ),
@@ -814,12 +849,13 @@ class _ChessBoardLayout extends ConsumerWidget {
           playerView: PlayerView.listView,
           showEvalBar: showEvalBar,
           showCoordinates: false,
+          orientation: bottomSide,
         ),
         SizedBox(height: 4.h),
         _PlayerRow(
           gamesTourModel: gamesTourModel,
-          isWhitePlayer: true,
-          isCurrentPlayer: gamesTourModel.activePlayer == Side.white,
+          isWhitePlayer: bottomSide == Side.white,
+          isCurrentPlayer: gamesTourModel.activePlayer == bottomSide,
           isPinned: false,
           playerView: PlayerView.listView,
         ),
@@ -834,17 +870,21 @@ class _ChessBoardContent extends ConsumerWidget {
     required this.lastMove,
     required this.boardSize,
     required this.isPinned,
+    required this.fixedBottomSide,
   });
 
   final GamesTourModel gamesTourModel;
   final Move? lastMove;
   final Size boardSize;
   final bool isPinned;
+  final Side? fixedBottomSide;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final showEvalBar = _shouldShowEvalBar(ref) && gamesTourModel.hasStarted;
     final sideBarWidth = showEvalBar ? 20.w : 0.w;
+    final bottomSide = fixedBottomSide ?? Side.white;
+    final topSide = _oppositeSide(bottomSide);
 
     return SizedBox(
       width: boardSize.width,
@@ -862,8 +902,8 @@ class _ChessBoardContent extends ConsumerWidget {
               children: [
                 _PlayerRow(
                   gamesTourModel: gamesTourModel,
-                  isWhitePlayer: false,
-                  isCurrentPlayer: gamesTourModel.activePlayer == Side.black,
+                  isWhitePlayer: topSide == Side.white,
+                  isCurrentPlayer: gamesTourModel.activePlayer == topSide,
                   isPinned: isPinned,
                   playerView: PlayerView.listView,
                 ),
@@ -876,12 +916,13 @@ class _ChessBoardContent extends ConsumerWidget {
                   playerView: PlayerView.listView,
                   showEvalBar: showEvalBar,
                   showCoordinates: false,
+                  orientation: bottomSide,
                 ),
                 SizedBox(height: 4.h),
                 _PlayerRow(
                   gamesTourModel: gamesTourModel,
-                  isWhitePlayer: true,
-                  isCurrentPlayer: gamesTourModel.activePlayer == Side.white,
+                  isWhitePlayer: bottomSide == Side.white,
+                  isCurrentPlayer: gamesTourModel.activePlayer == bottomSide,
                   isPinned: false,
                   playerView: PlayerView.listView,
                 ),
@@ -930,6 +971,7 @@ class _ChessBoardWithEvaluation extends ConsumerWidget {
     required this.boardSize,
     required this.playerView,
     required this.showEvalBar,
+    required this.orientation,
     this.showCoordinates = true,
   });
 
@@ -939,6 +981,7 @@ class _ChessBoardWithEvaluation extends ConsumerWidget {
   final double boardSize;
   final PlayerView playerView;
   final bool showEvalBar;
+  final Side orientation;
   final bool showCoordinates;
 
   @override
@@ -954,6 +997,7 @@ class _ChessBoardWithEvaluation extends ConsumerWidget {
         boardSize: boardSize,
         showCoordinates: showCoordinates,
         gameStatus: gameStatus,
+        orientation: orientation,
       );
     }
 
@@ -964,6 +1008,7 @@ class _ChessBoardWithEvaluation extends ConsumerWidget {
           height: boardSize,
           fen: resolvedFen,
           playerView: playerView,
+          isFlipped: orientation == Side.black,
         ),
         _ChessBoardWidget(
           fen: resolvedFen,
@@ -971,6 +1016,7 @@ class _ChessBoardWithEvaluation extends ConsumerWidget {
           boardSize: boardSize,
           showCoordinates: showCoordinates,
           gameStatus: gameStatus,
+          orientation: orientation,
         ),
       ],
     );
@@ -982,6 +1028,7 @@ class _ChessBoardWidget extends ConsumerWidget {
     required this.fen,
     required this.lastMove,
     required this.boardSize,
+    required this.orientation,
     this.showCoordinates = true,
     this.gameStatus,
   });
@@ -989,6 +1036,7 @@ class _ChessBoardWidget extends ConsumerWidget {
   final String? fen;
   final Move? lastMove;
   final double boardSize;
+  final Side orientation;
   final bool showCoordinates;
   final GameStatus? gameStatus;
 
@@ -1056,7 +1104,7 @@ class _ChessBoardWidget extends ConsumerWidget {
               // Use piece set from settings
               pieceAssets: boardSettings.pieceAssets,
             ),
-            orientation: Side.white,
+            orientation: orientation,
             fen: displayFen,
             lastMove: lastMove,
           ),
@@ -1072,9 +1120,11 @@ class _ChessBoardWidget extends ConsumerWidget {
           loserSide == Side.white ? PieceKind.whiteKing : PieceKind.blackKing;
       final pieceImage = boardSettings.pieceAssets[pieceKind];
 
-      // Position on board (not flipped, always white at bottom)
-      final effectiveFile = loserKingSquare.file;
-      final effectiveRank = 7 - loserKingSquare.rank;
+      final loserKingOffset = _orientedSquareOffset(
+        loserKingSquare,
+        squareSize,
+        orientation,
+      );
 
       return SizedBox(
         width: boardSize,
@@ -1084,14 +1134,14 @@ class _ChessBoardWidget extends ConsumerWidget {
             chessboard,
             // Red background for loser's king square
             _SquareHighlight(
-              left: effectiveFile * squareSize,
-              top: effectiveRank * squareSize,
+              left: loserKingOffset.left,
+              top: loserKingOffset.top,
               squareSize: squareSize,
               color: const Color(0xCCF53236), // Red with alpha
             ),
             _SmallFallenKingOverlay(
-              left: effectiveFile * squareSize,
-              top: effectiveRank * squareSize,
+              left: loserKingOffset.left,
+              top: loserKingOffset.top,
               squareSize: squareSize,
               pieceImage: pieceImage!,
             ),
@@ -1105,12 +1155,16 @@ class _ChessBoardWidget extends ConsumerWidget {
       final squareSize = boardSize / 8;
       final whiteKingCg = Square.fromName(whiteKingSquare.name);
       final blackKingCg = Square.fromName(blackKingSquare.name);
-
-      // Calculate positions for both kings
-      final whiteEffectiveFile = whiteKingCg.file;
-      final whiteEffectiveRank = 7 - whiteKingCg.rank;
-      final blackEffectiveFile = blackKingCg.file;
-      final blackEffectiveRank = 7 - blackKingCg.rank;
+      final whiteKingOffset = _orientedSquareOffset(
+        whiteKingCg,
+        squareSize,
+        orientation,
+      );
+      final blackKingOffset = _orientedSquareOffset(
+        blackKingCg,
+        squareSize,
+        orientation,
+      );
 
       return SizedBox(
         width: boardSize,
@@ -1120,26 +1174,28 @@ class _ChessBoardWidget extends ConsumerWidget {
             chessboard,
             // Mint/teal background for white king's square
             _SquareHighlight(
-              left: whiteEffectiveFile * squareSize,
-              top: whiteEffectiveRank * squareSize,
+              left: whiteKingOffset.left,
+              top: whiteKingOffset.top,
               squareSize: squareSize,
               color: const Color(0xCCADE1CD), // Mint green with alpha
             ),
             // Mint/teal background for black king's square
             _SquareHighlight(
-              left: blackEffectiveFile * squareSize,
-              top: blackEffectiveRank * squareSize,
+              left: blackKingOffset.left,
+              top: blackKingOffset.top,
               squareSize: squareSize,
               color: const Color(0xCCADE1CD), // Mint green with alpha
             ),
             _SmallPeaceIcon(
               square: whiteKingCg,
               squareSize: squareSize,
+              orientation: orientation,
               delayMs: 0,
             ),
             _SmallPeaceIcon(
               square: blackKingCg,
               squareSize: squareSize,
+              orientation: orientation,
               delayMs: 100,
             ),
           ],
@@ -1300,11 +1356,13 @@ class _SquareHighlight extends StatelessWidget {
 class _SmallPeaceIcon extends StatefulWidget {
   final Square square;
   final double squareSize;
+  final Side orientation;
   final int delayMs;
 
   const _SmallPeaceIcon({
     required this.square,
     required this.squareSize,
+    required this.orientation,
     required this.delayMs,
   });
 
@@ -1342,23 +1400,18 @@ class _SmallPeaceIconState extends State<_SmallPeaceIcon>
 
   @override
   Widget build(BuildContext context) {
-    final file = widget.square.file;
-    final rank = widget.square.rank;
-
-    // Position on board (not flipped)
-    final effectiveFile = file;
-    final effectiveRank = 7 - rank;
+    final offset = _orientedSquareOffset(
+      widget.square,
+      widget.squareSize,
+      widget.orientation,
+    );
 
     // Scale down for smaller boards
     final containerSize = widget.squareSize * 0.28;
 
     return Positioned(
-      left:
-          effectiveFile * widget.squareSize +
-          widget.squareSize -
-          containerSize -
-          1,
-      top: effectiveRank * widget.squareSize + 1,
+      left: offset.left + widget.squareSize - containerSize - 1,
+      top: offset.top + 1,
       child: AnimatedBuilder(
         animation: _scaleAnimation,
         builder: (context, child) {

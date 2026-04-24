@@ -440,7 +440,7 @@ class _StadiumChipButton extends HookWidget {
                   : _FluidShimmerPainter(
                     progress: shimmerValue,
                     shimmerColor: kPrimaryColor.withValues(alpha: 0.4),
-                    borderRadius: 100.br,
+                    borderRadius: 12.br,
                   ),
           child: child,
         );
@@ -450,7 +450,7 @@ class _StadiumChipButton extends HookWidget {
         curve: Curves.easeOutCubic,
         padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 8.sp),
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(100.br),
+          borderRadius: BorderRadius.circular(12.br),
           color:
               isOpen
                   ? kPrimaryColor.withValues(alpha: 0.15)
@@ -501,8 +501,9 @@ class _StadiumChipButton extends HookWidget {
       ),
     );
 
-    // Chip width - balanced for text visibility while respecting app bar icons
-    final chipMaxWidth = ResponsiveHelper.isTablet ? 400.0 : 200.w;
+    // Chip width - wider now that the search icon no longer sits in the app
+    // bar, giving the event name more room to breathe.
+    final chipMaxWidth = ResponsiveHelper.isTablet ? 480.0 : 260.w;
 
     return GestureDetector(
       onTap: onTap,

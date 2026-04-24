@@ -1088,23 +1088,35 @@ class _NextRoundLine extends ConsumerWidget {
 
     return Padding(
       padding: EdgeInsets.only(top: 3.h),
-      child: Text.rich(
-        TextSpan(
-          style: textStyle,
-          children: [
-            if (showName) ...[
-              TextSpan(
-                text: roundName,
-                style: textStyle.copyWith(fontWeight: FontWeight.w600),
-              ),
-              const TextSpan(text: '  ·  '),
-            ],
-            TextSpan(text: label),
-          ],
-        ),
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-      ),
+      child: showName
+          ? Row(
+              crossAxisAlignment: CrossAxisAlignment.baseline,
+              textBaseline: TextBaseline.alphabetic,
+              children: [
+                Flexible(
+                  child: Text(
+                    roundName,
+                    style: textStyle.copyWith(fontWeight: FontWeight.w600),
+                    maxLines: 1,
+                    softWrap: false,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                Text('  ·  ', style: textStyle),
+                Text(
+                  label,
+                  style: textStyle,
+                  maxLines: 1,
+                  softWrap: false,
+                ),
+              ],
+            )
+          : Text(
+              label,
+              style: textStyle,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
     );
   }
 
