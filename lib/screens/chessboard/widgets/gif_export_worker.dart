@@ -7,6 +7,22 @@ import 'package:image/image.dart' as img;
 // Export profile
 // ---------------------------------------------------------------------------
 
+/// Maximum number of played plies shown in a shared GIF.
+///
+/// The Flutter capture path pays for a full widget rasterization per output
+/// frame, so long games must be clipped before capture. Lichess gets away with
+/// full-game GIFs by using a server-side sprite renderer; this client path uses
+/// a compact recent-move recap to stay fast on phones.
+const int kGifMaxAnimatedPlies = 12;
+
+/// Target logical capture scale. The widget capture path also caps final raster
+/// width near Lichess' 720px GIF width before calling `toImage`.
+const double kGifCapturePixelRatio = 2.0;
+
+const int _gifMoveDelayCs = 50;
+const int _gifFinalHoldCs = 160;
+const int _gifNeuralSamplingFactor = 30;
+
 /// Describes which frames to capture and at what quality.
 class GifExportProfile {
   /// Device-pixel ratio for rasterization.
@@ -94,28 +110,21 @@ GifExportProfile planGifExport({
   assert(moveCount > 0);
   assert(currentMoveIndex >= 0 && currentMoveIndex < moveCount);
 
-  late final double pixelRatio;
   late final List<int> frameIndices;
 
-  if (moveCount <= 60) {
-    pixelRatio = 2.0; // Increased from 1.25 for high-DPI sharpness
-    frameIndices = List.generate(moveCount, (i) => i);
-  } else if (moveCount <= 120) {
-    pixelRatio = 1.5; // Increased from 1.0 for medium games
+  if (moveCount <= kGifMaxAnimatedPlies) {
     frameIndices = List.generate(moveCount, (i) => i);
   } else {
-    pixelRatio = 1.25; // Increased from 1.0 to avoid blurry text
-    // 80 total output frames = 1 initial + 79 sampled moves (smoother than 59)
     frameIndices = sampleFrameIndices(
       totalMoves: moveCount,
-      targetMoveFrames: 79,
+      targetMoveFrames: kGifMaxAnimatedPlies,
       currentMoveIndex: currentMoveIndex,
     );
   }
 
   final durations = _computeDurations(frameIndices);
   return GifExportProfile(
-    pixelRatio: pixelRatio,
+    pixelRatio: kGifCapturePixelRatio,
     frameIndices: frameIndices,
     frameDurations: durations,
   );
@@ -171,8 +180,8 @@ List<int> sampleFrameIndices({
 /// is the initial-position frame and indices 1..n correspond to the
 /// sampled move frames.
 ///
-/// Each frame holds for `80 * gap_to_next_captured` cs, except the last
-/// frame which always gets 300cs (3 s hold).
+/// Each frame holds for `_gifMoveDelayCs * gap_to_next_captured` cs, except the
+/// last frame which gets a shorter final hold to keep shared GIFs snappy.
 List<int> _computeDurations(List<int> frameIndices) {
   // Conceptual indices: initial = -1, then frameIndices[0], [1], ...
   final allIndices = <int>[-1, ...frameIndices];
@@ -180,11 +189,10 @@ List<int> _computeDurations(List<int> frameIndices) {
 
   for (int i = 0; i < allIndices.length; i++) {
     if (i == allIndices.length - 1) {
-      // Last frame: 3 second hold
-      durations.add(300);
+      durations.add(_gifFinalHoldCs);
     } else {
       final gap = allIndices[i + 1] - allIndices[i];
-      durations.add(80 * gap);
+      durations.add(_gifMoveDelayCs * gap);
     }
   }
 
@@ -210,10 +218,11 @@ void gifEncoderWorker(SendPort mainSendPort) {
   mainSendPort.send(GifWorkerReady(workerPort.sendPort));
 
   final gif = img.GifEncoder(
-    delay: 80,
-    dither: img.DitherKernel.floydSteinberg,
+    delay: _gifMoveDelayCs,
+    dither: img.DitherKernel.none,
     quantizerType: img.QuantizerType.neural,
-    samplingFactor: 5,
+    numColors: 256,
+    samplingFactor: _gifNeuralSamplingFactor,
   );
 
   workerPort.listen((message) {
@@ -272,10 +281,11 @@ Uint8List? encodeGifFallback({
   if (rgbaFrames.isEmpty) return null;
 
   final gif = img.GifEncoder(
-    delay: 80,
-    dither: img.DitherKernel.floydSteinberg,
+    delay: _gifMoveDelayCs,
+    dither: img.DitherKernel.none,
     quantizerType: img.QuantizerType.neural,
-    samplingFactor: 5,
+    numColors: 256,
+    samplingFactor: _gifNeuralSamplingFactor,
   );
 
   for (int i = 0; i < rgbaFrames.length; i++) {

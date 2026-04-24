@@ -105,6 +105,8 @@ class ShareGameCardOverlay extends StatefulWidget {
 }
 
 class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
+  static const double _maxGifRasterWidth = 720.0;
+
   final ScreenshotController _fullScreenshotController = ScreenshotController();
   final GlobalKey _gifFrameKey = GlobalKey(); // For raw pixel capture
   bool _isGenerating = false;
@@ -239,7 +241,16 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
         return null;
       }
 
-      final image = await boundary.toImage(pixelRatio: pixelRatio);
+      final logicalWidth = boundary.size.width;
+      final effectivePixelRatio =
+          logicalWidth > 0
+              ? math.max(
+                0.1,
+                math.min(pixelRatio, _maxGifRasterWidth / logicalWidth),
+              )
+              : pixelRatio;
+
+      final image = await boundary.toImage(pixelRatio: effectivePixelRatio);
       try {
         final byteData = await image.toByteData(
           format: ui.ImageByteFormat.rawRgba,
@@ -391,47 +402,47 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
     if (widget.moveSans.isEmpty) return null;
 
     if (widget.currentMoveIndex >= 0) {
-      // Normal case: export from start through the selected move
-      return (
-        movesToAnimate:
-            widget.moveSans.take(widget.currentMoveIndex + 1).toList(),
-        globalMoveOffset: 0,
-        captureStartFen: widget.startingFen,
+      final endIndex = math.min(
+        widget.currentMoveIndex,
+        widget.moveSans.length - 1,
       );
+      return _buildClippedExportWindow(endIndex);
     }
 
-    // currentMoveIndex == -1 (initial position): try to export last 5 plies
-    final offset = math.max(0, widget.moveSans.length - 5);
+    // currentMoveIndex == -1 (initial position): export the latest recap window.
+    return _buildClippedExportWindow(widget.moveSans.length - 1);
+  }
 
-    if (offset > 0) {
-      // Pre-play prefix moves to compute the starting FEN for the window
+  ({List<String> movesToAnimate, int globalMoveOffset, String? captureStartFen})
+  _buildClippedExportWindow(int endIndex) {
+    var startIndex = math.max(0, endIndex - kGifMaxAnimatedPlies + 1);
+    var captureStartFen = widget.startingFen;
+
+    if (startIndex > 0) {
       try {
         Position pos =
             widget.startingFen != null
                 ? Chess.fromSetup(Setup.parseFen(widget.startingFen!))
                 : Chess.initial;
-        for (int i = 0; i < offset; i++) {
+        for (int i = 0; i < startIndex; i++) {
           final move = pos.parseSan(widget.moveSans[i]);
           if (move == null) throw StateError('Prefix move $i unparseable');
           pos = pos.play(move);
         }
-        return (
-          movesToAnimate: widget.moveSans.sublist(offset),
-          globalMoveOffset: offset,
-          captureStartFen: pos.fen,
-        );
-      } catch (_) {
-        // Prefix replay failed — fall back to exporting the full line
-        // rather than silently using Chess.initial for a clipped window
-        debugPrint('GIF: prefix replay failed, falling back to full line');
+        captureStartFen = pos.fen;
+      } catch (e) {
+        // Broken prefix replay would make the clipped window start from the
+        // wrong board state. Fall back to the full prefix instead.
+        debugPrint('GIF: prefix replay failed, falling back to full line: $e');
+        startIndex = 0;
+        captureStartFen = widget.startingFen;
       }
     }
 
-    // Either offset == 0 (fewer than 5 moves) or prefix replay failed
     return (
-      movesToAnimate: widget.moveSans.toList(),
-      globalMoveOffset: 0,
-      captureStartFen: widget.startingFen,
+      movesToAnimate: widget.moveSans.sublist(startIndex, endIndex + 1),
+      globalMoveOffset: startIndex,
+      captureStartFen: captureStartFen,
     );
   }
 

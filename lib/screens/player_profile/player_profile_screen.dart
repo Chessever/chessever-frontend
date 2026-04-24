@@ -954,7 +954,7 @@ countryCode,
                         alignment: Alignment.centerLeft,
                         child: _ActionCard(
                           icon: Icons.account_tree_outlined,
-                          title: 'Study opening',
+                          title: 'Build Tree',
                           subtitle:
                               hasActiveFilter
                                   ? 'Filtered games'
@@ -1305,7 +1305,7 @@ class _StudyOpeningPillState extends State<_StudyOpeningPill> {
                   ),
                   SizedBox(width: 8.w),
                   Text(
-                    'Study opening repertoire',
+                    'Build Tree',
                     style: AppTypography.textSmMedium.copyWith(
                       color: kWhiteColor.withValues(alpha: 0.92),
                     ),

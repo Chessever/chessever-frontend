@@ -7,68 +7,57 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('planGifExport', () {
-    test('short game (20 moves) keeps all frames at pixelRatio 1.25', () {
-      final profile = planGifExport(moveCount: 20, currentMoveIndex: 19);
+    test('short recap keeps all frames at sharp capture ratio', () {
+      final profile = planGifExport(moveCount: 12, currentMoveIndex: 11);
 
-      expect(profile.pixelRatio, 1.25);
-      expect(profile.frameIndices, List.generate(20, (i) => i));
-      // 21 durations: 1 initial + 20 moves
-      expect(profile.frameDurations.length, 21);
-      // All non-final durations should be 80cs (gap of 1)
-      for (int i = 0; i < 20; i++) {
-        expect(profile.frameDurations[i], 80);
+      expect(profile.pixelRatio, kGifCapturePixelRatio);
+      expect(profile.frameIndices, List.generate(12, (i) => i));
+      // 13 durations: 1 initial + 12 moves
+      expect(profile.frameDurations.length, 13);
+      // All non-final durations should be 50cs (gap of 1)
+      for (int i = 0; i < 12; i++) {
+        expect(profile.frameDurations[i], 50);
       }
-      // Last frame: 300cs (3s hold)
-      expect(profile.frameDurations[20], 300);
+      expect(profile.frameDurations[12], 160);
     });
 
-    test('medium game (80 moves) keeps all frames at pixelRatio 1.0', () {
+    test('boundary: max animated plies keeps all move frames', () {
+      final profile = planGifExport(
+        moveCount: kGifMaxAnimatedPlies,
+        currentMoveIndex: kGifMaxAnimatedPlies - 1,
+      );
+
+      expect(profile.pixelRatio, kGifCapturePixelRatio);
+      expect(profile.frameIndices.length, kGifMaxAnimatedPlies);
+      expect(profile.frameDurations.length, kGifMaxAnimatedPlies + 1);
+    });
+
+    test('boundary: one over max samples to the frame cap', () {
+      final profile = planGifExport(
+        moveCount: kGifMaxAnimatedPlies + 1,
+        currentMoveIndex: kGifMaxAnimatedPlies,
+      );
+
+      expect(profile.pixelRatio, kGifCapturePixelRatio);
+      expect(profile.frameIndices.length, kGifMaxAnimatedPlies);
+      expect(profile.frameDurations.length, kGifMaxAnimatedPlies + 1);
+    });
+
+    test('medium game caps to sampled move frames', () {
       final profile = planGifExport(moveCount: 80, currentMoveIndex: 79);
 
-      expect(profile.pixelRatio, 1.0);
-      expect(profile.frameIndices.length, 80);
-      expect(profile.frameDurations.length, 81);
-      // Last duration is 300cs
-      expect(profile.frameDurations.last, 300);
+      expect(profile.pixelRatio, kGifCapturePixelRatio);
+      expect(profile.frameIndices.length, kGifMaxAnimatedPlies);
+      expect(profile.frameDurations.length, kGifMaxAnimatedPlies + 1);
     });
 
-    test('boundary: 60 moves stays in short tier', () {
-      final profile = planGifExport(moveCount: 60, currentMoveIndex: 59);
-
-      expect(profile.pixelRatio, 1.25);
-      expect(profile.frameIndices.length, 60);
-    });
-
-    test('boundary: 61 moves moves to medium tier', () {
-      final profile = planGifExport(moveCount: 61, currentMoveIndex: 60);
-
-      expect(profile.pixelRatio, 1.0);
-      expect(profile.frameIndices.length, 61);
-    });
-
-    test('boundary: 100 moves stays in medium tier', () {
-      final profile = planGifExport(moveCount: 100, currentMoveIndex: 99);
-
-      expect(profile.pixelRatio, 1.0);
-      expect(profile.frameIndices.length, 100);
-    });
-
-    test('boundary: 101 moves moves to long tier', () {
-      final profile = planGifExport(moveCount: 101, currentMoveIndex: 100);
-
-      expect(profile.pixelRatio, 1.0);
-      expect(profile.frameIndices.length, 59);
-      // Total output frames = 1 initial + 59 = 60
-      expect(profile.frameDurations.length, 60);
-    });
-
-    test('long game (150 moves) caps to 59 sampled move frames', () {
+    test('long game caps to sampled move frames', () {
       final profile = planGifExport(moveCount: 150, currentMoveIndex: 149);
 
-      expect(profile.pixelRatio, 1.0);
-      expect(profile.frameIndices.length, 59);
-      // 60 total output frames: 1 initial + 59 sampled
-      expect(profile.frameDurations.length, 60);
+      expect(profile.pixelRatio, kGifCapturePixelRatio);
+      expect(profile.frameIndices.length, kGifMaxAnimatedPlies);
+      // Total output frames: 1 initial + sampled moves.
+      expect(profile.frameDurations.length, kGifMaxAnimatedPlies + 1);
     });
 
     test('long game includes required indices', () {
@@ -92,34 +81,34 @@ void main() {
     test('long game durations accumulate correctly for gaps', () {
       final profile = planGifExport(moveCount: 150, currentMoveIndex: 149);
 
-      // Non-last durations telescope: 80 * (lastIndex - (-1)) = 80 * 150 = 12000
-      // Last frame: 300cs
-      // Total = 12000 + 300 = 12300
-      final totalDuration =
-          profile.frameDurations.reduce((a, b) => a + b);
-      expect(totalDuration, 80 * 150 + 300);
+      // Non-last durations telescope: 50 * (lastIndex - (-1)) = 50 * 150.
+      // Last frame hold is 160cs.
+      final totalDuration = profile.frameDurations.reduce((a, b) => a + b);
+      expect(totalDuration, 50 * 150 + 160);
     });
 
-    test('edge case: currentMoveIndex < 9 includes available previous moves',
-        () {
-      final profile = planGifExport(moveCount: 120, currentMoveIndex: 5);
-      final indices = profile.frameIndices;
+    test(
+      'edge case: currentMoveIndex < 9 includes available previous moves',
+      () {
+        final profile = planGifExport(moveCount: 120, currentMoveIndex: 5);
+        final indices = profile.frameIndices;
 
-      // Must include move 0 and move 5
-      expect(indices.contains(0), isTrue);
-      expect(indices.contains(5), isTrue);
-      // Includes moves 1-4 (all available before current)
-      for (int i = 1; i <= 4; i++) {
-        expect(indices.contains(i), isTrue, reason: 'Missing index $i');
-      }
-    });
+        // Must include move 0 and move 5
+        expect(indices.contains(0), isTrue);
+        expect(indices.contains(5), isTrue);
+        // Includes moves 1-4 (all available before current)
+        for (int i = 1; i <= 4; i++) {
+          expect(indices.contains(i), isTrue, reason: 'Missing index $i');
+        }
+      },
+    );
   });
 
   group('sampleFrameIndices', () {
     test('returns sorted, deduplicated list', () {
       final indices = sampleFrameIndices(
         totalMoves: 200,
-        targetMoveFrames: 59,
+        targetMoveFrames: kGifMaxAnimatedPlies,
         currentMoveIndex: 199,
       );
 
@@ -134,17 +123,17 @@ void main() {
     test('does not exceed target', () {
       final indices = sampleFrameIndices(
         totalMoves: 500,
-        targetMoveFrames: 59,
+        targetMoveFrames: kGifMaxAnimatedPlies,
         currentMoveIndex: 499,
       );
 
-      expect(indices.length, lessThanOrEqualTo(59));
+      expect(indices.length, lessThanOrEqualTo(kGifMaxAnimatedPlies));
     });
 
     test('includes must-have indices', () {
       final indices = sampleFrameIndices(
         totalMoves: 300,
-        targetMoveFrames: 59,
+        targetMoveFrames: kGifMaxAnimatedPlies,
         currentMoveIndex: 299,
       );
 
@@ -160,10 +149,7 @@ void main() {
     test('produces a non-empty GIF from synthetic frames', () async {
       final mainPort = ReceivePort();
 
-      final isolate = await Isolate.spawn(
-        gifEncoderWorker,
-        mainPort.sendPort,
-      );
+      final isolate = await Isolate.spawn(gifEncoderWorker, mainPort.sendPort);
 
       final responses = <GifWorkerResponse>[];
       final doneCompleter = Completer<Uint8List>();
@@ -182,8 +168,9 @@ void main() {
         }
       });
 
-      workerSendPort =
-          await readyCompleter.future.timeout(const Duration(seconds: 5));
+      workerSendPort = await readyCompleter.future.timeout(
+        const Duration(seconds: 5),
+      );
 
       // Send 3 synthetic 2x2 RGBA frames
       const w = 2;
@@ -198,19 +185,22 @@ void main() {
           rgba[p * 4 + 3] = 255; // A
         }
 
-        workerSendPort.send(GifWorkerFrameData(
-          rgba: TransferableTypedData.fromList([rgba]),
-          width: w,
-          height: h,
-          durationCs: i == 2 ? 300 : 80,
-          frameIndex: i,
-        ));
+        workerSendPort.send(
+          GifWorkerFrameData(
+            rgba: TransferableTypedData.fromList([rgba]),
+            width: w,
+            height: h,
+            durationCs: i == 2 ? 300 : 80,
+            frameIndex: i,
+          ),
+        );
       }
 
       workerSendPort.send(GifWorkerFinish());
 
-      final gifBytes =
-          await doneCompleter.future.timeout(const Duration(seconds: 10));
+      final gifBytes = await doneCompleter.future.timeout(
+        const Duration(seconds: 10),
+      );
 
       // Verify we got 3 frame-accepted responses
       expect(responses.length, 3);
