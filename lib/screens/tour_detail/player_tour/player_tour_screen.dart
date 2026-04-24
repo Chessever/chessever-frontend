@@ -19,9 +19,8 @@ String _standingsScrollBucket(String query) {
 }
 
 /// The outer PlayerTourScreen intentionally does NOT watch the search query.
-/// Only the inner [_StandingsList] subscribes to it, which keeps the search
-/// field's Element stable across keystrokes — the TextField retains IME
-/// focus instead of being rebuilt out from under the keyboard.
+/// Only the inner [_StandingsList] subscribes to it, which keeps the outer
+/// page stable across keystrokes and live-round rebuilds.
 class PlayerTourScreen extends ConsumerStatefulWidget {
   const PlayerTourScreen({super.key});
 
@@ -107,9 +106,6 @@ class _PlayerTourScreenState extends ConsumerState<PlayerTourScreen>
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              // Pinned above the list — stays out of the rebuilding tree so
-              // keystrokes don't churn the TextField / lose keyboard focus.
-              const EventSearchBar(),
               const FigmaStandingsHeader(showScore: true),
               Expanded(child: _StandingsList(controller: _scrollController)),
             ],
@@ -120,8 +116,8 @@ class _PlayerTourScreenState extends ConsumerState<PlayerTourScreen>
   }
 }
 
-/// Only this subtree re-runs when the search query changes; the parent's
-/// Column (and the [EventSearchBar] within it) stay intact.
+/// Only this subtree re-runs when the search query changes. The search bar is
+/// the first scrollable row so it behaves like the Games tab and scrolls away.
 class _StandingsList extends ConsumerWidget {
   const _StandingsList({required this.controller});
 
@@ -142,23 +138,6 @@ class _StandingsList extends ConsumerWidget {
             final query = ref.watch(standingsSearchQueryProvider);
             final data = filterStandingsByQuery(allRanked, query);
             final isSearching = query.trim().isNotEmpty;
-            if (data.isEmpty) {
-              return Center(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    SizedBox(height: 64.h),
-                    EmptyWidget(
-                      title:
-                          isSearching
-                              ? "No players found matching your search"
-                              : "No data available",
-                    ),
-                  ],
-                ),
-              );
-            }
             final favIds = ref
                 .watch(favoritePlayersNotifierProvider)
                 .maybeWhen(
@@ -169,15 +148,31 @@ class _StandingsList extends ConsumerWidget {
                   skipLoadingOnReload: true,
                 );
             return ListView.builder(
-              key: PageStorageKey<String>(_standingsScrollBucket(query)),
+              key: const PageStorageKey<String>('standings_list'),
               controller: controller,
               primary: false,
               padding: EdgeInsets.only(
                 bottom: MediaQuery.of(context).viewInsets.bottom + 16.sp,
               ),
-              itemCount: data.length,
+              itemCount: data.isEmpty ? 2 : data.length + 1,
               itemBuilder: (context, index) {
-                final player = data[index];
+                if (index == 0) {
+                  return const EventSearchBar();
+                }
+
+                if (data.isEmpty) {
+                  return Padding(
+                    padding: EdgeInsets.only(top: 48.h),
+                    child: EmptyWidget(
+                      title:
+                          isSearching
+                              ? "No players found matching your search"
+                              : "No data available",
+                    ),
+                  );
+                }
+
+                final player = data[index - 1];
                 final isFav = favIds.contains(player.fideId);
                 return FigmaPlayerCard(
                   key: ValueKey(
